@@ -1,0 +1,66 @@
+name: CI
+
+# 把三条验证链做成必过闸门（git.md §3：契约一致性 / adapter 静态校验 / 夹具回归 / lint）。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # 服务端：TS 严格类型 + QuickJS-wasm 沙箱冒烟（parser 端到端 + 超时/缺能力）。
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run smoke:sandbox
+
+  # 工具链：TS 严格类型 + 校验器自测 + 对 adapters/ 全量静态校验（CI 闸门）。
+  tools:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tools/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run smoke:validator
+      - run: npm run validate
+
+  # 客户端：lint + 双跑一致性（客户端 QuickJS == golden）。
+  # flutter_qjs 是经典 FFI 插件，需先用 CMake 预构建原生测试库（见 build 脚本）。
+  client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native build deps
+        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.1
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build flutter_qjs FFI test lib
+        run: bash tool/build_qjs_test_lib.sh
+      - run: flutter analyze
+      - run: flutter test
