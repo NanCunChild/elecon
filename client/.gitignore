@@ -1,0 +1,12 @@
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+
+# FVM
+.fvm/
+
+# 原生 FFI 测试库：由 tool/build_qjs_test_lib.sh 本地构建，勿提交二进制
+test/build/
