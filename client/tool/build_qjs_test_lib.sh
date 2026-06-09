@@ -12,6 +12,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.." # → client/
 
+case "$(uname -s)" in
+  Linux) ;;
+  Darwin)
+    echo "macOS 暂未支持：需把目标产物改为 test/build/libffiquickjs.dylib（见 flutter_qjs ffi.dart 的 FLUTTER_TEST 分支），并用 Xcode/clang 构建。" >&2
+    exit 1 ;;
+  *)
+    echo "本脚本目前仅支持 Linux desktop；其他平台请按 flutter_qjs 的 cxx/ 源码自行扩展构建。" >&2
+    exit 1 ;;
+esac
+
 if [ ! -f .dart_tool/package_config.json ]; then
   echo "缺少 .dart_tool/package_config.json，请先运行: fvm flutter pub get" >&2
   exit 1

@@ -38,12 +38,13 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 
 这些是本决策"不埋雷"的前提，必须随实现一起兜住：
 
-1. **绑定已停更、需打补丁的 fork。** ekibun `flutter_qjs` 0.3.7 的 FFI 回调返回可空指针，Dart 3.12 更严的 `Pointer.fromFunction` 编译失败。落地方式：`pubspec.yaml` 用 `dependency_overrides` 指向打了**一行兼容补丁**的 fork，**pin 到具体 commit**。
+1. **绑定已停更、需打补丁的 fork。** ekibun `flutter_qjs` 0.3.7 的 FFI 回调返回可空指针，Dart 3.12 更严的 `Pointer.fromFunction` 编译失败。落地方式：`pubspec.yaml` 用 `dependency_overrides` 指向打了**一行兼容补丁**的 fork（[`NanCunChild/flutter_qjs@dart3-compat`](https://github.com/NanCunChild/flutter_qjs/tree/dart3-compat)），**pin 到具体 commit**。
+   - **补丁内容**（`lib/src/ffi.dart`）：`channelDispacher` 的返回类型由 `Pointer<JSValue>?` 改为非空 `Pointer<JSValue>`，函数体末尾 `... ?? nullptr` 兜底。仅此一处，纯 Dart、不动 C 源，便于审计与未来迁移。
    - *风险*：自带一个 fork 的维护负担，与"低维护"主线相悖。
    - *缓解*：补丁极小且可审计；pin commit 保证可复现；中长期应评估迁移到维护良好的全平台 QuickJS 绑定（若出现）或自管最小 ffi 层。
 2. **pub 不为 git 依赖初始化 submodule。** ekibun 把 QuickJS 源作为 git submodule，经 git ref 消费时为空，会同时打断原生插件构建与 FFI 测试库。fork 已将 QuickJS 源 **vendoring**（提交为普通文件）以自包含。
 3. **原生测试库需预构建。** `flutter_qjs` 是经典插件，纯 `flutter test`（host VM）不构建原生库；但其 ffi 在 `FLUTTER_TEST` 下从 `test/build/libffiquickjs.so` 加载。故用 `client/tool/build_qjs_test_lib.sh` 经 CMake 预构建该库，即可无显示器跑测试。**当前 desktop 测试基建仅 Linux**，其余平台按需补。
-4. **iOS App Store 审核（开放项）。** 在 iOS 上下载并由内置解释器执行 adapter JS，触及指南 2.5.2（下载可执行代码）。QuickJS 是解释器、无 JIT，不触 JIT 禁令，但"执行下载代码"本身需在发布前做合规评估（与 fetch 模式凭证注入 PR 一并处理）。
+4. **iOS App Store 审核（开放项，[#4](https://github.com/NanCunChild/elecon/issues/4)）。** 在 iOS 上下载并由内置解释器执行 adapter JS，触及指南 2.5.2（下载可执行代码）。QuickJS 是解释器、无 JIT，不触 JIT 禁令，但"执行下载代码"本身需在发布前做合规评估（与 fetch 模式凭证注入一并处理）。
 5. **两端加载机制不同但语义对齐。** 服务端用模块命名空间返回、客户端用 import 包装 + global 暴露——都以 ESM/模块作用域加载同一份源码，产出由 golden 双跑闸门兜底。后续可考虑收敛为同一 bootstrap 以进一步降低漂移面。
 
 ---
@@ -54,4 +55,4 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 - `client/test/dual_run_test.dart`：双跑一致性（客户端半边）+ capability_missing / async_in_parser 反例。
 - `client/tool/build_qjs_test_lib.sh`：从 `package_config.json` 动态定位 flutter_qjs、经 CMake 构建 FFI 测试库。
 - `client/pubspec.yaml`：`flutter_qjs` 依赖 + 指向补丁 fork 的 `dependency_overrides`（pin commit）。
-- 待续：fetch 模式 `ctx.fetch` + 凭证注入（红线 #1，人工审阅 PR）；其余平台 desktop/device 测试基建；iOS 2.5.2 合规评估。
+- 待续：fetch 模式 `ctx.fetch` + 凭证注入（红线 #1，人工审阅 PR，[#3](https://github.com/NanCunChild/elecon/issues/3)）；iOS 2.5.2 合规评估（[#4](https://github.com/NanCunChild/elecon/issues/4)）；其余平台 desktop/device 测试基建。
