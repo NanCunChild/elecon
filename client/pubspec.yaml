@@ -8,7 +8,16 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # 暂存，随实现补全
+  flutter_qjs: ^0.3.7
+
+# flutter_qjs 0.3.7（ekibun，已停更）在 Dart 3.12 下编译失败（FFI 可空指针）。
+# 指向打了一行兼容补丁的 fork，pin 到具体 commit 以保证可复现。
+# 详见即将落地的客户端运行时 ADR。
+dependency_overrides:
+  flutter_qjs:
+    git:
+      url: https://github.com/NanCunChild/flutter_qjs.git
+      ref: fd7273a539c37e11f0ec6d9b500992b85b40a575
 
 dev_dependencies:
   flutter_test:
