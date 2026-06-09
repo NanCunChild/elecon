@@ -13,3 +13,5 @@ function main(): void {
 }
 
 main();
+
+export {};
