@@ -1,0 +1,96 @@
+/**
+ * 沙箱冒烟测试 —— 证明 parser 管线端到端跑通。
+ *
+ *   adapter 源码 + 脱敏夹具  →  QuickJS-wasm 沙箱  →  归一化产出
+ *                                                   ├─ 逐字段等于 golden
+ *                                                   └─ 通过 contract schema（ajv）
+ *
+ * 这不是正式校验器（那是 tools/src/validator，下一步）。这是让管线先转起来的最小驱动。
+ *
+ *   运行：cd server && npm run smoke:sandbox
+ */
+
+import { strict as assert } from "node:assert";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { Ajv2020 } from "ajv/dist/2020.js";
+
+import { runAdapter, SandboxError } from "./sandbox.js";
+
+const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const parserDir = `${repoRoot}adapters/_template/parser`;
+const schemaPath = `${repoRoot}contract/schema/grades.list.schema.json`;
+
+interface Fixture {
+  capability: string;
+  params: unknown;
+  responses: Record<string, { status: number; headers: Record<string, string>; body: string }>;
+  expected: unknown;
+}
+
+function readJson<T>(path: string): T {
+  return JSON.parse(readFileSync(path, "utf8")) as T;
+}
+
+async function testGoldenAndSchema(): Promise<void> {
+  const source = readFileSync(`${parserDir}/index.js`, "utf8");
+  const fixture = readJson<Fixture>(`${parserDir}/fixtures/grades.list.json`);
+
+  const logs: string[] = [];
+  const { data } = await runAdapter({
+    source,
+    capability: fixture.capability,
+    params: fixture.params,
+    responses: fixture.responses,
+    nowMs: 1_700_000_000_000, // 固定，保证确定性（golden 双跑前提）
+    onLog: (level, message) => logs.push(`${level}: ${message}`),
+  });
+
+  // (a) 逐字段等于 golden
+  assert.deepEqual(data, fixture.expected, "产出与 golden 不一致");
+  console.log("  ✓ golden 一致");
+
+  // (b) 通过 contract schema（这一步证明管线产出的是合法契约数据）
+  const ajv = new Ajv2020({ allErrors: true });
+  const validate = ajv.compile(readJson(schemaPath));
+  const ok = validate(data);
+  assert.ok(ok, `产出未通过 grades.list schema：${JSON.stringify(validate.errors)}`);
+  console.log("  ✓ 通过 contract schema（ajv）");
+}
+
+async function testCapabilityMissing(): Promise<void> {
+  const source = readFileSync(`${parserDir}/index.js`, "utf8");
+  await assert.rejects(
+    runAdapter({ source, capability: "schedule.week", params: {}, responses: {} }),
+    (err: unknown) => err instanceof SandboxError && err.reason === "capability_missing",
+    "未声明的 capability 应抛 capability_missing",
+  );
+  console.log("  ✓ 缺失 capability 被拒（capability_missing）");
+}
+
+async function testTimeoutBites(): Promise<void> {
+  // parser 同步死循环；interrupt handler 应在 deadline 后中断
+  const source = "export const capabilities = { spin: () => { while (true) {} } };";
+  await assert.rejects(
+    runAdapter(
+      { source, capability: "spin", params: {}, responses: {} },
+      { timeoutMs: 200, memoryBytes: 64 * 1024 * 1024 },
+    ),
+    (err: unknown) => err instanceof SandboxError && err.reason === "timeout",
+    "死循环应被超时中断（timeout）",
+  );
+  console.log("  ✓ 超时限制生效（timeout）");
+}
+
+async function main(): Promise<void> {
+  console.log("sandbox smoke:");
+  await testGoldenAndSchema();
+  await testCapabilityMissing();
+  await testTimeoutBites();
+  console.log("全部通过。parser 管线端到端跑通。");
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

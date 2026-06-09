@@ -1,0 +1,39 @@
+{
+  "$schema": "../manifest.schema.json",
+  "description": "所有合法 capability id 的注册表。新增 id 或改其语义需走 ADR。",
+  "capabilities": {
+    "grades.list": {
+      "description": "获取学期成绩列表",
+      "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
+      "params": { "schema": "elecon.params.grades.list", "schemaVersion": "1.0" }
+    },
+    "schedule.week": {
+      "description": "获取指定周课表",
+      "emits": { "schema": "elecon.schedule.week", "schemaVersion": "1.0" },
+      "params": { "schema": "elecon.params.schedule.week", "schemaVersion": "1.0" }
+    },
+    "card.balance": {
+      "description": "获取一卡通余额",
+      "emits": { "schema": "elecon.card.balance", "schemaVersion": "1.0" }
+    },
+    "card.transactions": {
+      "description": "获取一卡通交易流水",
+      "emits": { "schema": "elecon.card.transactions", "schemaVersion": "1.0" },
+      "params": { "schema": "elecon.params.card.transactions", "schemaVersion": "1.0" }
+    },
+    "library.loans": {
+      "description": "获取当前借阅列表",
+      "emits": { "schema": "elecon.library.loans", "schemaVersion": "1.0" }
+    },
+    "notice.list": {
+      "description": "获取通知列表",
+      "emits": { "schema": "elecon.notice.list", "schemaVersion": "1.0" },
+      "params": { "schema": "elecon.params.notice.list", "schemaVersion": "1.0" }
+    },
+    "generic.section": {
+      "description": "通用兜底域：长尾/冷门校园数据，由本体渲染，adapter 只给数据+语义角色（见 ADR-001 §3.6）",
+      "emits": { "schema": "elecon.generic.section", "schemaVersion": "1.0" },
+      "params": { "schema": "elecon.params.generic.section", "schemaVersion": "1.0" }
+    }
+  }
+}

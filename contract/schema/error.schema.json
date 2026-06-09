@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.error",
+  "title": "统一错误模型",
+  "description": "adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反应。",
+  "type": "object",
+  "required": ["schema", "schemaVersion", "error"],
+  "properties": {
+    "schema": { "const": "elecon.error" },
+    "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
+    "error": {
+      "type": "object",
+      "required": ["kind", "retriable", "capability", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "auth_required",
+            "source_unavailable",
+            "network_blocked",
+            "rate_limited",
+            "parse_failed",
+            "capability_unsupported"
+          ]
+        },
+        "retriable": { "type": "boolean" },
+        "capability": { "type": "string" },
+        "message": { "type": "string", "maxLength": 256 }
+      }
+    }
+  }
+}

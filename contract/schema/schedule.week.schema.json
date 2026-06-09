@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.schedule.week",
+  "title": "周课表",
+  "type": "object",
+  "required": ["term", "week", "days"],
+  "properties": {
+    "term": { "type": "string" },
+    "week": { "type": "integer", "minimum": 1 },
+    "days": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dayOfWeek", "slots"],
+        "properties": {
+          "dayOfWeek": { "type": "integer", "minimum": 1, "maximum": 7 },
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["start", "end", "courseName"],
+              "properties": {
+                "start": { "type": "string" },
+                "end": { "type": "string" },
+                "courseName": { "type": "string" },
+                "courseId": { "type": "string" },
+                "teacher": { "type": "string" },
+                "location": { "type": "string" },
+                "weeks": {
+                  "type": "array",
+                  "items": { "type": "integer" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

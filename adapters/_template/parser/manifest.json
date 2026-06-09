@@ -1,0 +1,29 @@
+{
+  "manifestVersion": "1.0",
+  "adapterId": "school-template-parser",
+  "adapterVersion": "0.1.0",
+  "schoolId": "0000",
+  "displayName": "模板学校（parser 模式）",
+  "trustTier": "sideload",
+  "mode": "parser",
+  "runtime": { "engine": "quickjs", "entry": "index.js" },
+  "network": {
+    "allow": [
+      "https://jw.example.edu.cn/api/*"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "grades.list",
+      "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
+      "requests": [
+        {
+          "key": "raw",
+          "method": "GET",
+          "url": "https://jw.example.edu.cn/api/grades?term={term}",
+          "credential": "session"
+        }
+      ]
+    }
+  ]
+}

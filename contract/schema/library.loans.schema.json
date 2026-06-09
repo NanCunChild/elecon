@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.library.loans",
+  "title": "图书馆借阅",
+  "type": "object",
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["bookId", "title", "borrowedAt", "dueAt"],
+        "properties": {
+          "bookId": { "type": "string" },
+          "title": { "type": "string" },
+          "author": { "type": "string" },
+          "borrowedAt": { "type": "string", "format": "date-time" },
+          "dueAt": { "type": "string", "format": "date-time" },
+          "renewCount": { "type": "integer", "minimum": 0 },
+          "overdue": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+/home/nancunchild/projects/elecron/AGENTS.md

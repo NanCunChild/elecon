@@ -1,0 +1,32 @@
+{
+  "name": "@elecon/tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "elecon 工具链（Node/TS）：adapter 校验、codegen、签名、夹具 PII 扫描。契约校验用 ajv，与服务端共用。见 docs/adr/adr_005_runtime.md。",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "elecon-validate": "src/validator/index.ts",
+    "elecon-codegen": "src/codegen/index.ts",
+    "elecon-sign": "src/signer/index.ts",
+    "elecon-scan": "src/scanner/index.ts"
+  },
+  "scripts": {
+    "validate": "tsx src/validator/index.ts",
+    "codegen": "tsx src/codegen/index.ts",
+    "sign": "tsx src/signer/index.ts",
+    "scan": "tsx src/scanner/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "audit": "npm audit --omit=dev"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}

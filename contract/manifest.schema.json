@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.manifest",
+  "title": "Capability Manifest Schema",
+  "description": "adapter 对核心的声明契约。tools/ 校验器据此验证 manifest 合法性。",
+  "type": "object",
+  "required": ["manifestVersion", "adapterId", "adapterVersion", "schoolId", "displayName", "trustTier", "mode", "runtime", "network", "capabilities"],
+  "properties": {
+    "manifestVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
+    "adapterId": { "type": "string", "pattern": "^school-\\S+$" },
+    "adapterVersion": { "type": "string" },
+    "schoolId": { "type": "string" },
+    "displayName": { "type": "string" },
+    "trustTier": {
+      "type": "string",
+      "enum": ["official", "community", "sideload"]
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["fetch", "parser"]
+    },
+    "runtime": {
+      "type": "object",
+      "required": ["engine", "entry"],
+      "properties": {
+        "engine": { "const": "quickjs" },
+        "entry": { "type": "string" }
+      }
+    },
+    "network": {
+      "type": "object",
+      "required": ["allow"],
+      "properties": {
+        "allow": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri-template" }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "emits"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "capability id，必须在 registry.json 里注册"
+          },
+          "emits": {
+            "type": "object",
+            "required": ["schema", "schemaVersion"],
+            "properties": {
+              "schema": { "type": "string" },
+              "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" }
+            }
+          },
+          "params": {
+            "type": "object",
+            "properties": {
+              "schema": { "type": "string" },
+              "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" }
+            }
+          },
+          "requests": {
+            "type": "array",
+            "description": "仅 parser 模式使用，声明核心代取的请求配方",
+            "items": {
+              "type": "object",
+              "required": ["key", "method", "url"],
+              "properties": {
+                "key": { "type": "string" },
+                "method": { "type": "string", "enum": ["GET", "POST"] },
+                "url": { "type": "string" },
+                "credential": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

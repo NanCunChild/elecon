@@ -1,0 +1,28 @@
+{
+  "manifestVersion": "1.0",
+  "adapterId": "school-template",
+  "adapterVersion": "0.1.0",
+  "schoolId": "0000",
+  "displayName": "模板学校（fetch 模式）",
+  "trustTier": "official",
+  "mode": "fetch",
+  "runtime": { "engine": "quickjs", "entry": "index.js" },
+  "network": {
+    "allow": [
+      "https://jw.example.edu.cn/api/*",
+      "https://ehall.example.edu.cn/*"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "grades.list",
+      "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
+      "params": { "schema": "elecon.params.grades.list", "schemaVersion": "1.0" }
+    },
+    {
+      "id": "schedule.week",
+      "emits": { "schema": "elecon.schedule.week", "schemaVersion": "1.0" },
+      "params": { "schema": "elecon.params.schedule.week", "schemaVersion": "1.0" }
+    }
+  ]
+}

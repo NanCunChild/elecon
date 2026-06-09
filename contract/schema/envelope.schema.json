@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.envelope",
+  "title": "统一数据信封",
+  "description": "所有 adapter 产出归一化数据的外层包装，携带来源、新鲜度、schema 版本等元数据。",
+  "type": "object",
+  "required": ["schema", "schemaVersion", "source", "freshness", "data"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "description": "数据域 schema id，如 elecon.grades.list"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$",
+      "description": "schema 的 MAJOR.MINOR 版本"
+    },
+    "source": {
+      "type": "object",
+      "required": ["schoolId", "adapterId", "adapterVersion", "origin"],
+      "properties": {
+        "schoolId": { "type": "string" },
+        "adapterId": { "type": "string" },
+        "adapterVersion": { "type": "string" },
+        "origin": {
+          "type": "string",
+          "enum": ["client-direct", "campus-relay", "public-cache"]
+        }
+      }
+    },
+    "freshness": {
+      "type": "object",
+      "required": ["fetchedAt", "ttlSeconds", "stale"],
+      "properties": {
+        "fetchedAt": { "type": "string", "format": "date-time" },
+        "ttlSeconds": { "type": "integer", "minimum": 0 },
+        "stale": { "type": "boolean" }
+      }
+    },
+    "data": {
+      "description": "域负载，结构由对应域 schema 定义"
+    }
+  }
+}

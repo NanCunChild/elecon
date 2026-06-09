@@ -1,0 +1,44 @@
+{
+  "_note": "脱敏夹具（红线 #8）：所有学号/姓名/课程均为虚构。golden 测试：以 params + responses 跑 parser adapter，产出须逐字段等于 expected。",
+  "capability": "grades.list",
+  "params": { "term": "2025-2026-2" },
+  "responses": {
+    "raw": {
+      "status": 200,
+      "headers": { "content-type": "application/json; charset=utf-8" },
+      "body": "{\"list\":[{\"id\":\"CS101\",\"name\":\"计算机导论\",\"credit\":3,\"score\":88,\"gpa\":3.7,\"type\":\"必修\"},{\"id\":\"MA201\",\"name\":\"线性代数\",\"credit\":4,\"score\":91,\"gpa\":4.0,\"type\":\"必修\"},{\"id\":\"PE100\",\"name\":\"羽毛球\",\"credit\":1,\"score\":75,\"gpa\":2.0,\"type\":\"选修\"}]}"
+    }
+  },
+  "expected": {
+    "term": "2025-2026-2",
+    "items": [
+      {
+        "courseId": "CS101",
+        "courseName": "计算机导论",
+        "credit": 3,
+        "score": { "kind": "numeric", "value": 88, "max": 100 },
+        "gradePoint": 3.7,
+        "category": "required",
+        "status": "final"
+      },
+      {
+        "courseId": "MA201",
+        "courseName": "线性代数",
+        "credit": 4,
+        "score": { "kind": "numeric", "value": 91, "max": 100 },
+        "gradePoint": 4.0,
+        "category": "required",
+        "status": "final"
+      },
+      {
+        "courseId": "PE100",
+        "courseName": "羽毛球",
+        "credit": 1,
+        "score": { "kind": "numeric", "value": 75, "max": 100 },
+        "gradePoint": 2.0,
+        "category": "elective",
+        "status": "final"
+      }
+    ]
+  }
+}

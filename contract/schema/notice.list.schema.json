@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.notice.list",
+  "title": "通知列表",
+  "type": "object",
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "publishedAt", "category", "source"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "summary": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "publishedAt": { "type": "string", "format": "date-time" },
+          "category": {
+            "type": "string",
+            "enum": ["academic", "admin", "event", "unknown"]
+          },
+          "source": { "type": "string" }
+        }
+      }
+    }
+  }
+}

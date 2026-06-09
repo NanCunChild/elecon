@@ -1,0 +1,29 @@
+{
+  "name": "@elecon/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "elecon 服务端（Node/TS）：public 公网哑服务 + campus 校内授权中继。adapter 用 QuickJS-wasm 执行。见 docs/adr/adr_005_runtime.md。",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:public": "tsx watch src/public/index.ts",
+    "dev:campus": "tsx watch src/campus/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start:public": "node dist/public/index.js",
+    "start:campus": "node dist/campus/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke:sandbox": "tsx src/runtime/sandbox.smoke.ts",
+    "audit": "npm audit --omit=dev"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "quickjs-emscripten": "^0.31.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}

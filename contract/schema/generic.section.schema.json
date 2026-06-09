@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.generic.section",
+  "title": "通用兜底域（由本体渲染）",
+  "description": "长尾、冷门的校园特有数据（宿舍水电、实验室预约等）的受约束兜底结构。adapter 只提供归一化数据 + 语义角色提示（role），绝不提供样式/控件/CSS——外观由本体主题决定（角色→样式映射见 adr_004）。详见 ADR-001 §3.6。",
+  "type": "object",
+  "required": ["sectionId", "title"],
+  "properties": {
+    "sectionId": {
+      "type": "string",
+      "description": "本节稳定标识（校内作用域字符串）"
+    },
+    "title": {
+      "type": "string",
+      "description": "本节标题，纯文本，无样式"
+    },
+    "fields": {
+      "type": "array",
+      "description": "带标签字段 / 键值组",
+      "items": { "$ref": "#/$defs/field" }
+    },
+    "table": {
+      "type": "object",
+      "description": "简单表格（可选）",
+      "required": ["columns", "rows"],
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "role"],
+            "properties": {
+              "label": { "type": "string" },
+              "role": { "$ref": "#/$defs/role" }
+            }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/value" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "role": {
+      "type": "string",
+      "description": "语义角色提示。adapter 标注字段语义，本体据此决定渲染；未识别值落 unknown，禁止丢弃或瞎猜。",
+      "enum": [
+        "identifier",
+        "label",
+        "status",
+        "datetime",
+        "deadline",
+        "amount",
+        "quantity",
+        "link",
+        "unknown"
+      ]
+    },
+    "value": {
+      "description": "字段的归一化原始值（非展示字符串）。amount 用 money 表达，datetime/deadline 用 RFC3339/UTC 字符串，link 用 URL 字符串。",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" },
+        { "$ref": "#/$defs/money" }
+      ]
+    },
+    "money": {
+      "type": "object",
+      "description": "金额：整数 + 最小货币单位 + 币种，禁止浮点（呼应 ADR-001 §3.4）",
+      "required": ["amountMinor", "currency"],
+      "properties": {
+        "amountMinor": { "type": "integer", "description": "最小货币单位，如分" },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": ["label", "role", "value"],
+      "properties": {
+        "label": { "type": "string", "description": "字段标签，纯文本" },
+        "role": { "$ref": "#/$defs/role" },
+        "value": { "$ref": "#/$defs/value" }
+      }
+    }
+  }
+}
