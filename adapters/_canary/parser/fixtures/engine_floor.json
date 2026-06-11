@@ -1,5 +1,4 @@
 {
-  "_note": "引擎地板漂移哨兵（非领域 capability，不入 capability/registry.json，不走 schema 校验）。两端 QuickJS 对同一份 canary 产出须逐字段等于 expected。golden 由 docs/adr/adr_006_client_runtime.md §3 的版本核查推导。",
   "capability": "__canary.engine_floor",
   "params": {},
   "responses": {},

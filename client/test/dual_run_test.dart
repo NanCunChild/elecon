@@ -67,9 +67,7 @@ void main() {
       expect(data, equals(fixture['expected']));
     });
 
-    // 引擎地板漂移哨兵：客户端 QuickJS（2021-03-27）对共同地板内建的产出必须等于
-    // golden。服务端半边由 server/src/runtime/sandbox.smoke.ts 对同一夹具证 == golden，
-    // 传递地保证两端在地板特性上零漂移。版本差与 avoided 清单见 ADR-006 §3。
+    // 引擎地板漂移哨兵（客户端半边）。详见 ADR-006 §3。
     test('engine-floor canary：地板内建产出与 golden 一致', () async {
       final canaryDir = _repoDir('adapters/_canary/parser');
       final source = File('$canaryDir/index.js').readAsStringSync();

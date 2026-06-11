@@ -58,14 +58,7 @@ async function testGoldenAndSchema(): Promise<void> {
   console.log("  ✓ 通过 contract schema（ajv）");
 }
 
-/**
- * 引擎地板漂移哨兵（双跑闸门的服务端半边）。
- *
- * 服务端 QuickJS-wasm（Bellard 2024-02-14）与客户端 flutter_qjs（Bellard 2021-03-27）
- * 是同一谱系的两个版本。本 canary 只调用两端共有的"地板"内建，断言产出 == golden；
- * 客户端半边由 client/test/dual_run_test.dart 对同一夹具证 == golden，传递地保证零漂移。
- * 版本差与 avoided 清单见 docs/adr/adr_006_client_runtime.md §3。
- */
+/** 引擎地板漂移哨兵（服务端半边）。详见 ADR-006 §3。 */
 async function testEngineFloorCanary(): Promise<void> {
   const canaryDir = `${repoRoot}adapters/_canary/parser`;
   const source = readFileSync(`${canaryDir}/index.js`, "utf8");
