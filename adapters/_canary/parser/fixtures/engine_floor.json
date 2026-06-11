@@ -1,0 +1,32 @@
+{
+  "capability": "__canary.engine_floor",
+  "params": {},
+  "responses": {},
+  "expected": {
+    "floor": {
+      "flatMap": [1, 10, 2, 20],
+      "matchAll": ["1", "2", "3"],
+      "padStart": "005",
+      "replaceAll": "a-b-c",
+      "hasOwn": true,
+      "optionalChain": 2,
+      "nullish": -1,
+      "toFixed": "0.30",
+      "jsonKeyOrder": "{\"b\":1,\"a\":2}",
+      "sortStable": [2, 0, 1]
+    },
+    "avoided": [
+      "BigInt (2n literal / BigInt())",
+      "Array.prototype.at",
+      "String.prototype.at",
+      "Array.prototype.findLast",
+      "Array.prototype.findLastIndex",
+      "Array.prototype.toSorted",
+      "Array.prototype.toReversed",
+      "Array.prototype.toSpliced",
+      "Array.prototype.with",
+      "Object.groupBy",
+      "Map.groupBy"
+    ]
+  }
+}

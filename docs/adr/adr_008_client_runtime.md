@@ -1,4 +1,4 @@
-# ADR-006：客户端 adapter 执行运行时（QuickJS / Flutter）
+# ADR-008：客户端 adapter 执行运行时（QuickJS / Flutter）
 
 - **状态**：已接受（Accepted）
 - **日期**：2026-06-09
@@ -46,13 +46,32 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 3. **原生测试库需预构建。** `flutter_qjs` 是经典插件，纯 `flutter test`（host VM）不构建原生库；但其 ffi 在 `FLUTTER_TEST` 下从 `test/build/libffiquickjs.so` 加载。故用 `client/tool/build_qjs_test_lib.sh` 经 CMake 预构建该库，即可无显示器跑测试。**当前 desktop 测试基建仅 Linux**，其余平台按需补。
 4. **iOS App Store 审核（开放项，[#4](https://github.com/NanCunChild/elecon/issues/4)）。** 在 iOS 上下载并由内置解释器执行 adapter JS，触及指南 2.5.2（下载可执行代码）。QuickJS 是解释器、无 JIT，不触 JIT 禁令，但"执行下载代码"本身需在发布前做合规评估（与 fetch 模式凭证注入一并处理）。
 5. **两端加载机制不同但语义对齐。** 服务端用模块命名空间返回、客户端用 import 包装 + global 暴露——都以 ESM/模块作用域加载同一份源码，产出由 golden 双跑闸门兜底。后续可考虑收敛为同一 bootstrap 以进一步降低漂移面。
+6. **两端是同一 Bellard 谱系的【两个不同版本 + 不同编译配置】，不是同一份字节码。** §2 "字面意义上同一引擎" 指引擎家族；2026-06 核查实测的真实情况是：
+
+   | 端 | 引擎 | QuickJS 源版本 | BigInt |
+   |---|---|---|---|
+   | 服务端 | `quickjs-emscripten@0.31` `RELEASE_SYNC`（`@jitl/quickjs-wasmfile-release-sync`，**非** `quickjs-ng`） | Bellard **2024-02-14**（commit `36911f0d`） | 有 |
+   | 客户端 | `flutter_qjs` fork vendored | Bellard **2021-03-27** | **无** |
+
+   两者**同谱系**（都不是 quickjs-ng，避开了分叉级漂移），但隔着两类差异：
+   - **版本差（2021→2024）**：客户端缺 ES2022+ 内建——`Array/String.prototype.at`、`findLast`/`findLastIndex`、`toSorted`/`toReversed`/`toSpliced`/`with`、`Object.groupBy`/`Map.groupBy`。adapter 用了它们 → 服务端跑过、客户端抛 `TypeError`。
+   - **编译配置差**：`flutter_qjs` 的 CMake 未传 `-DCONFIG_BIGNUM`，客户端**整个关闭了 BigInt**——`2n` 字面量直接解析报错（此事实由本 ADR 落地的 engine-floor canary 首跑抓到）。
+
+   *风险*：上述特性在「恰好命中的 fixture」之外漏过 CI；其中 BigInt 是硬解析错误、影响面最大。另注：客户端 `_mapEngineError` 靠英文子串 `interrupt`/`out of memory` 分类超时/内存——该文案在不同 QuickJS 版本间无稳定保证，版本错配会放大误判面（暂由两端各自识别、不跨端比对来规避）。
+
+   *缓解（本 ADR 落地）*：
+   - **engine-floor canary**（`adapters/_canary/parser/`，capability `__canary.engine_floor`）只调用**实测的共同地板**内建，断言产出 == golden，挂在双跑闸门两侧（服务端 `sandbox.smoke.ts`、客户端 `dual_run_test.dart`）当**回归哨兵**：任一侧地板特性漂移即变红。其 `avoided` 列表把"adapter 不得依赖的能力"钉进 golden。
+   - **作者约束**：parser/fetch adapter 必须按客户端地板编写，不得依赖 `avoided` 列出的内建，直至客户端引擎对齐。
+
+   *迁移触发*：当 (a) 需要 BigInt / ES2022+，或 (b) canary 暴露的地板缺口变宽到约束 adapter 作者时——把客户端 fork 的 vendored QuickJS 升到 2024-02-14 并开 `CONFIG_BIGNUM` 以对齐服务端。这恰是 §3.1「评估自管最小 ffi 层」的触发点：一旦要动原生 QuickJS 源，即到了把用到的那块 vendoring 进仓库做一方代码的时机（而非全自写 FFI）。
 
 ---
 
 ## 4. 落地清单（指向 `client/` 骨架）
 
 - `client/lib/core/adapter_runtime.dart`：parser 模式运行时（`IsolateQjs` 后台 isolate、ESM/moduleHandler 加载、JSON 跨边界、ctx 仅 log/now、限额对齐服务端、失败用 `AdapterFailureReason` 表达且不携带契约 error.kind）。
-- `client/test/dual_run_test.dart`：双跑一致性（客户端半边）+ capability_missing / async_in_parser 反例。
+- `client/test/dual_run_test.dart`：双跑一致性（客户端半边）+ capability_missing / async_in_parser 反例 + engine-floor canary。
+- `adapters/_canary/parser/`：引擎地板漂移哨兵（`__canary.engine_floor`）。两端共有内建的 golden + `avoided` 约束清单；服务端半边在 `server/src/runtime/sandbox.smoke.ts`。
 - `client/tool/build_qjs_test_lib.sh`：从 `package_config.json` 动态定位 flutter_qjs、经 CMake 构建 FFI 测试库。
 - `client/pubspec.yaml`：`flutter_qjs` 依赖 + 指向补丁 fork 的 `dependency_overrides`（pin commit）。
 - 待续：fetch 模式 `ctx.fetch` + 凭证注入（红线 #1，人工审阅 PR，[#3](https://github.com/NanCunChild/elecon/issues/3)）；iOS 2.5.2 合规评估（[#4](https://github.com/NanCunChild/elecon/issues/4)）；其余平台 desktop/device 测试基建。
