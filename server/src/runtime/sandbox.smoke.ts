@@ -58,6 +58,32 @@ async function testGoldenAndSchema(): Promise<void> {
   console.log("  ✓ 通过 contract schema（ajv）");
 }
 
+/**
+ * 引擎地板漂移哨兵（双跑闸门的服务端半边）。
+ *
+ * 服务端 QuickJS-wasm（Bellard 2024-02-14）与客户端 flutter_qjs（Bellard 2021-03-27）
+ * 是同一谱系的两个版本。本 canary 只调用两端共有的"地板"内建，断言产出 == golden；
+ * 客户端半边由 client/test/dual_run_test.dart 对同一夹具证 == golden，传递地保证零漂移。
+ * 版本差与 avoided 清单见 docs/adr/adr_006_client_runtime.md §3。
+ */
+async function testEngineFloorCanary(): Promise<void> {
+  const canaryDir = `${repoRoot}adapters/_canary/parser`;
+  const source = readFileSync(`${canaryDir}/index.js`, "utf8");
+  const fixture = readJson<Fixture>(`${canaryDir}/fixtures/engine_floor.json`);
+
+  const { data } = await runAdapter({
+    source,
+    capability: fixture.capability,
+    params: fixture.params,
+    responses: fixture.responses,
+    nowMs: 1_700_000_000_000,
+  });
+
+  // 非领域 capability：只比 golden，不走 contract schema（它不在 capability registry 内）。
+  assert.deepEqual(data, fixture.expected, "engine-floor canary 产出与 golden 不一致");
+  console.log("  ✓ engine-floor canary：地板内建产出与 golden 一致");
+}
+
 async function testCapabilityMissing(): Promise<void> {
   const source = readFileSync(`${parserDir}/index.js`, "utf8");
   await assert.rejects(
@@ -85,6 +111,7 @@ async function testTimeoutBites(): Promise<void> {
 async function main(): Promise<void> {
   console.log("sandbox smoke:");
   await testGoldenAndSchema();
+  await testEngineFloorCanary();
   await testCapabilityMissing();
   await testTimeoutBites();
   console.log("全部通过。parser 管线端到端跑通。");

@@ -19,18 +19,18 @@ import 'dart:io';
 import 'package:elecon/core/adapter_runtime.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// 从当前工作目录向上找到仓库内的 parser 模板目录，避免依赖 flutter test 的
-/// 具体 CWD。找不到则回退到相对路径（flutter test 默认 CWD=client/）。
-String _parserDir() {
+/// 从当前工作目录向上找到仓库内的某个相对目录，避免依赖 flutter test 的具体
+/// CWD。找不到则回退到相对路径（flutter test 默认 CWD=client/）。
+String _repoDir(String relPath) {
   var dir = Directory.current;
   for (var i = 0; i < 6; i++) {
-    final candidate = Directory('${dir.path}/adapters/_template/parser');
+    final candidate = Directory('${dir.path}/$relPath');
     if (candidate.existsSync()) return candidate.path;
     final parent = dir.parent;
     if (parent.path == dir.path) break;
     dir = parent;
   }
-  return '../adapters/_template/parser';
+  return '../$relPath';
 }
 
 Map<String, dynamic> _readJson(String path) =>
@@ -43,7 +43,7 @@ void main() {
       : 'dual-run 测试目前仅支持 Linux desktop（原生库构建脚本仅 Linux）';
 
   group('dual-run（parser, 客户端 QuickJS）', () {
-    final parserDir = _parserDir();
+    final parserDir = _repoDir('adapters/_template/parser');
 
     setUpAll(() {
       // Linux 下原生库非纯 flutter test 自动产物；缺失时给出可操作提示。
@@ -62,6 +62,25 @@ void main() {
         params: (fixture['params'] as Map).cast<String, dynamic>(),
         responses: (fixture['responses'] as Map).cast<String, dynamic>(),
         nowMs: 1700000000000, // 固定，保证确定性
+      );
+
+      expect(data, equals(fixture['expected']));
+    });
+
+    // 引擎地板漂移哨兵：客户端 QuickJS（2021-03-27）对共同地板内建的产出必须等于
+    // golden。服务端半边由 server/src/runtime/sandbox.smoke.ts 对同一夹具证 == golden，
+    // 传递地保证两端在地板特性上零漂移。版本差与 avoided 清单见 ADR-006 §3。
+    test('engine-floor canary：地板内建产出与 golden 一致', () async {
+      final canaryDir = _repoDir('adapters/_canary/parser');
+      final source = File('$canaryDir/index.js').readAsStringSync();
+      final fixture = _readJson('$canaryDir/fixtures/engine_floor.json');
+
+      final data = await runParserAdapter(
+        source: source,
+        capability: fixture['capability'] as String,
+        params: (fixture['params'] as Map).cast<String, dynamic>(),
+        responses: (fixture['responses'] as Map).cast<String, dynamic>(),
+        nowMs: 1700000000000,
       );
 
       expect(data, equals(fixture['expected']));
