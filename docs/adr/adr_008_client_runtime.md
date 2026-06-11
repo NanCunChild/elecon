@@ -1,4 +1,4 @@
-# ADR-006：客户端 adapter 执行运行时（QuickJS / Flutter）
+# ADR-008：客户端 adapter 执行运行时（QuickJS / Flutter）
 
 - **状态**：已接受（Accepted）
 - **日期**：2026-06-09

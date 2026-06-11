@@ -1,4 +1,4 @@
-// 引擎地板 canary —— 双跑漂移哨兵。版本差异与 avoided 清单见 ADR-006 §3。
+// 引擎地板 canary —— 双跑漂移哨兵。版本差异与 avoided 清单见 ADR-008 §3。
 export const capabilities = {
   "__canary.engine_floor": (ctx, params, responses) => {
     return {

@@ -67,7 +67,7 @@ void main() {
       expect(data, equals(fixture['expected']));
     });
 
-    // 引擎地板漂移哨兵（客户端半边）。详见 ADR-006 §3。
+    // 引擎地板漂移哨兵（客户端半边）。详见 ADR-008 §3。
     test('engine-floor canary：地板内建产出与 golden 一致', () async {
       final canaryDir = _repoDir('adapters/_canary/parser');
       final source = File('$canaryDir/index.js').readAsStringSync();

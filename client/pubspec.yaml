@@ -15,7 +15,7 @@ dependencies:
 # fork 打了一行补丁（lib/src/ffi.dart：返回类型去掉 ?，函数体 ... ?? nullptr）
 # 并 vendoring QuickJS 源（pub 不为 git 依赖初始化 submodule）。
 # 补丁分支：https://github.com/NanCunChild/flutter_qjs/tree/dart3-compat
-# 详见 docs/adr/adr_006_client_runtime.md §3。
+# 详见 docs/adr/adr_008_client_runtime.md §3。
 dependency_overrides:
   flutter_qjs:
     git:

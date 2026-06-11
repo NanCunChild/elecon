@@ -58,7 +58,7 @@ async function testGoldenAndSchema(): Promise<void> {
   console.log("  ✓ 通过 contract schema（ajv）");
 }
 
-/** 引擎地板漂移哨兵（服务端半边）。详见 ADR-006 §3。 */
+/** 引擎地板漂移哨兵（服务端半边）。详见 ADR-008 §3。 */
 async function testEngineFloorCanary(): Promise<void> {
   const canaryDir = `${repoRoot}adapters/_canary/parser`;
   const source = readFileSync(`${canaryDir}/index.js`, "utf8");
