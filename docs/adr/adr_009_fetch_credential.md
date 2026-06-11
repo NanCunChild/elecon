@@ -1,16 +1,16 @@
-# ADR-007：fetch 模式 —— 受限 `ctx.fetch` 与凭证注入
+# ADR-009：fetch 模式 —— 受限 `ctx.fetch` 与凭证注入
 
 - **状态**：**草案（Proposed）** ⚠️ 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
 - **日期**：2026-06-11
-- **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 分层）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / envelope）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端沙箱）、[`adr_006_client_runtime.md`](./adr_006_client_runtime.md)（客户端运行时）
+- **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 分层）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / envelope）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端沙箱）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端运行时）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)（实现任务）、[#4](https://github.com/NanCunChild/elecon/issues/4)（iOS 2.5.2 合规）
-- **适用范围**：fetch 模式 adapter 的网络出口（`ctx.fetch`）语义、可信核心的凭证注入与响应脱敏、两端（client-direct / campus-relay）执行落点。**不含** parser 模式（已由 ADR-005/006 落地）。
+- **适用范围**：fetch 模式 adapter 的网络出口（`ctx.fetch`）语义、可信核心的凭证注入与响应脱敏、两端（client-direct / campus-relay）执行落点。**不含** parser 模式（已由 ADR-005/008 落地）。
 
 ---
 
 ## 1. 背景（Context）
 
-ADR-005/006 已落地 **parser 模式**：核心代取 + 脱敏 → adapter 纯解析。fetch 模式是另一档——**官方签名 adapter** 可经核心暴露的受限 `ctx.fetch` 自行发起取数（ADR-000 §3.3）。`contract/adapter-sdk/types.d.ts` 已声明 `CtxFetch.fetch`，但语义、凭证注入点、脱敏边界尚未定义。
+ADR-005/008 已落地 **parser 模式**：核心代取 + 脱敏 → adapter 纯解析。fetch 模式是另一档——**官方签名 adapter** 可经核心暴露的受限 `ctx.fetch` 自行发起取数（ADR-000 §3.3）。`contract/adapter-sdk/types.d.ts` 已声明 `CtxFetch.fetch`，但语义、凭证注入点、脱敏边界尚未定义。
 
 红线 #1 要求：**凭证（值与任何等价物）永不离开可信核心**。fetch 模式把"发起请求"的控制权部分交给 adapter，因此凭证注入与响应脱敏的边界是本设计的全部重点，也是项目最高风险面（ADR-000 §5.2：核心是单点复杂度）。
 
