@@ -151,7 +151,7 @@ QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 a
 
 - `adr_001`：标准数据 schema 与 Capability Manifest 规范
 - `adr_002`：插件信任模型（签名/吊销/dev 侧载闸门）与三档能力分级 —— **草案**
-- `adr_003`：传输底座抽象与 VPN 复刻接入（许可证隔离方案）
+- `adr_003`：传输底座抽象与 VPN 复刻接入（许可证隔离方案）—— **草案**
 - `adr_004`：UI 层——数据驱动 / SDUI 的具体形态
 - `adr_005`：宿主语言与 adapter 执行沙箱（Node/TS + QuickJS-wasm；覆盖本文 §5.2 的 Go 设想）—— **已接受**
 - `adr_006`：微信绑定各档（UA / CAS / openid / 小程序）的逐校诊断与对接策略

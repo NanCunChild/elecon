@@ -86,5 +86,5 @@ issue #4 要求一并评估的两项，上架风险高于 2.5.2，单列结论�
 - **iOS 传输默认**：校内直连 + 系统 VPN 引导（`NEVPNManager` on-demand）；iOS release **不编入** App 内私有隧道目标（§2.2.3 / §2.3）。
 - **隐私合规**：隐私政策 + App Store 隐私清单；私密数据不出端声明（§2.4）。
 - **审核沟通包**：一页合规声明 + reviewer notes + 演示账号（§2.4）。
-- **复评触发**：当 fetch 模式（ADR-009）或 App 内传输底座（ADR-003，待写）拟上 iOS 时，回到本文重做 §2.1 三段论自检与 §2.3 立场。
+- **复评触发**：当 fetch 模式（ADR-009）或 App 内传输底座（[ADR-003](./adr_003_transport.md)）拟上 iOS 时，回到本文重做 §2.1 三段论自检与 §2.3 立场。
 - 关闭 issue [#4](https://github.com/NanCunChild/elecon/issues/4)，以本 ADR 为结论。
