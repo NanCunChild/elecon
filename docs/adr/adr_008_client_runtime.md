@@ -44,7 +44,7 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
    - *缓解*：补丁极小且可审计；pin commit 保证可复现；中长期应评估迁移到维护良好的全平台 QuickJS 绑定（若出现）或自管最小 ffi 层。
 2. **pub 不为 git 依赖初始化 submodule。** ekibun 把 QuickJS 源作为 git submodule，经 git ref 消费时为空，会同时打断原生插件构建与 FFI 测试库。fork 已将 QuickJS 源 **vendoring**（提交为普通文件）以自包含。
 3. **原生测试库需预构建。** `flutter_qjs` 是经典插件，纯 `flutter test`（host VM）不构建原生库；但其 ffi 在 `FLUTTER_TEST` 下从 `test/build/libffiquickjs.so` 加载。故用 `client/tool/build_qjs_test_lib.sh` 经 CMake 预构建该库，即可无显示器跑测试。**当前 desktop 测试基建仅 Linux**，其余平台按需补。
-4. **iOS App Store 审核（开放项，[#4](https://github.com/NanCunChild/elecon/issues/4)）。** 在 iOS 上下载并由内置解释器执行 adapter JS，触及指南 2.5.2（下载可执行代码）。QuickJS 是解释器、无 JIT，不触 JIT 禁令，但"执行下载代码"本身需在发布前做合规评估（与 fetch 模式凭证注入一并处理）。
+4. **iOS App Store 审核（已由 [ADR-010](./adr_010_ios_appstore.md) 定调，[#4](https://github.com/NanCunChild/elecon/issues/4)）。** 在 iOS 上下载并由内置解释器执行 adapter JS，触及指南 2.5.2（下载可执行代码）。QuickJS 是解释器、无 JIT，不触 JIT 禁令。合规依据走 **DPLA §3.3.2**（解释型代码：不改变主要用途 / 非代码市场 / 不绕过系统安全）——本运行时的"无 JIT、沙箱内 background isolate 执行"满足其 (c)；"固定能力集、adapter 只产出已知 schema"满足其 (a)。详见 ADR-010。
 5. **两端加载机制不同但语义对齐。** 服务端用模块命名空间返回、客户端用 import 包装 + global 暴露——都以 ESM/模块作用域加载同一份源码，产出由 golden 双跑闸门兜底。后续可考虑收敛为同一 bootstrap 以进一步降低漂移面。
 6. **两端是同一 Bellard 谱系的【两个不同版本 + 不同编译配置】，不是同一份字节码。** §2 "字面意义上同一引擎" 指引擎家族；2026-06 核查实测的真实情况是：
 
@@ -74,4 +74,4 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 - `adapters/_canary/parser/`：引擎地板漂移哨兵（`__canary.engine_floor`）。两端共有内建的 golden + `avoided` 约束清单；服务端半边在 `server/src/runtime/sandbox.smoke.ts`。
 - `client/tool/build_qjs_test_lib.sh`：从 `package_config.json` 动态定位 flutter_qjs、经 CMake 构建 FFI 测试库。
 - `client/pubspec.yaml`：`flutter_qjs` 依赖 + 指向补丁 fork 的 `dependency_overrides`（pin commit）。
-- 待续：fetch 模式 `ctx.fetch` + 凭证注入（红线 #1，人工审阅 PR，[#3](https://github.com/NanCunChild/elecon/issues/3)）；iOS 2.5.2 合规评估（[#4](https://github.com/NanCunChild/elecon/issues/4)）；其余平台 desktop/device 测试基建。
+- 待续：fetch 模式 `ctx.fetch` + 凭证注入（红线 #1，人工审阅 PR，[#3](https://github.com/NanCunChild/elecon/issues/3)）；iOS 2.5.2 合规评估（已由 [ADR-010](./adr_010_ios_appstore.md) 给出可上架形态，[#4](https://github.com/NanCunChild/elecon/issues/4)）；其余平台 desktop/device 测试基建。
