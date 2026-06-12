@@ -32,17 +32,25 @@ ADR-000 §3.4 把**传输底座**（原生、长生命周期、有状态、**承
 约束：
 
 - transport **只搬运字节**——不解析、不碰 schema、不持凭证语义（凭证由 broker 在 HTTP 语义层注入，见 §2.3）。它与 adapter 正交。
-- **一次只有一个 active transport** 承载全部流量；可在运行时切换（"热替换无负担"指可替换，**不是**多路并发/分流，见 §3.6）。
+- **一次只有一个 active transport** 承载全部流量；可在运行时切换（"热替换无负担"指可替换，**不是**多路并发/分流，见 §3 第 6 条）。
 
 ### 2.2 三类传输档（按风险/可用性排序）
 
 | 档 | 形态 | 平台 | 信任 / 分发 | 触及 GPL/entitlement |
 |---|---|---|---|---|
 | **`direct`** | 无隧道，OS 网络栈直连 | 全平台（默认） | 无额外信任面 | 否 |
-| **`system-vpn`** | **引导用户在 OS 层配置 VPN**（iOS `NEVPNManager`/on-demand、Android `VpnService` 系统设置）；隧道在系统/第三方 App，elecon 只发起/检测、**不承载隧道本身** | 全平台（含 iOS） | 无（不分发隧道代码） | 否 |
+| **`system-vpn`** | **引导用户在 OS 层配置 VPN**（iOS `NEVPNManager`/on-demand、Android `VpnService` 系统设置）；隧道在系统/第三方 App，elecon 只发起/检测、**不承载隧道本身** | 全平台（含 iOS） | 无（不分发隧道代码） | iOS 需申请 **Personal VPN entitlement**（门槛远低于 Network Extension，但仍是 entitlement 依赖）；Android/桌面 否 |
 | **`app-tunnel`** | **App 内原生隧道**（atrust 复刻属此） | **平台门控**：iOS 默认不编入（ADR-010） | **仅官方签名**加载（红线 #4）、最高信任档 | **是**（唯一触碰档） |
 
-**降级链（fail-safe，不是 fail-open）**：active transport 失败 → 尝试 `system-vpn` 引导 / 降级到**只读公开缓存**（ADR-000 §3.4）。**关键不变量：失败绝不静默改路由成明文直连**——本应走隧道的私密流量不得因 transport 故障而裸奔出校园网边界；失败就降级到只读公开数据或显式提示，由用户决定。
+**transport 与 campus relay 的关系**：当 `system-vpn` 或 `app-tunnel` 使客户端处于校园网可达状态时，私密数据请求**优先经 campus relay（`server/src/campus`）中转**；若 relay 不可用则 **fallback 到客户端直连学校 origin**。`direct` 档在校外时无校园网可达性，只能访问公开数据或提示用户。
+
+**降级链（fail-safe，不是 fail-open；有序）**：
+
+1. active transport（如 `app-tunnel`）失败 → **尝试 `system-vpn` 引导**（提示用户配置/连接系统 VPN）；
+2. `system-vpn` 引导仍失败或用户跳过 → **降级到只读公开缓存**（ADR-000 §3.4），仅展示已缓存的公开数据；
+3. **显式提示用户**：当前无法访问私密数据，需连接校园网或配置 VPN，由用户决定下一步。
+
+**关键不变量：失败绝不静默改路由成明文直连**——本应走隧道的私密流量不得因 transport 故障而裸奔出校园网边界。
 
 ### 2.3 安全不变量：transport 看全部流量 → 最高信任 + 永不见凭证明文
 
@@ -74,7 +82,8 @@ ADR-000 §3.4 把**传输底座**（原生、长生命周期、有状态、**承
 |---|---|---|
 | **iOS / App Store** | **不可**（分发不相容 + entitlement 门槛） | 不编入；`direct` + `system-vpn` |
 | **Android**（Play / 侧载） | 可，但须履行 GPLv3 §6：提供对应源码、不附加限制 | 独立进程 sidecar / 独立分发组件（独立 APK 或 Service）+ 窄 IPC |
-| **桌面 / OHOS** | 类 Android，按各自商店规则 | 同上 |
+| **桌面** | 类 Android，按各自商店规则 | 同上 |
+| **OHOS** | 开发优先级低，待后续确认；若 Flutter 无法覆盖 OHOS 的 VPN/隧道 API，再考虑独立技术栈与 QuickJS FFI 方案 | 暂同桌面；具体形态待定 |
 
 **三条根本出路**（与 ADR-010 §2.3 一致，按建议排序）：
 
