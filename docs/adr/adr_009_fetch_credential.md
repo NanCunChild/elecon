@@ -87,6 +87,16 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 
 > ⚠️ 此草图尚未纳入 `contract/manifest.schema.json`。正式扩展须走独立 ADR 且与 ADR-001 §5 协调。
 
+### 2.4 与 HTML 源 / 多步握手 adapter 的贴合（ADR-011 / 实测 adapter 联动）
+
+来自首批逆向 adapter（XIDIAN / XJT 通知公告，见 `adapters_tests/`）的实测，补三条本 ADR 此前未覆盖的贴合点：
+
+1. **HTML 响应体的解析复用 [ADR-011](./adr_011_html_parser.md) 的 SDK 解析器。** fetch 模式 adapter 拿到 §2.5 透传的响应体若是 HTML，用 `elecon:html`（QuickJS 内纯 JS、两端零漂移）解析，而非各端原生——与 parser 模式同一套，不另起炉灶。
+
+2. **多步握手依赖的中间 cookie 由宿主「单次执行 cookie jar」承载，对 adapter 不可见。** 实测 XJT 教务有 JS 反爬挑战：`GET → 读响应体里的 challengeId → POST 指纹 → origin 下发 client_id cookie → 带 cookie 再 GET`。这类"流程中途由 origin 下发、**非学生凭证**"的会话 cookie，被 §2.5"剥 `Set-Cookie` 不给 adapter"会**丢失**。贴合：**宿主在单次执行内维护一个 cookie jar，自动持久化 origin 下发的 `Set-Cookie` 并在后续 `ctx.fetch` 携带，但始终不暴露给 adapter**（红线 #1 的"等价物"要求仍满足：adapter 看不到 cookie 值）。此 jar **仅限单次执行**，不落核心凭证库、不跨执行、不经 public。
+
+3. **反爬挑战本身定位为 official 档 + 优先服务端 public 缓存「只解一次」。** 解析内联 JS 算 answer、伪造浏览器指纹，**超出"薄归一化"**，应是 official 签名 adapter（ADR-002 official 独占 fetch），且对公开数据**优先在服务端解一次填 public 缓存**（ADR-000 §2.1），客户端不逐个绕。⚠️ 逆向期的 `verify=False`（关 TLS 校验）一类手段**禁止进标准 adapter**——TLS 必须校验（transport 不 MITM，ADR-003 §2.3）。
+
 ---
 
 ## 3. 已知约束与风险（Consequences，草案）
@@ -97,6 +107,7 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 4. **契约影响（红线 #6）。** fetch 模式需声明凭证作用域（§2.3 草图），涉及**扩展 manifest schema** → 属契约改动，须与 ADR-001 协调、走独立 ADR 且保持向后兼容，**不在本 ADR 内落地**。
 5. **测试不能像 parser 那样直接 golden 双跑**（网络非确定）。取向：**录制/回放夹具**——录一次真实交互（脱敏后）成固定夹具，之后 fetch 退化为对回放响应的确定性解析，可纳入双跑；凭证注入与脱敏逻辑在**宿主**层单测（不在 QuickJS）。
 6. **iOS 2.5.2（[#4]）联动。** fetch 模式让"下载的 adapter"真正发起网络请求，合规评估需与本设计一并做。iOS 端整体可上架形态已由 [ADR-010](./adr_010_ios_appstore.md) 定调：**首版仅 parser 模式上架，fetch 模式推迟**——本 ADR 接受并拟上 iOS 时，须按 ADR-010 §3.3 重做 2.5.2(a) 自检（仍限既有能力集）并补 5.1.1 隐私申报。
+7. **单次执行 cookie jar 是新的状态面（§2.4 第 2 条）。** 多步握手所需的 per-execution cookie jar 必须严格隔离：**不落核心凭证库、不跨执行、不经 public**；其实现是宿主侧安全敏感代码，随 fetch 模式一并人工审（不得 AI 独自闭环）。jar 与 broker 的"白名单凭证注入"是两条独立路径——jar 装的是 origin 下发的非凭证会话态，broker 装的是学生凭证，二者不得混用。
 
 ---
 
