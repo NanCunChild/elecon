@@ -1,0 +1,19 @@
+{
+  "name": "@elecon/stdlib-html",
+  "version": "1.0.0",
+  "private": true,
+  "description": "htmlparser2 + domutils + css-select bundled as single ESM for QuickJS adapter sandbox (elecon:html)",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "css-select": "^5.1.0",
+    "domhandler": "^5.0.3",
+    "domutils": "^3.1.0",
+    "htmlparser2": "^9.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0"
+  }
+}
