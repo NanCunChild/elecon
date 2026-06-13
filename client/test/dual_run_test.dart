@@ -67,6 +67,47 @@ void main() {
       expect(data, equals(fixture['expected']));
     });
 
+    // XIDIAN notice.list：首个用 elecon:html 标准库的真实 adapter（ADR-011 §4）。
+    // 客户端 QuickJS 加载与服务端**同一份** html.bundle.js，对同一脱敏 HTML 夹具的
+    // 产出必须等于 golden——服务端侧由 sandbox.smoke.ts 的 testXidianNoticeList 证，
+    // 两端同引擎 + 同 bundle ⟹ 零漂移（ADR-011 §2.1/§2.3）。
+    test('XIDIAN notice.list：elecon:html 解析产出与 golden 一致', () async {
+      final xidianDir = _repoDir('adapters/school-xidian');
+      final stdlibDir = _repoDir('adapters/_stdlib');
+      final source = File('$xidianDir/index.js').readAsStringSync();
+      final htmlStdlib = File('$stdlibDir/html.bundle.js').readAsStringSync();
+      final fixture = _readJson('$xidianDir/fixtures/notice.list.json');
+
+      final data = await runParserAdapter(
+        source: source,
+        capability: fixture['capability'] as String,
+        params: (fixture['params'] as Map?)?.cast<String, dynamic>() ?? const {},
+        responses: (fixture['responses'] as Map).cast<String, dynamic>(),
+        htmlStdlib: htmlStdlib,
+        nowMs: 1700000000000, // 固定，保证确定性
+      );
+
+      expect(data, equals(fixture['expected']));
+    });
+
+    // fail-closed：未注入 elecon:html 时，import 它的 adapter 必须失败（不静默放过）。
+    test('elecon:html 未注入：import 该模块的 adapter 被拒', () async {
+      final xidianDir = _repoDir('adapters/school-xidian');
+      final source = File('$xidianDir/index.js').readAsStringSync();
+      final fixture = _readJson('$xidianDir/fixtures/notice.list.json');
+
+      await expectLater(
+        runParserAdapter(
+          source: source,
+          capability: fixture['capability'] as String,
+          responses: (fixture['responses'] as Map).cast<String, dynamic>(),
+          // 故意不传 htmlStdlib
+          nowMs: 1700000000000,
+        ),
+        throwsA(isA<AdapterRunException>()),
+      );
+    });
+
     // 引擎地板漂移哨兵（客户端半边）。详见 ADR-008 §3。
     test('engine-floor canary：地板内建产出与 golden 一致', () async {
       final canaryDir = _repoDir('adapters/_canary/parser');
