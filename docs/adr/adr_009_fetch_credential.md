@@ -1,7 +1,7 @@
 # ADR-009：fetch 模式 —— 受限 `ctx.fetch` 与凭证注入
 
 - **状态**：草案（Proposed） 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
-- **日期**：2026-06-11（**修订 2026-06-13**：§2 第 4 条改白名单分"注入/仅可达"两类（声明但不注入）；增重定向跳数限制+每跳白名单校验；增 §2 第 6 条 401 透传行为；§2.6/§2.4 对齐 ADR-002 修订；credentials schema 校验规则同步）
+- **日期**：2026-06-11（**修订 2026-06-13**：§2 第 4 条改白名单分"注入/仅可达"两类（声明但不注入）；增重定向跳数限制+每跳白名单校验；增 §2 第 6 条 401 透传行为；§2.6/§2.4 对齐 ADR-002 修订；credentials schema 校验规则同步）（**修订 2026-06-13b**：§2.3 增 scope 重叠消歧规则——最长前缀胜出、等长拒绝；§3 增第 4 条请求 body 外泄向量声明）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 分层）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / envelope）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端沙箱）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端运行时）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)（实现任务）、[#4](https://github.com/NanCunChild/elecon/issues/4)（iOS 2.5.2 合规）
 - **适用范围**：fetch 模式 adapter 的网络出口（`ctx.fetch`）语义、可信核心的凭证注入与响应脱敏、两端（client-direct / campus-relay）执行落点。**不含** parser 模式（已由 ADR-005/008 落地）。
@@ -38,7 +38,7 @@ ADR-005/008 已落地 **parser 模式**：核心代取 + 脱敏 → adapter 纯�
 
 7. **仅官方签名 adapter 可跑 fetch 模式。** 侧载 adapter 一律退化为 parser（ADR-000 §3.3、红线 #5）。信任档由**核心验签裁定**（ADR-002 §2.2），不信任 manifest 自报的 `trustTier`；非 official → `ctx.fetch` 调用被宿主边界拒绝（ADR-002 §2.6 结构化权限错误），永不触达凭证注入。
 
-8. **fetch 模式 handler 是异步的（返回 Promise）**，与 parser 的"必须同步"相反。运行时需 pump job queue 并 await。限额：墙钟/内存对齐 `DEFAULT_LIMITS`；**单请求超时 10s**；**累计网络超时 30s**；**单次执行最大请求数 20**（防 DDoS / 资源耗尽）。
+8. **fetch 模式 handler 是异步的（返回 Promise）**，与 parser 的"必须同步"相反。运行时需 pump job queue 并 await。限额：墙钟/内存对齐 `DEFAULT_LIMITS`；**单请求超时 10s**；**累计网络超时 30s**；**单次执行最大请求数 20**（防 DDoS / 资源耗尽）。**单次响应 body 大小不另设独立上限**——由 `DEFAULT_LIMITS` 的整体内存上限兜底（响应体载入 QuickJS 堆，超限触发 OOM 终止执行）。
 
 9. **执行落点：client-direct 或 campus-relay，永不 public。** 客户端用设备本地保管的凭证直连；校外私密数据走 `server/src/campus` 校内授权中继。`server/src/public` 哑服务**永不**参与 fetch 模式凭证注入（红线 #2：公网零凭证）。envelope `source.origin` 据此标 `client-direct` / `campus-relay`。
 
@@ -96,7 +96,7 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 
 - `credentials.<name>.scope`：该凭证引用适用的 URL 范围（必须是 `network.allow` 的子集）。
 - `credentials.<name>.type`：注入方式（`cookie` = 附加 Cookie 头；`header` = 附加 Authorization 头）。
-- 一个请求 URL 匹配到哪个凭证引用由 broker 按 scope 最长前缀匹配决定。
+- 一个请求 URL 匹配到哪个凭证引用由 broker 按 scope 最长前缀匹配决定。**消歧规则**：① 严格最长前缀胜出（覆盖范围越窄 = 越精确 = 优先级越高）；② 若两条 scope 前缀长度**完全相同**（语义重叠），manifest 校验器**拒绝通过**（红线 #6 校验阶段捕获，而非运行时再判）——禁止歧义凭证绑定。
 - **`network.allow` 中未被任何 `credentials.scope` 覆盖的条目 = passthrough**（可达但不注入凭证）。上例中 `https://captcha.example.edu.cn/challenge/*` 不在任何 scope 内 → 请求放行但不带凭证，适用于反爬挑战等场景。
 - **校验规则**：① 所有 `credentials.scope` 必须是 `network.allow` 的**子集**（`tools/` 校验器强制：不能声明注入一个连出口都不允许的 URL）；② passthrough 条目**无需被 scope 覆盖**——这是合法的"声明但不注入"。
 
@@ -119,10 +119,11 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 1. **这是最高风险路径（红线 #1）。** 实现与测试**不得由 AI 独自闭环**；需安全检查清单 + 至少 1 名人工审阅（git.md §3 分级审查）。
 2. **脱敏覆盖面：请求头/响应头已闭合，响应体为已接受风险 + 后置审计计划。** 出站请求头（§2.3）和响应头（§2.5）均走 allowlist、默认丢弃；重定向由核心跟随不暴露（max 5 跳 + 每跳白名单校验）。**响应体透传是已接受的风险**（§2.5）：body 格式不统一，通用脱敏不可行；缓解靠仅官方签名 + 人工代码审查。**后续计划 pattern-based 后置审计**：对 adapter 的最终产出（归一化后的 envelope）做 token-pattern 扫描（正则匹配已知凭证格式），**告警但不阻断**——发现可疑泄露后触发人工复查，不影响正常执行。需维护一份"已知泄露向量"清单并随实现增补。
 3. **恶意/被攻破 adapter 的数据外泄面。** adapter 能读解析前私密响应；缓解靠：①出口白名单 fail-closed（§2.4）②出站请求头净化（§2.3）③仅官方签名（§2.6）④人工审查⑤（可选）出口审计日志。
-4. **契约影响（红线 #6）。** fetch 模式需声明凭证作用域（§2.3 草图），涉及**扩展 manifest schema** → 属契约改动，须与 ADR-001 协调、走独立 ADR 且保持向后兼容，**不在本 ADR 内落地**。
-5. **测试不能像 parser 那样直接 golden 双跑**（网络非确定）。取向：**录制/回放夹具**——录一次真实交互（脱敏后）成固定夹具，之后 fetch 退化为对回放响应的确定性解析，可纳入双跑；凭证注入与脱敏逻辑在**宿主**层单测（不在 QuickJS）。
-6. **iOS 2.5.2（[#4]）联动。** fetch 模式让"下载的 adapter"真正发起网络请求，合规评估需与本设计一并做。iOS 端整体可上架形态已由 [ADR-010](./adr_010_ios_appstore.md) 定调：**首版仅 parser 模式上架，fetch 模式推迟**——本 ADR 接受并拟上 iOS 时，须按 ADR-010 §3.3 重做 2.5.2(a) 自检（仍限既有能力集）并补 5.1.1 隐私申报。
-7. **单次执行 cookie jar 是新的状态面（§2.4 第 2 条）。** 多步握手所需的 per-execution cookie jar 必须严格隔离：**不落核心凭证库、不跨执行、不经 public**；其实现是宿主侧安全敏感代码，随 fetch 模式一并人工审（不得 AI 独自闭环）。jar 与 broker 的"白名单凭证注入"是两条独立路径——jar 装的是 origin 下发的非凭证会话态，broker 装的是学生凭证，二者不得混用。
+4. **请求 body 外泄向量（已接受风险）。** adapter 控制 `ctx.fetch` 的请求 body（POST/PUT），理论上可将从私密响应中解析到的敏感数据编码进请求体，发往 passthrough 端点（该端点在白名单内但不注入凭证）。**缓解**：① passthrough 端点仍须声明于 `network.allow`，**由签名覆盖、CI 静态审计、人工 review 三重把关**——不可能偷偷加入一个 attacker-controlled 的 passthrough URL；② 仅官方签名 adapter 可跑 fetch（§2.6），代码审查覆盖所有出站路径；③ 后续 pattern-based 后置审计可扩展至检查**出站请求 body** 中的 token 模式。此向量与响应 body 透传（§3.2）对称——均是"仅官方签名 + code review"兜底的已接受残余风险。
+5. **契约影响（红线 #6）。** fetch 模式需声明凭证作用域（§2.3 草图），涉及**扩展 manifest schema** → 属契约改动，须与 ADR-001 协调、走独立 ADR 且保持向后兼容，**不在本 ADR 内落地**。
+6. **测试不能像 parser 那样直接 golden 双跑**（网络非确定）。取向：**录制/回放夹具**——录一次真实交互（脱敏后）成固定夹具，之后 fetch 退化为对回放响应的确定性解析，可纳入双跑；凭证注入与脱敏逻辑在**宿主**层单测（不在 QuickJS）。
+7. **iOS 2.5.2（[#4]）联动。** fetch 模式让"下载的 adapter"真正发起网络请求，合规评估需与本设计一并做。iOS 端整体可上架形态已由 [ADR-010](./adr_010_ios_appstore.md) 定调：**首版仅 parser 模式上架，fetch 模式推迟**——本 ADR 接受并拟上 iOS 时，须按 ADR-010 §3.3 重做 2.5.2(a) 自检（仍限既有能力集）并补 5.1.1 隐私申报。
+8. **单次执行 cookie jar 是新的状态面（§2.4 第 2 条）。** 多步握手所需的 per-execution cookie jar 必须严格隔离：**不落核心凭证库、不跨执行、不经 public**；其实现是宿主侧安全敏感代码，随 fetch 模式一并人工审（不得 AI 独自闭环）。jar 与 broker 的"白名单凭证注入"是两条独立路径——jar 装的是 origin 下发的非凭证会话态，broker 装的是学生凭证，二者不得混用。
 
 ---
 
