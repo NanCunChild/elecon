@@ -1,6 +1,6 @@
 # ADR-003：传输底座抽象与 VPN 复刻接入（许可证隔离方案）
 
-- **状态**：**草案（Proposed）** ⚠️ 本文定义传输底座（看到**全部流量**的承重路径，红线 #4/#1）。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
+- **状态**：草案（Proposed） 本文定义传输底座（看到**全部流量**的承重路径，红线 #4/#1）。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
 - **日期**：2026-06-12
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.4 transport/adapter 区分、§5.2 VPN 复刻风险、红线 #4）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（签名 / 官方签名加载 / 吊销，草案）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（`ctx.fetch` 出网经 transport，草案）、[`adr_010_ios_appstore.md`](./adr_010_ios_appstore.md)（iOS 无隧道、GPLv3 分发不相容、指南 5.4）
 - **适用范围**：**传输底座（原生模块）**的抽象接口、信任与加载、平台可用性矩阵、atrust VPN 复刻的接入与**许可证隔离**。**不含** adapter 信任分档（ADR-002）、凭证注入/脱敏机制（ADR-009）、UI。
@@ -108,12 +108,12 @@ ADR-000 §3.4 把**传输底座**（原生、长生命周期、有状态、**承
 
 ## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
 
-> 安全敏感项标 🔒（人工主导、AI 仅辅助）：
+> 安全敏感项标（人工主导、AI 仅辅助）：
 
-- 🔒 **transport 抽象接口（核心侧）**：lifecycle/status/routing 窄接口；单 active + 运行时切换 + 降级链；**TLS 不终止**不变量落为代码约束。客户端与（如适用）`server/src/campus` 对齐。
-- 🔒 **加载与信任**：transport 二进制验签（ADR-002）+ 吊销/kill-switch + dev-only 侧载闸门 + **平台 build flag**（iOS 不编入 `app-tunnel`）。
+- **transport 抽象接口（核心侧）**：lifecycle/status/routing 窄接口；单 active + 运行时切换 + 降级链；**TLS 不终止**不变量落为代码约束。客户端与（如适用）`server/src/campus` 对齐。
+- **加载与信任**：transport 二进制验签（ADR-002）+ 吊销/kill-switch + dev-only 侧载闸门 + **平台 build flag**（iOS 不编入 `app-tunnel`）。
 - **`direct` / `system-vpn` 两档先行**：`direct` = OS 网络；`system-vpn` 经 `NEVPNManager`(iOS)/`VpnService`(Android) 引导 + 可达性检测 + 降级。
 - **三件套探针（atrust）**：许可证 / 协议模式 / iOS 可行性，产出 go/no-go 文档，未过不进实现。
-- 🔒 **许可证隔离（若上 `app-tunnel`）**：进程/独立分发边界 + IPC 规格；GPLv3 §6 源码合规；按 §2.5 平台分发矩阵执行。
+- **许可证隔离（若上 `app-tunnel`）**：进程/独立分发边界 + IPC 规格；GPLv3 §6 源码合规；按 §2.5 平台分发矩阵执行。
 - **契约（如需，独立 ADR）**：envelope `source.origin` 增 transport 维度（如 `client-direct` 经 direct/tunnel），与 ADR-001/009 协调、向后兼容。
 - **测试**：transport 状态机/降级链单测；**TLS-不终止**断言；签名/吊销正反例；不在 UI 线程阻塞（红线 #7 同源精神，原生侧勿阻塞主线程）。

@@ -81,7 +81,7 @@ issue #4 要求一并评估的两项，上架风险高于 2.5.2，单列结论�
 
 > 安全 / 合规敏感项标 🔒（人工主导）：
 
-- 🔒 **构建期断言**：iOS release build 无侧载 / 未签名 adapter 加载路径（绑定 ADR-002 §2.5；加测试，红线 #4）。
+- **构建期断言**：iOS release build 无侧载 / 未签名 adapter 加载路径（绑定 ADR-002 §2.5；加测试，红线 #4）。
 - **预置基线 adapter**：bundle 内打包一组已签名 adapter，首启可离线演示（§2.2.2）。
 - **iOS 传输默认**：校内直连 + 系统 VPN 引导（`NEVPNManager` on-demand）；iOS release **不编入** App 内私有隧道目标（§2.2.3 / §2.3）。
 - **隐私合规**：隐私政策 + App Store 隐私清单；私密数据不出端声明（§2.4）。
