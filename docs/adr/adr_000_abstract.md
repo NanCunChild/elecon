@@ -159,3 +159,4 @@ QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 a
 - `adr_008`：客户端运行时 —— **已接受**
 - `adr_009`：fetch 模式凭证注入（`ctx.fetch` + 域名白名单）—— **草案**
 - `adr_010`：iOS / App Store 分发合规（2.5.2 / DPLA 3.3.2）—— **已接受**
+- `adr_011`：adapter HTML 解析（SDK 内置纯 JS 解析器，零漂移）—— **草案**
