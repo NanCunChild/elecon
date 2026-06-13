@@ -61,20 +61,29 @@ const int _defaultMemoryBytes = 64 * 1024 * 1024;
 /// 脱敏后的原始响应（按 manifest `requests[].key` 索引）；[nowMs] 注入 ctx.now()，
 /// golden 双跑应固定它以保证确定性。
 ///
+/// [htmlStdlib] 是 `elecon:html` 标准库 bundle 源码（`adapters/_stdlib/html.bundle.js`）。
+/// 给出时，adapter 可 `import { parseDocument, selectAll, ... } from "elecon:html"`；
+/// 两端加载**同一份** bundle，确定性容错由此而来（ADR-011 §2.1/§2.3）。不给出（默认
+/// null）则该模块名 fail-closed：import 它的 adapter 会以"module not found"失败——与
+/// 服务端 `setModuleLoader` 的未知模块语义对称（红线 #5：解析器无网络、无副作用）。
+///
 /// 返回归一化后的产出（已 JSON 往返的 Dart 结构）。失败抛 [AdapterRunException]。
 Future<dynamic> runParserAdapter({
   required String source,
   required String capability,
   Map<String, dynamic>? params,
   Map<String, dynamic>? responses,
+  String? htmlStdlib,
   int nowMs = 0,
   int timeoutMs = _defaultTimeoutMs,
   int memoryBytes = _defaultMemoryBytes,
 }) async {
   final qjs = IsolateQjs(
-    // 只解析名为 'adapter' 的模块；其余一律拒绝（无任意 import）。
+    // 模块解析 allowlist：'adapter' → 源码；'elecon:html' → SDK bundle（若注入）。
+    // 其余一律拒绝（无任意 import）。与服务端 sandbox.ts 的 setModuleLoader 同语义。
     moduleHandler: (name) async {
       if (name == 'adapter') return source;
+      if (name == 'elecon:html' && htmlStdlib != null) return htmlStdlib;
       throw JSError('module not found: $name');
     },
     timeout: timeoutMs,

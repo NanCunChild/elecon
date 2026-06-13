@@ -1,0 +1,40 @@
+{
+  "_note": "脱敏夹具（红线 #8）：所有 URL/日期/标题均为虚构或公开数据。golden 测试：以 params + responses 跑 parser adapter，产出须逐字段等于 expected。",
+  "capability": "notice.list",
+  "params": {},
+  "responses": {
+    "page": {
+      "status": 200,
+      "headers": { "content-type": "text/html; charset=utf-8" },
+      "body": "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"><title>西安电子科技大学教务处</title></head>\n<body>\n<div class=\"list-wrap\">\n  <div class=\"tit\"><h3><a href=\"/jxdt.htm\">教学动态</a></h3></div>\n  <ul class=\"list\">\n    <li><a href=\"/info/1001/11000.htm\" target=\"_blank\">关于开展2026年春季教学检查的通知</a><span>2026-05-20</span></li>\n  </ul>\n  <div class=\"tit\"><h3><a href=\"/tzgg.htm\">通知公告</a></h3></div>\n  <ul class=\"list\">\n    <li><a href=\"/info/1002/12345.htm\" target=\"_blank\">关于2026年春季学期期末考试安排的通知</a><span>2026-06-10</span></li>\n    <li><a href=\"/info/1002/12344.htm\" target=\"_blank\">关于开展2026年暑期社会实践报名的通知</a><span>2026-06-09</span></li>\n    <li><a href=\"/info/1002/12343.htm\" target=\"_blank\">2026年春季学期补考安排</a><span>2026-06-08</span></li>\n  </ul>\n  <div class=\"tit\"><h3><a href=\"/jxzy.htm\">教学资源</a></h3></div>\n  <ul class=\"list\">\n    <li><a href=\"/info/1003/10001.htm\" target=\"_blank\">课程大纲模板下载</a><span>2026-03-01</span></li>\n  </ul>\n</div>\n</body>\n</html>"
+    }
+  },
+  "expected": {
+    "items": [
+      {
+        "id": "12345",
+        "title": "关于2026年春季学期期末考试安排的通知",
+        "url": "https://jwc.xidian.edu.cn/info/1002/12345.htm",
+        "publishedAt": "2026-06-10T00:00:00Z",
+        "category": "academic",
+        "source": "教务处"
+      },
+      {
+        "id": "12344",
+        "title": "关于开展2026年暑期社会实践报名的通知",
+        "url": "https://jwc.xidian.edu.cn/info/1002/12344.htm",
+        "publishedAt": "2026-06-09T00:00:00Z",
+        "category": "academic",
+        "source": "教务处"
+      },
+      {
+        "id": "12343",
+        "title": "2026年春季学期补考安排",
+        "url": "https://jwc.xidian.edu.cn/info/1002/12343.htm",
+        "publishedAt": "2026-06-08T00:00:00Z",
+        "category": "academic",
+        "source": "教务处"
+      }
+    ]
+  }
+}

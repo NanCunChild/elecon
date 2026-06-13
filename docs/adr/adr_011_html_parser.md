@@ -1,7 +1,8 @@
 # ADR-011：adapter HTML 解析（SDK 内置纯 JS 解析器，零漂移）
 
-- **状态**：草案（Proposed） 本文改动 **adapter SDK 表面（`contract/adapter-sdk/`）+ 两端运行时 moduleHandler**——触及契约与 runtime（红线 #6 契约即承重墙、#10 架构性改动先写 ADR）。**不碰网络/凭证**（非红线 #1），但碰运行时与契约，按草案走人工审阅后才实现。
-- **日期**：2026-06-12
+- **状态**：**已接受（Accepted），分批落地中** 本文改动 **adapter SDK 表面（`contract/adapter-sdk/`）+ 两端运行时 moduleHandler**——触及契约与 runtime（红线 #6 契约即承重墙、#10 架构性改动先写 ADR）。**不碰网络/凭证**（非红线 #1）。核心取向经人工审阅接受；落地按 §4 拆批，进度见该节勾选项。
+- **日期**：2026-06-12（起草）／2026-06-13（接受 + 首批落地：bundle、两端 runtime、双跑闸门）
+- **落地 PR**：[#15](https://github.com/NanCunChild/elecon/pull/15)（`elecon:html` bundle + 服务端/客户端 moduleHandler + XIDIAN `notice.list` + 两端 golden）
 - **依赖**：[`adr_001_contract.md`](./adr_001_contract.md)（SDK 类型 / 契约）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端 QuickJS-wasm）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端 QuickJS + moduleHandler + engine-floor canary）
 - **关联**：[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（fetch 模式响应体同样复用本解析器，但 HTML 解析本身不依赖 fetch 模式的存在）
 - **被依赖**：HTML 源 adapter（首例 XIDIAN `notice.list`，见 §4）
@@ -21,9 +22,9 @@
 
 ---
 
-## 2. 决策（Decision，草案）
+## 2. 决策（Decision）
 
-> 以下为**待审议**取向，非既定事实。每条都需审阅确认。
+> 以下取向经人工审阅**接受**。§2.2 的 API 表面已对齐首批落地的实际导出（见 `adapters/_stdlib/src/html.ts`）。
 
 ### 2.1 解析器是「QuickJS 内执行的纯 JS 共享模块」，不是 host 原生 `ctx` 函数
 
@@ -33,15 +34,19 @@
 
 ### 2.2 API：htmlparser2 + domutils 的 DOM-lite 表面
 
-adapter 通过 `elecon:html` 模块获得以下能力（底层由 htmlparser2 + domutils + css-select 提供）：
+adapter 通过 `elecon:html` 模块获得以下能力（底层由 htmlparser2 + domutils + css-select + domhandler 提供，源于 `adapters/_stdlib/src/html.ts` 的再导出）：
 
-- `parse(html: string): Document` → htmlparser2 的 `parseDocument` 输出。
-- **节点遍历**：`domutils` 提供的 `getText`、`getAttributeValue`、`find`、`findAll`、`findOne`、`getChildren`、`getParent`、`getSiblings`、`nextElementSibling` 等。
-- **CSS 选择器**：配合 `css-select` 支持标准 CSS 选择器（`tag`、`.class`、`#id`、`[attr=val]`、后代/子组合器、`:first-child` 等），覆盖 XIDIAN 的层级定位需求（如 `div.tit ~ ul > li a`）。
-- **谓词过滤**：`findAll(test, nodes)` 接受 `(elem) => boolean`，覆盖"按文本内容定位"等自定义需求。
+- **解析入口**：`parseDocument(html: string): Document`（htmlparser2 的 `parseDocument`）；低层 `Parser` 亦导出供流式场景。
+- **CSS 选择器**：`selectAll(query, nodes)` / `selectOne(query, nodes)`（css-select），支持标准选择器（`tag`、`.class`、`#id`、`[attr=val]`、后代/子组合器、`:first-child` 等），覆盖 XIDIAN 的层级定位（如 `div.tit ~ ul > li a`）。
+- **节点遍历 / 取值**：`domutils` 的 `getText`、`getAttributeValue`、`hasAttrib`、`getName`、`getChildren`、`getParent`、`getSiblings`、`nextElementSibling`、`prevElementSibling`、`textContent`、`innerText` 等。
+- **谓词查找**：`find`、`findAll`、`findOne`、`findOneChild`、`existsOne`、`filter`——`findAll(test, nodes)` 接受 `(elem) => boolean`，覆盖"按文本内容定位"等自定义需求（XIDIAN adapter 即以此找"通知公告"锚点）。
+- **节点类型守卫 / 构造**：domhandler 的 `Document`、`Element`、`Text`、`Comment`、`isTag`、`isText`、`isCDATA`、`hasChildren`。
 - **明确非目标**：不渲染、不计算样式、**不执行内联 JS / 不跑 `<script>`**。
 
-`elecon:html` 是对 htmlparser2 生态的**薄封装与再导出**，不自造 API，adapter 开发者可直接参考 htmlparser2/domutils/css-select 文档。
+`elecon:html` 是对 htmlparser2 生态的**薄封装与再导出**，不自造 API，adapter 开发者可直接参考 htmlparser2/domutils/css-select 文档。SDK 类型声明（`contract/adapter-sdk/`）随后补（见 §4）。
+
+> **首批实测导入**（XIDIAN `notice.list`，`adapters/school-xidian/index.js`）：
+> `import { parseDocument, selectAll, getText, getAttributeValue, nextElementSibling } from "elecon:html";`
 
 ### 2.3 容错与确定性（双跑一致性的新承重点）
 
@@ -54,34 +59,36 @@ adapter 通过 `elecon:html` 模块获得以下能力（底层由 htmlparser2 + 
 
 | 取向 | 取 | 舍 |
 |---|---|---|
-| **htmlparser2 + domutils + css-select（决定）** | 成熟（npm 周下载 7500 万+）、edge case 覆盖充分、CSS 选择器开箱即用、MIT 许可证零传染、纯 JS 零 Node 依赖（验证过）、esbuild 单文件 bundle 约 59KB | 体积比自写大（59KB vs ~数 KB）；版本升级须按契约流程 |
+| **htmlparser2 + domutils + css-select（决定）** | 成熟（npm 周下载 7500 万+）、edge case 覆盖充分、CSS 选择器开箱即用、MIT 许可证零传染、纯 JS 零 Node 依赖（验证过）、esbuild 单文件 ESM bundle | 体积比自写大（实测约 205KB **未压缩**，见下注；vs 自写 ~数 KB）；版本升级须按契约流程 |
 | 自写极简（~150–250 行） | 体积最小、完全可控 | HTML tag-soup 解析边界情况极多（未闭合/可选闭合/属性引号缺失/CDATA/注释/实体解码…），150 行写不完可靠实现；每遇新学校畸形 HTML 就可能踩新 edge case；自维护成本高 |
 
 **决定取向**：采用 **htmlparser2 生态**。理由：
 
 1. **最大兼容性**：在学校普遍无 JSON feed、HTML 是唯一数据源的现实下，HTML 解析是几乎所有 adapter 的基础能力，必须可靠——不能用"够用就行"的极简解析器赌每所学校的 HTML 都规范。
 2. **零漂移**：经 esbuild 打成单文件 ESM bundle，两端加载同一份源码，确定性保证与自写等价。
-3. **许可证**：htmlparser2（MIT）、domutils（BSD-2-Clause）、css-select（BSD-2-Clause）、entities（BSD-2-Clause）——全部宽松许可证，红线 #9 无风险。
+3. **许可证**：htmlparser2（MIT）、domutils（BSD-2-Clause）、css-select（BSD-2-Clause）、domhandler（BSD-2-Clause）、entities（BSD-2-Clause）——全部宽松许可证，红线 #9 无风险。
 4. **引擎地板**：htmlparser2 编译产物为 ES5 兼容，使用 `Uint8Array`（QuickJS 支持），无 ES2022+ 特性，无 BigInt。
-5. **59KB 可接受**：在 64MiB 内存限额内可忽略；且 HTML 解析是高频基础设施，"为最大兼容性牺牲一部分空间"的权衡合理。
+5. **体积可接受**：实测 bundle 约 **205KB（未压缩，`build.mjs` 中 `minify: false`）**——刻意不压缩，使 bundle 在仓库内**可读、可审计**（§3.3 的"无隐藏 I/O"靠肉眼/审计核验，压缩后无从审）。205KB 源码在 64MiB 内存限额内可忽略；HTML 解析是高频基础设施，"为最大兼容性 + 可审计性牺牲一部分空间"的权衡合理。（起草期 59KB 估值系 minify 后口径，与本仓库保留未压缩版的取舍不同。）
 
 ---
 
-## 3. 已知约束与风险（Consequences，草案）
+## 3. 已知约束与风险（Consequences）
 
 1. **版本锁定是新契约约束。** htmlparser2 版本升级可能改变容错行为 → 双跑 golden 飘。升级须走 ADR/版本化流程（§2.3），CI 双跑闸门拦截。
-2. **体积/性能。** 两端 bundle 各加 ~59KB 解析器源码；notice 类小页面无压力，但需对"大页面 × QuickJS"做基准，避免在 UI 端拖慢（background isolate 已兜，ADR-008 §2.2）。
+2. **体积/性能。** 两端各加载同一份 ~205KB（未压缩）解析器源码；notice 类小页面无压力，但需对"大页面 × QuickJS"做基准，避免在 UI 端拖慢（background isolate 已兜，ADR-008 §2.2）。
 3. **安全：纯解析、无副作用。** htmlparser2 是纯 JS 字符串处理，不碰网络/凭证（非红线 #1）。解析器**无网络能力**即天然不外泄；bundle 前经审计确认无隐藏 I/O。
 4. **不解决 JS 挑战 / 反爬。** XJT 类"解析内联 JS 算 answer + 伪造指纹"需在 **fetch 模式**执行握手，**不在本解析器职责内**（见 [`adr_009`](./adr_009_fetch_credential.md) 的 HTML/多步贴合说明）。
 5. **上游依赖风险。** htmlparser2 虽成熟但仍是第三方——上游停维或引入破坏性变更时，可 fork 锁定（MIT 许可证允许），代价可控。
 
 ---
 
-## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
+## 4. 落地清单（拆成可审查的小 PR）
 
-- **Bundle 构建**：以 esbuild 将 htmlparser2 + domutils + css-select + entities 打为**单文件 ESM bundle**（目标 ES2020，无外部依赖）；产出置于 `adapters/_stdlib/html.bundle.js`，纳入版本管理。
-- **SDK**：`contract/adapter-sdk/` 增 `elecon:html` 模块类型声明（re-export htmlparser2/domutils/css-select 的公开 API 子集）。
-- **运行时**：两端 `moduleHandler` 注册 `elecon:html` → 加载同一份 bundle 源码（客户端 `flutter_qjs`、服务端 `quickjs-emscripten`）。
-- **测试**：bundle 在 QuickJS 中的加载冒烟 + 双跑一致性 + XIDIAN `notice.list` 端到端 golden + 畸形 HTML 容错矩阵。
-- **文档**：adapter 编写指南补"HTML 源 adapter"小节 + `elecon:html` API 参考（指向 htmlparser2 官方文档）。
-- **首例落地**：XIDIAN `notice.list`（parser 模式）——已在本地 spike 中验证 API 形态与可行性。
+- [x] **Bundle 构建**：以 esbuild 将 htmlparser2 + domutils + css-select + entities + domhandler 打为**单文件 ESM bundle**（目标 ES2020，`minify:false`，无外部依赖）；产出置于 `adapters/_stdlib/html.bundle.js`，纳入版本管理。 — PR #15（`build.mjs` + bundle）
+- [x] **运行时（服务端）**：`server/src/runtime/sandbox.ts` 的 `setModuleLoader` 注册 `elecon:html` → 加载同一份 bundle；未知模块名 fail-closed 抛错。 — PR #15
+- [x] **运行时（客户端）**：`client/lib/core/adapter_runtime.dart` 的 `moduleHandler` 注册 `elecon:html` → 加载同一份 bundle；未注入时 fail-closed。 — PR #15（本批补全，与服务端对称）
+- [x] **测试**：服务端 `sandbox.smoke.ts` XIDIAN golden + schema；客户端 `test/dual_run_test.dart` 同一 bundle、同一夹具 golden 一致 + 未注入 fail-closed。两端 == golden ⟹ 零漂移。 — PR #15
+- [ ] **SDK 类型声明**：`contract/adapter-sdk/` 增 `elecon:html` 模块 `.d.ts`（re-export §2.2 的公开 API 子集），让 adapter 作者有类型提示。 — **待补**（不阻断运行，仅 DX；adapter 现以 JS 写，无类型门禁）
+- [ ] **畸形 HTML 容错矩阵**：把"未闭合 / 可选闭合 li·p / void 元素 / 属性引号缺失 / 实体解码 / 注释·CDATA"做成两端共跑的 golden 套件（§2.3）。当前仅 XIDIAN 真实页 + 模板覆盖，矩阵化待补。 — **待补**
+- [ ] **文档**：adapter 编写指南补"HTML 源 adapter"小节 + `elecon:html` API 参考（指向 htmlparser2 官方文档）。 — **待补**
+- [x] **首例落地**：XIDIAN `notice.list`（parser 模式），`adapters/school-xidian/`，含脱敏夹具。 — PR #15

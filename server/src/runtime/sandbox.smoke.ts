@@ -101,10 +101,35 @@ async function testTimeoutBites(): Promise<void> {
   console.log("  ✓ 超时限制生效（timeout）");
 }
 
+async function testXidianNoticeList(): Promise<void> {
+  const xidianDir = `${repoRoot}adapters/school-xidian`;
+  const source = readFileSync(`${xidianDir}/index.js`, "utf8");
+  const fixture = readJson<Fixture>(`${xidianDir}/fixtures/notice.list.json`);
+  const noticeSchema = readJson(`${repoRoot}contract/schema/notice.list.schema.json`);
+
+  const { data } = await runAdapter({
+    source,
+    capability: fixture.capability,
+    params: fixture.params,
+    responses: fixture.responses,
+    nowMs: 1_700_000_000_000,
+  });
+
+  assert.deepEqual(data, fixture.expected, "XIDIAN notice.list 产出与 golden 不一致");
+  console.log("  ✓ XIDIAN notice.list golden 一致");
+
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  const validate = ajv.compile(noticeSchema as object);
+  const ok = validate(data);
+  assert.ok(ok, `XIDIAN notice.list 未通过 schema：${JSON.stringify(validate.errors)}`);
+  console.log("  ✓ XIDIAN notice.list 通过 contract schema");
+}
+
 async function main(): Promise<void> {
   console.log("sandbox smoke:");
   await testGoldenAndSchema();
   await testEngineFloorCanary();
+  await testXidianNoticeList();
   await testCapabilityMissing();
   await testTimeoutBites();
   console.log("全部通过。parser 管线端到端跑通。");

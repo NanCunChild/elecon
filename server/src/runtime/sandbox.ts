@@ -12,6 +12,9 @@
  * PR 落地（红线 #1），此处尚未实现，遇到即拒绝。
  */
 
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   getQuickJS,
   Scope,
@@ -19,6 +22,12 @@ import {
   type QuickJSContext,
   type QuickJSHandle,
 } from "quickjs-emscripten";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const HTML_STDLIB_SOURCE = readFileSync(
+  resolve(__dirname, "../../../adapters/_stdlib/html.bundle.js"),
+  "utf-8",
+);
 
 export interface SandboxLimits {
   /** 单次执行墙钟超时（毫秒） */
@@ -104,6 +113,11 @@ export async function runAdapter(
 
   const deadline = Date.now() + limits.timeoutMs;
   runtime.setInterruptHandler(shouldInterruptAfterDeadline(deadline));
+
+  runtime.setModuleLoader((moduleName) => {
+    if (moduleName === "elecon:html") return HTML_STDLIB_SOURCE;
+    throw new Error(`Module not found: ${moduleName}`);
+  });
 
   const ctx = runtime.newContext();
   try {
