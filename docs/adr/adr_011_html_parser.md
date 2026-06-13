@@ -1,6 +1,6 @@
 # ADR-011：adapter HTML 解析（SDK 内置纯 JS 解析器，零漂移）
 
-- **状态**：**草案（Proposed）** ⚠️ 本文改动 **adapter SDK 表面（`contract/adapter-sdk/`）+ 两端运行时 moduleHandler**——触及契约与 runtime（红线 #6 契约即承重墙、#10 架构性改动先写 ADR）。**不碰网络/凭证**（非红线 #1），但碰运行时与契约，按草案走人工审阅后才实现。
+- **状态**：草案（Proposed） 本文改动 **adapter SDK 表面（`contract/adapter-sdk/`）+ 两端运行时 moduleHandler**——触及契约与 runtime（红线 #6 契约即承重墙、#10 架构性改动先写 ADR）。**不碰网络/凭证**（非红线 #1），但碰运行时与契约，按草案走人工审阅后才实现。
 - **日期**：2026-06-12
 - **依赖**：[`adr_001_contract.md`](./adr_001_contract.md)（SDK 类型 / 契约）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端 QuickJS-wasm）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端 QuickJS + moduleHandler + engine-floor canary）
 - **关联**：[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（fetch 模式响应体同样复用本解析器，但 HTML 解析本身不依赖 fetch 模式的存在）

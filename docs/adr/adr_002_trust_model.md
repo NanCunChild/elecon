@@ -1,6 +1,6 @@
 # ADR-002：插件信任模型（签名 / 吊销 / dev 侧载闸门）与三档能力分级
 
-- **状态**：**已接受（Accepted）** ✅ 2026-06-13 经人工安全检查清单全项确认后接受。实现仍须按 AGENTS.md §1 人工主导（红线 #1/#4/#5 承重路径）。
+- **状态**：已接受（Accepted） 2026-06-13 经人工安全检查清单全项确认后接受。实现仍须按 AGENTS.md §1 人工主导（红线 #1/#4/#5 承重路径）。
 - **日期**：2026-06-11（**修订 2026-06-12**：补 §2.3 签名时档位来源与签名权、公钥轮换搭发版、§2.4 吊销 bootstrap、§2.1 community 取舍——回应人工复核 1–4）（**修订 2026-06-13**：**砍掉 community 档**（社区走 sideload、官方均 official）、§2.3 签名密钥改 **OIDC→AWS KMS 委托签名** + **多公钥预埋分批启用**、§2.5 release 编译期剔除侧载、§2.6 `ctx.fetch` 改"存在但档位校验"——落 #10 评审决策）（**修订 2026-06-13b**：§2.3 **钉死规范化规格**（字典序/LF/UTF-8 NFC/无 trailing newline 篡改）、KMS 硬 deadline = 首次 release 前、dormant 公钥晋升**纯发版**不做热推启用声明）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§2.2 可信核心、§3.3 凭证边界、§3.4 传输底座）、[`adr_001_contract.md`](./adr_001_contract.md)（§5.2 信任档字段；community 策略原留给本文细化——本文**决定砍掉**，见 §2.1）
 - **被依赖**：[`adr_009`](./adr_009_fetch_credential.md)（fetch 模式凭证注入，trust tier 由本文裁定）、[`adr_003`](./adr_003_transport.md)（传输底座抽象，仅官方签名可加载）；并为 [`adr_010`](./adr_010_ios_appstore.md) 的 App Store 合规论点 (b)「非代码市场」提供支撑（无侧载入口 + 仅签名分发）。
@@ -113,12 +113,12 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 
 ## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
 
-> 安全敏感项标 🔒（人工主导、AI 仅辅助）：
+> 安全敏感项标（人工主导、AI 仅辅助）：
 
-- 🔒 `tools/src/signer`：bundle 规范化（§2.3 已定规格：字典序/LF/UTF-8 NFC/双层 SHA-256）+ **Ed25519 签名经 OIDC→AWS KMS 委托**（私钥不入仓；开发阶段可用本地密钥）/ 验签 + 吊销清单生成。
-- 🔒 **OIDC→KMS 签名管线**：GitHub OIDC 联合身份 → AWS KMS 单次签名；访问策略限定受保护 tag/release workflow + required-reviewer Environment。过渡期降级为受保护 Environment 长期 secret。
-- 🔒 可信核心：加载前验签（fail-closed，针对 active 预埋公钥）+ 吊销查询 + 由签名裁定档位 + `ctx.fetch` 档位校验（非 official → 结构化权限错误、永不触达注入）。客户端与服务端核心共享同一裁定逻辑。
-- 🔒 **多公钥预埋 + 分批启用**：active/dormant 公钥集合；晋升（应对丢失）/ 停用（应对泄漏）方向不对称（§2.3）；**晋升与集合增删一律随 App 发版**（不做热推启用声明）。
+- `tools/src/signer`：bundle 规范化（§2.3 已定规格：字典序/LF/UTF-8 NFC/双层 SHA-256）+ **Ed25519 签名经 OIDC→AWS KMS 委托**（私钥不入仓；开发阶段可用本地密钥）/ 验签 + 吊销清单生成。
+- **OIDC→KMS 签名管线**：GitHub OIDC 联合身份 → AWS KMS 单次签名；访问策略限定受保护 tag/release workflow + required-reviewer Environment。过渡期降级为受保护 Environment 长期 secret。
+- 可信核心：加载前验签（fail-closed，针对 active 预埋公钥）+ 吊销查询 + 由签名裁定档位 + `ctx.fetch` 档位校验（非 official → 结构化权限错误、永不触达注入）。客户端与服务端核心共享同一裁定逻辑。
+- **多公钥预埋 + 分批启用**：active/dormant 公钥集合；晋升（应对丢失）/ 停用（应对泄漏）方向不对称（§2.3）；**晋升与集合增删一律随 App 发版**（不做热推启用声明）。
 - `tools/` 校验器：补 parser 能力源码静态检查（无网络/凭证 API）；强化 `sideload + fetch` 拒绝（已在 ADR-001 列为闸门）。
 - 侧载闸门：确保侧载加载路径**编译期从 release 剔除**（非运行时开关）；dev build 另议（红线 #4）。
 - 吊销分发：公网哑服务托管签名吊销清单；核心拉取/验签/回退策略。

@@ -1,6 +1,6 @@
 # ADR-009：fetch 模式 —— 受限 `ctx.fetch` 与凭证注入
 
-- **状态**：**草案（Proposed）** ⚠️ 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
+- **状态**：草案（Proposed） 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
 - **日期**：2026-06-11（**修订 2026-06-13**：§2 第 4 条改白名单分"注入/仅可达"两类（声明但不注入）；增重定向跳数限制+每跳白名单校验；增 §2 第 6 条 401 透传行为；§2.6/§2.4 对齐 ADR-002 修订；credentials schema 校验规则同步）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 分层）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / envelope）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端沙箱）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端运行时）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)（实现任务）、[#4](https://github.com/NanCunChild/elecon/issues/4)（iOS 2.5.2 合规）
@@ -100,7 +100,7 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 - **`network.allow` 中未被任何 `credentials.scope` 覆盖的条目 = passthrough**（可达但不注入凭证）。上例中 `https://captcha.example.edu.cn/challenge/*` 不在任何 scope 内 → 请求放行但不带凭证，适用于反爬挑战等场景。
 - **校验规则**：① 所有 `credentials.scope` 必须是 `network.allow` 的**子集**（`tools/` 校验器强制：不能声明注入一个连出口都不允许的 URL）；② passthrough 条目**无需被 scope 覆盖**——这是合法的"声明但不注入"。
 
-> ⚠️ 此草图尚未纳入 `contract/manifest.schema.json`。正式扩展须走**独立 issue + PR**（schema 改动属红线 #6，须与 ADR-001 §5 协调、向后兼容）。待本 ADR 接受后创建追踪 issue。
+> 此草图尚未纳入 `contract/manifest.schema.json`。正式扩展须走**独立 issue + PR**（schema 改动属红线 #6，须与 ADR-001 §5 协调、向后兼容）。待本 ADR 接受后创建追踪 issue。
 
 ### 2.4 与 HTML 源 / 多步握手 adapter 的贴合（ADR-011 / 实测 adapter 联动）
 
@@ -128,14 +128,14 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 
 ## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
 
-> 安全敏感项标 🔒（人工主导、AI 仅辅助）：
+> 安全敏感项标（人工主导、AI 仅辅助）：
 
-- 🔒 宿主 Broker：`ctx.fetch` 代理 + 白名单匹配（uri-template）+ **inject/passthrough 分流** + 凭证注入（§2.3 凭证绑定）+ 出站请求头净化（§2.3）+ 响应头 allowlist 脱敏（§2.5）+ **重定向跳数限制 + 每跳白名单校验**。客户端（Dart 核心）与服务端（`server/src/campus`）各一份，**共享同一净化/脱敏规格**。
-- 🔒 **per-execution cookie jar**：仅限单次执行、不落核心凭证库、不跨执行、scope 受 network.allow 约束；与 broker 凭证注入严格分离。
+- 宿主 Broker：`ctx.fetch` 代理 + 白名单匹配（uri-template）+ **inject/passthrough 分流** + 凭证注入（§2.3 凭证绑定）+ 出站请求头净化（§2.3）+ 响应头 allowlist 脱敏（§2.5）+ **重定向跳数限制 + 每跳白名单校验**。客户端（Dart 核心）与服务端（`server/src/campus`）各一份，**共享同一净化/脱敏规格**。
+- **per-execution cookie jar**：仅限单次执行、不落核心凭证库、不跨执行、scope 受 network.allow 约束；与 broker 凭证注入严格分离。
 - 客户端运行时：`adapter_runtime.dart` 增 fetch 模式（异步 handler、job queue pump、网络/并发限额 §2.8）；`ctx.fetch` 经边界回调到 Dart 宿主。
 - 服务端沙箱：`server/src/runtime/sandbox.ts` 同步增 fetch 模式 ctx。
 - **契约 schema（独立 issue + PR）**：manifest 增 `credentials` 声明（§2.3 草图），与 ADR-001 协调，向后兼容。**本 ADR 接受后创建追踪 issue。**
 - 测试：录制/回放夹具机制；宿主侧净化/脱敏/注入单测；fetch 模式双跑（基于回放）。
 - **pattern-based 后置审计**（后续）：对 adapter 产出做 token-pattern 扫描，告警不阻断。
-- 🔒 安全检查清单：随实现 PR 附"凭证零泄露"逐项自检（出站请求头/响应头/重定向/body 已接受风险确认 + passthrough 不带凭证确认）。
+- 安全检查清单：随实现 PR 附"凭证零泄露"逐项自检（出站请求头/响应头/重定向/body 已接受风险确认 + passthrough 不带凭证确认）。
 - iOS 2.5.2 合规评估（[#4]）。
