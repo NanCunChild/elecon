@@ -89,7 +89,7 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 
 ### 2.4 与 HTML 源 / 多步握手 adapter 的贴合（ADR-011 / 实测 adapter 联动）
 
-来自首批逆向 adapter（XIDIAN / XJT 通知公告，见 `adapters_tests/`）的实测，补三条本 ADR 此前未覆盖的贴合点：
+来自首批逆向 adapter（XIDIAN / XJT 通知公告）的本地 spike 实测，补三条本 ADR 此前未覆盖的贴合点：
 
 1. **HTML 响应体的解析复用 [ADR-011](./adr_011_html_parser.md) 的 SDK 解析器。** fetch 模式 adapter 拿到 §2.5 透传的响应体若是 HTML，用 `elecon:html`（QuickJS 内纯 JS、两端零漂移）解析，而非各端原生——与 parser 模式同一套，不另起炉灶。
 
