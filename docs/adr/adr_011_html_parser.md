@@ -1,6 +1,6 @@
 # ADR-011：adapter HTML 解析（SDK 内置纯 JS 解析器，零漂移）
 
-- **状态**：**已接受（Accepted），分批落地中** ⚠️ 本文改动 **adapter SDK 表面（`contract/adapter-sdk/`）+ 两端运行时 moduleHandler**——触及契约与 runtime（红线 #6 契约即承重墙、#10 架构性改动先写 ADR）。**不碰网络/凭证**（非红线 #1）。核心取向经人工审阅接受；落地按 §4 拆批，进度见该节勾选项。
+- **状态**：**已接受（Accepted），分批落地中** 本文改动 **adapter SDK 表面（`contract/adapter-sdk/`）+ 两端运行时 moduleHandler**——触及契约与 runtime（红线 #6 契约即承重墙、#10 架构性改动先写 ADR）。**不碰网络/凭证**（非红线 #1）。核心取向经人工审阅接受；落地按 §4 拆批，进度见该节勾选项。
 - **日期**：2026-06-12（起草）／2026-06-13（接受 + 首批落地：bundle、两端 runtime、双跑闸门）
 - **落地 PR**：[#15](https://github.com/NanCunChild/elecon/pull/15)（`elecon:html` bundle + 服务端/客户端 moduleHandler + XIDIAN `notice.list` + 两端 golden）
 - **依赖**：[`adr_001_contract.md`](./adr_001_contract.md)（SDK 类型 / 契约）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端 QuickJS-wasm）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端 QuickJS + moduleHandler + engine-floor canary）
