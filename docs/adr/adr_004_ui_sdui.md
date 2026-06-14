@@ -50,7 +50,7 @@ ADR-000 §2.2 把 UI 层定义为"数据驱动 / Server-Driven UI，消费标准
 | `elecon.schedule.week` | 周课表网格 | 无 |
 | `elecon.notice.list` | 通知列表 | 通知正文（若有） |
 | `elecon.card.balance` | 余额卡片 | 消费记录 |
-| `elecon.library.borrow` | 借阅列表 | 无 |
+| `elecon.library.loans` | 借阅列表 | 无 |
 
 约定：
 - 组件由客户端实现，**不由 adapter 或服务端下发**。
@@ -113,7 +113,7 @@ generic 域（`elecon.generic.section`）的 schema（ADR-001 §3.6）产出"带
 
 ## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
 
-- `contract/schema/generic.section.schema.json`：generic 域的正式 schema 落盘（目前 ADR-001 §3.6 有文字描述，未落 JSON Schema）。
+- `contract/schema/generic.section.schema.json`：**已落盘**（含 `sectionId`/`title` + role 枚举）；本 ADR 落地时须校验 §2.3 三模板对其结构的覆盖、并确认 role 枚举与 ADR-001 §3.6 一致（防漂移）。
 - **客户端卡片组件骨架**：为首批 typed schema（grades / notice / schedule）各实现最小渲染组件。
 - **generic 三模板组件**：键值列表 / 简单表格 / 分节列表，消费 generic schema 产出 + role 枚举。
 - **主题 token 系统**：role→样式映射的初版实现（跟随 Flutter ThemeData）。
