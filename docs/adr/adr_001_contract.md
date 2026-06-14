@@ -163,7 +163,7 @@ manifest 是 adapter 对核心的契约，JSON 格式，供宿主与 `tools/` �
   "adapterVersion": "3.2.0",          // 代码版本，参与 max(本地,服务端) 解析
   "schoolId": "1234",
   "displayName": "示例大学",
-  "trustTier": "official",            // official | community | sideload
+  "trustTier": "official",            // official | sideload（community 已于 ADR-002 2026-06-14 移除）
   "mode": "fetch",                    // fetch | parser（见 §6）
   "runtime": { "engine": "quickjs", "entry": "index.js" },
   "network": {
@@ -180,9 +180,9 @@ manifest 是 adapter 对核心的契约，JSON 格式，供宿主与 `tools/` �
 
 ### 5.2 信任档与可用配置的约束
 
-- `trustTier: official` → 可用 `mode: fetch`。
-- `trustTier: sideload`（第三方侧载）→ **强制 `mode: parser`**；`tools/` 校验器拒绝 sideload + fetch 的组合。
-- `community` 的策略由 `adr_002`（插件信任模型）细化，本文只固定字段。
+- `trustTier: official` → 可用 `mode: fetch`（release 下凭证注入的唯一资格）。
+- `trustTier: sideload`（第三方侧载）→ **release 下强制 `mode: parser`**；`tools/` 校验器在**官方分发/签名路径**拒绝 sideload + fetch 组合。**dev/debug build 例外**：无签名侧载 adapter 可跑 fetch（强警告 + 全占用确认），见 [`adr_002`](./adr_002_trust_model.md) §2.5——dev 本地加载不经此静态闸门。
+- **`community` 档已移除**（ADR-002 2026-06-14 修订）：信任模型只剩 official + sideload，`trustTier` 枚举不再含 `community`（见 [`adr_002`](./adr_002_trust_model.md) §2.1）。
 
 ---
 
