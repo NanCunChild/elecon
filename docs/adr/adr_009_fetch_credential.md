@@ -1,6 +1,6 @@
 # ADR-009：fetch 模式 —— 受限 `ctx.fetch` 与凭证注入
 
-- **状态**：草案（Proposed） 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
+- **状态**：**已接受（Accepted）** 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，经人工 review（PR #23）+ 安全检查清单审阅后接受。
 - **日期**：2026-06-11（**修订 2026-06-13**：§2 第 4 条改白名单分"注入/仅可达"两类（声明但不注入）；增重定向跳数限制+每跳白名单校验；增 §2 第 6 条 401 透传行为；§2.6/§2.4 对齐 ADR-002 修订；credentials schema 校验规则同步）（**修订 2026-06-13b**：§2.3 增 scope 重叠消歧规则——最长前缀胜出、等长拒绝；§3 增第 4 条请求 body 外泄向量声明）（**修订 2026-06-14**：§2.8 限额数值标注**临时占位、待实测校准**；§2.4 增执行结束**耐久 cookie 收割进凭证库**桥接（判据 = manifest 声明的 credential ref，与 [`adr_013`](./adr_013_manifest_credentials.md) 对齐），解 jar 不持久化下的 session 复用/有效性问题；§2.3 草图正式扩展拆出 ADR-013）（**修订 2026-06-14b（review 跟进 PR #23）**：§2.4 补 cookie 收割**匹配算法**（按 RFC 6265 §5.1.3/5.1.4 域/路径匹配方向，修正初稿写反的方向）+ **jar/broker 同名 cookie 优先级**（origin 最新值为准，session 轮换不持过期值）；§2.8 加**校准硬承诺**（首个 fetch-mode adapter 上线前实测）；§4 标 ADR-013 契约已落地 + pattern-audit 时间线）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 分层）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / envelope）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端沙箱）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端运行时）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)（实现任务）、[#4](https://github.com/NanCunChild/elecon/issues/4)（iOS 2.5.2 合规）
