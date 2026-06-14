@@ -1,7 +1,7 @@
 # ADR-003：传输底座抽象与 VPN 复刻接入（许可证隔离方案）
 
-- **状态**：草案（Proposed） 本文定义传输底座（看到**全部流量**的承重路径，红线 #4/#1）。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
-- **日期**：2026-06-12（**修订 2026-06-14**：§2.3 澄清"TLS 不终止 ≠ 禁止隧道封装"——L3/SSL-VPN 嵌套加密天然兼容，仅"本地拆 TLS"触红线 #1；§2.4 协议模式探针增"是否本地终止/拦截 app TLS"一项）
+- **状态**：已接受（Accepted） 本文定义传输底座（看到**全部流量**的承重路径，红线 #4/#1）。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，经人工 review（PR #23）+ 安全检查清单审阅后接受。
+- **日期**：2026-06-12（**修订 2026-06-14**：§2.3 澄清"TLS 不终止 ≠ 禁止隧道封装"——L3/SSL-VPN 嵌套加密天然兼容，仅"本地拆 TLS"触红线 #1；§2.4 协议模式探针增"是否本地终止/拦截 app TLS"一项）（**修订 2026-06-14b（review 跟进 PR #23）**：§2.2 加注 relay 优先为目标态、首版仅 client-direct（对齐 ADR-012 §2.6）；§2.2 降级链补 system-vpn 自身失败分支；§3 增第 7 条 iOS Personal VPN entitlement 可得性"待确认"开放项）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.4 transport/adapter 区分、§5.2 VPN 复刻风险、红线 #4）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（签名 / 官方签名加载 / 吊销，草案）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（`ctx.fetch` 出网经 transport，草案）、[`adr_010_ios_appstore.md`](./adr_010_ios_appstore.md)（iOS 无隧道、GPLv3 分发不相容、指南 5.4）
 - **适用范围**：**传输底座（原生模块）**的抽象接口、信任与加载、平台可用性矩阵、atrust VPN 复刻的接入与**许可证隔离**。**不含** adapter 信任分档（ADR-002）、凭证注入/脱敏机制（ADR-009）、UI。
 
@@ -42,13 +42,17 @@ ADR-000 §3.4 把**传输底座**（原生、长生命周期、有状态、**承
 | **`system-vpn`** | **引导用户在 OS 层配置 VPN**（iOS `NEVPNManager`/on-demand、Android `VpnService` 系统设置）；隧道在系统/第三方 App，elecon 只发起/检测、**不承载隧道本身** | 全平台（含 iOS） | 无（不分发隧道代码） | iOS 需申请 **Personal VPN entitlement**（门槛远低于 Network Extension，但仍是 entitlement 依赖）；Android/桌面 否 |
 | **`app-tunnel`** | **App 内原生隧道**（atrust 复刻属此） | **平台门控**：iOS 默认不编入（ADR-010） | **仅官方签名**加载（红线 #4）、最高信任档 | **是**（唯一触碰档） |
 
-**transport 与 campus relay 的关系**：当 `system-vpn` 或 `app-tunnel` 使客户端处于校园网可达状态时，私密数据请求**优先经 campus relay（`server/src/campus`）中转**；若 relay 不可用则 **fallback 到客户端直连学校 origin**。`direct` 档在校外时无校园网可达性，只能访问公开数据或提示用户。
+**transport 与 campus relay 的关系（目标架构）**：当 `system-vpn` 或 `app-tunnel` 使客户端处于校园网可达状态时，私密数据请求**优先经 campus relay（`server/src/campus`）中转**；若 relay 不可用则 **fallback 到客户端直连学校 origin**。`direct` 档在校外时无校园网可达性，只能访问公开数据或提示用户。
+
+> **注**：relay 优先是**目标态**。首版（[`adr_012`](./adr_012_credential_store.md) v1）仅 client-direct，relay 落点随本 ADR 接受 + relay 设计成熟后分步实现。凭证存储的接受与实现不依赖 relay（ADR-012 §2.6）。
 
 **降级链（fail-safe，不是 fail-open；有序）**：
 
-1. active transport（如 `app-tunnel`）失败 → **尝试 `system-vpn` 引导**（提示用户配置/连接系统 VPN）；
-2. `system-vpn` 引导仍失败或用户跳过 → **降级到只读公开缓存**（ADR-000 §3.4），仅展示已缓存的公开数据；
+1. active transport 为 `app-tunnel` 且失败 → **尝试 `system-vpn` 引导**（提示用户配置/连接系统 VPN）；
+2. active transport 为 `system-vpn`（或经 step 1 引导后）且失败/不可用/用户跳过 → **降级到只读公开缓存**（ADR-000 §3.4），仅展示已缓存的公开数据；
 3. **显式提示用户**：当前无法访问私密数据，需连接校园网或配置 VPN，由用户决定下一步。
+
+> 即：`app-tunnel → system-vpn → 只读公开缓存`；若起点即为 `system-vpn`，失败后直接降到只读。任何降级步骤**绝不**静默改路由为明文直连。
 
 **关键不变量：失败绝不静默改路由成明文直连**——本应走隧道的私密流量不得因 transport 故障而裸奔出校园网边界。
 
@@ -109,6 +113,7 @@ ADR-000 §3.4 把**传输底座**（原生、长生命周期、有状态、**承
 4. **"TLS 不终止"是硬不变量。** 若未来某 transport 需要看明文（如协议改写），即触碰红线 #1，**必须单独 ADR + 安全评审**，默认禁止。
 5. **跨平台能力不对称**（iOS 最弱）带来产品文案/预期管理成本。
 6. **单 active transport；split-tunnel 不在本文。** 按域名分流（部分走隧道、部分直连）会放大"路由错配致私密流量裸奔"的风险（§2.2 不变量），留待单独评估。
+7. **🔲 待确认（接受前）：iOS Personal VPN entitlement 可得性。** `system-vpn` 档在 iOS 依赖 **Personal VPN entitlement**（`NEVPNManager`）。其门槛远低于 Network Extension，但仍是一项 entitlement 依赖，且 [ADR-010](./adr_010_ios_appstore.md) 未就此评估。**取向**：标注"待确认"即可接受本 ADR——若该 entitlement 因审核策略不可得，iOS 的 `system-vpn` 引导退化为"提示用户在系统设置自行配置 VPN"（纯引导、零 entitlement），不阻塞 `direct` 档与本 ADR 主体。须在 iOS 上架评估（§4 / ADR-010 §3.3）时一并确认。
 
 ---
 

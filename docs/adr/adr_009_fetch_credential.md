@@ -1,7 +1,7 @@
 # ADR-009：fetch 模式 —— 受限 `ctx.fetch` 与凭证注入
 
-- **状态**：草案（Proposed） 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
-- **日期**：2026-06-11（**修订 2026-06-13**：§2 第 4 条改白名单分"注入/仅可达"两类（声明但不注入）；增重定向跳数限制+每跳白名单校验；增 §2 第 6 条 401 透传行为；§2.6/§2.4 对齐 ADR-002 修订；credentials schema 校验规则同步）（**修订 2026-06-13b**：§2.3 增 scope 重叠消歧规则——最长前缀胜出、等长拒绝；§3 增第 4 条请求 body 外泄向量声明）（**修订 2026-06-14**：§2.8 限额数值标注**临时占位、待实测校准**；§2.4 增执行结束**耐久 cookie 收割进凭证库**桥接（判据 = manifest 声明的 credential ref，与 [`adr_013`](./adr_013_manifest_credentials.md) 对齐），解 jar 不持久化下的 session 复用/有效性问题；§2.3 草图正式扩展拆出 ADR-013）
+- **状态**：已接受（Accepted） 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，经人工 review（PR #23）+ 安全检查清单审阅后接受。
+- **日期**：2026-06-11（**修订 2026-06-13**：§2 第 4 条改白名单分"注入/仅可达"两类（声明但不注入）；增重定向跳数限制+每跳白名单校验；增 §2 第 6 条 401 透传行为；§2.6/§2.4 对齐 ADR-002 修订；credentials schema 校验规则同步）（**修订 2026-06-13b**：§2.3 增 scope 重叠消歧规则——最长前缀胜出、等长拒绝；§3 增第 4 条请求 body 外泄向量声明）（**修订 2026-06-14**：§2.8 限额数值标注**临时占位、待实测校准**；§2.4 增执行结束**耐久 cookie 收割进凭证库**桥接（判据 = manifest 声明的 credential ref，与 [`adr_013`](./adr_013_manifest_credentials.md) 对齐），解 jar 不持久化下的 session 复用/有效性问题；§2.3 草图正式扩展拆出 ADR-013）（**修订 2026-06-14b（review 跟进 PR #23）**：§2.4 补 cookie 收割**匹配算法**（按 RFC 6265 §5.1.3/5.1.4 域/路径匹配方向，修正初稿写反的方向）+ **jar/broker 同名 cookie 优先级**（origin 最新值为准，session 轮换不持过期值）；§2.8 加**校准硬承诺**（首个 fetch-mode adapter 上线前实测）；§4 标 ADR-013 契约已落地 + pattern-audit 时间线）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 分层）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / envelope）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端沙箱）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端运行时）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)（实现任务）、[#4](https://github.com/NanCunChild/elecon/issues/4)（iOS 2.5.2 合规）
 - **适用范围**：fetch 模式 adapter 的网络出口（`ctx.fetch`）语义、可信核心的凭证注入与响应脱敏、两端（client-direct / campus-relay）执行落点。**不含** parser 模式（已由 ADR-005/008 落地）。
@@ -38,7 +38,7 @@ ADR-005/008 已落地 **parser 模式**：核心代取 + 脱敏 → adapter 纯�
 
 7. **仅官方签名 adapter 可跑 fetch 模式。** 侧载 adapter 一律退化为 parser（ADR-000 §3.3、红线 #5）。信任档由**核心验签裁定**（ADR-002 §2.2），不信任 manifest 自报的 `trustTier`；非 official → `ctx.fetch` 调用被宿主边界拒绝（ADR-002 §2.6 结构化权限错误），永不触达凭证注入。
 
-8. **fetch 模式 handler 是异步的（返回 Promise）**，与 parser 的"必须同步"相反。运行时需 pump job queue 并 await。限额（**数值为临时占位，2026-06-14：尚无实测依据，待真实多步握手 adapter 上线后校准——多步反爬流程可能吃掉请求数预算，需实践验证 20 是否够用**）：墙钟/内存对齐 `DEFAULT_LIMITS`；**单请求超时 ~10s**；**累计网络超时 ~30s**；**单次执行最大请求数 ~20**（防 DDoS / 资源耗尽）。**单次响应 body 大小不另设独立上限**——由 `DEFAULT_LIMITS` 的整体内存上限兜底（响应体载入 QuickJS 堆，超限触发 OOM 终止执行）。最终数值随实测在落地清单的运行时 PR 内固定。
+8. **fetch 模式 handler 是异步的（返回 Promise）**，与 parser 的"必须同步"相反。运行时需 pump job queue 并 await。限额（**数值为临时占位，2026-06-14：尚无实测依据，待真实多步握手 adapter 上线后校准——多步反爬流程可能吃掉请求数预算，需实践验证 20 是否够用**）：墙钟/内存对齐 `DEFAULT_LIMITS`；**单请求超时 ~10s**；**累计网络超时 ~30s**；**单次执行最大请求数 ~20**（防 DDoS / 资源耗尽）。**单次响应 body 大小不另设独立上限**——由 `DEFAULT_LIMITS` 的整体内存上限兜底（响应体载入 QuickJS 堆，超限触发 OOM 终止执行）。最终数值随实测在落地清单的运行时 PR 内固定。**校准承诺**：首个 fetch-mode adapter 上线前，须以真实多步握手流程（至少覆盖一个含反爬挑战的学校）实测校准上述占位值，并更新本节为正式数值。
 
 9. **执行落点：client-direct 或 campus-relay，永不 public。** 客户端用设备本地保管的凭证直连；校外私密数据走 `server/src/campus` 校内授权中继。`server/src/public` 哑服务**永不**参与 fetch 模式凭证注入（红线 #2：公网零凭证）。envelope `source.origin` 据此标 `client-direct` / `campus-relay`。
 
@@ -115,7 +115,18 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 - **执行内瞬态**（挑战 nonce、握手中途的 `client_id` 等）：用完即弃，jar 丢掉**无损**——它本就只在这一次握手内有意义。
 - **跨执行耐久 session**（真正登录后的会话 cookie，带 `Max-Age`/`Expires`、有有效期、值得复用）：**不应随 jar 丢弃**。执行结束时，**核心从 jar 中收割耐久 cookie 存入 ADR-012 凭证库**（与 [`adr_012`](./adr_012_credential_store.md) §2.2 的 WebView 登录"收割 session"是**同一动作**，触发点从登录页扩展到 fetch 握手结束），带 `expiresAt`、走生命周期、401 时按 §2.6 / ADR-012 §2.5 刷新。adapter 全程仍看不到值。
 
-**收割判据（判据 b，显式且可审计）**：**只收割 manifest `credentials.<name>` 显式声明了 ref 的那些 cookie**（按 name → `type: cookie` + `scope` 匹配 origin），其余一律按瞬态丢弃。不靠 cookie 属性启发式（判据 a）猜"哪些算耐久"——以已验签 manifest 的显式声明为准，与 [`adr_013`](./adr_013_manifest_credentials.md) 的 `credentials` 块对齐。这样：①有效性问题消失（耐久 session 进库可复用）；②红线 #1 不破（收割在核心、adapter 不可见）；③jar 回归纯草稿纸。**未被任何 ref 声明的 cookie 永不进库**——封死"adapter 诱导 origin 下发任意 cookie 持久化到核心"的面。此桥接是宿主侧安全敏感代码，随 fetch 模式一并人工审（不得 AI 独自闭环）。
+**收割判据（判据 b，显式且可审计）**：**只收割 manifest `credentials.<name>` 显式声明了 ref 的那些 cookie**，其余一律按瞬态丢弃。不靠 cookie 属性启发式（判据 a）猜"哪些算耐久"——以已验签 manifest 的显式声明为准，与 [`adr_013`](./adr_013_manifest_credentials.md) 的 `credentials` 块对齐。
+
+**匹配算法（从 jar 中选择收割目标）**：遍历 manifest 中所有 `credentials.<name>` 且 `type: "cookie"` 的条目；对每个条目，取其 `scope` 中**每条** URL 前缀解析出 `(scheme, host, pathPrefix)`，在 jar 中按 **RFC 6265 标准匹配方向**筛选——即"该 cookie 是否会被发往 scope 内的 URL"：
+  - **域匹配（RFC 6265 §5.1.3）**：scope host **domain-match** 该 cookie 的 `Domain`——即 cookie `Domain` 等于 scope host 或为其**父域**（cookie 的作用域等于或更宽）。**方向不可写反**：是 scope host 落在 cookie 域内，不是 cookie 域落在 scope host 内（后者会漏掉以父域下发的 session cookie）。
+  - **路径匹配（RFC 6265 §5.1.4）**：cookie 的 `Path` 是 scope `pathPrefix` 的**前缀**（cookie 适用于 scope 路径或更宽）；cookie path 比 scope 更深则不会发往 scope，不收割。
+  - **`Secure` / scheme**：scope 为 `https` 时 `Secure` cookie 正常纳入；非 https scope 不应出现（C4 警告）。
+
+  **匹配到的 cookie 整体（name=value 对集合）作为该 credential ref 的值写入 `CredentialEntry.value`**（加密落盘）。若 jar 中无命中 cookie 则不写入（该 ref 无收割产出，不是错误——可能本次执行未走登录流程）。
+
+**jar cookie 与 broker 注入的优先级**：当 broker 据 credential ref 预注入了 cookie A，且 origin 在本次执行的后续响应中 `Set-Cookie` 了同名 cookie A（值不同），后续 `ctx.fetch` 请求中**以 jar 中 origin 最新下发的值为准**（origin 可能刚刷新了 session）。但**收割入库时，仍以 jar 中的最终状态为权威**——即 origin 的最新值覆盖预注入值。broker 下次执行时从库中取到的就是 origin 刷新后的值。这确保 session 轮换场景下凭证库不会持有过期值。
+
+这样：①有效性问题消失（耐久 session 进库可复用）；②红线 #1 不破（收割在核心、adapter 不可见）；③jar 回归纯草稿纸。**未被任何 ref 声明的 cookie 永不进库**——封死"adapter 诱导 origin 下发任意 cookie 持久化到核心"的面。此桥接是宿主侧安全敏感代码，随 fetch 模式一并人工审（不得 AI 独自闭环）。
 
 3. **反爬挑战由 fetch 模式 adapter 处理（official 独占）。** 解析内联 JS 算 answer、伪造浏览器指纹，**超出"薄归一化"**，天然属于 fetch 模式 adapter 的职责（ADR-002 official 独占 fetch）。典型流程：adapter `ctx.fetch` 挑战端点（passthrough，不注入凭证）→ 解析 challenge → `ctx.fetch` 提交 answer → per-execution jar 自动带上 origin 下发的 cookie → 后续请求正常走凭证注入。对公开数据，campus-relay 侧的 adapter 执行结果可经**服务端 public 缓存**（ADR-000 §2.1）分发——public 服务器本身**不执行 adapter 也不持凭证**（红线 #2），只缓存已归一化的产出。⚠️ 逆向期的 `verify=False`（关 TLS 校验）一类手段**禁止进标准 adapter**——TLS 必须校验（transport 不 MITM，ADR-003 §2.3）。
 
@@ -142,8 +153,8 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 - **per-execution cookie jar**：仅限单次执行、不落核心凭证库、不跨执行、scope 受 network.allow 约束；与 broker 凭证注入严格分离。
 - 客户端运行时：`adapter_runtime.dart` 增 fetch 模式（异步 handler、job queue pump、网络/并发限额 §2.8）；`ctx.fetch` 经边界回调到 Dart 宿主。
 - 服务端沙箱：`server/src/runtime/sandbox.ts` 同步增 fetch 模式 ctx。
-- **契约 schema（独立 issue + PR）**：manifest 增 `credentials` 声明（§2.3 草图），与 ADR-001 协调，向后兼容。**本 ADR 接受后创建追踪 issue。**
+- ~~**契约 schema（独立 issue + PR）**：manifest 增 `credentials` 声明（§2.3 草图）~~ **已落地**：[`adr_013`](./adr_013_manifest_credentials.md) + PR #22（manifest.schema.json 增可选 `credentials` 块 + tools 校验器 C6–C9），向后兼容。
 - 测试：录制/回放夹具机制；宿主侧净化/脱敏/注入单测；fetch 模式双跑（基于回放）。
-- **pattern-based 后置审计**（后续）：对 adapter 产出做 token-pattern 扫描，告警不阻断。
+- **pattern-based 后置审计**（后续，非阻塞）：对 adapter 产出做 token-pattern 扫描，告警不阻断。**时间线**：**初版 token-pattern 清单建议随首个 fetch-mode adapter PR 一并落地**（彼时已有真实凭证格式可建清单），不阻塞本 ADR 接受；清单随实现增补。
 - 安全检查清单：随实现 PR 附"凭证零泄露"逐项自检（出站请求头/响应头/重定向/body 已接受风险确认 + passthrough 不带凭证确认）。
 - iOS 2.5.2 合规评估（[#4]）。
