@@ -1,7 +1,7 @@
 # ADR-003：传输底座抽象与 VPN 复刻接入（许可证隔离方案）
 
 - **状态**：草案（Proposed） 本文定义传输底座（看到**全部流量**的承重路径，红线 #4/#1）。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
-- **日期**：2026-06-12（**修订 2026-06-14**：§2.3 澄清"TLS 不终止 ≠ 禁止隧道封装"——L3/SSL-VPN 嵌套加密天然兼容，仅"本地拆 TLS"触红线 #1；§2.4 协议模式探针增"是否本地终止/拦截 app TLS"一项）
+- **日期**：2026-06-12（**修订 2026-06-14**：§2.3 澄清"TLS 不终止 ≠ 禁止隧道封装"——L3/SSL-VPN 嵌套加密天然兼容，仅"本地拆 TLS"触红线 #1；§2.4 协议模式探针增"是否本地终止/拦截 app TLS"一项）（**修订 2026-06-14b（review 跟进 PR #23）**：§2.2 加注 relay 优先为目标态、首版仅 client-direct（对齐 ADR-012 §2.6）；§2.2 降级链补 system-vpn 自身失败分支；§3 增第 7 条 iOS Personal VPN entitlement 可得性"待确认"开放项）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.4 transport/adapter 区分、§5.2 VPN 复刻风险、红线 #4）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（签名 / 官方签名加载 / 吊销，草案）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（`ctx.fetch` 出网经 transport，草案）、[`adr_010_ios_appstore.md`](./adr_010_ios_appstore.md)（iOS 无隧道、GPLv3 分发不相容、指南 5.4）
 - **适用范围**：**传输底座（原生模块）**的抽象接口、信任与加载、平台可用性矩阵、atrust VPN 复刻的接入与**许可证隔离**。**不含** adapter 信任分档（ADR-002）、凭证注入/脱敏机制（ADR-009）、UI。
 
@@ -113,6 +113,7 @@ ADR-000 §3.4 把**传输底座**（原生、长生命周期、有状态、**承
 4. **"TLS 不终止"是硬不变量。** 若未来某 transport 需要看明文（如协议改写），即触碰红线 #1，**必须单独 ADR + 安全评审**，默认禁止。
 5. **跨平台能力不对称**（iOS 最弱）带来产品文案/预期管理成本。
 6. **单 active transport；split-tunnel 不在本文。** 按域名分流（部分走隧道、部分直连）会放大"路由错配致私密流量裸奔"的风险（§2.2 不变量），留待单独评估。
+7. **🔲 待确认（接受前）：iOS Personal VPN entitlement 可得性。** `system-vpn` 档在 iOS 依赖 **Personal VPN entitlement**（`NEVPNManager`）。其门槛远低于 Network Extension，但仍是一项 entitlement 依赖，且 [ADR-010](./adr_010_ios_appstore.md) 未就此评估。**取向**：标注"待确认"即可接受本 ADR——若该 entitlement 因审核策略不可得，iOS 的 `system-vpn` 引导退化为"提示用户在系统设置自行配置 VPN"（纯引导、零 entitlement），不阻塞 `direct` 档与本 ADR 主体。须在 iOS 上架评估（§4 / ADR-010 §3.3）时一并确认。
 
 ---
 
