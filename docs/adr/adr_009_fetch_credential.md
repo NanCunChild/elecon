@@ -100,7 +100,7 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 - **`network.allow` 中未被任何 `credentials.scope` 覆盖的条目 = passthrough**（可达但不注入凭证）。上例中 `https://captcha.example.edu.cn/challenge/*` 不在任何 scope 内 → 请求放行但不带凭证，适用于反爬挑战等场景。
 - **校验规则**：① 所有 `credentials.scope` 必须是 `network.allow` 的**子集**（`tools/` 校验器强制：不能声明注入一个连出口都不允许的 URL）；② passthrough 条目**无需被 scope 覆盖**——这是合法的"声明但不注入"。
 
-> 此草图尚未纳入 `contract/manifest.schema.json`。正式扩展须走**独立 issue + PR**（schema 改动属红线 #6，须与 ADR-001 §5 协调、向后兼容）。待本 ADR 接受后创建追踪 issue。
+> 此草图的**正式 schema 扩展已拆为独立 ADR**：见 [`adr_013_manifest_credentials.md`](./adr_013_manifest_credentials.md)（草案），它把本 §2.3 草图落为 `contract/manifest.schema.json` 的可选顶层 `credentials` 块、与 ADR-001 §5 协调、向后兼容（红线 #6），并定义 `tools/` 校验器的静态规则。本 §2.3 与 ADR-013 的匹配规格（scope ⊆ network.allow、最长前缀消歧）须共享同一实现。
 
 ### 2.4 与 HTML 源 / 多步握手 adapter 的贴合（ADR-011 / 实测 adapter 联动）
 
