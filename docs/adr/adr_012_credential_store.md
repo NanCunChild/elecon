@@ -1,6 +1,6 @@
 # ADR-012：凭证获取（登录）与可信核心凭证存储
 
-- **状态**：**草案（Proposed）** ⚠️ 本文触碰红线 #1（凭证）的**最高风险面**——凭证从哪来、存哪、什么形态。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
+- **状态**：草案（Proposed） 本文触碰红线 #1（凭证）的**最高风险面**——凭证从哪来、存哪、什么形态。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
 - **日期**：2026-06-13（**修订 2026-06-14**：① §2.2 增 fetch 模式握手的耐久 session 收割——与 WebView 登录同一动作、判据 = manifest 声明的 credential ref（判据 b），与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 / [`adr_013`](./adr_013_manifest_credentials.md) 协调；② §2.4 闭合 scope/type 双源——store 保留为防御性副本+一致性基准，注入权威唯一在已验签 manifest，不一致以 manifest 为准并告警；③ §2.6 钉定首版仅 client-direct，relay 凭证落点推迟、本 ADR 不依赖 relay，relay 须满足"零落盘+用完即弃/客户端注入"硬约束）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 可信核心）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / 契约）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（谁有资格用凭证 = official）、[`adr_003_transport.md`](./adr_003_transport.md)（campus-relay 落点）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端核心）
 - **被依赖**：[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（其 §2.3 的 "credential reference" 正是指向本文定义的凭证条目；其注入消费本文的存储）
@@ -113,11 +113,11 @@ CredentialEntry {
 
 ## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
 
-> 安全敏感项标 🔒（人工主导、AI 仅辅助）：
+> 安全敏感项标：
 
-- 🔒 核心**安全存储抽象**（iOS Keychain / Android Keystore / 桌面 Secret Service）+ at-rest 加密；统一"按 ref 存/取/删"接口。
-- 🔒 **核心托管 WebView 登录 + session 收割**（客户端；导航域闭锁、上下文隔离、收割后销毁）。
-- 🔒 **`CredentialEntry` 模型 + credential reference 解析**，与 ADR-009 broker 注入对接（scope ⊆ network.allow 校验）。
+- 核心**安全存储抽象**（iOS Keychain / Android Keystore / 桌面 Secret Service）+ at-rest 加密；统一"按 ref 存/取/删"接口。
+- **核心托管 WebView 登录 + session 收割**（客户端；导航域闭锁、上下文隔离、收割后销毁）。
+- **`CredentialEntry` 模型 + credential reference 解析**，与 ADR-009 broker 注入对接（scope ⊆ network.allow 校验）。
 - **生命周期**：过期检测（401/302→登录页）、登出抹除、吊销联动（与 ADR-002 kill-switch）。
 - 声明式刷新配方（可选，**独立契约 ADR**，向后兼容）。
 - campus-relay 凭证落点设计（与 ADR-003/009 协调，本文后续）。

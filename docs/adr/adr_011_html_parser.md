@@ -1,6 +1,6 @@
 # ADR-011：adapter HTML 解析（SDK 内置纯 JS 解析器，零漂移）
 
-- **状态**：**已接受（Accepted），分批落地中** 本文改动 **adapter SDK 表面（`contract/adapter-sdk/`）+ 两端运行时 moduleHandler**——触及契约与 runtime（红线 #6 契约即承重墙、#10 架构性改动先写 ADR）。**不碰网络/凭证**（非红线 #1）。核心取向经人工审阅接受；落地按 §4 拆批，进度见该节勾选项。
+- **状态**：已接受（Accepted），分批落地中 本文改动 **adapter SDK 表面（`contract/adapter-sdk/`）+ 两端运行时 moduleHandler**——触及契约与 runtime（红线 #6 契约即承重墙、#10 架构性改动先写 ADR）。**不碰网络/凭证**（非红线 #1）。核心取向经人工审阅接受；落地按 §4 拆批，进度见该节勾选项。
 - **日期**：2026-06-12（起草）／2026-06-13（接受 + 首批落地：bundle、两端 runtime、双跑闸门）
 - **落地 PR**：[#15](https://github.com/NanCunChild/elecon/pull/15)（`elecon:html` bundle + 服务端/客户端 moduleHandler + XIDIAN `notice.list` + 两端 golden）
 - **依赖**：[`adr_001_contract.md`](./adr_001_contract.md)（SDK 类型 / 契约）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端 QuickJS-wasm）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端 QuickJS + moduleHandler + engine-floor canary）
@@ -82,7 +82,7 @@ adapter 通过 `elecon:html` 模块获得以下能力（底层由 htmlparser2 + 
 
 ---
 
-## 4. 落地清单（拆成可审查的小 PR）
+## 4. 落地清单（拆成可审查的小 PR，落地后删除）
 
 - [x] **Bundle 构建**：以 esbuild 将 htmlparser2 + domutils + css-select + entities + domhandler 打为**单文件 ESM bundle**（目标 ES2020，`minify:false`，无外部依赖）；产出置于 `adapters/_stdlib/html.bundle.js`，纳入版本管理。 — PR #15（`build.mjs` + bundle）
 - [x] **运行时（服务端）**：`server/src/runtime/sandbox.ts` 的 `setModuleLoader` 注册 `elecon:html` → 加载同一份 bundle；未知模块名 fail-closed 抛错。 — PR #15

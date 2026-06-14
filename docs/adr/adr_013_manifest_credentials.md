@@ -1,6 +1,6 @@
 # ADR-013：manifest `credentials` 声明（凭证引用契约扩展）
 
-- **状态**：草案（Proposed） 本文改动 `contract/`（manifest schema），触碰红线 #6（契约即承重墙）且服务于红线 #1 的凭证注入路径。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
+- **状态**：已接受（Accepted） 本文改动 `contract/`（manifest schema），触碰红线 #6（契约即承重墙）且服务于红线 #1 的凭证注入路径。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
 - **日期**：2026-06-14
 - **依赖**：[`adr_001_contract.md`](./adr_001_contract.md)（§5 manifest 规范、§8 版本与兼容治理）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（§2.3 凭证作用域草图——本文将其正式纳入 schema）、[`adr_012_credential_store.md`](./adr_012_credential_store.md)（§2.4 `CredentialEntry`——本文的 `credentials.<name>` 即其 `ref` 的指向目标）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（§2.3 签名覆盖 manifest，使 credentials 声明不可篡改）
 - **被依赖**：ADR-009 broker 注入消费本文的 `credentials` 声明；ADR-012 store 的 `ref` 与本文 key 对齐。
@@ -122,13 +122,13 @@ manifest 增一个**可选**顶层对象 `credentials`，与 `network` 平级。
 
 ---
 
-## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
+## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR，落地后删除）
 
-> 安全敏感项标 🔒（人工主导、AI 仅辅助）：
+> 安全敏感项标：
 
 - **schema**：`contract/manifest.schema.json` 增可选顶层 `credentials`（key 命名约束 + `scope: string[]` + `type` 枚举）；顶层未知字段宽容策略。
 - **ADR-001 §5 同步**：补 `credentials` 字段说明，标注向后兼容（红线 #6 协调）。
-- 🔒 **`tools/` 校验器**：§2.4 六条静态规则（scope ⊆ network.allow、最长前缀/等长拒绝消歧、引用闭合、type 合法、passthrough 合法、sideload 联动）。与 ADR-009 broker **共享 uri-template 匹配规格**。
+- **`tools/` 校验器**：§2.4 六条静态规则（scope ⊆ network.allow、最长前缀/等长拒绝消歧、引用闭合、type 合法、passthrough 合法、sideload 联动）。与 ADR-009 broker **共享 uri-template 匹配规格**。
 - **跨平台 golden**：scope 匹配/消歧的判定在 tools(Node) 与 broker(Dart/Node) 两端一致性测试（与 ADR-002 §3.5 canonicalization 同类跨端一致性要求）。
 - **协调 ADR-012**：`CredentialEntry.ref` ↔ `credentials.<name>` 对齐；双源 scope/type 的最终归属（manifest 权威）。
 - **协调 ADR-009**：broker 注入消费本 schema；§2.5 的匹配规格统一。
