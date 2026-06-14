@@ -74,7 +74,7 @@ manifest 增一个**可选**顶层对象 `credentials`，与 `network` 平级。
 - `CredentialEntry` 携带的 `scope` / `type` 是**防御性副本 / 取值索引**，**必须与 manifest 一致**；不一致时 broker **以 manifest 为准并告警**（疑似 store 被污染或 adapter 升级后 scope 漂移）。
 - `CredentialEntry.value` 是唯一只存在于 store、绝不进 manifest 的字段（红线 #1）。
 
-> 协调项（留给 ADR-012 后续）：是否把 `CredentialEntry.scope`/`type` 从存储中**删除**、运行时一律从已验签 manifest 读取，以消除双源。本文倾向"manifest 权威 + store 副本仅作一致性校验"，最终由 ADR-012 拍板。
+> 协调项已闭合（ADR-012 §2.4，2026-06-14 决策）：**`CredentialEntry` 保留 `scope`/`type` 作为防御性副本 + 一致性校验基准，但不作为注入依据**；注入决策以已验签 manifest 为唯一权威，store 副本不一致时以 manifest 为准并告警。不删除 store 副本（保留以做一致性检测），但消除了"双源歧义"——权威单一在 manifest。
 
 ### 2.3 统一两模式的凭证命名空间
 
