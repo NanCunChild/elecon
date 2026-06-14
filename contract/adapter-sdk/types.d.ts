@@ -9,7 +9,14 @@
 // ---- fetch 模式的 ctx ----
 
 interface CtxFetch {
-  /** 受限 fetch：仅命中 manifest 白名单的域名会被注入凭证 */
+  /**
+   * 受限 fetch（语义见 ADR-009，2026-06-13 修订）：
+   * - 出口 fail-closed：URL 必须命中 manifest `network.allow`，否则直接拒绝。
+   * - **命中白名单 ≠ 注入凭证**：仅当 URL 命中某 `credentials.<name>.scope` 时
+   *   broker 才注入对应凭证（inject）；白名单内但未被任何 scope 覆盖的 URL 放行
+   *   但不注入（passthrough，用于反爬挑战端点 / 公开 CDN / OAuth 中间端点等）。
+   * - adapter 永不接触凭证值，也拿不到带 token 的 URL / Set-Cookie / 重定向中间 token。
+   */
   fetch(url: string, init?: RequestInit): Promise<Response>;
   log(level: "debug" | "info" | "warn" | "error", message: string): void;
   now(): number;

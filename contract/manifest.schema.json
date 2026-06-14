@@ -13,7 +13,8 @@
     "displayName": { "type": "string" },
     "trustTier": {
       "type": "string",
-      "enum": ["official", "community", "sideload"]
+      "description": "official | sideload（community 档已于 ADR-002 2026-06-14 修订移除）",
+      "enum": ["official", "sideload"]
     },
     "mode": {
       "type": "string",
