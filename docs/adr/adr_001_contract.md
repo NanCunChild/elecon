@@ -176,7 +176,19 @@ manifest 是 adapter 对核心的契约，JSON 格式，供宿主与 `tools/` �
 }
 ```
 
-`network.allow` 是核心做凭证注入的依据：**只有命中白名单的请求才会被注入凭证；打到白名单外一律不带凭证（或直接拒）**。这是 capability-based security 的落点——即便 adapter 恶意，也只能在学校自己的接口范围内活动，无法拿着凭证往外带数据。
+`network.allow` 是核心的**出口闸门**：打到白名单外一律拒绝（fail-closed）。这是 capability-based security 的落点——即便 adapter 恶意，也只能在学校自己的接口范围内活动，无法拿着凭证往外带数据。
+
+**凭证注入由可选的 `credentials` 块声明（[`adr_013`](./adr_013_manifest_credentials.md)）**，**不是**"命中白名单即注入"：
+
+```json
+"credentials": {
+  "session": { "scope": ["https://jw.example.edu.cn/api/*"], "type": "cookie" }
+}
+```
+
+- `credentials.<name>`：凭证引用名（= ADR-012 `CredentialEntry.ref`），值声明 `scope`（注入作用域，须 ⊆ `network.allow`）+ `type`（`cookie`/`header`）。**只含引用名 + 作用域 + 注入方式，绝不含凭证值**（红线 #1）。
+- **命中 `network.allow` ≠ 注入**：仅当请求 URL 命中某 `credentials.<name>.scope` 才注入对应凭证；白名单内未被任何 scope 覆盖的 URL = passthrough（可达不注入，用于反爬挑战端点等）。
+- 可选字段、向后兼容；`tools/` 校验器强制 scope ⊆ allow、scope 等长重叠拒绝、parser `requests[].credential` 引用闭合（见 ADR-013 §2.4）。
 
 ### 5.2 信任档与可用配置的约束
 

@@ -4,9 +4,12 @@
  * 检查项：
  *  C1 manifest 对 contract/manifest.schema.json 的合规性（ajv）
  *  C2 capability id ∈ registry.json，且 emits.schema/version 与 registry 一致（防漂移）
- *  C3 sideload 信任档**强制** parser 模式（拒绝 sideload + fetch，红线 #5）
+ *  C3 sideload 信任档**强制** parser 模式（拒绝 sideload + fetch，分发/签名路径，红线 #5）
  *  C4 网络白名单：fetch 模式须有 allow；parser 的每条 requests.url 须被 allow 覆盖
  *  C5 夹具：fixtures/*.json 的 expected 须通过该 capability 的 emits schema
+ *  C6 凭证作用域：credentials.<name>.scope 每条须 ⊆ network.allow（ADR-013 §2.4 规则 1）
+ *  C7 作用域消歧：不同凭证的 scope 前缀长度相同且重叠 → 拒绝（ADR-013 §2.4 规则 2 / ADR-009 §2.3b）
+ *  C8 引用闭合：parser 的 requests.credential 须在 credentials 声明；声明未用 → warn（ADR-013 §2.4 规则 3）
  *
  * 尚未覆盖（留给优先级 #3 客户端落地）：
  *  - 完整 golden 双跑：客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产出比对。
@@ -49,11 +52,18 @@ interface CapabilityDecl {
   requests?: Array<{ key: string; method: string; url: string; credential?: string }>;
 }
 
+interface CredentialDecl {
+  scope: string[];
+  type: "cookie" | "header";
+}
+
 interface Manifest {
   adapterId: string;
-  trustTier: "official" | "community" | "sideload";
+  trustTier: "official" | "sideload";
   mode: "fetch" | "parser";
   network: { allow: string[] };
+  /** 凭证引用声明（ADR-013）。可选；缺省即无凭证注入。 */
+  credentials?: Record<string, CredentialDecl>;
   capabilities: CapabilityDecl[];
 }
 
@@ -169,6 +179,108 @@ export function checkManifest(manifest: Manifest, contract: Pick<Contract, "mani
             message: `capability '${cap.id}' 的 request '${req.key}' 越出白名单：${req.url}`,
           });
         }
+      }
+    }
+  }
+
+  // C6–C8 凭证声明检查（ADR-013 §2.4）。credentials 可选；缺省即跳过。
+  findings.push(...checkCredentials(manifest, allow));
+
+  return findings;
+}
+
+// ---- C6–C8：credentials 声明（ADR-013 §2.4）----
+
+/** 取 uri-template 第一个 `*` 之前的字面前缀（无 `*` 则取全串）。用于最长前缀消歧。 */
+function scopePrefix(pattern: string): string {
+  const star = pattern.indexOf("*");
+  return star === -1 ? pattern : pattern.slice(0, star);
+}
+
+/** 两个 scope 前缀是否重叠（其一是另一的字符串前缀，含相等）。 */
+function prefixesOverlap(a: string, b: string): boolean {
+  return a.startsWith(b) || b.startsWith(a);
+}
+
+export function checkCredentials(
+  manifest: Pick<Manifest, "credentials" | "mode" | "capabilities">,
+  allow: string[],
+): Finding[] {
+  const findings: Finding[] = [];
+  const creds = manifest.credentials ?? {};
+  const credNames = Object.keys(creds);
+
+  // 收集所有 scope 条目（带所属凭证名），供 C6/C7 使用
+  const scopes: Array<{ name: string; pattern: string }> = [];
+  for (const name of credNames) {
+    const decl = creds[name];
+    if (!decl) continue;
+
+    // C9（防御性，schema C1 亦拦）：type 合法
+    if (decl.type !== "cookie" && decl.type !== "header") {
+      findings.push({
+        level: "error",
+        code: "C9_bad_credential_type",
+        message: `credential '${name}' 的 type 非法：${String(decl.type)}（须为 cookie | header）`,
+      });
+    }
+
+    for (const pattern of decl.scope ?? []) {
+      scopes.push({ name, pattern });
+      // C6 scope ⊆ network.allow
+      if (!urlCoveredByAllow(pattern, allow)) {
+        findings.push({
+          level: "error",
+          code: "C6_scope_outside_allow",
+          message: `credential '${name}' 的 scope 越出 network.allow：${pattern}（不能注入一个连出口都不允许的 URL）`,
+        });
+      }
+    }
+  }
+
+  // C7 作用域消歧：不同凭证的 scope，前缀长度相同且重叠 = 歧义 → 拒绝。
+  // （长度不同的重叠由运行时"最长前缀胜出"消解，非错误。）
+  for (let i = 0; i < scopes.length; i++) {
+    for (let j = i + 1; j < scopes.length; j++) {
+      const a = scopes[i]!;
+      const b = scopes[j]!;
+      if (a.name === b.name) continue; // 同一凭证内部重叠无歧义
+      const pa = scopePrefix(a.pattern);
+      const pb = scopePrefix(b.pattern);
+      if (pa.length === pb.length && prefixesOverlap(pa, pb)) {
+        findings.push({
+          level: "error",
+          code: "C7_ambiguous_credential_scope",
+          message: `credential '${a.name}' 与 '${b.name}' 的 scope 前缀等长且重叠，注入歧义：'${a.pattern}' vs '${b.pattern}'`,
+        });
+      }
+    }
+  }
+
+  // C8 引用闭合：parser 的 requests.credential 须在 credentials 声明；声明未用 → warn。
+  const referenced = new Set<string>();
+  if (manifest.mode === "parser") {
+    for (const cap of manifest.capabilities ?? []) {
+      for (const req of cap.requests ?? []) {
+        if (req.credential === undefined) continue;
+        referenced.add(req.credential);
+        if (!(req.credential in creds)) {
+          findings.push({
+            level: "error",
+            code: "C8_undeclared_credential_ref",
+            message: `capability '${cap.id}' 的 request '${req.key}' 引用未声明的 credential '${req.credential}'`,
+          });
+        }
+      }
+    }
+    // 仅 parser 模式判定"声明未用"：fetch 模式凭证按 scope 隐式使用，不告警。
+    for (const name of credNames) {
+      if (!referenced.has(name)) {
+        findings.push({
+          level: "warn",
+          code: "C8_unused_credential",
+          message: `credential '${name}' 已声明但无 request 引用（parser 模式）`,
+        });
       }
     }
   }

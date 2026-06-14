@@ -119,4 +119,87 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ 合法 parser 通过（占位符不干扰白名单匹配）");
 }
 
+// 6) credential scope 越出 network.allow → C6
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://h/api/*"] },
+      credentials: { session: { scope: ["https://evil/api/*"], type: "cookie" } },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("C6_scope_outside_allow"), "scope 越出 allow 应触发 C6");
+  console.log("  ✓ credential scope 越出白名单被拒（C6）");
+}
+
+// 7) 不同凭证 scope 前缀等长且重叠 → C7
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://h/*"] },
+      credentials: {
+        a: { scope: ["https://h/api/*"], type: "cookie" },
+        b: { scope: ["https://h/api/*"], type: "header" },
+      },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("C7_ambiguous_credential_scope"), "等长重叠 scope 应触发 C7");
+  console.log("  ✓ 等长重叠的凭证 scope 被拒（C7）");
+}
+
+// 8) parser request 引用未声明的 credential → C8
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "sideload",
+      mode: "parser",
+      network: { allow: ["https://h/api/*"] },
+      capabilities: [
+        {
+          id: "grades.list",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+          requests: [{ key: "raw", method: "GET", url: "https://h/api/x", credential: "session" }],
+        },
+      ],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("C8_undeclared_credential_ref"), "未声明 credential 引用应触发 C8");
+  console.log("  ✓ parser 引用未声明 credential 被拒（C8）");
+}
+
+// 9) 合法 fetch + credentials：不同长度前缀重叠由最长前缀消解，非错误
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://h/*"] },
+      credentials: {
+        broad: { scope: ["https://h/*"], type: "cookie" },
+        api: { scope: ["https://h/api/*"], type: "header" },
+      },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.equal(
+    findings.filter((f) => f.level === "error").length,
+    0,
+    `不同长度前缀重叠不应报错（最长前缀消解）：${JSON.stringify(findings)}`,
+  );
+  console.log("  ✓ 不同长度前缀重叠由最长前缀消解，不报错（C7 不误杀）");
+}
+
 console.log("validator smoke 全部通过。");
