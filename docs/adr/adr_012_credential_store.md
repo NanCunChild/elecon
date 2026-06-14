@@ -1,7 +1,7 @@
 # ADR-012：凭证获取（登录）与可信核心凭证存储
 
 - **状态**：**草案（Proposed）** ⚠️ 本文触碰红线 #1（凭证）的**最高风险面**——凭证从哪来、存哪、什么形态。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
-- **日期**：2026-06-13
+- **日期**：2026-06-13（**修订 2026-06-14**：§2.2 增 fetch 模式握手的耐久 session 收割——与 WebView 登录同一动作、判据 = manifest 声明的 credential ref（判据 b），与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 / [`adr_013`](./adr_013_manifest_credentials.md) 协调）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 可信核心）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / 契约）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（谁有资格用凭证 = official）、[`adr_003_transport.md`](./adr_003_transport.md)（campus-relay 落点）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端核心）
 - **被依赖**：[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（其 §2.3 的 "credential reference" 正是指向本文定义的凭证条目；其注入消费本文的存储）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)、[#17](https://github.com/NanCunChild/elecon/issues/17)；本文回应 #8/#10 评审指出的"**凭证存储 + 登录获取孤儿缺口**"。
@@ -39,6 +39,8 @@ ADR-009 假定"按 reference 注入凭证"，ADR-002 假定"official 才有凭�
 1. 核心打开一个**核心控制的 WebView**，加载学校**真实登录页**（URL 由 official manifest 声明，受 ADR-002 签名约束）。
 2. 用户在**学校自己的页面**输入账号密码——凭证进的是学校页面，**不经过 adapter，甚至不必进核心的字段存储**。
 3. 登录成功后，核心从 WebView 的 cookie jar / 存储中**收割 session 凭证**（cookie / token），存入 §2.1 安全存储。**核心收割的是登录结果（session），不强制持有原始口令**——进一步缩小红线 #1 暴露面。
+
+   > **同一收割动作也服务 fetch 模式握手（2026-06-14，与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 协调）**：fetch 模式 adapter 经 `ctx.fetch` 完成多步反爬/握手后，origin 下发的**耐久 session cookie** 同样在执行结束时由核心收割进本存储——触发点从"WebView 登录页"扩展到"fetch 握手结束"，但收割逻辑、安全边界、`CredentialEntry` 形态一致。**收割判据 = manifest `credentials.<name>` 显式声明的 ref（判据 b）**，未声明者一律丢弃（不持久化），封死"诱导 origin 下发任意 cookie 入库"的面。adapter 全程不可见值。
 4. WebView 是**核心代码、非 adapter**；其中跑的是学校页面的 JS，在隔离 WebView 内，**不接触 adapter 运行时、不接触其它学校的凭证**。
 
 **为什么 WebView 而非"核心 headless 模拟登录"**：验证码、2FA、SSO 联合登录、JS 反爬挑战这些**人机交互/反爬**用 headless 请求几乎不可维护（正是 ADR-009 §3.4 主动划走的"JS 挑战"领域）。WebView 让学校页面自己处理这些，核心只取最终 session——**最大兼容 + 最少维护**，与项目"对接口变动保持韧性、最小人力"的主线一致。

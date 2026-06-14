@@ -1,7 +1,7 @@
 # ADR-009：fetch 模式 —— 受限 `ctx.fetch` 与凭证注入
 
 - **状态**：草案（Proposed） 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
-- **日期**：2026-06-11（**修订 2026-06-13**：§2 第 4 条改白名单分"注入/仅可达"两类（声明但不注入）；增重定向跳数限制+每跳白名单校验；增 §2 第 6 条 401 透传行为；§2.6/§2.4 对齐 ADR-002 修订；credentials schema 校验规则同步）（**修订 2026-06-13b**：§2.3 增 scope 重叠消歧规则——最长前缀胜出、等长拒绝；§3 增第 4 条请求 body 外泄向量声明）
+- **日期**：2026-06-11（**修订 2026-06-13**：§2 第 4 条改白名单分"注入/仅可达"两类（声明但不注入）；增重定向跳数限制+每跳白名单校验；增 §2 第 6 条 401 透传行为；§2.6/§2.4 对齐 ADR-002 修订；credentials schema 校验规则同步）（**修订 2026-06-13b**：§2.3 增 scope 重叠消歧规则——最长前缀胜出、等长拒绝；§3 增第 4 条请求 body 外泄向量声明）（**修订 2026-06-14**：§2.8 限额数值标注**临时占位、待实测校准**；§2.4 增执行结束**耐久 cookie 收割进凭证库**桥接（判据 = manifest 声明的 credential ref，与 [`adr_013`](./adr_013_manifest_credentials.md) 对齐），解 jar 不持久化下的 session 复用/有效性问题；§2.3 草图正式扩展拆出 ADR-013）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 分层）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / envelope）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端沙箱）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端运行时）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)（实现任务）、[#4](https://github.com/NanCunChild/elecon/issues/4)（iOS 2.5.2 合规）
 - **适用范围**：fetch 模式 adapter 的网络出口（`ctx.fetch`）语义、可信核心的凭证注入与响应脱敏、两端（client-direct / campus-relay）执行落点。**不含** parser 模式（已由 ADR-005/008 落地）。
@@ -38,7 +38,7 @@ ADR-005/008 已落地 **parser 模式**：核心代取 + 脱敏 → adapter 纯�
 
 7. **仅官方签名 adapter 可跑 fetch 模式。** 侧载 adapter 一律退化为 parser（ADR-000 §3.3、红线 #5）。信任档由**核心验签裁定**（ADR-002 §2.2），不信任 manifest 自报的 `trustTier`；非 official → `ctx.fetch` 调用被宿主边界拒绝（ADR-002 §2.6 结构化权限错误），永不触达凭证注入。
 
-8. **fetch 模式 handler 是异步的（返回 Promise）**，与 parser 的"必须同步"相反。运行时需 pump job queue 并 await。限额：墙钟/内存对齐 `DEFAULT_LIMITS`；**单请求超时 10s**；**累计网络超时 30s**；**单次执行最大请求数 20**（防 DDoS / 资源耗尽）。**单次响应 body 大小不另设独立上限**——由 `DEFAULT_LIMITS` 的整体内存上限兜底（响应体载入 QuickJS 堆，超限触发 OOM 终止执行）。
+8. **fetch 模式 handler 是异步的（返回 Promise）**，与 parser 的"必须同步"相反。运行时需 pump job queue 并 await。限额（**数值为临时占位，2026-06-14：尚无实测依据，待真实多步握手 adapter 上线后校准——多步反爬流程可能吃掉请求数预算，需实践验证 20 是否够用**）：墙钟/内存对齐 `DEFAULT_LIMITS`；**单请求超时 ~10s**；**累计网络超时 ~30s**；**单次执行最大请求数 ~20**（防 DDoS / 资源耗尽）。**单次响应 body 大小不另设独立上限**——由 `DEFAULT_LIMITS` 的整体内存上限兜底（响应体载入 QuickJS 堆，超限触发 OOM 终止执行）。最终数值随实测在落地清单的运行时 PR 内固定。
 
 9. **执行落点：client-direct 或 campus-relay，永不 public。** 客户端用设备本地保管的凭证直连；校外私密数据走 `server/src/campus` 校内授权中继。`server/src/public` 哑服务**永不**参与 fetch 模式凭证注入（红线 #2：公网零凭证）。envelope `source.origin` 据此标 `client-direct` / `campus-relay`。
 
@@ -108,7 +108,14 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 
 1. **HTML 响应体的解析复用 [ADR-011](./adr_011_html_parser.md) 的 SDK 解析器。** fetch 模式 adapter 拿到 §2.5 透传的响应体若是 HTML，用 `elecon:html`（QuickJS 内纯 JS、两端零漂移）解析，而非各端原生——与 parser 模式同一套，不另起炉灶。
 
-2. **多步握手依赖的中间 cookie 由宿主「单次执行 cookie jar」承载，对 adapter 不可见。** 实测 XJT 教务有 JS 反爬挑战：`GET → 读响应体里的 challengeId → POST 指纹 → origin 下发 client_id cookie → 带 cookie 再 GET`。这类"流程中途由 origin 下发、**非学生凭证**"的会话 cookie，被 §2.5"剥 `Set-Cookie` 不给 adapter"会**丢失**。贴合：**宿主在单次执行内维护一个 cookie jar，自动持久化 origin 下发的 `Set-Cookie` 并在后续 `ctx.fetch` 携带，但始终不暴露给 adapter**（红线 #1 的"等价物"要求仍满足：adapter 看不到 cookie 值）。此 jar **仅限单次执行**，不落核心凭证库、不跨执行、不经 public。
+2. **多步握手依赖的中间 cookie 由宿主「单次执行 cookie jar」承载，对 adapter 不可见。** 实测 XJT 教务有 JS 反爬挑战：`GET → 读响应体里的 challengeId → POST 指纹 → origin 下发 client_id cookie → 带 cookie 再 GET`。这类"流程中途由 origin 下发"的会话 cookie，被 §2.5"剥 `Set-Cookie` 不给 adapter"会**丢失**。贴合：**宿主在单次执行内维护一个 cookie jar，自动持久化 origin 下发的 `Set-Cookie` 并在后续 `ctx.fetch` 携带，但始终不暴露给 adapter**（红线 #1 的"等价物"要求仍满足：adapter 看不到 cookie 值）。此 jar **仅限单次执行**，不跨执行、不经 public。
+
+**耐久 session 的收割桥接（2026-06-14 增，解"jar 不持久化下的有效性"问题）。** 分类口径**不是"origin 下发 vs 学生凭证"，而是"跨执行是否仍有用"**：
+
+- **执行内瞬态**（挑战 nonce、握手中途的 `client_id` 等）：用完即弃，jar 丢掉**无损**——它本就只在这一次握手内有意义。
+- **跨执行耐久 session**（真正登录后的会话 cookie，带 `Max-Age`/`Expires`、有有效期、值得复用）：**不应随 jar 丢弃**。执行结束时，**核心从 jar 中收割耐久 cookie 存入 ADR-012 凭证库**（与 [`adr_012`](./adr_012_credential_store.md) §2.2 的 WebView 登录"收割 session"是**同一动作**，触发点从登录页扩展到 fetch 握手结束），带 `expiresAt`、走生命周期、401 时按 §2.6 / ADR-012 §2.5 刷新。adapter 全程仍看不到值。
+
+**收割判据（判据 b，显式且可审计）**：**只收割 manifest `credentials.<name>` 显式声明了 ref 的那些 cookie**（按 name → `type: cookie` + `scope` 匹配 origin），其余一律按瞬态丢弃。不靠 cookie 属性启发式（判据 a）猜"哪些算耐久"——以已验签 manifest 的显式声明为准，与 [`adr_013`](./adr_013_manifest_credentials.md) 的 `credentials` 块对齐。这样：①有效性问题消失（耐久 session 进库可复用）；②红线 #1 不破（收割在核心、adapter 不可见）；③jar 回归纯草稿纸。**未被任何 ref 声明的 cookie 永不进库**——封死"adapter 诱导 origin 下发任意 cookie 持久化到核心"的面。此桥接是宿主侧安全敏感代码，随 fetch 模式一并人工审（不得 AI 独自闭环）。
 
 3. **反爬挑战由 fetch 模式 adapter 处理（official 独占）。** 解析内联 JS 算 answer、伪造浏览器指纹，**超出"薄归一化"**，天然属于 fetch 模式 adapter 的职责（ADR-002 official 独占 fetch）。典型流程：adapter `ctx.fetch` 挑战端点（passthrough，不注入凭证）→ 解析 challenge → `ctx.fetch` 提交 answer → per-execution jar 自动带上 origin 下发的 cookie → 后续请求正常走凭证注入。对公开数据，campus-relay 侧的 adapter 执行结果可经**服务端 public 缓存**（ADR-000 §2.1）分发——public 服务器本身**不执行 adapter 也不持凭证**（红线 #2），只缓存已归一化的产出。⚠️ 逆向期的 `verify=False`（关 TLS 校验）一类手段**禁止进标准 adapter**——TLS 必须校验（transport 不 MITM，ADR-003 §2.3）。
 
@@ -123,7 +130,7 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 5. **契约影响（红线 #6）。** fetch 模式需声明凭证作用域（§2.3 草图），涉及**扩展 manifest schema** → 属契约改动，须与 ADR-001 协调、走独立 ADR 且保持向后兼容，**不在本 ADR 内落地**。
 6. **测试不能像 parser 那样直接 golden 双跑**（网络非确定）。取向：**录制/回放夹具**——录一次真实交互（脱敏后）成固定夹具，之后 fetch 退化为对回放响应的确定性解析，可纳入双跑；凭证注入与脱敏逻辑在**宿主**层单测（不在 QuickJS）。
 7. **iOS 2.5.2（[#4]）联动。** fetch 模式让"下载的 adapter"真正发起网络请求，合规评估需与本设计一并做。iOS 端整体可上架形态已由 [ADR-010](./adr_010_ios_appstore.md) 定调：**首版仅 parser 模式上架，fetch 模式推迟**——本 ADR 接受并拟上 iOS 时，须按 ADR-010 §3.3 重做 2.5.2(a) 自检（仍限既有能力集）并补 5.1.1 隐私申报。
-8. **单次执行 cookie jar 是新的状态面（§2.4 第 2 条）。** 多步握手所需的 per-execution cookie jar 必须严格隔离：**不落核心凭证库、不跨执行、不经 public**；其实现是宿主侧安全敏感代码，随 fetch 模式一并人工审（不得 AI 独自闭环）。jar 与 broker 的"白名单凭证注入"是两条独立路径——jar 装的是 origin 下发的非凭证会话态，broker 装的是学生凭证，二者不得混用。
+8. **单次执行 cookie jar 是新的状态面（§2.4 第 2 条）。** per-execution cookie jar 本身**仅限单次执行、不跨执行、不经 public**；其实现是宿主侧安全敏感代码，随 fetch 模式一并人工审（不得 AI 独自闭环）。**例外（2026-06-14）**：执行结束时，**仅 manifest `credentials` 显式声明了 ref 的耐久 cookie** 被核心收割进 ADR-012 凭证库（§2.4 收割桥接，判据 b）——这是受控、可审计的跨执行持久化，不是 jar 自身持久化。未被声明的 cookie 一律随 jar 丢弃，绝不进库。jar 的"瞬态搬运"与 broker 的"白名单凭证注入"仍是两条独立路径，注入路径只认凭证库内的条目。
 
 ---
 
