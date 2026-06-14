@@ -42,13 +42,17 @@ ADR-000 §3.4 把**传输底座**（原生、长生命周期、有状态、**承
 | **`system-vpn`** | **引导用户在 OS 层配置 VPN**（iOS `NEVPNManager`/on-demand、Android `VpnService` 系统设置）；隧道在系统/第三方 App，elecon 只发起/检测、**不承载隧道本身** | 全平台（含 iOS） | 无（不分发隧道代码） | iOS 需申请 **Personal VPN entitlement**（门槛远低于 Network Extension，但仍是 entitlement 依赖）；Android/桌面 否 |
 | **`app-tunnel`** | **App 内原生隧道**（atrust 复刻属此） | **平台门控**：iOS 默认不编入（ADR-010） | **仅官方签名**加载（红线 #4）、最高信任档 | **是**（唯一触碰档） |
 
-**transport 与 campus relay 的关系**：当 `system-vpn` 或 `app-tunnel` 使客户端处于校园网可达状态时，私密数据请求**优先经 campus relay（`server/src/campus`）中转**；若 relay 不可用则 **fallback 到客户端直连学校 origin**。`direct` 档在校外时无校园网可达性，只能访问公开数据或提示用户。
+**transport 与 campus relay 的关系（目标架构）**：当 `system-vpn` 或 `app-tunnel` 使客户端处于校园网可达状态时，私密数据请求**优先经 campus relay（`server/src/campus`）中转**；若 relay 不可用则 **fallback 到客户端直连学校 origin**。`direct` 档在校外时无校园网可达性，只能访问公开数据或提示用户。
+
+> **注**：relay 优先是**目标态**。首版（[`adr_012`](./adr_012_credential_store.md) v1）仅 client-direct，relay 落点随本 ADR 接受 + relay 设计成熟后分步实现。凭证存储的接受与实现不依赖 relay（ADR-012 §2.6）。
 
 **降级链（fail-safe，不是 fail-open；有序）**：
 
-1. active transport（如 `app-tunnel`）失败 → **尝试 `system-vpn` 引导**（提示用户配置/连接系统 VPN）；
-2. `system-vpn` 引导仍失败或用户跳过 → **降级到只读公开缓存**（ADR-000 §3.4），仅展示已缓存的公开数据；
+1. active transport 为 `app-tunnel` 且失败 → **尝试 `system-vpn` 引导**（提示用户配置/连接系统 VPN）；
+2. active transport 为 `system-vpn`（或经 step 1 引导后）且失败/不可用/用户跳过 → **降级到只读公开缓存**（ADR-000 §3.4），仅展示已缓存的公开数据；
 3. **显式提示用户**：当前无法访问私密数据，需连接校园网或配置 VPN，由用户决定下一步。
+
+> 即：`app-tunnel → system-vpn → 只读公开缓存`；若起点即为 `system-vpn`，失败后直接降到只读。任何降级步骤**绝不**静默改路由为明文直连。
 
 **关键不变量：失败绝不静默改路由成明文直连**——本应走隧道的私密流量不得因 transport 故障而裸奔出校园网边界。
 
