@@ -10,6 +10,7 @@
  *  C6 凭证作用域：credentials.<name>.scope 每条须 ⊆ network.allow（ADR-013 §2.4 规则 1）
  *  C7 作用域消歧：不同凭证的 scope 前缀长度相同且重叠 → 拒绝（ADR-013 §2.4 规则 2 / ADR-009 §2.3b）
  *  C8 引用闭合：parser 的 requests.credential 须在 credentials 声明；声明未用 → warn（ADR-013 §2.4 规则 3）
+ *  C9 凭证注入方式：credentials.<name>.type ∈ {cookie, header}（防御性，schema C1 亦拦）
  *
  * 尚未覆盖（留给优先级 #3 客户端落地）：
  *  - 完整 golden 双跑：客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产出比对。
@@ -191,13 +192,22 @@ export function checkManifest(manifest: Manifest, contract: Pick<Contract, "mani
 
 // ---- C6–C8：credentials 声明（ADR-013 §2.4）----
 
-/** 取 uri-template 第一个 `*` 之前的字面前缀（无 `*` 则取全串）。用于最长前缀消歧。 */
+/**
+ * 取 uri-template 第一个 `*` 之前的字面前缀（无 `*` 则取全串）。用于最长前缀消歧。
+ * **假设**：scope 是"尾随 `*` 的前缀型"（`https://domain/path/*`，与 C6 同一约定）。
+ * 多段 `*` / `{+path}` 等复杂模板不在此约定内，引入时须重评 C6/C7（见文件头与 ADR-013 §2.4）。
+ */
 function scopePrefix(pattern: string): string {
   const star = pattern.indexOf("*");
   return star === -1 ? pattern : pattern.slice(0, star);
 }
 
-/** 两个 scope 前缀是否重叠（其一是另一的字符串前缀，含相等）。 */
+/**
+ * 两个 scope 前缀是否重叠（其一是另一的字符串前缀，含相等）。
+ * **注**：C7 在 `pa.length === pb.length` 守卫下调用本函数——等长 + 互为前缀 ⟺ 相等，
+ * 故 C7 实质只在"前缀完全相同"时触发。等长但不相等的前缀（如 `/api/` vs `/apx/`）匹配的
+ * URL 集合互斥、无注入歧义，正确地不被判错；不同长度的重叠由运行时最长前缀胜出消解。
+ */
 function prefixesOverlap(a: string, b: string): boolean {
   return a.startsWith(b) || b.startsWith(a);
 }

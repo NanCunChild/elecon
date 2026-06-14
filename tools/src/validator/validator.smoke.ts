@@ -202,4 +202,30 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ 不同长度前缀重叠由最长前缀消解，不报错（C7 不误杀）");
 }
 
+// 10) parser 声明了 credential 但无 request 引用 → C8_unused_credential（warn，非 error）
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "sideload",
+      mode: "parser",
+      network: { allow: ["https://h/api/*"] },
+      credentials: { session: { scope: ["https://h/api/*"], type: "cookie" } },
+      capabilities: [
+        {
+          id: "grades.list",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+          requests: [{ key: "raw", method: "GET", url: "https://h/api/x" }],
+        },
+      ],
+    },
+    contract,
+  );
+  const unused = findings.filter((f) => f.code === "C8_unused_credential");
+  assert.equal(unused.length, 1, "声明未用的 credential 应触发 1 条 C8_unused_credential");
+  assert.equal(unused[0]!.level, "warn", "C8_unused_credential 应为 warn 而非 error");
+  assert.equal(findings.filter((f) => f.level === "error").length, 0, "声明未用不应产生 error");
+  console.log("  ✓ parser 声明未用的 credential 仅告警不报错（C8 warn）");
+}
+
 console.log("validator smoke 全部通过。");
