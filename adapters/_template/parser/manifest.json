@@ -12,6 +12,12 @@
       "https://jw.example.edu.cn/api/*"
     ]
   },
+  "credentials": {
+    "session": {
+      "scope": ["https://jw.example.edu.cn/api/*"],
+      "type": "cookie"
+    }
+  },
   "capabilities": [
     {
       "id": "grades.list",

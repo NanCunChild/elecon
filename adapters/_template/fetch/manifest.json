@@ -13,6 +13,16 @@
       "https://ehall.example.edu.cn/*"
     ]
   },
+  "credentials": {
+    "session": {
+      "scope": ["https://jw.example.edu.cn/api/*"],
+      "type": "cookie"
+    },
+    "ehall-token": {
+      "scope": ["https://ehall.example.edu.cn/*"],
+      "type": "header"
+    }
+  },
   "capabilities": [
     {
       "id": "grades.list",

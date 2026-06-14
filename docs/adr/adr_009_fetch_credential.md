@@ -134,9 +134,9 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 
 ---
 
-## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
+## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR，落地后删除）
 
-> 安全敏感项标（人工主导、AI 仅辅助）：
+> 安全敏感项标：
 
 - 宿主 Broker：`ctx.fetch` 代理 + 白名单匹配（uri-template）+ **inject/passthrough 分流** + 凭证注入（§2.3 凭证绑定）+ 出站请求头净化（§2.3）+ 响应头 allowlist 脱敏（§2.5）+ **重定向跳数限制 + 每跳白名单校验**。客户端（Dart 核心）与服务端（`server/src/campus`）各一份，**共享同一净化/脱敏规格**。
 - **per-execution cookie jar**：仅限单次执行、不落核心凭证库、不跨执行、scope 受 network.allow 约束；与 broker 凭证注入严格分离。

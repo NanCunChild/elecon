@@ -38,6 +38,29 @@
         }
       }
     },
+    "credentials": {
+      "type": "object",
+      "description": "凭证引用声明（ADR-013）。key=ref（对应 ADR-012 CredentialEntry.ref），值声明注入作用域与方式。仅含引用名+作用域+注入方式，绝不含凭证值（红线 #1）。可选；缺省即无凭证注入（fetch 全 passthrough / parser 无 credential 请求）。",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["scope", "type"],
+        "properties": {
+          "scope": {
+            "type": "array",
+            "description": "该引用适用的 URL 范围；每条须 ⊆ network.allow（tools 校验器强制）。",
+            "minItems": 1,
+            "items": { "type": "string", "format": "uri-template" }
+          },
+          "type": {
+            "type": "string",
+            "description": "注入方式：cookie=附加 Cookie 头；header=附加 Authorization 头。",
+            "enum": ["cookie", "header"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "capabilities": {
       "type": "array",
       "items": {
