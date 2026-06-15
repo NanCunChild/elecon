@@ -1,7 +1,7 @@
 # ADR-009：fetch 模式 —— 受限 `ctx.fetch` 与凭证注入
 
 - **状态**：已接受（Accepted） 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，经人工 review（PR #23）+ 安全检查清单审阅后接受。
-- **日期**：2026-06-11（**修订 2026-06-13**：§2 第 4 条改白名单分"注入/仅可达"两类（声明但不注入）；增重定向跳数限制+每跳白名单校验；增 §2 第 6 条 401 透传行为；§2.6/§2.4 对齐 ADR-002 修订；credentials schema 校验规则同步）（**修订 2026-06-13b**：§2.3 增 scope 重叠消歧规则——最长前缀胜出、等长拒绝；§3 增第 4 条请求 body 外泄向量声明）（**修订 2026-06-14**：§2.8 限额数值标注**临时占位、待实测校准**；§2.4 增执行结束**耐久 cookie 收割进凭证库**桥接（判据 = manifest 声明的 credential ref，与 [`adr_013`](./adr_013_manifest_credentials.md) 对齐），解 jar 不持久化下的 session 复用/有效性问题；§2.3 草图正式扩展拆出 ADR-013）（**修订 2026-06-14b（review 跟进 PR #23）**：§2.4 补 cookie 收割**匹配算法**（按 RFC 6265 §5.1.3/5.1.4 域/路径匹配方向，修正初稿写反的方向）+ **jar/broker 同名 cookie 优先级**（origin 最新值为准，session 轮换不持过期值）；§2.8 加**校准硬承诺**（首个 fetch-mode adapter 上线前实测）；§4 标 ADR-013 契约已落地 + pattern-audit 时间线）（**修订 2026-06-15（🔒 待人工 + 安全清单复核，未生效）**：增 §2.4「执行内 ephemeral cookie 写回通道」+ 窄 API `ctx.setEphemeralCookie`——解 XJT 实测 body-token 缺口（`client_id` 经 `POST /dynamic_challenge` 响应 **body** 下发、由挑战页 JS `document.cookie` 写入、origin **零 Set-Cookie**，证据 `adapters_tests/XJT/dean/pac.txt`）。通道三重栅栏：仅 passthrough origin、不覆盖凭证、永不收割、执行即弃；§2.3「剥除 adapter 自设 Cookie 头」规则**不变**（纵深防御）。触红线 #1/#6，按 §1 待人工闭环；契约改动见 §4）
+- **日期**：2026-06-11（修订历史见末尾 [§附录 A](#附录-a修订记录)）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 分层）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / envelope）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端沙箱）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端运行时）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)（实现任务）、[#4](https://github.com/NanCunChild/elecon/issues/4)（iOS 2.5.2 合规）
 - **适用范围**：fetch 模式 adapter 的网络出口（`ctx.fetch`）语义、可信核心的凭证注入与响应脱敏、两端（client-direct / campus-relay）执行落点。**不含** parser 模式（已由 ADR-005/008 落地）。
@@ -139,10 +139,11 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: string }): void;
 ```
 
-**Broker 强制的三重栅栏（缺一即拒，抛结构化权限错误）**：
-1. **仅 passthrough origin**：`opts.domain` 必须落在某 `network.allow` 条目内、且**不**落在任何 `credentials.<name>.scope` 内——永不能写到凭证域，杜绝伪造/覆盖真实凭证。
+**Broker 强制的四重栅栏（缺一即拒，抛结构化权限错误）**：
+1. **仅 passthrough origin**：`opts.domain` 必须落在某 `network.allow` 条目内、且**不**落在任何 `credentials.<name>.scope` 内——永不能写到凭证域，杜绝伪造/覆盖真实凭证。匹配算法：取 `network.allow` 条目的 host 部分，对 `opts.domain` 做 **RFC 6265 §5.1.3 domain-match**（与 §2.4 收割匹配算法方向一致）。`opts.path`（若提供）须为对应 `network.allow` 条目 path 部分的**子路径**（前缀匹配）——不允许 adapter 写出比白名单声明更宽的 cookie 路径；缺省时默认 `/`（仅在该 allow 条目本身为 `/` 或未限定 path 时合法）。
 2. **不覆盖 broker 注入**：ephemeral 分区在请求拼装时优先级**低于** broker 注入分区与 origin `Set-Cookie`；同名以后两者为准。
-3. **永不收割、执行即弃**：ephemeral 分区**不参与** §2.4 收割桥接（判据 b 只认 manifest `credentials` 声明 ref + origin `Set-Cookie` 状态），执行结束随 jar 整体丢弃，绝不进 ADR-012 库。
+3. **永不收割**：ephemeral 分区**不参与** §2.4 收割桥接（判据 b 只认 manifest `credentials` 声明 ref + origin `Set-Cookie` 状态），绝不进 ADR-012 库。
+4. **执行即弃**：ephemeral 分区随 per-execution jar 整体在执行结束时丢弃，不跨执行、不持久化到任何存储。这是栅栏 3 的自然推论，但作为独立约束显式声明——即使未来收割逻辑变更，ephemeral 的生命周期上限仍为单次执行。
 
 **为何不破红线 #1**：`client_id` 一类是 **origin 的反爬会话 token，非学生凭证**；adapter 经 §2.5 body 透传**本就能读到该值**，允许其写回**同源 passthrough** cookie，不新增任何超出 body 透传既有面的外泄面。`max-age` 等"看似耐久"属性不改变定性——收割只认判据 b，未声明即瞬态。此通道是宿主侧安全敏感代码，随 fetch 模式一并人工审（不得 AI 独自闭环）。
 
@@ -160,7 +161,7 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 6. **测试不能像 parser 那样直接 golden 双跑**（网络非确定）。取向：**录制/回放夹具**——录一次真实交互（脱敏后）成固定夹具，之后 fetch 退化为对回放响应的确定性解析，可纳入双跑；凭证注入与脱敏逻辑在**宿主**层单测（不在 QuickJS）。
 7. **iOS 2.5.2（[#4]）联动。** fetch 模式让"下载的 adapter"真正发起网络请求，合规评估需与本设计一并做。iOS 端整体可上架形态已由 [ADR-010](./adr_010_ios_appstore.md) 定调：**首版仅 parser 模式上架，fetch 模式推迟**——本 ADR 接受并拟上 iOS 时，须按 ADR-010 §3.3 重做 2.5.2(a) 自检（仍限既有能力集）并补 5.1.1 隐私申报。
 8. **单次执行 cookie jar 是新的状态面（§2.4 第 2 条）。** per-execution cookie jar 本身**仅限单次执行、不跨执行、不经 public**；其实现是宿主侧安全敏感代码，随 fetch 模式一并人工审（不得 AI 独自闭环）。**例外（2026-06-14）**：执行结束时，**仅 manifest `credentials` 显式声明了 ref 的耐久 cookie** 被核心收割进 ADR-012 凭证库（§2.4 收割桥接，判据 b）——这是受控、可审计的跨执行持久化，不是 jar 自身持久化。未被声明的 cookie 一律随 jar 丢弃，绝不进库。jar 的"瞬态搬运"与 broker 的"白名单凭证注入"仍是两条独立路径，注入路径只认凭证库内的条目。
-9. **ephemeral 写回通道是新增的 adapter→jar 写入面（§2.4 修订，2026-06-15）。** 此前 adapter 对 jar 只读不可写；新通道开了一条受控写入路径，须确保三重栅栏（仅 passthrough origin / 不覆盖凭证 / 永不收割）由 **Broker 强制**而非依赖 adapter 自律——栅栏校验是宿主侧安全敏感代码，随 B4 人工审。**残余风险**：adapter 可借此向同源 passthrough 端点构造任意 cookie，但因 ① 仅 passthrough（无凭证可冒充）② 该端点本就在 `network.allow`、受签名 + CI + review 三重把关（同 §3.4 请求 body 向量），此面不超出既有已接受残余风险。**抓包前置**：本通道之所以需要，依据 `adapters_tests/XJT/dean/pac.txt` 实测（零 Set-Cookie / body-token）；若未来站点改为标准 `Set-Cookie`，现有 jar 即可，本通道对该站点不激活。
+9. **ephemeral 写回通道是新增的 adapter→jar 写入面（§2.4 修订，2026-06-15）。** 此前 adapter 对 jar 只读不可写；新通道开了一条受控写入路径，须确保四重栅栏（仅 passthrough origin / 不覆盖凭证 / 永不收割 / 执行即弃）由 **Broker 强制**而非依赖 adapter 自律——栅栏校验是宿主侧安全敏感代码，随 B4 人工审。**残余风险**：adapter 可借此向同源 passthrough 端点构造任意 cookie，但因 ① 仅 passthrough（无凭证可冒充）② 该端点本就在 `network.allow`、受签名 + CI + review 三重把关（同 §3.4 请求 body 向量），此面不超出既有已接受残余风险。**抓包前置**：本通道之所以需要，依据 `adapters_tests/XJT/dean/pac.txt` 实测（零 Set-Cookie / body-token）；若未来站点改为标准 `Set-Cookie`，现有 jar 即可，本通道对该站点不激活。
 
 ---
 
@@ -178,3 +179,16 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 - **pattern-based 后置审计**（后续，非阻塞）：对 adapter 产出做 token-pattern 扫描，告警不阻断。**时间线**：**初版 token-pattern 清单建议随首个 fetch-mode adapter PR 一并落地**（彼时已有真实凭证格式可建清单），不阻塞本 ADR 接受；清单随实现增补。
 - 安全检查清单：随实现 PR 附"凭证零泄露"逐项自检（出站请求头/响应头/重定向/body 已接受风险确认 + passthrough 不带凭证确认）。
 - iOS 2.5.2 合规评估（[#4]）。
+
+---
+
+## 附录 A：修订记录
+
+| 日期 | 标识 | 变更摘要 |
+|---|---|---|
+| 2026-06-11 | 初稿 | 首版草案提交 review |
+| 2026-06-13 | rev-1 | §2 第 4 条改白名单分"注入/仅可达"两类；增重定向跳数限制 + 每跳白名单校验；增 §2 第 6 条 401 透传行为；§2.6/§2.4 对齐 ADR-002 修订；credentials schema 校验规则同步 |
+| 2026-06-13 | rev-1b | §2.3 增 scope 重叠消歧规则（最长前缀胜出、等长拒绝）；§3 增第 4 条请求 body 外泄向量声明 |
+| 2026-06-14 | rev-2 | §2.8 限额数值标注临时占位（待实测校准）；§2.4 增执行结束耐久 cookie 收割进凭证库桥接（判据 = manifest 声明的 credential ref，与 ADR-013 对齐）；§2.3 草图正式拆出 ADR-013 |
+| 2026-06-14 | rev-2b（PR #23 review 跟进）| §2.4 补 cookie 收割匹配算法（RFC 6265 §5.1.3/5.1.4 域/路径匹配方向，修正初稿写反的方向）+ jar/broker 同名 cookie 优先级（origin 最新值为准）；§2.8 加校准硬承诺；§4 标 ADR-013 已落地 + pattern-audit 时间线 |
+| 2026-06-15 | rev-3（🔒 待人工 + 安全清单复核，未生效）| 增 §2.4「执行内 ephemeral cookie 写回通道」+ 窄 API `ctx.setEphemeralCookie`——解 XJT body-token 缺口（证据 `adapters_tests/XJT/dean/pac.txt`）。四重栅栏：仅 passthrough origin、不覆盖凭证、永不收割、执行即弃。§2.3 剥除规则不变（纵深防御）。触红线 #1/#6，待人工闭环。契约改动见 §4（Gate B） |

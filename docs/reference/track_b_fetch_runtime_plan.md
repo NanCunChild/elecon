@@ -73,7 +73,7 @@ jar **仅限单次执行**，不跨执行、不经 public、对 adapter 全程�
      - b. **永不覆盖** Broker 注入区的同名 cookie；
      - c. 执行结束**即弃**，**永不进收割**（§4 收割只认 Broker 注入区 + origin Set-Cookie，不认 adapter-ephemeral）；
      - d. 经**专用窄 API** 写入（见 §5），不复用 `init.headers.Cookie`（§2.3 的 Cookie 剥除规则保持不变，纵深防御）。
-   - **为何安全**：实测两类流程里，唯一需要它的是零凭证的 XJT；所有 credentialed 流程（XIDIAN）的会话都走 Set-Cookie/redirect（Broker 区），从不需要 adapter 自设。故该区被「passthrough-only + 不覆盖凭证 + 不收割」三重栅栏围死，不削弱任何 credentialed 路径。
+   - **为何安全**：实测两类流程里，唯一需要它的是零凭证的 XJT；所有 credentialed 流程（XIDIAN）的会话都走 Set-Cookie/redirect（Broker 区），从不需要 adapter 自设。故该区被「passthrough-only + 不覆盖凭证 + 不收割 + 执行即弃」四重栅栏围死，不削弱任何 credentialed 路径。
 
 ---
 
