@@ -15,6 +15,7 @@
     "start:campus": "node dist/campus/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke:sandbox": "tsx src/runtime/sandbox.smoke.ts",
+    "smoke:broker": "tsx src/runtime/broker/inject-policy.smoke.ts",
     "audit": "npm audit --omit=dev"
   },
   "dependencies": {
