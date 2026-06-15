@@ -113,7 +113,7 @@ ADR-000 §3.4 把**传输底座**（原生、长生命周期、有状态、**承
 4. **"TLS 不终止"是硬不变量。** 若未来某 transport 需要看明文（如协议改写），即触碰红线 #1，**必须单独 ADR + 安全评审**，默认禁止。
 5. **跨平台能力不对称**（iOS 最弱）带来产品文案/预期管理成本。
 6. **单 active transport；split-tunnel 不在本文。** 按域名分流（部分走隧道、部分直连）会放大"路由错配致私密流量裸奔"的风险（§2.2 不变量），留待单独评估。
-7. **🔲 待确认（接受前）：iOS Personal VPN entitlement 可得性。** `system-vpn` 档在 iOS 依赖 **Personal VPN entitlement**（`NEVPNManager`）。其门槛远低于 Network Extension，但仍是一项 entitlement 依赖，且 [ADR-010](./adr_010_ios_appstore.md) 未就此评估。**取向**：标注"待确认"即可接受本 ADR——若该 entitlement 因审核策略不可得，iOS 的 `system-vpn` 引导退化为"提示用户在系统设置自行配置 VPN"（纯引导、零 entitlement），不阻塞 `direct` 档与本 ADR 主体。须在 iOS 上架评估（§4 / ADR-010 §3.3）时一并确认。
+7. **待确认（接受前）：iOS Personal VPN entitlement 可得性。** `system-vpn` 档在 iOS 依赖 **Personal VPN entitlement**（`NEVPNManager`）。其门槛远低于 Network Extension，但仍是一项 entitlement 依赖，且 [ADR-010](./adr_010_ios_appstore.md) 未就此评估。**取向**：标注"待确认"即可接受本 ADR——若该 entitlement 因审核策略不可得，iOS 的 `system-vpn` 引导退化为"提示用户在系统设置自行配置 VPN"（纯引导、零 entitlement），不阻塞 `direct` 档与本 ADR 主体。须在 iOS 上架评估（§4 / ADR-010 §3.3）时一并确认。
 
 ---
 
