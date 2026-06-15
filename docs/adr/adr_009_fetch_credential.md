@@ -147,7 +147,7 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 
 **为何不破红线 #1**：`client_id` 一类是 **origin 的反爬会话 token，非学生凭证**；adapter 经 §2.5 body 透传**本就能读到该值**，允许其写回**同源 passthrough** cookie，不新增任何超出 body 透传既有面的外泄面。`max-age` 等"看似耐久"属性不改变定性——收割只认判据 b，未声明即瞬态。此通道是宿主侧安全敏感代码，随 fetch 模式一并人工审（不得 AI 独自闭环）。
 
-3. **反爬挑战由 fetch 模式 adapter 处理（official 独占）。** 解析内联 JS 算 answer、伪造浏览器指纹，**超出"薄归一化"**，天然属于 fetch 模式 adapter 的职责（ADR-002 official 独占 fetch）。典型流程：adapter `ctx.fetch` 挑战端点（passthrough，不注入凭证）→ 解析 challenge → `ctx.fetch` 提交 answer → per-execution jar 自动带上 origin 下发的 cookie → 后续请求正常走凭证注入。对公开数据，campus-relay 侧的 adapter 执行结果可经**服务端 public 缓存**（ADR-000 §2.1）分发——public 服务器本身**不执行 adapter 也不持凭证**（红线 #2），只缓存已归一化的产出。⚠️ 逆向期的 `verify=False`（关 TLS 校验）一类手段**禁止进标准 adapter**——TLS 必须校验（transport 不 MITM，ADR-003 §2.3）。
+3. **反爬挑战由 fetch 模式 adapter 处理（official 独占）。** 解析内联 JS 算 answer、伪造浏览器指纹，**超出"薄归一化"**，天然属于 fetch 模式 adapter 的职责（ADR-002 official 独占 fetch）。典型流程：adapter `ctx.fetch` 挑战端点（passthrough，不注入凭证）→ 解析 challenge → `ctx.fetch` 提交 answer → per-execution jar 自动带上 origin 下发的 cookie → 后续请求正常走凭证注入。对公开数据，campus-relay 侧的 adapter 执行结果可经**服务端 public 缓存**（ADR-000 §2.1）分发——public 服务器本身**不执行 adapter 也不持凭证**（红线 #2），只缓存已归一化的产出。逆向期的 `verify=False`（关 TLS 校验）一类手段**禁止进标准 adapter**——TLS 必须校验（transport 不 MITM，ADR-003 §2.3）。
 
 ---
 
@@ -191,4 +191,4 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 | 2026-06-13 | rev-1b | §2.3 增 scope 重叠消歧规则（最长前缀胜出、等长拒绝）；§3 增第 4 条请求 body 外泄向量声明 |
 | 2026-06-14 | rev-2 | §2.8 限额数值标注临时占位（待实测校准）；§2.4 增执行结束耐久 cookie 收割进凭证库桥接（判据 = manifest 声明的 credential ref，与 ADR-013 对齐）；§2.3 草图正式拆出 ADR-013 |
 | 2026-06-14 | rev-2b（PR #23 review 跟进）| §2.4 补 cookie 收割匹配算法（RFC 6265 §5.1.3/5.1.4 域/路径匹配方向，修正初稿写反的方向）+ jar/broker 同名 cookie 优先级（origin 最新值为准）；§2.8 加校准硬承诺；§4 标 ADR-013 已落地 + pattern-audit 时间线 |
-| 2026-06-15 | rev-3（🔒 待人工 + 安全清单复核，未生效）| 增 §2.4「执行内 ephemeral cookie 写回通道」+ 窄 API `ctx.setEphemeralCookie`——解 XJT body-token 缺口（证据 `adapters_tests/XJT/dean/pac.txt`）。四重栅栏：仅 passthrough origin、不覆盖凭证、永不收割、执行即弃。§2.3 剥除规则不变（纵深防御）。触红线 #1/#6，待人工闭环。契约改动见 §4（Gate B） |
+| 2026-06-15 | rev-3（待人工 + 安全清单复核，未生效）| 增 §2.4「执行内 ephemeral cookie 写回通道」+ 窄 API `ctx.setEphemeralCookie`——解 XJT body-token 缺口（证据 `adapters_tests/XJT/dean/pac.txt`）。四重栅栏：仅 passthrough origin、不覆盖凭证、永不收割、执行即弃。§2.3 剥除规则不变（纵深防御）。触红线 #1/#6，待人工闭环。契约改动见 §4（Gate B） |
