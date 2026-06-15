@@ -1,0 +1,112 @@
+{
+  "_doc": "Broker B1 注入策略 golden 向量。语言无关唯一事实源：TS（server inject-policy.smoke.ts）与 Dart（client）照同一向量双跑，钉死两端 + 静态/运行时行为一致。匹配约定见 server/src/runtime/broker/url-match.ts。改动此文件须人工 + 安全清单复核（红线 #1）。",
+  "cases": [
+    {
+      "name": "reject_host_mismatch",
+      "url": "https://evil.example.com/api/x",
+      "view": { "allow": ["https://dean.xjtu.edu.cn/*"] },
+      "expected": { "kind": "reject", "reason": "outside_allow" }
+    },
+    {
+      "name": "reject_path_outside_allow",
+      "url": "https://h.edu.cn/other",
+      "view": { "allow": ["https://h.edu.cn/api/*"] },
+      "expected": { "kind": "reject", "reason": "outside_allow" }
+    },
+    {
+      "name": "reject_scheme_mismatch_http_vs_https",
+      "url": "http://h.edu.cn/api/x",
+      "view": { "allow": ["https://h.edu.cn/api/*"] },
+      "expected": { "kind": "reject", "reason": "outside_allow" }
+    },
+    {
+      "name": "passthrough_no_credentials_xjt",
+      "url": "https://dean.xjtu.edu.cn/",
+      "view": { "allow": ["https://dean.xjtu.edu.cn/*"] },
+      "expected": { "kind": "passthrough" }
+    },
+    {
+      "name": "passthrough_in_allow_but_unscoped_challenge_endpoint",
+      "url": "https://captcha.h.edu.cn/challenge/1",
+      "view": {
+        "allow": ["https://h.edu.cn/api/*", "https://captcha.h.edu.cn/challenge/*"],
+        "credentials": { "session": { "scope": ["https://h.edu.cn/api/*"], "type": "cookie" } }
+      },
+      "expected": { "kind": "passthrough" }
+    },
+    {
+      "name": "inject_cookie",
+      "url": "https://h.edu.cn/api/grades/list",
+      "view": {
+        "allow": ["https://h.edu.cn/api/*"],
+        "credentials": { "session": { "scope": ["https://h.edu.cn/api/*"], "type": "cookie" } }
+      },
+      "expected": { "kind": "inject", "ref": "session", "via": "cookie" }
+    },
+    {
+      "name": "inject_header",
+      "url": "https://ehall.h.edu.cn/jsonp",
+      "view": {
+        "allow": ["https://ehall.h.edu.cn/*"],
+        "credentials": { "ehall-token": { "scope": ["https://ehall.h.edu.cn/*"], "type": "header" } }
+      },
+      "expected": { "kind": "inject", "ref": "ehall-token", "via": "header" }
+    },
+    {
+      "name": "longest_prefix_wins_specific_over_general",
+      "url": "https://h.edu.cn/api/grades/list",
+      "view": {
+        "allow": ["https://h.edu.cn/api/*"],
+        "credentials": {
+          "session": { "scope": ["https://h.edu.cn/api/*"], "type": "cookie" },
+          "grades-token": { "scope": ["https://h.edu.cn/api/grades/*"], "type": "header" }
+        }
+      },
+      "expected": { "kind": "inject", "ref": "grades-token", "via": "header" }
+    },
+    {
+      "name": "longest_prefix_falls_back_to_general",
+      "url": "https://h.edu.cn/api/other",
+      "view": {
+        "allow": ["https://h.edu.cn/api/*"],
+        "credentials": {
+          "session": { "scope": ["https://h.edu.cn/api/*"], "type": "cookie" },
+          "grades-token": { "scope": ["https://h.edu.cn/api/grades/*"], "type": "header" }
+        }
+      },
+      "expected": { "kind": "inject", "ref": "session", "via": "cookie" }
+    },
+    {
+      "name": "ambiguous_equal_prefix_different_ref_reject_defense_in_depth",
+      "url": "https://h.edu.cn/x/1",
+      "view": {
+        "allow": ["https://h.edu.cn/x/*"],
+        "credentials": {
+          "ref-a": { "scope": ["https://h.edu.cn/x/*"], "type": "cookie" },
+          "ref-b": { "scope": ["https://h.edu.cn/x/*"], "type": "header" }
+        }
+      },
+      "expected": { "kind": "reject", "reason": "ambiguous_scope" }
+    },
+    {
+      "name": "multi_scope_ref_matches_second_scope",
+      "url": "https://b.h.edu.cn/x",
+      "view": {
+        "allow": ["https://a.h.edu.cn/*", "https://b.h.edu.cn/*"],
+        "credentials": {
+          "session": { "scope": ["https://a.h.edu.cn/*", "https://b.h.edu.cn/*"], "type": "cookie" }
+        }
+      },
+      "expected": { "kind": "inject", "ref": "session", "via": "cookie" }
+    },
+    {
+      "name": "inject_with_query_string_in_url",
+      "url": "https://h.edu.cn/api/list?term=2026&page=1",
+      "view": {
+        "allow": ["https://h.edu.cn/api/*"],
+        "credentials": { "session": { "scope": ["https://h.edu.cn/api/*"], "type": "cookie" } }
+      },
+      "expected": { "kind": "inject", "ref": "session", "via": "cookie" }
+    }
+  ]
+}
