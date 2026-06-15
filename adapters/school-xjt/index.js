@@ -37,7 +37,10 @@ export const capabilities = {
 
       // [3] POST 挑战端点（passthrough）。browser_info 是反爬指纹（official 独占 fetch
       //     才允许这类伪造，ADR-009 §2.4 第 3 条）。
-      await ctx.fetch(ORIGIN + "/dynamic_challenge", {
+      // TODO(production): browser_info 为硬编码指纹（Chrome 148 / Linux），会随版本过时；
+      //   且若 origin 校验 UA header 与 body 一致性可能被拒。production 化时考虑随宿主环境
+      //   动态生成或周期更新（spike 阶段硬编码足够）。
+      const challengeRes = await ctx.fetch(ORIGIN + "/dynamic_challenge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -54,15 +57,27 @@ export const capabilities = {
           },
         }),
       });
+      // 状态检查：挑战提交失败则明确报错（交宿主按 parse_failed 处理）。读 body 里的
+      // success/client_id 处理属 body-token 缺口修补，随下方说明的 setEphemeralCookie 落地。
+      if (!challengeRes.ok) {
+        throw new Error(`challenge submit failed: HTTP ${challengeRes.status}`);
+      }
 
-      // ⚠️ 缺口（FLOW.md §3）：此处依赖 origin 在上面的 POST 响应里 **Set-Cookie: client_id=...**，
-      // 由 per-execution jar 自动捕获并在下一个请求携带。**若 client_id 只在 POST 响应体（JSON）、
-      // 没有 Set-Cookie**，jar 抓不到、下面这个 GET 不会带 client_id → 仍是挑战页 → 失败。
-      // adapter **不能**自己 set cookie（ADR-009 §2.3 宿主剥除 Cookie 头）。
-      // → 待抓包确认；若缺口为真，按 FLOW.md §4 方向修订 ADR-009 后再补此处。
+      // ⚠️ 缺口（FLOW.md §3，已确认）：client_id 仅在上面 POST 的响应 **body**、origin 无
+      // Set-Cookie（pac.txt 实锤）→ per-execution jar 抓不到、§2.3 又剥 adapter 自设 Cookie 头，
+      // 故下面这个 GET 当前带不上 client_id → 仍是挑战页 → 失败。
+      // 修补已定（#25 / ADR-009 rev-3，方向 A）：契约新增 ctx.setEphemeralCookie（仅 passthrough、
+      // 不覆盖凭证、永不收割、执行即弃）。待该 API 随 B4 第 2 分区落地后，此处替换为：
+      //   ctx.setEphemeralCookie("client_id", <从 challengeRes body 解出>, { domain: "dean.xjtu.edu.cn" });
 
       // [5] 带 jar 中的会话 cookie 重新 GET 首页 → 真实通知页
       html = await (await ctx.fetch(ORIGIN + "/")).text();
+
+      // 若仍是挑战页 → 挑战未解成功，明确报错而非静默返回空列表
+      // （否则"取数失败"会被伪装成"无通知"；交宿主按 parse_failed 处理）。
+      if (html.includes("var challengeId")) {
+        throw new Error("challenge not solved: second GET still returns challenge page");
+      }
     }
 
     // [6] 解析通知列表：div.tz（含「通知公告」）→ li → a[title] / i / span

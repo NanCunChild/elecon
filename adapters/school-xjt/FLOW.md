@@ -44,10 +44,11 @@ spike（`fetch.py:69-74`）从 POST 的 **JSON 响应体** 读 `client_id`，再
 - §2.3：adapter 经 `init.headers` 设的 `Cookie` 头被宿主**无条件剥除** → adapter **不能自己设 cookie**。
 - §2.4：per-execution jar 只自动持久化 origin 的 **`Set-Cookie`** → 若 client_id 只在 body、没有 Set-Cookie，**jar 抓不到**，后续请求带不上 → 流程断。
 
-**待确认（需一次真实抓包）**：`POST /dynamic_challenge` 的响应**有没有 `Set-Cookie: client_id=...`**？
-- 若**有** → jar 自动处理，ADR-009 现模型够用，adapter 无需碰 cookie。✅
-- 若**只在 body** → ADR-009 有真实缺口，需修订（见 §4）。这类"origin 把会话 token 放 body、
-  靠前端 JS 写 cookie"是常见反爬模式，值得正式补。
+**已确认（2026-06-15 抓包实锤，`adapters_tests/XJT/dean/pac.txt`）**：`POST /dynamic_challenge`
+响应**零 `Set-Cookie`**，`client_id` 仅在 JSON body，由页面 JS 自行写 `document.cookie`。
+→ ADR-009 当前模型确有此缺口，**已由 #25（ADR-009 rev-3）按 §4 方向 A 修补**：新增窄通道
+`ctx.setEphemeralCookie`（仅 passthrough origin、不覆盖凭证、永不收割、执行即弃）。本 adapter
+的对应替换待该契约面随 B4 第 2 分区落地后补（见 index.js 缺口标注处）。
 
 ## 4. 若需修订 ADR-009（缺口为真时的方向，待人工 + ADR）
 
@@ -62,7 +63,7 @@ spike（`fetch.py:69-74`）从 POST 的 **JSON 响应体** 读 `client_id`，再
 
 需要三份**脱敏后**的固定夹具供回放（ADR-009 §3.6）：
 1. `challenge.html` —— 步骤[1] 的挑战页（含 `var challengeId/answer`，可用假值替换真实 id）。
-2. `challenge_response.json` + **响应头**（关键：看有没有 `Set-Cookie`，解 §3 缺口）。
+2. `challenge_response.json` + **响应头**（已知零 `Set-Cookie`；夹具用于回放 body-token 路径）。
 3. `notice.html` —— 步骤[5] 的真实通知页（删除任何个人化痕迹；通知本身是公开数据）。
 
 脱敏要求（红线 #8）：challengeId / client_id / JSESSIONID 一律替换为假值；不留真实 cookie。
