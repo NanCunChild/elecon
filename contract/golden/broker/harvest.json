@@ -1,0 +1,91 @@
+{
+  "_doc": "Broker B5 耐久 cookie 收割决策 golden 向量（decideHarvest）。语言无关唯一事实源：TS（server harvest.smoke.ts）与 Dart（client）照同一向量双跑。规格见 ADR-009 §2.4：判据 b（只收 manifest credentials.<ref> type:cookie 声明 ref 命中 scope 的 cookie）+ 收割方向匹配（scope host domain-match cookie Domain；cookie Path 为 scope pathPrefix 前缀）。路线 a：ref 值 = scope 命中全部 cookie 序列化串（path 长者先，同长按名）。改动须人工 + 安全清单复核（红线 #1）。",
+  "cases": [
+    {
+      "name": "harvest_single_session",
+      "input": {
+        "originCookies": [
+          { "name": "JSESSIONID", "value": "S1", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin" }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": [{ "ref": "sess", "value": "JSESSIONID=S1" }]
+    },
+    {
+      "name": "harvest_multi_cookies_into_one_ref",
+      "input": {
+        "originCookies": [
+          { "name": "JSESSIONID", "value": "S1", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin" },
+          { "name": "CASTGC", "value": "C1", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin" }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": [{ "ref": "sess", "value": "CASTGC=C1; JSESSIONID=S1" }]
+    },
+    {
+      "name": "drop_undeclared_domain",
+      "input": {
+        "originCookies": [
+          { "name": "ga", "value": "x", "domain": "analytics.example", "path": "/", "source": "origin" }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": []
+    },
+    {
+      "name": "drop_header_type_ref",
+      "input": {
+        "originCookies": [
+          { "name": "libsid", "value": "L", "domain": "lib.xjtu.edu.cn", "path": "/reader/", "source": "origin" }
+        ],
+        "view": { "allow": ["https://lib.xjtu.edu.cn/reader/*"], "credentials": { "libtoken": { "scope": ["https://lib.xjtu.edu.cn/reader/*"], "type": "header" } } }
+      },
+      "expected": []
+    },
+    {
+      "name": "harvest_parent_domain_cookie",
+      "input": {
+        "originCookies": [
+          { "name": "SSO", "value": "P1", "domain": "xjtu.edu.cn", "path": "/", "source": "origin" }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": [{ "ref": "sess", "value": "SSO=P1" }]
+    },
+    {
+      "name": "nomatch_cookie_path_deeper_than_scope",
+      "input": {
+        "originCookies": [
+          { "name": "P", "value": "1", "domain": "dean.xjtu.edu.cn", "path": "/portal/admin", "source": "origin" }
+        ],
+        "view": { "allow": ["https://dean.xjtu.edu.cn/portal/*"], "credentials": { "portal": { "scope": ["https://dean.xjtu.edu.cn/portal/*"], "type": "cookie" } } }
+      },
+      "expected": []
+    },
+    {
+      "name": "harvest_path_scoped_ref",
+      "input": {
+        "originCookies": [
+          { "name": "P", "value": "1", "domain": "dean.xjtu.edu.cn", "path": "/portal/", "source": "origin" }
+        ],
+        "view": { "allow": ["https://dean.xjtu.edu.cn/portal/*"], "credentials": { "portal": { "scope": ["https://dean.xjtu.edu.cn/portal/*"], "type": "cookie" } } }
+      },
+      "expected": [{ "ref": "portal", "value": "P=1" }]
+    },
+    {
+      "name": "multi_ref_mixed_with_drop",
+      "input": {
+        "originCookies": [
+          { "name": "JSESSIONID", "value": "S1", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin" },
+          { "name": "P", "value": "1", "domain": "dean.xjtu.edu.cn", "path": "/portal/", "source": "origin" },
+          { "name": "junk", "value": "z", "domain": "analytics.example", "path": "/", "source": "origin" }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*", "https://dean.xjtu.edu.cn/portal/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" }, "portal": { "scope": ["https://dean.xjtu.edu.cn/portal/*"], "type": "cookie" } } }
+      },
+      "expected": [
+        { "ref": "portal", "value": "P=1" },
+        { "ref": "sess", "value": "JSESSIONID=S1" }
+      ]
+    }
+  ]
+}
