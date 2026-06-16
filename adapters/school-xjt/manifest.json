@@ -15,7 +15,7 @@
   "capabilities": [
     {
       "id": "notice.list",
-      "emits": { "schema": "elecon.notice.list", "schemaVersion": "1.0" }
+      "emits": { "schema": "elecon.notice.list", "schemaVersion": "1.1" }
     }
   ]
 }

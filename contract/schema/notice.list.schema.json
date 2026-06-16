@@ -9,13 +9,17 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "title", "publishedAt", "category", "source"],
+        "required": ["id", "title", "category", "source"],
         "properties": {
           "id": { "type": "string" },
           "title": { "type": "string" },
           "summary": { "type": "string" },
           "url": { "type": "string", "format": "uri" },
-          "publishedAt": { "type": "string", "format": "date-time" },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "发布时间（RFC3339/UTC）。可选：源站日期不可解析时省略（ADR-001 §3.4 缺失语义 / §8.1）"
+          },
           "category": {
             "type": "string",
             "enum": ["academic", "admin", "event", "unknown"]

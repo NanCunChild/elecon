@@ -1,7 +1,7 @@
 # ADR-001：标准数据 schema 与 Capability Manifest 规范
 
 - **状态**：已接受（Accepted）
-- **日期**：2026-06-08
+- **日期**：2026-06-08（**修订 2026-06-16，🔒 待人工复核**：§8 增记 `elecon.notice.list` 1.0→1.1 —— 将 `publishedAt` 由 required 放宽为可选，使其与本文 §3.4「缺失语义」对齐。触发自首个 fetch 模式 adapter（school-xjt 教务通知）实测：源站日期偶有不可解析格式，旧实现回退空串违反 `date-time` 校验。）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)
 - **适用范围**：`contract/` 目录的全部内容，即 adapter↔UI、adapter↔核心之间的所有契约。本文一动，两端都受影响——改动须遵循本文 §7 的治理规则。
 
@@ -313,6 +313,18 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
 - **adapter 版本**：参与 ADR-000 的 `max(本地, 服务端)` 解析，与数据新鲜度无关。
 - **契约变更须走 ADR**：新增/修改 capability id、新增域 schema、破坏性变更，均属慢车道，默认保持向后兼容（呼应 AGENTS.md 红线 #6 与 feature-workflow）。
 - **`tools/` 强制校验**：manifest 合法性、白名单越界、sideload 必须 parser、capability id 在注册表内、adapter 双跑（客户端 QuickJS / 服务端 QuickJS-wasm）对同一夹具产出一致——这些做成 CI 闸门，让契约从"靠人记"变"靠机器拦"。
+
+### 8.1 变更记录（dated）
+
+- **2026-06-16 · `elecon.notice.list` 1.0 → 1.1（🔒 待人工复核）**
+  - **改动**：`publishedAt` 由 `required` 移出，成为可选字段（schema 内容不变，仅放宽必填约束）。级联 `capability/registry.json` 与 emit 它的 manifest（school-xidian / school-xjt）的 `emits.schemaVersion` 同步至 `1.1`。
+  - **为何是 MINOR 而非 MAJOR**：§8 把"收紧约束"列为破坏性，本改动是其**反向（放宽）**。§3.4「缺失语义」本就要求消费方普遍处理"字段缺失 = 该校不提供"，故把 `publishedAt` 改为可选**不超出消费方既有义务**，旧数据（含 `publishedAt`）在 1.1 下仍合法 → 向后兼容，记 MINOR。
+  - **本次遇到的情况**：首个 fetch 模式 adapter（school-xjt 教务通知）逆向中，源站通知日期偶为不可解析格式；旧 `normalizeDate` 不可解析时回退空串 `""`，而 `""` 不是合法 `date-time`，会被 ajv 拒。改为不可解析时**省略 `publishedAt`**（语义 = 该条目未提供可信日期），与 §3.4 一致。
+  - **是否可能引入未知问题（风险）**：
+    1. **消费方（UI/SDUI）**：若某处实现假设 `publishedAt` 必存（如直接排序/格式化），缺失时可能报错或排序错位。缓解：UI 须遵 §3.4 处理缺失；按时间排序时对无日期项定义稳定兜底位次。
+    2. **新旧版本并存**：1.0 与 1.1 同时在网（不同 adapter/缓存）时，宿主以 envelope `schemaVersion` 解读；1.1 消费方需容忍缺省，1.0 数据天然满足。
+    3. **一致性外溢**：其他域 schema 可能存在同类"过紧 required"（如把可能缺失的字段标必填），本次只动 notice.list，未做全面审计——留作后续核对，不在本改动范围。
+    4. **校验盲区**：`tools/` 校验器目前不对 params schema 做加载校验，emits 版本一致性（C2）已覆盖本次级联；fixtures 仍含 `publishedAt`，1.1 下照常通过。
 
 ---
 
