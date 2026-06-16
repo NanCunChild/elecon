@@ -106,22 +106,26 @@ function parseNotices(html) {
     const dateStr = span ? getText(span).trim() : "";
 
     const idMatch = href.match(/(\d+)\.html?$/);
-    items.push({
+    const item = {
       id: idMatch ? idMatch[1] : href,
       title,
       url,
-      publishedAt: normalizeDate(dateStr),
       category: "academic", // dean 通知统一归 academic；细分留待 generic/扩展
       source: "教务处", // 教务处
-    });
+    };
+    // 日期不可解析 → 省略 publishedAt（notice.list 1.1：可选；ADR-001 §3.4 缺失语义 / §8.1）。
+    // 不再回退空串——"" 非合法 date-time，会被 schema 拒。
+    const publishedAt = normalizeDate(dateStr);
+    if (publishedAt !== null) item.publishedAt = publishedAt;
+    items.push(item);
   }
   return items;
 }
 
-/** "2026-06-12" → RFC3339/UTC。无法识别则返回空串（schema 容忍缺省由宿主校验把关）。 */
+/** "2026-06-12" → RFC3339/UTC。无法识别返回 null → 调用方省略 publishedAt（notice.list 1.1）。 */
 function normalizeDate(s) {
   const m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
-  return m ? `${m[1]}-${m[2]}-${m[3]}T00:00:00Z` : "";
+  return m ? `${m[1]}-${m[2]}-${m[3]}T00:00:00Z` : null;
 }
 
 function matchOne(re, s) {
