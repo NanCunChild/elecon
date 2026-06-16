@@ -21,14 +21,18 @@ export const capabilities = {
       const dateStr = span ? getText(span).trim() : "";
       const idMatch = href.match(/\/(\d+)\.htm$/);
       const id = idMatch ? idMatch[1] : href;
-      return {
+      const item = {
         id,
         title,
         url: BASE_URL + href,
-        publishedAt: dateStr ? dateStr + "T00:00:00Z" : "",
         category: "academic",
         source: "\u6559\u52A1\u5904",
       };
+      // Date missing -> omit publishedAt (notice.list 1.1: optional per ADR-001 sec 3.4 / 8.1).
+      // No empty-string fallback: "" is not a valid date-time and ajv rejects it.
+      const publishedAt = dateStr ? dateStr + "T00:00:00Z" : null;
+      if (publishedAt !== null) item.publishedAt = publishedAt;
+      return item;
     });
 
     return { items };
