@@ -1,0 +1,75 @@
+{
+  "_doc": "Broker B3 单跳重定向决策 golden 向量（decideRedirect）。语言无关唯一事实源：TS（server redirect.smoke.ts）与 Dart（client）照同一向量双跑。规格见 ADR-009 §2.5：max 跳数 + 每跳 allow 校验 + 中间 Location 不外泄。改动须人工 + 安全清单复核（红线 #1）。",
+  "cases": [
+    {
+      "name": "deliver_200",
+      "input": { "status": 200, "location": null, "currentUrl": "https://h.edu.cn/a", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "deliver" }
+    },
+    {
+      "name": "deliver_404",
+      "input": { "status": 404, "location": null, "currentUrl": "https://h.edu.cn/a", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "deliver" }
+    },
+    {
+      "name": "deliver_3xx_without_location",
+      "input": { "status": 302, "location": null, "currentUrl": "https://h.edu.cn/a", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "deliver" }
+    },
+    {
+      "name": "deliver_304_not_a_followed_status",
+      "input": { "status": 304, "location": "https://h.edu.cn/b", "currentUrl": "https://h.edu.cn/a", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "deliver" }
+    },
+    {
+      "name": "follow_302_as_get",
+      "input": { "status": 302, "location": "https://h.edu.cn/login", "currentUrl": "https://h.edu.cn/a", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/login", "method": "get" }
+    },
+    {
+      "name": "follow_303_as_get",
+      "input": { "status": 303, "location": "https://h.edu.cn/result", "currentUrl": "https://h.edu.cn/submit", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 1, "maxHops": 5 },
+      "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/result", "method": "get" }
+    },
+    {
+      "name": "follow_307_preserve_method",
+      "input": { "status": 307, "location": "https://h.edu.cn/api/x", "currentUrl": "https://h.edu.cn/api/y", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/api/x", "method": "preserve" }
+    },
+    {
+      "name": "follow_308_preserve_method",
+      "input": { "status": 308, "location": "https://h.edu.cn/api/x", "currentUrl": "https://h.edu.cn/api/y", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/api/x", "method": "preserve" }
+    },
+    {
+      "name": "follow_relative_location_resolved",
+      "input": { "status": 302, "location": "/login", "currentUrl": "https://h.edu.cn/a/b", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/login", "method": "get" }
+    },
+    {
+      "name": "follow_protocol_relative_location_resolved",
+      "input": { "status": 302, "location": "//h.edu.cn/x", "currentUrl": "https://h.edu.cn/a", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/x", "method": "get" }
+    },
+    {
+      "name": "stop_outside_allow_cross_origin",
+      "input": { "status": 302, "location": "https://evil.example.com/x", "currentUrl": "https://h.edu.cn/a", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "stop", "reason": "outside_allow" }
+    },
+    {
+      "name": "stop_outside_allow_via_relative_resolves_cross_path",
+      "input": { "status": 302, "location": "/admin", "currentUrl": "https://h.edu.cn/api/x", "allow": ["https://h.edu.cn/api/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "stop", "reason": "outside_allow" }
+    },
+    {
+      "name": "stop_max_hops_reached",
+      "input": { "status": 302, "location": "https://h.edu.cn/x", "currentUrl": "https://h.edu.cn/a", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 5, "maxHops": 5 },
+      "expected": { "kind": "stop", "reason": "max_hops" }
+    },
+    {
+      "name": "follow_just_under_max_hops",
+      "input": { "status": 302, "location": "https://h.edu.cn/x", "currentUrl": "https://h.edu.cn/a", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 4, "maxHops": 5 },
+      "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/x", "method": "get" }
+    }
+  ]
+}

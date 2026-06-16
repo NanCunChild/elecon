@@ -1,0 +1,77 @@
+{
+  "_doc": "Broker B2 头净化 golden 向量。语言无关唯一事实源：TS（server header-sanitize.smoke.ts）与 Dart（client）照同一向量双跑。规格见 ADR-009 §2.3（请求）/ §2.5（响应）。direction=request|response。改动须人工 + 安全清单复核（红线 #1）。",
+  "cases": [
+    {
+      "name": "request_strip_cookie",
+      "direction": "request",
+      "input": { "Cookie": "sid=secret", "Content-Type": "application/json" },
+      "expected": { "Content-Type": "application/json" }
+    },
+    {
+      "name": "request_strip_authorization",
+      "direction": "request",
+      "input": { "Authorization": "Bearer secret", "Accept": "*/*" },
+      "expected": { "Accept": "*/*" }
+    },
+    {
+      "name": "request_strip_proxy_authorization",
+      "direction": "request",
+      "input": { "Proxy-Authorization": "Basic secret" },
+      "expected": {}
+    },
+    {
+      "name": "request_strip_credential_headers_case_insensitive",
+      "direction": "request",
+      "input": { "cookie": "x=1", "AUTHORIZATION": "y", "content-type": "text/html" },
+      "expected": { "content-type": "text/html" }
+    },
+    {
+      "name": "request_drop_non_allowlisted",
+      "direction": "request",
+      "input": { "X-Custom": "v", "Referer": "https://x.edu.cn", "Content-Type": "application/json" },
+      "expected": { "Content-Type": "application/json" }
+    },
+    {
+      "name": "request_keep_full_allowlist",
+      "direction": "request",
+      "input": { "Content-Type": "application/json", "Accept": "application/json", "Accept-Language": "zh-CN" },
+      "expected": { "Content-Type": "application/json", "Accept": "application/json", "Accept-Language": "zh-CN" }
+    },
+    {
+      "name": "request_empty",
+      "direction": "request",
+      "input": {},
+      "expected": {}
+    },
+    {
+      "name": "response_keep_allowlist_drop_set_cookie_and_extras",
+      "direction": "response",
+      "input": { "Content-Type": "text/html", "Content-Length": "1234", "Date": "Mon, 15 Jun 2026 00:00:00 GMT", "Set-Cookie": "sid=secret", "X-Powered-By": "nginx" },
+      "expected": { "Content-Type": "text/html", "Content-Length": "1234", "Date": "Mon, 15 Jun 2026 00:00:00 GMT" }
+    },
+    {
+      "name": "response_strip_set_cookie",
+      "direction": "response",
+      "input": { "Set-Cookie": "CASTGC=secret; Path=/", "Content-Type": "application/json" },
+      "expected": { "Content-Type": "application/json" }
+    },
+    {
+      "name": "response_strip_authorization_echo",
+      "direction": "response",
+      "input": { "Authorization": "Bearer echoed", "ETag": "\"abc123\"" },
+      "expected": { "ETag": "\"abc123\"" }
+    },
+    {
+      "name": "response_case_insensitive_keep",
+      "direction": "response",
+      "input": { "content-type": "text/html", "CACHE-CONTROL": "no-cache" },
+      "expected": { "content-type": "text/html", "CACHE-CONTROL": "no-cache" }
+    },
+    {
+      "name": "response_keep_cache_validators",
+      "direction": "response",
+      "input": { "Cache-Control": "max-age=60", "ETag": "\"v1\"", "Last-Modified": "Mon, 15 Jun 2026 00:00:00 GMT", "Content-Encoding": "gzip" },
+      "expected": { "Cache-Control": "max-age=60", "ETag": "\"v1\"", "Last-Modified": "Mon, 15 Jun 2026 00:00:00 GMT", "Content-Encoding": "gzip" }
+    }
+  ]
+}
