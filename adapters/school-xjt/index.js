@@ -4,13 +4,12 @@
  * 目标：公开通知 notice.list。需要 fetch 模式是因为站点有 **JS 反爬挑战**（多步握手），
  * 数据本身公开、**不碰学生凭证**（credentials 块为空，全程 passthrough）。
  *
- * ⚠️ 现状：**尚不可端到端运行**——运行时的受限 `ctx.fetch`（Broker）属 Track B（ADR-009
- * 承重路径，未实现）。本文件是 Track A 的逻辑 spike：流程见 ./FLOW.md。
+ * ⚠️ 现状：**尚不可端到端运行**——运行时的受限 `ctx.fetch`（Broker）属 B6（未实现）。
+ * 本文件是 Track A 的逻辑 spike + body-token 缺口已修补：流程见 ./FLOW.md。
  *
- * ⚠️ 设计缺口（FLOW.md §3）：挑战返回的 client_id 可能只在 **响应体**、无 `Set-Cookie`。
- * 若如此，per-execution jar 抓不到它、后续请求带不上 → 流程断，需 ADR-009 修订。
- * 本实现按 **ADR-009 合规方式**写（adapter 不自设 cookie，依赖 jar 抓 Set-Cookie）；
- * 缺口落点已在下方标注。待真实抓包（FLOW.md §5）确认 Set-Cookie 是否存在后再定。
+ * body-token 缺口（FLOW.md §3，已修补）：client_id 仅在响应 body、origin 零 Set-Cookie
+ * （pac.txt 实锤）。现经 ctx.setEphemeralCookie（ADR-009 §2.4 rev-3 / PR #34 契约 /
+ * B4 #37 运行时）写入 jar ephemeral 分区，四重栅栏由 Broker 强制。
  */
 
 import { parseDocument, selectAll, getText, getAttributeValue } from "elecon:html";
@@ -57,18 +56,19 @@ export const capabilities = {
           },
         }),
       });
-      // 状态检查：挑战提交失败则明确报错（交宿主按 parse_failed 处理）。读 body 里的
-      // success/client_id 处理属 body-token 缺口修补，随下方说明的 setEphemeralCookie 落地。
       if (!challengeRes.ok) {
         throw new Error(`challenge submit failed: HTTP ${challengeRes.status}`);
       }
 
-      // ⚠️ 缺口（FLOW.md §3，已确认）：client_id 仅在上面 POST 的响应 **body**、origin 无
-      // Set-Cookie（pac.txt 实锤）→ per-execution jar 抓不到、§2.3 又剥 adapter 自设 Cookie 头，
-      // 故下面这个 GET 当前带不上 client_id → 仍是挑战页 → 失败。
-      // 修补已定（#25 / ADR-009 rev-3，方向 A）：契约新增 ctx.setEphemeralCookie（仅 passthrough、
-      // 不覆盖凭证、永不收割、执行即弃）。待该 API 随 B4 第 2 分区落地后，此处替换为：
-      //   ctx.setEphemeralCookie("client_id", <从 challengeRes body 解出>, { domain: "dean.xjtu.edu.cn" });
+      // [4] 从 POST 响应 body 解出 client_id，经 ctx.setEphemeralCookie 写入 jar
+      // （ADR-009 §2.4 rev-3：origin 零 Set-Cookie，token 在 body，由挑战页 JS 写 document.cookie）。
+      const challengeBody = await challengeRes.json();
+      if (!challengeBody.success || !challengeBody.client_id) {
+        throw new Error("challenge response: success=false or missing client_id");
+      }
+      ctx.setEphemeralCookie("client_id", challengeBody.client_id, {
+        domain: "dean.xjtu.edu.cn",
+      });
 
       // [5] 带 jar 中的会话 cookie 重新 GET 首页 → 真实通知页
       html = await (await ctx.fetch(ORIGIN + "/")).text();

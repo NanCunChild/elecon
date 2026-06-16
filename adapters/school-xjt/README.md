@@ -9,13 +9,14 @@
 
 ## 运行依赖（未就绪）
 
-端到端运行需 **Track B**：运行时受限 `ctx.fetch` + Broker（ADR-009 承重路径，🔒 人工主导，未实现）。
-本 adapter 先作为逻辑 spike + 设计验证。
+端到端运行需 **B6 运行时接线**（把 B1–B5 编织成可跑的 `ctx.fetch`，🔒 人工主导，未实现）。
+Broker 核心零件（B1–B5）两端已齐备。
 
-## 待解决：ADR-009 设计缺口
+## body-token 缺口（已修补）
 
-挑战返回的 `client_id` 可能只在响应体、无 `Set-Cookie` → jar 抓不到、adapter 又不能自设 cookie。
-详见 [`FLOW.md`](./FLOW.md) §3/§4。**需一次真实抓包确认**。
+~~挑战返回的 `client_id` 只在响应体、无 `Set-Cookie` → jar 抓不到。~~
+**已修补**：经 `ctx.setEphemeralCookie`（ADR-009 §2.4 rev-3 / PR #34 契约 / B4 #37 运行时）写入
+jar ephemeral 分区。四重栅栏由 Broker 强制（仅 passthrough / 不覆盖凭证 / 永不收割 / 执行即弃）。
 
 ## 夹具（待录制）
 
