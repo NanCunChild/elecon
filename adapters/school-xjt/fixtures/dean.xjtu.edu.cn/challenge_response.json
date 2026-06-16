@@ -1,0 +1,15 @@
+{
+  "headers": {
+    "Server": "***",
+    "Date": "Tue, 16 Jun 2026 06:15:10 GMT",
+    "Content-Type": "application/json",
+    "Transfer-Encoding": "chunked",
+    "Connection": "keep-alive",
+    "Set-Cookie": "client_id=REDACTED_CLIENT_ID_0000000000; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax"
+  },
+  "body": {
+    "success": true,
+    "message": "Verification successful",
+    "client_id": "REDACTED_CLIENT_ID_0000000000"
+  }
+}
