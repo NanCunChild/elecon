@@ -69,16 +69,22 @@ function serialize(cookies: JarCookie[]): string {
  * pathPrefix 前缀，ADR-009 §2.4 第 122–124 行）→ 该 cookie 归此 ref。
  *
  * `type: "header"` ref 不参与 cookie 收割。未被任何 ref 命中的 cookie → 瞬态，丢弃。
+ * 一个父域共享 cookie 若同时落在多个 ref 的 scope，会**分别**收割进各 ref（各自的凭证束
+ * 都合法含它；下次执行 B1 按最长前缀选 ref 注入，仍带该 cookie）。
  * 计划项按 ref 名升序；无命中的 ref 不产出空项。
  */
 export function decideHarvest(originCookies: JarCookie[], view: BrokerManifestView): HarvestPlan {
   const plan: HarvestPlan = [];
 
+  // 纵深防御（栅栏 3）：只收 origin 区。正常输入是 jar.harvestView()（已仅 origin），
+  // 但本函数不信任上游——即便误传入 ephemeral cookie，也在此丢弃，绝不入库。
+  const harvestable = originCookies.filter((c) => c.source === "origin");
+
   for (const [ref, decl] of Object.entries(view.credentials ?? {})) {
     if (decl.type !== "cookie") continue;
 
     const reprUrls = decl.scope.map(scopeReprUrl).filter((u): u is string => u !== null);
-    const matched = originCookies.filter((c) =>
+    const matched = harvestable.filter((c) =>
       reprUrls.some((u) => matchCookieForSend({ domain: c.domain, path: c.path }, u)),
     );
     if (matched.length === 0) continue;

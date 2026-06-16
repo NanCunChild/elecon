@@ -73,6 +73,30 @@
       "expected": [{ "ref": "portal", "value": "P=1" }]
     },
     {
+      "name": "defense_ephemeral_source_never_harvested",
+      "input": {
+        "originCookies": [
+          { "name": "JSESSIONID", "value": "S1", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin" },
+          { "name": "client_id", "value": "EPH", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "ephemeral" }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": [{ "ref": "sess", "value": "JSESSIONID=S1" }]
+    },
+    {
+      "name": "shared_parent_cookie_harvested_into_multiple_refs",
+      "input": {
+        "originCookies": [
+          { "name": "SSO", "value": "P1", "domain": "xjtu.edu.cn", "path": "/", "source": "origin" }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*", "https://dean.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" }, "dean": { "scope": ["https://dean.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": [
+        { "ref": "dean", "value": "SSO=P1" },
+        { "ref": "sess", "value": "SSO=P1" }
+      ]
+    },
+    {
       "name": "multi_ref_mixed_with_drop",
       "input": {
         "originCookies": [
