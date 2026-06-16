@@ -18,6 +18,32 @@ interface CtxFetch {
    * - adapter 永不接触凭证值，也拿不到带 token 的 URL / Set-Cookie / 重定向中间 token。
    */
   fetch(url: string, init?: RequestInit): Promise<Response>;
+  /**
+   * 执行内 ephemeral cookie 写回（语义见 ADR-009 §2.4，2026-06-15 rev-3）。
+   *
+   * 用途：解多步握手中「origin 不经 `Set-Cookie`、而把会话 token 放响应 body、
+   * 由页面 JS `document.cookie` 写入」这类缺口（实测见 XJT 教务挑战页的
+   * `client_id`）。adapter 经 §2.5 body 透传本就能读到该值，此 API 允许把它写回
+   * **同源 passthrough** cookie，使后续 `ctx.fetch` 自动携带——不新增任何超出
+   * body 透传既有面的外泄面。
+   *
+   * 写入 per-execution jar 的独立 **ephemeral 分区**，由 Broker 强制四重栅栏
+   * （adapter 自律不算数）：
+   * 1. **仅 passthrough origin**：`opts.domain` 须 domain-match 某 `network.allow`
+   *    条目、且**不**落在任何 `credentials.<name>.scope` 内——永不能写到凭证域。
+   *    `opts.path`（缺省 `/`）须为对应 allow 条目 path 的子路径。
+   * 2. **不覆盖 broker 注入**：请求拼装时优先级低于 broker 注入分区与 origin
+   *    `Set-Cookie`，同名以后两者为准。
+   * 3. **永不收割**：ephemeral 分区不参与 §2.4 收割，绝不进核心凭证库（ADR-012）。
+   * 4. **执行即弃**：随 per-execution jar 在执行结束时整体丢弃，不跨执行、不持久化。
+   *
+   * 越栅栏的调用由 Broker 拒绝（非静默放宽）。adapter 永不接触任何凭证值。
+   */
+  setEphemeralCookie(
+    name: string,
+    value: string,
+    opts: { domain: string; path?: string },
+  ): void;
   log(level: "debug" | "info" | "warn" | "error", message: string): void;
   now(): number;
 }
