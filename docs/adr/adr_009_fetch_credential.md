@@ -139,7 +139,7 @@ fetch 模式下 adapter 不声明具体请求（那是 parser 的 `requests[]`�
 setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: string }): void;
 ```
 
-**Broker 强制的四重栅栏（缺一即拒，抛结构化权限错误）**：
+**Broker 强制的四重栅栏（缺一即拒——静默丢弃该写入 + `ctx.log("warn")`，不抛错、不给 adapter 探测栅栏边界的异常信号）**：
 1. **仅 passthrough origin**：`opts.domain` 必须落在某 `network.allow` 条目内、且**不**落在任何 `credentials.<name>.scope` 内——永不能写到凭证域，杜绝伪造/覆盖真实凭证。匹配算法：取 `network.allow` 条目的 host 部分，对 `opts.domain` 做 **RFC 6265 §5.1.3 domain-match**（与 §2.4 收割匹配算法方向一致）。`opts.path`（若提供）须为对应 `network.allow` 条目 path 部分的**子路径**（前缀匹配）——不允许 adapter 写出比白名单声明更宽的 cookie 路径；缺省时默认 `/`（仅在该 allow 条目本身为 `/` 或未限定 path 时合法）。
 2. **不覆盖 broker 注入**：ephemeral 分区在请求拼装时优先级**低于** broker 注入分区与 origin `Set-Cookie`；同名以后两者为准。
 3. **永不收割**：ephemeral 分区**不参与** §2.4 收割桥接（判据 b 只认 manifest `credentials` 声明 ref + origin `Set-Cookie` 状态），绝不进 ADR-012 库。
@@ -191,4 +191,5 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 | 2026-06-13 | rev-1b | §2.3 增 scope 重叠消歧规则（最长前缀胜出、等长拒绝）；§3 增第 4 条请求 body 外泄向量声明 |
 | 2026-06-14 | rev-2 | §2.8 限额数值标注临时占位（待实测校准）；§2.4 增执行结束耐久 cookie 收割进凭证库桥接（判据 = manifest 声明的 credential ref，与 ADR-013 对齐）；§2.3 草图正式拆出 ADR-013 |
 | 2026-06-14 | rev-2b（PR #23 review 跟进）| §2.4 补 cookie 收割匹配算法（RFC 6265 §5.1.3/5.1.4 域/路径匹配方向，修正初稿写反的方向）+ jar/broker 同名 cookie 优先级（origin 最新值为准）；§2.8 加校准硬承诺；§4 标 ADR-013 已落地 + pattern-audit 时间线 |
-| 2026-06-15 | rev-3（待人工 + 安全清单复核，未生效）| 增 §2.4「执行内 ephemeral cookie 写回通道」+ 窄 API `ctx.setEphemeralCookie`——解 XJT body-token 缺口（证据 `adapters_tests/XJT/dean/pac.txt`）。四重栅栏：仅 passthrough origin、不覆盖凭证、永不收割、执行即弃。§2.3 剥除规则不变（纵深防御）。触红线 #1/#6，待人工闭环。契约改动见 §4（Gate B） |
+| 2026-06-15 | rev-3（已接受，PR #25）| 增 §2.4「执行内 ephemeral cookie 写回通道」+ 窄 API `ctx.setEphemeralCookie`——解 XJT body-token 缺口（证据 `adapters_tests/XJT/dean/pac.txt`）。四重栅栏：仅 passthrough origin、不覆盖凭证、永不收割、执行即弃。§2.3 剥除规则不变（纵深防御）。触红线 #1/#6。契约改动见 §4（Gate B） |
+| 2026-06-16 | rev-3a（editorial，B4 计划拍板）| §2.4 四重栅栏违例处置从「抛结构化权限错误」修正为「静默丢弃 + ctx.log("warn")、不抛错」——理由：不给 adapter 探测栅栏边界的异常信号（同 B1 纵深防御哲学）。语义不变（写入仍被拒绝、绝不被 honor），仅实现行为明确化 |
