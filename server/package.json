@@ -16,6 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke:sandbox": "tsx src/runtime/sandbox.smoke.ts",
     "smoke:broker": "tsx src/runtime/broker/inject-policy.smoke.ts",
+    "smoke:header": "tsx src/runtime/broker/header-sanitize.smoke.ts",
     "audit": "npm audit --omit=dev"
   },
   "dependencies": {
