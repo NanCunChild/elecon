@@ -1,0 +1,183 @@
+{
+  "_doc": "Broker B4 执行内 cookie jar 纯决策 golden 向量。语言无关唯一事实源：TS（server cookie-jar.smoke.ts）与 Dart（client）照同一向量双跑。规格见 ADR-009 §2.4：四重栅栏（仅 passthrough origin / 不覆盖注入 / 永不收割 / 执行即弃）+ RFC 6265 domain/path 匹配。三组：decideEphemeralWrite（写回栅栏 1）/ matchCookieForSend（发送方向）/ selectCookies（同名优先级 origin>ephemeral）。改动须人工 + 安全清单复核（红线 #1）。",
+  "_view": {
+    "_doc": "A 组各例共享的 manifest 视图（credentials.scope ⊆ allow，校验器 C6 已保证）。",
+    "allow": [
+      "https://dean.xjtu.edu.cn/*",
+      "https://ids.xjtu.edu.cn/*",
+      "https://cdn.example.com/static/*",
+      "https://a.pass.example/*"
+    ],
+    "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } }
+  },
+  "decideEphemeralWrite": [
+    {
+      "name": "accept_passthrough_exact",
+      "input": {
+        "opts": { "name": "client_id", "value": "abc123", "domain": "dean.xjtu.edu.cn" },
+        "view": { "allow": ["https://dean.xjtu.edu.cn/*", "https://ids.xjtu.edu.cn/*", "https://cdn.example.com/static/*", "https://a.pass.example/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": { "ok": true, "cookie": { "name": "client_id", "value": "abc123", "domain": "dean.xjtu.edu.cn", "path": "/" } }
+    },
+    {
+      "name": "accept_leading_dot_normalized",
+      "input": {
+        "opts": { "name": "client_id", "value": "abc123", "domain": ".dean.xjtu.edu.cn" },
+        "view": { "allow": ["https://dean.xjtu.edu.cn/*", "https://ids.xjtu.edu.cn/*", "https://cdn.example.com/static/*", "https://a.pass.example/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": { "ok": true, "cookie": { "name": "client_id", "value": "abc123", "domain": "dean.xjtu.edu.cn", "path": "/" } }
+    },
+    {
+      "name": "reject_credential_domain_exact",
+      "input": {
+        "opts": { "name": "x", "value": "v", "domain": "ids.xjtu.edu.cn" },
+        "view": { "allow": ["https://dean.xjtu.edu.cn/*", "https://ids.xjtu.edu.cn/*", "https://cdn.example.com/static/*", "https://a.pass.example/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": { "ok": false, "reason": "domain_is_credential" }
+    },
+    {
+      "name": "reject_credential_domain_parent",
+      "input": {
+        "opts": { "name": "x", "value": "v", "domain": "xjtu.edu.cn" },
+        "view": { "allow": ["https://dean.xjtu.edu.cn/*", "https://ids.xjtu.edu.cn/*", "https://cdn.example.com/static/*", "https://a.pass.example/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": { "ok": false, "reason": "domain_is_credential" }
+    },
+    {
+      "name": "reject_domain_not_in_allow",
+      "input": {
+        "opts": { "name": "x", "value": "v", "domain": "evil.example.com" },
+        "view": { "allow": ["https://dean.xjtu.edu.cn/*", "https://ids.xjtu.edu.cn/*", "https://cdn.example.com/static/*", "https://a.pass.example/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": { "ok": false, "reason": "domain_not_passthrough" }
+    },
+    {
+      "name": "reject_subdomain_narrower_than_allow",
+      "input": {
+        "opts": { "name": "x", "value": "v", "domain": "sub.dean.xjtu.edu.cn" },
+        "view": { "allow": ["https://dean.xjtu.edu.cn/*", "https://ids.xjtu.edu.cn/*", "https://cdn.example.com/static/*", "https://a.pass.example/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": { "ok": false, "reason": "domain_not_passthrough" }
+    },
+    {
+      "name": "accept_path_within_allow_path",
+      "input": {
+        "opts": { "name": "t", "value": "v", "domain": "cdn.example.com", "path": "/static/js" },
+        "view": { "allow": ["https://dean.xjtu.edu.cn/*", "https://ids.xjtu.edu.cn/*", "https://cdn.example.com/static/*", "https://a.pass.example/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": { "ok": true, "cookie": { "name": "t", "value": "v", "domain": "cdn.example.com", "path": "/static/js" } }
+    },
+    {
+      "name": "reject_default_path_wider_than_allow_path",
+      "input": {
+        "opts": { "name": "t", "value": "v", "domain": "cdn.example.com" },
+        "view": { "allow": ["https://dean.xjtu.edu.cn/*", "https://ids.xjtu.edu.cn/*", "https://cdn.example.com/static/*", "https://a.pass.example/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": { "ok": false, "reason": "path_too_wide" }
+    },
+    {
+      "name": "accept_parent_domain_passthrough",
+      "input": {
+        "opts": { "name": "t", "value": "v", "domain": "pass.example" },
+        "view": { "allow": ["https://dean.xjtu.edu.cn/*", "https://ids.xjtu.edu.cn/*", "https://cdn.example.com/static/*", "https://a.pass.example/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": { "ok": true, "cookie": { "name": "t", "value": "v", "domain": "pass.example", "path": "/" } }
+    }
+  ],
+  "matchCookieForSend": [
+    {
+      "name": "send_exact_host_root_path",
+      "input": { "cookie": { "domain": "dean.xjtu.edu.cn", "path": "/" }, "requestUrl": "https://dean.xjtu.edu.cn/api/x" },
+      "expected": true
+    },
+    {
+      "name": "send_parent_domain",
+      "input": { "cookie": { "domain": "xjtu.edu.cn", "path": "/" }, "requestUrl": "https://dean.xjtu.edu.cn/" },
+      "expected": true
+    },
+    {
+      "name": "nosend_host_mismatch",
+      "input": { "cookie": { "domain": "dean.xjtu.edu.cn", "path": "/" }, "requestUrl": "https://evil.com/" },
+      "expected": false
+    },
+    {
+      "name": "nosend_direction_reversed",
+      "input": { "cookie": { "domain": "sub.dean.xjtu.edu.cn", "path": "/" }, "requestUrl": "https://dean.xjtu.edu.cn/" },
+      "expected": false
+    },
+    {
+      "name": "send_path_prefix_with_trailing_slash",
+      "input": { "cookie": { "domain": "h.edu", "path": "/app/" }, "requestUrl": "https://h.edu/app/page" },
+      "expected": true
+    },
+    {
+      "name": "nosend_cookie_path_deeper",
+      "input": { "cookie": { "domain": "h.edu", "path": "/app/admin" }, "requestUrl": "https://h.edu/app/" },
+      "expected": false
+    },
+    {
+      "name": "send_path_exact_no_trailing_slash",
+      "input": { "cookie": { "domain": "h.edu", "path": "/app" }, "requestUrl": "https://h.edu/app" },
+      "expected": true
+    },
+    {
+      "name": "nosend_path_false_prefix",
+      "input": { "cookie": { "domain": "h.edu", "path": "/app" }, "requestUrl": "https://h.edu/application" },
+      "expected": false
+    }
+  ],
+  "selectCookies": [
+    {
+      "name": "precedence_origin_over_ephemeral_same_name",
+      "input": {
+        "cookies": [
+          { "name": "sid", "value": "FROM_ORIGIN", "domain": "h.edu", "path": "/", "source": "origin" },
+          { "name": "sid", "value": "FROM_EPHEMERAL", "domain": "h.edu", "path": "/", "source": "ephemeral" }
+        ],
+        "requestUrl": "https://h.edu/"
+      },
+      "expected": [{ "name": "sid", "value": "FROM_ORIGIN" }]
+    },
+    {
+      "name": "ephemeral_used_when_no_origin_same_name",
+      "input": {
+        "cookies": [{ "name": "client_id", "value": "E", "domain": "h.edu", "path": "/", "source": "ephemeral" }],
+        "requestUrl": "https://h.edu/"
+      },
+      "expected": [{ "name": "client_id", "value": "E" }]
+    },
+    {
+      "name": "coexist_different_names_sorted_by_name",
+      "input": {
+        "cookies": [
+          { "name": "a", "value": "1", "domain": "h.edu", "path": "/", "source": "origin" },
+          { "name": "b", "value": "2", "domain": "h.edu", "path": "/", "source": "ephemeral" }
+        ],
+        "requestUrl": "https://h.edu/"
+      },
+      "expected": [{ "name": "a", "value": "1" }, { "name": "b", "value": "2" }]
+    },
+    {
+      "name": "nonmatching_dropped",
+      "input": {
+        "cookies": [
+          { "name": "a", "value": "1", "domain": "h.edu", "path": "/", "source": "origin" },
+          { "name": "x", "value": "9", "domain": "other.edu", "path": "/", "source": "origin" }
+        ],
+        "requestUrl": "https://h.edu/"
+      },
+      "expected": [{ "name": "a", "value": "1" }]
+    },
+    {
+      "name": "longer_path_first",
+      "input": {
+        "cookies": [
+          { "name": "p", "value": "root", "domain": "h.edu", "path": "/", "source": "origin" },
+          { "name": "q", "value": "deep", "domain": "h.edu", "path": "/app/", "source": "origin" }
+        ],
+        "requestUrl": "https://h.edu/app/x"
+      },
+      "expected": [{ "name": "q", "value": "deep" }, { "name": "p", "value": "root" }]
+    }
+  ]
+}
