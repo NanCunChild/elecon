@@ -1,5 +1,4 @@
 {
-  "$schema": "../manifest.schema.json",
   "description": "所有合法 capability id 的注册表。新增 id 或改其语义需走 ADR。",
   "capabilities": {
     "grades.list": {
