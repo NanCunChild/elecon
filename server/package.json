@@ -19,6 +19,7 @@
     "smoke:credential": "tsx src/runtime/credential/store.smoke.ts",
     "smoke:header": "tsx src/runtime/broker/header-sanitize.smoke.ts",
     "smoke:redirect": "tsx src/runtime/broker/redirect.smoke.ts",
+    "smoke:cookie": "tsx src/runtime/broker/cookie-jar.smoke.ts",
     "audit": "npm audit --omit=dev"
   },
   "dependencies": {
