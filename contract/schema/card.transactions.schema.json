@@ -16,6 +16,7 @@
           "amountMinor": {
             "type": "integer",
             "minimum": 0,
+            "$comment": "与 card.balance.amountMinor 不同：余额可为负（透支），交易额恒非负且由 direction 表示收支，故此处加 minimum:0。",
             "description": "最小货币单位（如分），非负；收支方向由 direction 表示"
           },
           "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },

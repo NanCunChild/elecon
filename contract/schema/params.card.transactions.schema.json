@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "elecon.params.card.transactions",
-  "$comment": "草案：入参形状待 ADR 确认（红线 #6）。日期范围 + 分页为常见取数约定，需结合真实接口校准。",
+  "$comment": "草案：入参形状待 ADR 确认（红线 #6）。日期范围 + 分页为常见取数约定，需结合真实接口校准。已知学校（XIDIAN）的流水接口仅支持分页（pageNo/pageSize），不支持 from/to；故 from/to 设为可选以适应跨校差异，adapter 可忽略。",
   "title": "card.transactions 入参",
   "type": "object",
   "properties": {
