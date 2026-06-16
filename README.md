@@ -53,8 +53,6 @@ docs/       ADR 与工程结构说明
 
 ## 构建与运行
 
-> 以下为占位骨架，随实现补全具体命令。
-
 ### 客户端（Flutter）
 
 ```bash
@@ -72,6 +70,13 @@ cd server
 npm install
 npm run dev:public          # 公网哑服务：分发 adapter + 缓存公开数据
 npm run dev:campus          # 校内授权中继：堡垒机后部署
+npm run typecheck           # TypeScript 类型检查
+npm run smoke:broker        # Broker B1 注入策略 smoke（12 例 golden）
+npm run smoke:header        # B2 头净化 smoke（12 例）
+npm run smoke:redirect      # B3 重定向 smoke（14 例 + driver 4）
+npm run smoke:cookie        # B4 cookie jar smoke（22 例 + 有态 6）
+npm run smoke:harvest       # B5 收割桥接 smoke（8 例 + 集成 4）
+npm run smoke:credential    # 凭证存储 smoke
 ```
 
 > adapter 在服务端用 **QuickJS-wasm**（`quickjs-emscripten`）执行，与客户端是同一个引擎；**不使用** Node 的 `vm` 模块（`vm` 不是安全边界）。运行时选型见 [`docs/adr/adr_005_runtime.md`](docs/adr/adr_005_runtime.md)。
@@ -103,7 +108,13 @@ npm run dev:campus          # 校内授权中继：堡垒机后部署
 
 ## 路线状态
 
-当前处于架构基线阶段。顶层路线已定稿（ADR-000），细分决策（schema 规范、插件信任模型、传输底座接入、UI 形态等）见 `docs/adr/` 索引，逐条补全中。
+架构决策已全部接受（ADR-000 ~ ADR-013）。当前处于 **fetch 模式运行时实现阶段**：
+
+- **已落地**：Broker 核心零件 B1–B5 两端（TS + Dart）双跑一致，共享 golden 向量 68+ 例；凭证存储原型；`setEphemeralCookie` 契约面。
+- **进行中**：B6 运行时接线（把 B1–B5 串成可跑的 `ctx.fetch`）—— 端到端 fetch 的最后一块大件。
+- **待启动**：录制/回放夹具机制（B7）；WebView 登录收割（XIDIAN 凭证路径前置）。
+
+细分决策与取舍见 `docs/adr/` 索引；实现计划见 `docs/reference/`。
 
 ---
 
