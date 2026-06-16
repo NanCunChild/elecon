@@ -6,6 +6,10 @@
  * 模式由 manifest 的 `mode` 决定（fetch | parser）。
  */
 
+/// <reference lib="dom" />
+// ^ CtxFetch.fetch 复用 DOM 标准的 RequestInit / Response 类型（受限 fetch 的语义子集，
+//   见 ADR-009 §2.1）；引入 dom lib 使本参考声明在严格 TS 下可独立编译。
+
 // ---- fetch 模式的 ctx ----
 
 interface CtxFetch {

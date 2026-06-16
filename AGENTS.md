@@ -10,7 +10,7 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 
 ## 0. 不可违背的红线（Invariants）
 
-以下是架构的承重墙。**任何代码、任何 AI 生成的改动，都不得违背。触碰即拒绝合并。** AI 在产出前必须逐条自检（见 [`docs/rules/ai-coding.md`](docs/rules/ai-coding.md)）。
+以下是架构的承重墙。**任何代码、任何 AI 生成的改动，都不得违背。触碰即拒绝合并。** AI 在产出前必须逐条自检（见 [`docs/rules/ai_coding.md`](docs/rules/ai_coding.md)）。
 
 1. **凭证永不离开核心。** cookie / token 只存于可信核心；adapter、UI、公网服务端永远拿不到凭证的值，也拿不到任何等价物（带 token 的 URL、`Set-Cookie`、重定向中间 token）。
 2. **公网服务端零凭证、无状态。** 不得为公网哑服务（`server/src/public`）添加任何凭证存储或私密数据持久化。
@@ -38,7 +38,7 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 
 | 细则 | 覆盖 |
 |---|---|
-| [`docs/rules/feature-workflow.md`](docs/rules/feature_workflow.md) | 新功能加入方式：快/慢车道、何时需要 ADR |
+| [`docs/rules/feature_workflow.md`](docs/rules/feature_workflow.md) | 新功能加入方式：快/慢车道、何时需要 ADR |
 | [`docs/rules/git.md`](docs/rules/git.md) | 分支模型、commit 规范、PR 规范 |
 | [`docs/rules/testing.md`](docs/rules/testing.md) | 测试原则：信任越高测试越严、夹具驱动 |
-| [`docs/rules/ai-coding.md`](docs/rules/ai_coding.md) | AI 编程纪律与产出前自检清单 |
+| [`docs/rules/ai_coding.md`](docs/rules/ai_coding.md) | AI 编程纪律与产出前自检清单 |
