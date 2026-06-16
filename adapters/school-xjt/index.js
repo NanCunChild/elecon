@@ -60,8 +60,10 @@ export const capabilities = {
         throw new Error(`challenge submit failed: HTTP ${challengeRes.status}`);
       }
 
-      // [4] 从 POST 响应 body 解出 client_id，经 ctx.setEphemeralCookie 写入 jar
-      // （ADR-009 §2.4 rev-3：origin 零 Set-Cookie，token 在 body，由挑战页 JS 写 document.cookie）。
+      // [4] 从 POST 响应 body 解出 client_id，经 ctx.setEphemeralCookie 写入 jar。
+      // 注：2026-06-16 录制确认 origin 实际有 Set-Cookie（jar 会自动捕获），本调用为
+      // 防御性冗余（ephemeral 优先级 < origin，同名以 origin 为准，栅栏 2 无害）——
+      // 若 origin 未来改回无 Set-Cookie，本通道仍兜底。
       const challengeBody = await challengeRes.json();
       if (!challengeBody.success || !challengeBody.client_id) {
         throw new Error("challenge response: success=false or missing client_id");
