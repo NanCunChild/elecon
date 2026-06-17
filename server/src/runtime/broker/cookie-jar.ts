@@ -212,10 +212,20 @@ export class CookieJar {
     return true;
   }
 
+  /**
+   * 出站请求选 cookie 对（两分区合并 + selectCookies；origin>ephemeral 已落实）。
+   * B6 拼装（assemble）在此输出之上叠加 broker 注入凭证（broker>origin>ephemeral）。
+   * 仅返回 {name,value}——不外泄 domain/path/source。
+   */
+  selectForSend(requestUrl: string): Array<{ name: string; value: string }> {
+    return selectCookies([...this.origin, ...this.ephemeral], requestUrl);
+  }
+
   /** 出站请求的 `Cookie` 头值（空则 ""）。两分区合并后过 selectCookies。 */
   cookieHeader(requestUrl: string): string {
-    const pairs = selectCookies([...this.origin, ...this.ephemeral], requestUrl);
-    return pairs.map((p) => `${p.name}=${p.value}`).join("; ");
+    return this.selectForSend(requestUrl)
+      .map((p) => `${p.name}=${p.value}`)
+      .join("; ");
   }
 
   /**
