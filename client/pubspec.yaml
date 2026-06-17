@@ -20,7 +20,7 @@ dependency_overrides:
   flutter_qjs:
     git:
       url: https://github.com/NanCunChild/flutter_qjs.git
-      ref: fd7273a539c37e11f0ec6d9b500992b85b40a575
+      ref: 0dd80691e14da9b49d982bc1c6dd1c8bbe2a28d3
 
 dev_dependencies:
   flutter_test:
