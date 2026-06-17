@@ -20,15 +20,7 @@ import 'header_sanitize.dart';
 import 'inject_policy.dart';
 import 'ports.dart';
 
-export 'ports.dart' show ResolvedCredential;
-
-/// 出站 cookie 对（B4 `selectCookies` 的输出形；不外泄 domain/path/source）。
-class CookiePair {
-  const CookiePair(this.name, this.value);
-
-  final String name;
-  final String value;
-}
+export 'ports.dart' show ResolvedCredential, CookiePair;
 
 /// adapter 经 `ctx.fetch(url, init)` 传入的请求意图（host 侧已把 headers 归一）。
 class RequestInit {

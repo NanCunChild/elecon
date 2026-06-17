@@ -18,3 +18,12 @@ class ResolvedCredential {
 abstract interface class CredentialResolver {
   Future<ResolvedCredential?> get(String ref);
 }
+
+/// 出站 cookie 对（B4 `selectCookies` / `selectForSend` 与 B6 拼装的共享类型；
+/// 不外泄 domain/path/source）。置于 ports（共享底层）以避免 cookie_jar→assemble 的依赖反转。
+class CookiePair {
+  const CookiePair(this.name, this.value);
+
+  final String name;
+  final String value;
+}
