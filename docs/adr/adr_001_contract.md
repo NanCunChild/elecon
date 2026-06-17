@@ -316,6 +316,8 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
 
 ### 8.1 变更记录（dated）
 
+> 本节是契约新增/变更的 dated 流水（呼应红线 #6「契约变更须走 ADR」）。每条记录立项即满足"先有 ADR"。
+
 - **2026-06-16 · `elecon.notice.list` 1.0 → 1.1（🔒 待人工复核）**
   - **改动**：`publishedAt` 由 `required` 移出，成为可选字段（schema 内容不变，仅放宽必填约束）。级联 `capability/registry.json` 与 emit 它的 manifest（school-xidian / school-xjt）的 `emits.schemaVersion` 同步至 `1.1`。
   - **为何是 MINOR 而非 MAJOR**：§8 把"收紧约束"列为破坏性，本改动是其**反向（放宽）**。§3.4「缺失语义」本就要求消费方普遍处理"字段缺失 = 该校不提供"，故把 `publishedAt` 改为可选**不超出消费方既有义务**，旧数据（含 `publishedAt`）在 1.1 下仍合法 → 向后兼容，记 MINOR。
@@ -325,6 +327,16 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
     2. **新旧版本并存**：1.0 与 1.1 同时在网（不同 adapter/缓存）时，宿主以 envelope `schemaVersion` 解读；1.1 消费方需容忍缺省，1.0 数据天然满足。
     3. **一致性外溢**：其他域 schema 可能存在同类"过紧 required"（如把可能缺失的字段标必填），本次只动 notice.list，未做全面审计——留作后续核对，不在本改动范围。
     4. **校验盲区**：`tools/` 校验器目前不对 params schema 做加载校验，emits 版本一致性（C2）已覆盖本次级联；fixtures 仍含 `publishedAt`，1.1 下照常通过。
+
+- **2026-06-16 · 新增 `elecon.card.transactions` emits schema + 5 个 `params.*` 草案 schema（补 registry 悬空引用，🔒 待人工复核）**
+  - **改动**：补齐 `capability/registry.json` 早已声明却**无定义文件**的 schema——
+    1. **`elecon.card.transactions@1.0`（emits，稳定面）**：money 模型镜像 `card.balance`（`amountMinor` + `currency`），增 `direction`（debit/credit）区分收支；`amountMinor` 加 `minimum:0`（交易额恒非负，收支由 `direction` 表达，区别于 `card.balance` 可为负的余额，已在 schema `$comment` 注明）。
+    2. **5 个 `params.*` 草案 schema**：`grades.list` / `schedule.week` / `card.transactions` / `notice.list` / `generic.section`，消除 registry 悬空 `params` 引用。均带 `$comment: 草案`。
+  - **范围**：仅新增 `contract/schema/` 文件；未改 `registry.json`、未新增/改 capability id、未改任何既有 schema 语义。registry 的 `$schema` 错误指向已拆至 #48 单独修复。
+  - **草案（draft）状态约定**：上述 5 个 `params.*` 在经本 ADR **正式确认（"转正"）前不属稳定契约面**——adapter / UI 不得将其当稳定依赖。**草案期内其形状可自由调整（增删字段、改约束）而不触发 §8 的 MAJOR/MINOR 版本治理**；版本治理仅自该 schema 转正后生效。此约定为契约早期高频迭代（按真实接口反复校准）留出空间，同时不削弱红线 #6——草案明标、不被依赖、转正须在本节补记。
+  - **待人工确认的设计点（草案期跟进，非阻塞本次补齐）**：
+    1. `params.schedule.week.week` 设为 `required` 是否需核心侧配套「当前教学周」能力（否则消费方无从得知传第几周）；
+    2. `params.card.transactions` 的 `from`/`to` 与 `page`/`size`：已知学校（XIDIAN）流水接口仅支持分页（`pageNo`/`pageSize`）、不支持日期范围，故 `from`/`to` 设可选以适配跨校差异，由 adapter 归一化映射。
 
 ---
 
