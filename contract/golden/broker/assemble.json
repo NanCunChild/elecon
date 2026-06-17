@@ -1,0 +1,169 @@
+{
+  "_doc": "Broker B6a 请求拼装 / 响应脱敏 golden 向量。语言无关唯一事实源：TS（server assemble.smoke.ts）与 Dart（client，B6c 对齐）照同一向量双跑。assemble 入参为已算好的 decision（B1）+ resolved 凭证值（resolver）+ jarCookies（B4 selectCookies），故纯函数可穷举。安全约定见 server/src/runtime/broker/assemble.ts 文件头。改动此文件须人工 + 安全清单复核（红线 #1）。",
+  "assemble": [
+    {
+      "name": "reject_outside_allow_no_credentials_attached",
+      "input": {
+        "init": { "method": "GET", "headers": { "Cookie": "x=1" } },
+        "decision": { "kind": "reject", "reason": "outside_allow" },
+        "resolved": null,
+        "jarCookies": []
+      },
+      "expected": { "kind": "reject", "reason": "outside_allow" }
+    },
+    {
+      "name": "reject_ambiguous_scope_fail_closed",
+      "input": {
+        "init": { "method": "GET", "headers": {} },
+        "decision": { "kind": "reject", "reason": "ambiguous_scope" },
+        "resolved": null,
+        "jarCookies": []
+      },
+      "expected": { "kind": "reject", "reason": "ambiguous_scope" }
+    },
+    {
+      "name": "passthrough_no_creds_keeps_only_allowlisted_headers",
+      "input": {
+        "init": { "method": "GET", "headers": { "Content-Type": "application/json", "X-Custom": "drop-me" } },
+        "decision": { "kind": "passthrough" },
+        "resolved": null,
+        "jarCookies": []
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Content-Type": "application/json" } }
+    },
+    {
+      "name": "passthrough_strips_adapter_self_set_cookie_and_authorization",
+      "input": {
+        "init": { "method": "GET", "headers": { "Cookie": "forged=1", "Authorization": "Bearer forged", "Accept": "*/*" } },
+        "decision": { "kind": "passthrough" },
+        "resolved": null,
+        "jarCookies": []
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Accept": "*/*" } }
+    },
+    {
+      "name": "passthrough_with_jar_cookies_only",
+      "input": {
+        "init": { "method": "GET", "headers": {} },
+        "decision": { "kind": "passthrough" },
+        "resolved": null,
+        "jarCookies": [{ "name": "client_id", "value": "abc123" }]
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Cookie": "client_id=abc123" } }
+    },
+    {
+      "name": "inject_cookie_serialized_string_appended_as_is",
+      "input": {
+        "init": { "method": "GET", "headers": {} },
+        "decision": { "kind": "inject", "ref": "session", "via": "cookie" },
+        "resolved": { "via": "cookie", "value": "CASTGC=C1; JSESSIONID=S1" },
+        "jarCookies": []
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Cookie": "CASTGC=C1; JSESSIONID=S1" } }
+    },
+    {
+      "name": "inject_cookie_broker_name_wins_over_jar_same_name",
+      "input": {
+        "init": { "method": "GET", "headers": {} },
+        "decision": { "kind": "inject", "ref": "session", "via": "cookie" },
+        "resolved": { "via": "cookie", "value": "JSESSIONID=BROKER" },
+        "jarCookies": [{ "name": "JSESSIONID", "value": "JARVAL" }, { "name": "extra", "value": "e1" }]
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Cookie": "JSESSIONID=BROKER; extra=e1" } }
+    },
+    {
+      "name": "inject_header_sets_authorization_on_clean_base",
+      "input": {
+        "init": { "method": "GET", "headers": { "Content-Type": "application/json" } },
+        "decision": { "kind": "inject", "ref": "ehall-token", "via": "header" },
+        "resolved": { "via": "header", "value": "Bearer real-token" },
+        "jarCookies": []
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Content-Type": "application/json", "Authorization": "Bearer real-token" } }
+    },
+    {
+      "name": "inject_header_overrides_adapter_self_set_authorization",
+      "input": {
+        "init": { "method": "GET", "headers": { "Authorization": "Bearer FORGED" } },
+        "decision": { "kind": "inject", "ref": "ehall-token", "via": "header" },
+        "resolved": { "via": "header", "value": "Bearer real-token" },
+        "jarCookies": []
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Authorization": "Bearer real-token" } }
+    },
+    {
+      "name": "inject_cookie_merges_above_jar_origin_and_ephemeral",
+      "input": {
+        "init": { "method": "POST", "headers": { "Content-Type": "application/json" }, "body": "{\"q\":1}" },
+        "decision": { "kind": "inject", "ref": "session", "via": "cookie" },
+        "resolved": { "via": "cookie", "value": "SESS=brk" },
+        "jarCookies": [{ "name": "origin_c", "value": "o1" }, { "name": "client_id", "value": "eph1" }]
+      },
+      "expected": { "kind": "ok", "method": "POST", "headers": { "Content-Type": "application/json", "Cookie": "SESS=brk; origin_c=o1; client_id=eph1" }, "body": "{\"q\":1}" }
+    },
+    {
+      "name": "inject_cookie_resolved_null_credential_missing_proceeds_without_broker_cookie",
+      "_doc": "🔒 开放点：inject 但 resolver 未命中（凭证失效）→ 不伪造 broker cookie，jar cookie 仍附，照发（origin 返 401 由 adapter 透传处理）。是否改 fail-closed 待人工拍板。",
+      "input": {
+        "init": { "method": "GET", "headers": {} },
+        "decision": { "kind": "inject", "ref": "session", "via": "cookie" },
+        "resolved": null,
+        "jarCookies": [{ "name": "client_id", "value": "eph1" }]
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Cookie": "client_id=eph1" } }
+    },
+    {
+      "name": "method_defaults_to_get_and_uppercases",
+      "input": {
+        "init": { "method": "post", "headers": {}, "body": "x" },
+        "decision": { "kind": "passthrough" },
+        "resolved": null,
+        "jarCookies": []
+      },
+      "expected": { "kind": "ok", "method": "POST", "headers": {}, "body": "x" }
+    },
+    {
+      "name": "no_headers_no_body_minimal_passthrough",
+      "input": {
+        "init": {},
+        "decision": { "kind": "passthrough" },
+        "resolved": null,
+        "jarCookies": []
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": {} }
+    }
+  ],
+  "process": [
+    {
+      "name": "strips_set_cookie",
+      "input": { "status": 200, "headers": { "Content-Type": "text/html", "Set-Cookie": "leak=1" } },
+      "expected": { "status": 200, "headers": { "Content-Type": "text/html" } }
+    },
+    {
+      "name": "strips_authorization_echo_and_location",
+      "input": { "status": 302, "headers": { "Authorization": "Bearer echo", "Location": "https://x/ticket?t=secret", "Date": "Tue" } },
+      "expected": { "status": 302, "headers": { "Date": "Tue" } }
+    },
+    {
+      "name": "keeps_full_allowlist",
+      "input": { "status": 200, "headers": { "Content-Type": "application/json", "Content-Length": "12", "Content-Encoding": "gzip", "Date": "Tue", "Cache-Control": "no-cache", "ETag": "\"abc\"", "Last-Modified": "Mon" } },
+      "expected": { "status": 200, "headers": { "Content-Type": "application/json", "Content-Length": "12", "Content-Encoding": "gzip", "Date": "Tue", "Cache-Control": "no-cache", "ETag": "\"abc\"", "Last-Modified": "Mon" } }
+    },
+    {
+      "name": "status_passthrough_401_with_body",
+      "_doc": "ADR-009 §2 第 6 条：401 原样透传给 adapter（broker 不内联重登）。",
+      "input": { "status": 401, "headers": { "Content-Type": "application/json", "WWW-Authenticate": "Bearer" }, "body": "{\"err\":\"unauth\"}" },
+      "expected": { "status": 401, "headers": { "Content-Type": "application/json" }, "body": "{\"err\":\"unauth\"}" }
+    },
+    {
+      "name": "body_passthrough_accepted_risk",
+      "input": { "status": 200, "headers": { "Content-Type": "text/html" }, "body": "<html>csrf=xyz</html>" },
+      "expected": { "status": 200, "headers": { "Content-Type": "text/html" }, "body": "<html>csrf=xyz</html>" }
+    },
+    {
+      "name": "header_name_case_insensitive_match",
+      "input": { "status": 200, "headers": { "content-type": "text/plain", "SET-COOKIE": "leak=2" } },
+      "expected": { "status": 200, "headers": { "content-type": "text/plain" } }
+    }
+  ]
+}
