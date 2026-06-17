@@ -1,6 +1,6 @@
 # ADR-014：fetch 模式客户端宿主函数桥接（IsolateQjs 宿主函数通道扩展）
 
-- **状态**：草案（Proposed）。本文触碰红线 #1（凭证）与 #7（后台 isolate），且改动客户端 QuickJS 承重依赖（flutter_qjs fork）。按 [AGENTS.md](../../AGENTS.md) §1 + §10，**AI 不得独自闭环**：本草案由 AI 起草，**须经人工 review + 安全检查清单审阅后才可接受并实现**。
+- **状态**：已接受（Accepted，2026-06-17 经人工 review 后接受）。本文触碰红线 #1（凭证）与 #7（后台 isolate），且改动客户端 QuickJS 承重依赖（flutter_qjs fork）。按 [AGENTS.md](../../AGENTS.md) §1 + §10，**AI 不得独自闭环**：本草案由 AI 起草、经人工 review 后接受；**实现（fork 扩展 + adapter_runtime 接线）及其测试仍须人工主导 + 安全检查清单 + ≥1 人工审**。
 - **日期**：2026-06-17
 - **依赖**：[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端 QuickJS / `IsolateQjs` / fork）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（fetch 凭证注入数据流 §2.1 / 限额 §2.7）、[`adr_005_runtime.md`](./adr_005_runtime.md)（两端同一引擎）、[`adr_001_contract.md`](./adr_001_contract.md) §8（双跑闸门）
 - **适用范围**：`client/lib/core/adapter_runtime.dart` 的 **fetch 模式**接线，及其所依赖的 `flutter_qjs` fork 引擎扩展。是 ADR-008 §2.5 / §4「待续：fetch 模式 `ctx.fetch`」的落点。
@@ -74,7 +74,7 @@
 
 ## 5. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
 
-- **fork 扩展**：`NanCunChild/flutter_qjs` 增 `IsolateQjs` 宿主函数注入通道（复用 `IsolateFunction` + `#jsFuturePort`）；纯 Dart、pin commit；`client/pubspec.yaml` 的 `dependency_overrides` 更新到新 commit；若触原生测试库则 `client/tool/build_qjs_test_lib.sh` 重建。
+- **fork 扩展** ✅（commit `0dd8069`，分支 `feat/host-fn-channel`；elecon 接入 PR #54）：`NanCunChild/flutter_qjs` 增 `IsolateQjs.setHostFunctions` 宿主函数通道（复用 `IsolateFunction` + Future→Promise）；纯 Dart、仅 `isolate.dart`、不动 vendored C；`client/pubspec.yaml` ref `fd7273→0dd8069`；`build_qjs_test_lib.sh` 已重建（C 源不变、ABI 兼容）。桥接证明 `test/host_fn_bridge_test.dart` 4/4（Future→Promise 往返 / 多次调用 / 抛错→reject / inject-once）。
 - **`client/lib/core/adapter_runtime.dart`**：增 `runFetchAdapter`（与 parser `runParserAdapter` 并列、互不干扰）——受限 `ctx.fetch` → `proxyFetch`、`ctx.setEphemeralCookie`、限额硬执行（10s/30s/≤20）、执行结束 B5 收割钩子；与 `sandbox.ts` 镜像。
 - **客户端 fetch 集成测试**：fake transport 驱动（镜像 `sandbox.fetch.smoke.ts` 4 例：inject+脱敏+收割 / 多步握手 ephemeral / fail-closed 可 catch / 请求数限额+fail 不收割）。
 - **已就绪前置**（B6b-Dart 第一部分，分支 `gate-a/b6b-fetch-runtime-dart`）：`fetch_proxy.dart`（proxyFetch + Transport 镜像）+ `cookie_jar.dart` `selectForSend` + 驱动测试 6 例——纯 Dart、与引擎解耦，已绿。
@@ -88,3 +88,4 @@
 |---|---|---|
 | 2026-06-17 | 草案 | 起草：IsolateQjs 无宿主函数通道阻塞 B6b-Dart；选「扩 fork 宿主函数通道」（拒 moduleHandler-hack / 非 isolate 引擎）；凭证永不入 isolate 为核心安全断言。🔒 待人工 + 安全清单复核后接受。 |
 | 2026-06-17 | 草案 rev-a（PR #52 review 跟进）| §2.1 钉死宿主绑定「求值前一次性注入、运行时不可追加」；§4.4 补 open question——IsolateQjs interrupt 仅同步求值期生效、卡 await 时打不到，列终止手段 (a)/(b)/(c) + 倾向（host withTimeout 主路径 + `#abort` 兜底）；§4 增第 7 条 in-flight transport 清理 open question（对接 ADR-003 cancel）。 |
+| 2026-06-17 | 已接受 | 经人工 review 后接受。§5 fork 扩展落地标 ✅（fork commit `0dd8069`/分支 `feat/host-fn-channel`，elecon 接入 PR #54；桥接证明 4/4、全套 Dart 123/123 无回归）。剩余落地项（adapter_runtime 接线 / fetch 集成测试）仍 🔒 待实现 + 人工审。 |
