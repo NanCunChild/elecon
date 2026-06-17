@@ -15,6 +15,7 @@ library;
 
 import 'cookie_match.dart';
 import 'inject_policy.dart';
+import 'ports.dart';
 
 /// jar 内 cookie 表示（仅 host 侧可见；adapter 永不接触）。`source` ∈ {origin, ephemeral}。
 class JarCookie {
@@ -262,11 +263,17 @@ class CookieJar {
     return true;
   }
 
+  /// 出站请求选 cookie 对（两分区合并 + selectCookies；origin>ephemeral 已落实）。
+  /// B6 拼装（assemble）在此输出之上叠加 broker 注入凭证（broker>origin>ephemeral）。
+  /// 返回 typed `CookiePair`（不外泄 domain/path/source；与 TS selectForSend 的 `{name,value}` 对齐）。
+  List<CookiePair> selectForSend(String requestUrl) =>
+      selectCookies([..._origin, ..._ephemeral], requestUrl)
+          .map((m) => CookiePair(m['name']!, m['value']!))
+          .toList();
+
   /// 出站请求的 `Cookie` 头值（空则 ""）。两分区合并后过 selectCookies。
-  String cookieHeader(String requestUrl) {
-    final pairs = selectCookies([..._origin, ..._ephemeral], requestUrl);
-    return pairs.map((p) => '${p['name']}=${p['value']}').join('; ');
-  }
+  String cookieHeader(String requestUrl) =>
+      selectForSend(requestUrl).map((p) => '${p.name}=${p.value}').join('; ');
 
   /// 收割视图（B5 用）：**仅 origin 区**。ephemeral 区结构上不在此返回 →「永不收割」
   /// （栅栏 3）由数据流保证，非靠调用方自律。
