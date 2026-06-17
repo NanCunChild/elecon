@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.notice.list",
+  "$comment": "草案：入参形状待 ADR 确认（红线 #6）。category 枚举与 elecon.notice.list 的 category 对齐；分页为常见约定。",
+  "title": "notice.list 入参",
+  "type": "object",
+  "properties": {
+    "category": {
+      "type": "string",
+      "enum": ["academic", "admin", "event", "unknown"],
+      "description": "按分类过滤；省略 = 全部（与 elecon.notice.list.category 对齐）"
+    },
+    "page": { "type": "integer", "minimum": 1, "description": "页码，从 1 起" },
+    "size": { "type": "integer", "minimum": 1, "description": "每页条数" }
+  }
+}

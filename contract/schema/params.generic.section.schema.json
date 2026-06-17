@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.generic.section",
+  "$comment": "草案：入参形状待 ADR 确认（红线 #6）。generic.section 是长尾兜底域（ADR-001 §3.6），section 标识取哪一块长尾数据。",
+  "title": "generic.section 入参",
+  "type": "object",
+  "required": ["section"],
+  "properties": {
+    "section": {
+      "type": "string",
+      "description": "目标长尾域标识（由 adapter/本体约定，见 ADR-001 §3.6）"
+    }
+  }
+}

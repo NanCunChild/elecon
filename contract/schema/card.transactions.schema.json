@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.card.transactions",
+  "title": "一卡通交易流水",
+  "type": "object",
+  "required": ["cardNumber", "items"],
+  "properties": {
+    "cardNumber": { "type": "string" },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["time", "amountMinor", "currency", "direction"],
+        "properties": {
+          "time": { "type": "string", "format": "date-time" },
+          "amountMinor": {
+            "type": "integer",
+            "minimum": 0,
+            "$comment": "与 card.balance.amountMinor 不同：余额可为负（透支），交易额恒非负且由 direction 表示收支，故此处加 minimum:0。",
+            "description": "最小货币单位（如分），非负；收支方向由 direction 表示"
+          },
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+          "direction": {
+            "type": "string",
+            "enum": ["debit", "credit"],
+            "description": "debit=支出 credit=充值/入账"
+          },
+          "merchant": { "type": "string" },
+          "balanceAfterMinor": {
+            "type": "integer",
+            "description": "本笔交易后余额（最小货币单位）；可选"
+          },
+          "type": { "type": "string", "description": "交易类型原文/归类；可选" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.schedule.week",
+  "$comment": "草案：入参形状待 ADR 确认（红线 #6）。依据 elecon.schedule.week 的 term / week 字段推导。",
+  "title": "schedule.week 入参",
+  "type": "object",
+  "required": ["week"],
+  "properties": {
+    "term": {
+      "type": "string",
+      "description": "学期标识，如 2025-2026-2；省略 = 当前学期"
+    },
+    "week": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "教学周序号"
+    }
+  }
+}
