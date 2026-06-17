@@ -74,4 +74,4 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 - `adapters/_canary/parser/`：引擎地板漂移哨兵（`__canary.engine_floor`）。两端共有内建的 golden + `avoided` 约束清单；服务端半边在 `server/src/runtime/sandbox.smoke.ts`。
 - `client/tool/build_qjs_test_lib.sh`：从 `package_config.json` 动态定位 flutter_qjs、经 CMake 构建 FFI 测试库。
 - `client/pubspec.yaml`：`flutter_qjs` 依赖 + 指向补丁 fork 的 `dependency_overrides`（pin commit）。
-- 待续：fetch 模式 `ctx.fetch` + 凭证注入（红线 #1，人工审阅 PR，[#3](https://github.com/NanCunChild/elecon/issues/3)）；iOS 2.5.2 合规评估（已由 [ADR-010](./adr_010_ios_appstore.md) 给出可上架形态，[#4](https://github.com/NanCunChild/elecon/issues/4)）；其余平台 desktop/device 测试基建。
+- 待续：fetch 模式 `ctx.fetch` + 凭证注入（红线 #1，人工审阅 PR，[#3](https://github.com/NanCunChild/elecon/issues/3)）——**客户端宿主函数桥接见 [ADR-014](./adr_014_client_host_fn.md)**（`IsolateQjs` 无宿主函数通道，需扩 fork；草案）；iOS 2.5.2 合规评估（已由 [ADR-010](./adr_010_ios_appstore.md) 给出可上架形态，[#4](https://github.com/NanCunChild/elecon/issues/4)）；其余平台 desktop/device 测试基建。
