@@ -23,6 +23,7 @@
     "smoke:cookie": "tsx src/runtime/broker/cookie-jar.smoke.ts",
     "smoke:harvest": "tsx src/runtime/broker/harvest.smoke.ts",
     "smoke:assemble": "tsx src/runtime/broker/assemble.smoke.ts",
+    "smoke:transport": "tsx src/runtime/transport/direct.smoke.ts",
     "audit": "npm audit --omit=dev"
   },
   "dependencies": {
