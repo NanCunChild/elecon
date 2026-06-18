@@ -4,8 +4,8 @@
  * 目标：公开通知 notice.list。需要 fetch 模式是因为站点有 **JS 反爬挑战**（多步握手），
  * 数据本身公开、**不碰学生凭证**（credentials 块为空，全程 passthrough）。
  *
- * ⚠️ 现状：**尚不可端到端运行**——运行时的受限 `ctx.fetch`（Broker）属 B6（未实现）。
- * 本文件是 Track A 的逻辑 spike + body-token 缺口已修补：流程见 ./FLOW.md。
+ * 现状：**已端到端跑通**（首个真实 fetch adapter）——B6 运行时（runFetchAdapter）+ direct
+ * Transport 落地后，经录制夹具回放验证解析出真实通知（server `npm run smoke:xjt`）。流程见 ./FLOW.md。
  *
  * body-token 缺口（FLOW.md §3，已修补）：client_id 仅在响应 body、origin 零 Set-Cookie
  * （pac.txt 实锤）。现经 ctx.setEphemeralCookie（ADR-009 §2.4 rev-3 / PR #34 契约 /
