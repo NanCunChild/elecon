@@ -140,7 +140,8 @@ Future<FetchProxyOutcome> proxyFetch(
       resolved: resolved,
       jarCookies: jarCookies,
     ));
-    // decision 已非 reject，assembled 必为 ok；防御性兜底。
+    // 拼装层也可 fail-closed：inject 但 resolver 未命中 → reject(credential_unavailable)。
+    // 任一 reject 都转受控错误（绝不发请求、绝不附凭证）。
     if (assembled is RejectResult) {
       throw BrokerFetchRejected(assembled.reason);
     }
