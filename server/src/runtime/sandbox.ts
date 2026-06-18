@@ -468,7 +468,29 @@ export async function runFetchAdapter(
       });
       return deferred.handle;
     });
-    ctx.setProp(ctxObj, "fetch", fetchFn);
+    // 契约：ctx.fetch → Promise<Response>（ADR-001 SDK / contract/adapter-sdk）。QuickJS 无内建
+    // Response，故用 JS 工厂把裸 {status,headers,body} 包成 Response 语义子集（status/ok/headers/
+    // text()/json()）。body 仅经 text()/json() 暴露（与 DOM Response 一致，不直接给 .body 字符串）。
+    const wrapFactory = track(
+      unwrap(
+        ctx,
+        ctx.evalCode(
+          `(raw) => (url, init) => raw(url, init).then((r) => ({
+             status: r.status,
+             ok: r.status >= 200 && r.status < 300,
+             headers: r.headers,
+             text: () => Promise.resolve(r.body === undefined ? "" : r.body),
+             json: () => Promise.resolve(JSON.parse(r.body === undefined ? "null" : r.body)),
+           }))`,
+          "fetch-response-shim.js",
+        ),
+        deadline,
+      ),
+    );
+    const wrappedFetch = track(
+      unwrap(ctx, ctx.callFunction(wrapFactory, ctx.undefined, fetchFn), deadline),
+    );
+    ctx.setProp(ctxObj, "fetch", wrappedFetch);
     fetchFn.dispose();
 
     // ctx.setEphemeralCookie：写 jar ephemeral 分区，四重栅栏由 B4 强制（违例静默 warn 不抛）。
