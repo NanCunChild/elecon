@@ -116,7 +116,7 @@ CredentialEntry {
 > 安全敏感项标：
 
 - 核心**安全存储抽象**（iOS Keychain / Android Keystore / 桌面 Secret Service）+ at-rest 加密；统一"按 ref 存/取/删"接口。
-- **核心托管 WebView 登录 + session 收割**（客户端；导航域闭锁、上下文隔离、收割后销毁）。
+- **核心托管 WebView 登录 + session 收割**（客户端；导航域闭锁、上下文隔离、收割后销毁）。**登录声明面（去哪登 / 导航闭锁 navigationAllow / 成功检测）见 [ADR-015](./adr_015_manifest_login.md) 的 manifest `login` 块（草案）。**
 - **`CredentialEntry` 模型 + credential reference 解析**，与 ADR-009 broker 注入对接（scope ⊆ network.allow 校验）。
 - **生命周期**：过期检测（401/302→登录页）、登出抹除、吊销联动（与 ADR-002 kill-switch）。
 - 声明式刷新配方（可选，**独立契约 ADR**，向后兼容）。
