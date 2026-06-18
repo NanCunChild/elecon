@@ -19,6 +19,15 @@ import 'dart:convert';
 
 import 'package:flutter_qjs/flutter_qjs.dart';
 
+import 'broker/assemble.dart' show RequestInit;
+import 'broker/cookie_jar.dart' show CookieJar, EphemeralWriteInput;
+import 'broker/fetch_proxy.dart'
+    show BrokerFetchRejected, FetchProxyDeps, Transport, proxyFetch;
+import 'broker/harvest.dart' show decideHarvest, harvestInto;
+import 'broker/inject_policy.dart' show BrokerManifestView;
+import 'broker/ports.dart' show CredentialResolver;
+import 'credential/types.dart' show CredentialEntry;
+
 /// 运行时层面的失败原因。**不携带契约 error.kind**——错误词表是领域概念，
 /// 由上层据此映射（与服务端 `SandboxFailureReason` 对称）。
 enum AdapterFailureReason {
@@ -39,6 +48,9 @@ enum AdapterFailureReason {
 
   /// adapter 未产出可解析的结果。
   badResult,
+
+  /// fetch 模式：单请求 10s / 累计 30s / 单次 ≤20 请求任一超限（ADR-009 §2.7）。
+  fetchLimit,
 }
 
 class AdapterRunException implements Exception {
@@ -206,5 +218,280 @@ if (typeof fn !== "function") {
     globalThis.__elecon_outcome = JSON.stringify({ status: "ok", data: out });
   }
 }
+''';
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// fetch 模式运行时（Gate A · B6b-Dart）—— ADR-009 §2.1/§2.7 · ADR-014（host-fn 通道）
+//
+// 镜像服务端 sandbox.ts runFetchAdapter：用 fork 的 host-fn 通道把受限 ctx.fetch 接到
+// B6a proxyFetch（Dart 镜像 fetch_proxy.dart）。**host 闭包跑在主 isolate**（凭证 resolver /
+// transport / jar 都在主 isolate），worker/JS 只见脱敏 {status,headers,body}——凭证永不入
+// isolate（红线 #1，ADR-014 核心安全断言）。
+//
+// 🔒 触引擎 + 凭证注入 + 出网承重路径：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环。
+// ───────────────────────────────────────────────────────────────────────────
+
+/// fetch 模式资源限额（ADR-009 §2.7；数值占位，待实测校准 §2.8）。
+class FetchLimits {
+  const FetchLimits({
+    this.perRequestTimeoutMs = 10000,
+    this.totalNetworkMs = 30000,
+    this.maxRequests = 20,
+    this.maxHopsPerRequest = 5,
+  });
+
+  /// 单请求超时（含重定向链总耗时，计划 §8 #3）。
+  final int perRequestTimeoutMs;
+
+  /// 单次执行累计网络耗时（跨所有 ctx.fetch）。
+  final int totalNetworkMs;
+
+  /// 单次执行最大请求数（每跳各计一次，含重定向跳）。
+  final int maxRequests;
+
+  /// 单请求最大重定向跳数（B3 默认 5）。
+  final int maxHopsPerRequest;
+}
+
+/// 执行结束 B5 收割钩子目标。[put] 写入凭证库（`CredentialStore.put` 满足之）。
+class HarvestTarget {
+  const HarvestTarget({required this.put, required this.schoolId});
+
+  final void Function(CredentialEntry entry) put;
+  final String schoolId;
+}
+
+/// 在后台 isolate 的 QuickJS 中执行一次 **fetch 模式** adapter capability。
+/// 与 [runParserAdapter] 并列、互不干扰（parser 已签收，本路径独立新增）。
+///
+/// 不变量（与 `sandbox.ts` 镜像，🔒 安全清单逐项）：
+///  - 凭证仅在主 isolate 闭包侧（`proxyFetch`）拼头/出网/脱敏；worker/JS/adapter 仅见脱敏响应
+///    （Set-Cookie/Authorization 回显/中间 Location 已由 B2/B3 剥）。
+///  - 出口 fail-closed：url 不在 allow → `ctx.fetch` 的 Promise 被拒（adapter 可 catch）。
+///  - 限额硬执行：单请求/累计/请求数任一超限 → `fetchLimit` 终止；fatal 在读 outcome 前再校验
+///    （adapter 吞拒绝也不放过）。
+///  - fail 不收割：仅成功执行后调 B5 收割钩子。
+///  - **限额终止 open question（ADR-014 §4.4）**：单请求由 host 侧 `.timeout` 兜；卡死的 worker
+///    isolate 的主动中止（`#abort`/`Isolate.kill`）+ in-flight transport cancel（§4.7）为后续项。
+Future<dynamic> runFetchAdapter({
+  required String source,
+  required String capability,
+  required BrokerManifestView view,
+  required CredentialResolver resolver,
+  required Transport transport,
+  Map<String, dynamic>? params,
+  CookieJar? jar,
+  HarvestTarget? harvest,
+  String? htmlStdlib,
+  int nowMs = 0,
+  int memoryBytes = _defaultMemoryBytes,
+  FetchLimits fetchLimits = const FetchLimits(),
+  void Function(String level, String message)? onLog,
+}) async {
+  final theJar = jar ?? CookieJar();
+  final deps = FetchProxyDeps(
+    view: view,
+    resolver: resolver,
+    jar: theJar,
+    transport: transport,
+    maxHops: fetchLimits.maxHopsPerRequest,
+  );
+
+  // 执行内计量状态（被 host 闭包按引用捕获）。
+  var requestCount = 0;
+  var networkMs = 0;
+  AdapterRunException? fatal;
+
+  // 引擎墙钟：fetch 流程可合法跑到累计网络上限；引擎 interrupt 只防同步 CPU 死循环
+  // （ADR-014 §4.4：interrupt 不在 await 期生效），故设宽到 totalNetworkMs + 缓冲。
+  final engineTimeoutMs = fetchLimits.totalNetworkMs + _defaultTimeoutMs;
+
+  // host 闭包：受限 ctx.fetch → proxyFetch（主 isolate）+ 限额计量。
+  Future<Object?> hostFetch(dynamic url, dynamic init) async {
+    if (fatal != null) throw fatal!;
+    if (requestCount >= fetchLimits.maxRequests) {
+      fatal = const AdapterRunException(
+          AdapterFailureReason.fetchLimit, '单次执行请求数超限');
+      throw fatal!;
+    }
+    final start = DateTime.now().millisecondsSinceEpoch;
+    final outcome = await proxyFetch(
+      url as String,
+      _requestInitFromJs(init),
+      deps,
+    ).timeout(
+      Duration(milliseconds: fetchLimits.perRequestTimeoutMs),
+      onTimeout: () {
+        fatal = const AdapterRunException(
+            AdapterFailureReason.fetchLimit, '单请求超时');
+        throw fatal!;
+      },
+    );
+    networkMs += DateTime.now().millisecondsSinceEpoch - start;
+    requestCount += outcome.requestCount;
+    if (networkMs > fetchLimits.totalNetworkMs) {
+      fatal = const AdapterRunException(
+          AdapterFailureReason.fetchLimit, '累计网络耗时超限');
+      throw fatal!;
+    }
+    if (requestCount > fetchLimits.maxRequests) {
+      fatal = const AdapterRunException(
+          AdapterFailureReason.fetchLimit, '单次执行请求数超限');
+      throw fatal!;
+    }
+    return <String, Object?>{
+      'status': outcome.status,
+      'headers': outcome.headers,
+      if (outcome.body != null) 'body': outcome.body,
+    };
+  }
+
+  void hostSetEph(dynamic name, dynamic value, dynamic opts) {
+    final o = (opts is Map) ? opts : const {};
+    final domain = o['domain'];
+    if (domain is! String) return; // 缺 domain 直接忽略（栅栏在 writeEphemeral）
+    final path = o['path'];
+    theJar.writeEphemeral(
+      EphemeralWriteInput(
+        name: name as String,
+        value: value as String,
+        domain: domain,
+        path: path is String ? path : null,
+      ),
+      view,
+      (m) => onLog?.call('warn', m),
+    );
+  }
+
+  final qjs = IsolateQjs(
+    moduleHandler: (name) async {
+      if (name == 'adapter') return source;
+      if (name == 'elecon:html' && htmlStdlib != null) return htmlStdlib;
+      throw JSError('module not found: $name');
+    },
+    timeout: engineTimeoutMs,
+    memoryLimit: memoryBytes,
+  );
+  qjs.setHostFunctions({
+    '__elecon_fetch': hostFetch,
+    '__elecon_setEph': hostSetEph,
+    '__elecon_log': (dynamic level, dynamic message) => onLog?.call(
+        level is String ? level : 'info', message is String ? message : ''),
+  });
+
+  try {
+    // step1（module）：加载 capabilities 到 globalThis（同步，复用 parser 加载约定）。
+    await qjs.evaluate(
+      "import { capabilities } from 'adapter'; globalThis.__elecon_caps = capabilities;",
+      name: '<elecon-fetch-load>',
+      evalFlags: JSEvalFlag.MODULE,
+    );
+    // step2（global async）：组 ctx + 调 capability + 返回 outcome JSON 串。用 async-IIFE-返回值
+    // （host_fn_bridge_test 已证），避开模块 TLA / 动态 import 在 2021-QuickJS 上的不确定性。
+    final raw = await qjs
+        .evaluate(_buildFetchInvoke(
+            capability: capability, params: params ?? const {}, nowMs: nowMs))
+        .timeout(
+          Duration(milliseconds: engineTimeoutMs + 1000),
+          onTimeout: () => throw const AdapterRunException(
+              AdapterFailureReason.timeout, 'fetch 执行未在墙钟内完成'),
+        );
+
+    // 限额终止优先于 outcome：fatal 早于 handler settle 置位（adapter 吞拒绝也不放过）。
+    if (fatal != null) throw fatal!;
+
+    if (raw is! String) {
+      throw const AdapterRunException(
+          AdapterFailureReason.badResult, 'adapter 未产出 outcome');
+    }
+    final outcome = jsonDecode(raw) as Map<String, dynamic>;
+    switch (outcome['status']) {
+      case 'ok':
+        if (!outcome.containsKey('data')) {
+          throw const AdapterRunException(
+              AdapterFailureReason.badResult, 'capability 未返回值');
+        }
+        // 执行结束 B5 收割（仅成功路径；fail 不收割）。
+        if (harvest != null) {
+          final plan = decideHarvest(theJar.harvestView(), view);
+          harvestInto(plan, view, harvest.put,
+              schoolId: harvest.schoolId, now: () => nowMs);
+        }
+        return outcome['data'];
+      case 'capability_missing':
+        throw AdapterRunException(AdapterFailureReason.capabilityMissing,
+            "capability '$capability' 不在 adapter 内");
+      case 'adapter_threw':
+        throw AdapterRunException(AdapterFailureReason.adapterThrew,
+            outcome['message'] as String? ?? 'adapter threw');
+      default:
+        throw AdapterRunException(AdapterFailureReason.badResult,
+            '未知 outcome status: ${outcome['status']}');
+    }
+  } on AdapterRunException {
+    rethrow;
+  } on BrokerFetchRejected catch (e) {
+    // 一路冒泡到顶（adapter 未 catch）→ 归 adapterThrew（诚实报告）。
+    throw AdapterRunException(AdapterFailureReason.adapterThrew, e.toString());
+  } catch (e) {
+    throw _mapEngineError(e);
+  } finally {
+    await qjs.close();
+  }
+}
+
+/// 把 JS init 对象（{method, headers, body}）归一为 [RequestInit]。
+RequestInit _requestInitFromJs(dynamic init) {
+  if (init is! Map) return const RequestInit();
+  final method = init['method'];
+  final body = init['body'];
+  final headersRaw = init['headers'];
+  Map<String, String>? headers;
+  if (headersRaw is Map) {
+    final h = <String, String>{};
+    headersRaw.forEach((k, v) {
+      if (k is String && v is String) h[k] = v;
+    });
+    headers = h;
+  }
+  return RequestInit(
+    method: method is String ? method : null,
+    headers: headers,
+    body: body is String ? body : null,
+  );
+}
+
+/// step2 源：async-IIFE 组 ctx + 调 capability + 返回结构化 outcome JSON 串。
+/// 入参经 `JSON.parse(<JS 字面量>)` 注入（不拼 JS 代码）。ctx.fetch/setEphemeralCookie/log
+/// 转调 globalThis 上的 host 函数（setHostFunctions 绑定，求值前一次性）。
+String _buildFetchInvoke({
+  required String capability,
+  required Object params,
+  required int nowMs,
+}) {
+  final capLit = jsonEncode(capability);
+  final paramsLit = jsonEncode(jsonEncode(params));
+  return '''
+(async () => {
+  const params = JSON.parse($paramsLit);
+  const caps = globalThis.__elecon_caps;
+  const fn = caps && caps[$capLit];
+  if (typeof fn !== "function") {
+    return JSON.stringify({ status: "capability_missing" });
+  }
+  const ctx = {
+    log: (l, m) => globalThis.__elecon_log(String(l), String(m)),
+    now: () => $nowMs,
+    fetch: (url, init) => globalThis.__elecon_fetch(String(url), init || {}),
+    setEphemeralCookie: (n, v, o) => { globalThis.__elecon_setEph(String(n), String(v), o || {}); },
+  };
+  try {
+    const data = await fn(ctx, params);
+    return JSON.stringify({ status: "ok", data: data === undefined ? null : data });
+  } catch (e) {
+    return JSON.stringify({ status: "adapter_threw", message: String((e && e.message) || e) });
+  }
+})()
 ''';
 }
