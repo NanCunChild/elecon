@@ -74,8 +74,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "0dd80691e14da9b49d982bc1c6dd1c8bbe2a28d3"
-      resolved-ref: "0dd80691e14da9b49d982bc1c6dd1c8bbe2a28d3"
+      ref: dbf5c17233c3c8abfbfa707c297121bb86e54e83
+      resolved-ref: dbf5c17233c3c8abfbfa707c297121bb86e54e83
       url: "https://github.com/NanCunChild/flutter_qjs.git"
     source: git
     version: "0.3.7"

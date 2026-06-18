@@ -97,5 +97,36 @@ void main() {
         await qjs.close();
       }
     });
+
+    test('多次（evaluate 前）setHostFunctions：累积 + 同名重注册（review Minor 1）', () async {
+      final qjs = IsolateQjs(timeout: 5000, memoryLimit: 64 * 1024 * 1024);
+      // 累积不同 key；同名 'a' 第二次覆盖（旧 IsolateFunction 在覆盖前 dispose，不泄漏）。
+      qjs.setHostFunctions({'a': (_) async => 'first', 'b': (_) async => 'B'});
+      qjs.setHostFunctions({'a': (_) async => 'second'});
+      try {
+        final result = await qjs.evaluate('''
+          (async () => (await globalThis.a(0)) + '+' + (await globalThis.b(0)))()
+        ''');
+        expect(result, 'second+B'); // 'a' 取最后一次注册
+      } finally {
+        await qjs.close();
+      }
+    });
+
+    test('close() 后重用同一 IsolateQjs：再 setHostFunctions + evaluate（review Minor 2）', () async {
+      final qjs = IsolateQjs(timeout: 5000, memoryLimit: 64 * 1024 * 1024);
+      try {
+        // 第 1 轮
+        qjs.setHostFunctions({'h': (_) async => 'round1'});
+        expect(await qjs.evaluate('globalThis.h(0)'), 'round1');
+        await qjs.close();
+
+        // 第 2 轮：close 重置后重新注册（新闭包、新引擎）应正常工作
+        qjs.setHostFunctions({'h': (_) async => 'round2'});
+        expect(await qjs.evaluate('globalThis.h(0)'), 'round2');
+      } finally {
+        await qjs.close();
+      }
+    });
   });
 }
