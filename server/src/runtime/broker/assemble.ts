@@ -52,7 +52,7 @@ export interface AssembleRequestInput {
   /**
    * resolver.get(decision.ref) 的结果；仅 inject 时有值。
    * null 含义：① 非 inject（passthrough）；② inject 但凭证缺失/失效（resolver 未命中）。
-   * 后者见下方「凭证缺失」处置（🔒 开放点，PR 待人工拍板）。
+   * 后者 → fail-closed：assembleRequest 返 reject(credential_unavailable)（见下方实现）。
    */
   resolved: ResolvedCredential | null;
   /** B4 `jar.selectForSend(url)` 的输出（origin+ephemeral 已合并去重）。 */
