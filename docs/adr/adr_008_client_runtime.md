@@ -40,6 +40,7 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 
 1. **绑定已停更、需打补丁的 fork。** ekibun `flutter_qjs` 0.3.7 的 FFI 回调返回可空指针，Dart 3.12 更严的 `Pointer.fromFunction` 编译失败。落地方式：`pubspec.yaml` 用 `dependency_overrides` 指向打了**一行兼容补丁**的 fork（[`NanCunChild/flutter_qjs@dart3-compat`](https://github.com/NanCunChild/flutter_qjs/tree/dart3-compat)），**pin 到具体 commit**。
    - **补丁内容**（`lib/src/ffi.dart`）：`channelDispacher` 的返回类型由 `Pointer<JSValue>?` 改为非空 `Pointer<JSValue>`，函数体末尾 `... ?? nullptr` 兜底。仅此一处，纯 Dart、不动 C 源，便于审计与未来迁移。
+   - **fork 补丁谱系（随 fetch 模式新增第 2 处，2026-06-17）**：`IsolateQjs` 宿主函数通道（`setHostFunctions` + worker 绑 `globalThis` + 复用 `IsolateFunction`/Future→Promise），**纯 Dart、仅 `lib/src/isolate.dart`、不动 vendored C**（commit `0dd8069`，分支 `feat/host-fn-channel`）。这是 fetch 模式 `ctx.fetch` 异步桥接的引擎前置——见 [ADR-014](./adr_014_client_host_fn.md)。补丁仍小且可审，但 fork 维护面随之扩大，强化 §3.1 的迁移触发评估。
    - *风险*：自带一个 fork 的维护负担，与"低维护"主线相悖。
    - *缓解*：补丁极小且可审计；pin commit 保证可复现；中长期应评估迁移到维护良好的全平台 QuickJS 绑定（若出现）或自管最小 ffi 层。
 2. **pub 不为 git 依赖初始化 submodule。** ekibun 把 QuickJS 源作为 git submodule，经 git ref 消费时为空，会同时打断原生插件构建与 FFI 测试库。fork 已将 QuickJS 源 **vendoring**（提交为普通文件）以自包含。
