@@ -162,5 +162,5 @@ QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 a
 - `adr_011`：adapter HTML 解析（SDK 内置纯 JS 解析器，零漂移）—— **已接受**，分批落地中
 - `adr_012`：凭证获取（登录）与可信核心凭证存储 —— **已接受**
 - `adr_013`：manifest `credentials` 声明（凭证引用契约扩展，落 ADR-009 §2.3 草图）—— **已接受**
-- `adr_014`：fetch 模式客户端宿主函数桥接（IsolateQjs 宿主函数通道扩展，落 ADR-008 §4「待续 fetch」）—— **草案**
-- `adr_015`：manifest `login` 声明（WebView 登录配置契约扩展，落 ADR-012 §2.2 登录声明面）—— **草案**
+- `adr_014`：fetch 模式客户端宿主函数桥接（IsolateQjs 宿主函数通道扩展，落 ADR-008 §4「待续 fetch」）—— **已接受**
+- `adr_015`：manifest `login` 声明（WebView 登录配置契约扩展，落 ADR-012 §2.2 登录声明面）—— **已接受**

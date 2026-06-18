@@ -23,7 +23,7 @@
 
 ---
 
-## 2. 决策（Decision，草案）
+## 2. 决策（Decision）
 
 1. **扩展项目自有的 `flutter_qjs` fork，给 `IsolateQjs` 增一条窄宿主函数通道**，使 `adapter_runtime.dart` 能在后台 isolate 内向 VM 全局注入受限 `ctx`（`fetch` / `setEphemeralCookie` / `log` / `now`），JS 调用经 isolate port 回到主 isolate 的 Dart 宿主执行、返回 `Future` → JS `Promise`。**复用 fork 已有的 `IsolateFunction` + `#jsFuturePort` 异步管线**，新增面尽量小。
    - **形态（待实现细化）**：`IsolateQjs` 求值前接受一组宿主绑定（`Map<String, IsolateFunction>` 或等价），worker 在 `#evaluate` 前把它们 `setProperty` 到 `globalThis`（或经一个内建 bootstrap 注入到 `ctx`）。JS 调用该函数 → `IsolateFunction` 经其 port 路由回主 isolate 的 Dart 闭包 → 闭包返回 `Future`（跑 `proxyFetch`）→ 经 `#jsFuturePort` 编码回 isolate → VM 得到一个会 settle 的 `Promise`。pump 由引擎 `dispatch()` 既有事件循环驱动。
@@ -54,7 +54,7 @@
 
 ---
 
-## 4. 已知约束与风险（Consequences，草案）
+## 4. 已知约束与风险（Consequences）
 
 1. **fork 增量大于 §3.1 的一行补丁。** 这是该 fork 的**第二处、且更实质**的改动（宿主函数通道）。维护/审计负担上升，与「低维护」主线相悖。*缓解*：补丁尽量窄（复用既有 `IsolateFunction`/`#jsFuturePort`，不新写异步原语）、纯 Dart、pin commit、在 ADR-008 §3.1 的 fork 谱系记录里登记；中长期与「迁移到维护良好的全平台 QuickJS 绑定 / 自管最小 ffi 层」（ADR-008 §3.1 触发点）一并评估。
 2. **凭证边界是本通道的核心安全断言（红线 #1）。** isolate/JS 侧**永不**持有凭证值：`proxyFetch` 全程在主 isolate 核心内跑，跨回 isolate 的仅脱敏 `{status, headers, body}`。**风险**：若未来有人往该通道加暴露更多宿主能力（如把 resolver/jar 直接暴露给 JS），即破红线 #1。*缓解*：通道暴露面在 ADR 与 code review 钉死为「仅 broker 中介的 fetch/setEphemeralCookie/log/now」；扩面须改本 ADR + 安全清单复审。

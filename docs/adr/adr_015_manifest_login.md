@@ -1,6 +1,6 @@
 # ADR-015：manifest `login` 声明（WebView 登录配置契约扩展）
 
-- **状态**：已接受（Accepted）。本文改动 `contract/`（manifest schema），触碰红线 #6（契约即承重墙）且服务于红线 #1 的**凭证获取**路径（最高风险面）。按 [AGENTS.md](../../AGENTS.md) §1 + §10，**AI 不得独自闭环**：本草案由 AI 起草，**须经人工 + 安全检查清单审阅后才可接受并实现**。
+- **状态**：已接受（Accepted）。本文改动 `contract/`（manifest schema），触碰红线 #6（契约即承重墙）且服务于红线 #1 的**凭证获取**路径（最高风险面）。本 ADR 由 AI 起草、经人工 + 安全检查清单审阅后接受；其**实现与测试**仍须人工主导 + 安全清单 + ≥1 人工审（红线 #1，AI 不得独自闭环；AGENTS.md §1 + §10）。
 - **日期**：2026-06-18
 - **依赖**：[`adr_012_credential_store.md`](./adr_012_credential_store.md)（§2.2 核心托管 WebView 登录 + session 收割——本文为其声明面）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest schema）、[`adr_013_manifest_credentials.md`](./adr_013_manifest_credentials.md)（`credentials` 块；收割判据 b 依赖之）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（manifest 经官方签名，声明不可篡改）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（注入消费收割结果）
 - **适用范围**：manifest 顶层 `login` 块的**数据形态 + 校验规则**——声明 WebView 登录的**起点 URL、导航域闭锁、成功检测**。**不含**：WebView UI / 平台集成 / cookie 提取实现（ADR-012 §2.2 落地）；凭证存储与注入（ADR-012 / ADR-009）。
@@ -17,9 +17,7 @@ ADR-012 §2.2 定下凭证获取主路径：**核心托管 WebView** 加载学�
 
 ---
 
-## 2. 决策（Decision，草案）
-
-> 以下为**待审议**取向，非既定事实。每条都需安全审阅确认。
+## 2. 决策（Decision）
 
 ### 2.1 顶层可选 `login` 块：登录起点 + 导航闭锁 + 成功检测
 
@@ -76,7 +74,7 @@ manifest 增一个**可选**顶层对象 `login`，与 `network` / `credentials`
 
 ---
 
-## 4. 已知约束与风险（Consequences，草案）
+## 4. 已知约束与风险（Consequences）
 
 1. **契约改动（红线 #6）。** manifest schema 增可选 `login` 块——**向后兼容**（纯新增、可选；既有 manifest 不受影响）。须与 ADR-001 §5 协调、随本 ADR 落地 schema + 校验器。
 2. **`login` 是 WebView 攻击面的声明边界（ADR-012 §3.2）。** `navigationAllow` 即 WebView 导航闭锁白名单——**实现侧必须强制**（导航出界即拦截），声明侧由本文 + 校验器（L2/L3）保证自洽。声明面经官方签名（ADR-002），不可被运行时篡改。**残余风险**：登录页自身的 JS 在 WebView 内执行（学校页面，隔离于 adapter 运行时与他校凭证，ADR-012 §3.2）——这是 WebView 方案的既有已接受面，本文不扩大。
@@ -98,4 +96,5 @@ manifest 增一个**可选**顶层对象 `login`，与 `network` / `credentials`
 
 | 日期 | 版本 | 摘要 |
 |---|---|---|
-| 2026-06-18 | 草案 | 起草：manifest 顶层可选 `login` 块（url / navigationAllow / success.whenUrlMatches），落 ADR-012 §2.2 WebView 登录的声明面；校验器 L1–L4；与 `credentials` 正交（login 获取、credentials 注入/收割）。拒硬编码 / adapter 参与登录。🔒 待人工 + 安全清单复核后接受。 |
+| 2026-06-18 | 草案 | 起草：manifest 顶层可选 `login` 块（url / navigationAllow / success.whenUrlMatches），落 ADR-012 §2.2 WebView 登录的声明面；校验器 L1–L4；与 `credentials` 正交（login 获取、credentials 注入/收割）。拒硬编码 / adapter 参与登录。 |
+| 2026-06-18 | 已接受 | 经人工 + 安全检查清单审阅后接受。schema `login` 块 + 校验器 L1–L4 落地（PR #61）。实现（WebView 托管登录 + 收割）仍按红线 #1 须人工主导。 |
