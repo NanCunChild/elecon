@@ -63,7 +63,7 @@ void main() {
         export const capabilities = {
           'notice.list': async (ctx) => {
             const res = await ctx.fetch('https://h.edu.cn/api/list');
-            return { items: JSON.parse(res.body), gotHeaders: res.headers };
+            return { items: await res.json(), gotHeaders: res.headers };
           }
         };''';
 
@@ -100,10 +100,10 @@ void main() {
         export const capabilities = {
           'notice.list': async (ctx) => {
             const a = await ctx.fetch('https://dean.xjtu.edu.cn/challenge');
-            const cid = JSON.parse(a.body).client_id;
+            const cid = (await a.json()).client_id;
             ctx.setEphemeralCookie('client_id', cid, { domain: 'dean.xjtu.edu.cn' });
             const b = await ctx.fetch('https://dean.xjtu.edu.cn/list');
-            return { rows: JSON.parse(b.body) };
+            return { rows: await b.json() };
           }
         };''';
 

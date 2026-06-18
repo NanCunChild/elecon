@@ -483,7 +483,16 @@ String _buildFetchInvoke({
   const ctx = {
     log: (l, m) => globalThis.__elecon_log(String(l), String(m)),
     now: () => $nowMs,
-    fetch: (url, init) => globalThis.__elecon_fetch(String(url), init || {}),
+    // 契约：ctx.fetch → Promise<Response>（contract/adapter-sdk）。QuickJS 无内建 Response，
+    // 故把裸 {status,headers,body} 包成 Response 语义子集（status/ok/headers/text()/json()）；
+    // body 仅经 text()/json() 暴露（同 DOM Response，不直接给 .body）。与 sandbox.ts shim 对齐。
+    fetch: (url, init) => globalThis.__elecon_fetch(String(url), init || {}).then((r) => ({
+      status: r.status,
+      ok: r.status >= 200 && r.status < 300,
+      headers: r.headers,
+      text: () => Promise.resolve(r.body === undefined ? "" : r.body),
+      json: () => Promise.resolve(JSON.parse(r.body === undefined ? "null" : r.body)),
+    })),
     setEphemeralCookie: (n, v, o) => { globalThis.__elecon_setEph(String(n), String(v), o || {}); },
   };
   try {
