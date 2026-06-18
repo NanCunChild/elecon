@@ -1,6 +1,6 @@
 # ADR-016：复杂登录的 WebView 选型 + headless 路线（能力门禁，无新信任档）
 
-- **状态**：草案（Draft）。本文服务红线 #1 的**凭证获取**路径（最高风险面），触红线 #5（登录非数据 adapter 的事）、#10（架构性改动先写 ADR），并涉验证码自动化的合规面。本草案由 AI 起草，**须经人工 + 安全检查清单审阅后才可接受并实现**；实现及其测试按 [AGENTS.md](../../AGENTS.md) §1 不得 AI 独自闭环。
+- **状态**：已接受（Accepted）。本文服务红线 #1 的**凭证获取**路径（最高风险面），触红线 #5（登录非数据 adapter 的事）、#10（架构性改动先写 ADR），并涉验证码自动化的合规面。本 ADR 由 AI 起草、经人工 review 后接受；其**实现及测试**（能力门禁的校验器/运行时、WebView 与 headless 登录收割、OHOS 探针）仍须人工主导 + 安全检查清单 + ≥1 人工审（红线 #1，AI 不得独自闭环；[AGENTS.md](../../AGENTS.md) §1 + §10）。
 - **日期**：2026-06-18
 - **依赖**：[`adr_012_credential_store.md`](./adr_012_credential_store.md)（§2.2 核心托管 WebView 登录 + session 收割）、[`adr_015_manifest_login.md`](./adr_015_manifest_login.md)（manifest `login` 声明面）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（official/sideload 两档 + 红线 #5 dev 例外）、[`adr_013_manifest_credentials.md`](./adr_013_manifest_credentials.md)（收割判据 b）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（注入消费收割结果）、[`adr_003_transport.md`](./adr_003_transport.md)（campus 中继 / 传输档）
 - **适用范围**：复杂登录（CAS + 验证码类，以 XIDIAN 为代表）的**登录路线分档**（WebView / headless）、**信任与能力门禁模型**、**WebView 选型推进方式**。**不含**：具体 adapter 实现、WebView UI 像素级设计、headless 脚本逐校逻辑（落地 PR）。
@@ -20,7 +20,7 @@ XIDIAN 把复杂登录的全貌照清楚了（`adapters_tests/XIDIAN/` 已完整
 
 ---
 
-## 2. 决策（Decision，草案）
+## 2. 决策（Decision）
 
 ### 2.1 两条互补登录路线
 
@@ -35,11 +35,17 @@ WebView 为默认主路线；headless **仅在上述两类场景**按需开启�
 
 **沿用 ADR-002 的 official / sideload 两档，不为登录脚本新增信任档。** headless 登录与凭证收割不是「另一档信任的脚本」，而是**能力**——由**能力门禁**约束：
 
-- **敏感能力（触登录 / 凭证收割 / headless 登录）= official-only**：仅官方签名 adapter 可声明；**debug build 例外**（与红线 #5 的 dev 侧载-fetch 例外同范式，编译期从 release 剔除）。
+- **敏感能力 = official-only**：仅官方签名 adapter 可声明；**debug build 例外**（与红线 #5 的 dev 侧载-fetch 例外同范式，编译期从 release 剔除）。**敏感能力集**当前为：
+  - **`fetch` 模式（带凭证注入的 `ctx.fetch`）** —— 见下方说明，这是门禁的**既有锚点**；
+  - **登录**（触发核心托管 WebView / headless 登录流）；
+  - **凭证收割**（从 WebView cookie jar / headless 握手结果收割 session 入核心）；
+  - **headless 登录**（直接走协议的登录脚本，含验证码自动求解）。
 - 校验器加一条静态检查（**类比 C3「sideload ⟹ parser」**）：sideload 声明敏感能力 → 拒绝（release）；运行时**双重 enforce**（不信任上游已校验，红线 #1 纵深防御）。
-- 普通数据能力（如 `notice.list`、`scores`）不受此门禁，按既有 official/sideload 规则。
+- **公开 parser 能力**（如 `notice.list`，零凭证、纯解析）不受此门禁，按既有 official/sideload 规则。注意：**带凭证取数的数据能力**（如 `scores` / `schedule` / 一卡通——它们经 fetch 模式注入 session）天然落在 `fetch` 门禁内，亦为 official-only。
 
-**为何不新增信任档**：增一档 = 增概念面 + 维护面 + 全套签名/吊销/校验逻辑的再适配；而「能力门禁」复用现有 `trustTier` + capability registry + 校验器机制，维护省、心智负担低（维护者 2026-06-18 拍板）。
+**`fetch` 能力说明（门禁锚点）**：「能力门禁 official-only」不是本 ADR 新发明——ADR-009 §2.6 早已定「**仅官方签名 adapter 可跑 fetch 模式**」，红线 #5 定「sideload ⟹ 纯 parser（无网络/无凭证）、dev build 例外」。即 `fetch`（带凭证注入）**本就是**一条 official-only-except-debug 的能力门禁，已在校验器 C3 + 运行时落地。本 ADR 只是把**登录 / 收割 / headless 登录**纳入**同一条已验证的门禁**，与 `fetch` 同档对待——这正是「不必新增信任档、用能力确认即可」的依据：门禁模式已被 `fetch` 证明可行，复用即可。
+
+**为何不新增信任档**：增一档 = 增概念面 + 维护面 + 全套签名/吊销/校验逻辑的再适配；而「能力门禁」复用现有 `trustTier` + capability registry + 校验器机制（且 `fetch` 已是先例），维护省、心智负担低（维护者 2026-06-18 拍板）。
 
 ### 2.3 凭证边界不变（红线 #1）
 
@@ -72,7 +78,7 @@ XIDIAN 水电（`ignypt.xidian.edu.cn`，校园网内）是 headless + campus �
 
 ---
 
-## 4. 已知约束与风险（Consequences，草案）
+## 4. 已知约束与风险（Consequences）
 
 1. **验证码自动化的合规面（headless 解滑块）。** headless 路线对 CAS+验证码学校须自动求解验证码（NCC + 仿真轨迹），属 anti-bot 规避的灰区。**对策**：headless 仅对**确有必要**的学校/场景开启（默认走 WebView 让用户自解）；自动求解逻辑文档化、可随时降级到 WebView；不把它作为普适默认。落地前须过合规清单。
 2. **headless per-school 逻辑仍是维护负担。** 即便签名 + 热替换，逐校登录/验证码逻辑会随学校改版而碎。比编译期定制好（不发版即可推新脚本），但不消除维护面——故 §2.1 限定 headless 为选择性补充，不普适。
@@ -96,4 +102,5 @@ XIDIAN 水电（`ignypt.xidian.edu.cn`，校园网内）是 headless + campus �
 
 | 日期 | 版本 | 摘要 |
 |---|---|---|
-| 2026-06-18 | 草案 | 起草：复杂登录两路线（WebView 主 / headless 选择性补充）；**不新增信任档，按能力门禁**（敏感能力 official-only，debug 例外，类比红线 #5）；凭证边界不变（红线 #1）；WebView 选型先做 OHOS 收割探针。拒新增信任档 / headless 编进二进制 / adapter 自登录。🔒 待人工 + 安全清单复核后接受。 |
+| 2026-06-18 | 草案 | 起草：复杂登录两路线（WebView 主 / headless 选择性补充）；**不新增信任档，按能力门禁**（敏感能力 official-only，debug 例外，类比红线 #5）；凭证边界不变（红线 #1）；WebView 选型先做 OHOS 收割探针。拒新增信任档 / headless 编进二进制 / adapter 自登录。 |
+| 2026-06-18 | 已接受 | 经人工 review 后接受。§2.2 补「`fetch` 能力说明」——明确 `fetch`（带凭证注入）是能力门禁的既有锚点（ADR-009 §2.6 + 红线 #5），登录/收割/headless 纳入同一门禁；修正示例（`scores` 等带凭证能力落 `fetch` 门禁，非无门禁）。实现（校验器/运行时门禁、登录收割、OHOS 探针 #65）仍按红线 #1 须人工主导。 |
