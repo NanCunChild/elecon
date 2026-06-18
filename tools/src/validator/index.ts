@@ -262,7 +262,7 @@ export function checkLogin(manifest: Pick<Manifest, "login" | "credentials">): F
  * **假设**：scope 是"尾随 `*` 的前缀型"（`https://domain/path/*`，与 C6 同一约定）。
  * 多段 `*` / `{+path}` 等复杂模板不在此约定内，引入时须重评 C6/C7（见文件头与 ADR-013 §2.4）。
  */
-function scopePrefix(pattern: string): string {
+export function scopePrefix(pattern: string): string {
   const star = pattern.indexOf("*");
   return star === -1 ? pattern : pattern.slice(0, star);
 }
@@ -401,13 +401,13 @@ function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Fin
 // ---- 白名单匹配 ----
 
 /** 把 "https://h/api/*" 形态的白名单项转成锚定正则。 */
-function allowToRegex(pattern: string): RegExp {
+export function allowToRegex(pattern: string): RegExp {
   const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const withWildcard = escaped.replace(/\\\*/g, ".*");
   return new RegExp("^" + withWildcard + "$");
 }
 
-function urlCoveredByAllow(url: string, allow: string[]): boolean {
+export function urlCoveredByAllow(url: string, allow: string[]): boolean {
   // 把 {param} 占位换成中性 token，避免占位符干扰匹配
   const concrete = url.replace(/\{[^}]+\}/g, "_");
   return allow.some((p) => allowToRegex(p).test(concrete));
