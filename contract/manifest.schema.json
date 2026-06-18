@@ -38,6 +38,39 @@
         }
       }
     },
+    "login": {
+      "type": "object",
+      "description": "WebView 登录配置（ADR-015 / ADR-012 §2.2）。声明核心托管 WebView 的登录起点、导航域闭锁、成功检测。不含任何凭证值/口令（红线 #1）。可选；缺省即无 WebView 登录（公开数据 / 全 passthrough）。与 credentials 正交：login 获取 session，credentials 声明注入/收割。",
+      "required": ["url", "navigationAllow", "success"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "登录页 URL（WebView 加载起点；须 https，校验器 L1）。CAS 类可带 ?service= 指定登录后跳转。"
+        },
+        "navigationAllow": {
+          "type": "array",
+          "description": "WebView 导航域闭锁白名单（uri-template）；WebView 只可导航到这些域，越界拦截（ADR-012 §3.2 攻击面边界）。CAS 跨子域须列每一跳。",
+          "minItems": 1,
+          "items": { "type": "string", "format": "uri-template" }
+        },
+        "success": {
+          "type": "object",
+          "description": "登录成功检测：WebView 导航抵达 whenUrlMatches 任一即触发收割。",
+          "required": ["whenUrlMatches"],
+          "properties": {
+            "whenUrlMatches": {
+              "type": "array",
+              "description": "成功 URL 模式（uri-template，≥1）；每条须 ⊆ navigationAllow（校验器 L3）。",
+              "minItems": 1,
+              "items": { "type": "string", "format": "uri-template" }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "credentials": {
       "type": "object",
       "description": "凭证引用声明（ADR-013）。key=ref（对应 ADR-012 CredentialEntry.ref），值声明注入作用域与方式。仅含引用名+作用域+注入方式，绝不含凭证值（红线 #1）。可选；缺省即无凭证注入（fetch 全 passthrough / parser 无 credential 请求）。",

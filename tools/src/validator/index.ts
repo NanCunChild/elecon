@@ -11,6 +11,8 @@
  *  C7 作用域消歧：不同凭证的 scope 前缀长度相同且重叠 → 拒绝（ADR-013 §2.4 规则 2 / ADR-009 §2.3b）
  *  C8 引用闭合：parser 的 requests.credential 须在 credentials 声明；声明未用 → warn（ADR-013 §2.4 规则 3）
  *  C9 凭证注入方式：credentials.<name>.type ∈ {cookie, header}（防御性，schema C1 亦拦）
+ *  L1–L4 login 声明（ADR-015）：url 须 https（L1）；url ⊆ navigationAllow（L2）；
+ *    success.whenUrlMatches 每条 ⊆ navigationAllow（L3）；login 存在但 credentials 空 → warn（L4）
  *
  * 尚未覆盖（留给优先级 #3 客户端落地）：
  *  - 完整 golden 双跑：客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产出比对。
@@ -58,6 +60,13 @@ interface CredentialDecl {
   type: "cookie" | "header";
 }
 
+/** WebView 登录声明（ADR-015）。可选；仅带凭证学校声明。 */
+interface LoginDecl {
+  url: string;
+  navigationAllow: string[];
+  success: { whenUrlMatches: string[] };
+}
+
 interface Manifest {
   adapterId: string;
   trustTier: "official" | "sideload";
@@ -65,6 +74,8 @@ interface Manifest {
   network: { allow: string[] };
   /** 凭证引用声明（ADR-013）。可选；缺省即无凭证注入。 */
   credentials?: Record<string, CredentialDecl>;
+  /** WebView 登录配置（ADR-015）。可选；缺省即无 WebView 登录。 */
+  login?: LoginDecl;
   capabilities: CapabilityDecl[];
 }
 
@@ -186,6 +197,60 @@ export function checkManifest(manifest: Manifest, contract: Pick<Contract, "mani
 
   // C6–C8 凭证声明检查（ADR-013 §2.4）。credentials 可选；缺省即跳过。
   findings.push(...checkCredentials(manifest, allow));
+
+  // L1–L4 WebView 登录声明检查（ADR-015）。login 可选；缺省即跳过。
+  findings.push(...checkLogin(manifest));
+
+  return findings;
+}
+
+// ---- L1–L4：login 声明（ADR-015 §2.2）----
+
+export function checkLogin(manifest: Pick<Manifest, "login" | "credentials">): Finding[] {
+  const findings: Finding[] = [];
+  const login = manifest.login;
+  if (!login) return findings; // 可选；缺省跳过
+
+  const navAllow = login.navigationAllow ?? [];
+
+  // L1 登录页须 https（凭证经手页面，TLS 底线）；navigationAllow 非 https → 警告
+  if (!/^https:\/\//.test(login.url ?? "")) {
+    findings.push({ level: "error", code: "L1_login_url_not_https", message: `login.url 非 https：${login.url}` });
+  }
+  for (const p of navAllow) {
+    if (!/^https:\/\//.test(p)) {
+      findings.push({ level: "warn", code: "L1_non_https_nav", message: `login.navigationAllow 项非 https：${p}` });
+    }
+  }
+
+  // L2 login.url 须落在 navigationAllow 内（WebView 起始页须可导航）
+  if (login.url && !urlCoveredByAllow(login.url, navAllow)) {
+    findings.push({
+      level: "error",
+      code: "L2_login_url_outside_nav",
+      message: `login.url 不在 navigationAllow 内（WebView 起始页不可达）：${login.url}`,
+    });
+  }
+
+  // L3 success.whenUrlMatches 每条须 ⊆ navigationAllow（否则 WebView 拦截导航、永不判成功）
+  for (const p of login.success?.whenUrlMatches ?? []) {
+    if (!urlCoveredByAllow(p, navAllow)) {
+      findings.push({
+        level: "error",
+        code: "L3_success_url_outside_nav",
+        message: `login.success.whenUrlMatches 越出 navigationAllow（WebView 拦截，永不判成功）：${p}`,
+      });
+    }
+  }
+
+  // L4 login 存在 ⟹ credentials 非空（登录建立 session，但无声明 ref 则收割判据 b 丢弃一切）
+  if (Object.keys(manifest.credentials ?? {}).length === 0) {
+    findings.push({
+      level: "warn",
+      code: "L4_login_without_credentials",
+      message: "声明了 login 但 credentials 为空：登录建立的 session 无声明 ref，收割（判据 b）将丢弃一切",
+    });
+  }
 
   return findings;
 }

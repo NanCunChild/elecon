@@ -228,4 +228,94 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ parser 声明未用的 credential 仅告警不报错（C8 warn）");
 }
 
+// 11) 合法 login（url ⊆ navAllow、success ⊆ navAllow、有 credentials）→ 无 error
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://ehall.h.edu.cn/*"] },
+      login: {
+        url: "https://ids.h.edu.cn/authserver/login?service=https://ehall.h.edu.cn/index",
+        navigationAllow: ["https://ids.h.edu.cn/*", "https://ehall.h.edu.cn/*"],
+        success: { whenUrlMatches: ["https://ehall.h.edu.cn/index*"] },
+      },
+      credentials: { "ehall-session": { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.equal(findings.filter((f) => f.level === "error").length, 0, `合法 login 不应有 error：${JSON.stringify(findings)}`);
+  console.log("  ✓ 合法 login 无 error");
+}
+
+// 12) login.url 非 https → L1；且不在 navAllow → L2
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://ehall.h.edu.cn/*"] },
+      login: {
+        url: "http://ids.h.edu.cn/login",
+        navigationAllow: ["https://ehall.h.edu.cn/*"],
+        success: { whenUrlMatches: ["https://ehall.h.edu.cn/index*"] },
+      },
+      credentials: { s: { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("L1_login_url_not_https"), "非 https login.url 应触发 L1");
+  assert.ok(codes(findings).includes("L2_login_url_outside_nav"), "login.url 不在 navAllow 应触发 L2");
+  console.log("  ✓ login.url 非 https + 越 navAllow 被拒（L1/L2）");
+}
+
+// 13) success.whenUrlMatches 越出 navigationAllow → L3
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://ehall.h.edu.cn/*"] },
+      login: {
+        url: "https://ids.h.edu.cn/login",
+        navigationAllow: ["https://ids.h.edu.cn/*"],
+        success: { whenUrlMatches: ["https://ehall.h.edu.cn/index*"] },
+      },
+      credentials: { s: { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("L3_success_url_outside_nav"), "success URL 越 navAllow 应触发 L3");
+  console.log("  ✓ success URL 越出 navAllow 被拒（L3）");
+}
+
+// 14) login 存在但 credentials 空 → L4（warn，非 error）
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://ehall.h.edu.cn/*"] },
+      login: {
+        url: "https://ids.h.edu.cn/login",
+        navigationAllow: ["https://ids.h.edu.cn/*"],
+        success: { whenUrlMatches: ["https://ids.h.edu.cn/done*"] },
+      },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  const l4 = findings.filter((f) => f.code === "L4_login_without_credentials");
+  assert.equal(l4.length, 1, "login 无 credentials 应触发 1 条 L4");
+  assert.equal(l4[0]!.level, "warn", "L4 应为 warn 而非 error");
+  console.log("  ✓ login 无 credentials 仅告警（L4 warn）");
+}
+
 console.log("validator smoke 全部通过。");
