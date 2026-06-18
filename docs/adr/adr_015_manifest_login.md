@@ -1,6 +1,6 @@
 # ADR-015：manifest `login` 声明（WebView 登录配置契约扩展）
 
-- **状态**：草案（Proposed）。本文改动 `contract/`（manifest schema），触碰红线 #6（契约即承重墙）且服务于红线 #1 的**凭证获取**路径（最高风险面）。按 [AGENTS.md](../../AGENTS.md) §1 + §10，**AI 不得独自闭环**：本草案由 AI 起草，**须经人工 + 安全检查清单审阅后才可接受并实现**。
+- **状态**：已接受（Accepted）。本文改动 `contract/`（manifest schema），触碰红线 #6（契约即承重墙）且服务于红线 #1 的**凭证获取**路径（最高风险面）。按 [AGENTS.md](../../AGENTS.md) §1 + §10，**AI 不得独自闭环**：本草案由 AI 起草，**须经人工 + 安全检查清单审阅后才可接受并实现**。
 - **日期**：2026-06-18
 - **依赖**：[`adr_012_credential_store.md`](./adr_012_credential_store.md)（§2.2 核心托管 WebView 登录 + session 收割——本文为其声明面）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest schema）、[`adr_013_manifest_credentials.md`](./adr_013_manifest_credentials.md)（`credentials` 块；收割判据 b 依赖之）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（manifest 经官方签名，声明不可篡改）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（注入消费收割结果）
 - **适用范围**：manifest 顶层 `login` 块的**数据形态 + 校验规则**——声明 WebView 登录的**起点 URL、导航域闭锁、成功检测**。**不含**：WebView UI / 平台集成 / cookie 提取实现（ADR-012 §2.2 落地）；凭证存储与注入（ADR-012 / ADR-009）。
