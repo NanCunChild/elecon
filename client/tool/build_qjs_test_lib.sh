@@ -28,13 +28,24 @@ if [ ! -f .dart_tool/package_config.json ]; then
 fi
 
 # 从 package_config 动态定位 flutter_qjs（兼容 hosted/git/path 依赖）。
-PKG=$(python3 -c "import json; d=json.load(open('.dart_tool/package_config.json')); print(next(p['rootUri'] for p in d['packages'] if p['name']=='flutter_qjs'))")
-PKG=${PKG#file://}
+# rootUri 按 package_config 规范是相对 .dart_tool/ 解析的：git/hosted 为绝对 file://（带尾斜杠），
+# 但 path 依赖为相对路径（无尾斜杠）。故必须相对 .dart_tool/ 解析成绝对路径，再用 path join，
+# 否则 path 依赖会算错（多一层 .. + 缺斜杠 → ${PKG}test 拼成无效路径）。
+PKG=$(python3 -c "
+import json, os
+cfg = '.dart_tool/package_config.json'
+d = json.load(open(cfg))
+uri = next(p['rootUri'] for p in d['packages'] if p['name'] == 'flutter_qjs')
+if uri.startswith('file://'):
+    uri = uri[len('file://'):]
+base = os.path.dirname(os.path.abspath(cfg))  # client/.dart_tool —— rootUri 的解析基准
+print(os.path.normpath(os.path.join(base, uri)))
+")
 
 # modern GCC（14+）把 int-conversion 等老式 C 写法默认当 error；
 # 2021 版 QuickJS 需把它们降级为警告。仅作用于 C。
 C_FLAGS="-Wno-error=int-conversion -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-int-conversion"
 
-cmake -S "${PKG}test" -B test/build -G Ninja -DCMAKE_C_FLAGS="$C_FLAGS"
+cmake -S "$PKG/test" -B test/build -G Ninja -DCMAKE_C_FLAGS="$C_FLAGS"
 cmake --build test/build
 echo "built: client/test/build/libffiquickjs.so"
