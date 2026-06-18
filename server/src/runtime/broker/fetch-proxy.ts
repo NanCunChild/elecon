@@ -114,7 +114,8 @@ export async function proxyFetch(
     if (headers !== undefined) reqInit.headers = headers;
     if (body !== undefined) reqInit.body = body;
     const assembled = assembleRequest({ init: reqInit, decision, resolved, jarCookies });
-    // decision 已非 reject，assembled 必为 ok；防御性兜底。
+    // 拼装层也可 fail-closed：inject 但 resolver 未命中 → reject(credential_unavailable)。
+    // 任一 reject 都转受控错误（绝不发请求、绝不附凭证）。
     if (assembled.kind === "reject") {
       throw new BrokerFetchRejected(assembled.reason);
     }

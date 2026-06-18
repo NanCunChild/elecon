@@ -59,9 +59,17 @@ export interface AssembleRequestInput {
   jarCookies: readonly CookiePair[];
 }
 
+/**
+ * 拼装层的 fail-closed 理由。
+ * - `outside_allow` / `ambiguous_scope`：B1 decideInjection 的 reject 透传。
+ * - `credential_unavailable`：B1 判 inject 但 resolver 未命中（凭证缺失/过期/吊销）。
+ *   非 B1 产物，由本层引入——见 assembleRequest 文档。
+ */
+export type AssembleRejectReason = RejectReason | "credential_unavailable";
+
 export type AssembleResult =
-  /** url 不在 allow（B1 reject）→ fail-closed，凭证一律不附，驱动层转受控错误。 */
-  | { kind: "reject"; reason: RejectReason }
+  /** url 不在 allow（B1 reject）/ 声明要的凭证取不到 → fail-closed，凭证一律不附，驱动层转受控错误。 */
+  | { kind: "reject"; reason: AssembleRejectReason }
   | { kind: "ok"; method: string; headers: HeaderMap; body?: string };
 
 /** 解析序列化 cookie 串（`A=1; B=2`）为有序对。空段/无 `=` 段跳过。 */
@@ -83,16 +91,25 @@ function parseCookieString(s: string): CookiePair[] {
  * - reject → 原样回传（驱动层据此 fail-closed，绝不发请求、绝不附凭证）。
  * - 否则：净化 adapter 头 → 据 decision/resolved 叠加 broker 凭证 → 合流 jar cookie。
  *
- * **凭证缺失（inject 但 resolved===null）**：本实现**不附该凭证**（不伪造、不外泄），
- * 请求照发（jar cookie 仍附），由 origin 返 401 → adapter 按 ADR-009 §2 第 6 条透传处理 →
- * 执行后 ADR-012 §2.5 生命周期按需刷新。**🔒 开放点**：是否改为 fail-closed 拒发，
- * 须人工拍板（见 PR）。当前取「不伪造 + 照发」，与 broker 不内联重登一致。
+ * **凭证缺失（inject 但 resolved===null）→ fail-closed（reject `credential_unavailable`）。**
+ * B1 判 inject 意味着 manifest 作者**显式声明**该 URL 需登录态；凭证取不到（缺失/过期/吊销）
+ * 却照发，大概率换回 401/登录重定向——拿不到正确数据，反而白耗一次请求 + 往返、可能收割
+ * 登录页垃圾 cookie，并把「会话过期/被吊销/从未登录」压成 adapter 无从区分的模糊 401。
+ * 故拒发，给驱动层/宿主一个**确定、可操作**的信号 → 触发 ADR-012 §2.5 续期 / §2.2 重新登录。
+ * 不发凭证永不泄露（红线 #1 两种选择都安全），此为健壮性裁定，非安全裁定。渐进增强端点
+ * （无凭证也给公开数据）应在 manifest 不入凭证 scope 来表达，不靠运行时反猜作者意图。
+ * （2026-06-18 人工采纳 fail-closed；此前为「不伪造 + 照发」。）
  */
 export function assembleRequest(input: AssembleRequestInput): AssembleResult {
   const { init, decision, resolved, jarCookies } = input;
 
   if (decision.kind === "reject") {
     return { kind: "reject", reason: decision.reason };
+  }
+
+  // 凭证缺失 fail-closed：声明要注入但 resolver 未命中 → 拒发（见上方文档）。
+  if (decision.kind === "inject" && resolved === null) {
+    return { kind: "reject", reason: "credential_unavailable" };
   }
 
   // ① 净化 adapter 自设头：无条件剥 Cookie/Authorization/Proxy-Authorization，其余 allowlist。

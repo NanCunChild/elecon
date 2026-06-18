@@ -102,15 +102,15 @@
       "expected": { "kind": "ok", "method": "POST", "headers": { "Content-Type": "application/json", "Cookie": "SESS=brk; origin_c=o1; client_id=eph1" }, "body": "{\"q\":1}" }
     },
     {
-      "name": "inject_cookie_resolved_null_credential_missing_proceeds_without_broker_cookie",
-      "_doc": "🔒 开放点：inject 但 resolver 未命中（凭证失效）→ 不伪造 broker cookie，jar cookie 仍附，照发（origin 返 401 由 adapter 透传处理）。是否改 fail-closed 待人工拍板。",
+      "name": "inject_resolved_null_credential_unavailable_fail_closed",
+      "_doc": "🔒 inject 但 resolver 未命中（凭证缺失/过期/吊销）→ fail-closed reject(credential_unavailable)，绝不发请求、绝不附任何 cookie（含 jar）。驱动层转受控错误 → 宿主触发续期/重登。2026-06-18 人工采纳（此前为「不伪造+照发」）。",
       "input": {
         "init": { "method": "GET", "headers": {} },
         "decision": { "kind": "inject", "ref": "session", "via": "cookie" },
         "resolved": null,
         "jarCookies": [{ "name": "client_id", "value": "eph1" }]
       },
-      "expected": { "kind": "ok", "method": "GET", "headers": { "Cookie": "client_id=eph1" } }
+      "expected": { "kind": "reject", "reason": "credential_unavailable" }
     },
     {
       "name": "method_defaults_to_get_and_uppercases",

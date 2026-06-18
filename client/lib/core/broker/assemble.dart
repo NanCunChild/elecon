@@ -98,13 +98,20 @@ List<CookiePair> _parseCookieString(String s) {
 
 /// 拼装出站请求（纯）。语义见文件头与 TS `assembleRequest`。
 ///
-/// **凭证缺失（inject 但 resolved==null）**：不附该凭证（不伪造、不外泄），请求照发
-/// （jar cookie 仍附），由 origin 返 401 → adapter 按 ADR-009 §2 第 6 条透传处理。
-/// 已于 PR #49 经人工确认取此方案（与 broker 不内联重登一致）。
+/// **凭证缺失（inject 但 resolved==null）→ fail-closed（reject `credential_unavailable`）。**
+/// B1 判 inject = manifest 显式声明该 URL 需登录态；凭证取不到却照发只会换回 401/登录
+/// 重定向，拿不到正确数据还把「过期/吊销/未登录」压成模糊 401。故拒发，给宿主确定信号 →
+/// 触发 ADR-012 §2.5 续期 / §2.2 重登。不发凭证永不泄露（红线 #1），此为健壮性裁定。
+/// （2026-06-18 人工采纳 fail-closed；此前为「不伪造 + 照发」。与 TS assemble.ts 对齐。）
 AssembleResult assembleRequest(AssembleRequestInput input) {
   final decision = input.decision;
   if (decision is RejectDecision) {
     return RejectResult(decision.reason);
+  }
+
+  // 凭证缺失 fail-closed：声明要注入但 resolver 未命中 → 拒发（见上方文档）。
+  if (decision is InjectDecision && input.resolved == null) {
+    return const RejectResult('credential_unavailable');
   }
 
   // ① 净化 adapter 自设头。
