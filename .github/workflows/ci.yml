@@ -24,6 +24,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run smoke:sandbox
+      - run: npm run smoke:urlmatch
 
   # 工具链：TS 严格类型 + 校验器自测 + 对 adapters/ 全量静态校验（CI 闸门）。
   tools:
@@ -41,7 +42,28 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run smoke:validator
+      - run: npm run smoke:urlmatch
       - run: npm run validate
+
+  # stdlib：vendored html.bundle.js 可复现性闸门（#16）。在干净环境按锁定依赖重建，
+  # 与入库 bundle 做 git diff 比对——不一致即 fail。bundle 是两端 QuickJS 实际加载的
+  # 解析器源码，漂移 = 双跑 golden 可能飘且无人察觉（ADR-011 §2.3 版本锁定即契约 / 红线 #9）。
+  stdlib:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adapters/_stdlib
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: adapters/_stdlib/package-lock.json
+      - run: npm ci
+      - run: node build.mjs
+      - name: 入库 bundle 必须等于按锁定依赖重建的产物
+        run: git diff --exit-code html.bundle.js
 
   # 客户端：lint + 双跑一致性（客户端 QuickJS == golden）。
   # flutter_qjs 是经典 FFI 插件，需先用 CMake 预构建原生测试库（见 build 脚本）。
