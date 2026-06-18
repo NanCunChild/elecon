@@ -1,0 +1,134 @@
+{
+  "_doc": "Broker URL 匹配原语 golden 向量。语言/包无关的唯一事实源：server broker（url-match.ts）、client（url_match.dart）、tools 校验器（index.ts 内联的 allowToRegex/urlCoveredByAllow/scopePrefix）三方照同一向量跑，钉死行为一致——任一处正则/转义漂移即 CI 红。匹配约定见 server/src/runtime/broker/url-match.ts 文件头。改动此文件触碰红线 #1 注入决策路径，须人工 + 安全清单复核。",
+  "_note": "各 runner 跑其所实现的子集：urlCoveredByAllow 与 scopePrefix 三方都实现；scopeMatches 仅 broker 两端实现（校验器无运行时 url-vs-scope 匹配，跳过该节）。",
+
+  "urlCoveredByAllow": [
+    {
+      "name": "exact_path_prefix_hit",
+      "url": "https://h.edu.cn/api/grades/list",
+      "allow": ["https://h.edu.cn/api/*"],
+      "expected": true
+    },
+    {
+      "name": "host_mismatch",
+      "url": "https://evil.example.com/api/x",
+      "allow": ["https://dean.xjtu.edu.cn/*"],
+      "expected": false
+    },
+    {
+      "name": "path_outside_allow",
+      "url": "https://h.edu.cn/other",
+      "allow": ["https://h.edu.cn/api/*"],
+      "expected": false
+    },
+    {
+      "name": "scheme_mismatch_http_vs_https",
+      "url": "http://h.edu.cn/api/x",
+      "allow": ["https://h.edu.cn/api/*"],
+      "expected": false
+    },
+    {
+      "name": "dot_in_host_is_literal_not_wildcard",
+      "_why": "白名单里的 '.' 必须被转义为字面点，否则 'h.edu.cn' 会误配 'hXedu.cn'（红线 #1：注入面外扩）。",
+      "url": "https://hXedu.cn/api/x",
+      "allow": ["https://h.edu.cn/api/*"],
+      "expected": false
+    },
+    {
+      "name": "anchored_at_start_no_prefix_smuggling",
+      "_why": "缺 '^' 锚点会让 query 里塞入白名单串的恶意 url 误配。",
+      "url": "https://evil.com/?next=https://h.edu.cn/api/x",
+      "allow": ["https://h.edu.cn/api/*"],
+      "expected": false
+    },
+    {
+      "name": "wildcard_matches_trailing_query_and_path",
+      "_why": "'*' → '.*' 且尾随 '$' 锚定：通配覆盖其后任意路径/查询。",
+      "url": "https://h.edu.cn/api/grades/list?term=2026&x=y",
+      "allow": ["https://h.edu.cn/api/*"],
+      "expected": true
+    },
+    {
+      "name": "param_placeholder_concretized",
+      "_why": "url 中的 {id} 占位中性化为 '_' 后再匹配（与校验器同一处理）。",
+      "url": "https://h.edu.cn/api/{id}",
+      "allow": ["https://h.edu.cn/api/*"],
+      "expected": true
+    },
+    {
+      "name": "multiple_allow_entries_second_hits",
+      "url": "https://captcha.h.edu.cn/challenge/1",
+      "allow": ["https://h.edu.cn/api/*", "https://captcha.h.edu.cn/challenge/*"],
+      "expected": true
+    },
+    {
+      "name": "empty_allow_rejects",
+      "url": "https://h.edu.cn/api/x",
+      "allow": [],
+      "expected": false
+    },
+    {
+      "name": "exact_no_wildcard_must_full_match",
+      "_why": "无 '*' 的白名单项须整串相等（'$' 锚定），不作前缀放行。",
+      "url": "https://h.edu.cn/exact/more",
+      "allow": ["https://h.edu.cn/exact"],
+      "expected": false
+    },
+    {
+      "name": "exact_no_wildcard_equal_hits",
+      "url": "https://h.edu.cn/exact",
+      "allow": ["https://h.edu.cn/exact"],
+      "expected": true
+    }
+  ],
+
+  "scopeMatches": [
+    {
+      "name": "scope_hit",
+      "url": "https://h.edu.cn/api/grades/list",
+      "pattern": "https://h.edu.cn/api/*",
+      "expected": true
+    },
+    {
+      "name": "scope_miss_other_path",
+      "url": "https://h.edu.cn/public/x",
+      "pattern": "https://h.edu.cn/api/*",
+      "expected": false
+    },
+    {
+      "name": "scope_dot_literal",
+      "url": "https://hXedu.cn/api/x",
+      "pattern": "https://h.edu.cn/api/*",
+      "expected": false
+    },
+    {
+      "name": "scope_param_concretized",
+      "url": "https://h.edu.cn/api/{id}/detail",
+      "pattern": "https://h.edu.cn/api/*",
+      "expected": true
+    }
+  ],
+
+  "scopePrefix": [
+    {
+      "name": "prefix_before_star",
+      "pattern": "https://h.edu.cn/api/*",
+      "expected": "https://h.edu.cn/api/"
+    },
+    {
+      "name": "no_star_whole_string",
+      "pattern": "https://h.edu.cn/exact",
+      "expected": "https://h.edu.cn/exact"
+    },
+    {
+      "name": "star_at_first_char",
+      "pattern": "*",
+      "expected": ""
+    },
+    {
+      "name": "longer_prefix_narrower_scope",
+      "pattern": "https://h.edu.cn/api/grades/*",
+      "expected": "https://h.edu.cn/api/grades/"
+    }
+  ]
+}

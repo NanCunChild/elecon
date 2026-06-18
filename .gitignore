@@ -1,3 +1,8 @@
 *.log
 
 node_modules/
+
+# Python（adapters_tests 抓包/逆向实验用的本地虚拟环境与缓存，不入库）
+.venv/
+__pycache__/
+*.pyc
