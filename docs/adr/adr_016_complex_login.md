@@ -58,7 +58,7 @@ WebView 为默认主路线；headless **仅在上述两类场景**按需开启�
 - **先做 OHOS（鸿蒙）WebView 登录收割探针**（照 ADR-000 §5.2 / ADR-003 的「VPN 三件套探针」范式），结果回写本 ADR 再定选型。**OHOS 是 WebView 主路线的最大未知。**
 - 倾向 `flutter_inappwebview`（`CookieManager` 可读 jar、`shouldOverrideUrlLoading` 做 `navigationAllow` 闭锁 + `success.whenUrlMatches` 检测、JS 注入可控、可用隔离 profile 并用后销毁）——契合收割/闭锁需求，但更重、**OHOS 支持待探针确认**。
 - 备选 `webview_flutter`（官方、轻，但 cookie 提取 / 导航控制能力弱）。
-- 探针验收标准见 §5（探针 issue）。
+- 探针验收标准见 §5 落地清单首项（探针）+ issue #65；探针规格 = [`docs/probes/probe_001_ohos_webview_harvest.md`](../probes/probe_001_ohos_webview_harvest.md)（go/no-go gate，结论回写本节）。
 
 ### 2.5 与 campus 中继对接
 
