@@ -4,6 +4,7 @@
 > **状态**：📋 待执行（spec 起草完成；执行须真机 / OHOS 模拟器 + 人工主导）。
 > **关联**：issue #65 · ADR-016 §2.4（WebView 主路线）· ADR-015（`navigationAllow` / `success.whenUrlMatches`）· ADR-012 §2.2（凭证边界）· #17。
 > **🔒 合规**：本探针走红线 #1（凭证收割路径）。代码与结论按 [AGENTS.md](../../AGENTS.md) §1 须人工主导 + 安全检查清单 + ≥1 人工审，**AI 不得独自闭环**；不提交真实凭证 / cookie（红线 #8）。
+> **上真机前先桌面调研**：本规格定义的是真机 gate；上真机前先按 [`probe_001_research_outline.md`](probe_001_research_outline.md)（OHOS WebView API 桌面调研大纲）摸清各项 API 现状，只把「文档模糊 / 无文档」项带上真机，省真机成本。
 
 ---
 
@@ -66,12 +67,13 @@ ADR-016 把 WebView 定为复杂登录（CAS + 验证码类）的**主路线**�
 2. **证据**：API 调用片段 + 脱敏后的观测（如「`CookieManager.getCookies(url)` 返回含 `HttpOnly` 的 `JSESSIONID=<redacted>`」）。
 3. **OHOS 差异**：与 Android/iOS 行为的偏离点（插件是否声明支持 OHOS、是否需 fork/打补丁）。
 4. **环境**：OHOS 版本、Flutter-OHOS SDK 版本、候选包版本。
+5. **最小复现步骤**：安装步骤 + 入口命令 + 操作序列（一两句即可）。探针执行与复核间隔可能很长（等设备 / 等人），留复现步骤让后续验证者能快速重跑。
 
 ---
 
 ## 6. go/no-go 决策
 
-- **GO（WebView 主路线在 OHOS 成立）**：存在 ≥1 候选三项全 `pass`（或 `受限` 但条件可接受）。→ 回写 ADR-016 §2.4 锁定该候选，进收割实现。
+- **GO（WebView 主路线在 OHOS 成立）**：存在 ≥1 候选三项全 `pass`（或 `受限` 但条件可接受——「条件是否可接受」由**维护者拍板**，探针执行者只负责如实记录受限条件，不自行判定 go/no-go）。→ 回写 ADR-016 §2.4 锁定该候选，进收割实现。
 - **NO-GO**：无候选满足 ①+②。→ WebView 主路线在 OHOS 不成立，回写 ADR-016：OHOS 上改走 headless 兜底，或评估 OHOS 原生 Web 组件自写桥接（新探针）。
 - 无论结论，**产出回写 ADR-016 §2.4 + 关闭 issue #65**。
 
