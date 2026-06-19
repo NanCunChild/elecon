@@ -42,3 +42,4 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 | [`docs/rules/git.md`](docs/rules/git.md) | 分支模型、commit 规范、PR 规范 |
 | [`docs/rules/testing.md`](docs/rules/testing.md) | 测试原则：信任越高测试越严、夹具驱动 |
 | [`docs/rules/ai_coding.md`](docs/rules/ai_coding.md) | AI 编程纪律与产出前自检清单 |
+| [`docs/rules/ui_ai_generation.md`](docs/rules/ui_ai_generation.md) | AI 生成 Flutter UI 的边界（ADR-004 框内、Material 3） |
