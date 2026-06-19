@@ -59,6 +59,7 @@ WebView 为默认主路线；headless **仅在上述两类场景**按需开启�
 - 倾向 `flutter_inappwebview`（`CookieManager` 可读 jar、`shouldOverrideUrlLoading` 做 `navigationAllow` 闭锁 + `success.whenUrlMatches` 检测、JS 注入可控、可用隔离 profile 并用后销毁）——契合收割/闭锁需求，但更重、**OHOS 支持待探针确认**。
 - 备选 `webview_flutter`（官方、轻，但 cookie 提取 / 导航控制能力弱）。
 - 探针验收标准见 §5 落地清单首项（探针）+ issue #65；探针规格 = [`docs/probes/probe_001_ohos_webview_harvest.md`](../probes/probe_001_ohos_webview_harvest.md)（go/no-go gate，结论回写本节）。
+- **桌面调研结论（2026-06-19，[`probe_001_research_findings.md`](../probes/probe_001_research_findings.md)）**：OHOS = 自研 ArkWeb 引擎（非 AOSP WebView）。**选型确定 = `flutter_inappwebview`（OHOS 移植 `flutter_inappwebview_ohos`）**——`webview_flutter` OHOS 版高级 API 受限、不足以承载 CAS 拦截。三项能力桌面级：① cookie/HttpOnly 可读（C-API `getCookie(..., includeHttpOnly, ...)`）✅、② 导航闭锁可拦（锚 `onOverrideUrlLoading`，非 `onLoadIntercept`）✅、③ 隔离/销毁 ⚠️（OHOS 无目录级硬隔离，只能 `incognitoMode` 内存隔离，残留清除时序待真机）。**结论：WebView 主路线在 OHOS 倾向成立（GO-leaning），最终 go/no-go 待真机验证 ③。**
 
 ### 2.5 与 campus 中继对接
 
@@ -104,3 +105,4 @@ XIDIAN 水电（`ignypt.xidian.edu.cn`，校园网内）是 headless + campus �
 |---|---|---|
 | 2026-06-18 | 草案 | 起草：复杂登录两路线（WebView 主 / headless 选择性补充）；**不新增信任档，按能力门禁**（敏感能力 official-only，debug 例外，类比红线 #5）；凭证边界不变（红线 #1）；WebView 选型先做 OHOS 收割探针。拒新增信任档 / headless 编进二进制 / adapter 自登录。 |
 | 2026-06-18 | 已接受 | 经人工 review 后接受。§2.2 补「`fetch` 能力说明」——明确 `fetch`（带凭证注入）是能力门禁的既有锚点（ADR-009 §2.6 + 红线 #5），登录/收割/headless 纳入同一门禁；修正示例（`scores` 等带凭证能力落 `fetch` 门禁，非无门禁）。实现（校验器/运行时门禁、登录收割、OHOS 探针 #65）仍按红线 #1 须人工主导。 |
+| 2026-06-19 | 已接受（§2.4 补桌面调研结论） | OHOS WebView 桌面调研产出（`probe_001_research_findings.md`）回写 §2.4：选型确定 `flutter_inappwebview`（OHOS 移植），能力 ①② 文档级确认、③ 待真机；WebView 主路线在 OHOS GO-leaning，最终 go/no-go 待真机 ③。不改决策主体，仅落实 §2.4「结论回写」。 |
