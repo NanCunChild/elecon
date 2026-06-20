@@ -6,3 +6,7 @@ node_modules/
 .venv/
 __pycache__/
 *.pyc
+
+# OHOS 构建环境：含机器相关绝对路径，仅 .example 入库（见 tools/ohos/README.md）
+tools/ohos/env.sh
+.envrc

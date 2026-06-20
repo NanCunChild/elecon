@@ -19,13 +19,14 @@
 
 ## 1. 前置：环境搭建清单（可复现）
 
-> 目标平台为 OHOS 真机（你已就绪）。以下命令版本号以**执行时锁定的实际值**为准，锁定后回填本节。
+> 目标平台为 OHOS 真机（你已就绪）。版本/路径以**执行时实际值**为准。
 
-- [ ] **FVM 装独立 OHOS SDK**：用 OpenHarmony-SIG 的 Flutter-OHOS 分支（如 `3.22.0-ohos` 系），与官方 3.44.1 并存。平时主线用官方版保持纯净，仅打/跑 OHOS 时 `fvm use` 切 ohos SDK（README「HarmonyOS」节既定策略）。
-- [ ] **DevEco / OHOS SDK + 签名**：装 DevEco Studio 配套 OHOS SDK；配好真机调试证书（HarmonyOS 应用签名），`hdc list targets` 能看到真机。
-- [ ] **生成 OHOS 嵌入**：在 `client/` 下用 ohos-fork 的 flutter `flutter create --platforms ohos .`，生成 `client/ohos/`。补 `client/ohos/README`（README 已引用但缺）。
-- [ ] **加 WebView 依赖**：`flutter_inappwebview`（6.x）+ OHOS 移植 `flutter_inappwebview_ohos`，**经 `dependency_overrides` 注入**（鸿蒙特有依赖用 override 替换，README 既定）。锁定实际版本后回填。
-- [ ] **冒烟可跑**：`fvm flutter run -d <ohos-device>` 能把空 app 推上真机。
+- [x] **FVM 装独立 OHOS SDK**：`fvm fork add ohos https://gitcode.com/CPF-Flutter/flutter_flutter.git` + `fvm install ohos/br_3.27.4-ohos-1.0.4`（= **Flutter 3.27.5-ohos-1.0.4 / Dart 3.6.2 / engine e672b006cb**），与官方 3.44.1 并存。`fvm spawn ohos/br_3.27.4-ohos-1.0.4 config --enable-ohos` 开启 OHOS。**主线不切 SDK**，一次性命令用 `fvm spawn`，不污染 `client/.fvmrc`。
+- [x] **华为 Command Line Tools + SDK + 环境隔离**：CLI Tools 6.1.1.280（HarmonyOS SDK 6.1.1 / API 24）装于 `/opt/ohos_cli_tools`。环境变量经 [`tools/ohos/`](../../tools/ohos/README.md) 的 `env.sh`（子 shell / direnv 隔离，不污染主 shell）+ `fvm spawn ohos/... config --ohos-sdk /opt/ohos_cli_tools/sdk/default/openharmony` 持久化。**`flutter doctor` 的 `[✓] HarmonyOS toolchain` 已点亮**（ohpm 6.1.2 / node v18.20.1 / hvigorw）。
+- [ ] **真机签名 + 连接**：配 HarmonyOS 调试证书；连真机、开 USB/无线调试并在机上确认授权，`hdc list targets` 能看到设备（当前 `[Empty]`，待连）。
+- [x] **生成 OHOS 嵌入**：`flutter create --platforms ohos`，生成 `client/ohos/`（PR #73，bundleName 暂占位 `com.example.elecon`）。**待真机 build 验证后合并**。
+- [ ] **加 WebView 依赖**：`flutter_inappwebview`（6.x）+ OHOS 移植 `flutter_inappwebview_ohos`，**经 `dependency_overrides` 注入**。锁定实际版本后回填。
+- [ ] **冒烟可跑**：`( source tools/ohos/env.sh && fvm spawn ohos/br_3.27.4-ohos-1.0.4 run -d <ohos-device> )` 能把空 app 推上真机。
 
 **dependency_overrides 草样**（版本待锁定后回填，勿照抄版本号）：
 ```yaml
