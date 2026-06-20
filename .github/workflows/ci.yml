@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 jobs:
-  # 服务端：TS 严格类型 + QuickJS-wasm 沙箱冒烟（parser 端到端 + 超时/缺能力）。
+  # 服务端：TS 严格类型 + 全量 golden 冒烟（沙箱 parser 端到端/超时/缺能力 + Broker B1–B6 + 凭证 + transport + fetch/xjt）。
   server:
     runs-on: ubuntu-latest
     defaults:
@@ -23,8 +23,10 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run smoke:sandbox
-      - run: npm run smoke:urlmatch
+      # 全量 golden 闸门：Broker B1–B6 + 凭证 + transport + fetch/xjt 端到端。
+      # 这些 golden 向量钉死两端双跑行为；漏跑 = TS 侧可静默漂移而 Dart 侧（flutter test 全量）
+      # 仍被门住，破坏双跑一致性的强制对称（ADR-001 §8）。
+      - run: npm run smoke:all
 
   # 工具链：TS 严格类型 + 校验器自测 + 对 adapters/ 全量静态校验（CI 闸门）。
   tools:
