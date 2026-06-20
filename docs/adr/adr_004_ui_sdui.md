@@ -1,7 +1,7 @@
 # ADR-004：UI 层——数据驱动渲染与 SDUI 形态
 
-- **状态**：草案（Proposed） 本文不触碰凭证/签名/传输承重路径，但涉及 adapter→UI 的契约交互面与安全边界（半可信 adapter 不得驱动渲染层）。改动 `contract/schema/` 需走红线 #6 流程。
-- **日期**：2026-06-14（草案）
+- **状态**：已接受（Accepted） 2026-06-20 经人工复核后接受。本文不触碰凭证/签名/传输承重路径，但涉及 adapter→UI 的契约交互面与安全边界（半可信 adapter 不得驱动渲染层）。改动 `contract/schema/` 需走红线 #6 流程；UI 生成须落在本 ADR 框内（见 [`docs/rules/ui_ai_generation.md`](../rules/ui_ai_generation.md)）。
+- **日期**：2026-06-14（草案）（**接受 2026-06-20**：决策面无悬置开放点，§4 落地清单转为可拆 PR 执行；下游规则 `ui_ai_generation.md` 同步去除「跟随草案」措辞）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§2.2 分层、§4 "数据驱动 / SDUI"、§5.1 "放弃自建完整 DSL"）、[`adr_001_contract.md`](./adr_001_contract.md)（标准 schema §3 / generic 域 §3.6 / 角色枚举）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（adapter 信任分档——半可信 adapter 不得驱动渲染）
 - **适用范围**：UI 层如何消费标准 schema 渲染卡片；typed 域 vs generic 域的渲染策略；adapter 与 UI 的职责边界；主题与角色映射。**不含**：具体 Flutter 组件实现、具体学校的 UI 适配。
 
@@ -24,7 +24,7 @@ ADR-000 §2.2 把 UI 层定义为"数据驱动 / Server-Driven UI，消费标准
 
 ---
 
-## 2. 决策（Decision，草案）
+## 2. 决策（Decision）
 
 ### 2.1 渲染策略：「typed schema 驱动客户端硬编码卡片」，无中间 Widget 描述协议
 
@@ -102,7 +102,7 @@ generic 域（`elecon.generic.section`）的 schema（ADR-001 §3.6）产出"带
 
 ---
 
-## 3. 已知约束与风险（Consequences，草案）
+## 3. 已知约束与风险（Consequences）
 
 1. **新增 typed 域需发版**。typed 卡片是客户端硬编码，不可热替换。缓解：typed 域新增频率低（预期一年数个）；generic 兜底确保新数据可先上线再慢慢升级。
 2. **generic 模板表达力有限**。三种模板不能覆盖所有展示需求（如需要图表、日历视图）。缓解：这些场景正是升级为 typed 域的信号。
@@ -111,7 +111,7 @@ generic 域（`elecon.generic.section`）的 schema（ADR-001 §3.6）产出"带
 
 ---
 
-## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
+## 4. 落地清单（ADR 已接受，可拆成可审查的小 PR）
 
 - `contract/schema/generic.section.schema.json`：**已落盘**（含 `sectionId`/`title` + role 枚举）；本 ADR 落地时须校验 §2.3 三模板对其结构的覆盖、并确认 role 枚举与 ADR-001 §3.6 一致（防漂移）。
 - **客户端卡片组件骨架**：为首批 typed schema（grades / notice / schedule）各实现最小渲染组件。
