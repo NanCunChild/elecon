@@ -10,3 +10,6 @@ __pycache__/
 # OHOS 构建环境：含机器相关绝对路径，仅 .example 入库（见 tools/ohos/README.md）
 tools/ohos/env.sh
 .envrc
+
+# OHOS 签名材料：指向私密 keystore/证书/profile/密码，机器+账号相关，仅 .example 入库
+tools/ohos/sign.env

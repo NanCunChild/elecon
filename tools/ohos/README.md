@@ -26,6 +26,27 @@ OHOS（鸿蒙）构建依赖华为 **Command Line Tools**（`ohpm` / `hvigorw` /
   ```
 - **direnv**（自动加载/卸载）：把 `client/ohos/.envrc.example` 复制为 `client/ohos/.envrc`，`direnv allow` 一次；以后 `cd client/ohos` 自动进环境、`cd` 出自动退。
 
+## 构建 + 签名（出可上传云调试的 hap）
+
+HarmonyOS NEXT 要求 **签名的 hap**（debug 也要），签名需华为开发者账号的调试证书/profile。无 DevEco Studio（纯 Command Line Tools）时走**后置签名**：`flutter build hap` 出 unsigned hap → `hap-sign-tool` 签名。
+
+一次性准备签名材料（机器+账号相关私密物，**不入库**）：
+1. 复制 `sign.env.example` → `sign.env`（已 gitignore），填 keystore / alias / 证书 / profile / 密码文件路径。
+   - 查 keystore 别名：`keytool -list -keystore <p12> -storetype PKCS12`。
+
+日常构建：
+```bash
+tools/ohos/build-hap.sh           # 构建 + 签名一步到位
+# 产物：client/ohos/entry/build/default/outputs/default/entry-default-signed.hap
+```
+单独签名一个已有 unsigned hap：
+```bash
+tools/ohos/sign-hap.sh <unsigned.hap> [signed.hap]
+```
+验证签名：`java -jar $OHOS_CLI_HOME/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar verify-app -inFile <signed.hap> -outCertChain /tmp/c.cer -outProfile /tmp/p.p7b`（应报 `Verify success`）。
+
+> 密码经 `SIGN_PWD_FILE` 文件读取，绝不写进脚本/仓库；`sign-hap.sh` 对工具输出做 redaction。`build/` 下的 hap 产物由嵌入自带 `.gitignore` 排除，不入库。
+
 ## 为什么不写"脱环境变量"脚本
 
 可靠地还原 `PATH`（去掉刚加的、保留其余、处理重复）很脆，半失败就留下脏状态。**子 shell / direnv 提供天然、可靠的卸载边界**——这才是正确模型。`env.sh` 同时做了幂等 prepend，重复 source 不会把 PATH 越堆越长。
