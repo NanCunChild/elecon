@@ -1,0 +1,4 @@
+# direnv：cd 进 client/ohos 自动加载 OHOS 构建环境、cd 出自动卸载（tools/ohos/env.sh 的日常用法）。
+#   一次性启用：cp client/ohos/.envrc.example client/ohos/.envrc && direnv allow
+# 真实 .envrc 建议本地保留、不入库；本 .example 入库作模板。
+source ../../tools/ohos/env.sh
