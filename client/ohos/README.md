@@ -46,37 +46,43 @@ HarmonyOS NEXT 要求**签名的 hap（debug 亦然）**。无 IDE 时走**后�
 unsigned → `hap-sign-tool` 签名。仓库脚本已封好（在仓库根目录跑）：
 
 ```bash
-tools/ohos/build-hap.sh    # flutter build hap --debug + 签名，一步出 signed hap
-# 产物：client/ohos/entry/build/default/outputs/default/entry-default-signed.hap
+tools/ohos/build-hap.sh              # flutter build hap --debug + 签名，一步出 signed hap（默认 debug）
+tools/ohos/build-hap.sh --release    # release 包（用 release 签名材料，见下）
+# 产物：client/ohos/entry/build/default/outputs/default/entry-default-<mode>-signed.hap
 ```
 
-装到真机（平板用 USB 连好、`hdc list targets` 能看到）：
+签名材料按 build mode **自助选择**（debug→`sign.debug.env`，release→`sign.release.env`），
+细节见 [`tools/ohos/README.md`](../../tools/ohos/README.md)。装到真机（平板 USB 连好、
+`hdc list targets` 能看到）：
 
 ```bash
 ( source tools/ohos/env.sh && \
-  hdc install client/ohos/entry/build/default/outputs/default/entry-default-signed.hap )
+  hdc install -r client/ohos/entry/build/default/outputs/default/entry-default-debug-signed.hap )
 ```
 
-> 该路径已实测跑通：scaffold → `flutter build hap --debug` 出 unsigned hap →
-> `sign-hap.sh` → `verify-app` 报 `Verify success`（见 `chore/ohos-hap-signing`）。
+> 该路径已实测跑通：scaffold → `flutter build hap` 出 unsigned hap →
+> `sign-hap.sh` → `verify-app` 报 `Verify success`。
 
 ### 日常：换 profile / 重新签名 / 出新构建
 
-新开发者上手或换一套签名材料时，按需取用：
+profile 是**签名期**嵌入的、不进编译产物，故按「变了什么」决定重签还是重编：
 
-- **换签名 profile / 证书**：只改 `tools/ohos/sign.env`（gitignored）里的路径，**不动代码**——
-  `SIGN_PROFILE`（`.p7b`）、`SIGN_APP_CERT`（`.cer`）、`SIGN_KEYSTORE`（`.p12`）、`SIGN_KEY_ALIAS`、
-  `SIGN_PWD_FILE`。查 keystore 别名：`keytool -list -keystore <p12> -storetype PKCS12`。
-  换了 profile 若其 bundle id 也变了，记得同步 §3-1 的 `bundleName`。
-- **只重新签名**一个已有 unsigned hap（不重编）：
+- **换签名 profile / 证书（bundle id 不变）** → **只重签，不重编**：改
+  `tools/ohos/sign.<mode>.env`（gitignored）里的路径（`SIGN_PROFILE` / `SIGN_APP_CERT` /
+  `SIGN_KEYSTORE` / `SIGN_KEY_ALIAS` / `SIGN_PWD_FILE`；查别名
+  `keytool -list -keystore <p12> -storetype PKCS12`），再对已有 unsigned hap 重跑：
   ```bash
-  tools/ohos/sign-hap.sh <path/to/entry-default-unsigned.hap>
+  tools/ohos/sign-hap.sh <path/to/entry-default-unsigned.hap>            # debug
+  tools/ohos/sign-hap.sh <path/to/entry-default-unsigned.hap> --release  # release
   ```
-- **出一份全新构建**（改了 Dart/资源后）：
+  换真机（新 UDID）即属此列——在 AGC 用新 UDID 重签发 `.p7b`、改路径、重签即可。
+- **profile 的 bundle id 变了** → **先改再重编**：同步 §3-1 的 `bundleName` 后走 `build-hap.sh`
+  （bundle id 编进 hap，单独重签会 install 失败）。
+- **改了 Dart / 资源 / 依赖** → 重编：
   ```bash
   ( cd client && fvm spawn ohos/br_3.27.4-ohos-1.0.4 clean )   # 可选：彻底重编
   tools/ohos/build-hap.sh                                       # build + sign
-  hdc install -r client/ohos/entry/build/default/outputs/default/entry-default-signed.hap  # -r 覆盖安装
+  hdc install -r client/ohos/entry/build/default/outputs/default/entry-default-debug-signed.hap  # -r 覆盖安装
   ```
 - **验证签名**：`java -jar /opt/ohos_cli_tools/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar
   verify-app -inFile <signed.hap> -outCertChain /tmp/c.cer -outProfile /tmp/p.p7b`（应报 `Verify success`）。
@@ -96,8 +102,8 @@ tools/ohos/build-hap.sh    # flutter build hap --debug + 签名，一步出 sign
 4. **API 对齐**：SDK = API 24，`build-profile.json5` 的 `compatibleSdkVersion = 5.0.0(12)` 为下限
    （NEXT 平板均满足）；确认平板系统版本 ≥ 该下限。
 
-签名材料（keystore / 证书 / profile / 密码）是机器+账号相关私密物，经 `tools/ohos/sign.env`
-（gitignored）配置，**绝不入库**（红线 #8 精神）。
+签名材料（keystore / 证书 / profile / 密码）是机器+账号相关私密物，经
+`tools/ohos/sign.debug.env` / `sign.release.env`（均 gitignored）配置，**绝不入库**（红线 #8 精神）。
 
 ---
 

@@ -14,11 +14,15 @@ Linux 无 DevEco Studio 下，用华为 **Command Line Tools** 完成 OHOS（Har
 | 文件 | 作用 | 入库? |
 |---|---|---|
 | `env.sh.example` | OHOS CLI 环境（PATH / SDK / node）模板 | ✅ |
-| `sign.env.example` | 签名材料路径模板 | ✅ |
-| `build-hap.sh` | `flutter build hap --debug`（ohos fork）+ 后置签名，一步出 signed hap | ✅ |
-| `sign-hap.sh` | 只对一个已有 unsigned hap 后置签名（不重编） | ✅ |
+| `sign.debug.env.example` | **debug** 签名材料路径模板 | ✅ |
+| `sign.release.env.example` | **release** 签名材料路径模板 | ✅ |
+| `build-hap.sh` | `flutter build hap`（ohos fork）+ 后置签名，一步出 signed hap；`--debug`/`--release` 按 mode 自选签名材料 | ✅ |
+| `sign-hap.sh` | 只对一个已有 unsigned hap 后置签名（不重编）；`--debug`/`--release` 自选材料 | ✅ |
 | `env.sh` | 你本机实际环境（从 `.example` 复制） | ❌ gitignore |
-| `sign.env` | 你本机实际签名材料路径（含私钥库路径，红线 #8） | ❌ gitignore |
+| `sign.debug.env` | 你本机 **debug** 签名材料路径（含私钥库路径，红线 #8） | ❌ gitignore |
+| `sign.release.env` | 你本机 **release** 签名材料路径 | ❌ gitignore |
+
+> 兼容：脚本在缺 `sign.<mode>.env` 时回退 legacy `sign.env`（老配置不破）。新配置请用分 mode 的两个文件。
 
 ---
 
@@ -28,9 +32,9 @@ Linux 无 DevEco Studio 下，用华为 **Command Line Tools** 完成 OHOS（Har
 # 1) 环境：复制模板，按本机改 OHOS_CLI_HOME（默认 /opt/ohos_cli_tools）
 cp tools/ohos/env.sh.example tools/ohos/env.sh
 
-# 2) 签名材料：复制模板，填你的 keystore / cert / profile / 密码路径
-cp tools/ohos/sign.env.example tools/ohos/sign.env
-$EDITOR tools/ohos/sign.env
+# 2) 签名材料：按需复制模板，填你的 keystore / cert / profile / 密码路径
+cp tools/ohos/sign.debug.env.example   tools/ohos/sign.debug.env    && $EDITOR tools/ohos/sign.debug.env
+cp tools/ohos/sign.release.env.example tools/ohos/sign.release.env  && $EDITOR tools/ohos/sign.release.env   # 需要出 release 包时才配
 
 # 3) 让 Flutter-OHOS fork 记住 SDK（持久，做一次）
 fvm spawn ohos/br_3.27.4-ohos-1.0.4 config --ohos-sdk /opt/ohos_cli_tools/sdk/default/openharmony
@@ -54,35 +58,65 @@ cp client/ohos/.envrc.example client/ohos/.envrc && direnv allow
 
 ---
 
-## 构建 + 签名
+## 构建 + 签名（debug / release 分签）
+
+`build mode` 决定两件事：`flutter build hap` 的编译模式 **+** 用哪套签名材料——**自助选择**，
+无需手动指定材料文件：
+
+| 命令 | 编译 | 签名材料 | 产物 |
+|---|---|---|---|
+| `tools/ohos/build-hap.sh`（默认） | `--debug` | `sign.debug.env` | `entry-default-debug-signed.hap` |
+| `tools/ohos/build-hap.sh --release` | `--release` | `sign.release.env` | `entry-default-release-signed.hap` |
 
 ```bash
-# 一步出 signed debug hap（build + sign）
+# 一步出 signed hap（build + sign）——默认 debug
 tools/ohos/build-hap.sh
-# 产物：client/ohos/entry/build/default/outputs/default/entry-default-signed.hap
 
-# 只重新签名一个已有 unsigned hap（不重编）
-tools/ohos/sign-hap.sh <path/to/entry-default-unsigned.hap>
+# release 包
+tools/ohos/build-hap.sh --release
+
+# 透传其余 flutter 参数（如探针门禁）
+tools/ohos/build-hap.sh --debug --dart-define=OHOS_PROBE=true
+
+# 只重新签名一个已有 unsigned hap（不重编）——同样按 mode 自选材料
+tools/ohos/sign-hap.sh <path/to/entry-default-unsigned.hap>            # debug
+tools/ohos/sign-hap.sh <path/to/entry-default-unsigned.hap> --release  # release
 ```
 
-`sign-hap.sh` 走 `hap-sign-tool.jar sign-app -mode localSign`，签完自动 `verify-app`
-（应报 `Verify success`）。装真机见
-[`client/ohos/README.md` §2](../../client/ohos/README.md)。
+debug 与 release 产物**按 mode 命名、互不覆盖**，可并存。`sign-hap.sh` 走
+`hap-sign-tool.jar sign-app -mode localSign`，签完自动 `verify-app`（应报 `Verify success`）。
+装真机见 [`client/ohos/README.md` §2](../../client/ohos/README.md)。
 
 ---
 
-## 签名材料（`sign.env` 字段）
+## profile 更新后：重签 vs 重编（决策）
 
-机器+账号相关私密物，经 `sign.env`（gitignored）注入，**绝不入库**（红线 #8）。字段：
+profile（`.p7b`）是**签名期**嵌入 hap 签名块的，**不进编译产物**。所以：
+
+| 变了什么 | 要做什么 |
+|---|---|
+| 换真机（新 UDID）、证书续期、换 profile —— **bundle id 不变** | **只重签**：改 `sign.<mode>.env` 里的 `SIGN_PROFILE` 路径 → 对已有 unsigned hap 跑 `sign-hap.sh`（秒级，不重编） |
+| profile 的 **bundle id 变了** | **先改再重编**：改 [`AppScope/app.json5`](../../client/ohos/AppScope/app.json5) 的 `bundleName` 为新 bundle id → `build-hap.sh` 重编（bundle id 编进 hap，单独重签会 install 失败） |
+| 改了代码 / 依赖 | `build-hap.sh` 重编（build + 自动重签） |
+
+> debug profile 锁本机平板 UDID（`hdc shell bm get --udid`），换平板须在 AGC 用新 UDID 重签发 `.p7b`——属上表第一行「只重签」。
+
+---
+
+## 签名材料（`sign.<mode>.env` 字段）
+
+机器+账号相关私密物，经 `sign.debug.env` / `sign.release.env`（均 gitignored）注入，
+**绝不入库**（红线 #8）。两文件字段同名、按 mode 各填一套：
 
 | 变量 | 含义 |
 |---|---|
 | `SIGN_KEYSTORE` | 私钥库 `.p12`（PKCS12）。查别名：`keytool -list -keystore <p12> -storetype PKCS12` |
 | `SIGN_KEY_ALIAS` | 库内密钥别名 |
 | `SIGN_APP_CERT` | 应用签名证书 `.cer`（AGC 用你的 CSR 签发） |
-| `SIGN_PROFILE` | profile `.p7b`；**debug 版锁本机平板 UDID**（`hdc shell bm get --udid`），换平板须在 AGC 重签 |
+| `SIGN_PROFILE` | profile `.p7b`；**debug 版锁本机平板 UDID**（`hdc shell bm get --udid`），换平板须在 AGC 重签；release 版不锁 UDID |
 | `SIGN_PWD_FILE` | 单行密码文件（keystore 与 key 同口令时复用） |
 | `SIGN_ALG` | 签名算法；EC 密钥用 `SHA256withECDSA` |
 
-**换 profile/证书只改 `sign.env`，不动脚本**；若 profile 的 bundle id 变了，同步
-[`client/ohos/AppScope/app.json5`](../../client/ohos/AppScope/app.json5) 的 `bundleName`。
+**换 profile/证书只改对应 `sign.<mode>.env`，不动脚本**；若 profile 的 bundle id 变了，
+按上节决策表：同步 [`client/ohos/AppScope/app.json5`](../../client/ohos/AppScope/app.json5)
+的 `bundleName` 并重编。

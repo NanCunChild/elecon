@@ -1,30 +1,51 @@
 #!/usr/bin/env bash
-# 只对一个已有 unsigned hap 后置签名（不重编）。
-#   用法： tools/ohos/sign-hap.sh <path/to/entry-default-unsigned.hap>
-#   产物： 同目录 entry-default-signed.hap
+# 只对一个已有 unsigned hap 后置签名（不重编），按 mode 自选签名材料。
+#   用法：
+#     tools/ohos/sign-hap.sh <unsigned.hap>            # 默认 debug
+#     tools/ohos/sign-hap.sh <unsigned.hap> --release  # release
+#   产物： 同目录 entry-default-<mode>-signed.hap
 #
-# 签名材料经 tools/ohos/sign.env（gitignored）注入，绝不入库（红线 #8）。
+# 签名材料经 gitignored env 注入，绝不入库（红线 #8）。按 mode 自助选择：
+#   debug   → tools/ohos/sign.debug.env  （缺省回退 legacy sign.env）
+#   release → tools/ohos/sign.release.env（缺省回退 legacy sign.env）
 # HarmonyOS NEXT 要求 debug hap 亦须签名；无 IDE 时走 hap-sign-tool.jar localSign。
+#
+# ⚠️ profile 更新只需**重新签名**（本脚本），无需重编：
+#    换真机 UDID / 证书续期 / 换 profile —— profile 是签名期嵌入 hap 签名块，不进编译产物，
+#    改 sign.<mode>.env 的路径后对已有 unsigned hap 重跑本脚本即可。
+#    唯一例外：profile 的 **bundle id 变了** —— bundle id 编进 hap，须先改 AppScope/app.json5
+#    的 bundleName 再走 tools/ohos/build-hap.sh 重编，单独重签会 install 失败。
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${OHOS_CLI_HOME:=/opt/ohos_cli_tools}"
 
-# —— 签名材料 ——（路径/别名/算法都从 sign.env 取，脚本不写死机器相关值）
-SIGN_ENV="$REPO_ROOT/tools/ohos/sign.env"
-[ -f "$SIGN_ENV" ] || { echo "[sign] ✗ 缺 $SIGN_ENV（从 sign.env.example 复制并填本机路径）" >&2; exit 1; }
+UNSIGNED="${1:?用法: sign-hap.sh <unsigned.hap> [--debug|--release]}"
+case "${2:-}" in
+  --release)      MODE=release ;;
+  --debug|"")     MODE=debug ;;
+  *) echo "[sign] ✗ 未知参数: ${2:-}（第二参数用 --debug|--release）" >&2; exit 1 ;;
+esac
+
+# —— 按 mode 自助选择签名材料：sign.<mode>.env 优先，缺省回退 legacy sign.env ——
+SIGN_ENV="$REPO_ROOT/tools/ohos/sign.$MODE.env"
+[ -f "$SIGN_ENV" ] || SIGN_ENV="$REPO_ROOT/tools/ohos/sign.env"
+[ -f "$SIGN_ENV" ] || {
+  echo "[sign] ✗ 缺签名材料：tools/ohos/sign.$MODE.env（从 sign.$MODE.env.example 复制并填本机路径）" >&2
+  exit 1
+}
 # shellcheck disable=SC1090
 source "$SIGN_ENV"
 
-UNSIGNED="${1:?用法: sign-hap.sh <unsigned.hap>}"
 [ -f "$UNSIGNED" ] || { echo "[sign] ✗ 找不到 unsigned hap: $UNSIGNED" >&2; exit 1; }
-SIGNED="$(dirname "$UNSIGNED")/entry-default-signed.hap"
+SIGNED="$(dirname "$UNSIGNED")/entry-default-$MODE-signed.hap"
 
 SIGN_TOOL="$OHOS_CLI_HOME/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar"
 [ -f "$SIGN_TOOL" ] || { echo "[sign] ✗ 缺 hap-sign-tool.jar: $SIGN_TOOL" >&2; exit 1; }
 
 PWD_VAL="$(cat "$SIGN_PWD_FILE")"
 
+echo "[sign] mode=$MODE  env=${SIGN_ENV#"$REPO_ROOT"/}"
 echo "[sign] in : $UNSIGNED"
 echo "[sign] out: $SIGNED"
 echo "[sign] profile=$SIGN_PROFILE alias=$SIGN_KEY_ALIAS alg=${SIGN_ALG:-SHA256withECDSA}"

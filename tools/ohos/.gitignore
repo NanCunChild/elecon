@@ -2,3 +2,5 @@
 # 各自从对应 *.example 复制后按本机填；脚本与 *.example 才入库。
 /env.sh
 /sign.env
+/sign.debug.env
+/sign.release.env
