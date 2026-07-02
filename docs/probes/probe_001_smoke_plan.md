@@ -69,6 +69,28 @@ dependency_overrides:
 - **不进主线 CI**：OHOS 在分叉 SDK（§0），主线 `flutter test`（官方 3.44.1）跑不了 OHOS；冒烟为**真机手动门**，证据按 [`probe_001_ohos_webview_harvest.md`](probe_001_ohos_webview_harvest.md) 的证据格式留档，不做自动闸门。
 - **证据**：S1–S4 各留一条日志/截图（cookie 值打码，红线 #8），回填本文。
 
+### 4.1 OHOS 兼容基线 + 上游漂移检查点
+
+> **优先级：低（OHOS 整体挂起）**。主要精力在 Android / iOS（主线官方 Flutter）；OHOS 等待官方主线支持后再动。本节只做「记账」，不设定期任务、不进 CI 闸门——需要时（下次 OHOS 打包前）翻本节即可。
+
+**为什么要有基线**：OHOS 那条线的 Dart 由 OpenHarmony-SIG 的 Flutter-OHOS fork 决定，非我方可选，当前停在 **Dart 3.6.2**（fork `ohos/br_3.27.4-ohos-1.0.4` = 3.27.5-ohos-1.0.4）；主线 Android/iOS 用官方 Flutter 3.44.1（Dart ~3.9）。两条线**语言/依赖 SDK 约束不对齐**，风险都在边界。
+
+**兼容基线（当前值）**：
+
+| 项 | 主线（Android/iOS） | OHOS fork | 约束 |
+|---|---|---|---|
+| Flutter | 官方 3.44.1 | 3.27.5-ohos-1.0.4 | — |
+| Dart | ~3.9 | **3.6.2** | OHOS 下限 = **3.6.2** |
+
+- **语言上限约束**：主线新增语法/API **不得超出 Dart 3.6.2**，否则 OHOS fork 编不过（最现实的坑——打包时才暴露）。抬高该下限须先确认 OHOS fork 已跟进。*注：OHOS 挂起期间此约束实际很松——不必为迁就 OHOS 牺牲 Android/iOS，一旦主线用了 3.7+ 语法，就当作「OHOS 恢复时需要处理的技术债」记账即可。*
+- **依赖 SDK 约束**：新增 pub 依赖时留意其 `environment.sdk` 上界是否兼容 3.6.2；不兼容则需 fork/override（如本探针的 `flutter_inappwebview_ohos` 把 `<3.0.0` 抬到 `<4.0.0`）。
+
+**上游漂移检查点（无需定期，OHOS 打包前核对即可）**：
+
+- [ ] OpenHarmony-SIG 是否发了更高的 Flutter-OHOS br 分支（能否升 Dart 下限）。
+- [ ] **官方主线是否已支持 OHOS**——若是，整个 fork 体系（Flutter-OHOS SDK + `flutter_inappwebview` fork）可退役，这是最想要的终局。
+- [ ] fork 依赖 `NanCunChild/flutter_inappwebview @ 9fa5a533` 上游（gitee `openharmony-sig` @ `bfc8e52c`）是否有需要跟进的修复。
+
 ---
 
 ## 5. 冒烟通过后 → 完整探针（下一阶段，人工主导）
