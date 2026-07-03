@@ -19,7 +19,7 @@
 - `tools` 校验器已有 L1-L4：HTTPS、导航白名单、成功 URL、login 无 credentials 告警。
 - B5 `decideHarvest` / `harvestInto` 已存在，可复用收割判据 b。
 - Dart `CredentialStore` 已有接口，但默认后端仍是 `InMemorySecureStore`。
-- `flutter_inappwebview` 已接入；OHOS probe 代码证明了通用 WebView API 形态，但它是凭证无关 probe，不是登录实现。
+- `flutter_inappwebview` 已接入；OHOS probe 已提供凭证无关的 WebView API 冒烟入口，但设备侧 S1-S4 与登录收割仍待真机验证。
 
 ### 2.2 必须新增的客户端能力
 
