@@ -6,29 +6,11 @@
 /// 有态驱动（proxyFetch / transport / 重定向链）属 B6b 运行时，不在本镜像。
 ///
 ///   运行：cd client && fvm flutter test test/broker_assemble_test.dart
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:elecon/core/broker/assemble.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-String _repoPath(String relPath) {
-  var dir = Directory.current;
-  for (var i = 0; i < 6; i++) {
-    final candidate = '${dir.path}/$relPath';
-    if (File(candidate).existsSync() || Directory(candidate).existsSync()) {
-      return candidate;
-    }
-    final parent = dir.parent;
-    if (parent.path == dir.path) break;
-    dir = parent;
-  }
-  return '../$relPath';
-}
-
-Map<String, String> _headers(Object? json) =>
-    (json as Map).map((k, v) => MapEntry(k as String, v as String));
+import 'utils/test_utils.dart';
 
 /// 解析 golden 内嵌的 B1 decision（mirror inject_policy 的 toJson 形）。
 InjectionDecision _decisionFromJson(Map<String, dynamic> j) {
@@ -48,7 +30,7 @@ AssembleRequestInput _assembleInputFromJson(Map<String, dynamic> j) {
   final initJson = j['init'] as Map<String, dynamic>;
   final init = RequestInit(
     method: initJson['method'] as String?,
-    headers: initJson['headers'] == null ? null : _headers(initJson['headers']),
+    headers: initJson['headers'] == null ? null : headersFromJson(initJson['headers']),
     body: initJson['body'] as String?,
   );
   final resolvedJson = j['resolved'] as Map<String, dynamic>?;
@@ -71,14 +53,12 @@ AssembleRequestInput _assembleInputFromJson(Map<String, dynamic> j) {
 
 RawResponse _rawFromJson(Map<String, dynamic> j) => RawResponse(
       status: j['status'] as int,
-      headers: _headers(j['headers']),
+      headers: headersFromJson(j['headers']),
       body: j['body'] as String?,
     );
 
 void main() {
-  final goldenPath = '${_repoPath('contract/golden/broker')}/assemble.json';
-  final golden =
-      jsonDecode(File(goldenPath).readAsStringSync()) as Map<String, dynamic>;
+  final golden = readGolden('assemble.json');
   final assembleCases = (golden['assemble'] as List).cast<Map<String, dynamic>>();
   final processCases = (golden['process'] as List).cast<Map<String, dynamic>>();
 

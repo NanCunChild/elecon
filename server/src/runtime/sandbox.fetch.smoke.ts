@@ -19,37 +19,17 @@ import { strict as assert } from "node:assert";
 
 import { runFetchAdapter, SandboxError, type FetchAdapterDeps } from "./sandbox.js";
 import type { CredentialResolver, ResolvedCredential } from "./broker/ports.js";
-import type {
-  Transport,
-  TransportRequest,
-  TransportResponse,
-} from "./broker/fetch-proxy.js";
+import type { TransportRequest, TransportResponse } from "./broker/fetch-proxy.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 import { CredentialStore } from "./credential/store.js";
+import {
+  FakeResolver,
+  FakeTransport,
+  resp,
+  runMain,
+} from "./__testutils__/smoke-utils.js";
 
 const NOW = 1_700_000_000_000;
-
-class FakeResolver implements CredentialResolver {
-  constructor(private readonly map: Record<string, ResolvedCredential>) {}
-  async get(ref: string): Promise<ResolvedCredential | null> {
-    return this.map[ref] ?? null;
-  }
-}
-
-class FakeTransport implements Transport {
-  readonly seen: TransportRequest[] = [];
-  constructor(private readonly queue: TransportResponse[]) {}
-  async fetch(req: TransportRequest): Promise<TransportResponse> {
-    this.seen.push(req);
-    const r = this.queue.shift();
-    if (!r) throw new Error("FakeTransport 队列耗尽");
-    return r;
-  }
-}
-
-function resp(p: Partial<TransportResponse> & { status: number }): TransportResponse {
-  return { headers: {}, setCookie: [], location: null, ...p };
-}
 
 /** 1. inject 端到端 + 响应脱敏交回 adapter + 执行结束 B5 收割。 */
 async function testInjectAndHarvest(): Promise<void> {
@@ -185,7 +165,4 @@ async function main(): Promise<void> {
   console.log("全部通过。fetch 模式运行时端到端跑通。");
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+runMain(main);

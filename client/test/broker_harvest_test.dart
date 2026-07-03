@@ -7,60 +7,16 @@
 ///   运行：cd client && fvm flutter test test/broker_harvest_test.dart
 ///
 /// ⚠️ 夹具值为显式假值（红线 #8）：绝不使用真实凭证/会话。
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:elecon/core/broker/cookie_jar.dart';
 import 'package:elecon/core/broker/harvest.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:elecon/core/credential/store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-String _repoPath(String relPath) {
-  var dir = Directory.current;
-  for (var i = 0; i < 6; i++) {
-    final candidate = '${dir.path}/$relPath';
-    if (File(candidate).existsSync() || Directory(candidate).existsSync()) {
-      return candidate;
-    }
-    final parent = dir.parent;
-    if (parent.path == dir.path) break;
-    dir = parent;
-  }
-  return '../$relPath';
-}
-
-BrokerManifestView _viewFromJson(Map<String, dynamic> v) {
-  final credentials = <String, CredentialDecl>{};
-  final c = v['credentials'] as Map<String, dynamic>?;
-  if (c != null) {
-    c.forEach((ref, decl) {
-      final d = decl as Map<String, dynamic>;
-      credentials[ref] = CredentialDecl(
-        scope: (d['scope'] as List).cast<String>(),
-        type: d['type'] as String,
-      );
-    });
-  }
-  return BrokerManifestView(
-    allow: (v['allow'] as List).cast<String>(),
-    credentials: credentials,
-  );
-}
-
-JarCookie _cookieFromJson(Map<String, dynamic> c) => JarCookie(
-      name: c['name'] as String,
-      value: c['value'] as String,
-      domain: c['domain'] as String,
-      path: c['path'] as String,
-      source: c['source'] as String,
-    );
+import 'utils/test_utils.dart';
 
 void main() {
-  final goldenPath = '${_repoPath('contract/golden/broker')}/harvest.json';
-  final golden =
-      jsonDecode(File(goldenPath).readAsStringSync()) as Map<String, dynamic>;
-  final cases = (golden['cases'] as List).cast<Map<String, dynamic>>();
+  final cases = readGoldenCases('harvest.json');
 
   group('B5 harvest 决策（Dart，与 TS 双跑同一 golden）', () {
     test('golden 非空', () => expect(cases, isNotEmpty));
@@ -70,9 +26,9 @@ void main() {
         final input = c['input'] as Map<String, dynamic>;
         final cookies = (input['originCookies'] as List)
             .cast<Map<String, dynamic>>()
-            .map(_cookieFromJson)
+            .map(cookieFromJson)
             .toList();
-        final view = _viewFromJson(input['view'] as Map<String, dynamic>);
+        final view = viewFromJson(input['view'] as Map<String, dynamic>);
         final plan = decideHarvest(cookies, view);
         expect(
           plan.map((e) => e.toJson()).toList(),

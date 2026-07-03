@@ -11,31 +11,13 @@
 /// 纯逻辑、不经 QuickJS，故无原生库依赖、不限 Linux。
 ///
 ///   运行：cd client && fvm flutter test test/broker_url_match_test.dart
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:elecon/core/broker/url_match.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// 从当前工作目录向上找到仓库内的某个相对路径（同其他双跑测试的定位手法）。
-String _repoPath(String relPath) {
-  var dir = Directory.current;
-  for (var i = 0; i < 6; i++) {
-    final candidate = '${dir.path}/$relPath';
-    if (File(candidate).existsSync() || Directory(candidate).existsSync()) {
-      return candidate;
-    }
-    final parent = dir.parent;
-    if (parent.path == dir.path) break;
-    dir = parent;
-  }
-  return '../$relPath';
-}
+import 'utils/test_utils.dart';
 
 void main() {
-  final goldenPath = '${_repoPath('contract/golden/broker')}/url-match.json';
-  final golden =
-      jsonDecode(File(goldenPath).readAsStringSync()) as Map<String, dynamic>;
+  final golden = readGolden('url-match.json');
 
   final coverCases =
       (golden['urlCoveredByAllow'] as List).cast<Map<String, dynamic>>();

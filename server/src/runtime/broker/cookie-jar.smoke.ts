@@ -14,7 +14,7 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolveRepoRoot, runMain } from "../__testutils__/smoke-utils.js";
 
 import {
   CookieJar,
@@ -27,7 +27,7 @@ import {
 } from "./cookie-jar.js";
 import type { BrokerManifestView } from "./inject-policy.js";
 
-const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+const repoRoot = resolveRepoRoot(import.meta.url);
 const goldenPath = `${repoRoot}contract/golden/broker/cookie-jar.json`;
 
 interface Golden {
@@ -157,9 +157,4 @@ function main(): void {
   console.log(`broker B4 cookie-jar smoke: golden ${g}/${g} + stateful ${s}/${s} 例通过 ✅`);
 }
 
-try {
-  main();
-} catch (err) {
-  console.error(err);
-  process.exit(1);
-}
+runMain(main);

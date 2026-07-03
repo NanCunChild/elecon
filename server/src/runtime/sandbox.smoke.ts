@@ -12,12 +12,12 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
 
 import { runAdapter, SandboxError } from "./sandbox.js";
+import { resolveRepoRoot, runMain } from "./__testutils__/smoke-utils.js";
 
-const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const repoRoot = resolveRepoRoot(import.meta.url);
 const parserDir = `${repoRoot}adapters/_template/parser`;
 const schemaPath = `${repoRoot}contract/schema/grades.list.schema.json`;
 
@@ -135,7 +135,4 @@ async function main(): Promise<void> {
   console.log("全部通过。parser 管线端到端跑通。");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+runMain(main);

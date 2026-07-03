@@ -14,6 +14,7 @@ import { strict as assert } from "node:assert";
 
 import { decideInjection, type BrokerManifestView } from "../broker/inject-policy.js";
 import { CredentialStore } from "./store.js";
+import { runMain } from "../__testutils__/smoke-utils.js";
 import type { CredentialEntry } from "./types.js";
 
 const FAKE_VALUE = "TEST-SESSION-not-a-real-credential";
@@ -94,7 +95,4 @@ async function run(): Promise<void> {
   console.log("credential store smoke: 全部通过 ✅");
 }
 
-run().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+runMain(run);
