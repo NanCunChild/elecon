@@ -21,7 +21,7 @@
  * 🔒 红线 #1 承重路径（凭证入核心库）：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环。
  */
 
-import { matchCookieForSend, type JarCookie } from "./cookie-jar.js";
+import { matchCookieForSend, compareCookiePathName, type JarCookie } from "./cookie-jar.js";
 import { parseTemplateHostPath } from "./cookie-match.js";
 import type { BrokerManifestView } from "./inject-policy.js";
 import type { CredentialEntry } from "../credential/types.js";
@@ -56,7 +56,7 @@ function scopeReprUrl(scope: string): string | null {
 /** 序列化命中 cookie（RFC 6265 §5.4：path 长者先，同长按名升序），`n=v` 以 `; ` 连。 */
 function serialize(cookies: JarCookie[]): string {
   return [...cookies]
-    .sort((a, b) => b.path.length - a.path.length || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .sort(compareCookiePathName)
     .map((c) => `${c.name}=${c.value}`)
     .join("; ");
 }

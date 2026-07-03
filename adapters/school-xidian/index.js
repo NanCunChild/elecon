@@ -1,7 +1,18 @@
+/**
+ * school-xidian（西安电子科技大学教务处）—— parser 模式 adapter。
+ *
+ * 目标：公开通知 notice.list。站点为纯静态 HTML，不需要 fetch 模式。核心代取并脱敏后
+ * 传入原始响应，adapter 只做 HTML → 标准 schema 的纯解析。
+ *
+ * 现状：**已端到端跑通**——QuickJS-wasm 沙箱对录制夹具产出等于 golden，通过 contract schema
+ * （server `npm run smoke:sandbox` testXidianNoticeList）。
+ */
+
 import { parseDocument, selectAll, getText, getAttributeValue, nextElementSibling } from "elecon:html";
 
-const BASE_URL = "https://jwc.xidian.edu.cn";
+const ORIGIN = "https://jwc.xidian.edu.cn";
 
+/** "2026-06-12" / "2026/06/12" / "2026.06.12" → RFC3339/UTC。无法识别返回 null → 调用方省略 publishedAt。 */
 function normalizeDate(s) {
   const m = s.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
   return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}T00:00:00Z` : null;
@@ -12,8 +23,8 @@ export const capabilities = {
     try {
       const doc = parseDocument(responses.page.body);
       const tits = selectAll("div.tit", doc);
-      const noticeTit = tits.find((el) => getText(el).includes("\u901A\u77E5\u516C\u544A"));
-      if (!noticeTit) return { items: [] };
+      const noticeTit = tits.find((el) => getText(el).includes("通知公告"));
+      if (!noticeTit) return { items: [] }; // 通知公告
 
       const ul = nextElementSibling(noticeTit);
       if (!ul) return { items: [] };
@@ -34,9 +45,9 @@ export const capabilities = {
         const item = {
           id,
           title,
-          url: BASE_URL + href,
+          url: ORIGIN + href,
           category: "academic",
-          source: "\u6559\u52A1\u5904",
+          source: "教务处",
         };
         const publishedAt = normalizeDate(dateStr);
         if (publishedAt !== null) item.publishedAt = publishedAt;

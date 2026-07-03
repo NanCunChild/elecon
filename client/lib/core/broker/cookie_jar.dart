@@ -137,6 +137,13 @@ EphemeralWriteDecision decideEphemeralWrite(
   return EphemeralReject(domainOk ? 'path_too_wide' : 'domain_not_passthrough');
 }
 
+/// RFC 6265 §5.4 stable sort: path length descending, name ascending.
+int compareCookiePathName(JarCookie a, JarCookie b) {
+  final byLen = b.path.length - a.path.length;
+  if (byLen != 0) return byLen;
+  return a.name.compareTo(b.name);
+}
+
 /// 单个 cookie 是否会被发往 requestUrl（RFC 6265 domain-match ∧ path-match）。
 bool matchCookieForSend(
   ({String domain, String path}) cookie,
@@ -165,11 +172,7 @@ List<Map<String, String>> selectCookies(
     }
   }
   final chosen = byName.values.toList()
-    ..sort((a, b) {
-      final byLen = b.path.length - a.path.length;
-      if (byLen != 0) return byLen;
-      return a.name.compareTo(b.name);
-    });
+    ..sort(compareCookiePathName);
   return chosen.map((c) => {'name': c.name, 'value': c.value}).toList();
 }
 

@@ -46,8 +46,8 @@ export interface SandboxLimits {
 }
 
 export const DEFAULT_LIMITS: SandboxLimits = {
-  timeoutMs: 5_000,
-  memoryBytes: 64 * 1024 * 1024,
+  timeoutMs: Number(process.env.SANDBOX_TIMEOUT_MS) || 5_000,
+  memoryBytes: Number(process.env.SANDBOX_MEMORY_BYTES) || 64 * 1024 * 1024,
 };
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -233,10 +233,10 @@ export interface FetchLimits {
 }
 
 export const DEFAULT_FETCH_LIMITS: FetchLimits = {
-  perRequestTimeoutMs: 10_000,
-  totalNetworkMs: 30_000,
-  maxRequests: 20,
-  maxHopsPerRequest: 5,
+  perRequestTimeoutMs: Number(process.env.FETCH_PER_REQUEST_TIMEOUT_MS) || 10_000,
+  totalNetworkMs: Number(process.env.FETCH_TOTAL_NETWORK_MS) || 30_000,
+  maxRequests: Number(process.env.FETCH_MAX_REQUESTS) || 20,
+  maxHopsPerRequest: Number(process.env.FETCH_MAX_HOPS_PER_REQUEST) || 5,
 };
 
 export interface FetchAdapterDeps {

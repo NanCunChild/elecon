@@ -12,7 +12,7 @@
  * B4 #37 运行时）写入 jar ephemeral 分区，四重栅栏由 Broker 强制。
  */
 
-import { parseDocument, selectAll, getText, getAttributeValue, findOne } from "elecon:html";
+import { parseDocument, selectAll, getText, getAttributeValue } from "elecon:html";
 
 const ORIGIN = "https://dean.xjtu.edu.cn";
 
@@ -41,7 +41,7 @@ export const capabilities = {
    */
   "notice.list": async (ctx, _params) => {
     // [1] GET 首页（passthrough，不注入凭证）——可能命中 JS 挑战页
-      let html = await (await safeFetch(ctx, ORIGIN + "/")).text();
+    let html = await (await safeFetch(ctx, ORIGIN + "/")).text();
 
     // [2] 若是挑战页：解析 challengeId / answer（answer 直接给在页面，无需算 JS）
     if (html.includes("var challengeId")) {
@@ -140,10 +140,10 @@ function parseNotices(html) {
   return items;
 }
 
-/** "2026-06-12" → RFC3339/UTC。无法识别返回 null → 调用方省略 publishedAt（notice.list 1.1）。 */
+/** "2026-06-12" / "2026/06/12" / "2026.06.12" → RFC3339/UTC。无法识别返回 null → 调用方省略 publishedAt。 */
 function normalizeDate(s) {
-  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
-  return m ? `${m[1]}-${m[2]}-${m[3]}T00:00:00Z` : null;
+  const m = s.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}T00:00:00Z` : null;
 }
 
 function matchOne(re, s) {

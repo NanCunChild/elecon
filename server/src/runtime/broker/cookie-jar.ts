@@ -112,6 +112,11 @@ export function decideEphemeralWrite(
   return { ok: false, reason: domainOk ? "path_too_wide" : "domain_not_passthrough" };
 }
 
+/** RFC 6265 §5.4 stable sort: path length descending, name ascending. */
+export function compareCookiePathName(a: { path: string; name: string }, b: { path: string; name: string }): number {
+  return b.path.length - a.path.length || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+}
+
 /** 单个 cookie 是否会被发往 requestUrl（RFC 6265 domain-match ∧ path-match）。 */
 export function matchCookieForSend(
   cookie: { domain: string; path: string },
@@ -139,7 +144,7 @@ export function selectCookies(
     if (!cur || sourceRank(c.source) > sourceRank(cur.source)) byName.set(c.name, c);
   }
   return [...byName.values()]
-    .sort((a, b) => b.path.length - a.path.length || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .sort(compareCookiePathName)
     .map((c) => ({ name: c.name, value: c.value }));
 }
 
