@@ -45,9 +45,24 @@ export interface SandboxLimits {
   memoryBytes: number;
 }
 
+/**
+ * 解析限额环境变量：仅接受 (0, max] 的有限数；非法或越界回退默认并告警。
+ * 限额保护 QuickJS 执行/内存/网络放大，是安全承重——不得被未校验的环境配置静默放宽。
+ */
+function envLimit(name: string, fallback: number, max: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0 || n > max) {
+    console.warn(`[sandbox] 忽略非法限额 ${name}=${raw}（需 0 < n ≤ ${max}），回退默认 ${fallback}`);
+    return fallback;
+  }
+  return Math.floor(n);
+}
+
 export const DEFAULT_LIMITS: SandboxLimits = {
-  timeoutMs: Number(process.env.SANDBOX_TIMEOUT_MS) || 5_000,
-  memoryBytes: Number(process.env.SANDBOX_MEMORY_BYTES) || 64 * 1024 * 1024,
+  timeoutMs: envLimit("SANDBOX_TIMEOUT_MS", 5_000, 60_000),
+  memoryBytes: envLimit("SANDBOX_MEMORY_BYTES", 64 * 1024 * 1024, 512 * 1024 * 1024),
 };
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -233,10 +248,10 @@ export interface FetchLimits {
 }
 
 export const DEFAULT_FETCH_LIMITS: FetchLimits = {
-  perRequestTimeoutMs: Number(process.env.FETCH_PER_REQUEST_TIMEOUT_MS) || 10_000,
-  totalNetworkMs: Number(process.env.FETCH_TOTAL_NETWORK_MS) || 30_000,
-  maxRequests: Number(process.env.FETCH_MAX_REQUESTS) || 20,
-  maxHopsPerRequest: Number(process.env.FETCH_MAX_HOPS_PER_REQUEST) || 5,
+  perRequestTimeoutMs: envLimit("FETCH_PER_REQUEST_TIMEOUT_MS", 10_000, 60_000),
+  totalNetworkMs: envLimit("FETCH_TOTAL_NETWORK_MS", 30_000, 300_000),
+  maxRequests: envLimit("FETCH_MAX_REQUESTS", 20, 100),
+  maxHopsPerRequest: envLimit("FETCH_MAX_HOPS_PER_REQUEST", 5, 20),
 };
 
 export interface FetchAdapterDeps {
@@ -383,7 +398,11 @@ function buildFetchCtx(
           maxHops: fetchLimits.maxHopsPerRequest,
         }),
         fetchLimits.perRequestTimeoutMs,
-        () => new SandboxError("fetch_limit", `单请求超时（>${fetchLimits.perRequestTimeoutMs}ms）`),
+        () => {
+          // 单请求超时同为硬终止：置 fatal，adapter catch 也无法把执行洗成成功（镜像 Dart 侧）
+          state.fatal = new SandboxError("fetch_limit", `单请求超时（>${fetchLimits.perRequestTimeoutMs}ms）`);
+          return state.fatal;
+        },
       );
       state.networkMs += Date.now() - start;
       state.requestCount += outcome.requestCount;
@@ -490,7 +509,12 @@ async function invokeFetchHandler(
       () => new SandboxError("timeout", "fetch handler 未在墙钟内完成"),
     );
     runtime.executePendingJobs();
-    if (state.fatal) throw state.fatal;
+    if (state.fatal) {
+      // fatal 抛出前须先释放 settle 结果，否则 runtime.dispose 触发 QuickJS gc_obj_list 断言
+      if ("value" in settledResult) settledResult.value.dispose();
+      else settledResult.error.dispose();
+      throw state.fatal;
+    }
     dataHandle = track(unwrap(ctx, settledResult, deadline));
   } else {
     if (state.fatal) throw state.fatal;
