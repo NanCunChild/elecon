@@ -1,7 +1,6 @@
-# direnv 配置：cd 进 client/ohos 自动加载 OHOS 构建环境，cd 出自动卸载（无需手动"脱掉"）。
-# 用法：装 direnv → 复制本文件为 .envrc（已 gitignore）→ 在本目录跑一次 `direnv allow`。
-#
-# 机器相关路径不入库：按需改 OHOS_CLI_HOME。
+# direnv：cd 进 client/ohos 自动加载 OHOS 构建环境、cd 出自动卸载（tools/ohos/env.sh 的日常用法）。
+#   一次性启用：cp client/ohos/.envrc.example client/ohos/.envrc && direnv allow
+# 真实 .envrc 本地保留、不入库（机器相关路径按需改 OHOS_CLI_HOME）；本 .example 入库作模板。
 
 export OHOS_CLI_HOME=/opt/ohos_cli_tools
 source_env ../../tools/ohos/env.sh

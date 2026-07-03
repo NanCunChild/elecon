@@ -10,3 +10,11 @@ build/
 
 # 原生 FFI 测试库：由 tool/build_qjs_test_lib.sh 本地构建，勿提交二进制
 test/build/
+
+# IDE
+.idea/
+*.iml
+
+# Flutter 项目元数据：跨 SDK（官方主线 3.44.1 vs ohos fork 3.27.5-ohos）会被
+# 各自重写、来回 churn，刻意不入库。flutter migrate 本项目未用。
+.metadata

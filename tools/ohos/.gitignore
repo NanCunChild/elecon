@@ -1,0 +1,6 @@
+# 机器相关绝对路径 / 私密签名材料路径：本地副本不入库（红线 #8 精神）。
+# 各自从对应 *.example 复制后按本机填；脚本与 *.example 才入库。
+/env.sh
+/sign.env
+/sign.debug.env
+/sign.release.env

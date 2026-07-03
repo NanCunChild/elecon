@@ -26,6 +26,13 @@ fvm flutter pub get
 fvm flutter run
 ```
 
+## Flutter 版本策略
+
+- Android / iOS 主线跟进官方 Flutter stable；当前基线为 Flutter 3.44.1 / Dart 3.12.1。
+- OHOS 使用 OpenHarmony-SIG Flutter-OHOS fork（当前 3.27.5-ohos-1.0.4 / Dart 3.6.2），作为挂起旁路线等待上游更新或官方主线支持。
+- 主线新增 Dart 语法、依赖版本、`pubspec.lock` 解析结果以 Android / iOS stable 为准；不为 OHOS fork 牺牲主线升级节奏。
+- OHOS 恢复打包前再核对 fork 是否跟进。若主线已使用 OHOS fork 不支持的语法或依赖，按兼容债务处理，见 `docs/probes/probe_001_smoke_plan.md` §4.1。
+
 ## 测试（双跑一致性）
 
 adapter 在客户端用 QuickJS（`flutter_qjs`）执行，与服务端 QuickJS-wasm 是同一引擎、

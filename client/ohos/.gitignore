@@ -1,0 +1,25 @@
+/node_modules
+/oh_modules
+/local.properties
+/.idea
+**/build
+/.hvigor
+.cxx
+/.clangd
+/.clang-format
+/.clang-tidy
+**/.test
+**/BuildProfile.ets
+**/oh-package-lock.json5
+/package.json
+/package-lock.json
+
+**/src/main/resources/rawfile/flutter_assets/
+# flutter build hap 生成的构建产物（每次构建重写，勿入库）：
+**/src/main/resources/rawfile/buildinfo.json5
+**/src/main/resources/rawfile/framesconfig.json
+# direnv 本地文件（模板见 .envrc.example）：
+/.envrc
+**/libs/**/libapp.so
+**/libs/**/libflutter.so
+**/libs/**/libvmservice_snapshot.so

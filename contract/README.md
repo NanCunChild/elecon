@@ -14,7 +14,7 @@ adapter-sdk/     adapter 开发者参考（ctx 类型声明）
 
 ## 使用
 
-- adapter 产出数据由宿主（Dart / Go）按 `schema/` 校验后才被接受。
+- adapter 产出数据由宿主（Dart / TypeScript）按 `schema/` 校验后才被接受。
 - 新增 capability id 或新域 schema → 走慢车道（先开 ADR）。
 
 ## 顶层原则
