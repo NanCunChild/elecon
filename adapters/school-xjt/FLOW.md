@@ -35,29 +35,27 @@
 **无学生凭证**：`credentials` 块为空 → 全程 passthrough。不需要 ADR-012 凭证存储 / WebView 登录。
 client_id / JSESSIONID 是 per-execution jar 的活，执行结束即弃（未被任何 ref 声明 → 不收割入库，§2.4 判据 b）。
 
-## 3. ⚠️ 设计缺口：client_id 来自 **body**，不是 Set-Cookie
+## 3. 已修补缺口：client_id 来自 **body**，不是 Set-Cookie
 
 spike（`fetch.py:69-74`）从 POST 的 **JSON 响应体** 读 `client_id`，再 `session.cookies.set(...)`
 **手动**设为 cookie。真实浏览器里是页面 JS 把 body 里的 client_id 写进 `document.cookie`。
 
-这与 ADR-009 当前模型冲突：
+这曾与 ADR-009 原始模型冲突：
 - §2.3：adapter 经 `init.headers` 设的 `Cookie` 头被宿主**无条件剥除** → adapter **不能自己设 cookie**。
 - §2.4：per-execution jar 只自动持久化 origin 的 **`Set-Cookie`** → 若 client_id 只在 body、没有 Set-Cookie，**jar 抓不到**，后续请求带不上 → 流程断。
 
 **已确认（2026-06-15 抓包实锤，`adapters_tests/XJT/dean/pac.txt`）**：`POST /dynamic_challenge`
 响应**零 `Set-Cookie`**，`client_id` 仅在 JSON body，由页面 JS 自行写 `document.cookie`。
-→ ADR-009 当前模型确有此缺口，**已由 #25（ADR-009 rev-3）按 §4 方向 A 修补**：新增窄通道
-`ctx.setEphemeralCookie`（仅 passthrough origin、不覆盖凭证、永不收割、执行即弃）。本 adapter
-的对应替换待该契约面随 B4 第 2 分区落地后补（见 index.js 缺口标注处）。
+→ ADR-009 已由 rev-3 修补：新增窄通道 `ctx.setEphemeralCookie`（仅 passthrough origin、不覆盖凭证、永不收割、执行即弃）。本 adapter 已使用该接口把 `client_id` 写入 per-execution jar 的 ephemeral 分区，服务端 `npm run smoke:xjt` 覆盖该路径。
 
-## 4. 若需修订 ADR-009（缺口为真时的方向，待人工 + ADR）
+## 4. 已采纳的 ADR-009 修订方向
 
-候选方向（**不**在本 spike 拍板，留给 ADR-009 修订 + 安全审）：
-- **方向 A（倾向）**：放宽"剥除 adapter 所有 Cookie 头"为"adapter 设的 Cookie 头**注入 per-execution
-  jar**（而非拒绝），约束：① 仅作用于 jar、不跨执行、scope 受 `network.allow` 约束；② **绝不**覆盖
-  broker 注入的 credential ref（真·学生凭证）；③ 仅 passthrough 场景。红线 #1 不破——adapter 设的是
-  它自己从 passthrough 响应里解出的反爬 token，本就无学生凭证可泄。
-- **方向 B**：manifest 声明式"body 字段 → jar cookie"提取规则（纯数据、核心执行）。表达力受限、复杂。
+已采纳窄 API 方向，而不是允许 adapter 直接设置 `Cookie` 头：
+
+- adapter 仍不能通过 `init.headers.Cookie` 自设 Cookie；B2 继续无条件剥除。
+- adapter 只能调用 `ctx.setEphemeralCookie(name, value, { domain, path? })` 写入 ephemeral 分区。
+- Broker 强制四重栅栏：仅 passthrough origin、不覆盖凭证、不收割、执行即弃。
+- 红线 #1 不破：这里写回的是 adapter 已从 passthrough body 中读到的反爬 token，不是学生凭证。
 
 ## 5. 录制脱敏夹具（需用户在本机/校园网跑，AI 不直连真实校服务器）
 
