@@ -18,6 +18,25 @@ function normalizeDate(s) {
   return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}T00:00:00Z` : null;
 }
 
+/**
+ * 提取 li 内的日期文本。已见两种页面结构：
+ *   ① <li>…<span>2026-06-10</span></li> —— span 即完整日期
+ *   ② <li>…<div class="time"><p>30</p><span>2026.06</span></div> —— span 年月 + p 日，需拼合
+ */
+function extractDateStr(li) {
+  const time = selectAll("div.time", li)[0];
+  if (time) {
+    const span = selectAll("span", time)[0];
+    const p = selectAll("p", time)[0];
+    const yearMonth = span ? getText(span).trim() : "";
+    const day = p ? getText(p).trim() : "";
+    if (yearMonth && day) return `${yearMonth}.${day}`;
+    return yearMonth || day;
+  }
+  const span = selectAll("span", li)[0];
+  return span ? getText(span).trim() : "";
+}
+
 export const capabilities = {
   "notice.list": (ctx, params, responses) => {
     try {
@@ -34,18 +53,19 @@ export const capabilities = {
       for (const li of lis) {
         const a = selectAll("a", li)[0];
         if (!a) continue;
-        const span = selectAll("span", li)[0];
 
         const href = getAttributeValue(a, "href") || "";
         const title = getText(a).trim();
-        const dateStr = span ? getText(span).trim() : "";
-        const idMatch = href.match(/\/(\d+)\.htm$/);
+        const dateStr = extractDateStr(li);
+        const idMatch = href.match(/\/?(\d+)\.htm$/);
         const id = idMatch ? idMatch[1] : href;
+        // 沙箱内无 URL 全局，手工归一：绝对 URL 原样；相对路径（含/不含前导 /）拼 ORIGIN
+        const url = href.startsWith("http") ? href : ORIGIN + "/" + href.replace(/^\//, "");
 
         const item = {
           id,
           title,
-          url: ORIGIN + href,
+          url,
           category: "academic",
           source: "教务处",
         };
