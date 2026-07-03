@@ -19,6 +19,7 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { resolveRepoRoot, readText, noResolver, FakeTransport, runMain } from "./__testutils__/smoke-utils.js";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 
 import { runFetchAdapter } from "./sandbox.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
@@ -84,6 +85,7 @@ async function main(): Promise<void> {
   // ── contract schema 校验（elecon.notice.list 1.1）──
   const schema = JSON.parse(readText(`${repoRoot}contract/schema/notice.list.schema.json`));
   const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
   const validate = ajv.compile(schema as object);
   assert.ok(validate(result), `产出未通过 notice.list schema：${JSON.stringify(validate.errors)}`);
   console.log("  ✓ 通过 contract schema（elecon.notice.list 1.1）");

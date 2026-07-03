@@ -13,6 +13,7 @@
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 
 import { runAdapter, SandboxError } from "./sandbox.js";
 import { resolveRepoRoot, runMain } from "./__testutils__/smoke-utils.js";
@@ -52,6 +53,7 @@ async function testGoldenAndSchema(): Promise<void> {
 
   // (b) 通过 contract schema（这一步证明管线产出的是合法契约数据）
   const ajv = new Ajv2020({ allErrors: true });
+  addFormats(ajv);
   const validate = ajv.compile(readJson(schemaPath));
   const ok = validate(data);
   assert.ok(ok, `产出未通过 grades.list schema：${JSON.stringify(validate.errors)}`);
@@ -119,6 +121,7 @@ async function testXidianNoticeList(): Promise<void> {
   console.log("  ✓ XIDIAN notice.list golden 一致");
 
   const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
   const validate = ajv.compile(noticeSchema as object);
   const ok = validate(data);
   assert.ok(ok, `XIDIAN notice.list 未通过 schema：${JSON.stringify(validate.errors)}`);
