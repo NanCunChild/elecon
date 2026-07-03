@@ -110,6 +110,17 @@
         { "ref": "portal", "value": "P=1" },
         { "ref": "sess", "value": "JSESSIONID=S1" }
       ]
+    },
+    {
+      "name": "same_name_same_path_diff_domain_stable_order",
+      "input": {
+        "originCookies": [
+          { "name": "JSESSIONID", "value": "PARENT", "domain": "xjtu.edu.cn", "path": "/", "source": "origin" },
+          { "name": "JSESSIONID", "value": "HOST", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin" }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": [{ "ref": "sess", "value": "JSESSIONID=HOST; JSESSIONID=PARENT" }]
     }
   ]
 }
