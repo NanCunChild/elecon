@@ -15,11 +15,11 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
 import { urlCoveredByAllow, scopeMatches, scopePrefix } from "./url-match.js";
+import { resolveRepoRoot } from "../__testutils__/smoke-utils.js";
 
-const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+const repoRoot = resolveRepoRoot(import.meta.url);
 const goldenPath = `${repoRoot}contract/golden/broker/url-match.json`;
 
 interface CoverCase {

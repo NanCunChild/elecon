@@ -10,7 +10,10 @@ lib/
   ui/                  UI 层（数据驱动 / SDUI，只认标准 schema）
 assets/                静态资源
 test/
+  utils/
+    test_utils.dart    共享测试工具（repoRoot / readGolden / FakeResolver / FakeTransport / viewFromJson）
   dual_run_test.dart   双跑一致性（客户端半边）
+  broker_*_test.dart   broker 组件冒烟测试（与 server 共用 contract/golden/ 向量）
 tool/
   build_qjs_test_lib.sh  构建 flutter_qjs FFI 测试库
 ```

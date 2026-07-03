@@ -19,26 +19,9 @@ import 'package:elecon/core/broker/ports.dart';
 import 'package:elecon/core/credential/store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'utils/test_utils.dart';
+
 const _now = 1700000000000;
-
-class FakeResolver implements CredentialResolver {
-  FakeResolver(this._map);
-  final Map<String, ResolvedCredential> _map;
-  @override
-  Future<ResolvedCredential?> get(String ref) async => _map[ref];
-}
-
-class FakeTransport implements Transport {
-  FakeTransport(this._queue);
-  final List<TransportResponse> _queue;
-  final List<TransportRequest> seen = [];
-  @override
-  Future<TransportResponse> fetch(TransportRequest req) async {
-    seen.add(req);
-    if (_queue.isEmpty) throw StateError('FakeTransport 队列耗尽');
-    return _queue.removeAt(0);
-  }
-}
 
 void main() {
   group('B6b-Dart fetch 运行时（host-fn 通道 + fake transport）', () {

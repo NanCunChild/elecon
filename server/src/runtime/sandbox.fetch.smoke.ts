@@ -19,37 +19,17 @@ import { strict as assert } from "node:assert";
 
 import { runFetchAdapter, SandboxError, type FetchAdapterDeps } from "./sandbox.js";
 import type { CredentialResolver, ResolvedCredential } from "./broker/ports.js";
-import type {
-  Transport,
-  TransportRequest,
-  TransportResponse,
-} from "./broker/fetch-proxy.js";
+import type { Transport, TransportRequest, TransportResponse } from "./broker/fetch-proxy.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 import { CredentialStore } from "./credential/store.js";
+import {
+  FakeResolver,
+  FakeTransport,
+  resp,
+  runMain,
+} from "./__testutils__/smoke-utils.js";
 
 const NOW = 1_700_000_000_000;
-
-class FakeResolver implements CredentialResolver {
-  constructor(private readonly map: Record<string, ResolvedCredential>) {}
-  async get(ref: string): Promise<ResolvedCredential | null> {
-    return this.map[ref] ?? null;
-  }
-}
-
-class FakeTransport implements Transport {
-  readonly seen: TransportRequest[] = [];
-  constructor(private readonly queue: TransportResponse[]) {}
-  async fetch(req: TransportRequest): Promise<TransportResponse> {
-    this.seen.push(req);
-    const r = this.queue.shift();
-    if (!r) throw new Error("FakeTransport 队列耗尽");
-    return r;
-  }
-}
-
-function resp(p: Partial<TransportResponse> & { status: number }): TransportResponse {
-  return { headers: {}, setCookie: [], location: null, ...p };
-}
 
 /** 1. inject 端到端 + 响应脱敏交回 adapter + 执行结束 B5 收割。 */
 async function testInjectAndHarvest(): Promise<void> {
@@ -176,16 +156,55 @@ async function testRequestLimitNoHarvest(): Promise<void> {
   console.log("  ✓ 请求数限额硬执行 + fail 不收割");
 }
 
+/** 5. 限额：单请求超时是硬终止——adapter catch 后返回"成功"也压不过 fetch_limit，且 fail 不收割。 */
+async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
+  const view: BrokerManifestView = {
+    allow: ["https://h.edu.cn/api/*"],
+    credentials: { session: { scope: ["https://h.edu.cn/api/*"], type: "cookie" } },
+  };
+  // transport 延迟 50ms >> perRequestTimeoutMs=1ms → 必然单请求超时
+  const transport: Transport = {
+    fetch: () =>
+      new Promise<TransportResponse>((res) => {
+        setTimeout(() => res(resp({ status: 200, setCookie: ["JSESSIONID=A"], body: "{}" })), 50);
+      }),
+  };
+  const store = new CredentialStore(undefined, () => NOW);
+  const source = `
+    export const capabilities = {
+      'notice.list': async (ctx) => {
+        try { await ctx.fetch('https://h.edu.cn/api/slow'); return { caught: false }; }
+        catch (e) { return { caught: true }; }
+      }
+    };`;
+  const deps: FetchAdapterDeps = {
+    view,
+    resolver: new FakeResolver({ session: { via: "cookie", value: "JSESSIONID=S" } }),
+    transport,
+    harvest: { sink: store, schoolId: "xidian" },
+  };
+  await assert.rejects(
+    runFetchAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps, undefined, {
+      perRequestTimeoutMs: 1,
+      totalNetworkMs: 30_000,
+      maxRequests: 20,
+      maxHopsPerRequest: 5,
+    }),
+    (e: unknown) => e instanceof SandboxError && e.reason === "fetch_limit",
+    "单请求超时须抛 fetch_limit，即便 adapter catch 后返回成功",
+  );
+  assert.equal(store.list().length, 0, "失败执行不得收割（fail 不收割）");
+  console.log("  ✓ 单请求超时硬终止（adapter catch 不可绕过）+ fail 不收割");
+}
+
 async function main(): Promise<void> {
   console.log("fetch-runtime smoke:");
   await testInjectAndHarvest();
   await testEphemeralMultiStep();
   await testFailClosedCatchable();
   await testRequestLimitNoHarvest();
+  await testPerRequestTimeoutNotSwallowable();
   console.log("全部通过。fetch 模式运行时端到端跑通。");
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+runMain(main);

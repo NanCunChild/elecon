@@ -10,27 +10,9 @@ import 'package:elecon/core/broker/assemble.dart';
 import 'package:elecon/core/broker/cookie_jar.dart';
 import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
-import 'package:elecon/core/broker/ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class FakeResolver implements CredentialResolver {
-  FakeResolver(this._map);
-  final Map<String, ResolvedCredential> _map;
-  @override
-  Future<ResolvedCredential?> get(String ref) async => _map[ref];
-}
-
-class FakeTransport implements Transport {
-  FakeTransport(this._queue);
-  final List<TransportResponse> _queue;
-  final List<TransportRequest> seen = [];
-  @override
-  Future<TransportResponse> fetch(TransportRequest req) async {
-    seen.add(req);
-    if (_queue.isEmpty) throw StateError('FakeTransport 队列耗尽');
-    return _queue.removeAt(0);
-  }
-}
+import 'utils/test_utils.dart';
 
 void main() {
   group('B6b-Dart proxyFetch（fake transport，与 TS driver 对齐）', () {

@@ -11,45 +11,11 @@
 ///   运行：cd client && fvm flutter test test/broker_cookie_jar_test.dart
 ///
 /// ⚠️ 夹具值为显式假值（红线 #8）：绝不使用真实凭证/会话。
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:elecon/core/broker/cookie_jar.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// 从当前工作目录向上找到仓库内的某个相对路径（同 dual_run_test 的定位手法）。
-String _repoPath(String relPath) {
-  var dir = Directory.current;
-  for (var i = 0; i < 6; i++) {
-    final candidate = '${dir.path}/$relPath';
-    if (File(candidate).existsSync() || Directory(candidate).existsSync()) {
-      return candidate;
-    }
-    final parent = dir.parent;
-    if (parent.path == dir.path) break;
-    dir = parent;
-  }
-  return '../$relPath';
-}
-
-BrokerManifestView _viewFromJson(Map<String, dynamic> v) {
-  final credentials = <String, CredentialDecl>{};
-  final c = v['credentials'] as Map<String, dynamic>?;
-  if (c != null) {
-    c.forEach((ref, decl) {
-      final d = decl as Map<String, dynamic>;
-      credentials[ref] = CredentialDecl(
-        scope: (d['scope'] as List).cast<String>(),
-        type: d['type'] as String,
-      );
-    });
-  }
-  return BrokerManifestView(
-    allow: (v['allow'] as List).cast<String>(),
-    credentials: credentials,
-  );
-}
+import 'utils/test_utils.dart';
 
 EphemeralWriteInput _optsFromJson(Map<String, dynamic> o) => EphemeralWriteInput(
       name: o['name'] as String,
@@ -58,18 +24,8 @@ EphemeralWriteInput _optsFromJson(Map<String, dynamic> o) => EphemeralWriteInput
       path: o['path'] as String?,
     );
 
-JarCookie _cookieFromJson(Map<String, dynamic> c) => JarCookie(
-      name: c['name'] as String,
-      value: c['value'] as String,
-      domain: c['domain'] as String,
-      path: c['path'] as String,
-      source: c['source'] as String,
-    );
-
 void main() {
-  final goldenPath = '${_repoPath('contract/golden/broker')}/cookie-jar.json';
-  final golden =
-      jsonDecode(File(goldenPath).readAsStringSync()) as Map<String, dynamic>;
+  final golden = readGolden('cookie-jar.json');
 
   group('B4 cookie-jar 纯决策（Dart，与 TS 双跑同一 golden）', () {
     final writeCases =
@@ -90,7 +46,7 @@ void main() {
         final input = c['input'] as Map<String, dynamic>;
         final decision = decideEphemeralWrite(
           _optsFromJson(input['opts'] as Map<String, dynamic>),
-          _viewFromJson(input['view'] as Map<String, dynamic>),
+          viewFromJson(input['view'] as Map<String, dynamic>),
         );
         expect(decision.toJson(), equals(c['expected']));
       });
@@ -113,7 +69,7 @@ void main() {
         final input = c['input'] as Map<String, dynamic>;
         final cookies = (input['cookies'] as List)
             .cast<Map<String, dynamic>>()
-            .map(_cookieFromJson)
+            .map(cookieFromJson)
             .toList();
         final actual = selectCookies(cookies, input['requestUrl'] as String);
         expect(actual, equals(c['expected']));

@@ -12,14 +12,14 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolveRepoRoot, runMain } from "../__testutils__/smoke-utils.js";
 
 import { decideHarvest, harvestInto, type HarvestPlan } from "./harvest.js";
 import type { JarCookie } from "./cookie-jar.js";
 import type { BrokerManifestView } from "./inject-policy.js";
 import { CredentialStore } from "../credential/store.js";
 
-const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+const repoRoot = resolveRepoRoot(import.meta.url);
 const goldenPath = `${repoRoot}contract/golden/broker/harvest.json`;
 
 interface GoldenCase {
@@ -99,7 +99,4 @@ async function main(): Promise<void> {
   console.log(`broker B5 harvest smoke: golden ${g}/${g} + 集成 ${i}/${i} 例通过 ✅`);
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+runMain(main);
