@@ -12,9 +12,27 @@
  * B4 #37 运行时）写入 jar ephemeral 分区，四重栅栏由 Broker 强制。
  */
 
-import { parseDocument, selectAll, getText, getAttributeValue } from "elecon:html";
+import { parseDocument, selectAll, getText, getAttributeValue, findOne } from "elecon:html";
 
 const ORIGIN = "https://dean.xjtu.edu.cn";
+
+/** safeFetch wraps ctx.fetch with structured error on network failure. */
+async function safeFetch(ctx, url, init) {
+  try {
+    return await ctx.fetch(url, init);
+  } catch (e) {
+    throw new Error(`fetch failed ${url}: ${e.message || e}`);
+  }
+}
+
+/** safeJson wraps Response.json() with structured error on parse failure. */
+async function safeJson(res) {
+  try {
+    return await res.json();
+  } catch (e) {
+    throw new Error(`json parse failed: ${e.message || e}`);
+  }
+}
 
 export const capabilities = {
   /**
@@ -23,13 +41,13 @@ export const capabilities = {
    */
   "notice.list": async (ctx, _params) => {
     // [1] GET 首页（passthrough，不注入凭证）——可能命中 JS 挑战页
-    let html = await (await ctx.fetch(ORIGIN + "/")).text();
+      let html = await (await safeFetch(ctx, ORIGIN + "/")).text();
 
     // [2] 若是挑战页：解析 challengeId / answer（answer 直接给在页面，无需算 JS）
     if (html.includes("var challengeId")) {
       const cid = matchOne(/var challengeId\s*=\s*"([^"]+)"/, html);
       const ansStr = matchOne(/var answer\s*=\s*(\d+)/, html);
-      if (cid === null || ansStr === null) {
+      if (cid === null || ansStr === null || ansStr.length === 0) {
         // 页面结构变了：交给宿主按 parse_failed 处理（adapter 抛错）
         throw new Error("challenge page structure changed: challengeId/answer not found");
       }
@@ -39,7 +57,7 @@ export const capabilities = {
       // TODO(production): browser_info 为硬编码指纹（Chrome 148 / Linux），会随版本过时；
       //   且若 origin 校验 UA header 与 body 一致性可能被拒。production 化时考虑随宿主环境
       //   动态生成或周期更新（spike 阶段硬编码足够）。
-      const challengeRes = await ctx.fetch(ORIGIN + "/dynamic_challenge", {
+      const challengeRes = await safeFetch(ctx, ORIGIN + "/dynamic_challenge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -64,7 +82,7 @@ export const capabilities = {
       // 注：2026-06-16 录制确认 origin 实际有 Set-Cookie（jar 会自动捕获），本调用为
       // 防御性冗余（ephemeral 优先级 < origin，同名以 origin 为准，栅栏 2 无害）——
       // 若 origin 未来改回无 Set-Cookie，本通道仍兜底。
-      const challengeBody = await challengeRes.json();
+      const challengeBody = await safeJson(challengeRes);
       if (!challengeBody.success || !challengeBody.client_id) {
         throw new Error("challenge response: success=false or missing client_id");
       }
@@ -73,7 +91,7 @@ export const capabilities = {
       });
 
       // [5] 带 jar 中的会话 cookie 重新 GET 首页 → 真实通知页
-      html = await (await ctx.fetch(ORIGIN + "/")).text();
+      html = await (await safeFetch(ctx, ORIGIN + "/")).text();
 
       // 若仍是挑战页 → 挑战未解成功，明确报错而非静默返回空列表
       // （否则"取数失败"会被伪装成"无通知"；交宿主按 parse_failed 处理）。
