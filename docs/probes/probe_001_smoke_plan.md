@@ -71,19 +71,19 @@ dependency_overrides:
 
 ### 4.1 OHOS 兼容基线 + 上游漂移检查点
 
-> **优先级：低（OHOS 整体挂起）**。主要精力在 Android / iOS（主线官方 Flutter）；OHOS 等待官方主线支持后再动。本节只做「记账」，不设定期任务、不进 CI 闸门——需要时（下次 OHOS 打包前）翻本节即可。
+> **优先级：低（OHOS 整体挂起）**。Android / iOS 主线跟进官方 Flutter stable；OHOS 等待 OpenHarmony-SIG fork 更新或官方主线支持。本节只做「记账」，不设定期任务、不进 CI 闸门——需要时（下次 OHOS 打包前）翻本节即可。
 
-**为什么要有基线**：OHOS 那条线的 Dart 由 OpenHarmony-SIG 的 Flutter-OHOS fork 决定，非我方可选，当前停在 **Dart 3.6.2**（fork `ohos/br_3.27.4-ohos-1.0.4` = 3.27.5-ohos-1.0.4）；主线 Android/iOS 用官方 Flutter 3.44.1（Dart ~3.9）。两条线**语言/依赖 SDK 约束不对齐**，风险都在边界。
+**为什么要有基线**：OHOS 那条线的 Dart 由 OpenHarmony-SIG 的 Flutter-OHOS fork 决定，非我方可选，当前停在 **Dart 3.6.2**（fork `ohos/br_3.27.4-ohos-1.0.4` = 3.27.5-ohos-1.0.4）；主线 Android/iOS 用官方 Flutter 3.44.1（Dart 3.12.1）。两条线**语言/依赖 SDK 约束不对齐**，风险都在边界。
 
 **兼容基线（当前值）**：
 
 | 项 | 主线（Android/iOS） | OHOS fork | 约束 |
 |---|---|---|---|
 | Flutter | 官方 3.44.1 | 3.27.5-ohos-1.0.4 | — |
-| Dart | ~3.9 | **3.6.2** | OHOS 下限 = **3.6.2** |
+| Dart | 3.12.1 | **3.6.2** | OHOS 下限 = **3.6.2** |
 
-- **语言上限约束**：主线新增语法/API **不得超出 Dart 3.6.2**，否则 OHOS fork 编不过（最现实的坑——打包时才暴露）。抬高该下限须先确认 OHOS fork 已跟进。*注：OHOS 挂起期间此约束实际很松——不必为迁就 OHOS 牺牲 Android/iOS，一旦主线用了 3.7+ 语法，就当作「OHOS 恢复时需要处理的技术债」记账即可。*
-- **依赖 SDK 约束**：新增 pub 依赖时留意其 `environment.sdk` 上界是否兼容 3.6.2；不兼容则需 fork/override（如本探针的 `flutter_inappwebview_ohos` 把 `<3.0.0` 抬到 `<4.0.0`）。
+- **主线优先**：Android / iOS 不受 OHOS fork 的 Dart 3.6.2 约束。主线可使用官方 stable 支持的语法/API/依赖版本，`pubspec.lock` 也按主线 stable 解析。
+- **OHOS 兼容债务**：若主线用了 OHOS fork 暂不支持的语法/API/依赖，先记为 OHOS 恢复时要处理的兼容债务，不阻塞 Android / iOS。OHOS 打包前再核对 fork 是否已跟进；未跟进时再做 fork/override/降级或等待上游。
 
 **上游漂移检查点（无需定期，OHOS 打包前核对即可）**：
 
