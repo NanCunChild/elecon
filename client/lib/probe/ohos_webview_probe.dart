@@ -10,7 +10,8 @@
 // 🔒 边界：本屏刻意不触红线 #1。完整探针（① HttpOnly 穿透读 CAS JSESSIONID、② navigationAllow
 //    闭锁收割、③ incognito 隔离/残留压测）= 下一阶段人工主导（AGENTS §1，AI 不独自闭环）。
 // 本文件仅由 --dart-define=OHOS_PROBE=true 编译期门禁引入（见 main.dart），release 常量 false
-// → tree-shake 整屏剔除（红线 #4/#5：探针路径不进发版二进制）。
+// → 探针 Dart 代码整屏 tree-shake；inappwebview 原生插件体的机制级剔除跟踪 issue #78
+//   （现状：无 Dart 调用入口但仍在 release 产物内，见 main.dart 注释）。
 //
 // cookie 值一律打码后展示/记录（红线 #8：不提交/不外泄真实凭证态数据）。
 
@@ -20,6 +21,11 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 /// 冒烟标的：公开、无登录页（凭证无关）。可在屏内改。默认取西电公开站（与 notice.list 同域、零凭证）。
 const String _kDefaultTarget = 'https://www.xidian.edu.cn/';
+
+/// TLS 证书异常放行白名单：仅冒烟标的 host（校园站真机侧常见中间链缺失）。
+/// ⚠️ fail-closed：白名单外一律 CANCEL。本回调会被后续 WebView 登录收割实现当模板——
+/// **不得**复制成无条件 PROCEED（等于关闭 TLS 校验）。
+const Set<String> _kTlsProceedHosts = <String>{'www.xidian.edu.cn'};
 
 class OhosWebViewProbeApp extends StatelessWidget {
   const OhosWebViewProbeApp({super.key});
@@ -224,11 +230,16 @@ class _ProbeScreenState extends State<_ProbeScreen> {
           }
           return NavigationActionPolicy.ALLOW;
         },
-        // SSL 异常须显式处理（调研：否则白屏/加载中断）。冒烟标的为可信公开站，proceed。
+        // SSL 异常须显式处理（调研：否则白屏/加载中断），但 fail-closed：
+        // 仅 _kTlsProceedHosts 白名单内的冒烟标的 PROCEED，其余一律 CANCEL。
         onReceivedServerTrustAuthRequest: (c, challenge) async {
-          _logLine('serverTrustAuth ← ${challenge.protectionSpace.host}（PROCEED）');
+          final String host = challenge.protectionSpace.host;
+          final bool allowed = _kTlsProceedHosts.contains(host);
+          _logLine('serverTrustAuth ← $host（${allowed ? 'PROCEED·白名单' : 'CANCEL·fail-closed'}）');
           return ServerTrustAuthResponse(
-              action: ServerTrustAuthResponseAction.PROCEED);
+              action: allowed
+                  ? ServerTrustAuthResponseAction.PROCEED
+                  : ServerTrustAuthResponseAction.CANCEL);
         },
       );
 
