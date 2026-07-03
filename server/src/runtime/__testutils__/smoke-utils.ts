@@ -22,13 +22,13 @@ export function resolveRepoRoot(metaUrl: string): string {
   let dir = startDir.endsWith("/") ? startDir.slice(0, -1) : startDir;
   for (let i = 0; i < 8; i++) {
     try {
-      if (statSync(`${dir}/contract`).isDirectory()) return dir;
+      if (statSync(`${dir}/contract`).isDirectory()) return `${dir}/`;
     } catch { /* not found at this level */ }
     const parent = dir.substring(0, dir.lastIndexOf("/"));
     if (parent === dir) break;
     dir = parent;
   }
-  return startDir;
+  return `${startDir}/`;
 }
 
 // ---------------------------------------------------------------------------
