@@ -43,6 +43,9 @@ SIGNED="$(dirname "$UNSIGNED")/entry-default-$MODE-signed.hap"
 SIGN_TOOL="$OHOS_CLI_HOME/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar"
 [ -f "$SIGN_TOOL" ] || { echo "[sign] ✗ 缺 hap-sign-tool.jar: $SIGN_TOOL" >&2; exit 1; }
 
+# ⚠️ 残余风险：hap-sign-tool 只接受 -keyPwd/-keystorePwd 命令行参数（无 stdin/密码文件机制），
+#    签名运行期间密码经 /proc/<pid>/cmdline 对本机其他进程可见——只在本机非共享环境执行
+#    （详见 tools/ohos/README.md「残余风险」节）。
 PWD_VAL="$(cat "$SIGN_PWD_FILE")"
 
 echo "[sign] mode=$MODE  env=${SIGN_ENV#"$REPO_ROOT"/}"

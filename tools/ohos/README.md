@@ -122,6 +122,15 @@ profile（`.p7b`）是**签名期**嵌入 hap 签名块的，**不进编译产�
 按上节决策表：同步 [`client/ohos/AppScope/app.json5`](../../client/ohos/AppScope/app.json5)
 的 `bundleName` 并重编。
 
+### 残余风险：签名密码经命令行参数传入
+
+`hap-sign-tool.jar` 只接受 `-keyPwd` / `-keystorePwd` **命令行参数**（无 stdin/密码文件机制），
+签名运行期间密码对本机其他进程经进程列表（`/proc/<pid>/cmdline`）可见。因此：
+
+- 签名**只在本机、非共享**构建环境执行；共享 CI/多用户机器上**不得**跑 `sign-hap.sh`；
+- `SIGN_PWD_FILE` 权限建议 `chmod 600`；
+- 若上游工具后续支持密码文件/stdin，优先切换（届时改 `sign-hap.sh` 传参方式即可）。
+
 ---
 
 ## Docker（backlog，暂不做）
