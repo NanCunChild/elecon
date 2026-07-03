@@ -10,6 +10,10 @@ src/
   public/      公网哑服务（无状态、零凭证）
   campus/      校内授权中继（堡垒机后部署，承重路径）
   runtime/     adapter 执行沙箱（QuickJS-wasm / quickjs-emscripten）
+    __testutils__/  共享冒烟测试工具（resolveRepoRoot / FakeResolver / FakeTransport / runMain）
+    broker/         能力 broker（B1-B6，与 client 镜像）
+    credential/     凭证存储
+    transport/      传输层
 ```
 
 ## 运行

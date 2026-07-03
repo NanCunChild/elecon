@@ -15,7 +15,7 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolveRepoRoot, FakeResolver, FakeTransport, resp, runMain } from "../__testutils__/smoke-utils.js";
 
 import {
   assembleRequest,
@@ -27,16 +27,9 @@ import {
 } from "./assemble.js";
 import { CookieJar } from "./cookie-jar.js";
 import type { BrokerManifestView } from "./inject-policy.js";
-import type { CredentialResolver, ResolvedCredential } from "./ports.js";
-import {
-  proxyFetch,
-  BrokerFetchRejected,
-  type Transport,
-  type TransportRequest,
-  type TransportResponse,
-} from "./fetch-proxy.js";
+import { proxyFetch, BrokerFetchRejected } from "./fetch-proxy.js";
 
-const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+const repoRoot = resolveRepoRoot(import.meta.url);
 const goldenPath = `${repoRoot}contract/golden/broker/assemble.json`;
 
 interface GoldenFile {
@@ -67,29 +60,6 @@ function goldenTests(): { assemble: number; process: number } {
   return { assemble: golden.assemble.length, process: golden.process.length };
 }
 
-/** fake resolver：按 ref→ResolvedCredential 映射；未命中返回 null。 */
-class FakeResolver implements CredentialResolver {
-  constructor(private readonly map: Record<string, ResolvedCredential>) {}
-  async get(ref: string): Promise<ResolvedCredential | null> {
-    return this.map[ref] ?? null;
-  }
-}
-
-/** fake transport：按队列回放响应，并记录每次收到的请求（供断言 Cookie/Authorization）。 */
-class FakeTransport implements Transport {
-  readonly seen: TransportRequest[] = [];
-  constructor(private readonly queue: TransportResponse[]) {}
-  async fetch(req: TransportRequest): Promise<TransportResponse> {
-    this.seen.push(req);
-    const resp = this.queue.shift();
-    if (!resp) throw new Error("FakeTransport 队列耗尽");
-    return resp;
-  }
-}
-
-function resp(partial: Partial<TransportResponse> & { status: number }): TransportResponse {
-  return { headers: {}, setCookie: [], location: null, ...partial };
-}
 
 async function driverTests(): Promise<number> {
   let checks = 0;
@@ -221,7 +191,4 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+runMain(main);

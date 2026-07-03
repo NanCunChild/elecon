@@ -112,6 +112,27 @@ export function decideEphemeralWrite(
   return { ok: false, reason: domainOk ? "path_too_wide" : "domain_not_passthrough" };
 }
 
+/**
+ * RFC 6265 §5.4 排序（path 长者先，同长按名升序）+ 确定性 tie-break（domain、value 升序）。
+ * tie-break 使比较器成为 total order：同名同 path 不同 domain 的 cookie（harvest 可同时命中）
+ * 在不稳定 sort 实现间、以及 TS/Dart 双实现间序一致。
+ */
+export function compareCookiePathName(
+  a: { path: string; name: string; domain?: string; value?: string },
+  b: { path: string; name: string; domain?: string; value?: string },
+): number {
+  return (
+    b.path.length - a.path.length ||
+    cmpStr(a.name, b.name) ||
+    cmpStr(a.domain ?? "", b.domain ?? "") ||
+    cmpStr(a.value ?? "", b.value ?? "")
+  );
+}
+
+function cmpStr(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /** 单个 cookie 是否会被发往 requestUrl（RFC 6265 domain-match ∧ path-match）。 */
 export function matchCookieForSend(
   cookie: { domain: string; path: string },
@@ -139,7 +160,7 @@ export function selectCookies(
     if (!cur || sourceRank(c.source) > sourceRank(cur.source)) byName.set(c.name, c);
   }
   return [...byName.values()]
-    .sort((a, b) => b.path.length - a.path.length || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .sort(compareCookiePathName)
     .map((c) => ({ name: c.name, value: c.value }));
 }
 

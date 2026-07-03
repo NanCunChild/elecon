@@ -9,25 +9,10 @@
 /// 纯逻辑、不经 QuickJS → 无原生库依赖、不限 Linux。
 ///
 ///   运行：cd client && fvm flutter test test/broker_redirect_test.dart
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:elecon/core/broker/redirect.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-String _repoPath(String relPath) {
-  var dir = Directory.current;
-  for (var i = 0; i < 6; i++) {
-    final candidate = '${dir.path}/$relPath';
-    if (File(candidate).existsSync() || Directory(candidate).existsSync()) {
-      return candidate;
-    }
-    final parent = dir.parent;
-    if (parent.path == dir.path) break;
-    dir = parent;
-  }
-  return '../$relPath';
-}
+import 'utils/test_utils.dart';
 
 RedirectInput _inputFromJson(Map<String, dynamic> i) => RedirectInput(
       status: i['status'] as int,
@@ -49,10 +34,7 @@ class _ScriptedFetcher implements RedirectFetcher {
 }
 
 void main() {
-  final goldenPath = '${_repoPath('contract/golden/broker')}/redirect.json';
-  final golden =
-      jsonDecode(File(goldenPath).readAsStringSync()) as Map<String, dynamic>;
-  final cases = (golden['cases'] as List).cast<Map<String, dynamic>>();
+  final cases = readGoldenCases('redirect.json');
 
   group('B3 redirect 决策（Dart，与 TS 双跑同一 golden）', () {
     test('golden 非空', () => expect(cases, isNotEmpty));

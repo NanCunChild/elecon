@@ -12,7 +12,7 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolveRepoRoot, runMain } from "../__testutils__/smoke-utils.js";
 
 import {
   decideRedirect,
@@ -23,7 +23,7 @@ import {
   type RedirectInput,
 } from "./redirect.js";
 
-const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+const repoRoot = resolveRepoRoot(import.meta.url);
 const goldenPath = `${repoRoot}contract/golden/broker/redirect.json`;
 
 interface GoldenCase {
@@ -101,7 +101,4 @@ async function main(): Promise<void> {
   console.log(`broker B3 redirect smoke: golden ${n}/${n} + driver 4/4 例通过 ✅`);
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+runMain(main);

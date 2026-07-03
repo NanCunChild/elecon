@@ -137,6 +137,19 @@ EphemeralWriteDecision decideEphemeralWrite(
   return EphemeralReject(domainOk ? 'path_too_wide' : 'domain_not_passthrough');
 }
 
+/// RFC 6265 §5.4 排序（path 长者先，同长按名升序）+ 确定性 tie-break（domain、value 升序）。
+/// tie-break 使比较器成为 total order：同名同 path 不同 domain 的 cookie（harvest 可同时命中）
+/// 在不稳定 sort 实现（Dart List.sort 不保证稳定）间、以及 TS/Dart 双实现间序一致。
+int compareCookiePathName(JarCookie a, JarCookie b) {
+  final byLen = b.path.length - a.path.length;
+  if (byLen != 0) return byLen;
+  final byName = a.name.compareTo(b.name);
+  if (byName != 0) return byName;
+  final byDomain = a.domain.compareTo(b.domain);
+  if (byDomain != 0) return byDomain;
+  return a.value.compareTo(b.value);
+}
+
 /// 单个 cookie 是否会被发往 requestUrl（RFC 6265 domain-match ∧ path-match）。
 bool matchCookieForSend(
   ({String domain, String path}) cookie,
@@ -165,11 +178,7 @@ List<Map<String, String>> selectCookies(
     }
   }
   final chosen = byName.values.toList()
-    ..sort((a, b) {
-      final byLen = b.path.length - a.path.length;
-      if (byLen != 0) return byLen;
-      return a.name.compareTo(b.name);
-    });
+    ..sort(compareCookiePathName);
   return chosen.map((c) => {'name': c.name, 'value': c.value}).toList();
 }
 

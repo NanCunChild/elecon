@@ -16,9 +16,7 @@ import { DirectTransport } from "./direct.js";
 import { proxyFetch } from "../broker/fetch-proxy.js";
 import { CookieJar } from "../broker/cookie-jar.js";
 import type { BrokerManifestView } from "../broker/inject-policy.js";
-import type { CredentialResolver } from "../broker/ports.js";
-
-const noResolver: CredentialResolver = { async get() { return null; } };
+import { noResolver, runMain } from "../__testutils__/smoke-utils.js";
 
 async function main(): Promise<void> {
   let base = "";
@@ -120,7 +118,4 @@ async function main(): Promise<void> {
   console.log(`transport direct smoke: ${checks}/4 例通过 ✅`);
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+runMain(main);

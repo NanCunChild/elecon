@@ -17,39 +17,18 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolveRepoRoot, readText, noResolver, FakeTransport, runMain } from "./__testutils__/smoke-utils.js";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 
 import { runFetchAdapter } from "./sandbox.js";
-import type {
-  Transport,
-  TransportRequest,
-  TransportResponse,
-} from "./broker/fetch-proxy.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
-import type { CredentialResolver } from "./broker/ports.js";
 
-const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const repoRoot = resolveRepoRoot(import.meta.url);
 const xjtDir = `${repoRoot}adapters/school-xjt`;
 const fixDir = `${xjtDir}/fixtures/dean.xjtu.edu.cn`;
 
-const noResolver: CredentialResolver = { async get() { return null; } };
 
-/** 按队列回放录制响应；记录每次请求（供断言握手顺序 / 会话 cookie 携带）。 */
-class ReplayTransport implements Transport {
-  readonly seen: TransportRequest[] = [];
-  constructor(private readonly queue: TransportResponse[]) {}
-  async fetch(req: TransportRequest): Promise<TransportResponse> {
-    this.seen.push(req);
-    const r = this.queue.shift();
-    if (!r) throw new Error(`ReplayTransport 队列耗尽：未录制 ${req.method} ${req.url}`);
-    return r;
-  }
-}
-
-function readText(p: string): string {
-  return readFileSync(p, "utf8");
-}
 
 async function main(): Promise<void> {
   const source = readText(`${xjtDir}/index.js`);
@@ -61,7 +40,7 @@ async function main(): Promise<void> {
   };
 
   // 录制的真实握手三步（已脱敏）：
-  const transport = new ReplayTransport([
+  const transport = new FakeTransport([
     // [1] GET / → JS 挑战页
     { status: 200, headers: { "content-type": "text/html" }, setCookie: [], location: null, body: challengeHtml },
     // [2] POST /dynamic_challenge → client_id（origin 经 Set-Cookie 下发 + body）
@@ -106,6 +85,7 @@ async function main(): Promise<void> {
   // ── contract schema 校验（elecon.notice.list 1.1）──
   const schema = JSON.parse(readText(`${repoRoot}contract/schema/notice.list.schema.json`));
   const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
   const validate = ajv.compile(schema as object);
   assert.ok(validate(result), `产出未通过 notice.list schema：${JSON.stringify(validate.errors)}`);
   console.log("  ✓ 通过 contract schema（elecon.notice.list 1.1）");
@@ -113,7 +93,4 @@ async function main(): Promise<void> {
   console.log("首个真实 fetch adapter（school-xjt notice.list）端到端跑通 ✅");
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+runMain(main);

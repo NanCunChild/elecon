@@ -39,11 +39,7 @@ String? scopeReprUrl(String scope) {
 
 /// 序列化命中 cookie（RFC 6265 §5.4：path 长者先，同长按名升序），`n=v` 以 `; ` 连。
 String _serialize(List<JarCookie> cookies) {
-  final sorted = [...cookies]..sort((a, b) {
-      final byLen = b.path.length - a.path.length;
-      if (byLen != 0) return byLen;
-      return a.name.compareTo(b.name);
-    });
+  final sorted = [...cookies]..sort(compareCookiePathName);
   return sorted.map((c) => '${c.name}=${c.value}').join('; ');
 }
 
