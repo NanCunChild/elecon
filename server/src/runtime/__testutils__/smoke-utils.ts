@@ -78,18 +78,16 @@ export const noResolver: CredentialResolver = {
 // ---------------------------------------------------------------------------
 
 export function runMain(fn: () => void | Promise<void>): void {
-  const result = fn();
-  if (result instanceof Promise) {
-    result.catch((err: unknown) => {
-      console.error(err);
-      process.exit(1);
-    });
-  } else {
-    try {
-      // already ran synchronously
-    } catch (err) {
-      console.error(err);
-      process.exit(1);
+  try {
+    const result = fn();
+    if (result instanceof Promise) {
+      result.catch((err: unknown) => {
+        console.error(err);
+        process.exit(1);
+      });
     }
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
   }
 }

@@ -317,9 +317,13 @@ function bridgeHostPromise(
       }
     },
   );
-  deferred.settled.then(
-    () => { runtime.executePendingJobs(); },
-  );
+  deferred.settled.then(() => {
+    try {
+      runtime.executePendingJobs();
+    } catch {
+      /* runtime may already be disposed (e.g. timeout during in-flight fetch) */
+    }
+  });
   return deferred.handle;
 }
 
