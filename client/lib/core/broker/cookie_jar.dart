@@ -195,6 +195,7 @@ JarCookie? _parseSetCookie(String header, String requestUrl) {
   if (name.isEmpty) return null;
 
   var domain = u.host; // 缺省 host-only
+  var hasDomainAttr = false;
   String? path;
   for (final attr in parts.skip(1)) {
     final i = attr.indexOf('=');
@@ -202,11 +203,16 @@ JarCookie? _parseSetCookie(String header, String requestUrl) {
     final val = i == -1 ? '' : attr.substring(i + 1).trim();
     if (key == 'domain' && val.isNotEmpty) {
       domain = val.toLowerCase().replaceFirst(RegExp(r'^\.'), '');
+      hasDomainAttr = true;
     } else if (key == 'path' && val.startsWith('/')) {
       path = val;
     }
     // Secure / HttpOnly / Max-Age / Expires 等本 jar 不校验（计划 §8 拍板 #1）
   }
+  // RFC 6265 §5.3 step 6（#79 P0-4）：显式 Domain 属性必须 domain-match 响应 host，
+  // 否则整条 Set-Cookie **丢弃**（fail-closed）。封堵「allow 集内某 host 为不属于自己的
+  // 域伪造 cookie、经后续请求发往他域」的污染面。缺省 host-only（无 Domain 属性）不受限。
+  if (hasDomainAttr && !domainMatch(u.host, domain)) return null;
   return JarCookie(
     name: name,
     value: value,

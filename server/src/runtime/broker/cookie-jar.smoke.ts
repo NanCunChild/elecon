@@ -98,12 +98,23 @@ function statefulTests(): number {
   assert.equal(jar.cookieHeader("https://dean.xjtu.edu.cn/other"), ""); // path /a 不匹配 /other
   checks++;
 
-  // 2. 显式 Domain/Path 属性（前导点归一为 host-only）
+  // 2. 显式 Domain/Path 属性（前导点归一为 host-only）；父域合法（dean.xjtu ⊆ xjtu）
   const jar2 = new CookieJar();
   jar2.captureSetCookie(["sess=xyz; Domain=.xjtu.edu.cn; Path=/"], "https://dean.xjtu.edu.cn/login");
   assert.deepStrictEqual(jar2.harvestView(), [
     { name: "sess", value: "xyz", domain: "xjtu.edu.cn", path: "/", source: "origin" },
   ]);
+  checks++;
+
+  // 2b. 非法 Domain（#79 P0-4，RFC 6265 §5.3 step 6）：响应 host 不 domain-match 声明的
+  //     Domain → 整条 Set-Cookie 丢弃（fail-closed），封堵 allow 集内跨域伪造。
+  const jarBad = new CookieJar();
+  // 完全无关的域
+  jarBad.captureSetCookie(["evil=1; Domain=other.edu.cn"], "https://dean.xjtu.edu.cn/x");
+  // 子域伪造父域方向（响应 host 是被声明域的父域，不 domain-match）
+  jarBad.captureSetCookie(["evil2=1; Domain=sub.dean.xjtu.edu.cn"], "https://dean.xjtu.edu.cn/x");
+  assert.deepStrictEqual(jarBad.harvestView(), [], "非法 Domain 的 Set-Cookie 必须整条丢弃");
+  assert.equal(jarBad.cookieHeader("https://other.edu.cn/x"), "", "伪造 cookie 不得发往他域");
   checks++;
 
   // 3. 跨跳累计 + 同 (name,domain,path) 轮换覆盖（会话轮换以最新为准）
