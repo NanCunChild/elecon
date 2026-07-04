@@ -1,7 +1,7 @@
 # ADR-012：凭证获取（登录）与可信核心凭证存储
 
 - **状态**：已接受（Accepted） 本文触碰红线 #1（凭证）的**最高风险面**——凭证从哪来、存哪、什么形态。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，经人工 review（PR #23）+ 安全检查清单审阅后接受。
-- **日期**：2026-06-13（**修订 2026-06-14**：① §2.2 增 fetch 模式握手的耐久 session 收割——与 WebView 登录同一动作、判据 = manifest 声明的 credential ref（判据 b），与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 / [`adr_013`](./adr_013_manifest_credentials.md) 协调；② §2.4 闭合 scope/type 双源——store 保留为防御性副本+一致性基准，注入权威唯一在已验签 manifest，不一致以 manifest 为准并告警；③ §2.6 钉定首版仅 client-direct，relay 凭证落点推迟、本 ADR 不依赖 relay，relay 须满足"零落盘+用完即弃/客户端注入"硬约束）（**补全 2026-07-04，🔒 待本 PR 人工接受，#79 P0-2**：新增 §2.7 安全存储威胁模型 + 保护对象边界 + 平台后端矩阵 + 密钥托管 + 无 keyring 桌面 fail-closed 回退 + 生产禁默认明文后端护栏——认领 §2.1/§3.7 遗留的 key custody 开放问题；护栏部分已实现 PR #82，平台后端待本补全接受后拆 PR）
+- **日期**：2026-06-13（**修订 2026-06-14**：① §2.2 增 fetch 模式握手的耐久 session 收割——与 WebView 登录同一动作、判据 = manifest 声明的 credential ref（判据 b），与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 / [`adr_013`](./adr_013_manifest_credentials.md) 协调；② §2.4 闭合 scope/type 双源——store 保留为防御性副本+一致性基准，注入权威唯一在已验签 manifest，不一致以 manifest 为准并告警；③ §2.6 钉定首版仅 client-direct，relay 凭证落点推迟、本 ADR 不依赖 relay，relay 须满足"零落盘+用完即弃/客户端注入"硬约束）（**补全 2026-07-04，已接受，#79 P0-2**：新增 §2.7 安全存储威胁模型 + 保护对象边界 + 平台后端矩阵 + 密钥托管 + 无 keyring 桌面 fail-closed 回退 + 生产禁默认明文后端护栏——认领 §2.1/§3.7 遗留的 key custody 开放问题；护栏部分已实现 PR #82，平台后端按本补全拆 PR）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 可信核心）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / 契约）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（谁有资格用凭证 = official）、[`adr_003_transport.md`](./adr_003_transport.md)（campus-relay 落点）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端核心）
 - **被依赖**：[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（其 §2.3 的 "credential reference" 正是指向本文定义的凭证条目；其注入消费本文的存储）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)、[#17](https://github.com/NanCunChild/elecon/issues/17)；本文回应 #8/#10 评审指出的"**凭证存储 + 登录获取孤儿缺口**"。
@@ -90,9 +90,9 @@ CredentialEntry {
 - 凭证在 relay 侧**单次用完即弃**，或**注入仍留在客户端完成**（relay 仅代理字节）——二选一的具体取向留给 ADR-003/009，但上述"零落盘 + 用完即弃/客户端注入"是**任何方案都必须满足的硬约束**。
 - 在 relay 方案定案前，**fetch-via-relay 不落地**。
 
-### 2.7 安全存储威胁模型 + 平台矩阵 + 密钥托管（2026-07-04 补全，🔒 待本 PR 人工接受）
+### 2.7 安全存储威胁模型 + 平台矩阵 + 密钥托管（2026-07-04 补全，已接受）
 
-> **本节补全 §2.1 遗留的开放问题**（`secure_store.dart` 文件头「key custody 仍是开放问题」）。触红线 #1 最高风险面，按 AGENTS.md §1 **AI 不得独自闭环**：本节由 AI 起草（跟踪 #79 P0-2），须人工 + 安全清单复核后方可接受与实现。护栏部分（生产禁默认明文后端）已先行落地（PR #82），设计部分（平台实现）待本节接受。
+> **本节补全 §2.1 遗留的开放问题**（`secure_store.dart` 文件头「key custody 仍是开放问题」）。触红线 #1 最高风险面，按 AGENTS.md §1 **AI 不得独自闭环**：本节由 AI 起草（跟踪 #79 P0-2），经人工审阅后接受。护栏部分（生产禁默认明文后端）已先行落地（PR #82），设计部分（平台实现）按本节拆 PR 实现。
 
 **决策 A：先收窄防御对象——只承诺防 at-rest / offline / 低权限本地窃取，不承诺防 rootkit。** 安全存储保护的是「凭证落盘后的离线窃取面」：设备备份泄露、应用沙盒文件被拷走、磁盘镜像、非 root 同机进程等。它**不**承诺抵抗 rootkit / 内核级 / 已控制本进程内存的攻击者：若攻击者能读进程内存、hook Keychain/Keystore API、截获解密后的注入瞬间，客户端侧加密已不能提供实质防御；此时只能依赖最小明文窗口、登出/吊销、重新认证和设备安全姿态。本文不以这类攻击作为 v1 at-rest 加密的主要防御对象。
 
@@ -112,7 +112,7 @@ CredentialEntry {
 
 **决策 E：无 keyring 的桌面/headless 一律 fail-closed，绝不明文落盘（认领 §3.7）。** §3.7 早已划红线「回退不得降级为明文落盘」，本节给出具体回退：**无可用 Secret Service 时，凭证转为内存-only**（不落盘、不跨进程重启存活；下次启动需重新 §2.2 登录），并给持久 UI 警示。这与 §2.1 权威存储的耐久性目标冲突，但**fail-closed 优先于可用性**（与 [`adr_002`](./adr_002_trust_model.md) fail-toward-less-trust、#79 P0-2 release 无真实后端即 fail-closed 同构）。**passphrase 派生 KEK（Argon2id）** 作为可选的"无 keyring 也能持久化"路径**留待后续独立决策**——它引入用户口令 UX 与 KDF 参数面，不进 v1，不在本节承诺。
 
-**决策 F：生产禁止静默使用明文内存后端（护栏，PR #82 已落地）。** `InMemorySecureStore` 是**明文内存原型后端**，仅供 dev/test。生产（Dart `kReleaseMode` / TS `NODE_ENV=production`）下省略 store 的构造**fail-closed 抛错**，不静默回退明文内存——安全性由机制强制，非靠"生产代码记得注入真实 store"的调用约定。真实后端（决策 C/D）落地前，生产凭证存储整体 fail-closed（与「无真实 secure store 就不该假装能存凭证」一致）。**本决策已实现**（`CredentialStore.defaultSecureStore` / `#defaultStore`，两端镜像），是 §2.7 唯一已落地项；A–E 仍待本节接受后按平台拆 PR 实现。
+**决策 F：生产禁止静默使用明文内存后端（护栏，PR #82 已落地）。** `InMemorySecureStore` 是**明文内存原型后端**，仅供 dev/test。生产（Dart `kReleaseMode` / TS `NODE_ENV=production`）下省略 store 的构造**fail-closed 抛错**，不静默回退明文内存——安全性由机制强制，非靠"生产代码记得注入真实 store"的调用约定。真实后端（决策 C/D）落地前，生产凭证存储整体 fail-closed（与「无真实 secure store 就不该假装能存凭证」一致）。**本决策已实现**（`CredentialStore.defaultSecureStore` / `#defaultStore`，两端镜像），是 §2.7 唯一已落地项；A–E 按平台拆 PR 实现。
 
 **不变量（贯穿 A–F）**：① app 侧**永不**持有内嵌/静态长期密钥；② `CredentialEntry.value` 明文**永不落盘**（无后端即内存-only 或 fail-closed）；③ 不把 rootkit/进程内存读取列为 at-rest 加密可解决的目标；④ 不承诺统一 TEE/硬件背书语义；⑤ 内存中明文窗口最小化（注入瞬间解密、用完即弃，§2.4）；⑥ 后端实现是宿主侧安全敏感代码，随实现 PR 人工 + 安全清单审（不得 AI 独自闭环）。
 
@@ -134,7 +134,7 @@ CredentialEntry {
 4. **声明式刷新配方若入 manifest = 契约改动**（红线 #6），独立 ADR、向后兼容；配方表达力须谨慎（避免变成图灵完备的"伪 adapter"反而成新代码注入面）。
 5. **campus-relay 凭证传输是开放风险**（§2.6），未解前 fetch-via-relay 不落地。
 6. **iOS 联动 ADR-010。** WebView 登录 + Keychain + session 收割需在 5.1.1 隐私申报披露；首版仅 parser，本文随 fetch 模式一并做 2.5.2 自检。
-7. **桌面 Linux secret storage 可用性是已知弱点**（无统一 keyring 时的回退策略需定，且回退不得降级为明文落盘）。**回退策略已由 §2.7 决策 E 定案（2026-07-04，待本 PR 接受）**：无 Secret Service → 凭证内存-only + fail-closed，绝不明文落盘；passphrase 派生 KEK 留待后续独立决策。
+7. **桌面 Linux secret storage 可用性是已知弱点**（无统一 keyring 时的回退策略需定，且回退不得降级为明文落盘）。**回退策略已由 §2.7 决策 E 定案（2026-07-04，已接受）**：无 Secret Service → 凭证内存-only + fail-closed，绝不明文落盘；passphrase 派生 KEK 留待后续独立决策。
 8. **首次"代取"也需要凭证。** 即便 parser 模式，"核心代取私密页"也依赖本文的凭证——因此本文不仅服务 fetch 模式，也是 parser 模式取私密数据的前提。
 
 ---
@@ -143,7 +143,7 @@ CredentialEntry {
 
 > 安全敏感项标：
 
-- 核心**安全存储抽象**（iOS Keychain / Android Keystore / 桌面 Secret Service）+ at-rest 加密；统一"按 ref 存/取/删"接口。**威胁模型、保护对象、平台后端矩阵 + key custody + 无 keyring 回退见 §2.7（待本 PR 接受）**：
+- 核心**安全存储抽象**（iOS Keychain / Android Keystore / 桌面 Secret Service）+ at-rest 加密；统一"按 ref 存/取/删"接口。**威胁模型、保护对象、平台后端矩阵 + key custody + 无 keyring 回退见 §2.7（已接受）**：
   - [x] **护栏（§2.7 决策 F，PR #82 已落地）**：生产禁默认明文内存后端，fail-closed。
   - [ ] iOS/macOS Keychain 后端（§2.7 决策 C）。🔒
   - [ ] Android Keystore 支撑的 EncryptedSharedPreferences 后端（§2.7 决策 C/D）。🔒
