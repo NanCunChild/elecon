@@ -31,6 +31,7 @@ import {
   type FetchProxyOutcome,
 } from "./broker/fetch-proxy.js";
 import type { RequestInit as BrokerRequestInit } from "./broker/assemble.js";
+import { TrustedAdapterContext, fetchTrustPermitted } from "./trusted-context.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HTML_STDLIB_SOURCE = readFileSync(
@@ -87,7 +88,9 @@ export type SandboxFailureReason =
   | "adapter_threw"
   | "timeout"
   | "memory"
-  | "fetch_limit";
+  | "fetch_limit"
+  // 信任闸门拒绝：档位 × 环境不满足入场条件（ADR-002 §2.6 结构化权限错误）。
+  | "trust_rejected";
 
 export class SandboxError extends Error {
   constructor(
@@ -255,6 +258,12 @@ export const DEFAULT_FETCH_LIMITS: FetchLimits = {
 };
 
 export interface FetchAdapterDeps {
+  /**
+   * 信任裁定凭据（ADR-002 §2.6 · #79 P0-1）：必填，只能经核心裁定路径构造
+   * （`TrustedAdapterContext`，见 trusted-context.ts）。入口在触达引擎/host-fn
+   * 之前校验档位 × 环境 + instanceof（防字面量伪造），不满足即 fail-closed。
+   */
+  trust: TrustedAdapterContext;
   view: BrokerManifestView;
   resolver: CredentialResolver;
   transport: Transport;
@@ -530,6 +539,18 @@ export async function runFetchAdapter(
   limits: SandboxLimits = DEFAULT_LIMITS,
   fetchLimits: FetchLimits = DEFAULT_FETCH_LIMITS,
 ): Promise<AdapterRunResult> {
+  // 信任闸门：在触达引擎、注册任何 host function 之前 fail-closed（ADR-002 §2.6）。
+  // instanceof 防字面量 cast 伪造；production 硬接 NODE_ENV——不提供注入点。
+  if (!(deps.trust instanceof TrustedAdapterContext)) {
+    throw new SandboxError("trust_rejected", "trust 不是核心签发的 TrustedAdapterContext 实例（伪造/误接线，fail-closed）");
+  }
+  if (!fetchTrustPermitted(deps.trust.tier, { production: process.env.NODE_ENV === "production" })) {
+    throw new SandboxError(
+      "trust_rejected",
+      `非 official adapter 无 fetch 权限（档位 ${deps.trust.tier}，生产环境）——ADR-002 §2.6 结构化权限错误，凭证注入路径不可达`,
+    );
+  }
+
   const { runtime, ctx, deadline } = await createRuntime(limits);
 
   const state: FetchExecState = {

@@ -22,6 +22,7 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
 import { runFetchAdapter } from "./sandbox.js";
+import { TrustedAdapterContext } from "./trusted-context.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
@@ -59,7 +60,7 @@ async function main(): Promise<void> {
 
   const { data } = await runFetchAdapter(
     { source, capability: "notice.list", params: {}, nowMs: 1_700_000_000_000 },
-    { view, resolver: noResolver, transport },
+    { trust: TrustedAdapterContext.devSideload(), view, resolver: noResolver, transport },
   );
 
   // ── 握手顺序 + 会话 cookie 携带 ──

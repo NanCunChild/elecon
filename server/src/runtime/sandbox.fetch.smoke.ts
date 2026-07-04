@@ -22,6 +22,7 @@ import type { CredentialResolver, ResolvedCredential } from "./broker/ports.js";
 import type { Transport, TransportRequest, TransportResponse } from "./broker/fetch-proxy.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 import { CredentialStore } from "./credential/store.js";
+import { TrustedAdapterContext, fetchTrustPermitted } from "./trusted-context.js";
 import {
   FakeResolver,
   FakeTransport,
@@ -55,6 +56,7 @@ async function testInjectAndHarvest(): Promise<void> {
     };`;
 
   const deps: FetchAdapterDeps = {
+    trust: TrustedAdapterContext.devSideload(),
     view,
     resolver: new FakeResolver({ session: { via: "cookie", value: "JSESSIONID=S1" } }),
     transport,
@@ -89,7 +91,7 @@ async function testEphemeralMultiStep(): Promise<void> {
         return { rows: await b.json() };
       }
     };`;
-  const deps: FetchAdapterDeps = { view, resolver: new FakeResolver({}), transport };
+  const deps: FetchAdapterDeps = { trust: TrustedAdapterContext.devSideload(), view, resolver: new FakeResolver({}), transport };
   const { data } = await runFetchAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps);
 
   assert.deepEqual((data as { rows: unknown }).rows, [1, 2, 3], "第二步产出不符");
@@ -108,7 +110,7 @@ async function testFailClosedCatchable(): Promise<void> {
         catch (e) { return { blocked: true }; }
       }
     };`;
-  const deps: FetchAdapterDeps = { view, resolver: new FakeResolver({}), transport };
+  const deps: FetchAdapterDeps = { trust: TrustedAdapterContext.devSideload(), view, resolver: new FakeResolver({}), transport };
   const { data } = await runFetchAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps);
 
   assert.deepEqual(data, { blocked: true }, "allow 外应被拒、adapter 可 catch");
@@ -137,6 +139,7 @@ async function testRequestLimitNoHarvest(): Promise<void> {
       }
     };`;
   const deps: FetchAdapterDeps = {
+    trust: TrustedAdapterContext.devSideload(),
     view,
     resolver: new FakeResolver({ session: { via: "cookie", value: "S" } }),
     transport,
@@ -178,6 +181,7 @@ async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
       }
     };`;
   const deps: FetchAdapterDeps = {
+    trust: TrustedAdapterContext.devSideload(),
     view,
     resolver: new FakeResolver({ session: { via: "cookie", value: "JSESSIONID=S" } }),
     transport,
@@ -197,6 +201,44 @@ async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
   console.log("  ✓ 单请求超时硬终止（adapter catch 不可绕过）+ fail 不收割");
 }
 
+/** 6. 信任闸门（ADR-002 §2.6 · #79 P0-1）：伪造/越权 trust 在触达引擎前被拒，零出网。 */
+async function testTrustGate(): Promise<void> {
+  const view: BrokerManifestView = { allow: ["https://h.edu.cn/*"] };
+  const transport = new FakeTransport([resp({ status: 200, body: "[]" })]);
+  const source = `
+    export const capabilities = {
+      'notice.list': async (ctx) => { await ctx.fetch('https://h.edu.cn/x'); return {}; }
+    };`;
+
+  // 6a. 字面量伪造 trust（结构化类型 cast 绕过私有构造器）→ instanceof 拦截
+  const forged = { tier: "official" } as unknown as TrustedAdapterContext;
+  await assert.rejects(
+    runFetchAdapter(
+      { source, capability: "notice.list", params: {}, nowMs: NOW },
+      { trust: forged, view, resolver: new FakeResolver({}), transport },
+    ),
+    (e: unknown) => e instanceof SandboxError && e.reason === "trust_rejected",
+    "伪造 trust 对象应被 instanceof 校验拒绝",
+  );
+  assert.equal(transport.seen.length, 0, "trust 拒绝须发生在任何出网之前");
+
+  // 6b. 入场判定负例：生产环境下 dev_sideload 拒绝、official 放行（纯函数）
+  assert.equal(fetchTrustPermitted("dev_sideload", { production: true }), false, "生产下侧载须拒");
+  assert.equal(fetchTrustPermitted("official", { production: true }), true, "生产下 official 放行");
+  assert.equal(fetchTrustPermitted("dev_sideload", { production: false }), true, "非生产侧载放行（§2.5）");
+
+  // 6c. 生产环境下 devSideload() 构造即抛（fail-closed）
+  const prevEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  try {
+    assert.throws(() => TrustedAdapterContext.devSideload(), "生产下 dev 侧载上下文不可构造");
+  } finally {
+    if (prevEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = prevEnv;
+  }
+  console.log("  ✓ 信任闸门（伪造拒绝 + 生产 fail-closed + 零出网）");
+}
+
 async function main(): Promise<void> {
   console.log("fetch-runtime smoke:");
   await testInjectAndHarvest();
@@ -204,6 +246,7 @@ async function main(): Promise<void> {
   await testFailClosedCatchable();
   await testRequestLimitNoHarvest();
   await testPerRequestTimeoutNotSwallowable();
+  await testTrustGate();
   console.log("全部通过。fetch 模式运行时端到端跑通。");
 }
 

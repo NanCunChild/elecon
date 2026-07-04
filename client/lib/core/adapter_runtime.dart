@@ -3,9 +3,10 @@
 /// 与服务端 QuickJS-wasm（`server/src/runtime/sandbox.ts`）是**同一个 QuickJS
 /// 引擎**，对同一份 adapter 源码零语义漂移（ADR-001 §8、ADR-005）。
 ///
-/// 当前实现：**parser 模式**（无网络、无凭证、纯解析器）。
-/// fetch 模式的受限 ctx.fetch（凭证白名单注入）是承重 + 安全敏感路径
-/// （红线 #1、AGENTS.md §1），单独走人工审阅的 PR，此处不实现。
+/// 当前实现：**parser 模式**（无网络、无凭证、纯解析器）+ **fetch 模式**
+/// （受限 ctx.fetch、凭证白名单注入，B6b-Dart，见文件下半部）。fetch 是承重 +
+/// 安全敏感路径（红线 #1、AGENTS.md §1）：入口有信任闸门（ADR-002 §2.6），
+/// 改动须人工 + 安全清单复核。
 ///
 /// 不变量：
 ///  - adapter 在**后台 isolate** 执行（红线 #7：不在 UI 线程同步阻塞）。
@@ -17,6 +18,7 @@ library;
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_qjs/flutter_qjs.dart';
 
 import 'broker/assemble.dart' show RequestInit;
@@ -27,6 +29,8 @@ import 'broker/harvest.dart' show decideHarvest, harvestInto;
 import 'broker/inject_policy.dart' show BrokerManifestView;
 import 'broker/ports.dart' show CredentialResolver;
 import 'credential/types.dart' show CredentialEntry;
+import 'trust/trusted_context.dart'
+    show TrustedAdapterContext, fetchTrustPermitted;
 
 /// 运行时层面的失败原因。**不携带契约 error.kind**——错误词表是领域概念，
 /// 由上层据此映射（与服务端 `SandboxFailureReason` 对称）。
@@ -51,6 +55,10 @@ enum AdapterFailureReason {
 
   /// fetch 模式：单请求 10s / 累计 30s / 单次 ≤20 请求任一超限（ADR-009 §2.7）。
   fetchLimit,
+
+  /// fetch 模式：信任闸门拒绝——档位 × build 模式不满足入场条件
+  /// （ADR-002 §2.6 结构化权限错误；非 official 在 release 永不触达凭证注入）。
+  trustRejected,
 }
 
 class AdapterRunException implements Exception {
@@ -266,6 +274,10 @@ class HarvestTarget {
 /// 与 [runParserAdapter] 并列、互不干扰（parser 已签收，本路径独立新增）。
 ///
 /// 不变量（与 `sandbox.ts` 镜像，🔒 安全清单逐项）：
+///  - **信任闸门（ADR-002 §2.6 · #79 P0-1）**：入口强制 [trust]（只能经核心裁定路径构造），
+///    并在触达引擎/host-fn 注册**之前**以 [fetchTrustPermitted] 复核——非 official 在
+///    release/profile 下得到结构化 [AdapterFailureReason.trustRejected]，永不触达凭证注入；
+///    dev 侧载仅 debug build 放行（ADR-002 §2.5）。安全性不依赖调用方自觉。
 ///  - 凭证仅在主 isolate 闭包侧（`proxyFetch`）拼头/出网/脱敏；worker/JS/adapter 仅见脱敏响应
 ///    （Set-Cookie/Authorization 回显/中间 Location 已由 B2/B3 剥）。
 ///  - 出口 fail-closed：url 不在 allow → `ctx.fetch` 的 Promise 被拒（adapter 可 catch）。
@@ -277,6 +289,7 @@ class HarvestTarget {
 Future<dynamic> runFetchAdapter({
   required String source,
   required String capability,
+  required TrustedAdapterContext trust,
   required BrokerManifestView view,
   required CredentialResolver resolver,
   required Transport transport,
@@ -289,6 +302,16 @@ Future<dynamic> runFetchAdapter({
   FetchLimits fetchLimits = const FetchLimits(),
   void Function(String level, String message)? onLog,
 }) async {
+  // 信任闸门：在触达引擎、注册任何 host function 之前 fail-closed（ADR-002 §2.6）。
+  // debugBuild 硬接 kDebugMode（编译期常量）——不提供注入点，release 语义不可被调用方改写。
+  if (!fetchTrustPermitted(trust.tier, debugBuild: kDebugMode)) {
+    throw AdapterRunException(
+      AdapterFailureReason.trustRejected,
+      '非 official adapter 无 fetch 权限（档位 ${trust.tier.name}，release/profile '
+      'build）——ADR-002 §2.6 结构化权限错误，凭证注入路径不可达',
+    );
+  }
+
   final theJar = jar ?? CookieJar();
   final deps = FetchProxyDeps(
     view: view,
