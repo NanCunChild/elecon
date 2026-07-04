@@ -73,7 +73,12 @@ class EphemeralAccept extends EphemeralWriteDecision {
   @override
   Map<String, Object?> toJson() => {
         'ok': true,
-        'cookie': {'name': name, 'value': value, 'domain': domain, 'path': path},
+        'cookie': {
+          'name': name,
+          'value': value,
+          'domain': domain,
+          'path': path
+        },
       };
 }
 
@@ -89,9 +94,42 @@ class EphemeralReject extends EphemeralWriteDecision {
 
 int _sourceRank(String s) => s == 'origin' ? 1 : 0;
 
+// 最小 public-suffix 护栏（#79 P0-4）：完整 PSL 需新依赖与更新机制；本阶段先
+// fail-closed 拒绝单标签 TLD 与校园场景/常见 ccTLD 的二级公共后缀，封堵
+// `dean.xjtu.edu.cn` 设置 `Domain=edu.cn` 这类过宽父域污染面。
+const Set<String> _knownMultiLabelPublicSuffixes = {
+  'ac.cn',
+  'com.cn',
+  'edu.cn',
+  'gov.cn',
+  'net.cn',
+  'org.cn',
+  'ac.uk',
+  'co.uk',
+  'gov.uk',
+  'org.uk',
+  'ac.jp',
+  'co.jp',
+  'go.jp',
+  'ne.jp',
+  'or.jp',
+  'com.au',
+  'edu.au',
+  'gov.au',
+  'net.au',
+  'org.au',
+};
+
+bool _isPublicSuffixLike(String domain) {
+  final d = domain.toLowerCase().replaceFirst(RegExp(r'^\.'), '');
+  if (d.isEmpty || !d.contains('.')) return true;
+  return _knownMultiLabelPublicSuffixes.contains(d);
+}
+
 /// cookie path 是否「等于或深于」allow path 前缀（allowPath 为其前缀）——即不更宽。
 bool _pathNotWiderThan(String cookiePath, String allowPathPrefix) {
-  final a = allowPathPrefix.endsWith('/') ? allowPathPrefix : '$allowPathPrefix/';
+  final a =
+      allowPathPrefix.endsWith('/') ? allowPathPrefix : '$allowPathPrefix/';
   final c = cookiePath.endsWith('/') ? cookiePath : '$cookiePath/';
   return c.startsWith(a);
 }
@@ -177,8 +215,7 @@ List<Map<String, String>> selectCookies(
       byName[c.name] = c;
     }
   }
-  final chosen = byName.values.toList()
-    ..sort(compareCookiePathName);
+  final chosen = byName.values.toList()..sort(compareCookiePathName);
   return chosen.map((c) => {'name': c.name, 'value': c.value}).toList();
 }
 
@@ -195,6 +232,7 @@ JarCookie? _parseSetCookie(String header, String requestUrl) {
   if (name.isEmpty) return null;
 
   var domain = u.host; // 缺省 host-only
+  var hasDomainAttr = false;
   String? path;
   for (final attr in parts.skip(1)) {
     final i = attr.indexOf('=');
@@ -202,10 +240,19 @@ JarCookie? _parseSetCookie(String header, String requestUrl) {
     final val = i == -1 ? '' : attr.substring(i + 1).trim();
     if (key == 'domain' && val.isNotEmpty) {
       domain = val.toLowerCase().replaceFirst(RegExp(r'^\.'), '');
+      hasDomainAttr = true;
     } else if (key == 'path' && val.startsWith('/')) {
       path = val;
     }
     // Secure / HttpOnly / Max-Age / Expires 等本 jar 不校验（计划 §8 拍板 #1）
+  }
+  // RFC 6265 §5.3 step 6（#79 P0-4）：显式 Domain 属性必须 domain-match 响应 host，
+  // 且不得是 public suffix / 过宽父域；否则整条 Set-Cookie **丢弃**（fail-closed）。
+  // 封堵「allow 集内某 host 为不属于自己的域或过宽父域伪造 cookie、经后续请求发往
+  // 他域」的污染面。缺省 host-only（无 Domain 属性）不受限。
+  if (hasDomainAttr &&
+      (!domainMatch(u.host, domain) || _isPublicSuffixLike(domain))) {
+    return null;
   }
   return JarCookie(
     name: name,
@@ -260,7 +307,8 @@ class CookieJar {
       source: 'ephemeral',
     );
     final idx = _ephemeral.indexWhere(
-      (e) => e.name == entry.name &&
+      (e) =>
+          e.name == entry.name &&
           e.domain == entry.domain &&
           e.path == entry.path,
     );

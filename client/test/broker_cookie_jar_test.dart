@@ -17,7 +17,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'utils/test_utils.dart';
 
-EphemeralWriteInput _optsFromJson(Map<String, dynamic> o) => EphemeralWriteInput(
+EphemeralWriteInput _optsFromJson(Map<String, dynamic> o) =>
+    EphemeralWriteInput(
       name: o['name'] as String,
       value: o['value'] as String,
       domain: o['domain'] as String,
@@ -99,7 +100,7 @@ void main() {
       expect(jar.cookieHeader('https://dean.xjtu.edu.cn/other'), '');
     });
 
-    test('显式 Domain/Path（前导点归一为 host-only）', () {
+    test('显式 Domain/Path（前导点归一为 host-only）；父域合法', () {
       final jar = CookieJar()
         ..captureSetCookie(
           ['sess=xyz; Domain=.xjtu.edu.cn; Path=/'],
@@ -108,6 +109,23 @@ void main() {
       final v = jar.harvestView();
       expect(v.first.domain, 'xjtu.edu.cn');
       expect(v.first.path, '/');
+    });
+
+    test('非法 Domain 整条丢弃（#79 P0-4，RFC 6265 §5.3 step 6）', () {
+      final jar = CookieJar()
+        // 完全无关的域
+        ..captureSetCookie(
+            ['evil=1; Domain=other.edu.cn'], 'https://dean.xjtu.edu.cn/x')
+        // 子域伪造（响应 host 是被声明域的父域，不 domain-match）
+        ..captureSetCookie(['evil2=1; Domain=sub.dean.xjtu.edu.cn'],
+            'https://dean.xjtu.edu.cn/x')
+        // 过宽父域 / public suffix 类 Domain：会污染其他 *.edu.cn host
+        ..captureSetCookie(
+            ['evil3=1; Domain=edu.cn'], 'https://dean.xjtu.edu.cn/x');
+      expect(jar.harvestView(), isEmpty,
+          reason: '非法 Domain 的 Set-Cookie 必须整条丢弃');
+      expect(jar.cookieHeader('https://other.edu.cn/x'), '',
+          reason: '伪造 cookie 不得发往他域');
     });
 
     test('跨跳累计 + 同 (name,domain,path) 轮换覆盖', () {
