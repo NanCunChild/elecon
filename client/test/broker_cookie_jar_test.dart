@@ -17,7 +17,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'utils/test_utils.dart';
 
-EphemeralWriteInput _optsFromJson(Map<String, dynamic> o) => EphemeralWriteInput(
+EphemeralWriteInput _optsFromJson(Map<String, dynamic> o) =>
+    EphemeralWriteInput(
       name: o['name'] as String,
       value: o['value'] as String,
       domain: o['domain'] as String,
@@ -117,7 +118,10 @@ void main() {
             ['evil=1; Domain=other.edu.cn'], 'https://dean.xjtu.edu.cn/x')
         // 子域伪造（响应 host 是被声明域的父域，不 domain-match）
         ..captureSetCookie(['evil2=1; Domain=sub.dean.xjtu.edu.cn'],
-            'https://dean.xjtu.edu.cn/x');
+            'https://dean.xjtu.edu.cn/x')
+        // 过宽父域 / public suffix 类 Domain：会污染其他 *.edu.cn host
+        ..captureSetCookie(
+            ['evil3=1; Domain=edu.cn'], 'https://dean.xjtu.edu.cn/x');
       expect(jar.harvestView(), isEmpty,
           reason: '非法 Domain 的 Set-Cookie 必须整条丢弃');
       expect(jar.cookieHeader('https://other.edu.cn/x'), '',

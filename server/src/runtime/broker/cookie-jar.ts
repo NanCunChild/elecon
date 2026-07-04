@@ -65,6 +65,38 @@ function sourceRank(s: CookieSource): number {
   return s === "origin" ? 1 : 0;
 }
 
+// 最小 public-suffix 护栏（#79 P0-4）：完整 PSL 需新依赖与更新机制；本阶段先
+// fail-closed 拒绝单标签 TLD 与校园场景/常见 ccTLD 的二级公共后缀，封堵
+// `dean.xjtu.edu.cn` 设置 `Domain=edu.cn` 这类过宽父域污染面。
+const knownMultiLabelPublicSuffixes = new Set([
+  "ac.cn",
+  "com.cn",
+  "edu.cn",
+  "gov.cn",
+  "net.cn",
+  "org.cn",
+  "ac.uk",
+  "co.uk",
+  "gov.uk",
+  "org.uk",
+  "ac.jp",
+  "co.jp",
+  "go.jp",
+  "ne.jp",
+  "or.jp",
+  "com.au",
+  "edu.au",
+  "gov.au",
+  "net.au",
+  "org.au",
+]);
+
+function isPublicSuffixLike(domain: string): boolean {
+  const d = domain.toLowerCase().replace(/^\./, "");
+  if (d === "" || !d.includes(".")) return true;
+  return knownMultiLabelPublicSuffixes.has(d);
+}
+
 /** cookie path 是否「等于或深于」allow path 前缀（allowPath 为其前缀）——即不更宽。 */
 function pathNotWiderThan(cookiePath: string, allowPathPrefix: string): boolean {
   const a = allowPathPrefix.endsWith("/") ? allowPathPrefix : allowPathPrefix + "/";
@@ -190,9 +222,10 @@ function parseSetCookie(header: string, requestUrl: string): JarCookie | null {
     // Secure / HttpOnly / Max-Age / Expires 等本 jar 不校验（计划 §8 拍板 #1）
   }
   // RFC 6265 §5.3 step 6（#79 P0-4）：显式 Domain 属性必须 domain-match 响应 host，
-  // 否则整条 Set-Cookie **丢弃**（fail-closed）。封堵「allow 集内某 host 为不属于自己的
-  // 域伪造 cookie、经后续请求发往他域」的污染面。缺省 host-only（无 Domain 属性）不受限。
-  if (hasDomainAttr && !domainMatch(u.host, domain)) return null;
+  // 且不得是 public suffix / 过宽父域；否则整条 Set-Cookie **丢弃**（fail-closed）。
+  // 封堵「allow 集内某 host 为不属于自己的域或过宽父域伪造 cookie、经后续请求发往
+  // 他域」的污染面。缺省 host-only（无 Domain 属性）不受限。
+  if (hasDomainAttr && (!domainMatch(u.host, domain) || isPublicSuffixLike(domain))) return null;
   return { name, value, domain, path: path ?? defaultPath(u.path), source: "origin" };
 }
 

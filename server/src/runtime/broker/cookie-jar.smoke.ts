@@ -113,6 +113,8 @@ function statefulTests(): number {
   jarBad.captureSetCookie(["evil=1; Domain=other.edu.cn"], "https://dean.xjtu.edu.cn/x");
   // 子域伪造父域方向（响应 host 是被声明域的父域，不 domain-match）
   jarBad.captureSetCookie(["evil2=1; Domain=sub.dean.xjtu.edu.cn"], "https://dean.xjtu.edu.cn/x");
+  // 过宽父域 / public suffix 类 Domain：会污染其他 *.edu.cn host
+  jarBad.captureSetCookie(["evil3=1; Domain=edu.cn"], "https://dean.xjtu.edu.cn/x");
   assert.deepStrictEqual(jarBad.harvestView(), [], "非法 Domain 的 Set-Cookie 必须整条丢弃");
   assert.equal(jarBad.cookieHeader("https://other.edu.cn/x"), "", "伪造 cookie 不得发往他域");
   checks++;
