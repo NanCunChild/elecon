@@ -7,6 +7,7 @@
 ///
 /// ⚠️ 夹具值为显式假值（红线 #8）：绝不使用真实学生凭证。
 import 'package:elecon/core/broker/inject_policy.dart';
+import 'package:elecon/core/credential/secure_store.dart';
 import 'package:elecon/core/credential/store.dart';
 import 'package:elecon/core/credential/types.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -100,6 +101,18 @@ void main() {
       expect(await store.get('exp'), isNotNull);
       now += 6000;
       expect(await store.get('exp'), isNull);
+    });
+
+    test('#79 P0-2：release 缺省后端 fail-closed；debug 得 InMemory', () {
+      // release 语义（kReleaseMode 无法在 flutter_test 下切换）由参数化纯函数覆盖。
+      expect(
+        () => defaultSecureStore(releaseMode: true),
+        throwsA(isA<StateError>()),
+        reason: 'release 下不得静默回退明文内存后端',
+      );
+      expect(defaultSecureStore(releaseMode: false),
+          isA<InMemorySecureStore>(),
+          reason: 'debug/test 下默认 InMemory（原型/单测用）');
     });
   });
 }

@@ -20,9 +20,27 @@ export class CredentialStore implements CredentialResolver {
   readonly #store: SecureStore;
   readonly #now: () => number;
 
-  constructor(store: SecureStore = new InMemorySecureStore(), now: () => number = Date.now) {
-    this.#store = store;
+  /**
+   * [store] 省略时的默认后端裁定（#79 P0-2）：**生产（NODE_ENV=production）下禁止**
+   * 静默回退到 {@link InMemorySecureStore}（明文内存，绝不可存真实凭证，红线 #1/#8；
+   * secure-store.ts 文件头 + ADR-012 §3.7）。安全性不依赖「生产代码记得注入真实 store」
+   * 的调用约定——生产构造缺省 store 即 fail-closed 抛错。真实 at-rest 加密 / keystore
+   * 托管仍是上线前硬门槛（ADR-012 §2.1，实现待落地）：就位前生产无合法默认后端 →
+   * 凭证存储整体 fail-closed。非生产（test/dev）下省略仍得 InMemory（原型/集成/单测用）。
+   */
+  constructor(store?: SecureStore, now: () => number = Date.now) {
+    this.#store = store ?? CredentialStore.#defaultStore();
     this.#now = now;
+  }
+
+  static #defaultStore(): SecureStore {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "生产环境不得默认使用 InMemorySecureStore（明文内存，红线 #1/#8）——须显式注入真实 " +
+          "secure store 后端；at-rest 加密实现落地前凭证存储 fail-closed（#79 P0-2，ADR-012 §2.1/§3.7）",
+      );
+    }
+    return new InMemorySecureStore();
   }
 
   /** 收割/续期写入（§2.2 收割动作的落点）。 */

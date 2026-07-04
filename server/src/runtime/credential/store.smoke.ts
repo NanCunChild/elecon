@@ -14,6 +14,7 @@ import { strict as assert } from "node:assert";
 
 import { decideInjection, type BrokerManifestView } from "../broker/inject-policy.js";
 import { CredentialStore } from "./store.js";
+import { InMemorySecureStore } from "./secure-store.js";
 import { runMain } from "../__testutils__/smoke-utils.js";
 import type { CredentialEntry } from "./types.js";
 
@@ -91,6 +92,25 @@ async function run(): Promise<void> {
   assert.ok(await store.get("exp"), "续期写回后凭证重新可解析");
   now += 6_000;
   assert.equal(await store.get("exp"), null, "时间推进越过新 expiresAt 后再次失效");
+
+  // #79 P0-2：生产环境下省略 store 的默认构造须 fail-closed（不静默用明文内存后端）。
+  const prevEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  try {
+    assert.throws(
+      () => new CredentialStore(),
+      /InMemorySecureStore|fail-closed|生产/,
+      "生产下缺省 store 的构造须抛错（不得静默回退明文内存）",
+    );
+    // 显式注入后端在生产下仍合法（真实 secure store 落地后走此路径）
+    assert.doesNotThrow(
+      () => new CredentialStore(new InMemorySecureStore()),
+      "显式注入 store 时不应抛（注入责任在调用方）",
+    );
+  } finally {
+    if (prevEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = prevEnv;
+  }
 
   console.log("credential store smoke: 全部通过 ✅");
 }
