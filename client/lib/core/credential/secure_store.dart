@@ -8,6 +8,8 @@
 ///     回退**不得降级为明文落盘**（ADR-012 §3.7）。key custody 仍是开放问题。
 library;
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
+
 import 'types.dart';
 
 abstract interface class SecureStore {
@@ -20,6 +22,15 @@ abstract interface class SecureStore {
 /// 原型后端：内存 Map。CredentialEntry 不可变（final 字段），按值语义对待。
 /// ⚠️ 真实实现须替换为 OS keystore + at-rest 加密（见文件头）。
 class InMemorySecureStore implements SecureStore {
+  InMemorySecureStore({bool releaseMode = kReleaseMode}) {
+    if (releaseMode) {
+      throw StateError(
+        'release 下不得构造 InMemorySecureStore（明文内存原型后端，红线 #1/#8）——'
+        '测试/dev 可用；生产须显式注入真实 OS secure store 后端',
+      );
+    }
+  }
+
   final Map<String, CredentialEntry> _entries = {};
 
   @override

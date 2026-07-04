@@ -14,11 +14,32 @@ import { strict as assert } from "node:assert";
 
 import { decideInjection, type BrokerManifestView } from "../broker/inject-policy.js";
 import { CredentialStore } from "./store.js";
-import { InMemorySecureStore } from "./secure-store.js";
+import { InMemorySecureStore, type SecureStore } from "./secure-store.js";
 import { runMain } from "../__testutils__/smoke-utils.js";
 import type { CredentialEntry } from "./types.js";
 
 const FAKE_VALUE = "TEST-SESSION-not-a-real-credential";
+
+class FakeProdSecureStore implements SecureStore {
+  readonly #entries = new Map<string, CredentialEntry>();
+
+  put(e: CredentialEntry): void {
+    this.#entries.set(e.ref, structuredClone(e));
+  }
+
+  get(ref: string): CredentialEntry | null {
+    const e = this.#entries.get(ref);
+    return e ? structuredClone(e) : null;
+  }
+
+  delete(ref: string): void {
+    this.#entries.delete(ref);
+  }
+
+  list(): CredentialEntry[] {
+    return [...this.#entries.values()].map((e) => structuredClone(e));
+  }
+}
 
 function entry(over: Partial<CredentialEntry>): CredentialEntry {
   return {
@@ -102,10 +123,15 @@ async function run(): Promise<void> {
       /InMemorySecureStore|fail-closed|生产/,
       "生产下缺省 store 的构造须抛错（不得静默回退明文内存）",
     );
-    // 显式注入后端在生产下仍合法（真实 secure store 落地后走此路径）
+    assert.throws(
+      () => new InMemorySecureStore(),
+      /InMemorySecureStore|生产|明文内存/,
+      "生产下显式构造 InMemorySecureStore 也须抛错",
+    );
+    // 显式注入真实/非原型后端在生产下仍合法（真实 secure store 落地后走此路径）
     assert.doesNotThrow(
-      () => new CredentialStore(new InMemorySecureStore()),
-      "显式注入 store 时不应抛（注入责任在调用方）",
+      () => new CredentialStore(new FakeProdSecureStore()),
+      "显式注入非 InMemory store 时不应抛（真实 secure store 路径）",
     );
   } finally {
     if (prevEnv === undefined) delete process.env.NODE_ENV;

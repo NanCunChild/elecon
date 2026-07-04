@@ -64,8 +64,8 @@ void main() {
       final view = BrokerManifestView(
         allow: const ['https://h.edu.cn/api/*'],
         credentials: {
-          'session':
-              CredentialDecl(scope: const ['https://h.edu.cn/api/*'], type: 'cookie'),
+          'session': CredentialDecl(
+              scope: const ['https://h.edu.cn/api/*'], type: 'cookie'),
         },
       );
       final decision = decideInjection('https://h.edu.cn/api/grades', view);
@@ -82,11 +82,12 @@ void main() {
       final view = BrokerManifestView(
         allow: const ['https://h.edu.cn/api/*'],
         credentials: {
-          'drift':
-              CredentialDecl(scope: const ['https://h.edu.cn/api/*'], type: 'cookie'),
+          'drift': CredentialDecl(
+              scope: const ['https://h.edu.cn/api/*'], type: 'cookie'),
         },
       );
-      final decision = decideInjection('https://h.edu.cn/api/x', view) as InjectDecision;
+      final decision =
+          decideInjection('https://h.edu.cn/api/x', view) as InjectDecision;
       final resolved = await store.get(decision.ref);
       expect(resolved, isNotNull);
       // 注入权威 = manifest（decision.via=cookie）；store=header → 应可检出冲突
@@ -110,8 +111,12 @@ void main() {
         throwsA(isA<StateError>()),
         reason: 'release 下不得静默回退明文内存后端',
       );
-      expect(defaultSecureStore(releaseMode: false),
-          isA<InMemorySecureStore>(),
+      expect(
+        () => InMemorySecureStore(releaseMode: true),
+        throwsA(isA<StateError>()),
+        reason: 'release 下显式构造明文内存后端也必须失败',
+      );
+      expect(defaultSecureStore(releaseMode: false), isA<InMemorySecureStore>(),
           reason: 'debug/test 下默认 InMemory（原型/单测用）');
     });
   });
