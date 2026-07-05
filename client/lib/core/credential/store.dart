@@ -10,13 +10,42 @@
 /// 🔒 红线 #1 承重路径：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
 library;
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
+
 import '../broker/ports.dart';
 import 'secure_store.dart';
 import 'types.dart';
 
+/// [CredentialStore] 省略 store 时的默认后端裁定（#79 P0-2）。**release 下禁止**
+/// 静默回退到 [InMemorySecureStore]（明文内存，绝不可存真实凭证，红线 #1/#8；
+/// secure_store.dart 文件头 + ADR-012 §3.7）——release 缺省即 fail-closed 抛错，
+/// 安全性不依赖「生产代码记得注入真实 store」的调用约定。真实 OS keystore +
+/// at-rest 加密仍是上线前硬门槛（ADR-012 §2.1，platform 实现待落地）：就位前
+/// release 无合法默认后端 → 凭证存储整体 fail-closed。debug/test 下得 InMemory。
+///
+/// `releaseMode` 参数化编译期常量 [kReleaseMode]（生产接线固定传它），使 release
+/// 语义可被单测覆盖。
+SecureStore defaultSecureStore({required bool releaseMode}) {
+  if (releaseMode) {
+    throw StateError(
+      'release 下不得默认使用 InMemorySecureStore（明文内存，红线 #1/#8）——'
+      '须显式注入真实 OS keystore 后端；platform 实现落地前凭证存储 fail-closed'
+      '（#79 P0-2，ADR-012 §2.1/§3.7）',
+    );
+  }
+  return InMemorySecureStore();
+}
+
 class CredentialStore implements CredentialResolver {
+  /// [store] 省略时的默认后端裁定（#79 P0-2）：**release 下禁止**静默回退到
+  /// [InMemorySecureStore]（明文内存，绝不可存真实凭证，红线 #1/#8；secure_store.dart
+  /// 文件头 + ADR-012 §3.7）。安全性不依赖「生产代码记得注入真实 store」的调用约定——
+  /// release 构造缺省 store 即 fail-closed 抛错。真实 OS keystore + at-rest 加密仍是
+  /// 上线前硬门槛（ADR-012 §2.1，platform 实现待落地）：在它就位前，release 无合法
+  /// 默认后端 → 凭证存储整体 fail-closed，与「无真实 secure store 就不该假装能存凭证」
+  /// 一致。debug/test 下省略 store 仍得 InMemory（原型/集成/单测用）。
   CredentialStore({SecureStore? store, int Function()? now})
-      : _store = store ?? InMemorySecureStore(),
+      : _store = store ?? defaultSecureStore(releaseMode: kReleaseMode),
         _now = now ?? (() => DateTime.now().millisecondsSinceEpoch);
 
   final SecureStore _store;

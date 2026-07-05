@@ -25,6 +25,15 @@ export interface SecureStore {
 export class InMemorySecureStore implements SecureStore {
   readonly #entries = new Map<string, CredentialEntry>();
 
+  constructor() {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "生产环境不得构造 InMemorySecureStore（明文内存原型后端，红线 #1/#8）——" +
+          "测试/dev 可用；生产须显式注入真实 secure store 后端",
+      );
+    }
+  }
+
   put(entry: CredentialEntry): void {
     this.#entries.set(entry.ref, structuredClone(entry));
   }

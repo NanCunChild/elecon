@@ -7,6 +7,7 @@
 ///
 /// ⚠️ 夹具值为显式假值（红线 #8）：绝不使用真实学生凭证。
 import 'package:elecon/core/broker/inject_policy.dart';
+import 'package:elecon/core/credential/secure_store.dart';
 import 'package:elecon/core/credential/store.dart';
 import 'package:elecon/core/credential/types.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -63,8 +64,8 @@ void main() {
       final view = BrokerManifestView(
         allow: const ['https://h.edu.cn/api/*'],
         credentials: {
-          'session':
-              CredentialDecl(scope: const ['https://h.edu.cn/api/*'], type: 'cookie'),
+          'session': CredentialDecl(
+              scope: const ['https://h.edu.cn/api/*'], type: 'cookie'),
         },
       );
       final decision = decideInjection('https://h.edu.cn/api/grades', view);
@@ -81,11 +82,12 @@ void main() {
       final view = BrokerManifestView(
         allow: const ['https://h.edu.cn/api/*'],
         credentials: {
-          'drift':
-              CredentialDecl(scope: const ['https://h.edu.cn/api/*'], type: 'cookie'),
+          'drift': CredentialDecl(
+              scope: const ['https://h.edu.cn/api/*'], type: 'cookie'),
         },
       );
-      final decision = decideInjection('https://h.edu.cn/api/x', view) as InjectDecision;
+      final decision =
+          decideInjection('https://h.edu.cn/api/x', view) as InjectDecision;
       final resolved = await store.get(decision.ref);
       expect(resolved, isNotNull);
       // 注入权威 = manifest（decision.via=cookie）；store=header → 应可检出冲突
@@ -100,6 +102,22 @@ void main() {
       expect(await store.get('exp'), isNotNull);
       now += 6000;
       expect(await store.get('exp'), isNull);
+    });
+
+    test('#79 P0-2：release 缺省后端 fail-closed；debug 得 InMemory', () {
+      // release 语义（kReleaseMode 无法在 flutter_test 下切换）由参数化纯函数覆盖。
+      expect(
+        () => defaultSecureStore(releaseMode: true),
+        throwsA(isA<StateError>()),
+        reason: 'release 下不得静默回退明文内存后端',
+      );
+      expect(
+        () => InMemorySecureStore(releaseMode: true),
+        throwsA(isA<StateError>()),
+        reason: 'release 下显式构造明文内存后端也必须失败',
+      );
+      expect(defaultSecureStore(releaseMode: false), isA<InMemorySecureStore>(),
+          reason: 'debug/test 下默认 InMemory（原型/单测用）');
     });
   });
 }
