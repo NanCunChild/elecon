@@ -151,9 +151,9 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 
 3. **反爬挑战由 fetch 模式 adapter 处理（official 独占）。** 解析内联 JS 算 answer、伪造浏览器指纹，**超出"薄归一化"**，天然属于 fetch 模式 adapter 的职责（ADR-002 official 独占 fetch）。典型流程：adapter `ctx.fetch` 挑战端点（passthrough，不注入凭证）→ 解析 challenge → `ctx.fetch` 提交 answer → per-execution jar 自动带上 origin 下发的 cookie → 后续请求正常走凭证注入。对公开数据，campus-relay 侧的 adapter 执行结果可经**服务端 public 缓存**（ADR-000 §2.1）分发——public 服务器本身**不执行 adapter 也不持凭证**（红线 #2），只缓存已归一化的产出。逆向期的 `verify=False`（关 TLS 校验）一类手段**禁止进标准 adapter**——TLS 必须校验（transport 不 MITM，ADR-003 §2.3）。
 
-### 2.9 宿主侧响应 body 上限 + transport 取消语义（rev-4，🔒 待人工接受）
+### 2.9 宿主侧响应 body 上限 + transport 取消语义（rev-4，已复核并接受）
 
-> **本节是对 rev-2 决策点 8 的修订，非既定事实。** 触传输 / 核心承重路径（红线 #1 数据流 + 资源耗尽面），按 AGENTS.md §1 **AI 不得独自闭环**：本节由 AI 起草（跟踪 #79 P0-3），须人工 + 安全清单复核后方可接受与实现。
+> **本节是对 rev-2 决策点 8 的已接受修订。** 触传输 / 核心承重路径（红线 #1 数据流 + 资源耗尽面），按 AGENTS.md §1 **AI 不得独自闭环**：本节由 AI 起草（跟踪 #79 P0-3），已完成人工复核并接受；后续实现仍须人工 + 安全清单复核。
 
 **要改什么（rev-2 的洞）。** rev-2 决策点 8 写「单次响应 body 大小不另设独立上限——由 `DEFAULT_LIMITS` 的整体内存上限兜底（响应体载入 QuickJS 堆，超限触发 OOM）」。此论断**在宿主 transport 阶段不成立**：实测实现（`server/src/runtime/transport/direct.ts` 的 `resp.text()`、`client/lib/core/transport/direct.dart` 的 `_collectBytes`）**先把整个响应体读进宿主（Node undici / Dart HttpClient）堆**，再 marshal 进 QuickJS。QuickJS 的内存上限只界定 QuickJS 堆，作用在**已暴露之后**——一个恶意/被劫持的 origin（或指向大资源的重定向）返回数 GB body 可在 body 进 QuickJS 之前耗尽宿主进程内存（乃至被 OS OOM-killer 杀死整个核心进程）。QuickJS OOM 兜底在这条链上是**下游**，护不住上游。
 
@@ -188,7 +188,7 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 
 ---
 
-## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR，落地后删除）
+## 4. 落地清单（按已接受 ADR 拆成可审查的小 PR，落地后删除）
 
 > 安全敏感项标：
 
@@ -197,7 +197,7 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 - **契约改动（§2.4 修订连带，红线 #6）**：`contract/adapter-sdk/types.d.ts` 的 `CtxFetch` 增 `setEphemeralCookie(name, value, { domain, path? })`，**纯新增、向后兼容**；须待本修订经人工 + 安全清单复核后随 B4 一并落地（属 Gate B，不阻塞 Gate A 的 broker 核心工作）。
 - 客户端运行时：`adapter_runtime.dart` 增 fetch 模式（异步 handler、job queue pump、网络/并发限额 §2.8）；`ctx.fetch` 经边界回调到 Dart 宿主。
 - 服务端沙箱：`server/src/runtime/sandbox.ts` 同步增 fetch 模式 ctx。
-- **宿主 body 上限 + transport 取消（§2.9，rev-4，🔒 待接受，#79 P0-3）**：两端 `DirectTransport` 增流式 body 字节上限（`Content-Length` 预检 + 累计上限，超限 `body_limit` + 取消上游）；`Transport.fetch` 接口增 `AbortSignal`/cancel token；运行时在限额/fatal 时主动取消所有 in-flight 请求。附资源耗尽负例测试（超上限 body → 中止、上游被 abort、fail 不收割）。
+- **宿主 body 上限 + transport 取消（§2.9，rev-4，已复核并接受，#79 P0-3）**：两端 `DirectTransport` 增流式 body 字节上限（`Content-Length` 预检 + 累计上限，超限 `body_limit` + 取消上游）；`Transport.fetch` 接口增 `AbortSignal`/cancel token；运行时在限额/fatal 时主动取消所有 in-flight 请求。附资源耗尽负例测试（超上限 body → 中止、上游被 abort、fail 不收割）。
 - ~~**契约 schema（独立 issue + PR）**：manifest 增 `credentials` 声明（§2.3 草图）~~ **已落地**：[`adr_013`](./adr_013_manifest_credentials.md) + PR #22（manifest.schema.json 增可选 `credentials` 块 + tools 校验器 C6–C9），向后兼容。
 - 测试：录制/回放夹具机制；宿主侧净化/脱敏/注入单测；fetch 模式双跑（基于回放）。
 - **pattern-based 后置审计**（后续，非阻塞）：对 adapter 产出做 token-pattern 扫描，告警不阻断。**时间线**：**初版 token-pattern 清单建议随首个 fetch-mode adapter PR 一并落地**（彼时已有真实凭证格式可建清单），不阻塞本 ADR 接受；清单随实现增补。
@@ -217,4 +217,4 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 | 2026-06-14 | rev-2b（PR #23 review 跟进）| §2.4 补 cookie 收割匹配算法（RFC 6265 §5.1.3/5.1.4 域/路径匹配方向，修正初稿写反的方向）+ jar/broker 同名 cookie 优先级（origin 最新值为准）；§2.8 加校准硬承诺；§4 标 ADR-013 已落地 + pattern-audit 时间线 |
 | 2026-06-15 | rev-3（已接受，PR #25）| 增 §2.4「执行内 ephemeral cookie 写回通道」+ 窄 API `ctx.setEphemeralCookie`——解 XJT body-token 缺口（证据 `adapters_tests/XJT/dean/pac.txt`）。四重栅栏：仅 passthrough origin、不覆盖凭证、永不收割、执行即弃。§2.3 剥除规则不变（纵深防御）。触红线 #1/#6。契约改动见 §4（Gate B） |
 | 2026-06-16 | rev-3a（editorial，B4 计划拍板）| §2.4 四重栅栏违例处置从「抛结构化权限错误」修正为「静默丢弃 + ctx.log("warn")、不抛错」——理由：不给 adapter 探测栅栏边界的异常信号（同 B1 纵深防御哲学）。语义不变（写入仍被拒绝、绝不被 honor），仅实现行为明确化 |
-| 2026-07-04 | **rev-4 草案（🔒 待人工接受，#79 P0-3）** | **推翻 rev-2 决策点 8「body 不设独立上限」**：新增 §2.9——宿主 transport 层强制单响应 body 字节上限（`Content-Length` 预检 + 流式累计上限权威闸门，超限 `body_limit` + fail 不收割，占位 ~8 MiB 纳入 §2.8 校准）+ `Transport.fetch` 增 `AbortSignal`/cancel token、限额/fatal 时主动取消所有 in-flight 上游请求（认领 ADR-014 §4.7）；决策点 8/10 与 §4 同步。理由：宿主在字节进 QuickJS 前已整体读入宿主堆，QuickJS OOM 兜底护不住宿主 transport 阶段。**安全不变量不变**（不触注入/脱敏/白名单），仅加资源闸门 + 取消。 |
+| 2026-07-04 | **rev-4（已复核并接受，#79 P0-3）** | **推翻 rev-2 决策点 8「body 不设独立上限」**：新增 §2.9——宿主 transport 层强制单响应 body 字节上限（`Content-Length` 预检 + 流式累计上限权威闸门，超限 `body_limit` + fail 不收割，占位 ~8 MiB 纳入 §2.8 校准）+ `Transport.fetch` 增 `AbortSignal`/cancel token、限额/fatal 时主动取消所有 in-flight 上游请求（认领 ADR-014 §4.7）；决策点 8/10 与 §4 同步。理由：宿主在字节进 QuickJS 前已整体读入宿主堆，QuickJS OOM 兜底护不住宿主 transport 阶段。**安全不变量不变**（不触注入/脱敏/白名单），仅加资源闸门 + 取消。 |
