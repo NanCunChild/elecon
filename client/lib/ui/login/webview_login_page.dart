@@ -10,8 +10,7 @@
 /// );
 /// ```
 ///
-/// 🔒 红线 #1 承重路径（WebView cookie → 核心收割 → CredentialStore）：
-/// AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
+
 library;
 
 import 'package:flutter/foundation.dart';
