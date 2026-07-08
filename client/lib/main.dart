@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'ui/home/home_page.dart';
+import 'ui/shell/main_shell.dart';
 
 void main() {
   runApp(const EleconApp());
@@ -26,7 +26,7 @@ class EleconApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const EleconHomePage(),
+      home: const MainShell(),
     );
   }
 }
