@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../core/broker/inject_policy.dart';
+import '../../core/credential/secure_store.dart';
+import '../../core/credential/store.dart';
+import '../../core/login/webview_login.dart';
+import '../login/webview_login_page.dart';
+
 class EleconHomePage extends StatefulWidget {
   const EleconHomePage({super.key, this.loadSnapshot});
 
@@ -26,6 +32,74 @@ class _EleconHomePageState extends State<EleconHomePage> {
     setState(() => _snapshot = _load());
   }
 
+  Future<void> _openWebViewLogin() async {
+    final store = CredentialStore(
+      store: InMemorySecureStore(releaseMode: false),
+    );
+    const login = LoginManifestView(
+      schoolId: 'xidian',
+      url: 'https://ids.xidian.edu.cn/authserver/login',
+      navigationAllow: [
+        'https://ids.xidian.edu.cn/*',
+        'https://ehall.xidian.edu.cn/*',
+        'https://v8scan.xidian.edu.cn/*',
+        'https://hyytsgxzs.xidian.edu.cn/*',
+        'https://xxcapp.xidian.edu.cn/*',
+      ],
+      successUrlMatches: [
+        'https://ehall.xidian.edu.cn/new/index.html*',
+        'https://v8scan.xidian.edu.cn/myaccount/openMyAccount*',
+        'https://hyytsgxzs.xidian.edu.cn/*',
+      ],
+      brokerView: const BrokerManifestView(
+        allow: [
+          'https://ehall.xidian.edu.cn/*',
+          'https://v8scan.xidian.edu.cn/*',
+          'https://hyytsgxzs.xidian.edu.cn/*',
+        ],
+        credentials: {
+          'ehall-session': CredentialDecl(
+            scope: ['https://ehall.xidian.edu.cn/*'],
+            type: 'cookie',
+          ),
+          'card-session': CredentialDecl(
+            scope: ['https://v8scan.xidian.edu.cn/*'],
+            type: 'cookie',
+          ),
+          'library-session': CredentialDecl(
+            scope: ['https://hyytsgxzs.xidian.edu.cn/*'],
+            type: 'cookie',
+          ),
+        },
+      ),
+    );
+
+    if (!mounted) return;
+    final result = await Navigator.of(context).push<WebViewLoginResult>(
+      MaterialPageRoute(
+        builder: (_) => WebViewLoginPage(
+          login: login,
+          store: store,
+          debugLog: true,
+          tlsProceedHosts: const {
+            'ids.xidian.edu.cn',
+            'ehall.xidian.edu.cn',
+          },
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    final msg = switch (result?.status) {
+      WebViewLoginStatus.success => '登录成功！已收割 ${store.list().length} 条凭证',
+      WebViewLoginStatus.cancelled => '已取消',
+      WebViewLoginStatus.error => '登录失败：${result?.error ?? "未知错误"}',
+      null => '未知结果',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -48,16 +122,21 @@ class _EleconHomePageState extends State<EleconHomePage> {
               onRefresh: () async => _reload(),
               child: CustomScrollView(
                 slivers: [
-                  SliverAppBar.large(
-                    title: const Text('elecon'),
-                    actions: [
-                      IconButton(
-                        tooltip: '刷新',
-                        onPressed: _reload,
-                        icon: const Icon(Icons.refresh),
-                      ),
-                    ],
-                  ),
+                    SliverAppBar.large(
+                      title: const Text('elecon'),
+                      actions: [
+                        IconButton(
+                          tooltip: 'XIDIAN 登录测试',
+                          onPressed: _openWebViewLogin,
+                          icon: const Icon(Icons.login),
+                        ),
+                        IconButton(
+                          tooltip: '刷新',
+                          onPressed: _reload,
+                          icon: const Icon(Icons.refresh),
+                        ),
+                      ],
+                    ),
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                     sliver: SliverList.list(
