@@ -9,6 +9,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_qjs: ^0.3.7
+  flutter_inappwebview: ^6.0.0
 
 # flutter_qjs 0.3.7（ekibun，已停更）在 Dart 3.12 下编译失败：FFI 回调
 # channelDispacher 返回可空指针，而 Pointer.fromFunction 要求非空。
