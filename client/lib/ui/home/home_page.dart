@@ -38,7 +38,7 @@ class _EleconHomePageState extends State<EleconHomePage> {
     );
     const login = LoginManifestView(
       schoolId: 'xidian',
-      url: 'https://ids.xidian.edu.cn/authserver/login',
+      url: 'https://ids.xidian.edu.cn/authserver/login?service=https://ehall.xidian.edu.cn/new/index.html',
       navigationAllow: [
         'https://ids.xidian.edu.cn/*',
         'https://ehall.xidian.edu.cn/*',
