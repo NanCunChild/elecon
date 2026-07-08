@@ -10,21 +10,6 @@ dependencies:
     sdk: flutter
   flutter_qjs: ^0.3.7
 
-  # Probe-001 阶段一（凭证无关 WebView 冒烟，debug-only，见 docs/probes/probe_001_smoke_plan.md）。
-  # OHOS WebView 依赖：fork 自 gitee openharmony-sig/flutter_inappwebview @ bfc8e52c。
-  # 补丁分支 ohos-dart3-pathdeps 固化两处改动，使整套 monorepo 可作单条 git 依赖同源解析：
-  #   ① ohos 子包 environment.sdk 上界 <3.0.0 → <4.0.0，适配 Flutter-OHOS fork 的 Dart 3.6.2；
-  #   ② 全部 intra-repo 依赖 git:{gitee} → 相对 path，令整套从单个 clone 解析（否则各子包各自回
-  #      gitee，重引未打补丁的 <3.0.0 及 platform_interface 重源冲突）。
-  # 主包 platforms.ohos.default_package 已 endorse ohos，故此单条 git 依赖即整套同源。
-  # 引用它的 Dart 码全部 --dart-define 门禁、release 编译期剔除（红线 #4/#5）；Apache-2.0（红线 #9，见 fork LICENSE）。
-  # 手法仿 flutter_qjs / ADR-008 §3 的 fork + git ref pin。
-  flutter_inappwebview:
-    git:
-      url: https://github.com/NanCunChild/flutter_inappwebview.git
-      ref: 9fa5a53332948fcdb27221ddef86158b377fe895
-      path: flutter_inappwebview
-
 # flutter_qjs 0.3.7（ekibun，已停更）在 Dart 3.12 下编译失败：FFI 回调
 # channelDispacher 返回可空指针，而 Pointer.fromFunction 要求非空。
 # fork 打了一行补丁（lib/src/ffi.dart：返回类型去掉 ?，函数体 ... ?? nullptr）
@@ -36,8 +21,6 @@ dependency_overrides:
     git:
       url: https://github.com/NanCunChild/flutter_qjs.git
       ref: dbf5c17233c3c8abfbfa707c297121bb86e54e83
-  # 注：flutter_inappwebview_ohos 不在此单列——fork 主包已用相对 path 引入全部子包并 endorse ohos，
-  # 上方 dependencies.flutter_inappwebview 的 git 依赖会连带整套子包同源解析。
 
 dev_dependencies:
   flutter_test:
@@ -49,8 +32,3 @@ flutter:
 
   assets:
     - assets/
-
-# —— 尾注 ——
-# flutter_inappwebview 经上方 fork + git ref pin 固定（NanCunChild/flutter_inappwebview
-# @ ohos-dart3-pathdeps / 9fa5a533）。待办同步：主线官方 3.44.1 是否解析该源、
-# OHOS 是否进主线 CI（README §0 / smoke plan §4）。

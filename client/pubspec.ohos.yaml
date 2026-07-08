@@ -1,0 +1,40 @@
+name: elecon
+description: "校园信息聚合平台"
+publish_to: none
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_qjs: ^0.3.7
+
+  # OHOS-only: Probe-001 阶段一（凭证无关 WebView 冒烟，见 docs/probes/probe_001_smoke_plan.md）。
+  # 仅由 tools/ohos/build-hap.sh 临时覆盖为 pubspec.yaml 后解析，主线 Android/iOS/桌面
+  # 永不使用本文件，避免 Flutter-OHOS fork 的依赖约束污染官方 Flutter 路线。
+  # fork 自 gitee openharmony-sig/flutter_inappwebview @ bfc8e52c；补丁分支
+  # ohos-dart3-pathdeps 固化：① ohos 子包 SDK 上界适配 Dart 3.6.2；② intra-repo
+  # git 依赖改相对 path，令整套从单个 clone 解析。Apache-2.0（红线 #9）。
+  flutter_inappwebview:
+    git:
+      url: https://github.com/NanCunChild/flutter_inappwebview.git
+      ref: 9fa5a53332948fcdb27221ddef86158b377fe895
+      path: flutter_inappwebview
+
+dependency_overrides:
+  flutter_qjs:
+    git:
+      url: https://github.com/NanCunChild/flutter_qjs.git
+      ref: dbf5c17233c3c8abfbfa707c297121bb86e54e83
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/

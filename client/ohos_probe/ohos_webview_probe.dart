@@ -1,30 +1,20 @@
 // Probe-001 · 阶段一：OHOS WebView 工具链冒烟（**凭证无关**，debug-only）。
 //
-// 目的：在 OHOS 真机上坐实 4 件事（S1–S4，见 docs/probes/probe_001_smoke_plan.md §3），
-// 全程不碰 CAS 登录、不收割 session、不落盘任何 JSESSIONID 级凭证：
-//   S1 WebView 能加载（onLoadStop 触发、可见渲染）
-//   S2 cookie 宿主可读（onLoadStop 后 CookieManager.getCookies 非空）
-//   S3 导航回调触发（shouldOverrideUrlLoading 被调用、能拿 URL、CANCEL 能拦下）
-//   S4 incognito 实例可建（incognito:true 能加载、销毁不崩）
-//
-// 🔒 边界：本屏刻意不触红线 #1。完整探针（① HttpOnly 穿透读 CAS JSESSIONID、② navigationAllow
-//    闭锁收割、③ incognito 隔离/残留压测）= 下一阶段人工主导（AGENTS §1，AI 不独自闭环）。
-// 本文件仅由 --dart-define=OHOS_PROBE=true 编译期门禁引入（见 main.dart），release 常量 false
-// → 探针 Dart 代码整屏 tree-shake；inappwebview 原生插件体的机制级剔除跟踪 issue #78
-//   （现状：无 Dart 调用入口但仍在 release 产物内，见 main.dart 注释）。
-//
-// cookie 值一律打码后展示/记录（红线 #8：不提交/不外泄真实凭证态数据）。
+// 本入口只由 tools/ohos/build-hap.sh 在 Flutter-OHOS SDK + pubspec.ohos.yaml
+// 路线下编译。主线 Android/iOS/桌面不解析本文件，也不依赖 flutter_inappwebview。
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+void runOhosWebViewProbe() {
+  runApp(const OhosWebViewProbeApp());
+}
+
 /// 冒烟标的：公开、无登录页（凭证无关）。可在屏内改。默认取西电公开站（与 notice.list 同域、零凭证）。
 const String _kDefaultTarget = 'https://www.xidian.edu.cn/';
 
 /// TLS 证书异常放行白名单：仅冒烟标的 host（校园站真机侧常见中间链缺失）。
-/// ⚠️ fail-closed：白名单外一律 CANCEL。本回调会被后续 WebView 登录收割实现当模板——
-/// **不得**复制成无条件 PROCEED（等于关闭 TLS 校验）。
 const Set<String> _kTlsProceedHosts = <String>{'www.xidian.edu.cn'};
 
 class OhosWebViewProbeApp extends StatelessWidget {
@@ -40,7 +30,6 @@ class OhosWebViewProbeApp extends StatelessWidget {
   }
 }
 
-/// 单个 S 项的判定状态。
 enum _Check { pending, pass, fail }
 
 class _ProbeScreen extends StatefulWidget {
@@ -51,7 +40,8 @@ class _ProbeScreen extends StatefulWidget {
 }
 
 class _ProbeScreenState extends State<_ProbeScreen> {
-  final TextEditingController _url = TextEditingController(text: _kDefaultTarget);
+  final TextEditingController _url =
+      TextEditingController(text: _kDefaultTarget);
   final List<String> _log = <String>[];
   final Map<String, _Check> _s = <String, _Check>{
     'S1 加载': _Check.pending,
@@ -62,7 +52,6 @@ class _ProbeScreenState extends State<_ProbeScreen> {
 
   InAppWebViewController? _controller;
   bool _incognito = false;
-  // S3：拦截首次由用户点击触发的跳转（避免把初始加载算成导航）。
   bool _armInterceptNextNav = false;
 
   void _mark(String key, _Check v) => setState(() => _s[key] = v);
@@ -73,7 +62,6 @@ class _ProbeScreenState extends State<_ProbeScreen> {
     debugPrint('[ohos-probe] $line');
   }
 
-  /// 打码：只留 cookie 名与值长度，绝不外露值本身（红线 #8）。
   String _maskCookies(List<Cookie> cookies) {
     if (cookies.isEmpty) return '(空)';
     return cookies
@@ -89,12 +77,10 @@ class _ProbeScreenState extends State<_ProbeScreen> {
     await _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(u)));
   }
 
-  // S2：cookie 必须等 onLoadStop 后读（Set-Cookie 走内核异步队列，过早读空串——调研时序坑）。
   Future<void> _readCookiesAfterLoad(WebUri? url) async {
     if (url == null) return;
     try {
-      final cookies =
-          await CookieManager.instance().getCookies(url: url);
+      final cookies = await CookieManager.instance().getCookies(url: url);
       _logLine('S2 getCookies(${url.host}) → ${_maskCookies(cookies)}');
       _mark('S2 cookie', cookies.isNotEmpty ? _Check.pass : _Check.fail);
     } catch (e) {
@@ -111,7 +97,8 @@ class _ProbeScreenState extends State<_ProbeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final WebUri target = WebUri(_url.text.trim().isEmpty ? _kDefaultTarget : _url.text.trim());
+    final WebUri target =
+        WebUri(_url.text.trim().isEmpty ? _kDefaultTarget : _url.text.trim());
     return Scaffold(
       appBar: AppBar(
         title: const Text('OHOS WebView Probe · S1–S4（凭证无关）'),
@@ -159,7 +146,8 @@ class _ProbeScreenState extends State<_ProbeScreen> {
               _Check.pass => (Colors.green, Icons.check_circle),
               _Check.fail => (Colors.red, Icons.cancel),
             };
-            return Chip(avatar: Icon(i, color: c, size: 18), label: Text(e.key));
+            return Chip(
+                avatar: Icon(i, color: c, size: 18), label: Text(e.key));
           }).toList(),
         ),
       );
@@ -180,7 +168,6 @@ class _ProbeScreenState extends State<_ProbeScreen> {
             const SizedBox(width: 8),
             FilledButton.tonal(onPressed: _reload, child: const Text('加载')),
             const SizedBox(width: 8),
-            // S3：点此后下一次站内跳转会被 shouldOverrideUrlLoading 拦下（CANCEL）。
             OutlinedButton(
               onPressed: () {
                 setState(() => _armInterceptNextNav = true);
@@ -194,7 +181,6 @@ class _ProbeScreenState extends State<_ProbeScreen> {
       );
 
   Widget _webView(WebUri target) => InAppWebView(
-        // key 绑 incognito：切换时重建实例（S4：以 incognito:true 建实例能加载、销毁不崩）。
         key: ValueKey<bool>(_incognito),
         initialUrlRequest: URLRequest(url: target),
         initialSettings: InAppWebViewSettings(
@@ -204,21 +190,19 @@ class _ProbeScreenState extends State<_ProbeScreen> {
         ),
         onWebViewCreated: (c) {
           _controller = c;
-          // 时序锚：UA/JS 注入须在 controller attach 且 src 仍空时设（调研）。此处仅冒烟，不注入。
           _logLine('onWebViewCreated（incognito=$_incognito）');
         },
         onLoadStop: (c, url) async {
           _logLine('S1 onLoadStop ← $url');
           _mark('S1 加载', _Check.pass);
           if (_incognito) _mark('S4 incognito', _Check.pass);
-          await _readCookiesAfterLoad(url); // S2 必须在此之后读
+          await _readCookiesAfterLoad(url);
         },
         onReceivedError: (c, req, err) {
-          _logLine('onReceivedError ${req.url} → ${err.type} ${err.description}');
+          _logLine(
+              'onReceivedError ${req.url} → ${err.type} ${err.description}');
           _mark('S1 加载', _Check.fail);
         },
-        // S3：主框架 + 302/303 每跳都触发；return CANCEL 抢占拦下（锚 onOverrideUrlLoading，
-        // 非 onLoadIntercept——后者对被动 302 不敏感，调研结论）。
         shouldOverrideUrlLoading: (c, action) async {
           final WebUri? u = action.request.url;
           _logLine('S3 shouldOverrideUrlLoading ← $u');
@@ -230,16 +214,16 @@ class _ProbeScreenState extends State<_ProbeScreen> {
           }
           return NavigationActionPolicy.ALLOW;
         },
-        // SSL 异常须显式处理（调研：否则白屏/加载中断），但 fail-closed：
-        // 仅 _kTlsProceedHosts 白名单内的冒烟标的 PROCEED，其余一律 CANCEL。
         onReceivedServerTrustAuthRequest: (c, challenge) async {
           final String host = challenge.protectionSpace.host;
           final bool allowed = _kTlsProceedHosts.contains(host);
-          _logLine('serverTrustAuth ← $host（${allowed ? 'PROCEED·白名单' : 'CANCEL·fail-closed'}）');
+          _logLine(
+              'serverTrustAuth ← $host（${allowed ? 'PROCEED·白名单' : 'CANCEL·fail-closed'}）');
           return ServerTrustAuthResponse(
-              action: allowed
-                  ? ServerTrustAuthResponseAction.PROCEED
-                  : ServerTrustAuthResponseAction.CANCEL);
+            action: allowed
+                ? ServerTrustAuthResponseAction.PROCEED
+                : ServerTrustAuthResponseAction.CANCEL,
+          );
         },
       );
 
@@ -256,22 +240,28 @@ class _ProbeScreenState extends State<_ProbeScreen> {
                       style: TextStyle(color: Colors.white70)),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.delete_sweep, color: Colors.white54, size: 18),
+                    icon: const Icon(Icons.delete_sweep,
+                        color: Colors.white54, size: 18),
                     onPressed: () => setState(_log.clear),
                   ),
                 ],
               ),
             ),
+            const Divider(height: 1, color: Colors.white12),
             Expanded(
               child: ListView.builder(
                 reverse: true,
                 itemCount: _log.length,
                 itemBuilder: (_, i) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  child: SelectableText(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  child: Text(
                     _log[i],
                     style: const TextStyle(
-                        color: Colors.greenAccent, fontFamily: 'monospace', fontSize: 12),
+                      color: Colors.white70,
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ),

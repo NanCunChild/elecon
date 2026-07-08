@@ -28,9 +28,9 @@
 - [ ] **加 WebView 依赖**：`flutter_inappwebview`（6.x）+ OHOS 移植 `flutter_inappwebview_ohos`，**经 `dependency_overrides` 注入**。锁定实际版本后回填。
 - [ ] **冒烟可跑**：`( source tools/ohos/env.sh && fvm spawn ohos/br_3.27.4-ohos-1.0.4 run -d <ohos-device> )` 能把空 app 推上真机。
 
-**dependency_overrides 草样**（版本待锁定后回填，勿照抄版本号）：
+**OHOS 专用依赖草样**（只写入 `client/pubspec.ohos.yaml`，由 `tools/ohos/build-hap.sh` 临时启用）：
 ```yaml
-# client/pubspec.yaml —— 仅 OHOS 构建链路使用
+# client/pubspec.ohos.yaml —— 仅 OHOS 构建链路使用
 dependencies:
   flutter_inappwebview: ^6.0.0
 dependency_overrides:
@@ -66,7 +66,7 @@ dependency_overrides:
 
 ## 4. 产物与 CI 处置
 
-- **代码落点**：建议 `client/` 下独立 probe 入口（如 `client/tool/ohos_probe/` 或 `--dart-define` 切换的 debug-only 屏），**不进 release**（与红线 #4/#5 的 debug-only 例外同范式：探针/侧载路径编译期从发版剔除）。
+- **代码落点**：`client/ohos_probe/main.dart` + `client/pubspec.ohos.yaml`。主线 `client/pubspec.yaml` 不含 `flutter_inappwebview`，`lib/main.dart` 不导入 OHOS probe；`tools/ohos/build-hap.sh --dart-define=OHOS_PROBE=true` 自动追加 `--target=ohos_probe/main.dart`。
 - **不进主线 CI**：OHOS 在分叉 SDK（§0），主线 `flutter test`（官方 3.44.1）跑不了 OHOS；冒烟为**真机手动门**，证据按 [`probe_001_ohos_webview_harvest.md`](probe_001_ohos_webview_harvest.md) 的证据格式留档，不做自动闸门。
 - **证据**：S1–S4 各留一条日志/截图（cookie 值打码，红线 #8），回填本文。
 

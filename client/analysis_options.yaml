@@ -1,0 +1,5 @@
+analyzer:
+  exclude:
+    # OHOS probe uses the Flutter-OHOS SDK and pubspec.ohos.yaml. Keep the
+    # official Flutter/Android route from resolving OHOS-only plugin imports.
+    - ohos_probe/**

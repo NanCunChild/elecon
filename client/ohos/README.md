@@ -18,7 +18,11 @@ Flutter 客户端的 **OHOS（HarmonyOS NEXT / OpenHarmony）平台目录**，�
   切 ohos fork。
 - **OHOS 不进主线 CI**：分叉 SDK 跑不了官方 `flutter test`；OHOS 验收是**真机手动门**（凭证无关的
   S1–S4 冒烟，见 smoke plan），证据留档、不做自动闸门。
-- `ohos/` 下无 Dart 业务码，官方 stable 的 `flutter analyze/test` 不受影响。
+- `ohos/` 下无 Dart 业务码，OHOS 专用 Dart 入口在 `ohos_probe/`，并由 `analysis_options.yaml`
+  从主线官方 stable 分析中排除；官方 stable 的 Android/iOS/桌面 `flutter analyze/test` 不解析
+  `flutter_inappwebview_ohos`。
+- OHOS 专用依赖只写入 `pubspec.ohos.yaml`。`tools/ohos/build-hap.sh` 构建期间临时覆盖
+  `pubspec.yaml`/`pubspec.lock`，退出时恢复，避免污染主线 lockfile。
 
 ---
 
@@ -46,8 +50,9 @@ HarmonyOS NEXT 要求**签名的 hap（debug 亦然）**。无 IDE 时走**后�
 unsigned → `hap-sign-tool` 签名。仓库脚本已封好（在仓库根目录跑）：
 
 ```bash
-tools/ohos/build-hap.sh              # flutter build hap --debug + 签名，一步出 signed hap（默认 debug）
-tools/ohos/build-hap.sh --release    # release 包（用 release 签名材料，见下）
+tools/ohos/build-hap.sh                                      # flutter build hap --debug + 签名
+tools/ohos/build-hap.sh --release                            # release 包（用 release 签名材料，见下）
+tools/ohos/build-hap.sh --debug --dart-define=OHOS_PROBE=true # Probe-001 入口
 # 产物：client/ohos/entry/build/default/outputs/default/entry-default-<mode>-signed.hap
 ```
 

@@ -61,7 +61,7 @@ flutter pub get
 flutter run                 # iOS / Android / 桌面
 ```
 
-**HarmonyOS：** 用 FVM 管理多版本 SDK，平时用官方版保持主线纯净，仅在打包鸿蒙时切到 OHOS 分支 SDK，鸿蒙特有依赖用 `dependency_overrides` 替换。详见 `client/ohos/README`。
+**HarmonyOS：** 用 FVM 管理多版本 SDK，平时用官方版保持主线纯净，仅在打包鸿蒙时切到 OHOS 分支 SDK；鸿蒙特有依赖只写入 `client/pubspec.ohos.yaml`，由 `tools/ohos/build-hap.sh` 临时启用。详见 `client/ohos/README`。
 
 ### 服务端（Node / TypeScript）
 
