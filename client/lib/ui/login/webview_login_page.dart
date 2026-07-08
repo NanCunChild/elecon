@@ -10,13 +10,14 @@
 /// );
 /// ```
 ///
-/// 调试模式：设置 [debugLog] 为 true 可在页面内查看带时间戳的日志面板，
-/// 便于在真机上观察导航、拦截、收割全流程。cookie 值自动打码。
+/// 调试模式：设置 [debugLog] 为 true 可查看带时间戳的日志面板（cookie 值自动打码），
+/// 日志支持选中复制和导出到剪贴板。WebView 始终存活，日志面板展开/收起不重建 WebView。
 ///
 library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/login/webview_login.dart';
@@ -46,7 +47,7 @@ class WebViewLoginPage extends StatefulWidget {
   /// TLS 证书异常放行白名单（host 精确匹配）；仅校园站封闭环境使用。
   final Set<String> tlsProceedHosts;
 
-  /// 开启后页面底部展示实时日志面板（cookie 值自动打码）。
+  /// 开启后页面底部可展开实时日志面板（cookie 值自动打码）。
   final bool debugLog;
 
   @override
@@ -75,16 +76,13 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
   void _addLog(String message) {
     final ts = DateTime.now().toIso8601String().substring(11, 23);
     debugPrint('[webview-login] $message');
-    if (widget.debugLog) {
-      setState(() => _log.insert(0, _LogEntry(ts, message)));
-    }
+    if (!widget.debugLog) return;
+    setState(() => _log.insert(0, _LogEntry(ts, message)));
   }
 
-  String _maskCookies(List<Cookie> cookies) {
-    if (cookies.isEmpty) return '(空)';
-    return cookies
-        .map((c) => '${c.name}=<${(_safeString(c.value).length)}B>')
-        .join('; ');
+  String _maskCookie(dynamic value) {
+    final s = _safeString(value);
+    return '<${s.length}B>';
   }
 
   bool _urlAllowed(String url) =>
@@ -97,12 +95,19 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
   Future<void> _harvestCookies(WebUri url) async {
     if (_hasHarvested) return;
     _hasHarvested = true;
-    _addLog('收割开始 ← ${url.host}');
+    _addLog('── 收割开始 ──');
+    _addLog('target: ${url.host}${url.path}');
 
     try {
+      await Future.delayed(const Duration(milliseconds: 600));
+      _addLog('延迟 600ms 等待 session cookie 落定');
+
       final cookieManager = CookieManager.instance();
       final rawCookies = await cookieManager.getCookies(url: url);
-      _addLog('getCookies → ${rawCookies.length} 条：${_maskCookies(rawCookies)}');
+      _addLog('getCookies(${url.host}) → ${rawCookies.length} 条');
+      for (final c in rawCookies) {
+        _addLog('  ${c.name} | domain=${c.domain} | path=${c.path} | httpOnly=${c.isHttpOnly} | value=${_maskCookie(c.value)}');
+      }
 
       final webViewCookies = rawCookies
           .where((c) => c.name.isNotEmpty && (c.domain?.isNotEmpty == true))
@@ -113,7 +118,13 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
                 path: c.path ?? '/',
               ))
           .toList();
-      _addLog('有效 cookie：${webViewCookies.length} 条');
+      _addLog('有效 cookie（已过滤空名/域）：${webViewCookies.length} 条');
+
+      if (webViewCookies.isEmpty) {
+        _addLog('⚠ 无有效 cookie，收割跳过');
+        _hasHarvested = false;
+        return;
+      }
 
       final result = harvestWebViewCookies(
         login: widget.login,
@@ -122,14 +133,32 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
         now: () => DateTime.now().millisecondsSinceEpoch,
       );
 
-      final refs = result.entries.map((e) => e.ref).join(', ');
-      _addLog('收割完成：ref=[$refs] | harvested=${result.harvested}');
+      _addLog('收割完成：ref=[${result.entries.map((e) => e.ref).join(", ")}]');
+      _addLog('harvested=${result.harvested} | entries=${result.entries.length}');
 
       _pop(const WebViewLoginResult(status: WebViewLoginStatus.success));
-    } catch (e) {
-      _addLog('收割失败：$e');
+    } catch (e, st) {
+      _addLog('收割异常：$e');
+      debugPrintStack(stackTrace: st);
       _pop(WebViewLoginResult(
           status: WebViewLoginStatus.error, error: e.toString()));
+    }
+  }
+
+  String _logAsText() {
+    final buf = StringBuffer();
+    for (final e in _log.reversed) {
+      buf.writeln('${e.timestamp} ${e.message}');
+    }
+    return buf.toString();
+  }
+
+  Future<void> _copyLogs() async {
+    await Clipboard.setData(ClipboardData(text: _logAsText()));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('日志已复制到剪贴板'), duration: Duration(seconds: 1)),
+      );
     }
   }
 
@@ -166,36 +195,48 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ),
-            if (widget.debugLog)
+            if (widget.debugLog) ...[
               IconButton(
                 icon: Icon(_showLog ? Icons.bug_report : Icons.bug_report_outlined),
                 tooltip: '日志',
                 onPressed: () => setState(() => _showLog = !_showLog),
               ),
+            ],
           ],
         ),
-        body: _errorMessage != null
-            ? _ErrorView(error: _errorMessage!)
-            : _buildBody(),
+        body: _errorMessage != null ? _ErrorView(error: _errorMessage!) : _buildBody(),
       ),
     );
   }
 
   Widget _buildBody() {
-    final webView = _buildWebView();
-    if (!widget.debugLog || !_showLog) return webView;
-
     return Column(
       children: [
-        Expanded(flex: 3, child: webView),
-        const Divider(height: 1),
-        Expanded(flex: 2, child: _buildLogPanel()),
+        Expanded(child: _buildWebView()),
+        if (widget.debugLog)
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            alignment: Alignment.bottomCenter,
+            child: _showLog
+                ? SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.4,
+                    child: Column(
+                      children: [
+                        const Divider(height: 1),
+                        Expanded(child: _buildLogPanel()),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
       ],
     );
   }
 
   Widget _buildWebView() {
     return InAppWebView(
+      key: const ValueKey('webview_login'),
       initialUrlRequest: URLRequest(url: WebUri(widget.login.url)),
       initialSettings: InAppWebViewSettings(
         incognito: true,
@@ -207,13 +248,14 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
         _addLog('WebView created | incognito=true');
       },
       onLoadStart: (c, url) {
-        _addLog('LoadStart ← $url');
-        if (url != null && !_urlAllowed(url.toString())) {
+        final urlStr = url?.toString() ?? '';
+        _addLog('LoadStart ← $urlStr');
+        if (url != null && !_urlAllowed(urlStr)) {
           c.stopLoading();
-          _addLog('拦截（不在 allowlist）：$url');
+          _addLog('拦截（不在 allowlist）');
           setState(() {
             _isLoading = false;
-            _errorMessage = '导航被拦截：$url 不在登录域白名单内。';
+            _errorMessage = '导航被拦截：$urlStr 不在登录域白名单内。';
           });
         }
       },
@@ -221,7 +263,7 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
         setState(() => _isLoading = false);
         final urlStr = url?.toString() ?? '';
         final isSuccess = url != null && _isSuccessUrl(urlStr);
-        _addLog('LoadStop ← $urlStr${isSuccess ? " ★成功匹配" : ""}');
+        _addLog('LoadStop ← $urlStr${isSuccess ? " ★匹配" : ""}');
         if (isSuccess) {
           await _harvestCookies(url);
         }
@@ -229,9 +271,9 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       shouldOverrideUrlLoading: (c, action) async {
         final requestedUrl = action.request.url?.toString() ?? '';
         final isMain = action.isForMainFrame;
-        _addLog('NavIntent → $requestedUrl${isMain ? " (main)" : " (sub)"}');
+        _addLog('NavIntent → $requestedUrl${isMain ? " (main)" : ""}');
         if (!_urlAllowed(requestedUrl)) {
-          _addLog('拦截（allowlist）：$requestedUrl');
+          _addLog('拦截（allowlist）');
           return NavigationActionPolicy.CANCEL;
         }
         return NavigationActionPolicy.ALLOW;
@@ -271,7 +313,15 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
                 const Spacer(),
                 Text('${_log.length} 条',
                     style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.copy, color: Colors.white38, size: 16),
+                  tooltip: '复制全部日志',
+                  onPressed: _copyLogs,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                ),
+                const SizedBox(width: 2),
                 GestureDetector(
                   onTap: () => setState(_log.clear),
                   child: const Icon(Icons.delete_sweep,
@@ -287,7 +337,7 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
               itemCount: _log.length,
               itemBuilder: (_, i) => Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                child: Text.rich(
+                child: SelectableText.rich(
                   TextSpan(
                     children: [
                       TextSpan(
