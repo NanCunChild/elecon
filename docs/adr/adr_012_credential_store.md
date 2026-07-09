@@ -1,7 +1,7 @@
 # ADR-012：凭证获取（登录）与可信核心凭证存储
 
 - **状态**：已接受（Accepted） 本文触碰红线 #1（凭证）的**最高风险面**——凭证从哪来、存哪、什么形态。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，经人工 review（PR #23）+ 安全检查清单审阅后接受。
-- **日期**：2026-06-13（**修订 2026-06-14**：① §2.2 增 fetch 模式握手的耐久 session 收割——与 WebView 登录同一动作、判据 = manifest 声明的 credential ref（判据 b），与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 / [`adr_013`](./adr_013_manifest_credentials.md) 协调；② §2.4 闭合 scope/type 双源——store 保留为防御性副本+一致性基准，注入权威唯一在已验签 manifest，不一致以 manifest 为准并告警；③ §2.6 钉定首版仅 client-direct，relay 凭证落点推迟、本 ADR 不依赖 relay，relay 须满足"零落盘+用完即弃/客户端注入"硬约束）（**补全 2026-07-04，已接受，#79 P0-2**：新增 §2.7 安全存储威胁模型 + 保护对象边界 + 平台后端矩阵 + 密钥托管 + 无 keyring 桌面 fail-closed 回退 + 生产禁默认明文后端护栏——认领 §2.1/§3.7 遗留的 key custody 开放问题；护栏部分已实现 PR #82，平台后端按本补全拆 PR）
+- **日期**：2026-06-13（**修订 2026-06-14**：① §2.2 增 fetch 模式握手的耐久 session 收割——与 WebView 登录同一动作、判据 = manifest 声明的 credential ref（判据 b），与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 / [`adr_013`](./adr_013_manifest_credentials.md) 协调；② §2.4 闭合 scope/type 双源——store 保留为防御性副本+一致性基准，注入权威唯一在已验签 manifest，不一致以 manifest 为准并告警；③ §2.6 钉定首版仅 client-direct，relay 凭证落点推迟、本 ADR 不依赖 relay，relay 须满足"零落盘+用完即弃/客户端注入"硬约束）（**补全 2026-07-04，已接受，#79 P0-2**：新增 §2.7 安全存储威胁模型 + 保护对象边界 + 平台后端矩阵 + 密钥托管 + 无 keyring 桌面 fail-closed 回退 + 生产禁默认明文后端护栏——认领 §2.1/§3.7 遗留的 key custody 开放问题；护栏部分已实现 PR #82，平台后端按本补全拆 PR）（**修订 2026-07-09，已接受**：新增 §2.8——无硬件加密时由「一律内存-only / fail-closed」放宽为「知情同意的分级回退」：H 硬件档（KEK 包裹 DEK）/ S 软件档（DEK 明文落盘，5 秒警示后用户同意）/ M 内存档（取消即旧 fail-closed 行为）；修订 §2.7 决策 E 与不变量 ②；触红线 #1，须人工 + 安全清单审）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 可信核心）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / 契约）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（谁有资格用凭证 = official）、[`adr_003_transport.md`](./adr_003_transport.md)（campus-relay 落点）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端核心）
 - **被依赖**：[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（其 §2.3 的 "credential reference" 正是指向本文定义的凭证条目；其注入消费本文的存储）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)、[#17](https://github.com/NanCunChild/elecon/issues/17)；本文回应 #8/#10 评审指出的"**凭证存储 + 登录获取孤儿缺口**"。
@@ -110,11 +110,43 @@ CredentialEntry {
 
 **决策 D：app 侧 AEAD 仅作为平台要求时的例外路径，不是默认目标。** 少数后端只托管密钥、不托管任意 secret blob——此时 app 可用 OS/keystore 托管的 KEK 对 `CredentialEntry.value` 做 **AEAD（AES-256-GCM）** 加密后落盘，**明文密钥永不出 keystore、永不入仓、永不内嵌**。绝不自造加密原语，优先使用平台/审计过的库。默认路径仍是决策 C 的"直存 OS secure storage"；D 是被平台 API 形态迫使的例外，不是跨平台自建加密层。
 
-**决策 E：无 keyring 的桌面/headless 一律 fail-closed，绝不明文落盘（认领 §3.7）。** §3.7 早已划红线「回退不得降级为明文落盘」，本节给出具体回退：**无可用 Secret Service 时，凭证转为内存-only**（不落盘、不跨进程重启存活；下次启动需重新 §2.2 登录），并给持久 UI 警示。这与 §2.1 权威存储的耐久性目标冲突，但**fail-closed 优先于可用性**（与 [`adr_002`](./adr_002_trust_model.md) fail-toward-less-trust、#79 P0-2 release 无真实后端即 fail-closed 同构）。**passphrase 派生 KEK（Argon2id）** 作为可选的"无 keyring 也能持久化"路径**留待后续独立决策**——它引入用户口令 UX 与 KDF 参数面，不进 v1，不在本节承诺。
+**决策 E：无 keyring 的桌面/headless 一律 fail-closed，绝不明文落盘（认领 §3.7）。**（⚠ **2026-07-09 §2.8 修订**：本决策的「一律内存-only」被放宽为知情同意的分级回退——用户可选 S 软件档持久化或 M 内存档；「取消」即回到本决策的旧 fail-closed 行为。见 §2.8。） §3.7 早已划红线「回退不得降级为明文落盘」，本节给出具体回退：**无可用 Secret Service 时，凭证转为内存-only**（不落盘、不跨进程重启存活；下次启动需重新 §2.2 登录），并给持久 UI 警示。这与 §2.1 权威存储的耐久性目标冲突，但**fail-closed 优先于可用性**（与 [`adr_002`](./adr_002_trust_model.md) fail-toward-less-trust、#79 P0-2 release 无真实后端即 fail-closed 同构）。**passphrase 派生 KEK（Argon2id）** 作为可选的"无 keyring 也能持久化"路径**留待后续独立决策**——它引入用户口令 UX 与 KDF 参数面，不进 v1，不在本节承诺。
 
 **决策 F：生产禁止静默使用明文内存后端（护栏，PR #82 已落地）。** `InMemorySecureStore` 是**明文内存原型后端**，仅供 dev/test。生产（Dart `kReleaseMode` / TS `NODE_ENV=production`）下省略 store 的构造**fail-closed 抛错**，不静默回退明文内存——安全性由机制强制，非靠"生产代码记得注入真实 store"的调用约定。真实后端（决策 C/D）落地前，生产凭证存储整体 fail-closed（与「无真实 secure store 就不该假装能存凭证」一致）。**本决策已实现**（`CredentialStore.defaultSecureStore` / `#defaultStore`，两端镜像），是 §2.7 唯一已落地项；A–E 按平台拆 PR 实现。
 
 **不变量（贯穿 A–F）**：① app 侧**永不**持有内嵌/静态长期密钥；② `CredentialEntry.value` 明文**永不落盘**（无后端即内存-only 或 fail-closed）；③ 不把 rootkit/进程内存读取列为 at-rest 加密可解决的目标；④ 不承诺统一 TEE/硬件背书语义；⑤ 内存中明文窗口最小化（注入瞬间解密、用完即弃，§2.4）；⑥ 后端实现是宿主侧安全敏感代码，随实现 PR 人工 + 安全清单审（不得 AI 独自闭环）。
+
+> **⚠ 2026-07-09 §2.8 修订**：不变量 ② 中「无后端即内存-only 或 fail-closed」被放宽为「知情同意的分级回退」，见 §2.8（②′）。
+
+### 2.8 无硬件加密时的分级回退：知情同意的软件加密档（2026-07-09 修订，已接受）
+
+> **本节修订 §2.7 决策 E 与不变量 ②。** 原「无 keyring / 无硬件 → 一律内存-only、fail-closed、绝不落盘」放宽为「**信封加密分级回退 + 用户知情同意**」。**修订理由**：无硬件加密的设备（桌面 Linux 无 keyring、极少数无 Keystore 的旧 Android）上强制内存-only = 每次启动都要重新 §2.2 登录，可用性代价过高；改为把「是否以较弱的软件加密持久化」的选择权交给用户，以**强警示 + 强制等待 + 显式同意**作为补偿控制。**触红线 #1，本节由 AI 起草、经人工审阅后接受（维护者 2026-07-09）；三档加密实现及测试仍须人工主导 + 安全清单 + ≥1 人工审，不得 AI 独自闭环。**
+
+**信封加密模型（envelope encryption），三档保护。** 统一 DEK/KEK 信封（推广 §2.7 决策 D）：随机 **DEK（AES-256）** 对 `CredentialEntry.value` 做 **AEAD（AES-256-GCM）** 加密（决策 B 保密对象不变；绝不自造原语，用平台/审计过的库）。DEK 的保护分三档：
+
+| 档 | 触发条件 | DEK 保护 | 持久化 | 标注（登记）|
+|---|---|---|---|---|
+| **H 硬件档** | 设备有硬件加密（TEE / SE / StrongBox / Keystore，非对称公钥或对称 KEK）| KEK **包裹 DEK**（wrap）；KEK 私钥/对称密钥**永不出硬件**，unwrap 须硬件参与 | app 私有目录（密文 value + wrapped DEK + 元数据）| `protection: hardware`, `wrapped: true` = **「已加密」** |
+| **S 软件档** | 无硬件加密，用户经警示后点「继续」| DEK **明文**与密文并存于 app 私有目录（**不加密**）| app 私有目录 | `protection: software`, `wrapped: false` |
+| **M 内存档** | 用户点「取消」，或未同意软件档 | DEK 仅在内存，进程退出即失 | **不落盘**（= §2.7 决策 E 旧行为）| `protection: memory` |
+
+**「继续 / 取消」闸门（客户端 UI 行为约束）：**
+
+- 检测到无硬件加密方案时，**必须**弹出警告框，明确告知：软件档下密钥未受硬件保护，能读取 app 私有目录者（root、备份导出、取证、磁盘镜像）可解出凭证——**其保密性≈明文**，仅比裸明文多一层格式化封装。
+- 警告框**强制等待 5 秒**后方可点「继续」（防无意识连点）。
+- 「继续」→ 启用 **S 软件档**持久化；「取消」→ 落 **M 内存档**（本进程内有效，退出即需重新登录）。
+- 选择软件档后，设置页 / 状态处**须持续显示**「软件加密（无硬件保护）」标识，不隐藏风险。
+
+**Android 落点。** H / S 两档的密文 value、DEK（wrapped 或明文）、元数据均存 **app 私有目录**（`getFilesDir()`，per-app sandbox）。**必须** `android:allowBackup="false"` + 从 auto-backup / 云备份排除——堵住「软件档明文 DEK 随备份外泄」这一最现实向量（iOS 对应 `isExcludedFromBackup`）。
+
+**「做好标注」= 敏感度分级驱动保护策略。** `CredentialEntry` 增**非密**元数据 `sensitivity`（`master` / `standard`）与 `protection`（`hardware|software|memory` + `wrapped`）。标注**不作注入权威**（§2.4 权威仍在 manifest），只驱动**保护策略**与 UI 呈现。
+
+**母凭证（ADR-017 `sso-master`）——决策（维护者 2026-07-09 拍板）：一并纳入 S 软件档，同一知情同意。** 母凭证可静默换任意下游 session，是最高价值目标；软件档下它同样以明文 DEK 持久化，换取「重启不用重登」的一致体验。**代价明确**：这是全档最高价值凭证暴露在≈明文存储下，风险显著高于只暴露下游 session。**补偿控制**：§2.8 的警告框**必须显式点名**——软件档会把「可访问你全部校园服务的主凭证（SSO 母凭证）」以未受硬件保护的形式存于本机；用户 5 秒等待后知情同意方可继续。`sensitivity: master` 仍保留为**非密元数据**用于 UI 高价值标识（据此在设置页突出显示，并**提供可选「仅母凭证不持久化」开关**作安全阀，默认关、落地阶段定），但**不改变默认持久化策略**。（备选「母凭证强制内存档」已评估否决：体验割裂，且与「知情同意后统一持久化」取向不一致。）
+
+**修订后不变量（覆盖 §2.7 ②，其余 ①③④⑤⑥ 不变）：**
+
+- **②′** 裸明文 `value` **永不落盘**——三档下 value 均经 AES-256-GCM 加密后才落盘（S 档差别仅在 **DEK 明文落盘**，且须用户知情同意）；DEK 明文落盘**仅限 S 软件档**。
+- **⑦（不变）** app 侧**永不内嵌/静态长期密钥**：S 档 DEK 是每安装随机生成（非内嵌），H 档 KEK 在硬件——决策 C 该不变量保持。
 
 ### 2.x 选型对比
 
@@ -134,8 +166,10 @@ CredentialEntry {
 4. **声明式刷新配方若入 manifest = 契约改动**（红线 #6），独立 ADR、向后兼容；配方表达力须谨慎（避免变成图灵完备的"伪 adapter"反而成新代码注入面）。
 5. **campus-relay 凭证传输是开放风险**（§2.6），未解前 fetch-via-relay 不落地。
 6. **iOS 联动 ADR-010。** WebView 登录 + Keychain + session 收割需在 5.1.1 隐私申报披露；首版仅 parser，本文随 fetch 模式一并做 2.5.2 自检。
-7. **桌面 Linux secret storage 可用性是已知弱点**（无统一 keyring 时的回退策略需定，且回退不得降级为明文落盘）。**回退策略已由 §2.7 决策 E 定案（2026-07-04，已接受）**：无 Secret Service → 凭证内存-only + fail-closed，绝不明文落盘；passphrase 派生 KEK 留待后续独立决策。
+7. **桌面 Linux secret storage 可用性是已知弱点**（无统一 keyring 时的回退策略需定，且回退不得降级为明文落盘）。**回退策略已由 §2.7 决策 E 定案（2026-07-04，已接受）**：无 Secret Service → 凭证内存-only + fail-closed，绝不明文落盘；passphrase 派生 KEK 留待后续独立决策。**（§2.8 修订，2026-07-09 已接受：放宽为知情同意的分级回退，见下条 9。）**
 8. **首次"代取"也需要凭证。** 即便 parser 模式，"核心代取私密页"也依赖本文的凭证——因此本文不仅服务 fetch 模式，也是 parser 模式取私密数据的前提。
+9. **S 软件档是有意识的安全弱化，非疏漏（§2.8）。** 软件档下明文 DEK 与密文并存，对能读 app 私有目录者（root / 备份导出 / 取证）保密性≈明文。补偿控制 = 5 秒强制等待 + 知情同意（警告框**显式点名** SSO 母凭证一并以≈明文持久化，§2.8 决策）+ 备份排除 + 持续 UI 警示。**文档 / UI 绝不得把软件档描述为"受保护加密"而误导用户。** 更强的软件档升级路径是 **passphrase 派生 KEK（Argon2id）** 包裹 DEK（DEK 不明文落盘），本修订未采用（引入口令 UX + KDF 参数面，§2.7 决策 E 已推迟），列为可选未来增强。
+10. **备份排除是 S 软件档最关键实现细节。** `allowBackup=false` / auto-backup 排除（Android）、`isExcludedFromBackup`（iOS）遗漏则软件档明文 DEK 随云备份外泄，风险陡升——须列入 §2.8 实现的安全清单必检项。
 
 ---
 
@@ -148,7 +182,9 @@ CredentialEntry {
   - [ ] iOS/macOS Keychain 后端（§2.7 决策 C）。🔒
   - [ ] Android Keystore 支撑的 EncryptedSharedPreferences 后端（§2.7 决策 C/D）。🔒
   - [ ] 桌面 Secret Service / DPAPI 后端 + 无 keyring 的 fail-closed 回退（§2.7 决策 C/E）。🔒
-  - [ ] 登出抹除 / 过期 / 吊销联动在各真实后端的一致行为测试。
+  - [ ] **§2.8 分级回退（草案接受后）**：信封加密 DEK/KEK；H 硬件档 wrap/unwrap；S 软件档明文 DEK 落盘 + `allowBackup=false`/备份排除；M 内存档；`sensitivity`/`protection` 标注；母凭证纳入软件档（警告框显式点名）+ 可选「仅母凭证不持久化」开关（默认关）。🔒
+  - [ ] **§2.8 UI**：无硬件加密警告框 + 5 秒强制等待 + 继续/取消 + 软件档持续风险标识。
+  - [ ] 登出抹除 / 过期 / 吊销联动在各真实后端（含三档）的一致行为测试。
 - **核心托管 WebView 登录 + session 收割**（客户端；导航域闭锁、上下文隔离、收割后销毁）。**登录声明面（去哪登 / 导航闭锁 navigationAllow / 成功检测）见 [ADR-015](./adr_015_manifest_login.md) 的 manifest `login` 块（草案）。**
 - **`CredentialEntry` 模型 + credential reference 解析**，与 ADR-009 broker 注入对接（scope ⊆ network.allow 校验）。
 - **生命周期**：过期检测（401/302→登录页）、登出抹除、吊销联动（与 ADR-002 kill-switch）。
