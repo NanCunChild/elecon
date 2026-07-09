@@ -61,6 +61,23 @@ const _xidian = SchoolDescriptor(
       'https://v8scan.xidian.edu.cn/myaccount/openMyAccount*',
       'https://hyytsgxzs.xidian.edu.cn/*',
     ],
+    // 静默签票声明（ADR-017 §2.5，PR-3 草案）：握有母凭证后按需换下游 session。
+    // TODO(PR-3)：service 的精确 CAS service 参数须取自 adapters_tests/XIDIAN 逆向；
+    // 此处用服务域根占位，执行器落地时校准。执行体（换票驱动）人工主导。
+    ssoMint: SsoMintDecl(
+      authEndpoint:
+          'https://ids.xidian.edu.cn/authserver/login?service={service}',
+      services: {
+        'card-session': SsoMintServiceDecl(
+          service: 'https://v8scan.xidian.edu.cn/',
+          success: ['https://v8scan.xidian.edu.cn/myaccount/openMyAccount*'],
+        ),
+        'library-session': SsoMintServiceDecl(
+          service: 'https://hyytsgxzs.xidian.edu.cn/',
+          success: ['https://hyytsgxzs.xidian.edu.cn/*'],
+        ),
+      },
+    ),
     brokerView: BrokerManifestView(
       allow: [
         // CAS 认证域：母凭证注入端点（静默签票，ADR-017 §2.4）。与下游数据域不重叠。

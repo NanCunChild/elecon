@@ -20,6 +20,7 @@ class LoginManifestView {
     required this.navigationAllow,
     required this.successUrlMatches,
     required this.brokerView,
+    this.ssoMint,
   });
 
   final String schoolId;
@@ -27,6 +28,35 @@ class LoginManifestView {
   final List<String> navigationAllow;
   final List<String> successUrlMatches;
   final BrokerManifestView brokerView;
+
+  /// CAS SSO 静默签票声明（ADR-017 §2.5）。可选；缺省=逐服务可见登录。
+  final SsoMintDecl? ssoMint;
+}
+
+/// CAS 静默签票声明（ADR-017 §2.5）。key=换票产物 credential ref。
+class SsoMintDecl {
+  const SsoMintDecl({required this.authEndpoint, required this.services});
+
+  /// CAS 认证端点模板，含 `{service}` 占位（母凭证只注入此域，ADR-017 §2.4）。
+  final String authEndpoint;
+  final Map<String, SsoMintServiceDecl> services;
+}
+
+class SsoMintServiceDecl {
+  const SsoMintServiceDecl({
+    required this.service,
+    required this.success,
+    this.via,
+  });
+
+  /// 目标服务 URL（填入 authEndpoint 的 `{service}`）。
+  final String service;
+
+  /// 换票成功检测 URL 模式（≥1）。
+  final List<String> success;
+
+  /// 非简单 GET-redirect 时指向承载 mint 请求构造的 adapter 能力 id（缺省=内置）。
+  final String? via;
 }
 
 class WebViewCookie {
