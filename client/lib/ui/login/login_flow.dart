@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../../catalog/schools.dart';
 import '../../session/session_controller.dart';
+import '../security/no_hardware_warning_dialog.dart';
 import 'webview_login_page.dart';
 
 /// 发起某校登录；成功则刷新会话并返回结果。调用方据返回值提示用户。
@@ -16,6 +17,17 @@ Future<WebViewLoginResult?> runSchoolLogin(
   SessionController session,
   SchoolDescriptor school,
 ) async {
+  // §2.8：首次持久化前确保存储后端就绪。无硬件加密 → 弹警告框（5 秒 + 知情同意）
+  // 选 S 软件档或 M 内存档。凭证收割须写入已定档的 store。
+  await session.ensurePersistentStore(
+    confirmSoftwareFallback: () async {
+      if (!context.mounted) return false;
+      final choice = await showNoHardwareWarningDialog(context);
+      return choice == SoftwareStorageChoice.continueWithSoftware;
+    },
+  );
+  if (!context.mounted) return null;
+
   final result = await Navigator.of(context).push<WebViewLoginResult>(
     MaterialPageRoute(
       builder: (_) => WebViewLoginPage(
@@ -29,6 +41,7 @@ Future<WebViewLoginResult?> runSchoolLogin(
 
   if (result?.status == WebViewLoginStatus.success) {
     session.onCredentialsChanged();
+    await session.flush(); // S 软件档：确保收割结果落盘
   }
   return result;
 }

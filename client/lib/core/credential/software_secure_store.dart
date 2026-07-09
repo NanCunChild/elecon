@@ -32,6 +32,10 @@ class SoftwareSecureStore implements SecureStore {
   /// 串行持久化队列：保证多次 put/delete 的写序，不并发覆写。
   Future<void> _persistChain = Future<void>.value();
 
+  /// 是否已存在持久化的 S 档（据 DEK blob 判定）——用于启动时静默续用此前已同意的 S 档。
+  static Future<bool> hasPersisted(BlobStore blobs) async =>
+      (await blobs.read(_dekBlob)) != null;
+
   /// 构建 S 档 store：读取 / 生成明文 DEK，加载并解密整库。
   static Future<SoftwareSecureStore> open(BlobStore blobs) async {
     final dek = await _loadOrCreateDek(blobs);

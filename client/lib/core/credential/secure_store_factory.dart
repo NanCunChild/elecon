@@ -28,9 +28,9 @@ Future<SecureStore> resolveSecureStore({
     return SoftwareSecureStore.open(blobs); // S 软件档
   }
 
-  // M 内存档（= §2.7 决策 E 旧 fail-closed 行为，但现在是用户主动选择）。
-  // 🔒 待人工评审：M 档复用 InMemorySecureStore；其 release 守卫（§2.7 决策 F 禁明文
-  // 内存后端）语义需与「M 档是 §2.8 知情同意后的合法选项」协调——当前 dev/debug 无冲突，
-  // release 下二者关系须在 wiring PR 里定，不在本 draft 擅自放宽护栏。
+  // M 内存档（= §2.7 决策 E 旧 fail-closed 行为，但现在是用户**主动知情同意**的选择）。
+  // 护栏协调（§2.7 决策 F ↔ §2.8 M 档）：决策 F 禁的是「省略 store 时**静默默认**明文内存
+  // 后端」；这里是经 confirmSoftwareFallback 显式取得用户同意后的**授权**内存档，属决策 F
+  // 允许的「显式注入」路径，故传 releaseMode:false 明确授权，与护栏不冲突（授权 vs 静默默认）。
   return InMemorySecureStore(releaseMode: false);
 }

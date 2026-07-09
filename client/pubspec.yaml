@@ -14,6 +14,10 @@ dependencies:
   # 🔒 红线 #9：Apache-2.0；上游维护状态待 license/安全评审确认（社区 fork: cryptography_plus）。
   # 钉 2.6.x：cryptography ≥2.7 依赖 ffi ^2.1，与 flutter_qjs fork 的 ffi ^1.0 冲突。
   cryptography: ">=2.6.0 <2.7.0"
+  # TODO(§2.8 落盘)：path_provider 提供 app 私有目录给 FileBlobStore。
+  # 当前网络受阻无法加依赖（flutter_qjs git fetch 经 libsecret 挂起，见
+  # docs/notes/build_blockers.md）——BlobStore 已做成可注入接缝，依赖恢复后
+  # 在 main.dart 挂载 FileBlobStore(getApplicationSupportDirectory()) 即点亮持久化。
 
 # flutter_qjs 0.3.7（ekibun，已停更）在 Dart 3.12 下编译失败：FFI 回调
 # channelDispacher 返回可空指针，而 Pointer.fromFunction 要求非空。
