@@ -51,6 +51,26 @@ class WebViewHarvestResult {
   bool get harvested => entries.isNotEmpty;
 }
 
+/// 收割需读取 cookie 的域代表 URL（origin）：取 brokerView.credentials 各 scope 的 host。
+///
+/// 跨子域覆盖的关键（ADR-017 母凭证收割）：CAS 母凭证（CASTGC）落在 `ids` 子域、
+/// 下游 session 落在 `ehall`/`v8scan` 等子域；成功 URL 只在其中一个子域，若只 getCookies
+/// 成功 URL 的 host 会**漏掉母凭证**。据此枚举全部声明域，逐一收割再合并。
+Set<String> harvestCookieOrigins(LoginManifestView view) {
+  final origins = <String>{};
+  for (final decl in view.brokerView.credentials.values) {
+    for (final scope in decl.scope) {
+      final repr = scopeReprUrl(scope); // 'https://host/path'
+      if (repr == null) continue;
+      final uri = Uri.tryParse(repr);
+      if (uri != null && uri.host.isNotEmpty) {
+        origins.add('${uri.scheme}://${uri.host}/');
+      }
+    }
+  }
+  return origins;
+}
+
 bool isLoginNavigationAllowed(String url, LoginManifestView view) =>
     urlCoveredByAllow(url, view.navigationAllow);
 

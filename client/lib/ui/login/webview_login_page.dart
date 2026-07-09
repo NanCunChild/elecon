@@ -103,8 +103,22 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       _addLog('延迟 600ms 等待 session cookie 落定');
 
       final cookieManager = CookieManager.instance();
-      final rawCookies = await cookieManager.getCookies(url: url);
-      _addLog('getCookies(${url.host}) → ${rawCookies.length} 条');
+      // 跨声明域收割（ADR-017 母凭证）：成功 URL 的 host + brokerView 各 scope 域，
+      // 逐一 getCookies 再按 name|domain|path 去重合并——否则会漏掉 ids 子域的 CASTGC。
+      final origins = <WebUri>{
+        url,
+        ...harvestCookieOrigins(widget.login).map(WebUri.new),
+      };
+      final rawCookies = <Cookie>[];
+      final seen = <String>{};
+      for (final origin in origins) {
+        final cs = await cookieManager.getCookies(url: origin);
+        _addLog('getCookies(${origin.host}) → ${cs.length} 条');
+        for (final c in cs) {
+          final key = '${c.name}|${c.domain}|${c.path}';
+          if (seen.add(key)) rawCookies.add(c);
+        }
+      }
       for (final c in rawCookies) {
         _addLog('  ${c.name} | domain=${c.domain} | path=${c.path} | httpOnly=${c.isHttpOnly} | value=${_maskCookie(c.value)}');
       }

@@ -5,8 +5,9 @@
 /// 此目录是过渡：结构上把「有哪些学校 + 各自登录声明」与 UI 解耦，先内置 XIDIAN。
 ///
 /// 🔒 注：这里的 [SchoolDescriptor.login] 仅含 URL / 域模式 / 注入声明，**不含任何凭证值**
-/// （红线 #1）。ADR-017 的母凭证（ids-cas）+ ssoMint 尚未接入收割实现（PR-2/PR-3 人工主导），
-/// 故本目录暂不声明 sso-master，收割沿用现有 ehall/card/library 下游 session。
+/// （红线 #1）。已声明 CAS 母凭证 `ids-cas`（role=sso-master，ADR-017 §2.1）——收割即捕获
+/// CASTGC 进核心（PR-2）；静默签票（PR-3，ssoMint）仍待人工主导实现。母凭证 scope 仅 `ids`
+/// 认证域、与下游数据域不重叠（ADR-017 §2.4 / 校验器 M4），Broker 最长前缀不会外注。
 library;
 
 import '../core/broker/inject_policy.dart';
@@ -62,11 +63,19 @@ const _xidian = SchoolDescriptor(
     ],
     brokerView: BrokerManifestView(
       allow: [
+        // CAS 认证域：母凭证注入端点（静默签票，ADR-017 §2.4）。与下游数据域不重叠。
+        'https://ids.xidian.edu.cn/*',
         'https://ehall.xidian.edu.cn/*',
         'https://v8scan.xidian.edu.cn/*',
         'https://hyytsgxzs.xidian.edu.cn/*',
       ],
       credentials: {
+        // CAS 母凭证（CASTGC）：收割即捕获进核心；role=sso-master 驱动敏感度标注。
+        'ids-cas': CredentialDecl(
+          scope: ['https://ids.xidian.edu.cn/*'],
+          type: 'cookie',
+          role: 'sso-master',
+        ),
         'ehall-session': CredentialDecl(
           scope: ['https://ehall.xidian.edu.cn/*'],
           type: 'cookie',

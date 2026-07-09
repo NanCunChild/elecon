@@ -96,6 +96,10 @@ void harvestInto(
       acquiredAt: now(),
       expiresAt: null,
       status: CredentialStatus.active,
+      // 敏感度按 manifest role 标注（ADR-017 / ADR-012 §2.8），驱动保护策略与 UI。
+      sensitivity: decl.role == 'sso-master'
+          ? CredentialSensitivity.master
+          : CredentialSensitivity.standard,
     ));
   }
 }
