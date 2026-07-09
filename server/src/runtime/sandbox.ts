@@ -32,9 +32,25 @@ import {
 } from "./broker/fetch-proxy.js";
 import type { RequestInit as BrokerRequestInit } from "./broker/assemble.js";
 
+import {
+  SandboxError,
+  unwrap,
+  errorMessage,
+  marshal,
+  isThenable,
+  jsonToHandle,
+  isThenableHandle,
+  withTimeout,
+} from "./sandbox-qjs-util.js";
+export { SandboxError, type SandboxFailureReason } from "./sandbox-qjs-util.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HTML_STDLIB_SOURCE = readFileSync(
   resolve(__dirname, "../../../adapters/_stdlib/html.bundle.js"),
+  "utf-8",
+);
+const FETCH_RESPONSE_SHIM_SOURCE = readFileSync(
+  resolve(__dirname, "./fetch-response-shim.js"),
   "utf-8",
 );
 
@@ -78,25 +94,6 @@ export interface AdapterRunInput {
 
 export interface AdapterRunResult {
   data: unknown;
-}
-
-export type SandboxFailureReason =
-  | "bad_export"
-  | "capability_missing"
-  | "async_in_parser"
-  | "adapter_threw"
-  | "timeout"
-  | "memory"
-  | "fetch_limit";
-
-export class SandboxError extends Error {
-  constructor(
-    readonly reason: SandboxFailureReason,
-    message: string,
-  ) {
-    super(message);
-    this.name = "SandboxError";
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -182,28 +179,6 @@ export async function runAdapter(
   }
 }
 
-function unwrap(ctx: QuickJSContext, result: ReturnType<QuickJSContext["evalCode"]>, deadline: number): QuickJSHandle {
-  if ("value" in result) return result.value;
-  const dumped = ctx.dump(result.error);
-  result.error.dispose();
-  const message = errorMessage(dumped);
-  if (Date.now() >= deadline || /interrupted/i.test(message)) {
-    throw new SandboxError("timeout", `adapter 执行超时被中断：${message}`);
-  }
-  if (/out of memory|memory/i.test(message)) {
-    throw new SandboxError("memory", `adapter 触碰内存上限：${message}`);
-  }
-  throw new SandboxError("adapter_threw", message);
-}
-
-function errorMessage(dumped: unknown): string {
-  if (dumped && typeof dumped === "object" && "message" in dumped) {
-    const name = "name" in dumped ? String((dumped as Record<string, unknown>).name) : "Error";
-    return `${name}: ${String((dumped as Record<string, unknown>).message)}`;
-  }
-  return String(dumped);
-}
-
 function buildParserCtx(ctx: QuickJSContext, scope: Scope, input: AdapterRunInput): QuickJSHandle {
   const obj = scope.manage(ctx.newObject());
   const logFn = scope.manage(
@@ -218,22 +193,6 @@ function buildParserCtx(ctx: QuickJSContext, scope: Scope, input: AdapterRunInpu
   const nowFn = scope.manage(ctx.newFunction("now", () => ctx.newNumber(nowMs)));
   ctx.setProp(obj, "now", nowFn);
   return obj;
-}
-
-function marshal(ctx: QuickJSContext, scope: Scope, value: unknown): QuickJSHandle {
-  const json = JSON.stringify(value);
-  if (json === undefined) return ctx.undefined;
-  const strHandle = scope.manage(ctx.newString(json));
-  const jsonObj = scope.manage(ctx.getProp(ctx.global, "JSON"));
-  const parseFn = scope.manage(ctx.getProp(jsonObj, "parse"));
-  return scope.manage(unwrap(ctx, ctx.callFunction(parseFn, jsonObj, strHandle), Number.POSITIVE_INFINITY));
-}
-
-function isThenable(ctx: QuickJSContext, scope: Scope, handle: QuickJSHandle): boolean {
-  const t = ctx.typeof(handle);
-  if (t !== "object" && t !== "function") return false;
-  const thenHandle = scope.manage(ctx.getProp(handle, "then"));
-  return ctx.typeof(thenHandle) === "function";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -268,41 +227,6 @@ interface FetchExecState {
   networkMs: number;
   fatal: SandboxError | null;
   nowMs: number;
-}
-
-function jsonToHandle(ctx: QuickJSContext, value: unknown): QuickJSHandle {
-  const json = JSON.stringify(value) ?? "null";
-  const strH = ctx.newString(json);
-  const jsonObj = ctx.getProp(ctx.global, "JSON");
-  const parseFn = ctx.getProp(jsonObj, "parse");
-  const res = ctx.callFunction(parseFn, jsonObj, strH);
-  strH.dispose();
-  parseFn.dispose();
-  jsonObj.dispose();
-  if ("value" in res) return res.value;
-  const dumped = ctx.dump(res.error);
-  res.error.dispose();
-  throw new SandboxError("adapter_threw", `marshal 失败：${JSON.stringify(dumped)}`);
-}
-
-function isThenableHandle(ctx: QuickJSContext, handle: QuickJSHandle): boolean {
-  const t = ctx.typeof(handle);
-  if (t !== "object" && t !== "function") return false;
-  const thenH = ctx.getProp(handle, "then");
-  const isFn = ctx.typeof(thenH) === "function";
-  thenH.dispose();
-  return isFn;
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => Error): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(onTimeout()), ms);
-    (timer as { unref?: () => void }).unref?.();
-    p.then(
-      (v) => { clearTimeout(timer); resolve(v); },
-      (e: unknown) => { clearTimeout(timer); reject(e as Error); },
-    );
-  });
 }
 
 /**
@@ -423,19 +347,11 @@ function buildFetchCtx(
   });
 
   // wrap raw fetch into Response-like interface for adapter ergonomics
+  // shim 源码见 ./fetch-response-shim.js（契约面：adapter 依赖其 Response shape）。
   const wrapFactory = track(
     unwrap(
       ctx,
-      ctx.evalCode(
-        `(raw) => (url, init) => raw(url, init).then((r) => ({
-           status: r.status,
-           ok: r.status >= 200 && r.status < 300,
-           headers: r.headers,
-           text: () => Promise.resolve(r.body === undefined ? "" : r.body),
-           json: () => Promise.resolve(JSON.parse(r.body === undefined ? "null" : r.body)),
-         }))`,
-        "fetch-response-shim.js",
-      ),
+      ctx.evalCode(FETCH_RESPONSE_SHIM_SOURCE, "fetch-response-shim.js"),
       deadline,
     ),
   );

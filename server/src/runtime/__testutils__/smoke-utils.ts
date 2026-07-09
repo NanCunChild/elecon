@@ -1,11 +1,13 @@
-/// Shared test utilities for server-side broker / runtime smoke tests.
-///
-/// Extract common helpers used across multiple smoke test files:
-///   - repoRoot resolution (eliminates 9× duplication of fileURLToPath(new URL(...)))
-///   - FakeResolver / FakeTransport test doubles
-///   - resp() helper for constructing TransportResponse
-///   - readJson / readText helpers
-///   - runMain() wrapper for the catch(process.exit) pattern
+/**
+ * Shared test utilities for server-side broker / runtime smoke tests.
+ *
+ * Extract common helpers used across multiple smoke test files:
+ *   - repoRoot resolution (eliminates 9× duplication of fileURLToPath(new URL(...)))
+ *   - FakeResolver / FakeTransport test doubles
+ *   - resp() helper for constructing TransportResponse
+ *   - readJson / readText helpers
+ *   - runMain() wrapper for the catch(process.exit) pattern
+ */
 
 import { readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
