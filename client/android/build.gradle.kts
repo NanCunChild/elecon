@@ -3,6 +3,10 @@ allprojects {
         google()
         mavenCentral()
     }
+    tasks.withType<JavaCompile>().configureEach {
+        sourceCompatibility = JavaVersion.VERSION_11.toString()
+        targetCompatibility = JavaVersion.VERSION_11.toString()
+    }
 }
 
 val newBuildDir: Directory =
@@ -24,6 +28,10 @@ subprojects {
         afterEvaluate {
             extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
                 compileSdk = 36
+                compileOptions {
+                    sourceCompatibility = JavaVersion.VERSION_11
+                    targetCompatibility = JavaVersion.VERSION_11
+                }
                 defaultConfig {
                     externalNativeBuild {
                         cmake {
