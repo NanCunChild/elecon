@@ -10,6 +10,10 @@ dependencies:
     sdk: flutter
   flutter_qjs: ^0.3.7
   flutter_inappwebview: ^6.0.0
+  # ADR-012 §2.8 三档加密（S 软件档）——纯 Dart AES-256-GCM AEAD。
+  # 🔒 红线 #9：Apache-2.0；上游维护状态待 license/安全评审确认（社区 fork: cryptography_plus）。
+  # 钉 2.6.x：cryptography ≥2.7 依赖 ffi ^2.1，与 flutter_qjs fork 的 ffi ^1.0 冲突。
+  cryptography: ">=2.6.0 <2.7.0"
 
 # flutter_qjs 0.3.7（ekibun，已停更）在 Dart 3.12 下编译失败：FFI 回调
 # channelDispacher 返回可空指针，而 Pointer.fromFunction 要求非空。
