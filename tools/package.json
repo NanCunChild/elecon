@@ -20,6 +20,9 @@
     "scan": "tsx src/scanner/index.ts",
     "smoke:validator": "tsx src/validator/validator.smoke.ts",
     "smoke:urlmatch": "tsx src/validator/url-match.smoke.ts",
+    "smoke:scanner": "tsx src/scanner/scanner.smoke.ts",
+    "smoke:codegen": "tsx src/codegen/codegen.smoke.ts",
+    "smoke:signer": "tsx src/signer/signer.smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "audit": "npm audit --omit=dev"
   },
