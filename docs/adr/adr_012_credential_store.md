@@ -1,7 +1,7 @@
 # ADR-012：凭证获取（登录）与可信核心凭证存储
 
 - **状态**：已接受（Accepted） 本文触碰红线 #1（凭证）的**最高风险面**——凭证从哪来、存哪、什么形态。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，经人工 review（PR #23）+ 安全检查清单审阅后接受。
-- **日期**：2026-06-13（**修订 2026-06-14**：① §2.2 增 fetch 模式握手的耐久 session 收割——与 WebView 登录同一动作、判据 = manifest 声明的 credential ref（判据 b），与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 / [`adr_013`](./adr_013_manifest_credentials.md) 协调；② §2.4 闭合 scope/type 双源——store 保留为防御性副本+一致性基准，注入权威唯一在已验签 manifest，不一致以 manifest 为准并告警；③ §2.6 钉定首版仅 client-direct，relay 凭证落点推迟、本 ADR 不依赖 relay，relay 须满足"零落盘+用完即弃/客户端注入"硬约束）（**补全 2026-07-04，已接受，#79 P0-2**：新增 §2.7 安全存储威胁模型 + 保护对象边界 + 平台后端矩阵 + 密钥托管 + 无 keyring 桌面 fail-closed 回退 + 生产禁默认明文后端护栏——认领 §2.1/§3.7 遗留的 key custody 开放问题；护栏部分已实现 PR #82，平台后端按本补全拆 PR）（**修订 2026-07-09，已接受**：新增 §2.8——无硬件加密时由「一律内存-only / fail-closed」放宽为「知情同意的分级回退」：H 硬件档（KEK 包裹 DEK）/ S 软件档（DEK 明文落盘，5 秒警示后用户同意）/ M 内存档（取消即旧 fail-closed 行为）；修订 §2.7 决策 E 与不变量 ②；触红线 #1，须人工 + 安全清单审）
+- **日期**：2026-06-13（历次修订见文末[附录：修订记录](#附录修订记录)）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 可信核心）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / 契约）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（谁有资格用凭证 = official）、[`adr_003_transport.md`](./adr_003_transport.md)（campus-relay 落点）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端核心）
 - **被依赖**：[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（其 §2.3 的 "credential reference" 正是指向本文定义的凭证条目；其注入消费本文的存储）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)、[#17](https://github.com/NanCunChild/elecon/issues/17)；本文回应 #8/#10 评审指出的"**凭证存储 + 登录获取孤儿缺口**"。
@@ -192,3 +192,13 @@ CredentialEntry {
 - campus-relay 凭证落点设计（与 ADR-003/009 协调，本文后续）。
 - 测试：存储加解密往返、登出确实抹除、过期/续期路径；WebView 收割的安全敏感测试**人工编写或实质审阅**（testing.md）。
 - iOS 合规评估（ADR-010 §3.3 的 2.5.2 自检 + 5.1.1 隐私申报）。
+
+---
+
+## 附录：修订记录
+
+> 从头部 **日期** 行移出，便于阅读；内容不变（红线 #1 决策，历次均经人工 + 安全清单审）。
+
+- **2026-06-14**：① §2.2 增 fetch 模式握手的耐久 session 收割——与 WebView 登录同一动作、判据 = manifest 声明的 credential ref（判据 b），与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 / [`adr_013`](./adr_013_manifest_credentials.md) 协调；② §2.4 闭合 scope/type 双源——store 保留为防御性副本+一致性基准，注入权威唯一在已验签 manifest，不一致以 manifest 为准并告警；③ §2.6 钉定首版仅 client-direct，relay 凭证落点推迟、本 ADR 不依赖 relay，relay 须满足"零落盘+用完即弃/客户端注入"硬约束。
+- **2026-07-04（已接受，#79 P0-2）**：新增 §2.7 安全存储威胁模型 + 保护对象边界 + 平台后端矩阵 + 密钥托管 + 无 keyring 桌面 fail-closed 回退 + 生产禁默认明文后端护栏——认领 §2.1/§3.7 遗留的 key custody 开放问题；护栏部分已实现 PR #82，平台后端按本补全拆 PR。
+- **2026-07-09（已接受）**：新增 §2.8——无硬件加密时由「一律内存-only / fail-closed」放宽为「知情同意的分级回退」：H 硬件档（KEK 包裹 DEK）/ S 软件档（DEK 明文落盘，5 秒警示后用户同意）/ M 内存档（取消即旧 fail-closed 行为）；修订 §2.7 决策 E 与不变量 ②；触红线 #1，须人工 + 安全清单审。
