@@ -165,3 +165,4 @@ QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 a
 - `adr_014`：fetch 模式客户端宿主函数桥接（IsolateQjs 宿主函数通道扩展，落 ADR-008 §4「待续 fetch」）—— **已接受**
 - `adr_015`：manifest `login` 声明（WebView 登录配置契约扩展，落 ADR-012 §2.2 登录声明面）—— **已接受**
 - `adr_016`：复杂登录的 WebView 选型 + headless 路线（能力门禁，无新信任档）—— **已接受**
+- `adr_017`：CAS SSO 母凭证收割 + 静默签票（一次登录、按需换取下游 session；母凭证可选、mint 机制下放 adapter）—— **已接受**
