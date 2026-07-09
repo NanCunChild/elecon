@@ -6,6 +6,8 @@
 ///   运行：cd client && fvm flutter test test/transport_direct_test.dart
 ///
 /// 🔒 transport 承载注入凭证的真实请求（红线 #1 路径）：与被测代码一并须人工 + 安全清单复核。
+library;
+
 import 'dart:convert';
 import 'dart:io';
 

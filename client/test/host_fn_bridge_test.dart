@@ -7,6 +7,8 @@
 ///   运行：cd client && fvm flutter test test/host_fn_bridge_test.dart
 ///
 /// 🔒 触引擎能力，按 ADR-014 / AGENTS.md §1 须人工 + 安全清单复核。
+library;
+
 import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:flutter_test/flutter_test.dart';
 

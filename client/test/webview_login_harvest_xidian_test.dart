@@ -7,7 +7,7 @@
 ///   [1] 加载 ids.xidian.edu.cn/authserver/login（密码加密+滑块验证码）
 ///   [2] 登录成功后 CAS ticket 链：ids → ehall / v8scan / hyytsgxzs / xxcapp
 ///   [3] 各子服务下发 session cookie → WebView 内可见
-///   [4] 收割时按 manifest credentials.<ref>.scope 过滤——CASTGC 永不入库
+///   [4] 收割时按 manifest `credentials.<ref>.scope` 过滤——CASTGC 永不入库
 ///
 /// 🔒 红线 #1 承重路径：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环。
 library;

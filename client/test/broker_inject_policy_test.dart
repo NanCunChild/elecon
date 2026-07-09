@@ -9,6 +9,8 @@
 /// 与 dual_run_test 不同：B1 是**纯逻辑**、不经 QuickJS，故**无原生库依赖、不限 Linux**。
 ///
 ///   运行：cd client && fvm flutter test test/broker_inject_policy_test.dart
+library;
+
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 

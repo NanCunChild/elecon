@@ -12,6 +12,8 @@
 ///   运行：cd client && fvm flutter test test/fetch_runtime_test.dart
 ///
 /// 🔒 红线 #1 凭证注入 + 出网承重路径：与被测代码一并须人工 + 安全清单复核。
+library;
+
 import 'package:elecon/core/adapter_runtime.dart';
 import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/broker/inject_policy.dart';

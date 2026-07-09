@@ -11,6 +11,8 @@
 /// 纯逻辑、不经 QuickJS，故无原生库依赖、不限 Linux。
 ///
 ///   运行：cd client && fvm flutter test test/broker_url_match_test.dart
+library;
+
 import 'package:elecon/core/broker/url_match.dart';
 import 'package:flutter_test/flutter_test.dart';
 

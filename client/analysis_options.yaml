@@ -1,3 +1,7 @@
+# flutter_lints 提供官方推荐规则集（含 prefer_const_constructors、
+# directives_ordering 等）。启用它以让 CI 自动捕获风格漂移（审阅发现 6.4）。
+include: package:flutter_lints/flutter.yaml
+
 analyzer:
   exclude:
     # OHOS probe uses the Flutter-OHOS SDK and pubspec.ohos.yaml. Keep the

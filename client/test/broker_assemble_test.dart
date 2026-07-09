@@ -6,6 +6,8 @@
 /// 有态驱动（proxyFetch / transport / 重定向链）属 B6b 运行时，不在本镜像。
 ///
 ///   运行：cd client && fvm flutter test test/broker_assemble_test.dart
+library;
+
 import 'package:elecon/core/broker/assemble.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:flutter_test/flutter_test.dart';

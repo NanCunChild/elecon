@@ -9,6 +9,8 @@
 /// 纯逻辑、不经 QuickJS → 无原生库依赖、不限 Linux。
 ///
 ///   运行：cd client && fvm flutter test test/broker_redirect_test.dart
+library;
+
 import 'package:elecon/core/broker/redirect.dart';
 import 'package:flutter_test/flutter_test.dart';
 

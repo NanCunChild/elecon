@@ -11,6 +11,8 @@
 ///   运行：cd client && fvm flutter test test/broker_cookie_jar_test.dart
 ///
 /// ⚠️ 夹具值为显式假值（红线 #8）：绝不使用真实凭证/会话。
+library;
+
 import 'package:elecon/core/broker/cookie_jar.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:flutter_test/flutter_test.dart';

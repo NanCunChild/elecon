@@ -5,6 +5,8 @@
 /// B2 是纯逻辑、不经 QuickJS → 无原生库依赖、不限 Linux。
 ///
 ///   运行：cd client && fvm flutter test test/broker_header_sanitize_test.dart
+library;
+
 import 'package:elecon/core/broker/header_sanitize.dart';
 import 'package:flutter_test/flutter_test.dart';
 

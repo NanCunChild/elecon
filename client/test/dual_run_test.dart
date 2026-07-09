@@ -13,6 +13,8 @@
 /// 该构建脚本目前仅 Linux，故本测试在非 Linux 平台整体 skip（而非崩溃）。
 ///
 ///   运行：cd client && tool/build_qjs_test_lib.sh && fvm flutter test test/dual_run_test.dart
+library;
+
 import 'dart:io';
 
 import 'package:elecon/core/adapter_runtime.dart';
