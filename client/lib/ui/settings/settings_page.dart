@@ -84,7 +84,7 @@ class SettingsPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
           _SectionTitle(title: '账户'),
           Card(
