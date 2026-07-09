@@ -12,7 +12,7 @@
  * B4 #37 运行时）写入 jar ephemeral 分区，四重栅栏由 Broker 强制。
  */
 
-import { parseDocument, selectAll, getText, getAttributeValue } from "elecon:html";
+import { parseDocument, selectAll, getText, getAttributeValue, normalizeDate, makeUrlAbsolute } from "elecon:html";
 
 const ORIGIN = "https://dean.xjtu.edu.cn";
 
@@ -118,7 +118,7 @@ function parseNotices(html) {
 
     const title = (getAttributeValue(a, "title") || "").trim();
     const href = getAttributeValue(a, "href") || "";
-    const url = href.startsWith("http") ? href : ORIGIN + "/" + href.replace(/^\//, "");
+    const url = makeUrlAbsolute(href, ORIGIN);
 
     const span = selectAll("span", li)[0];
     const dateStr = span ? getText(span).trim() : "";
@@ -138,12 +138,6 @@ function parseNotices(html) {
     items.push(item);
   }
   return items;
-}
-
-/** "2026-06-12" / "2026/06/12" / "2026.06.12" → RFC3339/UTC。无法识别返回 null → 调用方省略 publishedAt。 */
-function normalizeDate(s) {
-  const m = s.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-  return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}T00:00:00Z` : null;
 }
 
 function matchOne(re, s) {

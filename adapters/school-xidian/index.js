@@ -8,15 +8,9 @@
  * （server `npm run smoke:sandbox` testXidianNoticeList）。
  */
 
-import { parseDocument, selectAll, getText, getAttributeValue, nextElementSibling } from "elecon:html";
+import { parseDocument, selectAll, getText, getAttributeValue, nextElementSibling, normalizeDate, makeUrlAbsolute } from "elecon:html";
 
 const ORIGIN = "https://jwc.xidian.edu.cn";
-
-/** "2026-06-12" / "2026/06/12" / "2026.06.12" → RFC3339/UTC。无法识别返回 null → 调用方省略 publishedAt。 */
-function normalizeDate(s) {
-  const m = s.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-  return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}T00:00:00Z` : null;
-}
 
 /**
  * 提取 li 内的日期文本。已见两种页面结构：
@@ -59,8 +53,7 @@ export const capabilities = {
         const dateStr = extractDateStr(li);
         const idMatch = href.match(/\/?(\d+)\.htm$/);
         const id = idMatch ? idMatch[1] : href;
-        // 沙箱内无 URL 全局，手工归一：绝对 URL 原样；相对路径（含/不含前导 /）拼 ORIGIN
-        const url = href.startsWith("http") ? href : ORIGIN + "/" + href.replace(/^\//, "");
+        const url = makeUrlAbsolute(href, ORIGIN);
 
         const item = {
           id,

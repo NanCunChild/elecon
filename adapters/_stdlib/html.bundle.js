@@ -4224,6 +4224,18 @@ function appendNextSiblings(elem, adapter) {
 }
 var selectAll = getSelectorFunc((query, elems, options) => query === import_boolbase6.default.falseFunc || !elems || elems.length === 0 ? [] : options.adapter.findAll(query, elems));
 var selectOne = getSelectorFunc((query, elems, options) => query === import_boolbase6.default.falseFunc || !elems || elems.length === 0 ? null : options.adapter.findOne(query, elems));
+
+// src/html.ts
+function normalizeDate(s) {
+  if (typeof s !== "string") return null;
+  const m = s.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (!m) return null;
+  return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}T00:00:00Z`;
+}
+function makeUrlAbsolute(href, origin) {
+  if (href.startsWith("http")) return href;
+  return origin + "/" + href.replace(/^\//, "");
+}
 export {
   Comment2 as Comment,
   Document,
@@ -4248,7 +4260,9 @@ export {
   isCDATA,
   isTag2 as isTag,
   isText,
+  makeUrlAbsolute,
   nextElementSibling,
+  normalizeDate,
   parseDocument,
   prevElementSibling,
   removeElement,
