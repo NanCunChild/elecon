@@ -3,7 +3,7 @@
 /// 决策流：硬件可用 → H 硬件档（未接入）；否则由用户知情同意（[confirmSoftwareFallback]，
 /// 通常来自 §2.8 警告框）选 S 软件档持久化或 M 内存档（取消 = fail toward less trust）。
 ///
-/// 🔒 红线 #1：AI 起草，须人工 + 安全清单复核（AGENTS.md §1）。
+/// 🔒 红线 #1。AI 起草、经人工审阅接受（2026-07-09）；后续改动仍须人工 + 安全清单审（AGENTS.md §1）。
 library;
 
 import 'blob_store.dart';

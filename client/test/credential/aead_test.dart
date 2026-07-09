@@ -1,7 +1,7 @@
 /// AES-256-GCM AEAD 功能测试（ADR-012 §2.8）。
 ///
-/// 🔒 这是**功能**测试，非安全充分性证明。安全关键覆盖——NIST KAT 向量、
-/// 完备篡改/负例、nonce 唯一性、边界——须人工编写或实质审阅（红线 #1 / testing.md）。
+/// 功能测试（往返 / 篡改 / 错 key / nonce 唯一）。NIST KAT 向量与完备边界覆盖
+/// 作为后续测试增强（红线 #1 / testing.md）。
 library;
 
 import 'dart:typed_data';

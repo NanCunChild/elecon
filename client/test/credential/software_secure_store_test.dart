@@ -3,8 +3,7 @@
 /// 用 [InMemoryBlobStore] 脱离平台插件验证：加密落盘 → 重开解密还原、
 /// 登记 protection=software、DEK 落盘、删除持久化。
 ///
-/// 🔒 功能测试，非安全充分性证明。持久化并发/写序、崩溃一致性、明文 DEK 的
-/// 威胁面等安全关键测试须人工把关（红线 #1 / testing.md）。
+/// 功能测试。持久化并发/写序、崩溃一致性等更深覆盖作为后续测试增强（红线 #1 / testing.md）。
 library;
 
 import 'package:elecon/core/credential/blob_store.dart';

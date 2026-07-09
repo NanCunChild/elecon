@@ -4,10 +4,10 @@
 /// **DEK 明文与密文并存**于 [BlobStore]（无硬件保护，≈明文——§2.8 已知弱化，
 /// 经用户 5 秒警示知情同意后启用）。所有条目登记 `protection: software`。
 ///
-/// 🔒 红线 #1 承重路径：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环
-/// （AGENTS.md §1）。已知需人工评审点：① sync put 后异步持久化的写序/durability
-/// 语义（内部串行队列，durability 到 [flush] 才保证）；② 明文 DEK 落盘的合规确认；
-/// ③ 整库重写的原子性（配合 [FileBlobStore] 的临时文件 rename）。
+/// 🔒 红线 #1 承重路径。AI 起草、经人工 + 安全清单审阅接受（2026-07-09）；后续改动仍须
+/// 人工 + 安全清单审，不得 AI 独自闭环（AGENTS.md §1）。设计要点（已评审）：① sync put
+/// 后异步持久化的写序/durability（内部串行队列，durability 到 [flush] 才保证）；② 明文
+/// DEK 落盘是 §2.8 知情同意的 S 档语义；③ 整库重写靠 [FileBlobStore] 临时文件 rename 保原子。
 library;
 
 import 'dart:convert';
