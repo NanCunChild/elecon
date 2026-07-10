@@ -21,6 +21,7 @@ import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:elecon/core/broker/ports.dart';
 import 'package:elecon/core/credential/store.dart';
+import 'package:elecon/core/trust/trusted_context.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'utils/test_utils.dart';
@@ -56,6 +57,7 @@ void main() {
 
       final data = await runFetchAdapter(
         source: source,
+        trust: TrustedAdapterContext.devSideload(),
         capability: 'notice.list',
         view: view,
         resolver: FakeResolver({
@@ -96,6 +98,7 @@ void main() {
 
       final data = await runFetchAdapter(
         source: source,
+        trust: TrustedAdapterContext.devSideload(),
         capability: 'notice.list',
         view: view,
         resolver: FakeResolver({}),
@@ -121,6 +124,7 @@ void main() {
 
       final data = await runFetchAdapter(
         source: source,
+        trust: TrustedAdapterContext.devSideload(),
         capability: 'notice.list',
         view: view,
         resolver: FakeResolver({}),
@@ -157,6 +161,7 @@ void main() {
       await expectLater(
         runFetchAdapter(
           source: source,
+          trust: TrustedAdapterContext.devSideload(),
           capability: 'notice.list',
           view: view,
           resolver: FakeResolver({
@@ -210,6 +215,35 @@ void main() {
       expect(transport.cancelled, isTrue,
           reason: '单请求超时应 cancel in-flight transport');
       expect(store.list(), isEmpty, reason: '失败执行不得收割（fail 不收割）');
+    });
+  });
+
+  group('信任闸门（ADR-002 §2.6 · #79 P0-1）', () {
+    // 入场判定纯函数：release 语义无法在 flutter_test（debug 模式）下经
+    // runFetchAdapter 端到端触发，负例由纯函数覆盖；生产接线
+    // （debugBuild: kDebugMode 硬接、无注入点）由人工审阅把关（🔒）。
+    test('release/profile 下非 official 拒绝（fail-closed 负例）', () {
+      expect(
+        fetchTrustPermitted(AdapterTrustTier.devSideload, debugBuild: false),
+        isFalse,
+        reason: 'release 下 dev 侧载不得触达 fetch（红线 #4/#5）',
+      );
+    });
+
+    test('official 一律放行；devSideload 仅 debug 放行', () {
+      expect(fetchTrustPermitted(AdapterTrustTier.official, debugBuild: false),
+          isTrue);
+      expect(fetchTrustPermitted(AdapterTrustTier.official, debugBuild: true),
+          isTrue);
+      expect(
+          fetchTrustPermitted(AdapterTrustTier.devSideload, debugBuild: true),
+          isTrue,
+          reason: 'debug 下 dev 侧载可跑 fetch（ADR-002 §2.5 owner 决策）');
+    });
+
+    test('devSideload 上下文在 debug（测试环境）可构造，档位正确', () {
+      final trust = TrustedAdapterContext.devSideload();
+      expect(trust.tier, AdapterTrustTier.devSideload);
     });
   });
 }
