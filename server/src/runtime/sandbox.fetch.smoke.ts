@@ -210,15 +210,27 @@ async function testTrustGate(): Promise<void> {
       'notice.list': async (ctx) => { await ctx.fetch('https://h.edu.cn/x'); return {}; }
     };`;
 
-  // 6a. 字面量伪造 trust（结构化类型 cast 绕过私有构造器）→ instanceof 拦截
-  const forged = { tier: "official" } as unknown as TrustedAdapterContext;
-  await assert.rejects(
-    runFetchAdapter(
-      { source, capability: "notice.list", params: {}, nowMs: NOW },
-      { trust: forged, view, resolver: new FakeResolver({}), transport },
-    ),
-    (e: unknown) => e instanceof SandboxError && e.reason === "trust_rejected",
-    "伪造 trust 对象应被 instanceof 校验拒绝",
+  // 6a. 伪造 trust 的三条运行时路径都必须被拒（#79 P0-1 review：private constructor
+  // 与 instanceof 均非运行时边界，防伪靠模块私有 token + 签发登记）：
+  //   cast：结构化类型字面量；create：绕过构造器但通过 instanceof 的原型伪造。
+  const forgeries: Array<[string, TrustedAdapterContext]> = [
+    ["cast", { tier: "official" } as unknown as TrustedAdapterContext],
+    ["create", Object.assign(Object.create(TrustedAdapterContext.prototype), { tier: "official" }) as TrustedAdapterContext],
+  ];
+  for (const [kind, forged] of forgeries) {
+    await assert.rejects(
+      runFetchAdapter(
+        { source, capability: "notice.list", params: {}, nowMs: NOW },
+        { trust: forged, view, resolver: new FakeResolver({}), transport },
+      ),
+      (e: unknown) => e instanceof SandboxError && e.reason === "trust_rejected",
+      `伪造 trust（${kind}）应被签发登记校验拒绝`,
+    );
+  }
+  //   new：编译产物上直接调用构造器 → 缺模块私有 token，构造即抛（实例不产生）。
+  assert.throws(
+    () => new (TrustedAdapterContext as unknown as new (tier: string) => unknown)("official"),
+    "绕过静态工厂直接 new 必须在构造时抛错",
   );
   assert.equal(transport.seen.length, 0, "trust 拒绝须发生在任何出网之前");
 

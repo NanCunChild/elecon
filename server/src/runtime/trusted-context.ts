@@ -16,9 +16,15 @@
  *    用户分发，运行时 fail-closed 检查即为该端的承重闸门（campus 中继落地时
  *    随部署形态复核，ADR-003）。
  *
- * 纵深防御（§2.6 运行时不信任上游）：`runFetchAdapter` 入口除档位判定外，还做
- * `instanceof` 校验——TS 结构化类型下私有构造器可被字面量 cast 绕过，实例校验
- * 把「伪造 trust 对象」也挡在引擎/host-fn 之外。
+ * 纵深防御（§2.6 运行时不信任上游）：TS 的 `private constructor` 只是编译期
+ * 约束，运行时仍可 `new (TrustedAdapterContext as any)(...)`；`instanceof` 也可被
+ * `Object.create(TrustedAdapterContext.prototype)` 伪造。故运行时防伪不依赖二者：
+ *
+ *  - 构造器要求**模块私有 Symbol token**——模块外拿不到 token，直接 `new` 构造即抛；
+ *  - 每个合法实例登记进**模块私有 WeakSet**，入口经 [isTrustedAdapterContext]
+ *    校验登记——绕过构造器的对象（cast / Object.create）不在登记内，一律拒绝。
+ *
+ * `instanceof` 降级为守卫内的辅助检查（兼收窄类型），不再是唯一运行时防伪。
  *
  * 🔒 红线 #1 凭证路径承重件：改动本文件须人工 + 安全清单复核，不得 AI 独自闭环。
  */
@@ -26,9 +32,20 @@
 /** 宿主裁定的 adapter 信任档（ADR-002 §2.1 两档制；权威来自验签，不信任 manifest 自报）。 */
 export type AdapterTrustTier = "official" | "dev_sideload";
 
-/** 经核心信任裁定后签发的执行凭据。构造器私有——拿到实例即已走过裁定路径。 */
+/** 模块私有构造 token：不导出，模块外无法取得 → 绕过静态工厂直接 `new` 必抛。 */
+const issuanceToken = Symbol("elecon.TrustedAdapterContext.issuance");
+
+/** 模块私有签发登记：只有经合法构造路径产生的实例在册，WeakSet 成员身份不可伪造。 */
+const issued = new WeakSet<TrustedAdapterContext>();
+
+/** 经核心信任裁定后签发的执行凭据。运行时防伪见文件头（token + 签发登记）。 */
 export class TrustedAdapterContext {
-  private constructor(readonly tier: AdapterTrustTier) {}
+  private constructor(token: symbol, readonly tier: AdapterTrustTier) {
+    if (token !== issuanceToken) {
+      throw new Error("TrustedAdapterContext 只能经核心信任裁定路径构造（ADR-002 §2.6，fail-closed）");
+    }
+    issued.add(this);
+  }
 
   /**
    * dev 侧载裁定（ADR-002 §2.5）：仅非生产环境可构造；生产下抛错（fail-closed）。
@@ -37,11 +54,19 @@ export class TrustedAdapterContext {
     if (process.env.NODE_ENV === "production") {
       throw new Error("dev 侧载信任上下文在生产环境不存在（红线 #4/#5，ADR-002 §2.5）");
     }
-    return new TrustedAdapterContext("dev_sideload");
+    return new TrustedAdapterContext(issuanceToken, "dev_sideload");
   }
 
   // ADR-002 §2.3 验签器落地后在此增 official 构造路径（入参为验签产物，
   // 由验签实现的 PR 一并人工审）。在那之前不提供——fail-closed。
+}
+
+/**
+ * 运行时防伪守卫：仅认模块私有登记内的实例。字面量 cast、`Object.create(prototype)`、
+ * token 不符的直接 `new` 均不在册 → false。`instanceof` 仅为类型收窄的辅助检查。
+ */
+export function isTrustedAdapterContext(value: unknown): value is TrustedAdapterContext {
+  return value instanceof TrustedAdapterContext && issued.has(value);
 }
 
 /**

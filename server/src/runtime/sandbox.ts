@@ -31,7 +31,7 @@ import {
   type FetchProxyOutcome,
 } from "./broker/fetch-proxy.js";
 import type { RequestInit as BrokerRequestInit } from "./broker/assemble.js";
-import { TrustedAdapterContext, fetchTrustPermitted } from "./trusted-context.js";
+import { TrustedAdapterContext, fetchTrustPermitted, isTrustedAdapterContext } from "./trusted-context.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HTML_STDLIB_SOURCE = readFileSync(
@@ -540,8 +540,9 @@ export async function runFetchAdapter(
   fetchLimits: FetchLimits = DEFAULT_FETCH_LIMITS,
 ): Promise<AdapterRunResult> {
   // 信任闸门：在触达引擎、注册任何 host function 之前 fail-closed（ADR-002 §2.6）。
-  // instanceof 防字面量 cast 伪造；production 硬接 NODE_ENV——不提供注入点。
-  if (!(deps.trust instanceof TrustedAdapterContext)) {
+  // 签发登记校验防运行时伪造（cast / 直接 new / Object.create，见 trusted-context.ts）；
+  // production 硬接 NODE_ENV——不提供注入点。
+  if (!isTrustedAdapterContext(deps.trust)) {
     throw new SandboxError("trust_rejected", "trust 不是核心签发的 TrustedAdapterContext 实例（伪造/误接线，fail-closed）");
   }
   if (!fetchTrustPermitted(deps.trust.tier, { production: process.env.NODE_ENV === "production" })) {
