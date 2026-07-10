@@ -27,6 +27,7 @@ import type { CredentialResolver } from "./broker/ports.js";
 import {
   proxyFetch,
   BrokerFetchRejected,
+  TransportBodyLimitExceeded,
   type Transport,
   type FetchProxyOutcome,
 } from "./broker/fetch-proxy.js";
@@ -227,6 +228,14 @@ interface FetchExecState {
   networkMs: number;
   fatal: SandboxError | null;
   nowMs: number;
+  abortControllers: Set<AbortController>;
+}
+
+function abortInFlight(state: FetchExecState): void {
+  for (const controller of state.abortControllers) {
+    controller.abort();
+  }
+  state.abortControllers.clear();
 }
 
 /**
@@ -310,32 +319,51 @@ function buildFetchCtx(
       if (state.fatal) throw state.fatal;
       if (state.requestCount >= fetchLimits.maxRequests) {
         state.fatal = new SandboxError("fetch_limit", `单次执行请求数超限（>${fetchLimits.maxRequests}）`);
+        abortInFlight(state);
         throw state.fatal;
       }
       const start = Date.now();
-      const outcome: FetchProxyOutcome = await withTimeout(
-        proxyFetch(url, init, {
-          view: deps.view,
-          resolver: deps.resolver,
-          jar: state.jar,
-          transport: deps.transport,
-          maxHops: fetchLimits.maxHopsPerRequest,
-        }),
-        fetchLimits.perRequestTimeoutMs,
-        () => {
-          // 单请求超时同为硬终止：置 fatal，adapter catch 也无法把执行洗成成功（镜像 Dart 侧）
-          state.fatal = new SandboxError("fetch_limit", `单请求超时（>${fetchLimits.perRequestTimeoutMs}ms）`);
-          return state.fatal;
-        },
-      );
+      const controller = new AbortController();
+      state.abortControllers.add(controller);
+      let outcome: FetchProxyOutcome;
+      try {
+        outcome = await withTimeout(
+          proxyFetch(url, init, {
+            view: deps.view,
+            resolver: deps.resolver,
+            jar: state.jar,
+            transport: deps.transport,
+            maxHops: fetchLimits.maxHopsPerRequest,
+            signal: controller.signal,
+          }),
+          fetchLimits.perRequestTimeoutMs,
+          () => {
+            // 单请求超时同为硬终止：置 fatal，adapter catch 也无法把执行洗成成功（镜像 Dart 侧）
+            state.fatal = new SandboxError("fetch_limit", `单请求超时（>${fetchLimits.perRequestTimeoutMs}ms）`);
+            abortInFlight(state);
+            return state.fatal;
+          },
+        );
+      } catch (err) {
+        if (err instanceof TransportBodyLimitExceeded) {
+          state.fatal = new SandboxError("fetch_limit", err.message);
+          abortInFlight(state);
+          throw state.fatal;
+        }
+        throw err;
+      } finally {
+        state.abortControllers.delete(controller);
+      }
       state.networkMs += Date.now() - start;
       state.requestCount += outcome.requestCount;
       if (state.networkMs > fetchLimits.totalNetworkMs) {
         state.fatal = new SandboxError("fetch_limit", `累计网络耗时超限（>${fetchLimits.totalNetworkMs}ms）`);
+        abortInFlight(state);
         throw state.fatal;
       }
       if (state.requestCount > fetchLimits.maxRequests) {
         state.fatal = new SandboxError("fetch_limit", `单次执行请求数超限（>${fetchLimits.maxRequests}）`);
+        abortInFlight(state);
         throw state.fatal;
       }
       const payload: Record<string, unknown> = { status: outcome.status, headers: outcome.headers };
@@ -422,7 +450,11 @@ async function invokeFetchHandler(
     const settledResult = await withTimeout(
       ctx.resolvePromise(retHandle),
       Math.max(0, deadline - Date.now()),
-      () => new SandboxError("timeout", "fetch handler 未在墙钟内完成"),
+      () => {
+        state.fatal = new SandboxError("timeout", "fetch handler 未在墙钟内完成");
+        abortInFlight(state);
+        return state.fatal;
+      },
     );
     runtime.executePendingJobs();
     if (state.fatal) {
@@ -454,6 +486,7 @@ export async function runFetchAdapter(
     networkMs: 0,
     fatal: null,
     nowMs: input.nowMs ?? Date.now(),
+    abortControllers: new Set(),
   };
   const disposables: QuickJSHandle[] = [];
 
@@ -476,6 +509,7 @@ export async function runFetchAdapter(
     }
     throw err;
   } finally {
+    abortInFlight(state);
     for (const h of disposables) {
       try { h.dispose(); } catch { /* already freed */ }
     }

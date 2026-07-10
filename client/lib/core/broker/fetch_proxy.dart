@@ -58,7 +58,42 @@ class TransportResponse {
 }
 
 abstract interface class Transport {
-  Future<TransportResponse> fetch(TransportRequest req);
+  Future<TransportResponse> fetch(TransportRequest req,
+      {TransportCancelToken? cancelToken});
+}
+
+class TransportCancelToken {
+  bool _cancelled = false;
+  final List<void Function()> _callbacks = [];
+
+  bool get isCancelled => _cancelled;
+
+  void cancel() {
+    if (_cancelled) return;
+    _cancelled = true;
+    final callbacks = List<void Function()>.of(_callbacks);
+    _callbacks.clear();
+    for (final cb in callbacks) {
+      cb();
+    }
+  }
+
+  void onCancel(void Function() callback) {
+    if (_cancelled) {
+      callback();
+      return;
+    }
+    _callbacks.add(callback);
+  }
+}
+
+class TransportBodyLimitException implements Exception {
+  const TransportBodyLimitException(this.maxBytes);
+
+  final int maxBytes;
+
+  @override
+  String toString() => 'transport response body exceeds limit ($maxBytes bytes)';
 }
 
 /// url 不在 allow → fail-closed 受控错误（绝不附凭证、绝不发请求）。
@@ -79,6 +114,7 @@ class FetchProxyDeps {
     required this.jar,
     required this.transport,
     this.maxHops,
+    this.cancelToken,
   });
 
   final BrokerManifestView view;
@@ -88,6 +124,9 @@ class FetchProxyDeps {
 
   /// 单请求内最大重定向跳数（默认 5，ADR-009 §2.5）。
   final int? maxHops;
+
+  /// 单次 ctx.fetch 的取消信号；运行时在超时/fatal 时主动中止上游。
+  final TransportCancelToken? cancelToken;
 }
 
 /// 一次 ctx.fetch 的脱敏后产出 + 请求计量。
@@ -153,7 +192,7 @@ Future<FetchProxyOutcome> proxyFetch(
       method: ok.method,
       headers: ok.headers,
       body: ok.body,
-    ));
+    ), cancelToken: deps.cancelToken);
     requestCount++;
     deps.jar.captureSetCookie(resp.setCookie, currentUrl);
 

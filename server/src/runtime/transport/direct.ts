@@ -23,16 +23,21 @@
  */
 
 import type { HeaderMap } from "../broker/header-sanitize.js";
-import type { Transport, TransportRequest, TransportResponse } from "../broker/fetch-proxy.js";
+import { TransportBodyLimitExceeded, type Transport, type TransportRequest, type TransportResponse } from "../broker/fetch-proxy.js";
+
+export const DEFAULT_MAX_BODY_BYTES = 8 * 1024 * 1024;
 
 export class DirectTransport implements Transport {
-  async fetch(req: TransportRequest): Promise<TransportResponse> {
+  constructor(private readonly maxBodyBytes = DEFAULT_MAX_BODY_BYTES) {}
+
+  async fetch(req: TransportRequest, signal?: AbortSignal): Promise<TransportResponse> {
     const init: RequestInit = {
       method: req.method,
       headers: req.headers,
       // 单跳：核心自跟随重定向（B3），transport 不自动跟随。
       redirect: "manual",
     };
+    if (signal !== undefined) init.signal = signal;
     if (req.body !== undefined) init.body = req.body;
 
     const resp = await fetch(req.url, init);
@@ -47,7 +52,7 @@ export class DirectTransport implements Transport {
 
     // body：undici text() 按 UTF-8。**已知限制**：非 UTF-8（如 GBK）页面会乱码，待后续按
     // Content-Type charset 解码（多数 .do/JSON 端点为 UTF-8）。
-    const body = await resp.text();
+    const body = await readBodyLimited(resp, this.maxBodyBytes);
 
     return {
       status: resp.status,
@@ -57,4 +62,33 @@ export class DirectTransport implements Transport {
       body,
     };
   }
+}
+
+async function readBodyLimited(resp: Response, maxBytes: number): Promise<string> {
+  const declared = resp.headers.get("content-length");
+  if (declared !== null && Number(declared) > maxBytes) {
+    await resp.body?.cancel();
+    throw new TransportBodyLimitExceeded(maxBytes);
+  }
+
+  if (!resp.body) return "";
+  const reader = resp.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new TransportBodyLimitExceeded(maxBytes);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
 }

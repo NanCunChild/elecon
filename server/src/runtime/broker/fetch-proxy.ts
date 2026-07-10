@@ -56,7 +56,14 @@ export interface TransportResponse {
 }
 
 export interface Transport {
-  fetch(req: TransportRequest): Promise<TransportResponse>;
+  fetch(req: TransportRequest, signal?: AbortSignal): Promise<TransportResponse>;
+}
+
+export class TransportBodyLimitExceeded extends Error {
+  constructor(public readonly maxBytes: number) {
+    super(`transport response body exceeds limit (${maxBytes} bytes)`);
+    this.name = "TransportBodyLimitExceeded";
+  }
 }
 
 /** url 不在 allow → fail-closed 受控错误（绝不附凭证、绝不发请求）。 */
@@ -74,6 +81,8 @@ export interface FetchProxyDeps {
   transport: Transport;
   /** 单请求内最大重定向跳数（默认 5，ADR-009 §2.5）。 */
   maxHops?: number;
+  /** 单次 ctx.fetch 的取消信号；运行时在超时/fatal 时主动中止上游。 */
+  signal?: AbortSignal;
 }
 
 export interface FetchProxyOutcome extends ProcessedResponse {
@@ -127,7 +136,7 @@ export async function proxyFetch(
       headers: assembled.headers,
     };
     if (assembled.body !== undefined) treq.body = assembled.body;
-    const resp = await transport.fetch(treq);
+    const resp = await transport.fetch(treq, deps.signal);
     requestCount++;
     jar.captureSetCookie(resp.setCookie, currentUrl);
 

@@ -24,16 +24,31 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../broker/fetch_proxy.dart'
-    show Transport, TransportRequest, TransportResponse;
+    show
+        Transport,
+        TransportBodyLimitException,
+        TransportCancelToken,
+        TransportRequest,
+        TransportResponse;
+
+const int defaultMaxBodyBytes = 8 * 1024 * 1024;
 
 class DirectTransport implements Transport {
-  DirectTransport({HttpClient? client}) : _client = client ?? HttpClient();
+  DirectTransport({HttpClient? client, this.maxBodyBytes = defaultMaxBodyBytes})
+      : _client = client ?? HttpClient();
 
   final HttpClient _client;
+  final int maxBodyBytes;
 
   @override
-  Future<TransportResponse> fetch(TransportRequest req) async {
+  Future<TransportResponse> fetch(TransportRequest req,
+      {TransportCancelToken? cancelToken}) async {
     final request = await _client.openUrl(req.method, Uri.parse(req.url));
+    cancelToken?.onCancel(() => request.abort());
+    if (cancelToken?.isCancelled ?? false) {
+      request.abort();
+      throw const HttpException('transport request cancelled');
+    }
 
     // 单跳：核心自跟随重定向（B3），transport 不自动跟随。
     request.followRedirects = false;
@@ -46,10 +61,13 @@ class DirectTransport implements Transport {
     }
 
     final response = await request.close();
+    if (cancelToken?.isCancelled ?? false) {
+      throw const HttpException('transport request cancelled');
+    }
 
     // body：按 UTF-8 解析（allowMalformed 防异常）。**已知限制**：非 UTF-8（如 GBK）页面会乱码，
     // 待后续按 Content-Type charset 解码（多数 .do/JSON 端点为 UTF-8）。
-    final bytes = await _collectBytes(response);
+    final bytes = await _collectBytes(response, maxBodyBytes, cancelToken);
     final body = utf8.decode(bytes, allowMalformed: true);
 
     // 原始 Set-Cookie（多条）单独交回——由 B4 jar 捕获，绝不并入普通头、绝不交 adapter。
@@ -76,10 +94,24 @@ class DirectTransport implements Transport {
   /// 释放底层连接池。
   void close() => _client.close(force: true);
 
-  static Future<List<int>> _collectBytes(HttpClientResponse response) async {
+  static Future<List<int>> _collectBytes(
+    HttpClientResponse response,
+    int maxBytes,
+    TransportCancelToken? cancelToken,
+  ) async {
+    final declared = response.contentLength;
+    if (declared > maxBytes) {
+      throw TransportBodyLimitException(maxBytes);
+    }
     final chunks = <int>[];
     await for (final chunk in response) {
+      if (cancelToken?.isCancelled ?? false) {
+        throw const HttpException('transport request cancelled');
+      }
       chunks.addAll(chunk);
+      if (chunks.length > maxBytes) {
+        throw TransportBodyLimitException(maxBytes);
+      }
     }
     return chunks;
   }

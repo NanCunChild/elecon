@@ -11,13 +11,20 @@
 import { strict as assert } from "node:assert";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { computeBundleDigest, serializePayload } from "./index.js";
+import { canonicalizeContent, computeBundleDigest, serializePayload } from "./index.js";
 import { compareSemver, isRevoked, pickNewer, type RevocationList } from "./revocation.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const xidian = join(repoRoot, "adapters", "school-xidian");
 
 // ---- digest 确定性 ----
+
+{
+  const raw = Buffer.from("e\u0301\r\nline\r\n\n", "utf-8");
+  const normalized = canonicalizeContent(raw).toString("utf-8");
+  assert.strictEqual(normalized, "é\nline\n\n", "规范化应 NFC + LF，但不得剥除末尾 newline");
+  console.log("✓ bundle 内容规范化（NFC/LF/保留末尾 newline）");
+}
 
 {
   const d1 = computeBundleDigest(xidian);

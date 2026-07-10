@@ -163,11 +163,14 @@ async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
     credentials: { session: { scope: ["https://h.edu.cn/api/*"], type: "cookie" } },
   };
   // transport 延迟 50ms >> perRequestTimeoutMs=1ms → 必然单请求超时
+  let aborted = false;
   const transport: Transport = {
-    fetch: () =>
-      new Promise<TransportResponse>((res) => {
+    fetch: (_req, signal) => {
+      signal?.addEventListener("abort", () => { aborted = true; });
+      return new Promise<TransportResponse>((res) => {
         setTimeout(() => res(resp({ status: 200, setCookie: ["JSESSIONID=A"], body: "{}" })), 50);
-      }),
+      });
+    },
   };
   const store = new CredentialStore(undefined, () => NOW);
   const source = `
@@ -193,6 +196,7 @@ async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
     (e: unknown) => e instanceof SandboxError && e.reason === "fetch_limit",
     "单请求超时须抛 fetch_limit，即便 adapter catch 后返回成功",
   );
+  assert.equal(aborted, true, "单请求超时应 abort in-flight transport");
   assert.equal(store.list().length, 0, "失败执行不得收割（fail 不收割）");
   console.log("  ✓ 单请求超时硬终止（adapter catch 不可绕过）+ fail 不收割");
 }

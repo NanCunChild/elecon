@@ -22,7 +22,14 @@ import 'package:flutter_qjs_next/flutter_qjs.dart';
 import 'broker/assemble.dart' show RequestInit;
 import 'broker/cookie_jar.dart' show CookieJar, EphemeralWriteInput;
 import 'broker/fetch_proxy.dart'
-    show BrokerFetchRejected, FetchProxyDeps, Transport, proxyFetch;
+    show
+        BrokerFetchRejected,
+        FetchProxyDeps,
+        FetchProxyOutcome,
+        Transport,
+        TransportBodyLimitException,
+        TransportCancelToken,
+        proxyFetch;
 import 'broker/harvest.dart' show decideHarvest, harvestInto;
 import 'broker/inject_policy.dart' show BrokerManifestView;
 import 'broker/ports.dart' show CredentialResolver;
@@ -302,6 +309,14 @@ Future<dynamic> runFetchAdapter({
   var requestCount = 0;
   var networkMs = 0;
   AdapterRunException? fatal;
+  final cancelTokens = <TransportCancelToken>{};
+
+  void cancelInFlight() {
+    for (final token in List<TransportCancelToken>.of(cancelTokens)) {
+      token.cancel();
+    }
+    cancelTokens.clear();
+  }
 
   // 引擎墙钟：fetch 流程可合法跑到累计网络上限；引擎 interrupt 只防同步 CPU 死循环
   // （ADR-014 §4.4：interrupt 不在 await 期生效），故设宽到 totalNetworkMs + 缓冲。
@@ -313,31 +328,55 @@ Future<dynamic> runFetchAdapter({
     if (requestCount >= fetchLimits.maxRequests) {
       fatal = const AdapterRunException(
           AdapterFailureReason.fetchLimit, '单次执行请求数超限');
+      cancelInFlight();
       throw fatal!;
     }
     final start = DateTime.now().millisecondsSinceEpoch;
-    final outcome = await proxyFetch(
-      url as String,
-      _requestInitFromJs(init),
-      deps,
-    ).timeout(
-      Duration(milliseconds: fetchLimits.perRequestTimeoutMs),
-      onTimeout: () {
-        fatal =
-            const AdapterRunException(AdapterFailureReason.fetchLimit, '单请求超时');
-        throw fatal!;
-      },
+    final cancelToken = TransportCancelToken();
+    cancelTokens.add(cancelToken);
+    late final FetchProxyDeps fetchDeps;
+    fetchDeps = FetchProxyDeps(
+      view: deps.view,
+      resolver: deps.resolver,
+      jar: deps.jar,
+      transport: deps.transport,
+      maxHops: deps.maxHops,
+      cancelToken: cancelToken,
     );
+    final FetchProxyOutcome outcome;
+    try {
+      outcome = await proxyFetch(
+        url as String,
+        _requestInitFromJs(init),
+        fetchDeps,
+      ).timeout(
+        Duration(milliseconds: fetchLimits.perRequestTimeoutMs),
+        onTimeout: () {
+          fatal = const AdapterRunException(
+              AdapterFailureReason.fetchLimit, '单请求超时');
+          cancelInFlight();
+          throw fatal!;
+        },
+      );
+    } on TransportBodyLimitException catch (e) {
+      fatal = AdapterRunException(AdapterFailureReason.fetchLimit, e.toString());
+      cancelInFlight();
+      throw fatal!;
+    } finally {
+      cancelTokens.remove(cancelToken);
+    }
     networkMs += DateTime.now().millisecondsSinceEpoch - start;
     requestCount += outcome.requestCount;
     if (networkMs > fetchLimits.totalNetworkMs) {
       fatal = const AdapterRunException(
           AdapterFailureReason.fetchLimit, '累计网络耗时超限');
+      cancelInFlight();
       throw fatal!;
     }
     if (requestCount > fetchLimits.maxRequests) {
       fatal = const AdapterRunException(
           AdapterFailureReason.fetchLimit, '单次执行请求数超限');
+      cancelInFlight();
       throw fatal!;
     }
     return <String, Object?>{
@@ -394,8 +433,11 @@ Future<dynamic> runFetchAdapter({
             capability: capability, params: params ?? const {}, nowMs: nowMs))
         .timeout(
           Duration(milliseconds: engineTimeoutMs + 1000),
-          onTimeout: () => throw const AdapterRunException(
-              AdapterFailureReason.timeout, 'fetch 执行未在墙钟内完成'),
+          onTimeout: () {
+            cancelInFlight();
+            throw const AdapterRunException(
+                AdapterFailureReason.timeout, 'fetch 执行未在墙钟内完成');
+          },
         );
 
     // 限额终止优先于 outcome：fatal 早于 handler settle 置位（adapter 吞拒绝也不放过）。
@@ -437,6 +479,7 @@ Future<dynamic> runFetchAdapter({
   } catch (e) {
     throw _mapEngineError(e);
   } finally {
+    cancelInFlight();
     await qjs.close();
   }
 }

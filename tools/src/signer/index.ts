@@ -9,7 +9,7 @@
  *
  * 机制（摘自 ADR-002 §2.3，权威以 ADR 为准）：
  *  - 签什么：bundle 规范化内容摘要（manifest + entry 源码 + 资产）+ **裁定档位**，detached 签名。
- *  - 规范化（§2.3b 钉死）：文件按路径**字典序**、内容 **UTF-8 NFC**、换行 **LF**、无 trailing newline 篡改。
+ *  - 规范化（§2.3b 钉死）：文件按路径**字典序**、内容 **UTF-8 NFC**、换行 **LF**；文件末尾不追加也不剥除 newline。
  *  - digest：`SHA-256(SHA-256(file1) || SHA-256(file2) || ...)`（先各文件哈希，拼接后再 SHA-256）。
  *  - 签名：**Ed25519**（RFC 8032）over `{ digest, tier, adapterId, adapterVersion }` 的规范化 payload。
  *  - 私钥托管：**OIDC → 云 KMS 委托签名**（AWS KMS，永不导出/入仓）。dev 过渡期允许本地 Ed25519，
@@ -82,7 +82,7 @@ function sha256(buf: Buffer): Buffer {
 }
 
 /**
- * 规范化文件内容：UTF-8 NFC + LF 换行 + 去除结尾多余 newline（§2.3b 防 trailing-newline 篡改）。
+ * 规范化文件内容：UTF-8 NFC + LF 换行；不追加也不剥除文件末尾 newline（ADR-002 §2.3b）。
  * ⚠ 二进制资产（png 等）不做文本规范化——当前 include 名单以文本为主；若纳入二进制，
  *   须人工在 ADR 明确其规范化语义（本骨架暂对非 UTF-8 可解码内容按原字节处理）。
  */
@@ -90,7 +90,7 @@ export function canonicalizeContent(raw: Buffer): Buffer {
   // 尝试按 UTF-8 文本规范化；失败（真二进制）则原样。
   const text = raw.toString("utf-8");
   if (Buffer.from(text, "utf-8").equals(raw)) {
-    const normalized = text.normalize("NFC").replace(/\r\n/g, "\n").replace(/\n+$/g, "\n");
+    const normalized = text.normalize("NFC").replace(/\r\n?/g, "\n");
     return Buffer.from(normalized, "utf-8");
   }
   return raw;
