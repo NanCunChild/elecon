@@ -32,7 +32,7 @@ class SchoolDescriptor {
 
   final LoginManifestView login;
 
-  /// TLS 证书异常放行白名单（host 精确匹配）；仅校园站封闭环境使用。
+  /// TLS 证书异常放行白名单（host 精确匹配）；仅 debug build 可忽略证书异常。
   final Set<String> tlsProceedHosts;
 
   /// 是否可选（false = 占位、即将接入）。

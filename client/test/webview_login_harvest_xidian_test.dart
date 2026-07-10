@@ -7,7 +7,8 @@
 ///   [1] 加载 ids.xidian.edu.cn/authserver/login（密码加密+滑块验证码）
 ///   [2] 登录成功后 CAS ticket 链：ids → ehall / v8scan / hyytsgxzs / xxcapp
 ///   [3] 各子服务下发 session cookie → WebView 内可见
-///   [4] 收割时按 manifest `credentials.<ref>.scope` 过滤——CASTGC 永不入库
+///   [4] 收割时按 manifest `credentials.<ref>.scope` 过滤。ADR-017 允许已声明的
+///       CASTGC 作为 sso-master 入核心；本旧 fixture 未声明 ids-cas，因此不收割。
 ///
 /// 🔒 红线 #1 承重路径：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环。
 library;
@@ -71,12 +72,13 @@ void main() {
   // ── 模拟 CAS 登录完成后 WebView cookie jar 状态 ──
   //
   // 典型状态：ids 下发了 CASTGC（CAS TGT），ehall / v8scan / hyytsgxzs
-  // 各自下发了子域 session cookie。CASTGC 永不应被收割（红线 #1）。
+  // 各自下发了子域 session cookie。本 fixture 未声明 ids-cas，因此 CASTGC 不收割；
+  // ADR-017 新路径声明为 sso-master 时可入核心，但不得进 UI/log/adapter/下游数据域。
   //
   // [domain] 模拟 WebView 上报的 cookie 域（flutter_inappwebview Cookie 格式）。
 
   const webViewCookiesAfterCas = <WebViewCookie>[
-    // ids.xidian.edu.cn —— CAS TGT（永不收割，红线 #1）
+    // ids.xidian.edu.cn —— CAS TGT（本 fixture 未声明 ids-cas，故不收割）
     WebViewCookie(
       name: 'CASTGC',
       value: 'TGT-1867-qWxRzYkVNmPj3KdL',
@@ -320,9 +322,9 @@ void main() {
       );
     });
 
-    // ── C1–C2: CASTGC 永不被收割（红线 #1 核心断言） ──
+    // ── C1–C2: 未声明 ids-cas 时，CASTGC 不被收割 ──
 
-    test('C1: CASTGC 不入库（红线 #1——CAS TGT 仅存 WS/WEBVIEW 核心）', () {
+    test('C1: 未声明 ids-cas 时 CASTGC 不入库', () {
       final result = harvestWebViewCookies(
         login: xidianLogin,
         cookies: webViewCookiesAfterCas,
@@ -335,8 +337,8 @@ void main() {
       expect(refs, isNot(contains('cas-tgt')));
 
       final all = store.list();
-      final casCookies = all.where((e) =>
-          e.value.contains('CASTGC') || e.value.contains('TGT-'));
+      final casCookies = all
+          .where((e) => e.value.contains('CASTGC') || e.value.contains('TGT-'));
       expect(casCookies, isEmpty);
     });
 
@@ -349,8 +351,8 @@ void main() {
       );
 
       final idsSession = store.list().where(
-        (e) => e.value.contains('ids-aaaa'),
-      );
+            (e) => e.value.contains('ids-aaaa'),
+          );
       expect(idsSession, isEmpty);
     });
 
@@ -430,8 +432,8 @@ void main() {
       );
 
       final unharvested = store.list().where(
-        (e) => e.value.contains('energy-dddd'),
-      );
+            (e) => e.value.contains('energy-dddd'),
+          );
       expect(unharvested, isEmpty);
     });
 
@@ -447,7 +449,8 @@ void main() {
 
       expect(result.harvested, isTrue);
       final refs = result.entries.map((e) => e.ref).toSet();
-      expect(refs, containsAll(['ehall-session', 'card-session', 'library-session']));
+      expect(refs,
+          containsAll(['ehall-session', 'card-session', 'library-session']));
       expect(refs.length, 3);
     });
   });
@@ -483,8 +486,10 @@ void main() {
       harvestWebViewCookies(
         login: xidianLogin,
         cookies: const [
-          WebViewCookie(name: '', value: 'x', domain: 'ehall.xidian.edu.cn', path: '/'),
-          WebViewCookie(name: 'ok', value: 'y', domain: 'ehall.xidian.edu.cn', path: '/'),
+          WebViewCookie(
+              name: '', value: 'x', domain: 'ehall.xidian.edu.cn', path: '/'),
+          WebViewCookie(
+              name: 'ok', value: 'y', domain: 'ehall.xidian.edu.cn', path: '/'),
         ],
         put: store.put,
         now: () => 1718208000000,
@@ -532,7 +537,10 @@ void main() {
         login: xidianLogin,
         cookies: const [
           WebViewCookie(
-            name: 'JSESSIONID', value: 'OLD', domain: 'ehall.xidian.edu.cn', path: '/',
+            name: 'JSESSIONID',
+            value: 'OLD',
+            domain: 'ehall.xidian.edu.cn',
+            path: '/',
           ),
         ],
         put: store.put,
@@ -549,7 +557,10 @@ void main() {
         login: xidianLogin,
         cookies: const [
           WebViewCookie(
-            name: 'JSESSIONID', value: 'NEW', domain: 'ehall.xidian.edu.cn', path: '/',
+            name: 'JSESSIONID',
+            value: 'NEW',
+            domain: 'ehall.xidian.edu.cn',
+            path: '/',
           ),
         ],
         put: store.put,
@@ -563,7 +574,10 @@ void main() {
         login: xidianLogin,
         cookies: const [
           WebViewCookie(
-            name: 'A', value: '1', domain: 'ehall.xidian.edu.cn', path: '/',
+            name: 'A',
+            value: '1',
+            domain: 'ehall.xidian.edu.cn',
+            path: '/',
           ),
         ],
         put: store.put,
@@ -578,7 +592,10 @@ void main() {
       const loginWithHeader = LoginManifestView(
         schoolId: 'xidian',
         url: 'https://ids.xidian.edu.cn/authserver/login',
-        navigationAllow: ['https://ids.xidian.edu.cn/*', 'https://api.xidian.edu.cn/*'],
+        navigationAllow: [
+          'https://ids.xidian.edu.cn/*',
+          'https://api.xidian.edu.cn/*'
+        ],
         successUrlMatches: ['https://api.xidian.edu.cn/*'],
         brokerView: BrokerManifestView(
           allow: ['https://api.xidian.edu.cn/*'],
@@ -595,7 +612,10 @@ void main() {
         login: loginWithHeader,
         cookies: const [
           WebViewCookie(
-            name: 'Authorization', value: 'Bearer xxx', domain: 'api.xidian.edu.cn', path: '/',
+            name: 'Authorization',
+            value: 'Bearer xxx',
+            domain: 'api.xidian.edu.cn',
+            path: '/',
           ),
         ],
         put: store.put,

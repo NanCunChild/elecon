@@ -10,8 +10,8 @@
 /// );
 /// ```
 ///
-/// 调试模式：设置 [debugLog] 为 true 可查看带时间戳的日志面板（cookie 值自动打码），
-/// 日志支持选中复制和导出到剪贴板。WebView 始终存活，日志面板展开/收起不重建 WebView。
+/// 调试模式：debug build 设置 [debugLog] 为 true 可查看完整日志面板并复制到剪贴板；
+/// release 默认关闭日志，即使外部强行开启也禁用复制。WebView 始终存活，日志面板展开/收起不重建 WebView。
 ///
 library;
 
@@ -44,10 +44,10 @@ class WebViewLoginPage extends StatefulWidget {
   final LoginManifestView login;
   final CredentialStore store;
 
-  /// TLS 证书异常放行白名单（host 精确匹配）；仅校园站封闭环境使用。
+  /// TLS 证书异常放行白名单（host 精确匹配）；仅 debug build 可用。
   final Set<String> tlsProceedHosts;
 
-  /// 开启后页面底部可展开实时日志面板（cookie 值自动打码）。
+  /// 开启后页面底部可展开实时日志面板；release 默认关闭，且禁用复制。
   final bool debugLog;
 
   @override
@@ -74,9 +74,9 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
   }
 
   void _addLog(String message) {
-    final ts = DateTime.now().toIso8601String().substring(11, 23);
-    debugPrint('[webview-login] $message');
     if (!widget.debugLog) return;
+    final ts = DateTime.now().toIso8601String().substring(11, 23);
+    if (kDebugMode) debugPrint('[webview-login] $message');
     setState(() => _log.insert(0, _LogEntry(ts, message)));
   }
 
@@ -85,8 +85,7 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
     return '<${s.length}B>';
   }
 
-  bool _urlAllowed(String url) =>
-      isLoginNavigationAllowed(url, widget.login);
+  bool _urlAllowed(String url) => isLoginNavigationAllowed(url, widget.login);
 
   bool _isSuccessUrl(String url) => isLoginSuccessUrl(url, widget.login);
 
@@ -120,7 +119,8 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
         }
       }
       for (final c in rawCookies) {
-        _addLog('  ${c.name} | domain=${c.domain} | path=${c.path} | httpOnly=${c.isHttpOnly} | value=${_maskCookie(c.value)}');
+        _addLog(
+            '  ${c.name} | domain=${c.domain} | path=${c.path} | httpOnly=${c.isHttpOnly} | value=${_maskCookie(c.value)}');
       }
 
       final webViewCookies = rawCookies
@@ -148,12 +148,13 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       );
 
       _addLog('收割完成：ref=[${result.entries.map((e) => e.ref).join(", ")}]');
-      _addLog('harvested=${result.harvested} | entries=${result.entries.length}');
+      _addLog(
+          'harvested=${result.harvested} | entries=${result.entries.length}');
 
       _pop(const WebViewLoginResult(status: WebViewLoginStatus.success));
     } catch (e, st) {
       _addLog('收割异常：$e');
-      debugPrintStack(stackTrace: st);
+      if (kDebugMode && widget.debugLog) debugPrintStack(stackTrace: st);
       _pop(WebViewLoginResult(
           status: WebViewLoginStatus.error, error: e.toString()));
     }
@@ -168,10 +169,12 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
   }
 
   Future<void> _copyLogs() async {
+    if (!kDebugMode) return;
     await Clipboard.setData(ClipboardData(text: _logAsText()));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('日志已复制到剪贴板'), duration: Duration(seconds: 1)),
+        const SnackBar(
+            content: Text('日志已复制到剪贴板'), duration: Duration(seconds: 1)),
       );
     }
   }
@@ -195,8 +198,8 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
           leading: IconButton(
             icon: const Icon(Icons.close),
             tooltip: '取消登录',
-            onPressed: () =>
-                _pop(const WebViewLoginResult(status: WebViewLoginStatus.cancelled)),
+            onPressed: () => _pop(
+                const WebViewLoginResult(status: WebViewLoginStatus.cancelled)),
           ),
           title: const Text('校园登录'),
           actions: [
@@ -211,14 +214,17 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
               ),
             if (widget.debugLog) ...[
               IconButton(
-                icon: Icon(_showLog ? Icons.bug_report : Icons.bug_report_outlined),
+                icon: Icon(
+                    _showLog ? Icons.bug_report : Icons.bug_report_outlined),
                 tooltip: '日志',
                 onPressed: () => setState(() => _showLog = !_showLog),
               ),
             ],
           ],
         ),
-        body: _errorMessage != null ? _ErrorView(error: _errorMessage!) : _buildBody(),
+        body: _errorMessage != null
+            ? _ErrorView(error: _errorMessage!)
+            : _buildBody(),
       ),
     );
   }
@@ -301,7 +307,8 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       },
       onReceivedServerTrustAuthRequest: (c, challenge) async {
         final String host = challenge.protectionSpace.host;
-        final bool allowed = widget.tlsProceedHosts.contains(host);
+        final bool allowed =
+            kDebugMode && widget.tlsProceedHosts.contains(host);
         _addLog('TLS ← $host → ${allowed ? "PROCEED" : "CANCEL"}');
         return ServerTrustAuthResponse(
           action: allowed
@@ -326,14 +333,20 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
                     style: TextStyle(color: Colors.white60, fontSize: 12)),
                 const Spacer(),
                 Text('${_log.length} 条',
-                    style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                    style:
+                        const TextStyle(color: Colors.white38, fontSize: 11)),
                 const SizedBox(width: 4),
                 IconButton(
-                  icon: const Icon(Icons.copy, color: Colors.white38, size: 16),
-                  tooltip: '复制全部日志',
-                  onPressed: _copyLogs,
+                  icon: Icon(
+                    Icons.copy,
+                    color: kDebugMode ? Colors.white38 : Colors.white12,
+                    size: 16,
+                  ),
+                  tooltip: kDebugMode ? '复制全部日志' : 'release 禁用复制日志',
+                  onPressed: kDebugMode ? _copyLogs : null,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                  constraints:
+                      const BoxConstraints(minWidth: 24, minHeight: 24),
                 ),
                 const SizedBox(width: 2),
                 GestureDetector(

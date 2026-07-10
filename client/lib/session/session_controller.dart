@@ -43,7 +43,7 @@ class SessionController extends ChangeNotifier {
   bool _storeResolved;
 
   SchoolDescriptor? _school;
-  bool _debugLog = true;
+  bool _debugLog = kDebugMode;
 
   /// 单例凭证库（收割落点 + 状态来源）。
   CredentialStore get store => _store;
