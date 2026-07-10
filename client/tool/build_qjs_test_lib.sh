@@ -58,5 +58,11 @@ if [ ! -f "$LIB" ]; then
 fi
 
 echo "built: $LIB"
-echo "run tests with:"
-echo "FLUTTER_QJS_NEXT_LIBRARY=$LIB flutter test"
+
+# GitHub Actions 里把库路径导出给后续步骤（flutter test），本地则打印手动运行方式。
+if [ -n "${GITHUB_ENV:-}" ]; then
+  echo "FLUTTER_QJS_NEXT_LIBRARY=$LIB" >> "$GITHUB_ENV"
+else
+  echo "run tests with:"
+  echo "FLUTTER_QJS_NEXT_LIBRARY=$LIB flutter test"
+fi
