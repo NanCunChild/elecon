@@ -3,6 +3,8 @@
 > 状态：**草案（draft）**，非 ADR。由 AI 起草供维护者评审。触 ADR-008/014 承重依赖，**须人工主导执行**。
 > 关联：`docs/notes/build_blockers.md`（现状）、`AGENTS.md` 红线 #4/#5、ADR-008 §3、ADR-014。
 > 环境约束：本草案在**无网络**（libsecret 挂起）环境无法执行验证，仅提供可评审的步骤与 diff。
+> 2026-07-10 更新：主线已迁移到 `flutter_qjs_next` Git 依赖，本草案关于旧 `flutter_qjs`
+> git/KGP/ffi 阻塞的执行步骤已被取代，仅作为历史记录保留。当前现状以 `build_blockers.md` 为准。
 
 ## 0. 为什么不能直接改代码
 

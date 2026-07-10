@@ -1,17 +1,17 @@
 # 构建/依赖阻塞情况说明（build blockers）
 
 > 状态记录，非 ADR。记录当前卡住工具链升级与依赖更新的几个相互纠缠的问题，供后续处理时参考。
-> 最后更新：2026-07-09。
+> 最后更新：2026-07-10。
 
 ## TL;DR
 
 | 阻塞 | 现状 | 根因 | 影响 |
 |---|---|---|---|
 | **AGP 版本** | 已修到 8.11.1 | 曾降到 8.9.2（< Flutter 下限）| 已解决（清除弃用警告）|
-| **flutter_qjs 停更 fork** | 钉在补丁 fork | 上游 ekibun 停更 | 拖累 ffi/Kotlin/Java（见下）|
-| **cryptography 版本** | 钉 2.6.x | flutter_qjs 锁 ffi 1.x | 用不了 2.7+ |
-| **path_provider 加不进** | 未加入 | pub 拉 git 依赖经 libsecret 挂起 | §2.8 落盘未点亮（内存档）|
-| **KGP 弃用警告** | 未解 | flutter_qjs 自 apply Kotlin Gradle Plugin | 未来 Flutter 会 fail |
+| **flutter_qjs 停更 fork** | 已迁 `flutter_qjs_next` Git 依赖 | 上游 ekibun 停更 | 主线已解除 ffi/KGP/Java 兼容阻塞 |
+| **cryptography 版本** | 仍钉 2.6.x | 迁移后 ffi 冲突已解除 | 可单独 PR 升 2.7+ / 2.9.x |
+| **path_provider 加不进** | 未加入 | 原 git 依赖阻塞已解除 | §2.8 落盘仍待单独接线 |
+| **KGP 弃用警告** | 已解决 | `flutter_qjs_next` 不再 apply KGP | Android debug 构建已无该警告 |
 | **git/GPG 网络** | 绕行中 | libsecret 凭证助手挂起 | pub git fetch / commit 签名超时 |
 
 ---
@@ -23,32 +23,30 @@
 - **处理（提交 `42b79a4`）**：升到 **8.11.1**——实测构建通过、警告消除，仍留 8.x 避开 AGP 9.0.x 对 flutter_qjs 的 Kotlin/Java 兼容坑。
 - **暂不上 AGP 9.0.x**：会重新触发导致当初降级的兼容问题；待 flutter_qjs 适配后再评估。
 
-## 2. flutter_qjs 停更 fork —— 一切纠缠的根
+## 2. QuickJS 绑定迁移（已处理主线）
 
-`flutter_qjs`（ekibun）上游已停更，项目用补丁 fork（`NanCunChild/flutter_qjs@dbf5c17`，Dart 3 兼容，见 ADR-008 §3）。它是 QuickJS 承重依赖（ADR-014），但拖累多条线：
+主线已从 `flutter_qjs`（ekibun 补丁 fork）迁到 Git 依赖
+`flutter_qjs_next`（`https://github.com/NanCunChild/flutter_qjs_es2023`）。它是 QuickJS
+承重依赖（ADR-008/014），迁移后解除原先纠缠：
 
-- **ffi 锁 1.x** → `cryptography` 只能用 **2.6.x**（2.7+ 依赖 ffi ^2.1，冲突）。ADR-012 §2.8 的 AES-256-GCM 因此钉 2.6.x。
-- **Kotlin Gradle Plugin（KGP）弃用警告**：flutter_qjs 自 apply KGP，Flutter 警告「未来版本会 fail if your app uses plugins that apply KGP」。**这不是 AGP/Gradle 版本能解的**，是插件写法问题。
-- **Java 兼容**：需给 flutter_qjs 强钉 Java 11（root `build.gradle.kts` 的 `compileOptions` + `KotlinCompile.jvmTarget`），否则较新 AGP/JDK 下编译失败。
+- `ffi` 已升到 2.2.0，`cryptography` 2.7+ 的依赖冲突已解除（包版本尚未升级，留单独 PR）。
+- Android 插件不再 apply Kotlin Gradle Plugin，`flutter build apk --debug` 已无 KGP 未来失败警告。
+- root `build.gradle.kts` 中旧 `flutter_qjs` Java/Kotlin 强钉补丁已移除。
 
-**根治方向**（任一，人工主导）：
-1. 把 fork 迁到 **built-in Kotlin**（去掉自 apply KGP）+ 升 ffi → 同时解掉 KGP 警告与 cryptography 2.6 钉。
-2. 或**换 QuickJS 绑定 / vendoring**（移除 git 依赖，见 §4）。
+注意：`pubspec.ohos.yaml` 仍保留旧 `flutter_qjs` 旁路线，OHOS fork 需单独验证。
 
 ## 3. path_provider 加不进（§2.8 落盘未点亮）
 
 - ADR-012 §2.8 的 **S 软件档**需要 app 私有目录落盘，本应加 `path_provider`。
-- `flutter pub get` 拉取 flutter_qjs 的 **git 依赖**时经 libsecret 挂起（§5），在线解析卡死；离线缓存又没有 path_provider → **加不进**。
+- 原 `flutter_qjs` git 依赖阻塞已解除；`path_provider` 仍需单独加入并验证。
 - **规避（提交 `38b2175`）**：BlobStore 做成**可注入接缝**，`main.dart` 的 provider 暂返回 null → 退化为 **M 内存档**（不落盘）。§2.8 其余流程（硬件检测→警告框→分级→flush）已全部接线并测试。
 - **恢复步骤**：网络/依赖恢复后 `flutter pub add path_provider`，在 `main.dart` 把 provider 换成
   `FileBlobStore(Directory('${(await getApplicationSupportDirectory()).path}/credentials'))` 即点亮持久化。**须同时配 `allowBackup=false` + 备份排除**（§2.8 命门）。
 
-## 4. 建议：给 flutter_qjs 去 git 依赖（vendoring）
+## 4. QuickJS 依赖复现性
 
-pub 对 **git 依赖**每次 `get` 都尝试 `git fetch`（§5 挂起点）。把 fork 的产物 **vendoring 进仓**（或发到私有 pub / 用 path 依赖）可**同时**解决：
-- pub get 不再 git fetch → 不受 libsecret 挂起影响（path_provider 等新依赖可正常加）；
-- 依赖可复现、不依赖 GitHub 可达性。
-成本：需维护 vendoring 更新流程。属人工主导决策（触 ADR-008/014 承重依赖）。
+当前用 Git 依赖接入 `flutter_qjs_next` 并 pin commit。后续若 git fetch/libsecret 仍影响 CI/本机，
+可再评估 vendoring 到仓内固定路径或发布到可信 pub 源。
 
 ## 5. git / GPG 网络（libsecret 挂起）
 
@@ -60,8 +58,9 @@ pub 对 **git 依赖**每次 `get` 都尝试 `git fetch`（§5 挂起点）。�
 
 ## 待办（人工主导）
 
-- [ ] flutter_qjs fork：迁 built-in Kotlin + 升 ffi（解 KGP 警告 + cryptography 2.6 钉）。
-- [ ] flutter_qjs 去 git 依赖（vendoring / path），解 pub git fetch 挂起。
+- [x] 主线迁 `flutter_qjs_next`：解除 KGP 警告 + ffi 1.x 冲突。
+- [x] 将 `flutter_qjs_next` 从本机绝对 path 收敛到 Git 仓库并 pin commit。
+- [ ] 单独升级 cryptography 到 2.7+ / 2.9.x。
 - [ ] 恢复后加 path_provider，点亮 §2.8 S 档落盘 + `allowBackup=false`。
 - [ ] 环境 libsecret / pinentry 修复，恢复正常 git/GPG。
 - [ ] 本分支 `--no-gpg-sign` 提交待 rebase 补签。

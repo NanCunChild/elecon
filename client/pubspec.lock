@@ -69,10 +69,10 @@ packages:
     dependency: transitive
     description:
       name: ffi
-      sha256: "13a6ccf6a459a125b3fcdb6ec73bd5ff90822e071207c663bfd1f70062d51d18"
+      sha256: "6d7fd89431262d8f3125e81b50d3847a091d846eafcd4fdb88dd06f36d705a45"
       url: "https://pub.dev"
     source: hosted
-    version: "1.2.1"
+    version: "2.2.0"
   flutter:
     dependency: "direct main"
     description: flutter
@@ -150,15 +150,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.0.0"
-  flutter_qjs:
+  flutter_qjs_next:
     dependency: "direct main"
     description:
       path: "."
-      ref: dbf5c17233c3c8abfbfa707c297121bb86e54e83
-      resolved-ref: dbf5c17233c3c8abfbfa707c297121bb86e54e83
-      url: "https://github.com/NanCunChild/flutter_qjs.git"
+      ref: f5f3611
+      resolved-ref: f5f36115005fe1d3d14360a06548c2bd56049871
+      url: "https://github.com/NanCunChild/flutter_qjs_es2023"
     source: git
-    version: "0.3.7"
+    version: "0.0.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -335,5 +335,5 @@ packages:
     source: hosted
     version: "1.1.1"
 sdks:
-  dart: ">=3.10.0-0 <4.0.0"
+  dart: ">=3.10.0 <4.0.0"
   flutter: ">=3.24.0"

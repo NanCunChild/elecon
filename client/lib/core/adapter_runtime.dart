@@ -1,4 +1,4 @@
-/// 客户端 adapter 执行运行时 —— QuickJS（flutter_qjs / 全平台同一引擎）。
+/// 客户端 adapter 执行运行时 —— QuickJS（flutter_qjs_next / 全平台同一引擎）。
 ///
 /// 与服务端 QuickJS-wasm（`server/src/runtime/sandbox.ts`）是**同一个 QuickJS
 /// 引擎**，对同一份 adapter 源码零语义漂移（ADR-001 §8、ADR-005）。
@@ -17,7 +17,7 @@ library;
 
 import 'dart:convert';
 
-import 'package:flutter_qjs/flutter_qjs.dart';
+import 'package:flutter_qjs_next/flutter_qjs.dart';
 
 import 'broker/assemble.dart' show RequestInit;
 import 'broker/cookie_jar.dart' show CookieJar, EphemeralWriteInput;
@@ -323,8 +323,8 @@ Future<dynamic> runFetchAdapter({
     ).timeout(
       Duration(milliseconds: fetchLimits.perRequestTimeoutMs),
       onTimeout: () {
-        fatal = const AdapterRunException(
-            AdapterFailureReason.fetchLimit, '单请求超时');
+        fatal =
+            const AdapterRunException(AdapterFailureReason.fetchLimit, '单请求超时');
         throw fatal!;
       },
     );

@@ -5,6 +5,10 @@
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)、[`adr_001_contract.md`](./adr_001_contract.md)、[`adr_005_runtime.md`](./adr_005_runtime.md)
 - **适用范围**：`client/` 客户端对 adapter 的执行栈。与 ADR-005（服务端 QuickJS-wasm）对称——本文是同一根承重墙（"一份 adapter，两端同一引擎"）的客户端落点。
 
+> 2026-07-10 实施注记：主线已从旧 `flutter_qjs` 补丁 fork 迁移到 `flutter_qjs_next`
+> Git 依赖（`NanCunChild/flutter_qjs_es2023`）。该迁移保留 `IsolateQjs`/host-fn 通道，QuickJS 升至 2025-09-13，解除
+> `ffi` 1.x 与 Android KGP 阻塞；OHOS 旁路线仍待单独验证。
+
 ---
 
 ## 1. 背景（Context）
@@ -17,7 +21,7 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 
 ## 2. 决策（Decision）
 
-1. **引擎：所有平台都用 QuickJS（含 iOS）。** 选 `flutter_qjs`（ekibun 谱系，`dart:ffi` 绑定 QuickJS）。**显式拒绝 `flutter_js`**——它在 iOS/macOS 用 JavaScriptCore，等于客户端在 iOS 上换了引擎，**重新引入语义漂移**（正是 ADR-005 否掉 goja 的同一类理由，只是发生在客户端）。
+1. **引擎：所有平台都用 QuickJS（含 iOS）。** 主线使用 `flutter_qjs_next`（ekibun 谱系延续，`dart:ffi` 绑定 QuickJS）。**显式拒绝 `flutter_js`**——它在 iOS/macOS 用 JavaScriptCore，等于客户端在 iOS 上换了引擎，**重新引入语义漂移**（正是 ADR-005 否掉 goja 的同一类理由，只是发生在客户端）。
 2. **后台 isolate 执行。** 用 `IsolateQjs`，adapter 不在 UI 线程同步阻塞（红线 #7）。
 3. **加载约定与服务端对齐：以 ES module 加载 adapter、取其 `capabilities` 导出。** 客户端经 `moduleHandler` + `import` 包装拿到导出，产出以 JSON 字符串跨边界回传；服务端经 `quickjs-emscripten` 的模块命名空间返回。两端都以**模块作用域（严格模式）**加载同一份源码，产出由 golden 比对保证一致。
 4. **校验边界在 Dart 宿主，不在 QuickJS。** adapter 产出由客户端核心按 `contract/schema/` 校验后才接受（ADR-001 §2.2：QuickJS 不背校验器）。
@@ -28,7 +32,8 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 
 | 候选 | 取 | 舍 |
 |---|---|---|
-| **flutter_qjs（ekibun，选用）** | 全平台 QuickJS，与服务端**同一引擎零漂移**；纯 ffi；API 干净；自带 cxx/QuickJS 源 | **已停更（2022 后）**，0.3.7 在 Dart 3.12 编不过（见 §4） |
+| **flutter_qjs_next（当前主线）** | 全平台 QuickJS，与服务端**同一引擎零漂移**；纯 ffi；保留 `IsolateQjs`/host-fn；QuickJS 2025-09-13；解除旧 KGP/ffi 1.x 阻塞 | 当前以 Git 依赖 pin commit；OHOS 未验证 |
+| flutter_qjs（ekibun，旧方案） | 全平台 QuickJS；API 干净；自带 cxx/QuickJS 源 | 已停更，0.3.7 在 Dart 3.12 编不过；旧 fork 拖累 ffi/KGP |
 | flutter_js | 维护中 | **iOS/macOS 用 JavaScriptCore** → 引擎漂移，违背承重墙 |
 | kodjodevf/flutter_qjs | 较新 | 实为 flutter_js 改名（`getJavascriptRuntime` API），v0.0.1、未发 pub，来路不稳，不宜作承重依赖 |
 
@@ -38,13 +43,11 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 
 这些是本决策"不埋雷"的前提，必须随实现一起兜住：
 
-1. **绑定已停更、需打补丁的 fork。** ekibun `flutter_qjs` 0.3.7 的 FFI 回调返回可空指针，Dart 3.12 更严的 `Pointer.fromFunction` 编译失败。落地方式：`pubspec.yaml` 用 `dependency_overrides` 指向打了**一行兼容补丁**的 fork（[`NanCunChild/flutter_qjs@dart3-compat`](https://github.com/NanCunChild/flutter_qjs/tree/dart3-compat)），**pin 到具体 commit**。
-   - **补丁内容**（`lib/src/ffi.dart`）：`channelDispacher` 的返回类型由 `Pointer<JSValue>?` 改为非空 `Pointer<JSValue>`，函数体末尾 `... ?? nullptr` 兜底。仅此一处，纯 Dart、不动 C 源，便于审计与未来迁移。
-   - **fork 补丁谱系（随 fetch 模式新增第 2 处，2026-06-17）**：`IsolateQjs` 宿主函数通道（`setHostFunctions` + worker 绑 `globalThis` + 复用 `IsolateFunction`/Future→Promise），**纯 Dart、仅 `lib/src/isolate.dart`、不动 vendored C**（commit `0dd8069`，分支 `feat/host-fn-channel`）。这是 fetch 模式 `ctx.fetch` 异步桥接的引擎前置——见 [ADR-014](./adr_014_client_host_fn.md)。补丁仍小且可审，但 fork 维护面随之扩大，强化 §3.1 的迁移触发评估。
-   - *风险*：自带一个 fork 的维护负担，与"低维护"主线相悖。
-   - *缓解*：补丁极小且可审计；pin commit 保证可复现；中长期应评估迁移到维护良好的全平台 QuickJS 绑定（若出现）或自管最小 ffi 层。
+1. **绑定仍是承重 fork。** `flutter_qjs_next` 已吸收 Dart 3/host-fn/timeout/memoryLimit/event loop 等能力，并升到 QuickJS 2025-09-13；当前以 Git 依赖 pin commit 接入。
+   - *风险*：构建依赖 GitHub 可达性；受限环境可能仍受 git/libsecret 影响。
+   - *缓解*：如 CI/本机仍受影响，后续将 `flutter_qjs_next` vendoring 到仓内或发布并 pin 版本。
 2. **pub 不为 git 依赖初始化 submodule。** ekibun 把 QuickJS 源作为 git submodule，经 git ref 消费时为空，会同时打断原生插件构建与 FFI 测试库。fork 已将 QuickJS 源 **vendoring**（提交为普通文件）以自包含。
-3. **原生测试库需预构建。** `flutter_qjs` 是经典插件，纯 `flutter test`（host VM）不构建原生库；但其 ffi 在 `FLUTTER_TEST` 下从 `test/build/libffiquickjs.so` 加载。故用 `client/tool/build_qjs_test_lib.sh` 经 CMake 预构建该库，即可无显示器跑测试。**当前 desktop 测试基建仅 Linux**，其余平台按需补。
+3. **原生测试库需预构建。** `flutter_qjs_next` 是经典插件，纯 `flutter test`（host VM）不构建原生库。用 `client/tool/build_qjs_test_lib.sh` 构建插件 Linux example，再通过 `FLUTTER_QJS_NEXT_LIBRARY` 指向 `libflutter_qjs_next_plugin.so` 跑测试。**当前 desktop 测试基建仅 Linux**，其余平台按需补。
 4. **iOS App Store 审核（已由 [ADR-010](./adr_010_ios_appstore.md) 定调，[#4](https://github.com/NanCunChild/elecon/issues/4)）。** 在 iOS 上下载并由内置解释器执行 adapter JS，触及指南 2.5.2（下载可执行代码）。QuickJS 是解释器、无 JIT，不触 JIT 禁令。合规依据走 **DPLA §3.3.2**（解释型代码：不改变主要用途 / 非代码市场 / 不绕过系统安全）——本运行时的"无 JIT、沙箱内 background isolate 执行"满足其 (c)；"固定能力集、adapter 只产出已知 schema"满足其 (a)。详见 ADR-010。
 5. **两端加载机制不同但语义对齐。** 服务端用模块命名空间返回、客户端用 import 包装 + global 暴露——都以 ESM/模块作用域加载同一份源码，产出由 golden 双跑闸门兜底。后续可考虑收敛为同一 bootstrap 以进一步降低漂移面。
 6. **两端是同一 Bellard 谱系的【两个不同版本 + 不同编译配置】，不是同一份字节码。** §2 "字面意义上同一引擎" 指引擎家族；2026-06 核查实测的真实情况是：
@@ -52,19 +55,17 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
    | 端 | 引擎 | QuickJS 源版本 | BigInt |
    |---|---|---|---|
    | 服务端 | `quickjs-emscripten@0.31` `RELEASE_SYNC`（`@jitl/quickjs-wasmfile-release-sync`，**非** `quickjs-ng`） | Bellard **2024-02-14**（commit `36911f0d`） | 有 |
-   | 客户端 | `flutter_qjs` fork vendored | Bellard **2021-03-27** | **无** |
+   | 客户端 | `flutter_qjs_next` | Bellard **2025-09-13** | 待以 canary/adapter 约束兜底 |
 
-   两者**同谱系**（都不是 quickjs-ng，避开了分叉级漂移），但隔着两类差异：
-   - **版本差（2021→2024）**：客户端缺 ES2022+ 内建——`Array/String.prototype.at`、`findLast`/`findLastIndex`、`toSorted`/`toReversed`/`toSpliced`/`with`、`Object.groupBy`/`Map.groupBy`。adapter 用了它们 → 服务端跑过、客户端抛 `TypeError`。
-   - **编译配置差**：`flutter_qjs` 的 CMake 未传 `-DCONFIG_BIGNUM`，客户端**整个关闭了 BigInt**——`2n` 字面量直接解析报错（此事实由本 ADR 落地的 engine-floor canary 首跑抓到）。
+   两者**同谱系**（都不是 quickjs-ng，避开了分叉级漂移），但仍不是同一份字节码；客户端版本现在反而新于服务端。adapter 作者仍不得假设任意新内建可用，必须以 engine-floor canary 和共享 fixture 为准。
 
-   *风险*：上述特性在「恰好命中的 fixture」之外漏过 CI；其中 BigInt 是硬解析错误、影响面最大。另注：客户端 `_mapEngineError` 靠英文子串 `interrupt`/`out of memory` 分类超时/内存——该文案在不同 QuickJS 版本间无稳定保证，版本错配会放大误判面（暂由两端各自识别、不跨端比对来规避）。
+   *风险*：客户端新于服务端后，adapter 若误用服务端 QuickJS-wasm 尚不支持的 ES2025+ 行为，仍可能出现「客户端过、服务端不过」的反向漂移。另注：客户端 `_mapEngineError` 靠英文子串 `interrupt`/`out of memory` 分类超时/内存——该文案在不同 QuickJS 版本间无稳定保证，版本错配会放大误判面（暂由两端各自识别、不跨端比对来规避）。
 
    *缓解（本 ADR 落地）*：
    - **engine-floor canary**（`adapters/_canary/parser/`，capability `__canary.engine_floor`）只调用**实测的共同地板**内建，断言产出 == golden，挂在双跑闸门两侧（服务端 `sandbox.smoke.ts`、客户端 `dual_run_test.dart`）当**回归哨兵**：任一侧地板特性漂移即变红。其 `avoided` 列表把"adapter 不得依赖的能力"钉进 golden。
-   - **作者约束**：parser/fetch adapter 必须按客户端地板编写，不得依赖 `avoided` 列出的内建，直至客户端引擎对齐。
+   - **作者约束**：parser/fetch adapter 必须按双端共同地板编写，不得依赖 `avoided` 列出的内建，直至 canary 和服务端 QuickJS 同步放开。
 
-   *迁移触发*：当 (a) 需要 BigInt / ES2022+，或 (b) canary 暴露的地板缺口变宽到约束 adapter 作者时——把客户端 fork 的 vendored QuickJS 升到 2024-02-14 并开 `CONFIG_BIGNUM` 以对齐服务端。这恰是 §3.1「评估自管最小 ffi 层」的触发点：一旦要动原生 QuickJS 源，即到了把用到的那块 vendoring 进仓库做一方代码的时机（而非全自写 FFI）。
+   *迁移触发*：当 canary 暴露双端共同地板不足时，优先评估升级服务端 QuickJS-wasm 或调整 adapter 作者约束；客户端 `flutter_qjs_next` 自身的版本地板已不再是当前主阻塞。
 
 ---
 
@@ -73,6 +74,6 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 - `client/lib/core/adapter_runtime.dart`：parser 模式运行时（`IsolateQjs` 后台 isolate、ESM/moduleHandler 加载、JSON 跨边界、ctx 仅 log/now、限额对齐服务端、失败用 `AdapterFailureReason` 表达且不携带契约 error.kind）。
 - `client/test/dual_run_test.dart`：双跑一致性（客户端半边）+ capability_missing / async_in_parser 反例 + engine-floor canary。
 - `adapters/_canary/parser/`：引擎地板漂移哨兵（`__canary.engine_floor`）。两端共有内建的 golden + `avoided` 约束清单；服务端半边在 `server/src/runtime/sandbox.smoke.ts`。
-- `client/tool/build_qjs_test_lib.sh`：从 `package_config.json` 动态定位 flutter_qjs、经 CMake 构建 FFI 测试库。
-- `client/pubspec.yaml`：`flutter_qjs` 依赖 + 指向补丁 fork 的 `dependency_overrides`（pin commit）。
-- 待续：fetch 模式 `ctx.fetch` + 凭证注入（红线 #1，人工审阅 PR，[#3](https://github.com/NanCunChild/elecon/issues/3)）——**客户端宿主函数桥接见 [ADR-014](./adr_014_client_host_fn.md)**（`IsolateQjs` 无宿主函数通道，需扩 fork；草案）；iOS 2.5.2 合规评估（已由 [ADR-010](./adr_010_ios_appstore.md) 给出可上架形态，[#4](https://github.com/NanCunChild/elecon/issues/4)）；其余平台 desktop/device 测试基建。
+- `client/tool/build_qjs_test_lib.sh`：从 `package_config.json` 动态定位 `flutter_qjs_next`，构建 Linux 测试用原生库。
+- `client/pubspec.yaml`：`flutter_qjs_next` Git 依赖（pin commit）。
+- 待续：fetch 模式 `ctx.fetch` + 凭证注入（红线 #1，人工审阅 PR，[#3](https://github.com/NanCunChild/elecon/issues/3)）——客户端宿主函数桥接见 [ADR-014](./adr_014_client_host_fn.md)；iOS 2.5.2 合规评估（已由 [ADR-010](./adr_010_ios_appstore.md) 给出可上架形态，[#4](https://github.com/NanCunChild/elecon/issues/4)）；其余平台 desktop/device 测试基建。

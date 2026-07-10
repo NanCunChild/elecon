@@ -8,28 +8,20 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_qjs: ^0.3.7
+  # ADR-008/014：客户端 QuickJS 运行时。flutter_qjs_next 基于更新 QuickJS，
+  # 保留 IsolateQjs/host-fn 通道，并去掉旧 flutter_qjs 的 KGP/ffi 1.x 阻塞。
+  flutter_qjs_next:
+    git:
+      url: https://github.com/NanCunChild/flutter_qjs_es2023
+      ref: f5f3611
   flutter_inappwebview: ^6.0.0
   # ADR-012 §2.8 三档加密（S 软件档）——纯 Dart AES-256-GCM AEAD。
   # 🔒 红线 #9：Apache-2.0；上游维护状态待 license/安全评审确认（社区 fork: cryptography_plus）。
-  # 钉 2.6.x：cryptography ≥2.7 依赖 ffi ^2.1，与 flutter_qjs fork 的 ffi ^1.0 冲突。
+  # TODO(依赖恢复)：flutter_qjs_next 已解除 ffi 1.x 冲突，可单独 PR 升级 cryptography。
   cryptography: ">=2.6.0 <2.7.0"
   # TODO(§2.8 落盘)：path_provider 提供 app 私有目录给 FileBlobStore。
-  # 当前网络受阻无法加依赖（flutter_qjs git fetch 经 libsecret 挂起，见
-  # docs/notes/build_blockers.md）——BlobStore 已做成可注入接缝，依赖恢复后
-  # 在 main.dart 挂载 FileBlobStore(getApplicationSupportDirectory()) 即点亮持久化。
-
-# flutter_qjs 0.3.7（ekibun，已停更）在 Dart 3.12 下编译失败：FFI 回调
-# channelDispacher 返回可空指针，而 Pointer.fromFunction 要求非空。
-# fork 打了一行补丁（lib/src/ffi.dart：返回类型去掉 ?，函数体 ... ?? nullptr）
-# 并 vendoring QuickJS 源（pub 不为 git 依赖初始化 submodule）。
-# 补丁分支：https://github.com/NanCunChild/flutter_qjs/tree/dart3-compat
-# 详见 docs/adr/adr_008_client_runtime.md §3。
-dependency_overrides:
-  flutter_qjs:
-    git:
-      url: https://github.com/NanCunChild/flutter_qjs.git
-      ref: dbf5c17233c3c8abfbfa707c297121bb86e54e83
+  # BlobStore 已做成可注入接缝；后续单独加入 path_provider 后，在 main.dart 挂载
+  # FileBlobStore(getApplicationSupportDirectory()) 即点亮持久化。
 
 dev_dependencies:
   flutter_test:
