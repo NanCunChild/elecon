@@ -16,12 +16,10 @@ dependencies:
       ref: f5f3611
   flutter_inappwebview: ^6.0.0
   # ADR-012 §2.8 三档加密（S 软件档）——纯 Dart AES-256-GCM AEAD。
-  # 🔒 红线 #9：Apache-2.0；上游维护状态待 license/安全评审确认（社区 fork: cryptography_plus）。
-  # TODO(依赖恢复)：flutter_qjs_next 已解除 ffi 1.x 冲突，可单独 PR 升级 cryptography。
-  cryptography: ">=2.6.0 <2.7.0"
-  # TODO(§2.8 落盘)：path_provider 提供 app 私有目录给 FileBlobStore。
-  # BlobStore 已做成可注入接缝；后续单独加入 path_provider 后，在 main.dart 挂载
-  # FileBlobStore(getApplicationSupportDirectory()) 即点亮持久化。
+  # 🔒 红线 #9：Apache-2.0；上游维护状态待 license/安全评审确认。
+  cryptography: ^2.9.0
+  # ADR-012 §2.8：app 私有目录给 FileBlobStore；Android 同步配 allowBackup=false + 备份排除。
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

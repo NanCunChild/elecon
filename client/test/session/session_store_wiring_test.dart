@@ -6,6 +6,7 @@ library;
 
 import 'package:elecon/core/credential/blob_store.dart';
 import 'package:elecon/core/credential/types.dart';
+import 'package:elecon/catalog/schools.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -32,6 +33,23 @@ void main() {
     // 新控制器 bootstrap：静默续用已持久化的 S 档。
     final c2 = SessionController(blobStoreProvider: () async => blobs);
     await c2.bootstrap();
+    expect(c2.isLoggedIn, isTrue);
+    expect(c2.credentialRefs, ['ehall-session']);
+  });
+
+  test('bootstrap 同时恢复已选学校与已持久化凭证状态', () async {
+    final blobs = InMemoryBlobStore();
+
+    final c1 = SessionController(blobStoreProvider: () async => blobs);
+    await c1.ensurePersistentStore(confirmSoftwareFallback: () async => true);
+    c1.selectSchool(defaultSchool);
+    c1.store.put(_entry('ehall-session'));
+    await c1.flush();
+
+    final c2 = SessionController(blobStoreProvider: () async => blobs);
+    await c2.bootstrap();
+    expect(c2.selectedSchool?.id, defaultSchool.id);
+    expect(c2.isConfigured, isTrue);
     expect(c2.isLoggedIn, isTrue);
     expect(c2.credentialRefs, ['ehall-session']);
   });

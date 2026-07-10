@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../catalog/schools.dart';
 import '../../session/session_controller.dart';
@@ -17,6 +18,13 @@ Future<WebViewLoginResult?> runSchoolLogin(
   SessionController session,
   SchoolDescriptor school,
 ) async {
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+    return const WebViewLoginResult(
+      status: WebViewLoginStatus.error,
+      error: 'Linux 桌面端暂不支持 WebView 登录；flutter_inappwebview 没有 Linux 平台实现。',
+    );
+  }
+
   // §2.8：首次持久化前确保存储后端就绪。无硬件加密 → 弹警告框（5 秒 + 知情同意）
   // 选 S 软件档或 M 内存档。凭证收割须写入已定档的 store。
   await session.ensurePersistentStore(

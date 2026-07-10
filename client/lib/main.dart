@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'core/credential/blob_store.dart';
 import 'session/session_controller.dart';
@@ -11,16 +14,12 @@ void main() {
   runApp(const EleconApp());
 }
 
-/// §2.8 落盘目录提供者。当前返回 null（→ 内存档 M，不落盘）——path_provider 依赖
-/// 受阻（见 docs/notes/build_blockers.md）。依赖恢复后改为：
-/// ```dart
-/// Future<BlobStore?> _blobStoreProvider() async {
-///   final dir = await getApplicationSupportDirectory();      // path_provider
-///   return FileBlobStore(Directory('${dir.path}/credentials'));
-/// }
-/// ```
-/// 即点亮 S 软件档持久化（其余 §2.8 流程已接线）。
-Future<BlobStore?> _blobStoreProvider() async => null;
+/// §2.8 落盘目录提供者：S 软件档把密文库写入 app 私有 application support 目录。
+/// Android 侧必须同步维护 allowBackup=false / 备份排除，避免软件档 DEK 随系统备份外泄。
+Future<BlobStore?> _blobStoreProvider() async {
+  final dir = await getApplicationSupportDirectory();
+  return FileBlobStore(Directory('${dir.path}/credentials'));
+}
 
 class EleconApp extends StatefulWidget {
   const EleconApp({super.key});

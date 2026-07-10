@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- ADR-012 §2.8: credentials contain software-tier encrypted values and DEK material. -->
+    <exclude domain="file" path="credentials/" />
+    <exclude domain="file" path="app_flutter/credentials/" />
+</full-backup-content>

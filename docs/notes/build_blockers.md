@@ -9,8 +9,8 @@
 |---|---|---|---|
 | **AGP 版本** | 已修到 8.11.1 | 曾降到 8.9.2（< Flutter 下限）| 已解决（清除弃用警告）|
 | **flutter_qjs 停更 fork** | 已迁 `flutter_qjs_next` Git 依赖 | 上游 ekibun 停更 | 主线已解除 ffi/KGP/Java 兼容阻塞 |
-| **cryptography 版本** | 仍钉 2.6.x | 迁移后 ffi 冲突已解除 | 可单独 PR 升 2.7+ / 2.9.x |
-| **path_provider 加不进** | 未加入 | 原 git 依赖阻塞已解除 | §2.8 落盘仍待单独接线 |
+| **cryptography 版本** | 已升 2.9.0 | `flutter_qjs_next` 已解除 ffi 冲突 | 已解决 |
+| **path_provider 加不进** | 已加入并接线 | 原 git 依赖阻塞已解除 | 已点亮 §2.8 S 档落盘 |
 | **KGP 弃用警告** | 已解决 | `flutter_qjs_next` 不再 apply KGP | Android debug 构建已无该警告 |
 | **git/GPG 网络** | 绕行中 | libsecret 凭证助手挂起 | pub git fetch / commit 签名超时 |
 
@@ -35,13 +35,12 @@
 
 注意：`pubspec.ohos.yaml` 仍保留旧 `flutter_qjs` 旁路线，OHOS fork 需单独验证。
 
-## 3. path_provider 加不进（§2.8 落盘未点亮）
+## 3. path_provider（已接入，§2.8 S 档落盘已点亮）
 
-- ADR-012 §2.8 的 **S 软件档**需要 app 私有目录落盘，本应加 `path_provider`。
-- 原 `flutter_qjs` git 依赖阻塞已解除；`path_provider` 仍需单独加入并验证。
-- **规避（提交 `38b2175`）**：BlobStore 做成**可注入接缝**，`main.dart` 的 provider 暂返回 null → 退化为 **M 内存档**（不落盘）。§2.8 其余流程（硬件检测→警告框→分级→flush）已全部接线并测试。
-- **恢复步骤**：网络/依赖恢复后 `flutter pub add path_provider`，在 `main.dart` 把 provider 换成
-  `FileBlobStore(Directory('${(await getApplicationSupportDirectory()).path}/credentials'))` 即点亮持久化。**须同时配 `allowBackup=false` + 备份排除**（§2.8 命门）。
+- ADR-012 §2.8 的 **S 软件档**需要 app 私有目录落盘；现已加入 `path_provider`，`main.dart` 通过
+  `getApplicationSupportDirectory()/credentials` 接到 `FileBlobStore`。
+- Android 已同步配置 `allowBackup=false`、`fullBackupContent` 与 `dataExtractionRules`，排除 credentials 目录，避免 S 档 DEK 随系统备份外泄。
+- H 硬件档仍未接入，后续单独走安全敏感 PR。
 
 ## 4. QuickJS 依赖复现性
 
@@ -60,7 +59,7 @@
 
 - [x] 主线迁 `flutter_qjs_next`：解除 KGP 警告 + ffi 1.x 冲突。
 - [x] 将 `flutter_qjs_next` 从本机绝对 path 收敛到 Git 仓库并 pin commit。
-- [ ] 单独升级 cryptography 到 2.7+ / 2.9.x。
-- [ ] 恢复后加 path_provider，点亮 §2.8 S 档落盘 + `allowBackup=false`。
+- [x] 单独升级 cryptography 到 2.9.x。
+- [x] 加 path_provider，点亮 §2.8 S 档落盘 + `allowBackup=false` / 备份排除。
 - [ ] 环境 libsecret / pinentry 修复，恢复正常 git/GPG。
 - [ ] 本分支 `--no-gpg-sign` 提交待 rebase 补签。

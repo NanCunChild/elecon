@@ -5,11 +5,13 @@
 ///
 /// §2.8 三档存储接线：启动 [bootstrap] 静默续用此前已同意的 S 软件档；首次持久化前
 /// [ensurePersistentStore] 按硬件可用性 + 用户知情同意（警告框）裁定 H/S/M 档。
-/// 落盘目录经**可注入的** [blobStoreProvider] 提供（当前 path_provider 依赖受阻，
-/// 见 docs/notes/build_blockers.md；provider 为 null 时退化为内存档 M，不落盘）。
+/// 落盘目录经**可注入的** [blobStoreProvider] 提供；provider 为 null 时退化为内存档 M，
+/// 不落盘（测试/受限平台兜底）。
 ///
-/// 🔒 store 生命周期属核心凭证路径。真实 keystore（H 档）与跨重启持久化随依赖恢复接线。
+/// 🔒 store 生命周期属核心凭证路径。真实 keystore（H 档）后续单独接线。
 library;
+
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -20,6 +22,8 @@ import '../core/credential/secure_store.dart';
 import '../core/credential/secure_store_factory.dart';
 import '../core/credential/software_secure_store.dart';
 import '../core/credential/store.dart';
+
+const String _sessionMetaBlob = 'session.json';
 
 class SessionController extends ChangeNotifier {
   SessionController({
@@ -39,6 +43,7 @@ class SessionController extends ChangeNotifier {
   CredentialStore _store;
   SecureStore? _secure; // 已裁定的底层后端（用于 flush 等能力探测）
   BlobStore? _blobs;
+  Future<void> _sessionPersistChain = Future<void>.value();
   bool _bootstrapped = false;
   bool _storeResolved;
 
@@ -63,16 +68,14 @@ class SessionController extends ChangeNotifier {
   Future<void> bootstrap() async {
     if (_bootstrapped) return;
     _bootstrapped = true;
-    final provider = _blobStoreProvider;
-    if (provider == null) return;
-    final blobs = await provider();
+    final blobs = await _resolveBlobs();
     if (blobs == null) return;
-    _blobs = blobs;
     if (await SoftwareSecureStore.hasPersisted(blobs)) {
       _replaceStore(await SoftwareSecureStore.open(blobs));
       _storeResolved = true;
-      notifyListeners();
     }
+    _school = await _loadSelectedSchool(blobs);
+    notifyListeners();
   }
 
   /// 首次持久化前确保后端就绪（§2.8）。无硬件 → 经 [confirmSoftwareFallback]
@@ -81,12 +84,11 @@ class SessionController extends ChangeNotifier {
     required Future<bool> Function() confirmSoftwareFallback,
   }) async {
     if (_storeResolved) return;
-    final blobs = _blobs ?? await _blobStoreProvider?.call();
+    final blobs = await _resolveBlobs();
     if (blobs == null) {
       _storeResolved = true; // 无落盘能力（如 path_provider 未接入）→ 内存档 M
       return;
     }
-    _blobs = blobs;
     _replaceStore(await resolveSecureStore(
       hardware: _hardware,
       blobs: blobs,
@@ -100,6 +102,50 @@ class SessionController extends ChangeNotifier {
   Future<void> flush() async {
     final s = _secure;
     if (s is SoftwareSecureStore) await s.flush();
+    await _sessionPersistChain;
+  }
+
+  Future<BlobStore?> _resolveBlobs() async {
+    if (_blobs != null) return _blobs;
+    final provider = _blobStoreProvider;
+    if (provider == null) return null;
+    _blobs = await provider();
+    return _blobs;
+  }
+
+  Future<SchoolDescriptor?> _loadSelectedSchool(BlobStore blobs) async {
+    final raw = await blobs.read(_sessionMetaBlob);
+    if (raw == null) return null;
+    try {
+      final json = jsonDecode(utf8.decode(raw)) as Map<String, dynamic>;
+      final id = json['selectedSchoolId'];
+      if (id is! String) return null;
+      for (final school in builtinSchools) {
+        if (school.id == id) return school;
+      }
+    } catch (_) {
+      // 损坏的非敏感会话元数据不影响凭证库，按未选校处理。
+    }
+    return null;
+  }
+
+  void _scheduleSessionPersist() {
+    _sessionPersistChain = _sessionPersistChain
+        .then((_) async {
+          final blobs = await _resolveBlobs();
+          if (blobs == null) return;
+          final school = _school;
+          if (school == null) {
+            await blobs.delete(_sessionMetaBlob);
+            return;
+          }
+          await blobs.write(
+            _sessionMetaBlob,
+            utf8.encode(jsonEncode({'selectedSchoolId': school.id})),
+          );
+        })
+        // 非敏感状态写失败不能影响凭证路径；下次启动只会回到选校页。
+        .catchError((Object _) {});
   }
 
   void _replaceStore(SecureStore secure) {
@@ -110,6 +156,7 @@ class SessionController extends ChangeNotifier {
   void selectSchool(SchoolDescriptor school) {
     if (_school?.id == school.id) return;
     _school = school;
+    _scheduleSessionPersist();
     notifyListeners();
   }
 
@@ -136,6 +183,7 @@ class SessionController extends ChangeNotifier {
       store.delete(e.ref);
     }
     _school = null;
+    _scheduleSessionPersist();
     notifyListeners();
   }
 }
