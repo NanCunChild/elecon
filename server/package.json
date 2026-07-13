@@ -31,6 +31,7 @@
     "smoke:all": "node ../scripts/run-smokes.mjs src"
   },
   "dependencies": {
+    "@elecon/broker-primitives": "*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "quickjs-emscripten": "^0.31.0"

@@ -13,8 +13,8 @@
  *  - 请求里若带任何疑似凭证头（Cookie/Authorization），一律**忽略且不记录**（不因哑服务落库）。
  */
 
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -111,8 +111,7 @@ function handler(req: IncomingMessage, res: ServerResponse): void {
 // 仅在被直接执行时监听端口；被 import（测试）时导出 handler。
 export { handler, listAdapters };
 
-const invokedDirectly =
-  process.argv[1] !== undefined && process.argv[1] === fileURLToPath(import.meta.url);
+const invokedDirectly = process.argv[1] !== undefined && process.argv[1] === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
   const server = createServer(handler);
   server.listen(PORT, () => {

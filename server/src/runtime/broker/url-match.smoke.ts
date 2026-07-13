@@ -1,12 +1,12 @@
 /**
- * Broker URL 匹配原语冒烟测试 —— 用共享 golden 钉死 server 侧 url-match.ts 的行为。
+ * Broker URL 匹配原语冒烟测试 —— 用共享 golden 钉死 `@elecon/broker-primitives` 的行为。
  *
  *   contract/golden/broker/url-match.json  →  {urlCoveredByAllow, scopeMatches, scopePrefix}  →  逐例等于 expected
  *
- * 同一份 golden 由 client（Dart `test/broker_url_match_test.dart`）与 tools 校验器
- * （`tools/src/validator/url-match.smoke.ts`，跑其内联的同名原语子集）照样跑——三方
- * 共享一份事实源，任一处正则/转义漂移即 CI 红。钉死的是**行为**，不是源文件
- * （ADR-001 §8 两端双跑哲学 + url-match.ts 文件头）。
+ * TS 侧实现已收敛为共享包（审阅 P2-4，原 server/tools 各持内联拷贝）；同一份 golden
+ * 由 client（Dart `test/broker_url_match_test.dart`）与 tools 校验器
+ * （`tools/src/validator/url-match.smoke.ts`，经其 re-export 面）照样跑——TS 单源 +
+ * Dart 镜像共享一份事实源，任一处正则/转义漂移即 CI 红（ADR-001 §8）。
  *
  *   运行：cd server && npm run smoke:urlmatch
  *
@@ -16,7 +16,7 @@
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 
-import { urlCoveredByAllow, scopeMatches, scopePrefix } from "./url-match.js";
+import { scopeMatches, scopePrefix, urlCoveredByAllow } from "@elecon/broker-primitives";
 import { resolveRepoRoot } from "../__testutils__/smoke-utils.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
@@ -66,11 +66,7 @@ function main(): void {
     passed++;
   }
   for (const c of g.scopePrefix) {
-    assert.strictEqual(
-      scopePrefix(c.pattern),
-      c.expected,
-      `scopePrefix '${c.name}': pattern=${c.pattern}`,
-    );
+    assert.strictEqual(scopePrefix(c.pattern), c.expected, `scopePrefix '${c.name}': pattern=${c.pattern}`);
     passed++;
   }
 

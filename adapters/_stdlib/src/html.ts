@@ -1,27 +1,27 @@
-export { parseDocument, Parser } from "htmlparser2";
 export { selectAll, selectOne } from "css-select";
+export { Comment, Document, Element, hasChildren, isCDATA, isTag, isText, Text } from "domhandler";
 export {
-  getText,
-  getAttributeValue,
-  hasAttrib,
-  getName,
-  getChildren,
-  getParent,
-  getSiblings,
-  nextElementSibling,
-  prevElementSibling,
+  existsOne,
+  filter,
   find,
   findAll,
   findOne,
   findOneChild,
-  existsOne,
-  filter,
+  getAttributeValue,
+  getChildren,
+  getName,
+  getParent,
+  getSiblings,
+  getText,
+  hasAttrib,
+  innerText,
+  nextElementSibling,
+  prevElementSibling,
   removeElement,
   replaceElement,
   textContent,
-  innerText,
 } from "domutils";
-export { Document, Element, Text, Comment, isTag, isText, isCDATA, hasChildren } from "domhandler";
+export { Parser, parseDocument } from "htmlparser2";
 
 // ---- adapter 通用工具（与 HTML 解析紧耦合的 helper，audit 发现两 adapter 逐字重复） ----
 

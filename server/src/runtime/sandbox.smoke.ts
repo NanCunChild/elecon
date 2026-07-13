@@ -14,9 +14,8 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-
-import { runAdapter, SandboxError } from "./sandbox.js";
 import { resolveRepoRoot, runMain } from "./__testutils__/smoke-utils.js";
+import { runAdapter, SandboxError } from "./sandbox.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 const parserDir = `${repoRoot}adapters/_template/parser`;

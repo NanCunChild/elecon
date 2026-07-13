@@ -68,8 +68,7 @@ function handler(req: IncomingMessage, res: ServerResponse): void {
 
 export { handler };
 
-const invokedDirectly =
-  process.argv[1] !== undefined && process.argv[1] === fileURLToPath(import.meta.url);
+const invokedDirectly = process.argv[1] !== undefined && process.argv[1] === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
   const server = createServer(handler);
   server.listen(PORT, () => {

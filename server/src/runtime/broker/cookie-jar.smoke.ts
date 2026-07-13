@@ -19,11 +19,11 @@ import { resolveRepoRoot, runMain } from "../__testutils__/smoke-utils.js";
 import {
   CookieJar,
   decideEphemeralWrite,
-  matchCookieForSend,
-  selectCookies,
   type EphemeralWriteDecision,
   type EphemeralWriteInput,
   type JarCookie,
+  matchCookieForSend,
+  selectCookies,
 } from "./cookie-jar.js";
 import type { BrokerManifestView } from "./inject-policy.js";
 
@@ -137,18 +137,21 @@ function statefulTests(): number {
   );
   assert.equal(jar4.cookieHeader("https://dean.xjtu.edu.cn/"), "client_id=ORIGIN");
   assert.equal(jar4.harvestView().length, 1);
-  assert.ok(jar4.harvestView().every((c) => c.source === "origin"), "收割视图只含 origin");
+  assert.ok(
+    jar4.harvestView().every((c) => c.source === "origin"),
+    "收割视图只含 origin",
+  );
   checks++;
 
   // 5. ephemeral 被拒（凭证域）→ 静默丢弃 + warn（栅栏 1.2，拍板 #3：不抛错）
   const jar5 = new CookieJar();
-  assert.equal(
-    jar5.writeEphemeral({ name: "x", value: "v", domain: "ids.xjtu.edu.cn" }, view, warn),
-    false,
-  );
+  assert.equal(jar5.writeEphemeral({ name: "x", value: "v", domain: "ids.xjtu.edu.cn" }, view, warn), false);
   assert.equal(jar5.cookieHeader("https://ids.xjtu.edu.cn/"), "");
   assert.equal(jar5.harvestView().length, 0);
-  assert.ok(warns.some((w) => w.includes("domain_is_credential")), "拒绝须 warn 且标明原因");
+  assert.ok(
+    warns.some((w) => w.includes("domain_is_credential")),
+    "拒绝须 warn 且标明原因",
+  );
   checks++;
 
   // 6. ephemeral-only 在无 origin 同名时生效，且仍不收割

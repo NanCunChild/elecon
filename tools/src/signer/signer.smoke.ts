@@ -9,8 +9,8 @@
  */
 
 import { strict as assert } from "node:assert";
-import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { canonicalizeContent, computeBundleDigest, serializePayload } from "./index.js";
 import { compareSemver, isRevoked, pickNewer, type RevocationList } from "./revocation.js";
 
@@ -37,8 +37,18 @@ const xidian = join(repoRoot, "adapters", "school-xidian");
 // ---- payload 序列化键序稳定 ----
 
 {
-  const a = serializePayload({ adapterId: "school-x", adapterVersion: "1.0.0", tier: "official", digest: "ab" });
-  const b = serializePayload({ digest: "ab", tier: "official", adapterVersion: "1.0.0", adapterId: "school-x" } as never);
+  const a = serializePayload({
+    adapterId: "school-x",
+    adapterVersion: "1.0.0",
+    tier: "official",
+    digest: "ab",
+  });
+  const b = serializePayload({
+    digest: "ab",
+    tier: "official",
+    adapterVersion: "1.0.0",
+    adapterId: "school-x",
+  } as never);
   assert.ok(a.equals(b), "payload 序列化须与输入键序无关（固定键序）");
   console.log("✓ payload 序列化键序稳定");
 }
@@ -65,7 +75,10 @@ const base: RevocationList = {
 
 {
   // kill-switch
-  const d = isRevoked({ adapterId: "school-x", adapterVersion: "1.0.0", digest: "aa" }, { ...base, killSwitch: true });
+  const d = isRevoked(
+    { adapterId: "school-x", adapterVersion: "1.0.0", digest: "aa" },
+    { ...base, killSwitch: true },
+  );
   assert.ok(!d.allowed && /kill-switch/.test(d.reason ?? ""), "kill-switch 应拒绝一切");
 
   // 最低版本
@@ -85,7 +98,16 @@ const base: RevocationList = {
   // 版本区间吊销
   const d4 = isRevoked(
     { adapterId: "school-x", adapterVersion: "1.1.0", digest: "aa" },
-    { ...base, entries: [{ adapterId: "school-x", versionRange: { minInclusive: "1.0.0", maxInclusive: "1.2.0" }, reason: "区间坏" }] },
+    {
+      ...base,
+      entries: [
+        {
+          adapterId: "school-x",
+          versionRange: { minInclusive: "1.0.0", maxInclusive: "1.2.0" },
+          reason: "区间坏",
+        },
+      ],
+    },
   );
   assert.ok(!d4.allowed && /区间/.test(d4.reason ?? ""), "版本区间命中应拒绝");
 

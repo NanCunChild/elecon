@@ -11,13 +11,11 @@
 import { strict as assert } from "node:assert";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-
-import { DirectTransport } from "./direct.js";
-import { TransportBodyLimitExceeded } from "../broker/fetch-proxy.js";
-import { proxyFetch } from "../broker/fetch-proxy.js";
-import { CookieJar } from "../broker/cookie-jar.js";
-import type { BrokerManifestView } from "../broker/inject-policy.js";
 import { noResolver, runMain } from "../__testutils__/smoke-utils.js";
+import { CookieJar } from "../broker/cookie-jar.js";
+import { proxyFetch, TransportBodyLimitExceeded } from "../broker/fetch-proxy.js";
+import type { BrokerManifestView } from "../broker/inject-policy.js";
+import { DirectTransport } from "./direct.js";
 
 async function main(): Promise<void> {
   let base = "";

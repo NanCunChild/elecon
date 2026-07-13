@@ -45,9 +45,15 @@ function invoke(url: string): FakeRes {
   assert.strictEqual(r.code, 200);
   const list = (r.body as { adapters: Array<{ adapterId: string; signed: boolean }> }).adapters;
   assert.ok(Array.isArray(list), "adapters 应为数组");
-  assert.ok(list.some((a) => a.adapterId === "school-xidian"), "应发现 school-xidian");
+  assert.ok(
+    list.some((a) => a.adapterId === "school-xidian"),
+    "应发现 school-xidian",
+  );
   // 当前真实 adapter 均未签名 → 分发被拒（红线 #4）
-  assert.ok(list.every((a) => a.signed === false), "当前 adapter 均未签名");
+  assert.ok(
+    list.every((a) => a.signed === false),
+    "当前 adapter 均未签名",
+  );
   console.log(`✓ /adapters 列表（${list.length} 个）`);
 }
 

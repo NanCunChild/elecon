@@ -6,7 +6,7 @@
  */
 
 import { strict as assert } from "node:assert";
-import { pascalCase, generateTs, generateDart } from "./index.js";
+import { generateDart, generateTs, pascalCase } from "./index.js";
 
 // ---- pascalCase ----
 
@@ -48,10 +48,7 @@ const noticeSchema = {
   assert.ok(ts.includes("export interface NoticeListItems {"), "应生成嵌套 item 类型");
   assert.ok(ts.includes("id: string;"), "required id 非可选");
   assert.ok(ts.includes("summary?: string;"), "非 required summary 应可选");
-  assert.ok(
-    ts.includes('category: "academic" | "admin" | "event" | "unknown";'),
-    "enum 应生成 union",
-  );
+  assert.ok(ts.includes('category: "academic" | "admin" | "event" | "unknown";'), "enum 应生成 union");
   console.log("✓ generateTs（object/array/enum/optional）");
 }
 

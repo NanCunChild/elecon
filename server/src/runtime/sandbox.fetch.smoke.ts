@@ -16,19 +16,12 @@
  */
 
 import { strict as assert } from "node:assert";
-
-import { runFetchAdapter, SandboxError, type FetchAdapterDeps } from "./sandbox.js";
-import type { CredentialResolver, ResolvedCredential } from "./broker/ports.js";
-import type { Transport, TransportRequest, TransportResponse } from "./broker/fetch-proxy.js";
+import { FakeResolver, FakeTransport, resp, runMain } from "./__testutils__/smoke-utils.js";
+import type { Transport, TransportResponse } from "./broker/fetch-proxy.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 import { CredentialStore } from "./credential/store.js";
-import { TrustedAdapterContext, fetchTrustPermitted } from "./trusted-context.js";
-import {
-  FakeResolver,
-  FakeTransport,
-  resp,
-  runMain,
-} from "./__testutils__/smoke-utils.js";
+import { type FetchAdapterDeps, runFetchAdapter, SandboxError } from "./sandbox.js";
+import { fetchTrustPermitted, TrustedAdapterContext } from "./trusted-context.js";
 
 const NOW = 1_700_000_000_000;
 
@@ -91,7 +84,12 @@ async function testEphemeralMultiStep(): Promise<void> {
         return { rows: await b.json() };
       }
     };`;
-  const deps: FetchAdapterDeps = { trust: TrustedAdapterContext.devSideload(), view, resolver: new FakeResolver({}), transport };
+  const deps: FetchAdapterDeps = {
+    trust: TrustedAdapterContext.devSideload(),
+    view,
+    resolver: new FakeResolver({}),
+    transport,
+  };
   const { data } = await runFetchAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps);
 
   assert.deepEqual((data as { rows: unknown }).rows, [1, 2, 3], "第二步产出不符");
@@ -110,7 +108,12 @@ async function testFailClosedCatchable(): Promise<void> {
         catch (e) { return { blocked: true }; }
       }
     };`;
-  const deps: FetchAdapterDeps = { trust: TrustedAdapterContext.devSideload(), view, resolver: new FakeResolver({}), transport };
+  const deps: FetchAdapterDeps = {
+    trust: TrustedAdapterContext.devSideload(),
+    view,
+    resolver: new FakeResolver({}),
+    transport,
+  };
   const { data } = await runFetchAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps);
 
   assert.deepEqual(data, { blocked: true }, "allow 外应被拒、adapter 可 catch");
@@ -169,7 +172,9 @@ async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
   let aborted = false;
   const transport: Transport = {
     fetch: (_req, signal) => {
-      signal?.addEventListener("abort", () => { aborted = true; });
+      signal?.addEventListener("abort", () => {
+        aborted = true;
+      });
       return new Promise<TransportResponse>((res) => {
         setTimeout(() => res(resp({ status: 200, setCookie: ["JSESSIONID=A"], body: "{}" })), 50);
       });
@@ -219,7 +224,12 @@ async function testTrustGate(): Promise<void> {
   //   cast：结构化类型字面量；create：绕过构造器但通过 instanceof 的原型伪造。
   const forgeries: Array<[string, TrustedAdapterContext]> = [
     ["cast", { tier: "official" } as unknown as TrustedAdapterContext],
-    ["create", Object.assign(Object.create(TrustedAdapterContext.prototype), { tier: "official" }) as TrustedAdapterContext],
+    [
+      "create",
+      Object.assign(Object.create(TrustedAdapterContext.prototype), {
+        tier: "official",
+      }) as TrustedAdapterContext,
+    ],
   ];
   for (const [kind, forged] of forgeries) {
     await assert.rejects(

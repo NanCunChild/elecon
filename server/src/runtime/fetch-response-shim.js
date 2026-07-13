@@ -16,4 +16,4 @@
     headers: r.headers,
     text: () => Promise.resolve(r.body === undefined ? "" : r.body),
     json: () => Promise.resolve(JSON.parse(r.body === undefined ? "null" : r.body)),
-  }))
+  }));

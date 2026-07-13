@@ -27,11 +27,16 @@
  *         cd tools && npm run validate -- --adapter=../adapters/_template/parser
  */
 
-import { readFileSync, readdirSync, existsSync, statSync, realpathSync } from "node:fs";
-import { join, basename } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { allowToRegex, scopePrefix, urlCoveredByAllow } from "@elecon/broker-primitives";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+
+// TS 侧 url-match 单源在 @elecon/broker-primitives（审阅 P2-4，原本文件内联拷贝已删）。
+// re-export 保持既有 API 面（url-match.smoke.ts 经此面验证"校验器实际使用的实现"合 golden）。
+export { allowToRegex, scopePrefix, urlCoveredByAllow };
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const contractDir = join(repoRoot, "contract");
@@ -145,13 +150,20 @@ function loadContract(): Contract {
 
 // ---- C1–C4：manifest 静态检查（纯函数，便于测试）----
 
-export function checkManifest(manifest: Manifest, contract: Pick<Contract, "manifestValidate" | "registry">): Finding[] {
+export function checkManifest(
+  manifest: Manifest,
+  contract: Pick<Contract, "manifestValidate" | "registry">,
+): Finding[] {
   const findings: Finding[] = [];
 
   // C1 schema 合规
   if (!contract.manifestValidate(manifest)) {
     for (const err of contract.manifestValidate.errors ?? []) {
-      findings.push({ level: "error", code: "C1_manifest_schema", message: `manifest${err.instancePath} ${err.message}` });
+      findings.push({
+        level: "error",
+        code: "C1_manifest_schema",
+        message: `manifest${err.instancePath} ${err.message}`,
+      });
     }
     // schema 不合规时后续按字段假设可能不成立，但仍尽量继续给出更多线索
   }
@@ -187,7 +199,11 @@ export function checkManifest(manifest: Manifest, contract: Pick<Contract, "mani
     // C2 capability ∈ registry
     const reg = contract.registry[cap.id];
     if (!reg) {
-      findings.push({ level: "error", code: "C2_unregistered_capability", message: `capability '${cap.id}' 未在 registry.json 注册` });
+      findings.push({
+        level: "error",
+        code: "C2_unregistered_capability",
+        message: `capability '${cap.id}' 未在 registry.json 注册`,
+      });
       continue;
     }
     // C2 emits 与 registry 一致（防 schema 漂移）
@@ -203,7 +219,11 @@ export function checkManifest(manifest: Manifest, contract: Pick<Contract, "mani
     if (manifest.mode === "parser") {
       const requests = cap.requests ?? [];
       if (requests.length === 0) {
-        findings.push({ level: "warn", code: "C4_parser_no_requests", message: `parser capability '${cap.id}' 未声明 requests：核心无从代取数据` });
+        findings.push({
+          level: "warn",
+          code: "C4_parser_no_requests",
+          message: `parser capability '${cap.id}' 未声明 requests：核心无从代取数据`,
+        });
       }
       for (const req of requests) {
         if (!urlCoveredByAllow(req.url, allow)) {
@@ -240,11 +260,19 @@ export function checkLogin(manifest: Pick<Manifest, "login" | "credentials">): F
 
   // L1 登录页须 https（凭证经手页面，TLS 底线）；navigationAllow 非 https → 警告
   if (!/^https:\/\//.test(login.url ?? "")) {
-    findings.push({ level: "error", code: "L1_login_url_not_https", message: `login.url 非 https：${login.url}` });
+    findings.push({
+      level: "error",
+      code: "L1_login_url_not_https",
+      message: `login.url 非 https：${login.url}`,
+    });
   }
   for (const p of navAllow) {
     if (!/^https:\/\//.test(p)) {
-      findings.push({ level: "warn", code: "L1_non_https_nav", message: `login.navigationAllow 项非 https：${p}` });
+      findings.push({
+        level: "warn",
+        code: "L1_non_https_nav",
+        message: `login.navigationAllow 项非 https：${p}`,
+      });
     }
   }
 
@@ -301,7 +329,11 @@ export function checkSsoMint(
 
   // M1 authEndpoint 须 https 且落在 navigationAllow 内
   if (!/^https:\/\//.test(authEndpoint)) {
-    findings.push({ level: "error", code: "M1_auth_endpoint_not_https", message: `ssoMint.authEndpoint 非 https：${authEndpoint}` });
+    findings.push({
+      level: "error",
+      code: "M1_auth_endpoint_not_https",
+      message: `ssoMint.authEndpoint 非 https：${authEndpoint}`,
+    });
   }
   if (authEndpoint && !urlCoveredByAllow(authEndpoint, navAllow)) {
     findings.push({
@@ -373,7 +405,9 @@ export function checkSsoMint(
   for (const m of masterRefs) {
     for (const ms of creds[m]?.scope ?? []) {
       for (const d of downstream) {
-        const overlap = (creds[d]?.scope ?? []).some((ds) => prefixesOverlap(scopePrefix(ms), scopePrefix(ds)));
+        const overlap = (creds[d]?.scope ?? []).some((ds) =>
+          prefixesOverlap(scopePrefix(ms), scopePrefix(ds)),
+        );
         if (overlap) {
           findings.push({
             level: "error",
@@ -399,16 +433,6 @@ export function checkSsoMint(
 }
 
 // ---- C6–C8：credentials 声明（ADR-013 §2.4）----
-
-/**
- * 取 uri-template 第一个 `*` 之前的字面前缀（无 `*` 则取全串）。用于最长前缀消歧。
- * **假设**：scope 是"尾随 `*` 的前缀型"（`https://domain/path/*`，与 C6 同一约定）。
- * 多段 `*` / `{+path}` 等复杂模板不在此约定内，引入时须重评 C6/C7（见文件头与 ADR-013 §2.4）。
- */
-export function scopePrefix(pattern: string): string {
-  const star = pattern.indexOf("*");
-  return star === -1 ? pattern : pattern.slice(0, star);
-}
 
 /**
  * 两个 scope 前缀是否重叠（其一是另一的字符串前缀，含相等）。
@@ -519,41 +543,42 @@ function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Fin
     if (!file.endsWith(".json")) continue;
     const fx = readJson<{ capability?: string; expected?: unknown }>(join(fixturesDir, file));
     if (!fx.capability || fx.expected === undefined) {
-      findings.push({ level: "warn", code: "C5_fixture_shape", message: `fixtures/${file} 缺 capability 或 expected，跳过` });
+      findings.push({
+        level: "warn",
+        code: "C5_fixture_shape",
+        message: `fixtures/${file} 缺 capability 或 expected，跳过`,
+      });
       continue;
     }
     const cap = byCapability.get(fx.capability);
     if (!cap) {
-      findings.push({ level: "error", code: "C5_fixture_unknown_capability", message: `fixtures/${file} 引用了 manifest 未声明的 capability '${fx.capability}'` });
+      findings.push({
+        level: "error",
+        code: "C5_fixture_unknown_capability",
+        message: `fixtures/${file} 引用了 manifest 未声明的 capability '${fx.capability}'`,
+      });
       continue;
     }
     const validate = contract.schemaFor(cap.emits.schema);
     if (!validate) {
-      findings.push({ level: "warn", code: "C5_schema_absent", message: `schema '${cap.emits.schema}' 尚未落盘，无法校验 fixtures/${file}` });
+      findings.push({
+        level: "warn",
+        code: "C5_schema_absent",
+        message: `schema '${cap.emits.schema}' 尚未落盘，无法校验 fixtures/${file}`,
+      });
       continue;
     }
     if (!validate(fx.expected)) {
       for (const err of validate.errors ?? []) {
-        findings.push({ level: "error", code: "C5_fixture_invalid", message: `fixtures/${file} expected${err.instancePath} ${err.message}` });
+        findings.push({
+          level: "error",
+          code: "C5_fixture_invalid",
+          message: `fixtures/${file} expected${err.instancePath} ${err.message}`,
+        });
       }
     }
   }
   return findings;
-}
-
-// ---- 白名单匹配 ----
-
-/** 把 "https://h/api/*" 形态的白名单项转成锚定正则。 */
-export function allowToRegex(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const withWildcard = escaped.replace(/\\\*/g, ".*");
-  return new RegExp("^" + withWildcard + "$");
-}
-
-export function urlCoveredByAllow(url: string, allow: string[]): boolean {
-  // 把 {param} 占位换成中性 token，避免占位符干扰匹配
-  const concrete = url.replace(/\{[^}]+\}/g, "_");
-  return allow.some((p) => allowToRegex(p).test(concrete));
 }
 
 // ---- 编排 ----
@@ -567,7 +592,13 @@ function validateAdapterDir(dir: string, contract: Contract): Finding[] {
   try {
     manifest = readJson<Manifest>(manifestPath);
   } catch (err) {
-    return [{ level: "error", code: "manifest_unparseable", message: `manifest.json 解析失败：${(err as Error).message}` }];
+    return [
+      {
+        level: "error",
+        code: "manifest_unparseable",
+        message: `manifest.json 解析失败：${(err as Error).message}`,
+      },
+    ];
   }
   return [...checkManifest(manifest, contract), ...checkFixtures(dir, manifest, contract)];
 }

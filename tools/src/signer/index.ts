@@ -21,17 +21,10 @@
  *         cd tools && npx tsx src/signer/index.ts verify --adapter=../adapters/school-x --pubkey=...
  */
 
-import {
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-  existsSync,
-  statSync,
-  realpathSync,
-} from "node:fs";
+import { createHash, sign as edSign, verify as edVerify, type KeyObject } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash, sign as edSign, verify as edVerify, KeyObject } from "node:crypto";
 
 // ---- 类型 ----
 

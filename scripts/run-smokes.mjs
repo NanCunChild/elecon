@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * smoke 目录发现 runner —— 消灭手工维护的 `smoke:all` && 链。
  *
@@ -13,16 +14,29 @@
  *  - 顺序：路径字典序，确定性输出。
  */
 
-import { readdirSync, statSync, existsSync } from "node:fs";
-import { join, relative } from "node:path";
 import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 
 const root = process.cwd();
 const scanDir = join(root, process.argv[2] ?? "src");
-const tsx = join(root, "node_modules", ".bin", "tsx");
 
-if (!existsSync(tsx)) {
-  console.error(`run-smokes: 找不到 ${tsx}（先在包目录 npm ci）`);
+// tsx 二进制：从包目录向上找（npm workspace 提升后依赖在仓库根 node_modules）。
+function findTsx(from) {
+  let dir = from;
+  for (let i = 0; i < 5; i++) {
+    const candidate = join(dir, "node_modules", ".bin", "tsx");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+const tsx = findTsx(root);
+if (tsx === null) {
+  console.error("run-smokes: 找不到 node_modules/.bin/tsx（先在仓库根 npm ci）");
   process.exit(1);
 }
 

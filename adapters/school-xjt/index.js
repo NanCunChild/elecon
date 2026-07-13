@@ -12,7 +12,14 @@
  * B4 #37 运行时）写入 jar ephemeral 分区，四重栅栏由 Broker 强制。
  */
 
-import { parseDocument, selectAll, getText, getAttributeValue, normalizeDate, makeUrlAbsolute } from "elecon:html";
+import {
+  getAttributeValue,
+  getText,
+  makeUrlAbsolute,
+  normalizeDate,
+  parseDocument,
+  selectAll,
+} from "elecon:html";
 
 const ORIGIN = "https://dean.xjtu.edu.cn";
 
@@ -64,7 +71,8 @@ export const capabilities = {
           challenge_id: cid,
           answer: Number(ansStr),
           browser_info: {
-            userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+            userAgent:
+              "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
             language: "zh-CN",
             platform: "Linux x86_64",
             cookieEnabled: true,

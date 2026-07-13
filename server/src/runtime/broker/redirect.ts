@@ -13,7 +13,7 @@
  * 🔒 红线 #1 数据外泄面：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
  */
 
-import { urlCoveredByAllow } from "./url-match.js";
+import { urlCoveredByAllow } from "@elecon/broker-primitives";
 
 /** 自动跟随的重定向状态码（300/304/305/306 不在内）。 */
 const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);

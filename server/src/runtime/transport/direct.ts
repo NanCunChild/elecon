@@ -22,8 +22,13 @@
  * AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
  */
 
+import {
+  type Transport,
+  TransportBodyLimitExceeded,
+  type TransportRequest,
+  type TransportResponse,
+} from "../broker/fetch-proxy.js";
 import type { HeaderMap } from "../broker/header-sanitize.js";
-import { TransportBodyLimitExceeded, type Transport, type TransportRequest, type TransportResponse } from "../broker/fetch-proxy.js";
 
 export const DEFAULT_MAX_BODY_BYTES = 8 * 1024 * 1024;
 

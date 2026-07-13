@@ -16,23 +16,25 @@
  */
 
 import { strict as assert } from "node:assert";
-import { readFileSync } from "node:fs";
-import { resolveRepoRoot, readText, noResolver, FakeTransport, runMain } from "./__testutils__/smoke-utils.js";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-
-import { runFetchAdapter } from "./sandbox.js";
-import { TrustedAdapterContext } from "./trusted-context.js";
-import type { BrokerManifestView } from "./broker/inject-policy.js";
 // codegen 产物（contract/schema 单源，审阅 P0-1）：ajv 校验通过后以此类型消费，
 // 替代裸 `as { items: ... }` cast。类型声明零运行时，不参与 emit。
 import type { NoticeList } from "../../../contract/generated/ts/notice.list.js";
+import {
+  FakeTransport,
+  noResolver,
+  readText,
+  resolveRepoRoot,
+  runMain,
+} from "./__testutils__/smoke-utils.js";
+import type { BrokerManifestView } from "./broker/inject-policy.js";
+import { runFetchAdapter } from "./sandbox.js";
+import { TrustedAdapterContext } from "./trusted-context.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 const xjtDir = `${repoRoot}adapters/school-xjt`;
 const fixDir = `${xjtDir}/fixtures/dean.xjtu.edu.cn`;
-
-
 
 async function main(): Promise<void> {
   const source = readText(`${xjtDir}/index.js`);
@@ -46,7 +48,13 @@ async function main(): Promise<void> {
   // 录制的真实握手三步（已脱敏）：
   const transport = new FakeTransport([
     // [1] GET / → JS 挑战页
-    { status: 200, headers: { "content-type": "text/html" }, setCookie: [], location: null, body: challengeHtml },
+    {
+      status: 200,
+      headers: { "content-type": "text/html" },
+      setCookie: [],
+      location: null,
+      body: challengeHtml,
+    },
     // [2] POST /dynamic_challenge → client_id（origin 经 Set-Cookie 下发 + body）
     {
       status: 200,
@@ -56,7 +64,13 @@ async function main(): Promise<void> {
       body: JSON.stringify(challengeResp.body),
     },
     // [3] GET /（带会话 cookie）→ 真实通知页
-    { status: 200, headers: { "content-type": "text/html" }, setCookie: [], location: null, body: noticeHtml },
+    {
+      status: 200,
+      headers: { "content-type": "text/html" },
+      setCookie: [],
+      location: null,
+      body: noticeHtml,
+    },
   ]);
 
   const view: BrokerManifestView = { allow: ["https://dean.xjtu.edu.cn/*"] }; // manifest：全 passthrough、无 credentials
@@ -88,7 +102,7 @@ async function main(): Promise<void> {
   for (const it of result.items) {
     assert.ok(it.id.length > 0, "item.id 非空");
     assert.ok(it.title.length > 0, "item.title 非空");
-    assert.ok(it.url !== undefined && it.url.startsWith("http"), "item.url 绝对 URL");
+    assert.ok(it.url?.startsWith("http"), "item.url 绝对 URL");
     assert.equal(it.category, "academic");
     assert.equal(it.source, "教务处");
   }

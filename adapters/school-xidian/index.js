@@ -8,7 +8,15 @@
  * （server `npm run smoke:sandbox` testXidianNoticeList）。
  */
 
-import { parseDocument, selectAll, getText, getAttributeValue, nextElementSibling, normalizeDate, makeUrlAbsolute } from "elecon:html";
+import {
+  getAttributeValue,
+  getText,
+  makeUrlAbsolute,
+  nextElementSibling,
+  normalizeDate,
+  parseDocument,
+  selectAll,
+} from "elecon:html";
 
 const ORIGIN = "https://jwc.xidian.edu.cn";
 

@@ -20,8 +20,6 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-
-import type { BrokerManifestView } from "./inject-policy.js";
 import {
   defaultPath,
   domainMatch,
@@ -29,6 +27,7 @@ import {
   parseUrlHostPath,
   pathMatch,
 } from "./cookie-match.js";
+import type { BrokerManifestView } from "./inject-policy.js";
 
 /** cookie 来源分区。`origin` 进收割权威；`ephemeral` 永不收割。 */
 export type CookieSource = "origin" | "ephemeral";
@@ -167,10 +166,7 @@ function cmpStr(a: string, b: string): number {
 }
 
 /** 单个 cookie 是否会被发往 requestUrl（RFC 6265 domain-match ∧ path-match）。 */
-export function matchCookieForSend(
-  cookie: { domain: string; path: string },
-  requestUrl: string,
-): boolean {
+export function matchCookieForSend(cookie: { domain: string; path: string }, requestUrl: string): boolean {
   const u = parseUrlHostPath(requestUrl);
   if (!u) return false;
   return domainMatch(u.host, cookie.domain) && pathMatch(u.path, cookie.path);
@@ -192,9 +188,7 @@ export function selectCookies(
     const cur = byName.get(c.name);
     if (!cur || sourceRank(c.source) > sourceRank(cur.source)) byName.set(c.name, c);
   }
-  return [...byName.values()]
-    .sort(compareCookiePathName)
-    .map((c) => ({ name: c.name, value: c.value }));
+  return [...byName.values()].sort(compareCookiePathName).map((c) => ({ name: c.name, value: c.value }));
 }
 
 /** 解析单条 `Set-Cookie` 头为 JarCookie（origin 区）。缺省 domain/path 按 RFC 6265 §5.3。 */

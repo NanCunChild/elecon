@@ -103,8 +103,14 @@ export function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => Error
     const timer = setTimeout(() => reject(onTimeout()), ms);
     (timer as { unref?: () => void }).unref?.();
     p.then(
-      (v) => { clearTimeout(timer); resolve(v); },
-      (e: unknown) => { clearTimeout(timer); reject(e as Error); },
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(timer);
+        reject(e as Error);
+      },
     );
   });
 }

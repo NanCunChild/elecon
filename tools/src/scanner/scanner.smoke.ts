@@ -39,7 +39,7 @@ function codes(findings: { code: string }[]): string[] {
 
 {
   const f = scanLine('"studentId": "2020123456"');
-  assert.ok(codes(f).includes("P3_student_id"), '含 studentId 的 10 位数字应命中 P3');
+  assert.ok(codes(f).includes("P3_student_id"), "含 studentId 的 10 位数字应命中 P3");
   assert.strictEqual(f[0]?.level, "error");
 
   // 无上下文提示词不命中
@@ -85,12 +85,12 @@ function codes(findings: { code: string }[]): string[] {
 
 {
   const exempts = [
-    '{"id": "000000000000000000"}',                                    // 全 0
-    '{"id": "xxxxxxxxxxxxxxxxxx"}',                                    // 全 X
-    '{"id": "12345678901234567890"}',                                  // 递增
-    '{"phone": "12345678901", "comment": "this is a demo"}',           // demo 豁免
-    '{"sno": "12345678", "note": "测试数据"}',                         // 测试 豁免
-    '{"token": "test-token-placeholder-12345678"}',                    // test 豁免
+    '{"id": "000000000000000000"}', // 全 0
+    '{"id": "xxxxxxxxxxxxxxxxxx"}', // 全 X
+    '{"id": "12345678901234567890"}', // 递增
+    '{"phone": "12345678901", "comment": "this is a demo"}', // demo 豁免
+    '{"sno": "12345678", "note": "测试数据"}', // 测试 豁免
+    '{"token": "test-token-placeholder-12345678"}', // test 豁免
   ];
   for (const s of exempts) {
     const f = scanLine(s);

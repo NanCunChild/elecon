@@ -9,41 +9,43 @@
  */
 
 import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   getQuickJS,
-  Scope,
-  shouldInterruptAfterDeadline,
   type QuickJSContext,
   type QuickJSHandle,
   type QuickJSRuntime,
+  Scope,
+  shouldInterruptAfterDeadline,
 } from "quickjs-emscripten";
-
+import type { RequestInit as BrokerRequestInit } from "./broker/assemble.js";
 import { CookieJar } from "./broker/cookie-jar.js";
-import { decideHarvest, harvestInto, type HarvestSink } from "./broker/harvest.js";
+import {
+  BrokerFetchRejected,
+  type FetchProxyOutcome,
+  proxyFetch,
+  type Transport,
+  TransportBodyLimitExceeded,
+} from "./broker/fetch-proxy.js";
+import { decideHarvest, type HarvestSink, harvestInto } from "./broker/harvest.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 import type { CredentialResolver } from "./broker/ports.js";
 import {
-  proxyFetch,
-  BrokerFetchRejected,
-  TransportBodyLimitExceeded,
-  type Transport,
-  type FetchProxyOutcome,
-} from "./broker/fetch-proxy.js";
-import type { RequestInit as BrokerRequestInit } from "./broker/assemble.js";
-import { TrustedAdapterContext, fetchTrustPermitted, isTrustedAdapterContext } from "./trusted-context.js";
-
-import {
+  isThenable,
+  isThenableHandle,
+  jsonToHandle,
+  marshal,
   SandboxError,
   unwrap,
-  errorMessage,
-  marshal,
-  isThenable,
-  jsonToHandle,
-  isThenableHandle,
   withTimeout,
 } from "./sandbox-qjs-util.js";
+import {
+  fetchTrustPermitted,
+  isTrustedAdapterContext,
+  type TrustedAdapterContext,
+} from "./trusted-context.js";
+
 export { SandboxError, type SandboxFailureReason } from "./sandbox-qjs-util.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -51,10 +53,7 @@ const HTML_STDLIB_SOURCE = readFileSync(
   resolve(__dirname, "../../../adapters/_stdlib/html.bundle.js"),
   "utf-8",
 );
-const FETCH_RESPONSE_SHIM_SOURCE = readFileSync(
-  resolve(__dirname, "./fetch-response-shim.js"),
-  "utf-8",
-);
+const FETCH_RESPONSE_SHIM_SOURCE = readFileSync(resolve(__dirname, "./fetch-response-shim.js"), "utf-8");
 
 export interface SandboxLimits {
   /** 单次执行墙钟超时（毫秒） */
@@ -147,10 +146,7 @@ export async function runAdapter(
       }
       const handlerHandle = scope.manage(ctx.getProp(capsHandle, input.capability));
       if (ctx.typeof(handlerHandle) !== "function") {
-        throw new SandboxError(
-          "capability_missing",
-          `capability '${input.capability}' 不在 adapter 内`,
-        );
+        throw new SandboxError("capability_missing", `capability '${input.capability}' 不在 adapter 内`);
       }
 
       const ctxArg = buildParserCtx(ctx, scope, input);
@@ -258,7 +254,11 @@ function bridgeHostPromise(
   const deferred = ctx.newPromise();
   hostPromise.then(
     (respHandle) => {
-      try { deferred.resolve(respHandle); } catch { /* already settled */ }
+      try {
+        deferred.resolve(respHandle);
+      } catch {
+        /* already settled */
+      }
       respHandle.dispose();
     },
     (err: unknown) => {
@@ -346,7 +346,10 @@ function buildFetchCtx(
           fetchLimits.perRequestTimeoutMs,
           () => {
             // 单请求超时同为硬终止：置 fatal，adapter catch 也无法把执行洗成成功（镜像 Dart 侧）
-            state.fatal = new SandboxError("fetch_limit", `单请求超时（>${fetchLimits.perRequestTimeoutMs}ms）`);
+            state.fatal = new SandboxError(
+              "fetch_limit",
+              `单请求超时（>${fetchLimits.perRequestTimeoutMs}ms）`,
+            );
             abortInFlight(state);
             return state.fatal;
           },
@@ -384,15 +387,9 @@ function buildFetchCtx(
   // wrap raw fetch into Response-like interface for adapter ergonomics
   // shim 源码见 ./fetch-response-shim.js（契约面：adapter 依赖其 Response shape）。
   const wrapFactory = track(
-    unwrap(
-      ctx,
-      ctx.evalCode(FETCH_RESPONSE_SHIM_SOURCE, "fetch-response-shim.js"),
-      deadline,
-    ),
+    unwrap(ctx, ctx.evalCode(FETCH_RESPONSE_SHIM_SOURCE, "fetch-response-shim.js"), deadline),
   );
-  const wrappedFetch = track(
-    unwrap(ctx, ctx.callFunction(wrapFactory, ctx.undefined, fetchFn), deadline),
-  );
+  const wrappedFetch = track(unwrap(ctx, ctx.callFunction(wrapFactory, ctx.undefined, fetchFn), deadline));
   ctx.setProp(ctxObj, "fetch", wrappedFetch);
   fetchFn.dispose();
 
@@ -489,7 +486,10 @@ export async function runFetchAdapter(
   // 签发登记校验防运行时伪造（cast / 直接 new / Object.create，见 trusted-context.ts）；
   // production 硬接 NODE_ENV——不提供注入点。
   if (!isTrustedAdapterContext(deps.trust)) {
-    throw new SandboxError("trust_rejected", "trust 不是核心签发的 TrustedAdapterContext 实例（伪造/误接线，fail-closed）");
+    throw new SandboxError(
+      "trust_rejected",
+      "trust 不是核心签发的 TrustedAdapterContext 实例（伪造/误接线，fail-closed）",
+    );
   }
   if (!fetchTrustPermitted(deps.trust.tier, { production: process.env.NODE_ENV === "production" })) {
     throw new SandboxError(
@@ -531,7 +531,11 @@ export async function runFetchAdapter(
   } finally {
     abortInFlight(state);
     for (const h of disposables) {
-      try { h.dispose(); } catch { /* already freed */ }
+      try {
+        h.dispose();
+      } catch {
+        /* already freed */
+      }
     }
     ctx.dispose();
     runtime.dispose();

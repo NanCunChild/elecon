@@ -1,0 +1,72 @@
+// Biome —— TS/JS 侧 lint + format（审阅 P1-2：此前仅 tsc，风格靠自律）。
+// 范围：server/tools/packages/scripts + adapters 一方 JS；不含 client（Dart，
+// flutter_lints 已覆盖）与 adapters/_stdlib 的 vendored bundle（可复现性闸门管）。
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
+  "files": {
+    "includes": [
+      "server/src/**",
+      "tools/src/**",
+      "packages/*/src/**",
+      "scripts/**",
+      "adapters/school-xjt/*.js",
+      "adapters/school-xidian/*.js",
+      "adapters/_template/**/*.js",
+      "adapters/_canary/**/*.js",
+      "adapters/_stdlib/src/**",
+      "adapters/_stdlib/build.mjs"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 110
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "trailingCommas": "all"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      // 注：2.5.3 的 preset 语法尚未落地（deprecation 先行），仍用 recommended 布尔；
+      // Biome 3.x 升级时改 preset。
+      "recommended": true,
+      "style": {
+        // `!` 与 noUncheckedIndexedAccess 配套是仓库既有惯例（守卫后断言）；
+        // 逐处改写会无谓搅动 🔒 承重文件。
+        "noNonNullAssertion": "off",
+        // 字符串拼接 vs 模板串是纯风格；不为此搅动既有代码。
+        "useTemplate": "off"
+      },
+      "complexity": {
+        // headers["Cookie"] 这类 bracket 访问在 HTTP 头映射里更贴语义。
+        "useLiteralKeys": "off",
+        // codegen.smoke.ts 等用独立块作用域组织断言组，属有意为之。
+        "noUselessLoneBlockStatements": "off"
+      },
+      "correctness": {
+        // `return json(res, ...)`（void 函数内 return void 表达式）是路由
+        // 早退惯用法（public/index.ts），无正确性问题。
+        "noVoidTypeReturn": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // adapter capability 的 `(ctx, params, responses)` 签名由契约固定
+      // （contract/adapter-sdk），实现未用尽参数是常态，不按未用参数报警。
+      "includes": ["adapters/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedFunctionParameters": "off"
+          }
+        }
+      }
+    }
+  ]
+}

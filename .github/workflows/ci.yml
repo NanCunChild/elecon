@@ -8,50 +8,58 @@ on:
     branches: [main]
 
 jobs:
-  # 服务端：TS 严格类型 + 全量 golden 冒烟（沙箱 parser 端到端/超时/缺能力 + Broker B1–B6 + 凭证 + transport + fetch/xjt）。
+  # lint + 全 workspace 严格类型：Biome（server/tools/packages/scripts + adapters 一方 JS，
+  # 规则取舍见 biome.jsonc）+ tsc --noEmit（含共享包 @elecon/broker-primitives）。
+  # npm ci 在仓库根（workspace）执行，共享包经 prepare 自动构建。
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx biome ci .
+      - run: npm run typecheck
+
+  # 服务端：全量 golden 冒烟（目录发现；沙箱 parser 端到端/超时/OOM/缺能力 + Broker B1–B6
+  # + 凭证 + transport + fetch/xjt）。golden 向量钉死两端双跑行为；漏跑 = TS 侧可静默漂移
+  # 而 Dart 侧（flutter test 全量）仍被门住，破坏双跑一致性的强制对称（ADR-001 §8）。
   server:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: server/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
-      - run: npm run typecheck
-      # 全量 golden 闸门：Broker B1–B6 + 凭证 + transport + fetch/xjt 端到端。
-      # 这些 golden 向量钉死两端双跑行为；漏跑 = TS 侧可静默漂移而 Dart 侧（flutter test 全量）
-      # 仍被门住，破坏双跑一致性的强制对称（ADR-001 §8）。
-      - run: npm run smoke:all
+      - run: npm run typecheck -w server
+      - run: npm run smoke:all -w server
 
-  # 工具链：TS 严格类型 + 全量 smoke（目录发现，含 validator/urlmatch/scanner/codegen/signer）
-  # + 对 adapters/ 全量静态校验（CI 闸门）。此前手工列举漏跑了 scanner/codegen/signer 三个
-  # smoke（写了从未进 CI）；现与 server 同用 scripts/run-smokes.mjs 自动发现，新增不可漏。
+  # 工具链：全量 smoke（目录发现，含 validator/urlmatch/scanner/codegen/signer——此前手工
+  # 列举漏跑了后三个）+ 对 adapters/ 全量静态校验 + codegen 漂移闸门。
   tools:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: tools
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: tools/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run smoke:all
-      - run: npm run validate
+      - run: npm run typecheck -w tools
+      - run: npm run smoke:all -w tools
+      - run: npm run validate -w tools
       # codegen 漂移闸门（仿 stdlib bundle 闸门）：入库生成物必须等于按当前
       # contract/schema 重新生成的产物——schema 改了、生成物没跟上即 fail。
       # 生成物已被消费（client elecon_contract 包 / server 类型化 smoke），漂移会伤下游。
       - name: 入库 codegen 产物必须等于按 schema 重新生成的产物
-        run: npm run codegen && git diff --exit-code ../contract/generated
+        run: npm run codegen -w tools && git diff --exit-code contract/generated
 
   # stdlib：vendored html.bundle.js 可复现性闸门（#16）。在干净环境按锁定依赖重建，
   # 与入库 bundle 做 git diff 比对——不一致即 fail。bundle 是两端 QuickJS 实际加载的

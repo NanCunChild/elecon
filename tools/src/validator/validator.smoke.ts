@@ -115,7 +115,11 @@ function codes(findings: { code: string }[]): string[] {
     },
     contract,
   );
-  assert.equal(findings.filter((f) => f.level === "error").length, 0, `合法 parser 不应有 error：${JSON.stringify(findings)}`);
+  assert.equal(
+    findings.filter((f) => f.level === "error").length,
+    0,
+    `合法 parser 不应有 error：${JSON.stringify(findings)}`,
+  );
   console.log("  ✓ 合法 parser 通过（占位符不干扰白名单匹配）");
 }
 
@@ -246,7 +250,11 @@ function codes(findings: { code: string }[]): string[] {
     },
     contract,
   );
-  assert.equal(findings.filter((f) => f.level === "error").length, 0, `合法 login 不应有 error：${JSON.stringify(findings)}`);
+  assert.equal(
+    findings.filter((f) => f.level === "error").length,
+    0,
+    `合法 login 不应有 error：${JSON.stringify(findings)}`,
+  );
   console.log("  ✓ 合法 login 无 error");
 }
 
@@ -333,7 +341,11 @@ function codes(findings: { code: string }[]): string[] {
         ssoMint: {
           authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
           services: {
-            "card-session": { service: "https://card.h.edu.cn/sso", success: ["https://card.h.edu.cn/account*"], via: "grades.list" },
+            "card-session": {
+              service: "https://card.h.edu.cn/sso",
+              success: ["https://card.h.edu.cn/account*"],
+              via: "grades.list",
+            },
           },
         },
       },
@@ -346,7 +358,11 @@ function codes(findings: { code: string }[]): string[] {
     },
     contract,
   );
-  assert.equal(findings.filter((f) => f.level === "error").length, 0, `合法 ssoMint 不应有 error：${JSON.stringify(findings)}`);
+  assert.equal(
+    findings.filter((f) => f.level === "error").length,
+    0,
+    `合法 ssoMint 不应有 error：${JSON.stringify(findings)}`,
+  );
   console.log("  ✓ 合法 ssoMint 无 error（M1–M5）");
 }
 
@@ -364,7 +380,12 @@ function codes(findings: { code: string }[]): string[] {
         success: { whenUrlMatches: ["https://ehall.h.edu.cn/index*"] },
         ssoMint: {
           authEndpoint: "http://ids.h.edu.cn/authserver/login?service={service}",
-          services: { "ehall-session": { service: "https://ehall.h.edu.cn/sso", success: ["https://ehall.h.edu.cn/index*"] } },
+          services: {
+            "ehall-session": {
+              service: "https://ehall.h.edu.cn/sso",
+              success: ["https://ehall.h.edu.cn/index*"],
+            },
+          },
         },
       },
       credentials: { "ehall-session": { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
@@ -391,7 +412,9 @@ function codes(findings: { code: string }[]): string[] {
         success: { whenUrlMatches: ["https://ids.h.edu.cn/done*"] },
         ssoMint: {
           authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
-          services: { ghost: { service: "https://evil.h.edu.cn/sso", success: ["https://evil.h.edu.cn/ok*"] } },
+          services: {
+            ghost: { service: "https://evil.h.edu.cn/sso", success: ["https://evil.h.edu.cn/ok*"] },
+          },
         },
       },
       credentials: { "ids-cas": { scope: ["https://ids.h.edu.cn/*"], type: "cookie", role: "sso-master" } },
@@ -419,7 +442,12 @@ function codes(findings: { code: string }[]): string[] {
         success: { whenUrlMatches: ["https://ehall.h.edu.cn/index*"] },
         ssoMint: {
           authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
-          services: { "ehall-session": { service: "https://ehall.h.edu.cn/sso", success: ["https://ehall.h.edu.cn/index*"] } },
+          services: {
+            "ehall-session": {
+              service: "https://ehall.h.edu.cn/sso",
+              success: ["https://ehall.h.edu.cn/index*"],
+            },
+          },
         },
       },
       credentials: { "ehall-session": { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
@@ -445,7 +473,9 @@ function codes(findings: { code: string }[]): string[] {
         success: { whenUrlMatches: ["https://ids.h.edu.cn/app/ok*"] },
         ssoMint: {
           authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
-          services: { sub: { service: "https://ids.h.edu.cn/app/x", success: ["https://ids.h.edu.cn/app/ok*"] } },
+          services: {
+            sub: { service: "https://ids.h.edu.cn/app/x", success: ["https://ids.h.edu.cn/app/ok*"] },
+          },
         },
       },
       credentials: {
@@ -456,7 +486,10 @@ function codes(findings: { code: string }[]): string[] {
     },
     contract,
   );
-  assert.ok(codes(findings).includes("M4_master_scope_overlaps_downstream"), "母凭证 scope 覆盖下游域应触发 M4");
+  assert.ok(
+    codes(findings).includes("M4_master_scope_overlaps_downstream"),
+    "母凭证 scope 覆盖下游域应触发 M4",
+  );
   console.log("  ✓ 母凭证 scope 与下游域重叠被拒（M4）");
 }
 
@@ -474,7 +507,13 @@ function codes(findings: { code: string }[]): string[] {
         success: { whenUrlMatches: ["https://card.h.edu.cn/ok*"] },
         ssoMint: {
           authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
-          services: { "card-session": { service: "https://card.h.edu.cn/sso", success: ["https://card.h.edu.cn/ok*"], via: "ghost.mint" } },
+          services: {
+            "card-session": {
+              service: "https://card.h.edu.cn/sso",
+              success: ["https://card.h.edu.cn/ok*"],
+              via: "ghost.mint",
+            },
+          },
         },
       },
       credentials: {
@@ -503,7 +542,13 @@ function codes(findings: { code: string }[]): string[] {
         success: { whenUrlMatches: ["https://card.h.edu.cn/ok*"] },
         ssoMint: {
           authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
-          services: { "card-session": { service: "https://card.h.edu.cn/sso", success: ["https://card.h.edu.cn/ok*"], via: "grades.list" } },
+          services: {
+            "card-session": {
+              service: "https://card.h.edu.cn/sso",
+              success: ["https://card.h.edu.cn/ok*"],
+              via: "grades.list",
+            },
+          },
         },
       },
       credentials: {

@@ -22,7 +22,7 @@
  * 生成物入库；一致性由 CI 漂移闸门（重新生成 + git diff --exit-code）保证。
  */
 
-import { readFileSync, readdirSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -78,10 +78,13 @@ function tsType(s: JsonSchema, parentName: string, prop: string, emit: EmittedTy
   assertSupported(s, `${parentName}.${prop}`);
   if (s.enum) return s.enum.map((e) => JSON.stringify(e)).join(" | ");
   switch (s.type) {
-    case "string": return "string";
+    case "string":
+      return "string";
     case "number":
-    case "integer": return "number";
-    case "boolean": return "boolean";
+    case "integer":
+      return "number";
+    case "boolean":
+      return "boolean";
     case "array": {
       const item = s.items ?? {};
       return `${tsType(item, parentName, prop, emit)}[]`;
@@ -91,7 +94,8 @@ function tsType(s: JsonSchema, parentName: string, prop: string, emit: EmittedTy
       emit.push({ name, schema: s });
       return name;
     }
-    default: return "unknown"; // 空 {} —— value 无约束
+    default:
+      return "unknown"; // 空 {} —— value 无约束
   }
 }
 
@@ -109,7 +113,6 @@ function tsInterface(name: string, s: JsonSchema, emit: EmittedType[]): string {
 }
 
 export function generateTs(rootName: string, root: JsonSchema): string {
-  const emit: EmittedType[] = [];
   const blocks: string[] = [];
   // 先生成根，过程中把嵌套 object 推入 emit，再依次生成（可能再产生嵌套）。
   const rendered = new Set<string>();
@@ -131,16 +134,22 @@ function dartType(s: JsonSchema, parentName: string, prop: string): string {
   assertSupported(s, `${parentName}.${prop}`);
   if (s.enum) return "String"; // enum 以 String 承载（保持与 schema 校验一致，避免解析期抛错）
   switch (s.type) {
-    case "string": return "String";
-    case "number": return "num";
-    case "integer": return "int";
-    case "boolean": return "bool";
+    case "string":
+      return "String";
+    case "number":
+      return "num";
+    case "integer":
+      return "int";
+    case "boolean":
+      return "bool";
     case "array": {
       const item = s.items ?? {};
       return `List<${dartType(item, parentName, prop)}>`;
     }
-    case "object": return parentName + pascalCase(prop);
-    default: return "Object?";
+    case "object":
+      return parentName + pascalCase(prop);
+    default:
+      return "Object?";
   }
 }
 
@@ -164,15 +173,9 @@ function dartClass(name: string, s: JsonSchema): { code: string; children: Emitt
     fields.push(`  final ${dt}${nullable} ${key};`);
     ctorParams.push(opt ? `    required this.${key},` : `    this.${key},`);
   }
-  const code = [
-    `class ${name} {`,
-    `  const ${name}({`,
-    ...ctorParams,
-    `  });`,
-    "",
-    ...fields,
-    `}`,
-  ].join("\n");
+  const code = [`class ${name} {`, `  const ${name}({`, ...ctorParams, `  });`, "", ...fields, `}`].join(
+    "\n",
+  );
   return { code, children };
 }
 
@@ -193,8 +196,10 @@ export function generateDart(rootName: string, root: JsonSchema): string {
 
 // ---- 驱动 ----
 
-const TS_HEADER = "// DO NOT EDIT —— 由 tools/src/codegen 从 contract/schema/ 生成。\n// 改动请改 schema 并重跑 `npm run codegen`（红线 #6：契约即承重墙）。\n\n";
-const DART_HEADER = "// DO NOT EDIT —— 由 tools/src/codegen 从 contract/schema/ 生成。\n// 改动请改 schema 并重跑 `npm run codegen`（红线 #6：契约即承重墙）。\n\nlibrary;\n\n";
+const TS_HEADER =
+  "// DO NOT EDIT —— 由 tools/src/codegen 从 contract/schema/ 生成。\n// 改动请改 schema 并重跑 `npm run codegen`（红线 #6：契约即承重墙）。\n\n";
+const DART_HEADER =
+  "// DO NOT EDIT —— 由 tools/src/codegen 从 contract/schema/ 生成。\n// 改动请改 schema 并重跑 `npm run codegen`（红线 #6：契约即承重墙）。\n\nlibrary;\n\n";
 
 interface GenFile {
   schemaFile: string;
@@ -206,7 +211,9 @@ interface GenFile {
 export function generateAll(): { files: GenFile[]; skipped: { file: string; reason: string }[] } {
   const out: GenFile[] = [];
   const skipped: { file: string; reason: string }[] = [];
-  for (const file of readdirSync(schemaDir).filter((f) => f.endsWith(".schema.json")).sort()) {
+  for (const file of readdirSync(schemaDir)
+    .filter((f) => f.endsWith(".schema.json"))
+    .sort()) {
     const schema = JSON.parse(readFileSync(join(schemaDir, file), "utf-8")) as JsonSchema;
     if (schema.type !== "object") continue; // 只为对象根生成
     const typeName = pascalCase(schema.$id ?? file);
@@ -247,7 +254,9 @@ function main(): void {
     writeFileSync(join(outDartDir, `${base.replace(/\./g, "_")}.dart`), f.dart);
     console.log(`✓ ${f.schemaFile} → ${f.typeName}`);
   }
-  console.log(`\n生成 ${files.length} 个类型到 contract/generated/{ts,dart}/${skipped.length ? `（${skipped.length} 个需人工处理）` : ""}。`);
+  console.log(
+    `\n生成 ${files.length} 个类型到 contract/generated/{ts,dart}/${skipped.length ? `（${skipped.length} 个需人工处理）` : ""}。`,
+  );
 }
 
 // 仅在被直接执行时跑 CLI；被 import（如 smoke 测试）时不触发。

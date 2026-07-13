@@ -25,17 +25,12 @@
  * 🔒 红线 #1 凭证注入 + 出网承重路径：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
  */
 
-import { decideInjection, type BrokerManifestView } from "./inject-policy.js";
+import { assembleRequest, type ProcessedResponse, processResponse, type RequestInit } from "./assemble.js";
+import type { CookieJar } from "./cookie-jar.js";
 import type { HeaderMap } from "./header-sanitize.js";
-import { CookieJar } from "./cookie-jar.js";
-import { decideRedirect, DEFAULT_MAX_REDIRECTS } from "./redirect.js";
+import { type BrokerManifestView, decideInjection } from "./inject-policy.js";
 import type { CredentialResolver } from "./ports.js";
-import {
-  assembleRequest,
-  processResponse,
-  type ProcessedResponse,
-  type RequestInit,
-} from "./assemble.js";
+import { DEFAULT_MAX_REDIRECTS, decideRedirect } from "./redirect.js";
 
 /** 统一 transport seam（复用 B3 RedirectFetcher 思路）。真实实现属 ADR-003，另件注入。 */
 export interface TransportRequest {

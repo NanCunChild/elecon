@@ -1,0 +1,22 @@
+{
+  "name": "elecon-workspace",
+  "private": true,
+  "description": "elecon npm workspace 根（审阅 P2-4）：server / tools / packages 共享依赖树与共享包（@elecon/broker-primitives）。客户端（client/，Flutter）与 adapters/_stdlib（vendored bundle 复现环境）不在 workspace 内。",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/broker-primitives",
+    "server",
+    "tools"
+  ],
+  "scripts": {
+    "lint": "biome ci .",
+    "format": "biome check --write .",
+    "typecheck": "npm run typecheck --workspaces",
+    "smoke:all": "npm run smoke:all -w server && npm run smoke:all -w tools"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.3"
+  }
+}

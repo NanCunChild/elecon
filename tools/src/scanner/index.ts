@@ -22,7 +22,7 @@
  * ⚠ 本工具是**启发式**闸门，不能替代人工审阅（红线 #8 最终由人负责）。
  */
 
-import { readFileSync, readdirSync, existsSync, statSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,8 +47,7 @@ export interface FileFinding extends PiiFinding {
 
 // ---- 脱敏占位豁免 ----
 
-const PLACEHOLDER_HINTS =
-  /example|test|demo|fixture|sample|placeholder|dummy|redacted|脱敏|示例|测试|占位/i;
+const PLACEHOLDER_HINTS = /example|test|demo|fixture|sample|placeholder|dummy|redacted|脱敏|示例|测试|占位/i;
 
 /** 全同字符 / 简单递增序列 / 全 X → 明显是占位，不算真实 PII。 */
 function looksLikePlaceholder(digits: string): boolean {
@@ -108,7 +107,12 @@ export function scanLine(line: string): PiiFinding[] {
   for (const m of line.matchAll(/\d{17}[\dXx]/g)) {
     const v = m[0];
     if (isValidChineseId(v) && !looksLikePlaceholder(v.slice(0, 17)) && !exempt) {
-      out.push({ level: "error", code: "P1_id_card", message: "疑似真实身份证号（校验位通过）", sample: mask(v) });
+      out.push({
+        level: "error",
+        code: "P1_id_card",
+        message: "疑似真实身份证号（校验位通过）",
+        sample: mask(v),
+      });
     }
   }
 
@@ -117,7 +121,12 @@ export function scanLine(line: string): PiiFinding[] {
     const v = m[0];
     if (v.length === 18 && isValidChineseId(v)) continue; // 已由 P1 覆盖
     if (luhnValid(v) && !looksLikePlaceholder(v) && !exempt) {
-      out.push({ level: "error", code: "P6_bank_card", message: "疑似真实银行卡号（Luhn 通过）", sample: mask(v) });
+      out.push({
+        level: "error",
+        code: "P6_bank_card",
+        message: "疑似真实银行卡号（Luhn 通过）",
+        sample: mask(v),
+      });
     }
   }
 
@@ -134,25 +143,42 @@ export function scanLine(line: string): PiiFinding[] {
     for (const m of line.matchAll(/(?<!\d)\d{8,12}(?!\d)/g)) {
       const v = m[0];
       if (!looksLikePlaceholder(v) && !exempt) {
-        out.push({ level: "error", code: "P3_student_id", message: "疑似真实学号（上下文含学号提示）", sample: mask(v) });
+        out.push({
+          level: "error",
+          code: "P3_student_id",
+          message: "疑似真实学号（上下文含学号提示）",
+          sample: mask(v),
+        });
       }
     }
   }
 
   // P5 会话凭证
-  for (const m of line.matchAll(/(JSESSIONID|CASTGC|CASPRIVACY|access_token|refresh_token|token)\s*[=:]\s*["']?([A-Za-z0-9._\-]{16,})/gi)) {
+  for (const m of line.matchAll(
+    /(JSESSIONID|CASTGC|CASPRIVACY|access_token|refresh_token|token)\s*[=:]\s*["']?([A-Za-z0-9._-]{16,})/gi,
+  )) {
     const name = m[1] ?? "";
     const val = m[2] ?? "";
     if (val && !looksLikePlaceholder(val) && !exempt) {
-      out.push({ level: "error", code: "P5_session_credential", message: `疑似真实会话凭证（${name}）`, sample: mask(val) });
+      out.push({
+        level: "error",
+        code: "P5_session_credential",
+        message: `疑似真实会话凭证（${name}）`,
+        sample: mask(val),
+      });
     }
   }
 
   // P4 邮箱（warn）
-  for (const m of line.matchAll(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g)) {
+  for (const m of line.matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)) {
     const v = m[0];
     if (!exempt && !/example\.|test\.|localhost/i.test(v)) {
-      out.push({ level: "warn", code: "P4_email", message: "邮箱地址（请确认是否为真实个人邮箱）", sample: mask(v) });
+      out.push({
+        level: "warn",
+        code: "P4_email",
+        message: "邮箱地址（请确认是否为真实个人邮箱）",
+        sample: mask(v),
+      });
     }
   }
 
