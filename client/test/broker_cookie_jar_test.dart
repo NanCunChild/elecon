@@ -176,6 +176,21 @@ void main() {
       expect(warns.any((w) => w.contains('domain_is_credential')), isTrue);
     });
 
+    test(
+        'public-suffix 护栏常量 == contract/broker/public-suffixes.json（单源钉死）',
+        () {
+      // TS 侧运行时直接加载该 JSON；Dart 侧是编译期常量。本断言保证单边增删条目
+      // 立即 CI 红（审阅建议：数据形式的双写下沉为 contract 单一 JSON）。
+      final json = readJson(repoPath('contract/broker/public-suffixes.json'));
+      final contractSuffixes = (json['multiLabelPublicSuffixes'] as List)
+          .cast<String>()
+          .map((s) => s.toLowerCase())
+          .toSet();
+      expect(contractSuffixes, isNotEmpty);
+      expect(knownMultiLabelPublicSuffixes, equals(contractSuffixes),
+          reason: '护栏列表与 contract 单源漂移：两处须同步增删');
+    });
+
     test('ephemeral-only 在无 origin 同名时生效，且仍不收割', () {
       final warns = <String>[];
       final jar = CookieJar();

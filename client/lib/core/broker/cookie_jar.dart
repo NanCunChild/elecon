@@ -94,10 +94,15 @@ class EphemeralReject extends EphemeralWriteDecision {
 
 int _sourceRank(String s) => s == 'origin' ? 1 : 0;
 
-// 最小 public-suffix 护栏（#79 P0-4）：完整 PSL 需新依赖与更新机制；本阶段先
-// fail-closed 拒绝单标签 TLD 与校园场景/常见 ccTLD 的二级公共后缀，封堵
-// `dean.xjtu.edu.cn` 设置 `Domain=edu.cn` 这类过宽父域污染面。
-const Set<String> _knownMultiLabelPublicSuffixes = {
+/// 最小 public-suffix 护栏（#79 P0-4）：完整 PSL 需新依赖与更新机制；本阶段先
+/// fail-closed 拒绝单标签 TLD 与校园场景/常见 ccTLD 的二级公共后缀，封堵
+/// `dean.xjtu.edu.cn` 设置 `Domain=edu.cn` 这类过宽父域污染面。
+///
+/// 单一事实源在 `contract/broker/public-suffixes.json`（TS 侧运行时直接加载）；
+/// 客户端运行时无仓库文件，故此处为编译期常量，由
+/// `test/broker_cookie_jar_test.dart` 与 contract JSON 做集合相等断言钉死——
+/// 单边增删条目即 CI 红。公开仅为供该测试比对，非 API 面。
+const Set<String> knownMultiLabelPublicSuffixes = {
   'ac.cn',
   'com.cn',
   'edu.cn',
@@ -123,7 +128,7 @@ const Set<String> _knownMultiLabelPublicSuffixes = {
 bool _isPublicSuffixLike(String domain) {
   final d = domain.toLowerCase().replaceFirst(RegExp(r'^\.'), '');
   if (d.isEmpty || !d.contains('.')) return true;
-  return _knownMultiLabelPublicSuffixes.contains(d);
+  return knownMultiLabelPublicSuffixes.contains(d);
 }
 
 /// cookie path 是否「等于或深于」allow path 前缀（allowPath 为其前缀）——即不更宽。

@@ -18,6 +18,9 @@
  * （AGENTS.md §1；ADR-009 §2.8 第 164 行：四重栅栏由 Broker 强制，非依赖 adapter 自律）。
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import type { BrokerManifestView } from "./inject-policy.js";
 import {
   defaultPath,
@@ -68,28 +71,26 @@ function sourceRank(s: CookieSource): number {
 // 最小 public-suffix 护栏（#79 P0-4）：完整 PSL 需新依赖与更新机制；本阶段先
 // fail-closed 拒绝单标签 TLD 与校园场景/常见 ccTLD 的二级公共后缀，封堵
 // `dean.xjtu.edu.cn` 设置 `Domain=edu.cn` 这类过宽父域污染面。
-const knownMultiLabelPublicSuffixes = new Set([
-  "ac.cn",
-  "com.cn",
-  "edu.cn",
-  "gov.cn",
-  "net.cn",
-  "org.cn",
-  "ac.uk",
-  "co.uk",
-  "gov.uk",
-  "org.uk",
-  "ac.jp",
-  "co.jp",
-  "go.jp",
-  "ne.jp",
-  "or.jp",
-  "com.au",
-  "edu.au",
-  "gov.au",
-  "net.au",
-  "org.au",
-]);
+// 列表单一事实源在 contract/broker/public-suffixes.json（Dart 侧常量由测试钉死一致）。
+// 加载/形状非法即抛（fail-closed）：安全栅栏数据不得静默降级为空集。
+const publicSuffixesPath = fileURLToPath(
+  new URL("../../../../contract/broker/public-suffixes.json", import.meta.url),
+);
+
+function loadKnownMultiLabelPublicSuffixes(): ReadonlySet<string> {
+  const raw = JSON.parse(readFileSync(publicSuffixesPath, "utf-8")) as {
+    multiLabelPublicSuffixes?: unknown;
+  };
+  const list = raw.multiLabelPublicSuffixes;
+  if (!Array.isArray(list) || list.length === 0 || !list.every((s) => typeof s === "string")) {
+    throw new Error(
+      `public-suffix 护栏数据非法：${publicSuffixesPath} 须含非空字符串数组 multiLabelPublicSuffixes（fail-closed）`,
+    );
+  }
+  return new Set(list.map((s) => s.toLowerCase()));
+}
+
+const knownMultiLabelPublicSuffixes = loadKnownMultiLabelPublicSuffixes();
 
 function isPublicSuffixLike(domain: string): boolean {
   const d = domain.toLowerCase().replace(/^\./, "");
