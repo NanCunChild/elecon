@@ -28,7 +28,7 @@
     "audit": "npm audit --omit=dev",
     "smoke:xjt": "tsx src/runtime/adapters-xjt.fetch.smoke.ts",
     "smoke:public": "tsx src/public/public.smoke.ts",
-    "smoke:all": "npm run smoke:sandbox && npm run smoke:fetch && npm run smoke:broker && npm run smoke:urlmatch && npm run smoke:credential && npm run smoke:header && npm run smoke:redirect && npm run smoke:cookie && npm run smoke:harvest && npm run smoke:assemble && npm run smoke:transport && npm run smoke:xjt && npm run smoke:public"
+    "smoke:all": "node ../scripts/run-smokes.mjs src"
   },
   "dependencies": {
     "ajv": "^8.17.1",

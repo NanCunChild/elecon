@@ -28,7 +28,9 @@ jobs:
       # 仍被门住，破坏双跑一致性的强制对称（ADR-001 §8）。
       - run: npm run smoke:all
 
-  # 工具链：TS 严格类型 + 校验器自测 + 对 adapters/ 全量静态校验（CI 闸门）。
+  # 工具链：TS 严格类型 + 全量 smoke（目录发现，含 validator/urlmatch/scanner/codegen/signer）
+  # + 对 adapters/ 全量静态校验（CI 闸门）。此前手工列举漏跑了 scanner/codegen/signer 三个
+  # smoke（写了从未进 CI）；现与 server 同用 scripts/run-smokes.mjs 自动发现，新增不可漏。
   tools:
     runs-on: ubuntu-latest
     defaults:
@@ -43,8 +45,7 @@ jobs:
           cache-dependency-path: tools/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run smoke:validator
-      - run: npm run smoke:urlmatch
+      - run: npm run smoke:all
       - run: npm run validate
 
   # stdlib：vendored html.bundle.js 可复现性闸门（#16）。在干净环境按锁定依赖重建，

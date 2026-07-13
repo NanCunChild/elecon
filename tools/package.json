@@ -23,6 +23,7 @@
     "smoke:scanner": "tsx src/scanner/scanner.smoke.ts",
     "smoke:codegen": "tsx src/codegen/codegen.smoke.ts",
     "smoke:signer": "tsx src/signer/signer.smoke.ts",
+    "smoke:all": "node ../scripts/run-smokes.mjs src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "audit": "npm audit --omit=dev"
   },
