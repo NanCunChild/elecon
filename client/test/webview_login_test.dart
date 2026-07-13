@@ -84,4 +84,25 @@ void main() {
     expect(resolved?.value, 'JSESSIONID=ROTATED');
     expect(await store.get('ids-cas'), isNull);
   });
+
+  test('planWebViewHarvest 干跑：只判定不写入（页面轮询依据）', () {
+    // session cookie 未落定 → 计划为空（轮询继续等）。
+    expect(
+      planWebViewHarvest(login: login, cookies: const []),
+      isEmpty,
+    );
+    // 落定后 → 计划出现声明 ref；干跑本身不接触任何 store。
+    final plan = planWebViewHarvest(
+      login: login,
+      cookies: const [
+        WebViewCookie(
+          name: 'JSESSIONID',
+          value: 'V',
+          domain: 'ehall.xidian.edu.cn',
+          path: '/',
+        ),
+      ],
+    );
+    expect(plan.map((e) => e.ref), ['ehall-session']);
+  });
 }

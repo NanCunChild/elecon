@@ -60,6 +60,13 @@ class _LogEntry {
   final String message;
 }
 
+/// 收割轮询节奏（审阅 P2-5）：成功 URL 命中后 session cookie 落定时机不定，
+/// 此前用固定 600ms 延迟赌它落定（慢且有竞态）。改为按 [_harvestPollInterval]
+/// 干跑收割计划，非空且连续两轮 ref 集不变即收割；[_harvestPollDeadline] 到时
+/// 以最后一轮为准（可能为空 → 跳过并允许下次 LoadStop 重试，与旧语义一致）。
+const Duration _harvestPollInterval = Duration(milliseconds: 150);
+const Duration _harvestPollDeadline = Duration(seconds: 3);
+
 class _WebViewLoginPageState extends State<WebViewLoginPage> {
   InAppWebViewController? _controller;
   bool _isLoading = true;
@@ -91,6 +98,36 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
 
   static String _safeString(dynamic v) => v is String ? v : '';
 
+  /// 汇集全部收割来源域的 cookie 并归一为核心输入形（过滤空名/域）。
+  ///
+  /// 跨声明域收割（ADR-017 母凭证）：成功 URL 的 host + brokerView 各 scope 域，
+  /// 逐一 getCookies 再按 name|domain|path 去重合并——否则会漏掉 ids 子域的 CASTGC。
+  Future<List<WebViewCookie>> _collectWebViewCookies(WebUri url) async {
+    final cookieManager = CookieManager.instance();
+    final origins = <WebUri>{
+      url,
+      ...harvestCookieOrigins(widget.login).map(WebUri.new),
+    };
+    final rawCookies = <Cookie>[];
+    final seen = <String>{};
+    for (final origin in origins) {
+      final cs = await cookieManager.getCookies(url: origin);
+      for (final c in cs) {
+        final key = '${c.name}|${c.domain}|${c.path}';
+        if (seen.add(key)) rawCookies.add(c);
+      }
+    }
+    return rawCookies
+        .where((c) => c.name.isNotEmpty && (c.domain?.isNotEmpty == true))
+        .map((c) => WebViewCookie(
+              name: c.name,
+              value: _safeString(c.value),
+              domain: c.domain!,
+              path: c.path ?? '/',
+            ))
+        .toList();
+  }
+
   Future<void> _harvestCookies(WebUri url) async {
     if (_hasHarvested) return;
     _hasHarvested = true;
@@ -98,40 +135,34 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
     _addLog('target: ${url.host}${url.path}');
 
     try {
-      await Future.delayed(const Duration(milliseconds: 600));
-      _addLog('延迟 600ms 等待 session cookie 落定');
-
-      final cookieManager = CookieManager.instance();
-      // 跨声明域收割（ADR-017 母凭证）：成功 URL 的 host + brokerView 各 scope 域，
-      // 逐一 getCookies 再按 name|domain|path 去重合并——否则会漏掉 ids 子域的 CASTGC。
-      final origins = <WebUri>{
-        url,
-        ...harvestCookieOrigins(widget.login).map(WebUri.new),
-      };
-      final rawCookies = <Cookie>[];
-      final seen = <String>{};
-      for (final origin in origins) {
-        final cs = await cookieManager.getCookies(url: origin);
-        _addLog('getCookies(${origin.host}) → ${cs.length} 条');
-        for (final c in cs) {
-          final key = '${c.name}|${c.domain}|${c.path}';
-          if (seen.add(key)) rawCookies.add(c);
+      // 有界轮询替代固定 600ms 延迟（审阅 P2-5）：干跑收割计划（不写 store），
+      // 非空且连续两轮 ref 集不变（落定）即收割；到时以最后一轮为准。
+      final deadline = DateTime.now().add(_harvestPollDeadline);
+      var webViewCookies = <WebViewCookie>[];
+      Set<String>? prevRefs;
+      var round = 0;
+      while (true) {
+        round += 1;
+        webViewCookies = await _collectWebViewCookies(url);
+        final refs = planWebViewHarvest(
+          login: widget.login,
+          cookies: webViewCookies,
+        ).map((e) => e.ref).toSet();
+        _addLog('轮询#$round：cookie=${webViewCookies.length} 条 | '
+            '可收割 ref=[${(refs.toList()..sort()).join(", ")}]');
+        if (refs.isNotEmpty && setEquals(refs, prevRefs)) break;
+        prevRefs = refs;
+        if (DateTime.now().isAfter(deadline)) {
+          _addLog('轮询到时（${_harvestPollDeadline.inMilliseconds}ms），以最后一轮为准');
+          break;
         }
-      }
-      for (final c in rawCookies) {
-        _addLog(
-            '  ${c.name} | domain=${c.domain} | path=${c.path} | httpOnly=${c.isHttpOnly} | value=${_maskCookie(c.value)}');
+        await Future<void>.delayed(_harvestPollInterval);
       }
 
-      final webViewCookies = rawCookies
-          .where((c) => c.name.isNotEmpty && (c.domain?.isNotEmpty == true))
-          .map((c) => WebViewCookie(
-                name: c.name,
-                value: _safeString(c.value),
-                domain: c.domain!,
-                path: c.path ?? '/',
-              ))
-          .toList();
+      for (final c in webViewCookies) {
+        _addLog(
+            '  ${c.name} | domain=${c.domain} | path=${c.path} | value=${_maskCookie(c.value)}');
+      }
       _addLog('有效 cookie（已过滤空名/域）：${webViewCookies.length} 条');
 
       if (webViewCookies.isEmpty) {

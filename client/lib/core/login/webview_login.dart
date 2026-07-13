@@ -120,16 +120,24 @@ List<JarCookie> webViewCookiesToHarvestCookies(List<WebViewCookie> cookies) {
       .toList();
 }
 
+/// 收割干跑（纯，不写 store）：当前 WebView cookie 视图能收割出哪些声明凭证。
+///
+/// 供页面侧**有界轮询**用：成功 URL 命中后 session cookie 可能尚未全部落定
+/// （此前用固定 600ms 延迟赌它落定），改为轮询本判定直至计划非空且稳定，
+/// 或到轮询上限——比固定 sleep 更快也更稳（审阅建议 P2-5）。
+List<HarvestEntry> planWebViewHarvest({
+  required LoginManifestView login,
+  required List<WebViewCookie> cookies,
+}) =>
+    decideHarvest(webViewCookiesToHarvestCookies(cookies), login.brokerView);
+
 WebViewHarvestResult harvestWebViewCookies({
   required LoginManifestView login,
   required List<WebViewCookie> cookies,
   required void Function(CredentialEntry entry) put,
   required int Function() now,
 }) {
-  final plan = decideHarvest(
-    webViewCookiesToHarvestCookies(cookies),
-    login.brokerView,
-  );
+  final plan = planWebViewHarvest(login: login, cookies: cookies);
   harvestInto(
     plan,
     login.brokerView,
