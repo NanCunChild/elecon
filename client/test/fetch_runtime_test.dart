@@ -136,6 +136,28 @@ void main() {
       expect(transport.seen, isEmpty, reason: 'fail-closed 不得发任何请求');
     });
 
+    test('bad_export：未导出 capabilities 对象 → badExport（与服务端词表对齐）',
+        () async {
+      final view = const BrokerManifestView(allow: ['https://h.edu.cn/*']);
+      final transport = FakeTransport([]);
+      const source = 'export const notCapabilities = {};';
+
+      await expectLater(
+        runFetchAdapter(
+          source: source,
+          trust: TrustedAdapterContext.devSideload(),
+          capability: 'notice.list',
+          view: view,
+          resolver: FakeResolver({}),
+          transport: transport,
+          nowMs: _now,
+        ),
+        throwsA(isA<AdapterRunException>()
+            .having((e) => e.reason, 'reason', AdapterFailureReason.badExport)),
+      );
+      expect(transport.seen, isEmpty, reason: 'bad_export 不得触发任何出网');
+    });
+
     test('请求数限额超限 → fetchLimit + fail 不收割', () async {
       final view = const BrokerManifestView(
         allow: ['https://h.edu.cn/api/*'],

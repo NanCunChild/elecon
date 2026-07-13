@@ -42,6 +42,9 @@ import 'trust/trusted_context.dart'
 /// 运行时层面的失败原因。**不携带契约 error.kind**——错误词表是领域概念，
 /// 由上层据此映射（与服务端 `SandboxFailureReason` 对称）。
 enum AdapterFailureReason {
+  /// adapter 未导出 `capabilities` 对象（与服务端 `bad_export` 对齐，双端词表一致）。
+  badExport,
+
   /// adapter 未导出指定 capability。
   capabilityMissing,
 
@@ -151,6 +154,11 @@ Future<dynamic> runParserAdapter({
           );
         }
         return outcome['data'];
+      case 'bad_export':
+        throw const AdapterRunException(
+          AdapterFailureReason.badExport,
+          "adapter 未导出 'capabilities' 对象",
+        );
       case 'capability_missing':
         throw AdapterRunException(
           AdapterFailureReason.capabilityMissing,
@@ -214,23 +222,30 @@ String _buildParserBootstrap({
   final paramsLit = jsonEncode(jsonEncode(params));
   final responsesLit = jsonEncode(jsonEncode(responses));
 
+  // 命名空间 import：缺 `capabilities` 导出时不在模块实例化期抛错（命名 import 会），
+  // 而是走结构化 bad_export outcome——与服务端 getProp + typeof 检查同语义。
   return '''
-import { capabilities } from 'adapter';
+import * as __adapterMod from 'adapter';
 const params = JSON.parse($paramsLit);
 const responses = JSON.parse($responsesLit);
 const ctx = {
   log: function () {},
   now: function () { return $nowMs; }
 };
-const fn = capabilities[$capLit];
-if (typeof fn !== "function") {
-  globalThis.__elecon_outcome = JSON.stringify({ status: "capability_missing" });
+const capabilities = __adapterMod.capabilities;
+if (capabilities === null || typeof capabilities !== "object") {
+  globalThis.__elecon_outcome = JSON.stringify({ status: "bad_export" });
 } else {
-  const out = fn(ctx, params, responses);
-  if (out !== null && typeof out === "object" && typeof out.then === "function") {
-    globalThis.__elecon_outcome = JSON.stringify({ status: "async_in_parser" });
+  const fn = capabilities[$capLit];
+  if (typeof fn !== "function") {
+    globalThis.__elecon_outcome = JSON.stringify({ status: "capability_missing" });
   } else {
-    globalThis.__elecon_outcome = JSON.stringify({ status: "ok", data: out });
+    const out = fn(ctx, params, responses);
+    if (out !== null && typeof out === "object" && typeof out.then === "function") {
+      globalThis.__elecon_outcome = JSON.stringify({ status: "async_in_parser" });
+    } else {
+      globalThis.__elecon_outcome = JSON.stringify({ status: "ok", data: out });
+    }
   }
 }
 ''';
@@ -444,8 +459,10 @@ Future<dynamic> runFetchAdapter({
 
   try {
     // step1（module）：加载 capabilities 到 globalThis（同步，复用 parser 加载约定）。
+    // 命名空间 import：缺导出不在实例化期抛错，交给 step2 归为结构化 bad_export。
     await qjs.evaluate(
-      "import { capabilities } from 'adapter'; globalThis.__elecon_caps = capabilities;",
+      "import * as __adapterMod from 'adapter'; "
+      'globalThis.__elecon_caps = __adapterMod.capabilities;',
       name: '<elecon-fetch-load>',
       evalFlags: JSEvalFlag.MODULE,
     );
@@ -484,6 +501,9 @@ Future<dynamic> runFetchAdapter({
               schoolId: harvest.schoolId, now: () => nowMs);
         }
         return outcome['data'];
+      case 'bad_export':
+        throw const AdapterRunException(AdapterFailureReason.badExport,
+            "adapter 未导出 'capabilities' 对象");
       case 'capability_missing':
         throw AdapterRunException(AdapterFailureReason.capabilityMissing,
             "capability '$capability' 不在 adapter 内");
@@ -542,7 +562,10 @@ String _buildFetchInvoke({
 (async () => {
   const params = JSON.parse($paramsLit);
   const caps = globalThis.__elecon_caps;
-  const fn = caps && caps[$capLit];
+  if (caps === null || typeof caps !== "object") {
+    return JSON.stringify({ status: "bad_export" });
+  }
+  const fn = caps[$capLit];
   if (typeof fn !== "function") {
     return JSON.stringify({ status: "capability_missing" });
   }

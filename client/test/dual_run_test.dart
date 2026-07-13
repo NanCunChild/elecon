@@ -114,6 +114,27 @@ void main() {
       expect(data, equals(fixture['expected']));
     });
 
+    test('bad_export：未导出 capabilities 对象 → badExport（与服务端词表对齐）',
+        () async {
+      const source = 'export const notCapabilities = {};';
+
+      await expectLater(
+        runParserAdapter(
+          source: source,
+          capability: 'x.y',
+          params: const {},
+          responses: const {},
+        ),
+        throwsA(
+          isA<AdapterRunException>().having(
+            (e) => e.reason,
+            'reason',
+            AdapterFailureReason.badExport,
+          ),
+        ),
+      );
+    });
+
     test('capability_missing：未声明的 capability 被拒', () async {
       final source = File('$parserDir/index.js').readAsStringSync();
 
