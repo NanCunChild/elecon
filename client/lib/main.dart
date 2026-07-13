@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'core/credential/blob_store.dart';
+import 'core/credential/hardware_keystore_channel.dart';
 import 'session/session_controller.dart';
 import 'session/session_scope.dart';
 import 'ui/onboarding/onboarding_page.dart';
@@ -29,8 +30,10 @@ class EleconApp extends StatefulWidget {
 }
 
 class _EleconAppState extends State<EleconApp> {
-  late final SessionController _session =
-      SessionController(blobStoreProvider: _blobStoreProvider);
+  late final SessionController _session = SessionController(
+    hardware: const BackedHardwareKeyStore(),
+    blobStoreProvider: _blobStoreProvider,
+  );
 
   @override
   void dispose() {

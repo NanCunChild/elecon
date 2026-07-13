@@ -3,12 +3,11 @@
 /// 持有**单例** [CredentialStore]、当前选中学校、登录状态与调试开关，供开始面板 /
 /// 主壳 / 设置页共享。UI 只读状态（登录与否、凭证条数），**绝不读凭证值**（红线 #1）。
 ///
-/// §2.8 三档存储接线：启动 [bootstrap] 静默续用此前已同意的 S 软件档；首次持久化前
-/// [ensurePersistentStore] 按硬件可用性 + 用户知情同意（警告框）裁定 H/S/M 档。
-/// 落盘目录经**可注入的** [blobStoreProvider] 提供；provider 为 null 时退化为内存档 M，
-/// 不落盘（测试/受限平台兜底）。
+/// §2.8 三档存储接线：启动 [bootstrap] 静默续用 H（若有）或已同意的 S 软件档；
+/// 首次持久化前 [ensurePersistentStore] 按硬件可用性 + 用户知情同意裁定 H/S/M。
+/// 落盘目录经**可注入的** [blobStoreProvider] 提供；provider 为 null 时退化为内存档 M。
 ///
-/// 🔒 store 生命周期属核心凭证路径。真实 keystore（H 档）后续单独接线。
+/// 🔒 store 生命周期属核心凭证路径（红线 #1）。
 library;
 
 import 'dart:convert';
@@ -18,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import '../catalog/schools.dart';
 import '../core/credential/blob_store.dart';
 import '../core/credential/hardware_keystore.dart';
+import '../core/credential/hardware_secure_store.dart';
 import '../core/credential/secure_store.dart';
 import '../core/credential/secure_store_factory.dart';
 import '../core/credential/software_secure_store.dart';
@@ -63,14 +63,18 @@ class SessionController extends ChangeNotifier {
   List<String> get credentialRefs =>
       (store.list().map((e) => e.ref).toList())..sort();
 
-  /// 启动引导：静默续用此前已知情同意的 S 软件档（不弹警告框）；无持久化则保持
+  /// 启动引导：优先静默续用 H 硬件档，其次已同意的 S 软件档；无持久化则保持
   /// 默认内存档，待首次登录时 [ensurePersistentStore] 裁定。
   Future<void> bootstrap() async {
     if (_bootstrapped) return;
     _bootstrapped = true;
     final blobs = await _resolveBlobs();
     if (blobs == null) return;
-    if (await SoftwareSecureStore.hasPersisted(blobs)) {
+    if (await HardwareSecureStore.hasPersisted(blobs) &&
+        await _hardware.isAvailable()) {
+      _replaceStore(await HardwareSecureStore.open(_hardware, blobs));
+      _storeResolved = true;
+    } else if (await SoftwareSecureStore.hasPersisted(blobs)) {
       _replaceStore(await SoftwareSecureStore.open(blobs));
       _storeResolved = true;
     }
@@ -98,10 +102,11 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// durability 屏障：S 软件档下等待挂起的持久化落盘。收割后调用。
+  /// durability 屏障：H/S 档等待挂起的持久化落盘。收割后调用。
   Future<void> flush() async {
     final s = _secure;
     if (s is SoftwareSecureStore) await s.flush();
+    if (s is HardwareSecureStore) await s.flush();
     await _sessionPersistChain;
   }
 

@@ -5,10 +5,13 @@
 library;
 
 import 'package:elecon/core/credential/blob_store.dart';
+import 'package:elecon/core/credential/hardware_keystore.dart';
 import 'package:elecon/core/credential/types.dart';
 import 'package:elecon/catalog/schools.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../credential/hardware_secure_store_test.dart' show FakeHardwareKeyStore;
 
 CredentialEntry _entry(String ref, {String schoolId = 'xidian'}) =>
     CredentialEntry(
@@ -76,6 +79,34 @@ void main() {
     await c.ensurePersistentStore(confirmSoftwareFallback: () async => true);
     c.store.put(_entry('s'));
     expect(c.isLoggedIn, isTrue);
+  });
+
+  test('H 可用 → ensurePersistentStore 走硬件档，bootstrap 静默续用', () async {
+    final blobs = InMemoryBlobStore();
+    final hw = FakeHardwareKeyStore();
+
+    final c1 = SessionController(
+      hardware: hw,
+      blobStoreProvider: () async => blobs,
+    );
+    await c1.ensurePersistentStore(confirmSoftwareFallback: () async {
+      fail('H 可用时不应询问 S 档');
+      return false;
+    });
+    c1.store.put(_entry('ehall-session'));
+    await c1.flush();
+    final e1 = c1.store.list().firstWhere((e) => e.ref == 'ehall-session');
+    expect(e1.protection, CredentialProtection.hardware);
+
+    final c2 = SessionController(
+      hardware: hw,
+      blobStoreProvider: () async => blobs,
+    );
+    await c2.bootstrap();
+    expect(c2.isLoggedIn, isTrue);
+    expect(c2.credentialRefs, ['ehall-session']);
+    final e2 = c2.store.list().firstWhere((e) => e.ref == 'ehall-session');
+    expect(e2.protection, CredentialProtection.hardware);
   });
 
   test('logout 仅抹除当前学校凭证，不波及他校（schoolId 过滤）', () async {
