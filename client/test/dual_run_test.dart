@@ -197,5 +197,31 @@ void main() {
         ),
       );
     });
+
+    test('memory：触碰内存上限归类为 memory（错误文案漂移哨兵）', () async {
+      // 归类靠 _mapEngineError 的 "out of memory" 子串匹配（最佳努力）。
+      // 引擎升级改 OOM 文案会静默降级为 adapterThrew——本例即变红（审阅 P1-3）。
+      // timeoutMs 给宽，确保先撞内存墙而非 interrupt。
+      const source = 'export const capabilities = { hog: () => { '
+          'const a = []; for (;;) a.push(new Array(65536).fill(1)); } };';
+
+      await expectLater(
+        runParserAdapter(
+          source: source,
+          capability: 'hog',
+          params: const {},
+          responses: const {},
+          timeoutMs: 30000,
+          memoryBytes: 8 * 1024 * 1024,
+        ),
+        throwsA(
+          isA<AdapterRunException>().having(
+            (e) => e.reason,
+            'reason',
+            AdapterFailureReason.memory,
+          ),
+        ),
+      );
+    });
   }, skip: skip);
 }
