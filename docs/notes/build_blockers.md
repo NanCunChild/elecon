@@ -26,7 +26,7 @@
 ## 2. QuickJS 绑定迁移（已处理主线）
 
 主线已从 `flutter_qjs`（ekibun 补丁 fork）迁到 Git 依赖
-`flutter_qjs_next`（`https://github.com/NanCunChild/flutter_qjs_es2023`）。它是 QuickJS
+`flutter_qjs_next`（唯一上游 `https://github.com/NanCunChild/flutter_qjs_next`，**pin 单次 commit**）。它是 QuickJS
 承重依赖（ADR-008/014），迁移后解除原先纠缠：
 
 - `ffi` 已升到 2.2.0，`cryptography` 2.7+ 的依赖冲突已解除（包版本尚未升级，留单独 PR）。
@@ -44,8 +44,8 @@
 
 ## 4. QuickJS 依赖复现性
 
-当前用 Git 依赖接入 `flutter_qjs_next` 并 pin commit。后续若 git fetch/libsecret 仍影响 CI/本机，
-可再评估 vendoring 到仓内固定路径或发布到可信 pub 源。
+当前用 Git 依赖接入唯一上游 `flutter_qjs_next` 并 pin 单次 commit（不跟 branch）。
+后续若 git fetch/libsecret 仍影响 CI/本机，可再评估 vendoring 到仓内固定路径或发布到可信 pub 源。
 
 ## 5. git / GPG 网络（libsecret 挂起）
 

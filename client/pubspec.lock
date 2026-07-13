@@ -177,9 +177,9 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: f5f3611
-      resolved-ref: f5f36115005fe1d3d14360a06548c2bd56049871
-      url: "https://github.com/NanCunChild/flutter_qjs_es2023"
+      ref: "6b29285"
+      resolved-ref: "6b29285bc5fd60ed15e7469bc05f695c6ff68749"
+      url: "https://github.com/NanCunChild/flutter_qjs_next"
     source: git
     version: "0.0.1"
   flutter_test:
