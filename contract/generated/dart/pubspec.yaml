@@ -1,0 +1,12 @@
+# elecon_contract —— contract/schema 的 Dart 类型产物包（ADR-001 §3.1）。
+#
+# 本文件手写；lib/ 下全部文件由 tools/src/codegen 生成（DO NOT EDIT）。
+# client 以 path 依赖引用（client/pubspec.yaml），UI 模型据此消除与 schema 的
+# 手写漂移；一致性由 CI 漂移闸门（重新生成 + git diff --exit-code）保证。
+name: elecon_contract
+description: "Generated Dart types from contract/schema (do not edit lib/)"
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"

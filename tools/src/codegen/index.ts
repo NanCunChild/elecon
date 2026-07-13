@@ -13,7 +13,13 @@
  *   运行：cd tools && npm run codegen                     # 生成全部
  *         cd tools && npm run codegen -- --check          # 仅校验（不写文件，CI 用）
  *
- * 生成产物：contract/generated/ts/*.ts、contract/generated/dart/*.dart（带 DO NOT EDIT 头）。
+ * 生成产物（带 DO NOT EDIT 头）：
+ *  - contract/generated/ts/*.d.ts —— 纯类型声明（零运行时）。TS 消费方以
+ *    `import type { X } from "<相对路径>/x.js"` 引用（.js ↔ .d.ts 标准映射），
+ *    tsc 只做类型解析、不参与 emit，故不受消费方 rootDir 约束。
+ *  - contract/generated/dart/lib/*.dart —— Dart 包 `elecon_contract`（pubspec 手写、
+ *    lib/ 全部生成）。client 以 path 依赖引用，UI 模型据此消除手写漂移。
+ * 生成物入库；一致性由 CI 漂移闸门（重新生成 + git diff --exit-code）保证。
  */
 
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
@@ -23,7 +29,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const schemaDir = join(repoRoot, "contract", "schema");
 const outTsDir = join(repoRoot, "contract", "generated", "ts");
-const outDartDir = join(repoRoot, "contract", "generated", "dart");
+const outDartDir = join(repoRoot, "contract", "generated", "dart", "lib");
 
 // ---- schema 类型 ----
 
@@ -237,7 +243,7 @@ function main(): void {
   mkdirSync(outDartDir, { recursive: true });
   for (const f of files) {
     const base = f.schemaFile.replace(/\.schema\.json$/, "");
-    writeFileSync(join(outTsDir, `${base}.ts`), f.ts);
+    writeFileSync(join(outTsDir, `${base}.d.ts`), f.ts);
     writeFileSync(join(outDartDir, `${base.replace(/\./g, "_")}.dart`), f.dart);
     console.log(`✓ ${f.schemaFile} → ${f.typeName}`);
   }

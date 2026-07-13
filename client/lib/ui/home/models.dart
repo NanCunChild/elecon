@@ -1,9 +1,21 @@
-/// 首页数据模型（view model）。
+/// 首页数据模型（view model 层）。
 ///
-/// 这些是 UI 层用于渲染的中间结构，**非** contract/schema 的权威定义。
-/// TODO(codegen)：待 tools codegen 从 contract/schema/*.json 生成后，
-///   本文件应替换为生成产物，消除与 schema 的手写漂移。
+/// **schema 权威类型来自 codegen 产物包 `elecon_contract`**（contract/schema 单源，
+/// 红线 #6），此处 re-export 供 UI 消费——原「手写模型与 schema 漂移」TODO 已兑现
+/// （审阅 P0-1）。本文件仅保留非契约的视图层内容：
+///  - [CampusSnapshot]：UI 聚合视图（多契约对象 + 展示元信息），非 schema 对象；
+///  - Generic*：`generic.section.schema.json` 含 oneOf，codegen 明确跳过（不静默
+///    生成错类型），此处人工维护，schema 变更须同步；
+///  - 展示辅助扩展（[GradesScoreText] / [NoticePublishedAt]）：视图格式化，非契约。
 library;
+
+import 'package:elecon_contract/grades_list.dart';
+import 'package:elecon_contract/notice_list.dart';
+import 'package:elecon_contract/schedule_week.dart' show ScheduleWeek;
+
+export 'package:elecon_contract/grades_list.dart';
+export 'package:elecon_contract/notice_list.dart';
+export 'package:elecon_contract/schedule_week.dart';
 
 class CampusSnapshot {
   const CampusSnapshot({
@@ -29,83 +41,18 @@ class CampusSnapshot {
       genericSections.isEmpty;
 }
 
-class GradesList {
-  const GradesList({required this.term, required this.items});
-
-  final String term;
-  final List<GradeItem> items;
+/// 成绩展示文本：契约 score `{kind, value, max}` → 视图字符串（值原样呈现，
+/// 数值/字母/通过制均由 adapter 归一进 value）。
+extension GradesScoreText on GradesListItems {
+  String get scoreText => score.value?.toString() ?? '';
 }
 
-class GradeItem {
-  const GradeItem({
-    required this.courseName,
-    required this.credit,
-    required this.scoreText,
-    required this.category,
-    required this.status,
-    this.gradePoint,
-  });
-
-  final String courseName;
-  final num credit;
-  final String scoreText;
-  final String category;
-  final String status;
-  final num? gradePoint;
-}
-
-class ScheduleWeek {
-  const ScheduleWeek(
-      {required this.term, required this.week, required this.days});
-
-  final String term;
-  final int week;
-  final List<ScheduleDay> days;
-}
-
-class ScheduleDay {
-  const ScheduleDay({required this.dayOfWeek, required this.slots});
-
-  final int dayOfWeek;
-  final List<ScheduleSlot> slots;
-}
-
-class ScheduleSlot {
-  const ScheduleSlot({
-    required this.start,
-    required this.end,
-    required this.courseName,
-    this.teacher,
-    this.location,
-  });
-
-  final String start;
-  final String end;
-  final String courseName;
-  final String? teacher;
-  final String? location;
-}
-
-class NoticeList {
-  const NoticeList({required this.items});
-
-  final List<NoticeItem> items;
-}
-
-class NoticeItem {
-  const NoticeItem({
-    required this.title,
-    required this.category,
-    required this.source,
-    this.summary,
-    this.publishedAt,
-  });
-
-  final String title;
-  final String category;
-  final String source;
-  final String? summary;
-  final DateTime? publishedAt;
+/// 通知发布时间：契约为 RFC3339 字符串（可选）→ [DateTime]；缺失或不可解析为 null。
+extension NoticePublishedAt on NoticeListItems {
+  DateTime? get publishedAtDateTime {
+    final s = publishedAt;
+    return s == null ? null : DateTime.tryParse(s);
+  }
 }
 
 class GenericSection {

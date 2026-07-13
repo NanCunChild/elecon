@@ -219,7 +219,9 @@ class NoticeCard extends StatelessWidget {
               subtitle: Text([
                 item.source,
                 _noticeCategoryText(item.category),
-                if (item.publishedAt != null) _formatDate(item.publishedAt!),
+                // 契约 publishedAt 为 RFC3339 字符串；经视图扩展转 DateTime 展示。
+                if (item.publishedAtDateTime != null)
+                  _formatDate(item.publishedAtDateTime!),
                 if (item.summary != null) item.summary!,
               ].join(' · ')),
             ),

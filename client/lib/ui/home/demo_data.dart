@@ -2,6 +2,8 @@
 ///
 /// 仅用于在真实 adapter 数据闭环前驱动 UI 预览；**不是**任何真实学校数据。
 /// 真实数据接入后，`EleconHomePage` 应改由核心/adapter 产出的 snapshot 驱动。
+/// 契约对象一律用 `elecon_contract` 生成类型构造（经 models.dart re-export），
+/// 与 schema 同形（审阅 P0-1）。
 library;
 
 import 'models.dart';
@@ -15,17 +17,17 @@ Future<CampusSnapshot> loadDemoCampusSnapshot() async {
       term: '2025-2026-2',
       week: 18,
       days: [
-        ScheduleDay(
+        ScheduleWeekDays(
           dayOfWeek: 1,
           slots: [
-            ScheduleSlot(
+            ScheduleWeekDaysSlots(
               start: '08:30',
               end: '10:05',
               courseName: '数据结构',
               teacher: '李老师',
               location: 'A-301',
             ),
-            ScheduleSlot(
+            ScheduleWeekDaysSlots(
               start: '14:00',
               end: '15:35',
               courseName: '大学英语',
@@ -33,10 +35,10 @@ Future<CampusSnapshot> loadDemoCampusSnapshot() async {
             ),
           ],
         ),
-        ScheduleDay(
+        ScheduleWeekDays(
           dayOfWeek: 3,
           slots: [
-            ScheduleSlot(
+            ScheduleWeekDaysSlots(
               start: '10:25',
               end: '12:00',
               courseName: '计算机网络',
@@ -50,45 +52,50 @@ Future<CampusSnapshot> loadDemoCampusSnapshot() async {
     grades: const GradesList(
       term: '2025-2026-1',
       items: [
-        GradeItem(
+        GradesListItems(
+          courseId: 'DEMO-MATH-101',
           courseName: '高等数学',
           credit: 5,
-          scoreText: '91',
+          score: GradesListItemsScore(kind: 'numeric', value: 91, max: 100),
           category: 'required',
           status: 'final',
           gradePoint: 4.1,
         ),
-        GradeItem(
+        GradesListItems(
+          courseId: 'DEMO-CS-100',
           courseName: '程序设计基础',
           credit: 4,
-          scoreText: 'A',
+          score: GradesListItemsScore(kind: 'letter', value: 'A'),
           category: 'required',
           status: 'final',
           gradePoint: 4.3,
         ),
-        GradeItem(
+        GradesListItems(
+          courseId: 'DEMO-GEN-001',
           courseName: '创新创业导论',
           credit: 1,
-          scoreText: '通过',
+          score: GradesListItemsScore(kind: 'passfail', value: '通过'),
           category: 'elective',
           status: 'final',
         ),
       ],
     ),
-    notices: NoticeList(
+    notices: const NoticeList(
       items: [
-        NoticeItem(
+        NoticeListItems(
+          id: 'demo-notice-1',
           title: '期末考试周教学安排提醒',
           category: 'academic',
           source: '教务处',
           summary: '请同学们按准考证时间地点参加考试。',
-          publishedAt: DateTime.utc(2026, 7, 3),
+          publishedAt: '2026-07-03T00:00:00Z',
         ),
-        NoticeItem(
+        NoticeListItems(
+          id: 'demo-notice-2',
           title: '暑期校园服务时间调整',
           category: 'admin',
           source: '学校办公室',
-          publishedAt: DateTime.utc(2026, 7, 1),
+          publishedAt: '2026-07-01T00:00:00Z',
         ),
       ],
     ),
