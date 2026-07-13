@@ -10,9 +10,10 @@ import 'package:elecon/catalog/schools.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-CredentialEntry _entry(String ref) => CredentialEntry(
+CredentialEntry _entry(String ref, {String schoolId = 'xidian'}) =>
+    CredentialEntry(
       ref: ref,
-      schoolId: 'xidian',
+      schoolId: schoolId,
       type: 'cookie',
       scope: const ['https://ehall.xidian.edu.cn/*'],
       value: 'secret-$ref',
@@ -75,5 +76,35 @@ void main() {
     await c.ensurePersistentStore(confirmSoftwareFallback: () async => true);
     c.store.put(_entry('s'));
     expect(c.isLoggedIn, isTrue);
+  });
+
+  test('logout 仅抹除当前学校凭证，不波及他校（schoolId 过滤）', () async {
+    final c = SessionController();
+    c.selectSchool(defaultSchool); // xidian
+    c.store.put(_entry('ehall-session'));
+    c.store.put(_entry('other-session', schoolId: 'other-school'));
+
+    c.logout();
+
+    final remaining = c.store.list();
+    expect(remaining.map((e) => e.ref), ['other-session'],
+        reason: '登出 = 抹除当前学校全部凭证（ADR-012 §2.5），他校凭证保留');
+    expect(remaining.every((e) => e.schoolId != defaultSchool.id), isTrue);
+  });
+
+  test('logout 未选校时防御性抹除全部；reset 一律抹除全部', () async {
+    final c1 = SessionController();
+    c1.store.put(_entry('a'));
+    c1.store.put(_entry('b', schoolId: 'other-school'));
+    c1.logout(); // 未选校：无归属口径，宁可多删（隐私优先）
+    expect(c1.store.list(), isEmpty);
+
+    final c2 = SessionController();
+    c2.selectSchool(defaultSchool);
+    c2.store.put(_entry('a'));
+    c2.store.put(_entry('b', schoolId: 'other-school'));
+    c2.reset(); // 彻底重置跨校抹除
+    expect(c2.store.list(), isEmpty);
+    expect(c2.isConfigured, isFalse);
   });
 }

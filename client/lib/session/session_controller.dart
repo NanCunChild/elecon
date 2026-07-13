@@ -169,10 +169,13 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 登出 = 立即抹除当前学校全部凭证（ADR-012 §2.5），保留选校。
+  /// 登出 = 立即抹除**当前学校**全部凭证（ADR-012 §2.5），保留选校。
+  /// 按 [CredentialEntry.schoolId] 过滤——多校共存时不得波及他校凭证。
+  /// 未选校时防御性抹除全部（无归属口径宁可多删，隐私优先于可用性）。
   void logout() {
+    final id = _school?.id;
     for (final e in store.list()) {
-      store.delete(e.ref);
+      if (id == null || e.schoolId == id) store.delete(e.ref);
     }
     notifyListeners();
   }
