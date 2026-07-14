@@ -8,4 +8,5 @@
 - [ ] 新依赖已声明许可证（GPL 系已做边界隔离）
 - [ ] fixtures 已脱敏，无真实学生数据
 ## 测试
+- [ ] 客户端改动：本地或 CI 过 `client-release` / `tool/check_release_gate.sh`（release 出网与 INTERNET）
 ## 是否 AI 辅助生成（是→标注需重点复核的文件）

@@ -102,3 +102,29 @@ jobs:
         run: bash tool/build_qjs_test_lib.sh
       - run: flutter analyze
       - run: flutter test
+      # 快门：main Manifest 必须含 INTERNET（曾只写在 debug/profile → release 无法登录）
+      - name: Release static gate (Android INTERNET)
+        run: bash tool/check_release_gate.sh --static-only
+
+  # release APK 构建阀门：静态检查 + 真编 release + aapt 核对 INTERNET。
+  # 与 client 测并行；失败 = 禁止合入（防止 debug-only 配置泄漏进 release）。
+  client-release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.1
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Release build gate (apk + INTERNET)
+        run: bash tool/check_release_gate.sh
