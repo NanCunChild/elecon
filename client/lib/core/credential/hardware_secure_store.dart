@@ -20,11 +20,10 @@ const String _wrappedDekBlob = 'store.dek.wrapped';
 const String _storeBlob = 'store.enc';
 
 class HardwareSecureStore implements SecureStore {
-  HardwareSecureStore._(this._aead, this._blobs, this._hardware);
+  HardwareSecureStore._(this._aead, this._blobs);
 
   final Aead _aead;
   final BlobStore _blobs;
-  final HardwareKeyStore _hardware;
   final Map<String, CredentialEntry> _entries = {};
   Future<void> _persistChain = Future<void>.value();
 
@@ -37,7 +36,7 @@ class HardwareSecureStore implements SecureStore {
     BlobStore blobs,
   ) async {
     final dek = await _loadOrCreateDek(hardware, blobs);
-    final store = HardwareSecureStore._(Aes256GcmAead(dek), blobs, hardware);
+    final store = HardwareSecureStore._(Aes256GcmAead(dek), blobs);
     await store._load();
     return store;
   }

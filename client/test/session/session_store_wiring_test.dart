@@ -5,7 +5,6 @@
 library;
 
 import 'package:elecon/core/credential/blob_store.dart';
-import 'package:elecon/core/credential/hardware_keystore.dart';
 import 'package:elecon/core/credential/types.dart';
 import 'package:elecon/catalog/schools.dart';
 import 'package:elecon/session/session_controller.dart';
@@ -89,10 +88,11 @@ void main() {
       hardware: hw,
       blobStoreProvider: () async => blobs,
     );
-    await c1.ensurePersistentStore(confirmSoftwareFallback: () async {
-      fail('H 可用时不应询问 S 档');
-      return false;
-    });
+    await c1.ensurePersistentStore(
+      confirmSoftwareFallback: () => Future<bool>.error(
+        TestFailure('H 可用时不应询问 S 档'),
+      ),
+    );
     c1.store.put(_entry('ehall-session'));
     await c1.flush();
     final e1 = c1.store.list().firstWhere((e) => e.ref == 'ehall-session');

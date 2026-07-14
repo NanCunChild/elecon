@@ -4,8 +4,6 @@
 /// 🔒 红线 #1 承重路径。须人工 + 安全清单审，不得 AI 独自闭环合并。
 library;
 
-import 'dart:typed_data';
-
 import 'package:flutter/services.dart';
 
 import 'hardware_keystore.dart';
