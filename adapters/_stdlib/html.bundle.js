@@ -42,6 +42,476 @@ var require_boolbase = __commonJS({
   }
 });
 
+// node_modules/domutils/lib/esm/index.js
+var esm_exports2 = {};
+__export(esm_exports2, {
+  DocumentPosition: () => DocumentPosition,
+  append: () => append,
+  appendChild: () => appendChild,
+  compareDocumentPosition: () => compareDocumentPosition,
+  existsOne: () => existsOne,
+  filter: () => filter,
+  find: () => find,
+  findAll: () => findAll,
+  findOne: () => findOne,
+  findOneChild: () => findOneChild,
+  getAttributeValue: () => getAttributeValue,
+  getChildren: () => getChildren,
+  getElementById: () => getElementById,
+  getElements: () => getElements,
+  getElementsByClassName: () => getElementsByClassName,
+  getElementsByTagName: () => getElementsByTagName,
+  getElementsByTagType: () => getElementsByTagType,
+  getFeed: () => getFeed,
+  getInnerHTML: () => getInnerHTML,
+  getName: () => getName,
+  getOuterHTML: () => getOuterHTML,
+  getParent: () => getParent,
+  getSiblings: () => getSiblings,
+  getText: () => getText,
+  hasAttrib: () => hasAttrib,
+  hasChildren: () => hasChildren,
+  innerText: () => innerText,
+  isCDATA: () => isCDATA,
+  isComment: () => isComment,
+  isDocument: () => isDocument,
+  isTag: () => isTag2,
+  isText: () => isText,
+  nextElementSibling: () => nextElementSibling,
+  prepend: () => prepend,
+  prependChild: () => prependChild,
+  prevElementSibling: () => prevElementSibling,
+  removeElement: () => removeElement,
+  removeSubsets: () => removeSubsets,
+  replaceElement: () => replaceElement,
+  testElement: () => testElement,
+  textContent: () => textContent,
+  uniqueSort: () => uniqueSort
+});
+
+// node_modules/domelementtype/lib/esm/index.js
+var ElementType;
+(function(ElementType2) {
+  ElementType2["Root"] = "root";
+  ElementType2["Text"] = "text";
+  ElementType2["Directive"] = "directive";
+  ElementType2["Comment"] = "comment";
+  ElementType2["Script"] = "script";
+  ElementType2["Style"] = "style";
+  ElementType2["Tag"] = "tag";
+  ElementType2["CDATA"] = "cdata";
+  ElementType2["Doctype"] = "doctype";
+})(ElementType || (ElementType = {}));
+function isTag(elem) {
+  return elem.type === ElementType.Tag || elem.type === ElementType.Script || elem.type === ElementType.Style;
+}
+var Root = ElementType.Root;
+var Text = ElementType.Text;
+var Directive = ElementType.Directive;
+var Comment = ElementType.Comment;
+var Script = ElementType.Script;
+var Style = ElementType.Style;
+var Tag = ElementType.Tag;
+var CDATA = ElementType.CDATA;
+var Doctype = ElementType.Doctype;
+
+// node_modules/domhandler/lib/esm/node.js
+var Node = class {
+  constructor() {
+    this.parent = null;
+    this.prev = null;
+    this.next = null;
+    this.startIndex = null;
+    this.endIndex = null;
+  }
+  // Read-write aliases for properties
+  /**
+   * Same as {@link parent}.
+   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
+   */
+  get parentNode() {
+    return this.parent;
+  }
+  set parentNode(parent) {
+    this.parent = parent;
+  }
+  /**
+   * Same as {@link prev}.
+   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
+   */
+  get previousSibling() {
+    return this.prev;
+  }
+  set previousSibling(prev) {
+    this.prev = prev;
+  }
+  /**
+   * Same as {@link next}.
+   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
+   */
+  get nextSibling() {
+    return this.next;
+  }
+  set nextSibling(next) {
+    this.next = next;
+  }
+  /**
+   * Clone this node, and optionally its children.
+   *
+   * @param recursive Clone child nodes as well.
+   * @returns A clone of the node.
+   */
+  cloneNode(recursive = false) {
+    return cloneNode(this, recursive);
+  }
+};
+var DataNode = class extends Node {
+  /**
+   * @param data The content of the data node
+   */
+  constructor(data) {
+    super();
+    this.data = data;
+  }
+  /**
+   * Same as {@link data}.
+   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
+   */
+  get nodeValue() {
+    return this.data;
+  }
+  set nodeValue(data) {
+    this.data = data;
+  }
+};
+var Text2 = class extends DataNode {
+  constructor() {
+    super(...arguments);
+    this.type = ElementType.Text;
+  }
+  get nodeType() {
+    return 3;
+  }
+};
+var Comment2 = class extends DataNode {
+  constructor() {
+    super(...arguments);
+    this.type = ElementType.Comment;
+  }
+  get nodeType() {
+    return 8;
+  }
+};
+var ProcessingInstruction = class extends DataNode {
+  constructor(name, data) {
+    super(data);
+    this.name = name;
+    this.type = ElementType.Directive;
+  }
+  get nodeType() {
+    return 1;
+  }
+};
+var NodeWithChildren = class extends Node {
+  /**
+   * @param children Children of the node. Only certain node types can have children.
+   */
+  constructor(children) {
+    super();
+    this.children = children;
+  }
+  // Aliases
+  /** First child of the node. */
+  get firstChild() {
+    var _a2;
+    return (_a2 = this.children[0]) !== null && _a2 !== void 0 ? _a2 : null;
+  }
+  /** Last child of the node. */
+  get lastChild() {
+    return this.children.length > 0 ? this.children[this.children.length - 1] : null;
+  }
+  /**
+   * Same as {@link children}.
+   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
+   */
+  get childNodes() {
+    return this.children;
+  }
+  set childNodes(children) {
+    this.children = children;
+  }
+};
+var CDATA2 = class extends NodeWithChildren {
+  constructor() {
+    super(...arguments);
+    this.type = ElementType.CDATA;
+  }
+  get nodeType() {
+    return 4;
+  }
+};
+var Document = class extends NodeWithChildren {
+  constructor() {
+    super(...arguments);
+    this.type = ElementType.Root;
+  }
+  get nodeType() {
+    return 9;
+  }
+};
+var Element = class extends NodeWithChildren {
+  /**
+   * @param name Name of the tag, eg. `div`, `span`.
+   * @param attribs Object mapping attribute names to attribute values.
+   * @param children Children of the node.
+   */
+  constructor(name, attribs, children = [], type = name === "script" ? ElementType.Script : name === "style" ? ElementType.Style : ElementType.Tag) {
+    super(children);
+    this.name = name;
+    this.attribs = attribs;
+    this.type = type;
+  }
+  get nodeType() {
+    return 1;
+  }
+  // DOM Level 1 aliases
+  /**
+   * Same as {@link name}.
+   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
+   */
+  get tagName() {
+    return this.name;
+  }
+  set tagName(name) {
+    this.name = name;
+  }
+  get attributes() {
+    return Object.keys(this.attribs).map((name) => {
+      var _a2, _b;
+      return {
+        name,
+        value: this.attribs[name],
+        namespace: (_a2 = this["x-attribsNamespace"]) === null || _a2 === void 0 ? void 0 : _a2[name],
+        prefix: (_b = this["x-attribsPrefix"]) === null || _b === void 0 ? void 0 : _b[name]
+      };
+    });
+  }
+};
+function isTag2(node) {
+  return isTag(node);
+}
+function isCDATA(node) {
+  return node.type === ElementType.CDATA;
+}
+function isText(node) {
+  return node.type === ElementType.Text;
+}
+function isComment(node) {
+  return node.type === ElementType.Comment;
+}
+function isDirective(node) {
+  return node.type === ElementType.Directive;
+}
+function isDocument(node) {
+  return node.type === ElementType.Root;
+}
+function hasChildren(node) {
+  return Object.prototype.hasOwnProperty.call(node, "children");
+}
+function cloneNode(node, recursive = false) {
+  let result;
+  if (isText(node)) {
+    result = new Text2(node.data);
+  } else if (isComment(node)) {
+    result = new Comment2(node.data);
+  } else if (isTag2(node)) {
+    const children = recursive ? cloneChildren(node.children) : [];
+    const clone = new Element(node.name, { ...node.attribs }, children);
+    children.forEach((child) => child.parent = clone);
+    if (node.namespace != null) {
+      clone.namespace = node.namespace;
+    }
+    if (node["x-attribsNamespace"]) {
+      clone["x-attribsNamespace"] = { ...node["x-attribsNamespace"] };
+    }
+    if (node["x-attribsPrefix"]) {
+      clone["x-attribsPrefix"] = { ...node["x-attribsPrefix"] };
+    }
+    result = clone;
+  } else if (isCDATA(node)) {
+    const children = recursive ? cloneChildren(node.children) : [];
+    const clone = new CDATA2(children);
+    children.forEach((child) => child.parent = clone);
+    result = clone;
+  } else if (isDocument(node)) {
+    const children = recursive ? cloneChildren(node.children) : [];
+    const clone = new Document(children);
+    children.forEach((child) => child.parent = clone);
+    if (node["x-mode"]) {
+      clone["x-mode"] = node["x-mode"];
+    }
+    result = clone;
+  } else if (isDirective(node)) {
+    const instruction = new ProcessingInstruction(node.name, node.data);
+    if (node["x-name"] != null) {
+      instruction["x-name"] = node["x-name"];
+      instruction["x-publicId"] = node["x-publicId"];
+      instruction["x-systemId"] = node["x-systemId"];
+    }
+    result = instruction;
+  } else {
+    throw new Error(`Not implemented yet: ${node.type}`);
+  }
+  result.startIndex = node.startIndex;
+  result.endIndex = node.endIndex;
+  if (node.sourceCodeLocation != null) {
+    result.sourceCodeLocation = node.sourceCodeLocation;
+  }
+  return result;
+}
+function cloneChildren(childs) {
+  const children = childs.map((child) => cloneNode(child, true));
+  for (let i = 1; i < children.length; i++) {
+    children[i].prev = children[i - 1];
+    children[i - 1].next = children[i];
+  }
+  return children;
+}
+
+// node_modules/domhandler/lib/esm/index.js
+var defaultOpts = {
+  withStartIndices: false,
+  withEndIndices: false,
+  xmlMode: false
+};
+var DomHandler = class {
+  /**
+   * @param callback Called once parsing has completed.
+   * @param options Settings for the handler.
+   * @param elementCB Callback whenever a tag is closed.
+   */
+  constructor(callback, options, elementCB) {
+    this.dom = [];
+    this.root = new Document(this.dom);
+    this.done = false;
+    this.tagStack = [this.root];
+    this.lastNode = null;
+    this.parser = null;
+    if (typeof options === "function") {
+      elementCB = options;
+      options = defaultOpts;
+    }
+    if (typeof callback === "object") {
+      options = callback;
+      callback = void 0;
+    }
+    this.callback = callback !== null && callback !== void 0 ? callback : null;
+    this.options = options !== null && options !== void 0 ? options : defaultOpts;
+    this.elementCB = elementCB !== null && elementCB !== void 0 ? elementCB : null;
+  }
+  onparserinit(parser) {
+    this.parser = parser;
+  }
+  // Resets the handler back to starting state
+  onreset() {
+    this.dom = [];
+    this.root = new Document(this.dom);
+    this.done = false;
+    this.tagStack = [this.root];
+    this.lastNode = null;
+    this.parser = null;
+  }
+  // Signals the handler that parsing is done
+  onend() {
+    if (this.done)
+      return;
+    this.done = true;
+    this.parser = null;
+    this.handleCallback(null);
+  }
+  onerror(error) {
+    this.handleCallback(error);
+  }
+  onclosetag() {
+    this.lastNode = null;
+    const elem = this.tagStack.pop();
+    if (this.options.withEndIndices) {
+      elem.endIndex = this.parser.endIndex;
+    }
+    if (this.elementCB)
+      this.elementCB(elem);
+  }
+  onopentag(name, attribs) {
+    const type = this.options.xmlMode ? ElementType.Tag : void 0;
+    const element = new Element(name, attribs, void 0, type);
+    this.addNode(element);
+    this.tagStack.push(element);
+  }
+  ontext(data) {
+    const { lastNode } = this;
+    if (lastNode && lastNode.type === ElementType.Text) {
+      lastNode.data += data;
+      if (this.options.withEndIndices) {
+        lastNode.endIndex = this.parser.endIndex;
+      }
+    } else {
+      const node = new Text2(data);
+      this.addNode(node);
+      this.lastNode = node;
+    }
+  }
+  oncomment(data) {
+    if (this.lastNode && this.lastNode.type === ElementType.Comment) {
+      this.lastNode.data += data;
+      return;
+    }
+    const node = new Comment2(data);
+    this.addNode(node);
+    this.lastNode = node;
+  }
+  oncommentend() {
+    this.lastNode = null;
+  }
+  oncdatastart() {
+    const text = new Text2("");
+    const node = new CDATA2([text]);
+    this.addNode(node);
+    text.parent = node;
+    this.lastNode = text;
+  }
+  oncdataend() {
+    this.lastNode = null;
+  }
+  onprocessinginstruction(name, data) {
+    const node = new ProcessingInstruction(name, data);
+    this.addNode(node);
+  }
+  handleCallback(error) {
+    if (typeof this.callback === "function") {
+      this.callback(error, this.dom);
+    } else if (error) {
+      throw error;
+    }
+  }
+  addNode(node) {
+    const parent = this.tagStack[this.tagStack.length - 1];
+    const previousSibling = parent.children[parent.children.length - 1];
+    if (this.options.withStartIndices) {
+      node.startIndex = this.parser.startIndex;
+    }
+    if (this.options.withEndIndices) {
+      node.endIndex = this.parser.endIndex;
+    }
+    parent.children.push(node);
+    if (previousSibling) {
+      node.prev = previousSibling;
+      previousSibling.next = node;
+    }
+    node.parent = parent;
+    this.lastNode = null;
+  }
+};
+
 // node_modules/entities/lib/esm/generated/decode-data-html.js
 var decode_data_html_default = new Uint16Array(
   // prettier-ignore
@@ -470,1611 +940,6 @@ function determineBranch(decodeTree, current, nodeIdx, char) {
 }
 var htmlDecoder = getDecoder(decode_data_html_default);
 var xmlDecoder = getDecoder(decode_data_xml_default);
-
-// node_modules/htmlparser2/lib/esm/Tokenizer.js
-var CharCodes2;
-(function(CharCodes3) {
-  CharCodes3[CharCodes3["Tab"] = 9] = "Tab";
-  CharCodes3[CharCodes3["NewLine"] = 10] = "NewLine";
-  CharCodes3[CharCodes3["FormFeed"] = 12] = "FormFeed";
-  CharCodes3[CharCodes3["CarriageReturn"] = 13] = "CarriageReturn";
-  CharCodes3[CharCodes3["Space"] = 32] = "Space";
-  CharCodes3[CharCodes3["ExclamationMark"] = 33] = "ExclamationMark";
-  CharCodes3[CharCodes3["Number"] = 35] = "Number";
-  CharCodes3[CharCodes3["Amp"] = 38] = "Amp";
-  CharCodes3[CharCodes3["SingleQuote"] = 39] = "SingleQuote";
-  CharCodes3[CharCodes3["DoubleQuote"] = 34] = "DoubleQuote";
-  CharCodes3[CharCodes3["Dash"] = 45] = "Dash";
-  CharCodes3[CharCodes3["Slash"] = 47] = "Slash";
-  CharCodes3[CharCodes3["Zero"] = 48] = "Zero";
-  CharCodes3[CharCodes3["Nine"] = 57] = "Nine";
-  CharCodes3[CharCodes3["Semi"] = 59] = "Semi";
-  CharCodes3[CharCodes3["Lt"] = 60] = "Lt";
-  CharCodes3[CharCodes3["Eq"] = 61] = "Eq";
-  CharCodes3[CharCodes3["Gt"] = 62] = "Gt";
-  CharCodes3[CharCodes3["Questionmark"] = 63] = "Questionmark";
-  CharCodes3[CharCodes3["UpperA"] = 65] = "UpperA";
-  CharCodes3[CharCodes3["LowerA"] = 97] = "LowerA";
-  CharCodes3[CharCodes3["UpperF"] = 70] = "UpperF";
-  CharCodes3[CharCodes3["LowerF"] = 102] = "LowerF";
-  CharCodes3[CharCodes3["UpperZ"] = 90] = "UpperZ";
-  CharCodes3[CharCodes3["LowerZ"] = 122] = "LowerZ";
-  CharCodes3[CharCodes3["LowerX"] = 120] = "LowerX";
-  CharCodes3[CharCodes3["OpeningSquareBracket"] = 91] = "OpeningSquareBracket";
-})(CharCodes2 || (CharCodes2 = {}));
-var State;
-(function(State2) {
-  State2[State2["Text"] = 1] = "Text";
-  State2[State2["BeforeTagName"] = 2] = "BeforeTagName";
-  State2[State2["InTagName"] = 3] = "InTagName";
-  State2[State2["InSelfClosingTag"] = 4] = "InSelfClosingTag";
-  State2[State2["BeforeClosingTagName"] = 5] = "BeforeClosingTagName";
-  State2[State2["InClosingTagName"] = 6] = "InClosingTagName";
-  State2[State2["AfterClosingTagName"] = 7] = "AfterClosingTagName";
-  State2[State2["BeforeAttributeName"] = 8] = "BeforeAttributeName";
-  State2[State2["InAttributeName"] = 9] = "InAttributeName";
-  State2[State2["AfterAttributeName"] = 10] = "AfterAttributeName";
-  State2[State2["BeforeAttributeValue"] = 11] = "BeforeAttributeValue";
-  State2[State2["InAttributeValueDq"] = 12] = "InAttributeValueDq";
-  State2[State2["InAttributeValueSq"] = 13] = "InAttributeValueSq";
-  State2[State2["InAttributeValueNq"] = 14] = "InAttributeValueNq";
-  State2[State2["BeforeDeclaration"] = 15] = "BeforeDeclaration";
-  State2[State2["InDeclaration"] = 16] = "InDeclaration";
-  State2[State2["InProcessingInstruction"] = 17] = "InProcessingInstruction";
-  State2[State2["BeforeComment"] = 18] = "BeforeComment";
-  State2[State2["CDATASequence"] = 19] = "CDATASequence";
-  State2[State2["InSpecialComment"] = 20] = "InSpecialComment";
-  State2[State2["InCommentLike"] = 21] = "InCommentLike";
-  State2[State2["BeforeSpecialS"] = 22] = "BeforeSpecialS";
-  State2[State2["BeforeSpecialT"] = 23] = "BeforeSpecialT";
-  State2[State2["SpecialStartSequence"] = 24] = "SpecialStartSequence";
-  State2[State2["InSpecialTag"] = 25] = "InSpecialTag";
-  State2[State2["InEntity"] = 26] = "InEntity";
-})(State || (State = {}));
-function isWhitespace(c) {
-  return c === CharCodes2.Space || c === CharCodes2.NewLine || c === CharCodes2.Tab || c === CharCodes2.FormFeed || c === CharCodes2.CarriageReturn;
-}
-function isEndOfTagSection(c) {
-  return c === CharCodes2.Slash || c === CharCodes2.Gt || isWhitespace(c);
-}
-function isASCIIAlpha(c) {
-  return c >= CharCodes2.LowerA && c <= CharCodes2.LowerZ || c >= CharCodes2.UpperA && c <= CharCodes2.UpperZ;
-}
-var QuoteType;
-(function(QuoteType2) {
-  QuoteType2[QuoteType2["NoValue"] = 0] = "NoValue";
-  QuoteType2[QuoteType2["Unquoted"] = 1] = "Unquoted";
-  QuoteType2[QuoteType2["Single"] = 2] = "Single";
-  QuoteType2[QuoteType2["Double"] = 3] = "Double";
-})(QuoteType || (QuoteType = {}));
-var Sequences = {
-  Cdata: new Uint8Array([67, 68, 65, 84, 65, 91]),
-  // CDATA[
-  CdataEnd: new Uint8Array([93, 93, 62]),
-  // ]]>
-  CommentEnd: new Uint8Array([45, 45, 62]),
-  // `-->`
-  ScriptEnd: new Uint8Array([60, 47, 115, 99, 114, 105, 112, 116]),
-  // `</script`
-  StyleEnd: new Uint8Array([60, 47, 115, 116, 121, 108, 101]),
-  // `</style`
-  TitleEnd: new Uint8Array([60, 47, 116, 105, 116, 108, 101]),
-  // `</title`
-  TextareaEnd: new Uint8Array([
-    60,
-    47,
-    116,
-    101,
-    120,
-    116,
-    97,
-    114,
-    101,
-    97
-  ])
-  // `</textarea`
-};
-var Tokenizer = class {
-  constructor({ xmlMode = false, decodeEntities = true }, cbs) {
-    this.cbs = cbs;
-    this.state = State.Text;
-    this.buffer = "";
-    this.sectionStart = 0;
-    this.index = 0;
-    this.entityStart = 0;
-    this.baseState = State.Text;
-    this.isSpecial = false;
-    this.running = true;
-    this.offset = 0;
-    this.currentSequence = void 0;
-    this.sequenceIndex = 0;
-    this.xmlMode = xmlMode;
-    this.decodeEntities = decodeEntities;
-    this.entityDecoder = new EntityDecoder(xmlMode ? decode_data_xml_default : decode_data_html_default, (cp, consumed) => this.emitCodePoint(cp, consumed));
-  }
-  reset() {
-    this.state = State.Text;
-    this.buffer = "";
-    this.sectionStart = 0;
-    this.index = 0;
-    this.baseState = State.Text;
-    this.currentSequence = void 0;
-    this.running = true;
-    this.offset = 0;
-  }
-  write(chunk) {
-    this.offset += this.buffer.length;
-    this.buffer = chunk;
-    this.parse();
-  }
-  end() {
-    if (this.running)
-      this.finish();
-  }
-  pause() {
-    this.running = false;
-  }
-  resume() {
-    this.running = true;
-    if (this.index < this.buffer.length + this.offset) {
-      this.parse();
-    }
-  }
-  stateText(c) {
-    if (c === CharCodes2.Lt || !this.decodeEntities && this.fastForwardTo(CharCodes2.Lt)) {
-      if (this.index > this.sectionStart) {
-        this.cbs.ontext(this.sectionStart, this.index);
-      }
-      this.state = State.BeforeTagName;
-      this.sectionStart = this.index;
-    } else if (this.decodeEntities && c === CharCodes2.Amp) {
-      this.startEntity();
-    }
-  }
-  stateSpecialStartSequence(c) {
-    const isEnd = this.sequenceIndex === this.currentSequence.length;
-    const isMatch = isEnd ? (
-      // If we are at the end of the sequence, make sure the tag name has ended
-      isEndOfTagSection(c)
-    ) : (
-      // Otherwise, do a case-insensitive comparison
-      (c | 32) === this.currentSequence[this.sequenceIndex]
-    );
-    if (!isMatch) {
-      this.isSpecial = false;
-    } else if (!isEnd) {
-      this.sequenceIndex++;
-      return;
-    }
-    this.sequenceIndex = 0;
-    this.state = State.InTagName;
-    this.stateInTagName(c);
-  }
-  /** Look for an end tag. For <title> tags, also decode entities. */
-  stateInSpecialTag(c) {
-    if (this.sequenceIndex === this.currentSequence.length) {
-      if (c === CharCodes2.Gt || isWhitespace(c)) {
-        const endOfText = this.index - this.currentSequence.length;
-        if (this.sectionStart < endOfText) {
-          const actualIndex = this.index;
-          this.index = endOfText;
-          this.cbs.ontext(this.sectionStart, endOfText);
-          this.index = actualIndex;
-        }
-        this.isSpecial = false;
-        this.sectionStart = endOfText + 2;
-        this.stateInClosingTagName(c);
-        return;
-      }
-      this.sequenceIndex = 0;
-    }
-    if ((c | 32) === this.currentSequence[this.sequenceIndex]) {
-      this.sequenceIndex += 1;
-    } else if (this.sequenceIndex === 0) {
-      if (this.currentSequence === Sequences.TitleEnd) {
-        if (this.decodeEntities && c === CharCodes2.Amp) {
-          this.startEntity();
-        }
-      } else if (this.fastForwardTo(CharCodes2.Lt)) {
-        this.sequenceIndex = 1;
-      }
-    } else {
-      this.sequenceIndex = Number(c === CharCodes2.Lt);
-    }
-  }
-  stateCDATASequence(c) {
-    if (c === Sequences.Cdata[this.sequenceIndex]) {
-      if (++this.sequenceIndex === Sequences.Cdata.length) {
-        this.state = State.InCommentLike;
-        this.currentSequence = Sequences.CdataEnd;
-        this.sequenceIndex = 0;
-        this.sectionStart = this.index + 1;
-      }
-    } else {
-      this.sequenceIndex = 0;
-      this.state = State.InDeclaration;
-      this.stateInDeclaration(c);
-    }
-  }
-  /**
-   * When we wait for one specific character, we can speed things up
-   * by skipping through the buffer until we find it.
-   *
-   * @returns Whether the character was found.
-   */
-  fastForwardTo(c) {
-    while (++this.index < this.buffer.length + this.offset) {
-      if (this.buffer.charCodeAt(this.index - this.offset) === c) {
-        return true;
-      }
-    }
-    this.index = this.buffer.length + this.offset - 1;
-    return false;
-  }
-  /**
-   * Comments and CDATA end with `-->` and `]]>`.
-   *
-   * Their common qualities are:
-   * - Their end sequences have a distinct character they start with.
-   * - That character is then repeated, so we have to check multiple repeats.
-   * - All characters but the start character of the sequence can be skipped.
-   */
-  stateInCommentLike(c) {
-    if (c === this.currentSequence[this.sequenceIndex]) {
-      if (++this.sequenceIndex === this.currentSequence.length) {
-        if (this.currentSequence === Sequences.CdataEnd) {
-          this.cbs.oncdata(this.sectionStart, this.index, 2);
-        } else {
-          this.cbs.oncomment(this.sectionStart, this.index, 2);
-        }
-        this.sequenceIndex = 0;
-        this.sectionStart = this.index + 1;
-        this.state = State.Text;
-      }
-    } else if (this.sequenceIndex === 0) {
-      if (this.fastForwardTo(this.currentSequence[0])) {
-        this.sequenceIndex = 1;
-      }
-    } else if (c !== this.currentSequence[this.sequenceIndex - 1]) {
-      this.sequenceIndex = 0;
-    }
-  }
-  /**
-   * HTML only allows ASCII alpha characters (a-z and A-Z) at the beginning of a tag name.
-   *
-   * XML allows a lot more characters here (@see https://www.w3.org/TR/REC-xml/#NT-NameStartChar).
-   * We allow anything that wouldn't end the tag.
-   */
-  isTagStartChar(c) {
-    return this.xmlMode ? !isEndOfTagSection(c) : isASCIIAlpha(c);
-  }
-  startSpecial(sequence, offset) {
-    this.isSpecial = true;
-    this.currentSequence = sequence;
-    this.sequenceIndex = offset;
-    this.state = State.SpecialStartSequence;
-  }
-  stateBeforeTagName(c) {
-    if (c === CharCodes2.ExclamationMark) {
-      this.state = State.BeforeDeclaration;
-      this.sectionStart = this.index + 1;
-    } else if (c === CharCodes2.Questionmark) {
-      this.state = State.InProcessingInstruction;
-      this.sectionStart = this.index + 1;
-    } else if (this.isTagStartChar(c)) {
-      const lower = c | 32;
-      this.sectionStart = this.index;
-      if (this.xmlMode) {
-        this.state = State.InTagName;
-      } else if (lower === Sequences.ScriptEnd[2]) {
-        this.state = State.BeforeSpecialS;
-      } else if (lower === Sequences.TitleEnd[2]) {
-        this.state = State.BeforeSpecialT;
-      } else {
-        this.state = State.InTagName;
-      }
-    } else if (c === CharCodes2.Slash) {
-      this.state = State.BeforeClosingTagName;
-    } else {
-      this.state = State.Text;
-      this.stateText(c);
-    }
-  }
-  stateInTagName(c) {
-    if (isEndOfTagSection(c)) {
-      this.cbs.onopentagname(this.sectionStart, this.index);
-      this.sectionStart = -1;
-      this.state = State.BeforeAttributeName;
-      this.stateBeforeAttributeName(c);
-    }
-  }
-  stateBeforeClosingTagName(c) {
-    if (isWhitespace(c)) {
-    } else if (c === CharCodes2.Gt) {
-      this.state = State.Text;
-    } else {
-      this.state = this.isTagStartChar(c) ? State.InClosingTagName : State.InSpecialComment;
-      this.sectionStart = this.index;
-    }
-  }
-  stateInClosingTagName(c) {
-    if (c === CharCodes2.Gt || isWhitespace(c)) {
-      this.cbs.onclosetag(this.sectionStart, this.index);
-      this.sectionStart = -1;
-      this.state = State.AfterClosingTagName;
-      this.stateAfterClosingTagName(c);
-    }
-  }
-  stateAfterClosingTagName(c) {
-    if (c === CharCodes2.Gt || this.fastForwardTo(CharCodes2.Gt)) {
-      this.state = State.Text;
-      this.sectionStart = this.index + 1;
-    }
-  }
-  stateBeforeAttributeName(c) {
-    if (c === CharCodes2.Gt) {
-      this.cbs.onopentagend(this.index);
-      if (this.isSpecial) {
-        this.state = State.InSpecialTag;
-        this.sequenceIndex = 0;
-      } else {
-        this.state = State.Text;
-      }
-      this.sectionStart = this.index + 1;
-    } else if (c === CharCodes2.Slash) {
-      this.state = State.InSelfClosingTag;
-    } else if (!isWhitespace(c)) {
-      this.state = State.InAttributeName;
-      this.sectionStart = this.index;
-    }
-  }
-  stateInSelfClosingTag(c) {
-    if (c === CharCodes2.Gt) {
-      this.cbs.onselfclosingtag(this.index);
-      this.state = State.Text;
-      this.sectionStart = this.index + 1;
-      this.isSpecial = false;
-    } else if (!isWhitespace(c)) {
-      this.state = State.BeforeAttributeName;
-      this.stateBeforeAttributeName(c);
-    }
-  }
-  stateInAttributeName(c) {
-    if (c === CharCodes2.Eq || isEndOfTagSection(c)) {
-      this.cbs.onattribname(this.sectionStart, this.index);
-      this.sectionStart = this.index;
-      this.state = State.AfterAttributeName;
-      this.stateAfterAttributeName(c);
-    }
-  }
-  stateAfterAttributeName(c) {
-    if (c === CharCodes2.Eq) {
-      this.state = State.BeforeAttributeValue;
-    } else if (c === CharCodes2.Slash || c === CharCodes2.Gt) {
-      this.cbs.onattribend(QuoteType.NoValue, this.sectionStart);
-      this.sectionStart = -1;
-      this.state = State.BeforeAttributeName;
-      this.stateBeforeAttributeName(c);
-    } else if (!isWhitespace(c)) {
-      this.cbs.onattribend(QuoteType.NoValue, this.sectionStart);
-      this.state = State.InAttributeName;
-      this.sectionStart = this.index;
-    }
-  }
-  stateBeforeAttributeValue(c) {
-    if (c === CharCodes2.DoubleQuote) {
-      this.state = State.InAttributeValueDq;
-      this.sectionStart = this.index + 1;
-    } else if (c === CharCodes2.SingleQuote) {
-      this.state = State.InAttributeValueSq;
-      this.sectionStart = this.index + 1;
-    } else if (!isWhitespace(c)) {
-      this.sectionStart = this.index;
-      this.state = State.InAttributeValueNq;
-      this.stateInAttributeValueNoQuotes(c);
-    }
-  }
-  handleInAttributeValue(c, quote) {
-    if (c === quote || !this.decodeEntities && this.fastForwardTo(quote)) {
-      this.cbs.onattribdata(this.sectionStart, this.index);
-      this.sectionStart = -1;
-      this.cbs.onattribend(quote === CharCodes2.DoubleQuote ? QuoteType.Double : QuoteType.Single, this.index + 1);
-      this.state = State.BeforeAttributeName;
-    } else if (this.decodeEntities && c === CharCodes2.Amp) {
-      this.startEntity();
-    }
-  }
-  stateInAttributeValueDoubleQuotes(c) {
-    this.handleInAttributeValue(c, CharCodes2.DoubleQuote);
-  }
-  stateInAttributeValueSingleQuotes(c) {
-    this.handleInAttributeValue(c, CharCodes2.SingleQuote);
-  }
-  stateInAttributeValueNoQuotes(c) {
-    if (isWhitespace(c) || c === CharCodes2.Gt) {
-      this.cbs.onattribdata(this.sectionStart, this.index);
-      this.sectionStart = -1;
-      this.cbs.onattribend(QuoteType.Unquoted, this.index);
-      this.state = State.BeforeAttributeName;
-      this.stateBeforeAttributeName(c);
-    } else if (this.decodeEntities && c === CharCodes2.Amp) {
-      this.startEntity();
-    }
-  }
-  stateBeforeDeclaration(c) {
-    if (c === CharCodes2.OpeningSquareBracket) {
-      this.state = State.CDATASequence;
-      this.sequenceIndex = 0;
-    } else {
-      this.state = c === CharCodes2.Dash ? State.BeforeComment : State.InDeclaration;
-    }
-  }
-  stateInDeclaration(c) {
-    if (c === CharCodes2.Gt || this.fastForwardTo(CharCodes2.Gt)) {
-      this.cbs.ondeclaration(this.sectionStart, this.index);
-      this.state = State.Text;
-      this.sectionStart = this.index + 1;
-    }
-  }
-  stateInProcessingInstruction(c) {
-    if (c === CharCodes2.Gt || this.fastForwardTo(CharCodes2.Gt)) {
-      this.cbs.onprocessinginstruction(this.sectionStart, this.index);
-      this.state = State.Text;
-      this.sectionStart = this.index + 1;
-    }
-  }
-  stateBeforeComment(c) {
-    if (c === CharCodes2.Dash) {
-      this.state = State.InCommentLike;
-      this.currentSequence = Sequences.CommentEnd;
-      this.sequenceIndex = 2;
-      this.sectionStart = this.index + 1;
-    } else {
-      this.state = State.InDeclaration;
-    }
-  }
-  stateInSpecialComment(c) {
-    if (c === CharCodes2.Gt || this.fastForwardTo(CharCodes2.Gt)) {
-      this.cbs.oncomment(this.sectionStart, this.index, 0);
-      this.state = State.Text;
-      this.sectionStart = this.index + 1;
-    }
-  }
-  stateBeforeSpecialS(c) {
-    const lower = c | 32;
-    if (lower === Sequences.ScriptEnd[3]) {
-      this.startSpecial(Sequences.ScriptEnd, 4);
-    } else if (lower === Sequences.StyleEnd[3]) {
-      this.startSpecial(Sequences.StyleEnd, 4);
-    } else {
-      this.state = State.InTagName;
-      this.stateInTagName(c);
-    }
-  }
-  stateBeforeSpecialT(c) {
-    const lower = c | 32;
-    if (lower === Sequences.TitleEnd[3]) {
-      this.startSpecial(Sequences.TitleEnd, 4);
-    } else if (lower === Sequences.TextareaEnd[3]) {
-      this.startSpecial(Sequences.TextareaEnd, 4);
-    } else {
-      this.state = State.InTagName;
-      this.stateInTagName(c);
-    }
-  }
-  startEntity() {
-    this.baseState = this.state;
-    this.state = State.InEntity;
-    this.entityStart = this.index;
-    this.entityDecoder.startEntity(this.xmlMode ? DecodingMode.Strict : this.baseState === State.Text || this.baseState === State.InSpecialTag ? DecodingMode.Legacy : DecodingMode.Attribute);
-  }
-  stateInEntity() {
-    const length = this.entityDecoder.write(this.buffer, this.index - this.offset);
-    if (length >= 0) {
-      this.state = this.baseState;
-      if (length === 0) {
-        this.index = this.entityStart;
-      }
-    } else {
-      this.index = this.offset + this.buffer.length - 1;
-    }
-  }
-  /**
-   * Remove data that has already been consumed from the buffer.
-   */
-  cleanup() {
-    if (this.running && this.sectionStart !== this.index) {
-      if (this.state === State.Text || this.state === State.InSpecialTag && this.sequenceIndex === 0) {
-        this.cbs.ontext(this.sectionStart, this.index);
-        this.sectionStart = this.index;
-      } else if (this.state === State.InAttributeValueDq || this.state === State.InAttributeValueSq || this.state === State.InAttributeValueNq) {
-        this.cbs.onattribdata(this.sectionStart, this.index);
-        this.sectionStart = this.index;
-      }
-    }
-  }
-  shouldContinue() {
-    return this.index < this.buffer.length + this.offset && this.running;
-  }
-  /**
-   * Iterates through the buffer, calling the function corresponding to the current state.
-   *
-   * States that are more likely to be hit are higher up, as a performance improvement.
-   */
-  parse() {
-    while (this.shouldContinue()) {
-      const c = this.buffer.charCodeAt(this.index - this.offset);
-      switch (this.state) {
-        case State.Text: {
-          this.stateText(c);
-          break;
-        }
-        case State.SpecialStartSequence: {
-          this.stateSpecialStartSequence(c);
-          break;
-        }
-        case State.InSpecialTag: {
-          this.stateInSpecialTag(c);
-          break;
-        }
-        case State.CDATASequence: {
-          this.stateCDATASequence(c);
-          break;
-        }
-        case State.InAttributeValueDq: {
-          this.stateInAttributeValueDoubleQuotes(c);
-          break;
-        }
-        case State.InAttributeName: {
-          this.stateInAttributeName(c);
-          break;
-        }
-        case State.InCommentLike: {
-          this.stateInCommentLike(c);
-          break;
-        }
-        case State.InSpecialComment: {
-          this.stateInSpecialComment(c);
-          break;
-        }
-        case State.BeforeAttributeName: {
-          this.stateBeforeAttributeName(c);
-          break;
-        }
-        case State.InTagName: {
-          this.stateInTagName(c);
-          break;
-        }
-        case State.InClosingTagName: {
-          this.stateInClosingTagName(c);
-          break;
-        }
-        case State.BeforeTagName: {
-          this.stateBeforeTagName(c);
-          break;
-        }
-        case State.AfterAttributeName: {
-          this.stateAfterAttributeName(c);
-          break;
-        }
-        case State.InAttributeValueSq: {
-          this.stateInAttributeValueSingleQuotes(c);
-          break;
-        }
-        case State.BeforeAttributeValue: {
-          this.stateBeforeAttributeValue(c);
-          break;
-        }
-        case State.BeforeClosingTagName: {
-          this.stateBeforeClosingTagName(c);
-          break;
-        }
-        case State.AfterClosingTagName: {
-          this.stateAfterClosingTagName(c);
-          break;
-        }
-        case State.BeforeSpecialS: {
-          this.stateBeforeSpecialS(c);
-          break;
-        }
-        case State.BeforeSpecialT: {
-          this.stateBeforeSpecialT(c);
-          break;
-        }
-        case State.InAttributeValueNq: {
-          this.stateInAttributeValueNoQuotes(c);
-          break;
-        }
-        case State.InSelfClosingTag: {
-          this.stateInSelfClosingTag(c);
-          break;
-        }
-        case State.InDeclaration: {
-          this.stateInDeclaration(c);
-          break;
-        }
-        case State.BeforeDeclaration: {
-          this.stateBeforeDeclaration(c);
-          break;
-        }
-        case State.BeforeComment: {
-          this.stateBeforeComment(c);
-          break;
-        }
-        case State.InProcessingInstruction: {
-          this.stateInProcessingInstruction(c);
-          break;
-        }
-        case State.InEntity: {
-          this.stateInEntity();
-          break;
-        }
-      }
-      this.index++;
-    }
-    this.cleanup();
-  }
-  finish() {
-    if (this.state === State.InEntity) {
-      this.entityDecoder.end();
-      this.state = this.baseState;
-    }
-    this.handleTrailingData();
-    this.cbs.onend();
-  }
-  /** Handle any trailing data. */
-  handleTrailingData() {
-    const endIndex = this.buffer.length + this.offset;
-    if (this.sectionStart >= endIndex) {
-      return;
-    }
-    if (this.state === State.InCommentLike) {
-      if (this.currentSequence === Sequences.CdataEnd) {
-        this.cbs.oncdata(this.sectionStart, endIndex, 0);
-      } else {
-        this.cbs.oncomment(this.sectionStart, endIndex, 0);
-      }
-    } else if (this.state === State.InTagName || this.state === State.BeforeAttributeName || this.state === State.BeforeAttributeValue || this.state === State.AfterAttributeName || this.state === State.InAttributeName || this.state === State.InAttributeValueSq || this.state === State.InAttributeValueDq || this.state === State.InAttributeValueNq || this.state === State.InClosingTagName) {
-    } else {
-      this.cbs.ontext(this.sectionStart, endIndex);
-    }
-  }
-  emitCodePoint(cp, consumed) {
-    if (this.baseState !== State.Text && this.baseState !== State.InSpecialTag) {
-      if (this.sectionStart < this.entityStart) {
-        this.cbs.onattribdata(this.sectionStart, this.entityStart);
-      }
-      this.sectionStart = this.entityStart + consumed;
-      this.index = this.sectionStart - 1;
-      this.cbs.onattribentity(cp);
-    } else {
-      if (this.sectionStart < this.entityStart) {
-        this.cbs.ontext(this.sectionStart, this.entityStart);
-      }
-      this.sectionStart = this.entityStart + consumed;
-      this.index = this.sectionStart - 1;
-      this.cbs.ontextentity(cp, this.sectionStart);
-    }
-  }
-};
-
-// node_modules/htmlparser2/lib/esm/Parser.js
-var formTags = /* @__PURE__ */ new Set([
-  "input",
-  "option",
-  "optgroup",
-  "select",
-  "button",
-  "datalist",
-  "textarea"
-]);
-var pTag = /* @__PURE__ */ new Set(["p"]);
-var tableSectionTags = /* @__PURE__ */ new Set(["thead", "tbody"]);
-var ddtTags = /* @__PURE__ */ new Set(["dd", "dt"]);
-var rtpTags = /* @__PURE__ */ new Set(["rt", "rp"]);
-var openImpliesClose = /* @__PURE__ */ new Map([
-  ["tr", /* @__PURE__ */ new Set(["tr", "th", "td"])],
-  ["th", /* @__PURE__ */ new Set(["th"])],
-  ["td", /* @__PURE__ */ new Set(["thead", "th", "td"])],
-  ["body", /* @__PURE__ */ new Set(["head", "link", "script"])],
-  ["li", /* @__PURE__ */ new Set(["li"])],
-  ["p", pTag],
-  ["h1", pTag],
-  ["h2", pTag],
-  ["h3", pTag],
-  ["h4", pTag],
-  ["h5", pTag],
-  ["h6", pTag],
-  ["select", formTags],
-  ["input", formTags],
-  ["output", formTags],
-  ["button", formTags],
-  ["datalist", formTags],
-  ["textarea", formTags],
-  ["option", /* @__PURE__ */ new Set(["option"])],
-  ["optgroup", /* @__PURE__ */ new Set(["optgroup", "option"])],
-  ["dd", ddtTags],
-  ["dt", ddtTags],
-  ["address", pTag],
-  ["article", pTag],
-  ["aside", pTag],
-  ["blockquote", pTag],
-  ["details", pTag],
-  ["div", pTag],
-  ["dl", pTag],
-  ["fieldset", pTag],
-  ["figcaption", pTag],
-  ["figure", pTag],
-  ["footer", pTag],
-  ["form", pTag],
-  ["header", pTag],
-  ["hr", pTag],
-  ["main", pTag],
-  ["nav", pTag],
-  ["ol", pTag],
-  ["pre", pTag],
-  ["section", pTag],
-  ["table", pTag],
-  ["ul", pTag],
-  ["rt", rtpTags],
-  ["rp", rtpTags],
-  ["tbody", tableSectionTags],
-  ["tfoot", tableSectionTags]
-]);
-var voidElements = /* @__PURE__ */ new Set([
-  "area",
-  "base",
-  "basefont",
-  "br",
-  "col",
-  "command",
-  "embed",
-  "frame",
-  "hr",
-  "img",
-  "input",
-  "isindex",
-  "keygen",
-  "link",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr"
-]);
-var foreignContextElements = /* @__PURE__ */ new Set(["math", "svg"]);
-var htmlIntegrationElements = /* @__PURE__ */ new Set([
-  "mi",
-  "mo",
-  "mn",
-  "ms",
-  "mtext",
-  "annotation-xml",
-  "foreignobject",
-  "desc",
-  "title"
-]);
-var reNameEnd = /\s|\//;
-var Parser = class {
-  constructor(cbs, options = {}) {
-    var _a2, _b, _c, _d, _e, _f;
-    this.options = options;
-    this.startIndex = 0;
-    this.endIndex = 0;
-    this.openTagStart = 0;
-    this.tagname = "";
-    this.attribname = "";
-    this.attribvalue = "";
-    this.attribs = null;
-    this.stack = [];
-    this.buffers = [];
-    this.bufferOffset = 0;
-    this.writeIndex = 0;
-    this.ended = false;
-    this.cbs = cbs !== null && cbs !== void 0 ? cbs : {};
-    this.htmlMode = !this.options.xmlMode;
-    this.lowerCaseTagNames = (_a2 = options.lowerCaseTags) !== null && _a2 !== void 0 ? _a2 : this.htmlMode;
-    this.lowerCaseAttributeNames = (_b = options.lowerCaseAttributeNames) !== null && _b !== void 0 ? _b : this.htmlMode;
-    this.recognizeSelfClosing = (_c = options.recognizeSelfClosing) !== null && _c !== void 0 ? _c : !this.htmlMode;
-    this.tokenizer = new ((_d = options.Tokenizer) !== null && _d !== void 0 ? _d : Tokenizer)(this.options, this);
-    this.foreignContext = [!this.htmlMode];
-    (_f = (_e = this.cbs).onparserinit) === null || _f === void 0 ? void 0 : _f.call(_e, this);
-  }
-  // Tokenizer event handlers
-  /** @internal */
-  ontext(start, endIndex) {
-    var _a2, _b;
-    const data = this.getSlice(start, endIndex);
-    this.endIndex = endIndex - 1;
-    (_b = (_a2 = this.cbs).ontext) === null || _b === void 0 ? void 0 : _b.call(_a2, data);
-    this.startIndex = endIndex;
-  }
-  /** @internal */
-  ontextentity(cp, endIndex) {
-    var _a2, _b;
-    this.endIndex = endIndex - 1;
-    (_b = (_a2 = this.cbs).ontext) === null || _b === void 0 ? void 0 : _b.call(_a2, fromCodePoint(cp));
-    this.startIndex = endIndex;
-  }
-  /**
-   * Checks if the current tag is a void element. Override this if you want
-   * to specify your own additional void elements.
-   */
-  isVoidElement(name) {
-    return this.htmlMode && voidElements.has(name);
-  }
-  /** @internal */
-  onopentagname(start, endIndex) {
-    this.endIndex = endIndex;
-    let name = this.getSlice(start, endIndex);
-    if (this.lowerCaseTagNames) {
-      name = name.toLowerCase();
-    }
-    this.emitOpenTag(name);
-  }
-  emitOpenTag(name) {
-    var _a2, _b, _c, _d;
-    this.openTagStart = this.startIndex;
-    this.tagname = name;
-    const impliesClose = this.htmlMode && openImpliesClose.get(name);
-    if (impliesClose) {
-      while (this.stack.length > 0 && impliesClose.has(this.stack[0])) {
-        const element = this.stack.shift();
-        (_b = (_a2 = this.cbs).onclosetag) === null || _b === void 0 ? void 0 : _b.call(_a2, element, true);
-      }
-    }
-    if (!this.isVoidElement(name)) {
-      this.stack.unshift(name);
-      if (this.htmlMode) {
-        if (foreignContextElements.has(name)) {
-          this.foreignContext.unshift(true);
-        } else if (htmlIntegrationElements.has(name)) {
-          this.foreignContext.unshift(false);
-        }
-      }
-    }
-    (_d = (_c = this.cbs).onopentagname) === null || _d === void 0 ? void 0 : _d.call(_c, name);
-    if (this.cbs.onopentag)
-      this.attribs = {};
-  }
-  endOpenTag(isImplied) {
-    var _a2, _b;
-    this.startIndex = this.openTagStart;
-    if (this.attribs) {
-      (_b = (_a2 = this.cbs).onopentag) === null || _b === void 0 ? void 0 : _b.call(_a2, this.tagname, this.attribs, isImplied);
-      this.attribs = null;
-    }
-    if (this.cbs.onclosetag && this.isVoidElement(this.tagname)) {
-      this.cbs.onclosetag(this.tagname, true);
-    }
-    this.tagname = "";
-  }
-  /** @internal */
-  onopentagend(endIndex) {
-    this.endIndex = endIndex;
-    this.endOpenTag(false);
-    this.startIndex = endIndex + 1;
-  }
-  /** @internal */
-  onclosetag(start, endIndex) {
-    var _a2, _b, _c, _d, _e, _f, _g, _h;
-    this.endIndex = endIndex;
-    let name = this.getSlice(start, endIndex);
-    if (this.lowerCaseTagNames) {
-      name = name.toLowerCase();
-    }
-    if (this.htmlMode && (foreignContextElements.has(name) || htmlIntegrationElements.has(name))) {
-      this.foreignContext.shift();
-    }
-    if (!this.isVoidElement(name)) {
-      const pos = this.stack.indexOf(name);
-      if (pos !== -1) {
-        for (let index = 0; index <= pos; index++) {
-          const element = this.stack.shift();
-          (_b = (_a2 = this.cbs).onclosetag) === null || _b === void 0 ? void 0 : _b.call(_a2, element, index !== pos);
-        }
-      } else if (this.htmlMode && name === "p") {
-        this.emitOpenTag("p");
-        this.closeCurrentTag(true);
-      }
-    } else if (this.htmlMode && name === "br") {
-      (_d = (_c = this.cbs).onopentagname) === null || _d === void 0 ? void 0 : _d.call(_c, "br");
-      (_f = (_e = this.cbs).onopentag) === null || _f === void 0 ? void 0 : _f.call(_e, "br", {}, true);
-      (_h = (_g = this.cbs).onclosetag) === null || _h === void 0 ? void 0 : _h.call(_g, "br", false);
-    }
-    this.startIndex = endIndex + 1;
-  }
-  /** @internal */
-  onselfclosingtag(endIndex) {
-    this.endIndex = endIndex;
-    if (this.recognizeSelfClosing || this.foreignContext[0]) {
-      this.closeCurrentTag(false);
-      this.startIndex = endIndex + 1;
-    } else {
-      this.onopentagend(endIndex);
-    }
-  }
-  closeCurrentTag(isOpenImplied) {
-    var _a2, _b;
-    const name = this.tagname;
-    this.endOpenTag(isOpenImplied);
-    if (this.stack[0] === name) {
-      (_b = (_a2 = this.cbs).onclosetag) === null || _b === void 0 ? void 0 : _b.call(_a2, name, !isOpenImplied);
-      this.stack.shift();
-    }
-  }
-  /** @internal */
-  onattribname(start, endIndex) {
-    this.startIndex = start;
-    const name = this.getSlice(start, endIndex);
-    this.attribname = this.lowerCaseAttributeNames ? name.toLowerCase() : name;
-  }
-  /** @internal */
-  onattribdata(start, endIndex) {
-    this.attribvalue += this.getSlice(start, endIndex);
-  }
-  /** @internal */
-  onattribentity(cp) {
-    this.attribvalue += fromCodePoint(cp);
-  }
-  /** @internal */
-  onattribend(quote, endIndex) {
-    var _a2, _b;
-    this.endIndex = endIndex;
-    (_b = (_a2 = this.cbs).onattribute) === null || _b === void 0 ? void 0 : _b.call(_a2, this.attribname, this.attribvalue, quote === QuoteType.Double ? '"' : quote === QuoteType.Single ? "'" : quote === QuoteType.NoValue ? void 0 : null);
-    if (this.attribs && !Object.prototype.hasOwnProperty.call(this.attribs, this.attribname)) {
-      this.attribs[this.attribname] = this.attribvalue;
-    }
-    this.attribvalue = "";
-  }
-  getInstructionName(value) {
-    const index = value.search(reNameEnd);
-    let name = index < 0 ? value : value.substr(0, index);
-    if (this.lowerCaseTagNames) {
-      name = name.toLowerCase();
-    }
-    return name;
-  }
-  /** @internal */
-  ondeclaration(start, endIndex) {
-    this.endIndex = endIndex;
-    const value = this.getSlice(start, endIndex);
-    if (this.cbs.onprocessinginstruction) {
-      const name = this.getInstructionName(value);
-      this.cbs.onprocessinginstruction(`!${name}`, `!${value}`);
-    }
-    this.startIndex = endIndex + 1;
-  }
-  /** @internal */
-  onprocessinginstruction(start, endIndex) {
-    this.endIndex = endIndex;
-    const value = this.getSlice(start, endIndex);
-    if (this.cbs.onprocessinginstruction) {
-      const name = this.getInstructionName(value);
-      this.cbs.onprocessinginstruction(`?${name}`, `?${value}`);
-    }
-    this.startIndex = endIndex + 1;
-  }
-  /** @internal */
-  oncomment(start, endIndex, offset) {
-    var _a2, _b, _c, _d;
-    this.endIndex = endIndex;
-    (_b = (_a2 = this.cbs).oncomment) === null || _b === void 0 ? void 0 : _b.call(_a2, this.getSlice(start, endIndex - offset));
-    (_d = (_c = this.cbs).oncommentend) === null || _d === void 0 ? void 0 : _d.call(_c);
-    this.startIndex = endIndex + 1;
-  }
-  /** @internal */
-  oncdata(start, endIndex, offset) {
-    var _a2, _b, _c, _d, _e, _f, _g, _h, _j, _k;
-    this.endIndex = endIndex;
-    const value = this.getSlice(start, endIndex - offset);
-    if (!this.htmlMode || this.options.recognizeCDATA) {
-      (_b = (_a2 = this.cbs).oncdatastart) === null || _b === void 0 ? void 0 : _b.call(_a2);
-      (_d = (_c = this.cbs).ontext) === null || _d === void 0 ? void 0 : _d.call(_c, value);
-      (_f = (_e = this.cbs).oncdataend) === null || _f === void 0 ? void 0 : _f.call(_e);
-    } else {
-      (_h = (_g = this.cbs).oncomment) === null || _h === void 0 ? void 0 : _h.call(_g, `[CDATA[${value}]]`);
-      (_k = (_j = this.cbs).oncommentend) === null || _k === void 0 ? void 0 : _k.call(_j);
-    }
-    this.startIndex = endIndex + 1;
-  }
-  /** @internal */
-  onend() {
-    var _a2, _b;
-    if (this.cbs.onclosetag) {
-      this.endIndex = this.startIndex;
-      for (let index = 0; index < this.stack.length; index++) {
-        this.cbs.onclosetag(this.stack[index], true);
-      }
-    }
-    (_b = (_a2 = this.cbs).onend) === null || _b === void 0 ? void 0 : _b.call(_a2);
-  }
-  /**
-   * Resets the parser to a blank state, ready to parse a new HTML document
-   */
-  reset() {
-    var _a2, _b, _c, _d;
-    (_b = (_a2 = this.cbs).onreset) === null || _b === void 0 ? void 0 : _b.call(_a2);
-    this.tokenizer.reset();
-    this.tagname = "";
-    this.attribname = "";
-    this.attribs = null;
-    this.stack.length = 0;
-    this.startIndex = 0;
-    this.endIndex = 0;
-    (_d = (_c = this.cbs).onparserinit) === null || _d === void 0 ? void 0 : _d.call(_c, this);
-    this.buffers.length = 0;
-    this.foreignContext.length = 0;
-    this.foreignContext.unshift(!this.htmlMode);
-    this.bufferOffset = 0;
-    this.writeIndex = 0;
-    this.ended = false;
-  }
-  /**
-   * Resets the parser, then parses a complete document and
-   * pushes it to the handler.
-   *
-   * @param data Document to parse.
-   */
-  parseComplete(data) {
-    this.reset();
-    this.end(data);
-  }
-  getSlice(start, end) {
-    while (start - this.bufferOffset >= this.buffers[0].length) {
-      this.shiftBuffer();
-    }
-    let slice = this.buffers[0].slice(start - this.bufferOffset, end - this.bufferOffset);
-    while (end - this.bufferOffset > this.buffers[0].length) {
-      this.shiftBuffer();
-      slice += this.buffers[0].slice(0, end - this.bufferOffset);
-    }
-    return slice;
-  }
-  shiftBuffer() {
-    this.bufferOffset += this.buffers[0].length;
-    this.writeIndex--;
-    this.buffers.shift();
-  }
-  /**
-   * Parses a chunk of data and calls the corresponding callbacks.
-   *
-   * @param chunk Chunk to parse.
-   */
-  write(chunk) {
-    var _a2, _b;
-    if (this.ended) {
-      (_b = (_a2 = this.cbs).onerror) === null || _b === void 0 ? void 0 : _b.call(_a2, new Error(".write() after done!"));
-      return;
-    }
-    this.buffers.push(chunk);
-    if (this.tokenizer.running) {
-      this.tokenizer.write(chunk);
-      this.writeIndex++;
-    }
-  }
-  /**
-   * Parses the end of the buffer and clears the stack, calls onend.
-   *
-   * @param chunk Optional final chunk to parse.
-   */
-  end(chunk) {
-    var _a2, _b;
-    if (this.ended) {
-      (_b = (_a2 = this.cbs).onerror) === null || _b === void 0 ? void 0 : _b.call(_a2, new Error(".end() after done!"));
-      return;
-    }
-    if (chunk)
-      this.write(chunk);
-    this.ended = true;
-    this.tokenizer.end();
-  }
-  /**
-   * Pauses parsing. The parser won't emit events until `resume` is called.
-   */
-  pause() {
-    this.tokenizer.pause();
-  }
-  /**
-   * Resumes parsing after `pause` was called.
-   */
-  resume() {
-    this.tokenizer.resume();
-    while (this.tokenizer.running && this.writeIndex < this.buffers.length) {
-      this.tokenizer.write(this.buffers[this.writeIndex++]);
-    }
-    if (this.ended)
-      this.tokenizer.end();
-  }
-  /**
-   * Alias of `write`, for backwards compatibility.
-   *
-   * @param chunk Chunk to parse.
-   * @deprecated
-   */
-  parseChunk(chunk) {
-    this.write(chunk);
-  }
-  /**
-   * Alias of `end`, for backwards compatibility.
-   *
-   * @param chunk Optional final chunk to parse.
-   * @deprecated
-   */
-  done(chunk) {
-    this.end(chunk);
-  }
-};
-
-// node_modules/domelementtype/lib/esm/index.js
-var ElementType;
-(function(ElementType2) {
-  ElementType2["Root"] = "root";
-  ElementType2["Text"] = "text";
-  ElementType2["Directive"] = "directive";
-  ElementType2["Comment"] = "comment";
-  ElementType2["Script"] = "script";
-  ElementType2["Style"] = "style";
-  ElementType2["Tag"] = "tag";
-  ElementType2["CDATA"] = "cdata";
-  ElementType2["Doctype"] = "doctype";
-})(ElementType || (ElementType = {}));
-function isTag(elem) {
-  return elem.type === ElementType.Tag || elem.type === ElementType.Script || elem.type === ElementType.Style;
-}
-var Root = ElementType.Root;
-var Text = ElementType.Text;
-var Directive = ElementType.Directive;
-var Comment = ElementType.Comment;
-var Script = ElementType.Script;
-var Style = ElementType.Style;
-var Tag = ElementType.Tag;
-var CDATA = ElementType.CDATA;
-var Doctype = ElementType.Doctype;
-
-// node_modules/domhandler/lib/esm/node.js
-var Node = class {
-  constructor() {
-    this.parent = null;
-    this.prev = null;
-    this.next = null;
-    this.startIndex = null;
-    this.endIndex = null;
-  }
-  // Read-write aliases for properties
-  /**
-   * Same as {@link parent}.
-   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
-   */
-  get parentNode() {
-    return this.parent;
-  }
-  set parentNode(parent) {
-    this.parent = parent;
-  }
-  /**
-   * Same as {@link prev}.
-   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
-   */
-  get previousSibling() {
-    return this.prev;
-  }
-  set previousSibling(prev) {
-    this.prev = prev;
-  }
-  /**
-   * Same as {@link next}.
-   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
-   */
-  get nextSibling() {
-    return this.next;
-  }
-  set nextSibling(next) {
-    this.next = next;
-  }
-  /**
-   * Clone this node, and optionally its children.
-   *
-   * @param recursive Clone child nodes as well.
-   * @returns A clone of the node.
-   */
-  cloneNode(recursive = false) {
-    return cloneNode(this, recursive);
-  }
-};
-var DataNode = class extends Node {
-  /**
-   * @param data The content of the data node
-   */
-  constructor(data) {
-    super();
-    this.data = data;
-  }
-  /**
-   * Same as {@link data}.
-   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
-   */
-  get nodeValue() {
-    return this.data;
-  }
-  set nodeValue(data) {
-    this.data = data;
-  }
-};
-var Text2 = class extends DataNode {
-  constructor() {
-    super(...arguments);
-    this.type = ElementType.Text;
-  }
-  get nodeType() {
-    return 3;
-  }
-};
-var Comment2 = class extends DataNode {
-  constructor() {
-    super(...arguments);
-    this.type = ElementType.Comment;
-  }
-  get nodeType() {
-    return 8;
-  }
-};
-var ProcessingInstruction = class extends DataNode {
-  constructor(name, data) {
-    super(data);
-    this.name = name;
-    this.type = ElementType.Directive;
-  }
-  get nodeType() {
-    return 1;
-  }
-};
-var NodeWithChildren = class extends Node {
-  /**
-   * @param children Children of the node. Only certain node types can have children.
-   */
-  constructor(children) {
-    super();
-    this.children = children;
-  }
-  // Aliases
-  /** First child of the node. */
-  get firstChild() {
-    var _a2;
-    return (_a2 = this.children[0]) !== null && _a2 !== void 0 ? _a2 : null;
-  }
-  /** Last child of the node. */
-  get lastChild() {
-    return this.children.length > 0 ? this.children[this.children.length - 1] : null;
-  }
-  /**
-   * Same as {@link children}.
-   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
-   */
-  get childNodes() {
-    return this.children;
-  }
-  set childNodes(children) {
-    this.children = children;
-  }
-};
-var CDATA2 = class extends NodeWithChildren {
-  constructor() {
-    super(...arguments);
-    this.type = ElementType.CDATA;
-  }
-  get nodeType() {
-    return 4;
-  }
-};
-var Document = class extends NodeWithChildren {
-  constructor() {
-    super(...arguments);
-    this.type = ElementType.Root;
-  }
-  get nodeType() {
-    return 9;
-  }
-};
-var Element = class extends NodeWithChildren {
-  /**
-   * @param name Name of the tag, eg. `div`, `span`.
-   * @param attribs Object mapping attribute names to attribute values.
-   * @param children Children of the node.
-   */
-  constructor(name, attribs, children = [], type = name === "script" ? ElementType.Script : name === "style" ? ElementType.Style : ElementType.Tag) {
-    super(children);
-    this.name = name;
-    this.attribs = attribs;
-    this.type = type;
-  }
-  get nodeType() {
-    return 1;
-  }
-  // DOM Level 1 aliases
-  /**
-   * Same as {@link name}.
-   * [DOM spec](https://dom.spec.whatwg.org)-compatible alias.
-   */
-  get tagName() {
-    return this.name;
-  }
-  set tagName(name) {
-    this.name = name;
-  }
-  get attributes() {
-    return Object.keys(this.attribs).map((name) => {
-      var _a2, _b;
-      return {
-        name,
-        value: this.attribs[name],
-        namespace: (_a2 = this["x-attribsNamespace"]) === null || _a2 === void 0 ? void 0 : _a2[name],
-        prefix: (_b = this["x-attribsPrefix"]) === null || _b === void 0 ? void 0 : _b[name]
-      };
-    });
-  }
-};
-function isTag2(node) {
-  return isTag(node);
-}
-function isCDATA(node) {
-  return node.type === ElementType.CDATA;
-}
-function isText(node) {
-  return node.type === ElementType.Text;
-}
-function isComment(node) {
-  return node.type === ElementType.Comment;
-}
-function isDirective(node) {
-  return node.type === ElementType.Directive;
-}
-function isDocument(node) {
-  return node.type === ElementType.Root;
-}
-function hasChildren(node) {
-  return Object.prototype.hasOwnProperty.call(node, "children");
-}
-function cloneNode(node, recursive = false) {
-  let result;
-  if (isText(node)) {
-    result = new Text2(node.data);
-  } else if (isComment(node)) {
-    result = new Comment2(node.data);
-  } else if (isTag2(node)) {
-    const children = recursive ? cloneChildren(node.children) : [];
-    const clone = new Element(node.name, { ...node.attribs }, children);
-    children.forEach((child) => child.parent = clone);
-    if (node.namespace != null) {
-      clone.namespace = node.namespace;
-    }
-    if (node["x-attribsNamespace"]) {
-      clone["x-attribsNamespace"] = { ...node["x-attribsNamespace"] };
-    }
-    if (node["x-attribsPrefix"]) {
-      clone["x-attribsPrefix"] = { ...node["x-attribsPrefix"] };
-    }
-    result = clone;
-  } else if (isCDATA(node)) {
-    const children = recursive ? cloneChildren(node.children) : [];
-    const clone = new CDATA2(children);
-    children.forEach((child) => child.parent = clone);
-    result = clone;
-  } else if (isDocument(node)) {
-    const children = recursive ? cloneChildren(node.children) : [];
-    const clone = new Document(children);
-    children.forEach((child) => child.parent = clone);
-    if (node["x-mode"]) {
-      clone["x-mode"] = node["x-mode"];
-    }
-    result = clone;
-  } else if (isDirective(node)) {
-    const instruction = new ProcessingInstruction(node.name, node.data);
-    if (node["x-name"] != null) {
-      instruction["x-name"] = node["x-name"];
-      instruction["x-publicId"] = node["x-publicId"];
-      instruction["x-systemId"] = node["x-systemId"];
-    }
-    result = instruction;
-  } else {
-    throw new Error(`Not implemented yet: ${node.type}`);
-  }
-  result.startIndex = node.startIndex;
-  result.endIndex = node.endIndex;
-  if (node.sourceCodeLocation != null) {
-    result.sourceCodeLocation = node.sourceCodeLocation;
-  }
-  return result;
-}
-function cloneChildren(childs) {
-  const children = childs.map((child) => cloneNode(child, true));
-  for (let i = 1; i < children.length; i++) {
-    children[i].prev = children[i - 1];
-    children[i - 1].next = children[i];
-  }
-  return children;
-}
-
-// node_modules/domhandler/lib/esm/index.js
-var defaultOpts = {
-  withStartIndices: false,
-  withEndIndices: false,
-  xmlMode: false
-};
-var DomHandler = class {
-  /**
-   * @param callback Called once parsing has completed.
-   * @param options Settings for the handler.
-   * @param elementCB Callback whenever a tag is closed.
-   */
-  constructor(callback, options, elementCB) {
-    this.dom = [];
-    this.root = new Document(this.dom);
-    this.done = false;
-    this.tagStack = [this.root];
-    this.lastNode = null;
-    this.parser = null;
-    if (typeof options === "function") {
-      elementCB = options;
-      options = defaultOpts;
-    }
-    if (typeof callback === "object") {
-      options = callback;
-      callback = void 0;
-    }
-    this.callback = callback !== null && callback !== void 0 ? callback : null;
-    this.options = options !== null && options !== void 0 ? options : defaultOpts;
-    this.elementCB = elementCB !== null && elementCB !== void 0 ? elementCB : null;
-  }
-  onparserinit(parser) {
-    this.parser = parser;
-  }
-  // Resets the handler back to starting state
-  onreset() {
-    this.dom = [];
-    this.root = new Document(this.dom);
-    this.done = false;
-    this.tagStack = [this.root];
-    this.lastNode = null;
-    this.parser = null;
-  }
-  // Signals the handler that parsing is done
-  onend() {
-    if (this.done)
-      return;
-    this.done = true;
-    this.parser = null;
-    this.handleCallback(null);
-  }
-  onerror(error) {
-    this.handleCallback(error);
-  }
-  onclosetag() {
-    this.lastNode = null;
-    const elem = this.tagStack.pop();
-    if (this.options.withEndIndices) {
-      elem.endIndex = this.parser.endIndex;
-    }
-    if (this.elementCB)
-      this.elementCB(elem);
-  }
-  onopentag(name, attribs) {
-    const type = this.options.xmlMode ? ElementType.Tag : void 0;
-    const element = new Element(name, attribs, void 0, type);
-    this.addNode(element);
-    this.tagStack.push(element);
-  }
-  ontext(data) {
-    const { lastNode } = this;
-    if (lastNode && lastNode.type === ElementType.Text) {
-      lastNode.data += data;
-      if (this.options.withEndIndices) {
-        lastNode.endIndex = this.parser.endIndex;
-      }
-    } else {
-      const node = new Text2(data);
-      this.addNode(node);
-      this.lastNode = node;
-    }
-  }
-  oncomment(data) {
-    if (this.lastNode && this.lastNode.type === ElementType.Comment) {
-      this.lastNode.data += data;
-      return;
-    }
-    const node = new Comment2(data);
-    this.addNode(node);
-    this.lastNode = node;
-  }
-  oncommentend() {
-    this.lastNode = null;
-  }
-  oncdatastart() {
-    const text = new Text2("");
-    const node = new CDATA2([text]);
-    this.addNode(node);
-    text.parent = node;
-    this.lastNode = text;
-  }
-  oncdataend() {
-    this.lastNode = null;
-  }
-  onprocessinginstruction(name, data) {
-    const node = new ProcessingInstruction(name, data);
-    this.addNode(node);
-  }
-  handleCallback(error) {
-    if (typeof this.callback === "function") {
-      this.callback(error, this.dom);
-    } else if (error) {
-      throw error;
-    }
-  }
-  addNode(node) {
-    const parent = this.tagStack[this.tagStack.length - 1];
-    const previousSibling = parent.children[parent.children.length - 1];
-    if (this.options.withStartIndices) {
-      node.startIndex = this.parser.startIndex;
-    }
-    if (this.options.withEndIndices) {
-      node.endIndex = this.parser.endIndex;
-    }
-    parent.children.push(node);
-    if (previousSibling) {
-      node.prev = previousSibling;
-      previousSibling.next = node;
-    }
-    node.parent = parent;
-    this.lastNode = null;
-  }
-};
-
-// node_modules/domutils/lib/esm/index.js
-var esm_exports2 = {};
-__export(esm_exports2, {
-  DocumentPosition: () => DocumentPosition,
-  append: () => append,
-  appendChild: () => appendChild,
-  compareDocumentPosition: () => compareDocumentPosition,
-  existsOne: () => existsOne,
-  filter: () => filter,
-  find: () => find,
-  findAll: () => findAll,
-  findOne: () => findOne,
-  findOneChild: () => findOneChild,
-  getAttributeValue: () => getAttributeValue,
-  getChildren: () => getChildren,
-  getElementById: () => getElementById,
-  getElements: () => getElements,
-  getElementsByClassName: () => getElementsByClassName,
-  getElementsByTagName: () => getElementsByTagName,
-  getElementsByTagType: () => getElementsByTagType,
-  getFeed: () => getFeed,
-  getInnerHTML: () => getInnerHTML,
-  getName: () => getName,
-  getOuterHTML: () => getOuterHTML,
-  getParent: () => getParent,
-  getSiblings: () => getSiblings,
-  getText: () => getText,
-  hasAttrib: () => hasAttrib,
-  hasChildren: () => hasChildren,
-  innerText: () => innerText,
-  isCDATA: () => isCDATA,
-  isComment: () => isComment,
-  isDocument: () => isDocument,
-  isTag: () => isTag2,
-  isText: () => isText,
-  nextElementSibling: () => nextElementSibling,
-  prepend: () => prepend,
-  prependChild: () => prependChild,
-  prevElementSibling: () => prevElementSibling,
-  removeElement: () => removeElement,
-  removeSubsets: () => removeSubsets,
-  replaceElement: () => replaceElement,
-  testElement: () => testElement,
-  textContent: () => textContent,
-  uniqueSort: () => uniqueSort
-});
 
 // node_modules/entities/lib/esm/generated/encode-html.js
 function restoreDiff(arr) {
@@ -2924,13 +1789,6 @@ function isValidFeed(value) {
   return value === "rss" || value === "feed" || value === "rdf:RDF";
 }
 
-// node_modules/htmlparser2/lib/esm/index.js
-function parseDocument(data, options) {
-  const handler = new DomHandler(void 0, options);
-  new Parser(handler, options).end(data);
-  return handler.root;
-}
-
 // node_modules/css-select/lib/esm/index.js
 var import_boolbase6 = __toESM(require_boolbase(), 1);
 
@@ -3011,7 +1869,7 @@ function unescapeCSS(str) {
 function isQuote(c) {
   return c === 39 || c === 34;
 }
-function isWhitespace2(c) {
+function isWhitespace(c) {
   return c === 32 || c === 9 || c === 10 || c === 12 || c === 13;
 }
 function parse(selector) {
@@ -3035,7 +1893,7 @@ function parseSelector(subselects2, selector, selectorIndex) {
   }
   function stripWhitespace(offset) {
     selectorIndex += offset;
-    while (selectorIndex < selector.length && isWhitespace2(selector.charCodeAt(selectorIndex))) {
+    while (selectorIndex < selector.length && isWhitespace(selector.charCodeAt(selectorIndex))) {
       selectorIndex++;
     }
   }
@@ -3185,7 +2043,7 @@ function parseSelector(subselects2, selector, selectorIndex) {
             selectorIndex = sectionEnd + 1;
           } else {
             const valueStart = selectorIndex;
-            while (selectorIndex < selector.length && (!isWhitespace2(selector.charCodeAt(selectorIndex)) && selector.charCodeAt(selectorIndex) !== 93 || isEscaped(selectorIndex))) {
+            while (selectorIndex < selector.length && (!isWhitespace(selector.charCodeAt(selectorIndex)) && selector.charCodeAt(selectorIndex) !== 93 || isEscaped(selectorIndex))) {
               selectorIndex += 1;
             }
             value = unescapeCSS(selector.slice(valueStart, selectorIndex));
@@ -4224,6 +3082,1148 @@ function appendNextSiblings(elem, adapter) {
 }
 var selectAll = getSelectorFunc((query, elems, options) => query === import_boolbase6.default.falseFunc || !elems || elems.length === 0 ? [] : options.adapter.findAll(query, elems));
 var selectOne = getSelectorFunc((query, elems, options) => query === import_boolbase6.default.falseFunc || !elems || elems.length === 0 ? null : options.adapter.findOne(query, elems));
+
+// node_modules/htmlparser2/lib/esm/Tokenizer.js
+var CharCodes2;
+(function(CharCodes3) {
+  CharCodes3[CharCodes3["Tab"] = 9] = "Tab";
+  CharCodes3[CharCodes3["NewLine"] = 10] = "NewLine";
+  CharCodes3[CharCodes3["FormFeed"] = 12] = "FormFeed";
+  CharCodes3[CharCodes3["CarriageReturn"] = 13] = "CarriageReturn";
+  CharCodes3[CharCodes3["Space"] = 32] = "Space";
+  CharCodes3[CharCodes3["ExclamationMark"] = 33] = "ExclamationMark";
+  CharCodes3[CharCodes3["Number"] = 35] = "Number";
+  CharCodes3[CharCodes3["Amp"] = 38] = "Amp";
+  CharCodes3[CharCodes3["SingleQuote"] = 39] = "SingleQuote";
+  CharCodes3[CharCodes3["DoubleQuote"] = 34] = "DoubleQuote";
+  CharCodes3[CharCodes3["Dash"] = 45] = "Dash";
+  CharCodes3[CharCodes3["Slash"] = 47] = "Slash";
+  CharCodes3[CharCodes3["Zero"] = 48] = "Zero";
+  CharCodes3[CharCodes3["Nine"] = 57] = "Nine";
+  CharCodes3[CharCodes3["Semi"] = 59] = "Semi";
+  CharCodes3[CharCodes3["Lt"] = 60] = "Lt";
+  CharCodes3[CharCodes3["Eq"] = 61] = "Eq";
+  CharCodes3[CharCodes3["Gt"] = 62] = "Gt";
+  CharCodes3[CharCodes3["Questionmark"] = 63] = "Questionmark";
+  CharCodes3[CharCodes3["UpperA"] = 65] = "UpperA";
+  CharCodes3[CharCodes3["LowerA"] = 97] = "LowerA";
+  CharCodes3[CharCodes3["UpperF"] = 70] = "UpperF";
+  CharCodes3[CharCodes3["LowerF"] = 102] = "LowerF";
+  CharCodes3[CharCodes3["UpperZ"] = 90] = "UpperZ";
+  CharCodes3[CharCodes3["LowerZ"] = 122] = "LowerZ";
+  CharCodes3[CharCodes3["LowerX"] = 120] = "LowerX";
+  CharCodes3[CharCodes3["OpeningSquareBracket"] = 91] = "OpeningSquareBracket";
+})(CharCodes2 || (CharCodes2 = {}));
+var State;
+(function(State2) {
+  State2[State2["Text"] = 1] = "Text";
+  State2[State2["BeforeTagName"] = 2] = "BeforeTagName";
+  State2[State2["InTagName"] = 3] = "InTagName";
+  State2[State2["InSelfClosingTag"] = 4] = "InSelfClosingTag";
+  State2[State2["BeforeClosingTagName"] = 5] = "BeforeClosingTagName";
+  State2[State2["InClosingTagName"] = 6] = "InClosingTagName";
+  State2[State2["AfterClosingTagName"] = 7] = "AfterClosingTagName";
+  State2[State2["BeforeAttributeName"] = 8] = "BeforeAttributeName";
+  State2[State2["InAttributeName"] = 9] = "InAttributeName";
+  State2[State2["AfterAttributeName"] = 10] = "AfterAttributeName";
+  State2[State2["BeforeAttributeValue"] = 11] = "BeforeAttributeValue";
+  State2[State2["InAttributeValueDq"] = 12] = "InAttributeValueDq";
+  State2[State2["InAttributeValueSq"] = 13] = "InAttributeValueSq";
+  State2[State2["InAttributeValueNq"] = 14] = "InAttributeValueNq";
+  State2[State2["BeforeDeclaration"] = 15] = "BeforeDeclaration";
+  State2[State2["InDeclaration"] = 16] = "InDeclaration";
+  State2[State2["InProcessingInstruction"] = 17] = "InProcessingInstruction";
+  State2[State2["BeforeComment"] = 18] = "BeforeComment";
+  State2[State2["CDATASequence"] = 19] = "CDATASequence";
+  State2[State2["InSpecialComment"] = 20] = "InSpecialComment";
+  State2[State2["InCommentLike"] = 21] = "InCommentLike";
+  State2[State2["BeforeSpecialS"] = 22] = "BeforeSpecialS";
+  State2[State2["BeforeSpecialT"] = 23] = "BeforeSpecialT";
+  State2[State2["SpecialStartSequence"] = 24] = "SpecialStartSequence";
+  State2[State2["InSpecialTag"] = 25] = "InSpecialTag";
+  State2[State2["InEntity"] = 26] = "InEntity";
+})(State || (State = {}));
+function isWhitespace2(c) {
+  return c === CharCodes2.Space || c === CharCodes2.NewLine || c === CharCodes2.Tab || c === CharCodes2.FormFeed || c === CharCodes2.CarriageReturn;
+}
+function isEndOfTagSection(c) {
+  return c === CharCodes2.Slash || c === CharCodes2.Gt || isWhitespace2(c);
+}
+function isASCIIAlpha(c) {
+  return c >= CharCodes2.LowerA && c <= CharCodes2.LowerZ || c >= CharCodes2.UpperA && c <= CharCodes2.UpperZ;
+}
+var QuoteType;
+(function(QuoteType2) {
+  QuoteType2[QuoteType2["NoValue"] = 0] = "NoValue";
+  QuoteType2[QuoteType2["Unquoted"] = 1] = "Unquoted";
+  QuoteType2[QuoteType2["Single"] = 2] = "Single";
+  QuoteType2[QuoteType2["Double"] = 3] = "Double";
+})(QuoteType || (QuoteType = {}));
+var Sequences = {
+  Cdata: new Uint8Array([67, 68, 65, 84, 65, 91]),
+  // CDATA[
+  CdataEnd: new Uint8Array([93, 93, 62]),
+  // ]]>
+  CommentEnd: new Uint8Array([45, 45, 62]),
+  // `-->`
+  ScriptEnd: new Uint8Array([60, 47, 115, 99, 114, 105, 112, 116]),
+  // `</script`
+  StyleEnd: new Uint8Array([60, 47, 115, 116, 121, 108, 101]),
+  // `</style`
+  TitleEnd: new Uint8Array([60, 47, 116, 105, 116, 108, 101]),
+  // `</title`
+  TextareaEnd: new Uint8Array([
+    60,
+    47,
+    116,
+    101,
+    120,
+    116,
+    97,
+    114,
+    101,
+    97
+  ])
+  // `</textarea`
+};
+var Tokenizer = class {
+  constructor({ xmlMode = false, decodeEntities = true }, cbs) {
+    this.cbs = cbs;
+    this.state = State.Text;
+    this.buffer = "";
+    this.sectionStart = 0;
+    this.index = 0;
+    this.entityStart = 0;
+    this.baseState = State.Text;
+    this.isSpecial = false;
+    this.running = true;
+    this.offset = 0;
+    this.currentSequence = void 0;
+    this.sequenceIndex = 0;
+    this.xmlMode = xmlMode;
+    this.decodeEntities = decodeEntities;
+    this.entityDecoder = new EntityDecoder(xmlMode ? decode_data_xml_default : decode_data_html_default, (cp, consumed) => this.emitCodePoint(cp, consumed));
+  }
+  reset() {
+    this.state = State.Text;
+    this.buffer = "";
+    this.sectionStart = 0;
+    this.index = 0;
+    this.baseState = State.Text;
+    this.currentSequence = void 0;
+    this.running = true;
+    this.offset = 0;
+  }
+  write(chunk) {
+    this.offset += this.buffer.length;
+    this.buffer = chunk;
+    this.parse();
+  }
+  end() {
+    if (this.running)
+      this.finish();
+  }
+  pause() {
+    this.running = false;
+  }
+  resume() {
+    this.running = true;
+    if (this.index < this.buffer.length + this.offset) {
+      this.parse();
+    }
+  }
+  stateText(c) {
+    if (c === CharCodes2.Lt || !this.decodeEntities && this.fastForwardTo(CharCodes2.Lt)) {
+      if (this.index > this.sectionStart) {
+        this.cbs.ontext(this.sectionStart, this.index);
+      }
+      this.state = State.BeforeTagName;
+      this.sectionStart = this.index;
+    } else if (this.decodeEntities && c === CharCodes2.Amp) {
+      this.startEntity();
+    }
+  }
+  stateSpecialStartSequence(c) {
+    const isEnd = this.sequenceIndex === this.currentSequence.length;
+    const isMatch = isEnd ? (
+      // If we are at the end of the sequence, make sure the tag name has ended
+      isEndOfTagSection(c)
+    ) : (
+      // Otherwise, do a case-insensitive comparison
+      (c | 32) === this.currentSequence[this.sequenceIndex]
+    );
+    if (!isMatch) {
+      this.isSpecial = false;
+    } else if (!isEnd) {
+      this.sequenceIndex++;
+      return;
+    }
+    this.sequenceIndex = 0;
+    this.state = State.InTagName;
+    this.stateInTagName(c);
+  }
+  /** Look for an end tag. For <title> tags, also decode entities. */
+  stateInSpecialTag(c) {
+    if (this.sequenceIndex === this.currentSequence.length) {
+      if (c === CharCodes2.Gt || isWhitespace2(c)) {
+        const endOfText = this.index - this.currentSequence.length;
+        if (this.sectionStart < endOfText) {
+          const actualIndex = this.index;
+          this.index = endOfText;
+          this.cbs.ontext(this.sectionStart, endOfText);
+          this.index = actualIndex;
+        }
+        this.isSpecial = false;
+        this.sectionStart = endOfText + 2;
+        this.stateInClosingTagName(c);
+        return;
+      }
+      this.sequenceIndex = 0;
+    }
+    if ((c | 32) === this.currentSequence[this.sequenceIndex]) {
+      this.sequenceIndex += 1;
+    } else if (this.sequenceIndex === 0) {
+      if (this.currentSequence === Sequences.TitleEnd) {
+        if (this.decodeEntities && c === CharCodes2.Amp) {
+          this.startEntity();
+        }
+      } else if (this.fastForwardTo(CharCodes2.Lt)) {
+        this.sequenceIndex = 1;
+      }
+    } else {
+      this.sequenceIndex = Number(c === CharCodes2.Lt);
+    }
+  }
+  stateCDATASequence(c) {
+    if (c === Sequences.Cdata[this.sequenceIndex]) {
+      if (++this.sequenceIndex === Sequences.Cdata.length) {
+        this.state = State.InCommentLike;
+        this.currentSequence = Sequences.CdataEnd;
+        this.sequenceIndex = 0;
+        this.sectionStart = this.index + 1;
+      }
+    } else {
+      this.sequenceIndex = 0;
+      this.state = State.InDeclaration;
+      this.stateInDeclaration(c);
+    }
+  }
+  /**
+   * When we wait for one specific character, we can speed things up
+   * by skipping through the buffer until we find it.
+   *
+   * @returns Whether the character was found.
+   */
+  fastForwardTo(c) {
+    while (++this.index < this.buffer.length + this.offset) {
+      if (this.buffer.charCodeAt(this.index - this.offset) === c) {
+        return true;
+      }
+    }
+    this.index = this.buffer.length + this.offset - 1;
+    return false;
+  }
+  /**
+   * Comments and CDATA end with `-->` and `]]>`.
+   *
+   * Their common qualities are:
+   * - Their end sequences have a distinct character they start with.
+   * - That character is then repeated, so we have to check multiple repeats.
+   * - All characters but the start character of the sequence can be skipped.
+   */
+  stateInCommentLike(c) {
+    if (c === this.currentSequence[this.sequenceIndex]) {
+      if (++this.sequenceIndex === this.currentSequence.length) {
+        if (this.currentSequence === Sequences.CdataEnd) {
+          this.cbs.oncdata(this.sectionStart, this.index, 2);
+        } else {
+          this.cbs.oncomment(this.sectionStart, this.index, 2);
+        }
+        this.sequenceIndex = 0;
+        this.sectionStart = this.index + 1;
+        this.state = State.Text;
+      }
+    } else if (this.sequenceIndex === 0) {
+      if (this.fastForwardTo(this.currentSequence[0])) {
+        this.sequenceIndex = 1;
+      }
+    } else if (c !== this.currentSequence[this.sequenceIndex - 1]) {
+      this.sequenceIndex = 0;
+    }
+  }
+  /**
+   * HTML only allows ASCII alpha characters (a-z and A-Z) at the beginning of a tag name.
+   *
+   * XML allows a lot more characters here (@see https://www.w3.org/TR/REC-xml/#NT-NameStartChar).
+   * We allow anything that wouldn't end the tag.
+   */
+  isTagStartChar(c) {
+    return this.xmlMode ? !isEndOfTagSection(c) : isASCIIAlpha(c);
+  }
+  startSpecial(sequence, offset) {
+    this.isSpecial = true;
+    this.currentSequence = sequence;
+    this.sequenceIndex = offset;
+    this.state = State.SpecialStartSequence;
+  }
+  stateBeforeTagName(c) {
+    if (c === CharCodes2.ExclamationMark) {
+      this.state = State.BeforeDeclaration;
+      this.sectionStart = this.index + 1;
+    } else if (c === CharCodes2.Questionmark) {
+      this.state = State.InProcessingInstruction;
+      this.sectionStart = this.index + 1;
+    } else if (this.isTagStartChar(c)) {
+      const lower = c | 32;
+      this.sectionStart = this.index;
+      if (this.xmlMode) {
+        this.state = State.InTagName;
+      } else if (lower === Sequences.ScriptEnd[2]) {
+        this.state = State.BeforeSpecialS;
+      } else if (lower === Sequences.TitleEnd[2]) {
+        this.state = State.BeforeSpecialT;
+      } else {
+        this.state = State.InTagName;
+      }
+    } else if (c === CharCodes2.Slash) {
+      this.state = State.BeforeClosingTagName;
+    } else {
+      this.state = State.Text;
+      this.stateText(c);
+    }
+  }
+  stateInTagName(c) {
+    if (isEndOfTagSection(c)) {
+      this.cbs.onopentagname(this.sectionStart, this.index);
+      this.sectionStart = -1;
+      this.state = State.BeforeAttributeName;
+      this.stateBeforeAttributeName(c);
+    }
+  }
+  stateBeforeClosingTagName(c) {
+    if (isWhitespace2(c)) {
+    } else if (c === CharCodes2.Gt) {
+      this.state = State.Text;
+    } else {
+      this.state = this.isTagStartChar(c) ? State.InClosingTagName : State.InSpecialComment;
+      this.sectionStart = this.index;
+    }
+  }
+  stateInClosingTagName(c) {
+    if (c === CharCodes2.Gt || isWhitespace2(c)) {
+      this.cbs.onclosetag(this.sectionStart, this.index);
+      this.sectionStart = -1;
+      this.state = State.AfterClosingTagName;
+      this.stateAfterClosingTagName(c);
+    }
+  }
+  stateAfterClosingTagName(c) {
+    if (c === CharCodes2.Gt || this.fastForwardTo(CharCodes2.Gt)) {
+      this.state = State.Text;
+      this.sectionStart = this.index + 1;
+    }
+  }
+  stateBeforeAttributeName(c) {
+    if (c === CharCodes2.Gt) {
+      this.cbs.onopentagend(this.index);
+      if (this.isSpecial) {
+        this.state = State.InSpecialTag;
+        this.sequenceIndex = 0;
+      } else {
+        this.state = State.Text;
+      }
+      this.sectionStart = this.index + 1;
+    } else if (c === CharCodes2.Slash) {
+      this.state = State.InSelfClosingTag;
+    } else if (!isWhitespace2(c)) {
+      this.state = State.InAttributeName;
+      this.sectionStart = this.index;
+    }
+  }
+  stateInSelfClosingTag(c) {
+    if (c === CharCodes2.Gt) {
+      this.cbs.onselfclosingtag(this.index);
+      this.state = State.Text;
+      this.sectionStart = this.index + 1;
+      this.isSpecial = false;
+    } else if (!isWhitespace2(c)) {
+      this.state = State.BeforeAttributeName;
+      this.stateBeforeAttributeName(c);
+    }
+  }
+  stateInAttributeName(c) {
+    if (c === CharCodes2.Eq || isEndOfTagSection(c)) {
+      this.cbs.onattribname(this.sectionStart, this.index);
+      this.sectionStart = this.index;
+      this.state = State.AfterAttributeName;
+      this.stateAfterAttributeName(c);
+    }
+  }
+  stateAfterAttributeName(c) {
+    if (c === CharCodes2.Eq) {
+      this.state = State.BeforeAttributeValue;
+    } else if (c === CharCodes2.Slash || c === CharCodes2.Gt) {
+      this.cbs.onattribend(QuoteType.NoValue, this.sectionStart);
+      this.sectionStart = -1;
+      this.state = State.BeforeAttributeName;
+      this.stateBeforeAttributeName(c);
+    } else if (!isWhitespace2(c)) {
+      this.cbs.onattribend(QuoteType.NoValue, this.sectionStart);
+      this.state = State.InAttributeName;
+      this.sectionStart = this.index;
+    }
+  }
+  stateBeforeAttributeValue(c) {
+    if (c === CharCodes2.DoubleQuote) {
+      this.state = State.InAttributeValueDq;
+      this.sectionStart = this.index + 1;
+    } else if (c === CharCodes2.SingleQuote) {
+      this.state = State.InAttributeValueSq;
+      this.sectionStart = this.index + 1;
+    } else if (!isWhitespace2(c)) {
+      this.sectionStart = this.index;
+      this.state = State.InAttributeValueNq;
+      this.stateInAttributeValueNoQuotes(c);
+    }
+  }
+  handleInAttributeValue(c, quote) {
+    if (c === quote || !this.decodeEntities && this.fastForwardTo(quote)) {
+      this.cbs.onattribdata(this.sectionStart, this.index);
+      this.sectionStart = -1;
+      this.cbs.onattribend(quote === CharCodes2.DoubleQuote ? QuoteType.Double : QuoteType.Single, this.index + 1);
+      this.state = State.BeforeAttributeName;
+    } else if (this.decodeEntities && c === CharCodes2.Amp) {
+      this.startEntity();
+    }
+  }
+  stateInAttributeValueDoubleQuotes(c) {
+    this.handleInAttributeValue(c, CharCodes2.DoubleQuote);
+  }
+  stateInAttributeValueSingleQuotes(c) {
+    this.handleInAttributeValue(c, CharCodes2.SingleQuote);
+  }
+  stateInAttributeValueNoQuotes(c) {
+    if (isWhitespace2(c) || c === CharCodes2.Gt) {
+      this.cbs.onattribdata(this.sectionStart, this.index);
+      this.sectionStart = -1;
+      this.cbs.onattribend(QuoteType.Unquoted, this.index);
+      this.state = State.BeforeAttributeName;
+      this.stateBeforeAttributeName(c);
+    } else if (this.decodeEntities && c === CharCodes2.Amp) {
+      this.startEntity();
+    }
+  }
+  stateBeforeDeclaration(c) {
+    if (c === CharCodes2.OpeningSquareBracket) {
+      this.state = State.CDATASequence;
+      this.sequenceIndex = 0;
+    } else {
+      this.state = c === CharCodes2.Dash ? State.BeforeComment : State.InDeclaration;
+    }
+  }
+  stateInDeclaration(c) {
+    if (c === CharCodes2.Gt || this.fastForwardTo(CharCodes2.Gt)) {
+      this.cbs.ondeclaration(this.sectionStart, this.index);
+      this.state = State.Text;
+      this.sectionStart = this.index + 1;
+    }
+  }
+  stateInProcessingInstruction(c) {
+    if (c === CharCodes2.Gt || this.fastForwardTo(CharCodes2.Gt)) {
+      this.cbs.onprocessinginstruction(this.sectionStart, this.index);
+      this.state = State.Text;
+      this.sectionStart = this.index + 1;
+    }
+  }
+  stateBeforeComment(c) {
+    if (c === CharCodes2.Dash) {
+      this.state = State.InCommentLike;
+      this.currentSequence = Sequences.CommentEnd;
+      this.sequenceIndex = 2;
+      this.sectionStart = this.index + 1;
+    } else {
+      this.state = State.InDeclaration;
+    }
+  }
+  stateInSpecialComment(c) {
+    if (c === CharCodes2.Gt || this.fastForwardTo(CharCodes2.Gt)) {
+      this.cbs.oncomment(this.sectionStart, this.index, 0);
+      this.state = State.Text;
+      this.sectionStart = this.index + 1;
+    }
+  }
+  stateBeforeSpecialS(c) {
+    const lower = c | 32;
+    if (lower === Sequences.ScriptEnd[3]) {
+      this.startSpecial(Sequences.ScriptEnd, 4);
+    } else if (lower === Sequences.StyleEnd[3]) {
+      this.startSpecial(Sequences.StyleEnd, 4);
+    } else {
+      this.state = State.InTagName;
+      this.stateInTagName(c);
+    }
+  }
+  stateBeforeSpecialT(c) {
+    const lower = c | 32;
+    if (lower === Sequences.TitleEnd[3]) {
+      this.startSpecial(Sequences.TitleEnd, 4);
+    } else if (lower === Sequences.TextareaEnd[3]) {
+      this.startSpecial(Sequences.TextareaEnd, 4);
+    } else {
+      this.state = State.InTagName;
+      this.stateInTagName(c);
+    }
+  }
+  startEntity() {
+    this.baseState = this.state;
+    this.state = State.InEntity;
+    this.entityStart = this.index;
+    this.entityDecoder.startEntity(this.xmlMode ? DecodingMode.Strict : this.baseState === State.Text || this.baseState === State.InSpecialTag ? DecodingMode.Legacy : DecodingMode.Attribute);
+  }
+  stateInEntity() {
+    const length = this.entityDecoder.write(this.buffer, this.index - this.offset);
+    if (length >= 0) {
+      this.state = this.baseState;
+      if (length === 0) {
+        this.index = this.entityStart;
+      }
+    } else {
+      this.index = this.offset + this.buffer.length - 1;
+    }
+  }
+  /**
+   * Remove data that has already been consumed from the buffer.
+   */
+  cleanup() {
+    if (this.running && this.sectionStart !== this.index) {
+      if (this.state === State.Text || this.state === State.InSpecialTag && this.sequenceIndex === 0) {
+        this.cbs.ontext(this.sectionStart, this.index);
+        this.sectionStart = this.index;
+      } else if (this.state === State.InAttributeValueDq || this.state === State.InAttributeValueSq || this.state === State.InAttributeValueNq) {
+        this.cbs.onattribdata(this.sectionStart, this.index);
+        this.sectionStart = this.index;
+      }
+    }
+  }
+  shouldContinue() {
+    return this.index < this.buffer.length + this.offset && this.running;
+  }
+  /**
+   * Iterates through the buffer, calling the function corresponding to the current state.
+   *
+   * States that are more likely to be hit are higher up, as a performance improvement.
+   */
+  parse() {
+    while (this.shouldContinue()) {
+      const c = this.buffer.charCodeAt(this.index - this.offset);
+      switch (this.state) {
+        case State.Text: {
+          this.stateText(c);
+          break;
+        }
+        case State.SpecialStartSequence: {
+          this.stateSpecialStartSequence(c);
+          break;
+        }
+        case State.InSpecialTag: {
+          this.stateInSpecialTag(c);
+          break;
+        }
+        case State.CDATASequence: {
+          this.stateCDATASequence(c);
+          break;
+        }
+        case State.InAttributeValueDq: {
+          this.stateInAttributeValueDoubleQuotes(c);
+          break;
+        }
+        case State.InAttributeName: {
+          this.stateInAttributeName(c);
+          break;
+        }
+        case State.InCommentLike: {
+          this.stateInCommentLike(c);
+          break;
+        }
+        case State.InSpecialComment: {
+          this.stateInSpecialComment(c);
+          break;
+        }
+        case State.BeforeAttributeName: {
+          this.stateBeforeAttributeName(c);
+          break;
+        }
+        case State.InTagName: {
+          this.stateInTagName(c);
+          break;
+        }
+        case State.InClosingTagName: {
+          this.stateInClosingTagName(c);
+          break;
+        }
+        case State.BeforeTagName: {
+          this.stateBeforeTagName(c);
+          break;
+        }
+        case State.AfterAttributeName: {
+          this.stateAfterAttributeName(c);
+          break;
+        }
+        case State.InAttributeValueSq: {
+          this.stateInAttributeValueSingleQuotes(c);
+          break;
+        }
+        case State.BeforeAttributeValue: {
+          this.stateBeforeAttributeValue(c);
+          break;
+        }
+        case State.BeforeClosingTagName: {
+          this.stateBeforeClosingTagName(c);
+          break;
+        }
+        case State.AfterClosingTagName: {
+          this.stateAfterClosingTagName(c);
+          break;
+        }
+        case State.BeforeSpecialS: {
+          this.stateBeforeSpecialS(c);
+          break;
+        }
+        case State.BeforeSpecialT: {
+          this.stateBeforeSpecialT(c);
+          break;
+        }
+        case State.InAttributeValueNq: {
+          this.stateInAttributeValueNoQuotes(c);
+          break;
+        }
+        case State.InSelfClosingTag: {
+          this.stateInSelfClosingTag(c);
+          break;
+        }
+        case State.InDeclaration: {
+          this.stateInDeclaration(c);
+          break;
+        }
+        case State.BeforeDeclaration: {
+          this.stateBeforeDeclaration(c);
+          break;
+        }
+        case State.BeforeComment: {
+          this.stateBeforeComment(c);
+          break;
+        }
+        case State.InProcessingInstruction: {
+          this.stateInProcessingInstruction(c);
+          break;
+        }
+        case State.InEntity: {
+          this.stateInEntity();
+          break;
+        }
+      }
+      this.index++;
+    }
+    this.cleanup();
+  }
+  finish() {
+    if (this.state === State.InEntity) {
+      this.entityDecoder.end();
+      this.state = this.baseState;
+    }
+    this.handleTrailingData();
+    this.cbs.onend();
+  }
+  /** Handle any trailing data. */
+  handleTrailingData() {
+    const endIndex = this.buffer.length + this.offset;
+    if (this.sectionStart >= endIndex) {
+      return;
+    }
+    if (this.state === State.InCommentLike) {
+      if (this.currentSequence === Sequences.CdataEnd) {
+        this.cbs.oncdata(this.sectionStart, endIndex, 0);
+      } else {
+        this.cbs.oncomment(this.sectionStart, endIndex, 0);
+      }
+    } else if (this.state === State.InTagName || this.state === State.BeforeAttributeName || this.state === State.BeforeAttributeValue || this.state === State.AfterAttributeName || this.state === State.InAttributeName || this.state === State.InAttributeValueSq || this.state === State.InAttributeValueDq || this.state === State.InAttributeValueNq || this.state === State.InClosingTagName) {
+    } else {
+      this.cbs.ontext(this.sectionStart, endIndex);
+    }
+  }
+  emitCodePoint(cp, consumed) {
+    if (this.baseState !== State.Text && this.baseState !== State.InSpecialTag) {
+      if (this.sectionStart < this.entityStart) {
+        this.cbs.onattribdata(this.sectionStart, this.entityStart);
+      }
+      this.sectionStart = this.entityStart + consumed;
+      this.index = this.sectionStart - 1;
+      this.cbs.onattribentity(cp);
+    } else {
+      if (this.sectionStart < this.entityStart) {
+        this.cbs.ontext(this.sectionStart, this.entityStart);
+      }
+      this.sectionStart = this.entityStart + consumed;
+      this.index = this.sectionStart - 1;
+      this.cbs.ontextentity(cp, this.sectionStart);
+    }
+  }
+};
+
+// node_modules/htmlparser2/lib/esm/Parser.js
+var formTags = /* @__PURE__ */ new Set([
+  "input",
+  "option",
+  "optgroup",
+  "select",
+  "button",
+  "datalist",
+  "textarea"
+]);
+var pTag = /* @__PURE__ */ new Set(["p"]);
+var tableSectionTags = /* @__PURE__ */ new Set(["thead", "tbody"]);
+var ddtTags = /* @__PURE__ */ new Set(["dd", "dt"]);
+var rtpTags = /* @__PURE__ */ new Set(["rt", "rp"]);
+var openImpliesClose = /* @__PURE__ */ new Map([
+  ["tr", /* @__PURE__ */ new Set(["tr", "th", "td"])],
+  ["th", /* @__PURE__ */ new Set(["th"])],
+  ["td", /* @__PURE__ */ new Set(["thead", "th", "td"])],
+  ["body", /* @__PURE__ */ new Set(["head", "link", "script"])],
+  ["li", /* @__PURE__ */ new Set(["li"])],
+  ["p", pTag],
+  ["h1", pTag],
+  ["h2", pTag],
+  ["h3", pTag],
+  ["h4", pTag],
+  ["h5", pTag],
+  ["h6", pTag],
+  ["select", formTags],
+  ["input", formTags],
+  ["output", formTags],
+  ["button", formTags],
+  ["datalist", formTags],
+  ["textarea", formTags],
+  ["option", /* @__PURE__ */ new Set(["option"])],
+  ["optgroup", /* @__PURE__ */ new Set(["optgroup", "option"])],
+  ["dd", ddtTags],
+  ["dt", ddtTags],
+  ["address", pTag],
+  ["article", pTag],
+  ["aside", pTag],
+  ["blockquote", pTag],
+  ["details", pTag],
+  ["div", pTag],
+  ["dl", pTag],
+  ["fieldset", pTag],
+  ["figcaption", pTag],
+  ["figure", pTag],
+  ["footer", pTag],
+  ["form", pTag],
+  ["header", pTag],
+  ["hr", pTag],
+  ["main", pTag],
+  ["nav", pTag],
+  ["ol", pTag],
+  ["pre", pTag],
+  ["section", pTag],
+  ["table", pTag],
+  ["ul", pTag],
+  ["rt", rtpTags],
+  ["rp", rtpTags],
+  ["tbody", tableSectionTags],
+  ["tfoot", tableSectionTags]
+]);
+var voidElements = /* @__PURE__ */ new Set([
+  "area",
+  "base",
+  "basefont",
+  "br",
+  "col",
+  "command",
+  "embed",
+  "frame",
+  "hr",
+  "img",
+  "input",
+  "isindex",
+  "keygen",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr"
+]);
+var foreignContextElements = /* @__PURE__ */ new Set(["math", "svg"]);
+var htmlIntegrationElements = /* @__PURE__ */ new Set([
+  "mi",
+  "mo",
+  "mn",
+  "ms",
+  "mtext",
+  "annotation-xml",
+  "foreignobject",
+  "desc",
+  "title"
+]);
+var reNameEnd = /\s|\//;
+var Parser = class {
+  constructor(cbs, options = {}) {
+    var _a2, _b, _c, _d, _e, _f;
+    this.options = options;
+    this.startIndex = 0;
+    this.endIndex = 0;
+    this.openTagStart = 0;
+    this.tagname = "";
+    this.attribname = "";
+    this.attribvalue = "";
+    this.attribs = null;
+    this.stack = [];
+    this.buffers = [];
+    this.bufferOffset = 0;
+    this.writeIndex = 0;
+    this.ended = false;
+    this.cbs = cbs !== null && cbs !== void 0 ? cbs : {};
+    this.htmlMode = !this.options.xmlMode;
+    this.lowerCaseTagNames = (_a2 = options.lowerCaseTags) !== null && _a2 !== void 0 ? _a2 : this.htmlMode;
+    this.lowerCaseAttributeNames = (_b = options.lowerCaseAttributeNames) !== null && _b !== void 0 ? _b : this.htmlMode;
+    this.recognizeSelfClosing = (_c = options.recognizeSelfClosing) !== null && _c !== void 0 ? _c : !this.htmlMode;
+    this.tokenizer = new ((_d = options.Tokenizer) !== null && _d !== void 0 ? _d : Tokenizer)(this.options, this);
+    this.foreignContext = [!this.htmlMode];
+    (_f = (_e = this.cbs).onparserinit) === null || _f === void 0 ? void 0 : _f.call(_e, this);
+  }
+  // Tokenizer event handlers
+  /** @internal */
+  ontext(start, endIndex) {
+    var _a2, _b;
+    const data = this.getSlice(start, endIndex);
+    this.endIndex = endIndex - 1;
+    (_b = (_a2 = this.cbs).ontext) === null || _b === void 0 ? void 0 : _b.call(_a2, data);
+    this.startIndex = endIndex;
+  }
+  /** @internal */
+  ontextentity(cp, endIndex) {
+    var _a2, _b;
+    this.endIndex = endIndex - 1;
+    (_b = (_a2 = this.cbs).ontext) === null || _b === void 0 ? void 0 : _b.call(_a2, fromCodePoint(cp));
+    this.startIndex = endIndex;
+  }
+  /**
+   * Checks if the current tag is a void element. Override this if you want
+   * to specify your own additional void elements.
+   */
+  isVoidElement(name) {
+    return this.htmlMode && voidElements.has(name);
+  }
+  /** @internal */
+  onopentagname(start, endIndex) {
+    this.endIndex = endIndex;
+    let name = this.getSlice(start, endIndex);
+    if (this.lowerCaseTagNames) {
+      name = name.toLowerCase();
+    }
+    this.emitOpenTag(name);
+  }
+  emitOpenTag(name) {
+    var _a2, _b, _c, _d;
+    this.openTagStart = this.startIndex;
+    this.tagname = name;
+    const impliesClose = this.htmlMode && openImpliesClose.get(name);
+    if (impliesClose) {
+      while (this.stack.length > 0 && impliesClose.has(this.stack[0])) {
+        const element = this.stack.shift();
+        (_b = (_a2 = this.cbs).onclosetag) === null || _b === void 0 ? void 0 : _b.call(_a2, element, true);
+      }
+    }
+    if (!this.isVoidElement(name)) {
+      this.stack.unshift(name);
+      if (this.htmlMode) {
+        if (foreignContextElements.has(name)) {
+          this.foreignContext.unshift(true);
+        } else if (htmlIntegrationElements.has(name)) {
+          this.foreignContext.unshift(false);
+        }
+      }
+    }
+    (_d = (_c = this.cbs).onopentagname) === null || _d === void 0 ? void 0 : _d.call(_c, name);
+    if (this.cbs.onopentag)
+      this.attribs = {};
+  }
+  endOpenTag(isImplied) {
+    var _a2, _b;
+    this.startIndex = this.openTagStart;
+    if (this.attribs) {
+      (_b = (_a2 = this.cbs).onopentag) === null || _b === void 0 ? void 0 : _b.call(_a2, this.tagname, this.attribs, isImplied);
+      this.attribs = null;
+    }
+    if (this.cbs.onclosetag && this.isVoidElement(this.tagname)) {
+      this.cbs.onclosetag(this.tagname, true);
+    }
+    this.tagname = "";
+  }
+  /** @internal */
+  onopentagend(endIndex) {
+    this.endIndex = endIndex;
+    this.endOpenTag(false);
+    this.startIndex = endIndex + 1;
+  }
+  /** @internal */
+  onclosetag(start, endIndex) {
+    var _a2, _b, _c, _d, _e, _f, _g, _h;
+    this.endIndex = endIndex;
+    let name = this.getSlice(start, endIndex);
+    if (this.lowerCaseTagNames) {
+      name = name.toLowerCase();
+    }
+    if (this.htmlMode && (foreignContextElements.has(name) || htmlIntegrationElements.has(name))) {
+      this.foreignContext.shift();
+    }
+    if (!this.isVoidElement(name)) {
+      const pos = this.stack.indexOf(name);
+      if (pos !== -1) {
+        for (let index = 0; index <= pos; index++) {
+          const element = this.stack.shift();
+          (_b = (_a2 = this.cbs).onclosetag) === null || _b === void 0 ? void 0 : _b.call(_a2, element, index !== pos);
+        }
+      } else if (this.htmlMode && name === "p") {
+        this.emitOpenTag("p");
+        this.closeCurrentTag(true);
+      }
+    } else if (this.htmlMode && name === "br") {
+      (_d = (_c = this.cbs).onopentagname) === null || _d === void 0 ? void 0 : _d.call(_c, "br");
+      (_f = (_e = this.cbs).onopentag) === null || _f === void 0 ? void 0 : _f.call(_e, "br", {}, true);
+      (_h = (_g = this.cbs).onclosetag) === null || _h === void 0 ? void 0 : _h.call(_g, "br", false);
+    }
+    this.startIndex = endIndex + 1;
+  }
+  /** @internal */
+  onselfclosingtag(endIndex) {
+    this.endIndex = endIndex;
+    if (this.recognizeSelfClosing || this.foreignContext[0]) {
+      this.closeCurrentTag(false);
+      this.startIndex = endIndex + 1;
+    } else {
+      this.onopentagend(endIndex);
+    }
+  }
+  closeCurrentTag(isOpenImplied) {
+    var _a2, _b;
+    const name = this.tagname;
+    this.endOpenTag(isOpenImplied);
+    if (this.stack[0] === name) {
+      (_b = (_a2 = this.cbs).onclosetag) === null || _b === void 0 ? void 0 : _b.call(_a2, name, !isOpenImplied);
+      this.stack.shift();
+    }
+  }
+  /** @internal */
+  onattribname(start, endIndex) {
+    this.startIndex = start;
+    const name = this.getSlice(start, endIndex);
+    this.attribname = this.lowerCaseAttributeNames ? name.toLowerCase() : name;
+  }
+  /** @internal */
+  onattribdata(start, endIndex) {
+    this.attribvalue += this.getSlice(start, endIndex);
+  }
+  /** @internal */
+  onattribentity(cp) {
+    this.attribvalue += fromCodePoint(cp);
+  }
+  /** @internal */
+  onattribend(quote, endIndex) {
+    var _a2, _b;
+    this.endIndex = endIndex;
+    (_b = (_a2 = this.cbs).onattribute) === null || _b === void 0 ? void 0 : _b.call(_a2, this.attribname, this.attribvalue, quote === QuoteType.Double ? '"' : quote === QuoteType.Single ? "'" : quote === QuoteType.NoValue ? void 0 : null);
+    if (this.attribs && !Object.prototype.hasOwnProperty.call(this.attribs, this.attribname)) {
+      this.attribs[this.attribname] = this.attribvalue;
+    }
+    this.attribvalue = "";
+  }
+  getInstructionName(value) {
+    const index = value.search(reNameEnd);
+    let name = index < 0 ? value : value.substr(0, index);
+    if (this.lowerCaseTagNames) {
+      name = name.toLowerCase();
+    }
+    return name;
+  }
+  /** @internal */
+  ondeclaration(start, endIndex) {
+    this.endIndex = endIndex;
+    const value = this.getSlice(start, endIndex);
+    if (this.cbs.onprocessinginstruction) {
+      const name = this.getInstructionName(value);
+      this.cbs.onprocessinginstruction(`!${name}`, `!${value}`);
+    }
+    this.startIndex = endIndex + 1;
+  }
+  /** @internal */
+  onprocessinginstruction(start, endIndex) {
+    this.endIndex = endIndex;
+    const value = this.getSlice(start, endIndex);
+    if (this.cbs.onprocessinginstruction) {
+      const name = this.getInstructionName(value);
+      this.cbs.onprocessinginstruction(`?${name}`, `?${value}`);
+    }
+    this.startIndex = endIndex + 1;
+  }
+  /** @internal */
+  oncomment(start, endIndex, offset) {
+    var _a2, _b, _c, _d;
+    this.endIndex = endIndex;
+    (_b = (_a2 = this.cbs).oncomment) === null || _b === void 0 ? void 0 : _b.call(_a2, this.getSlice(start, endIndex - offset));
+    (_d = (_c = this.cbs).oncommentend) === null || _d === void 0 ? void 0 : _d.call(_c);
+    this.startIndex = endIndex + 1;
+  }
+  /** @internal */
+  oncdata(start, endIndex, offset) {
+    var _a2, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+    this.endIndex = endIndex;
+    const value = this.getSlice(start, endIndex - offset);
+    if (!this.htmlMode || this.options.recognizeCDATA) {
+      (_b = (_a2 = this.cbs).oncdatastart) === null || _b === void 0 ? void 0 : _b.call(_a2);
+      (_d = (_c = this.cbs).ontext) === null || _d === void 0 ? void 0 : _d.call(_c, value);
+      (_f = (_e = this.cbs).oncdataend) === null || _f === void 0 ? void 0 : _f.call(_e);
+    } else {
+      (_h = (_g = this.cbs).oncomment) === null || _h === void 0 ? void 0 : _h.call(_g, `[CDATA[${value}]]`);
+      (_k = (_j = this.cbs).oncommentend) === null || _k === void 0 ? void 0 : _k.call(_j);
+    }
+    this.startIndex = endIndex + 1;
+  }
+  /** @internal */
+  onend() {
+    var _a2, _b;
+    if (this.cbs.onclosetag) {
+      this.endIndex = this.startIndex;
+      for (let index = 0; index < this.stack.length; index++) {
+        this.cbs.onclosetag(this.stack[index], true);
+      }
+    }
+    (_b = (_a2 = this.cbs).onend) === null || _b === void 0 ? void 0 : _b.call(_a2);
+  }
+  /**
+   * Resets the parser to a blank state, ready to parse a new HTML document
+   */
+  reset() {
+    var _a2, _b, _c, _d;
+    (_b = (_a2 = this.cbs).onreset) === null || _b === void 0 ? void 0 : _b.call(_a2);
+    this.tokenizer.reset();
+    this.tagname = "";
+    this.attribname = "";
+    this.attribs = null;
+    this.stack.length = 0;
+    this.startIndex = 0;
+    this.endIndex = 0;
+    (_d = (_c = this.cbs).onparserinit) === null || _d === void 0 ? void 0 : _d.call(_c, this);
+    this.buffers.length = 0;
+    this.foreignContext.length = 0;
+    this.foreignContext.unshift(!this.htmlMode);
+    this.bufferOffset = 0;
+    this.writeIndex = 0;
+    this.ended = false;
+  }
+  /**
+   * Resets the parser, then parses a complete document and
+   * pushes it to the handler.
+   *
+   * @param data Document to parse.
+   */
+  parseComplete(data) {
+    this.reset();
+    this.end(data);
+  }
+  getSlice(start, end) {
+    while (start - this.bufferOffset >= this.buffers[0].length) {
+      this.shiftBuffer();
+    }
+    let slice = this.buffers[0].slice(start - this.bufferOffset, end - this.bufferOffset);
+    while (end - this.bufferOffset > this.buffers[0].length) {
+      this.shiftBuffer();
+      slice += this.buffers[0].slice(0, end - this.bufferOffset);
+    }
+    return slice;
+  }
+  shiftBuffer() {
+    this.bufferOffset += this.buffers[0].length;
+    this.writeIndex--;
+    this.buffers.shift();
+  }
+  /**
+   * Parses a chunk of data and calls the corresponding callbacks.
+   *
+   * @param chunk Chunk to parse.
+   */
+  write(chunk) {
+    var _a2, _b;
+    if (this.ended) {
+      (_b = (_a2 = this.cbs).onerror) === null || _b === void 0 ? void 0 : _b.call(_a2, new Error(".write() after done!"));
+      return;
+    }
+    this.buffers.push(chunk);
+    if (this.tokenizer.running) {
+      this.tokenizer.write(chunk);
+      this.writeIndex++;
+    }
+  }
+  /**
+   * Parses the end of the buffer and clears the stack, calls onend.
+   *
+   * @param chunk Optional final chunk to parse.
+   */
+  end(chunk) {
+    var _a2, _b;
+    if (this.ended) {
+      (_b = (_a2 = this.cbs).onerror) === null || _b === void 0 ? void 0 : _b.call(_a2, new Error(".end() after done!"));
+      return;
+    }
+    if (chunk)
+      this.write(chunk);
+    this.ended = true;
+    this.tokenizer.end();
+  }
+  /**
+   * Pauses parsing. The parser won't emit events until `resume` is called.
+   */
+  pause() {
+    this.tokenizer.pause();
+  }
+  /**
+   * Resumes parsing after `pause` was called.
+   */
+  resume() {
+    this.tokenizer.resume();
+    while (this.tokenizer.running && this.writeIndex < this.buffers.length) {
+      this.tokenizer.write(this.buffers[this.writeIndex++]);
+    }
+    if (this.ended)
+      this.tokenizer.end();
+  }
+  /**
+   * Alias of `write`, for backwards compatibility.
+   *
+   * @param chunk Chunk to parse.
+   * @deprecated
+   */
+  parseChunk(chunk) {
+    this.write(chunk);
+  }
+  /**
+   * Alias of `end`, for backwards compatibility.
+   *
+   * @param chunk Optional final chunk to parse.
+   * @deprecated
+   */
+  done(chunk) {
+    this.end(chunk);
+  }
+};
+
+// node_modules/htmlparser2/lib/esm/index.js
+function parseDocument(data, options) {
+  const handler = new DomHandler(void 0, options);
+  new Parser(handler, options).end(data);
+  return handler.root;
+}
 
 // src/html.ts
 function normalizeDate(s) {
