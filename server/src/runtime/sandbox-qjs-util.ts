@@ -16,7 +16,9 @@ export type SandboxFailureReason =
   | "adapter_threw"
   | "timeout"
   | "memory"
-  | "fetch_limit";
+  | "fetch_limit"
+  // 信任闸门拒绝：档位 × 环境不满足入场条件（ADR-002 §2.6 结构化权限错误）。
+  | "trust_rejected";
 
 export class SandboxError extends Error {
   constructor(

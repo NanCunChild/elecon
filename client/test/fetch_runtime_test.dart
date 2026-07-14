@@ -221,6 +221,7 @@ void main() {
       await expectLater(
         runFetchAdapter(
           source: source,
+          trust: TrustedAdapterContext.devSideload(),
           capability: 'notice.list',
           view: view,
           resolver: FakeResolver({
