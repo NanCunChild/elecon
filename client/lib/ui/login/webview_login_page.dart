@@ -20,8 +20,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-import '../../core/login/webview_login.dart';
 import '../../core/credential/store.dart';
+import '../../core/debug/dev_log.dart';
+import '../../core/login/webview_login.dart';
 
 enum WebViewLoginStatus { success, cancelled, error }
 
@@ -81,6 +82,8 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
   }
 
   void _addLog(String message) {
+    // 全局环缓冲仅 debug（release 不收 webview 类）；消息须已打码。
+    if (kDebugMode) DevLog.instance.webview(message);
     if (!widget.debugLog) return;
     final ts = DateTime.now().toIso8601String().substring(11, 23);
     if (kDebugMode) debugPrint('[webview-login] $message');

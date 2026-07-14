@@ -3,8 +3,11 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'package:flutter/foundation.dart';
+
 import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
+import 'dev_log_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -128,12 +131,36 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 16),
           _SectionTitle(title: '调试'),
           Card(
-            child: SwitchListTile(
-              secondary: const Icon(Icons.bug_report_outlined),
-              title: const Text('WebView 日志面板'),
-              subtitle: const Text('登录时显示带时间戳的收割日志（cookie 已打码）'),
-              value: session.debugLog,
-              onChanged: session.setDebugLog,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.receipt_long_outlined),
+                  title: const Text('运行时日志'),
+                  subtitle: Text(
+                    kDebugMode
+                        ? '全部 Dev 日志；可筛选仅网络'
+                        : '仅网络：无参 URL 与成功状态',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const DevLogPage(),
+                      ),
+                    );
+                  },
+                ),
+                if (kDebugMode) ...[
+                  const Divider(height: 1),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.bug_report_outlined),
+                    title: const Text('WebView 日志面板'),
+                    subtitle: const Text('登录时显示带时间戳的收割日志（cookie 已打码）'),
+                    value: session.debugLog,
+                    onChanged: session.setDebugLog,
+                  ),
+                ],
+              ],
             ),
           ),
           const SizedBox(height: 16),

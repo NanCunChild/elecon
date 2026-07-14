@@ -30,6 +30,7 @@ import '../broker/fetch_proxy.dart'
         TransportCancelToken,
         TransportRequest,
         TransportResponse;
+import '../debug/dev_log.dart';
 
 const int defaultMaxBodyBytes = 8 * 1024 * 1024;
 
@@ -43,52 +44,70 @@ class DirectTransport implements Transport {
   @override
   Future<TransportResponse> fetch(TransportRequest req,
       {TransportCancelToken? cancelToken}) async {
-    final request = await _client.openUrl(req.method, Uri.parse(req.url));
-    cancelToken?.onCancel(() => request.abort());
-    if (cancelToken?.isCancelled ?? false) {
-      request.abort();
-      throw const HttpException('transport request cancelled');
-    }
-
-    // 单跳：核心自跟随重定向（B3），transport 不自动跟随。
-    request.followRedirects = false;
-
-    // 设出站头（broker 已注入凭证 + B2 净化）。HttpClient 会自管 host/content-length。
-    req.headers.forEach(request.headers.set);
-
-    if (req.body != null) {
-      request.add(utf8.encode(req.body!));
-    }
-
-    final response = await request.close();
-    if (cancelToken?.isCancelled ?? false) {
-      throw const HttpException('transport request cancelled');
-    }
-
-    // body：按 UTF-8 解析（allowMalformed 防异常）。**已知限制**：非 UTF-8（如 GBK）页面会乱码，
-    // 待后续按 Content-Type charset 解码（多数 .do/JSON 端点为 UTF-8）。
-    final bytes = await _collectBytes(response, maxBodyBytes, cancelToken);
-    final body = utf8.decode(bytes, allowMalformed: true);
-
-    // 原始 Set-Cookie（多条）单独交回——由 B4 jar 捕获，绝不并入普通头、绝不交 adapter。
-    final setCookie = <String>[];
-    final headers = <String, String>{};
-    response.headers.forEach((name, values) {
-      if (name.toLowerCase() == 'set-cookie') {
-        setCookie.addAll(values);
-        return;
+    try {
+      final request = await _client.openUrl(req.method, Uri.parse(req.url));
+      cancelToken?.onCancel(() => request.abort());
+      if (cancelToken?.isCancelled ?? false) {
+        request.abort();
+        throw const HttpException('transport request cancelled');
       }
-      // 多值头折叠为逗号连接（HttpHeaders 已小写化 name；broker 脱敏大小写不敏感）。
-      headers[name] = values.join(', ');
-    });
 
-    return TransportResponse(
-      status: response.statusCode,
-      headers: headers,
-      setCookie: setCookie,
-      location: response.headers.value('location'),
-      body: body,
-    );
+      // 单跳：核心自跟随重定向（B3），transport 不自动跟随。
+      request.followRedirects = false;
+
+      // 设出站头（broker 已注入凭证 + B2 净化）。HttpClient 会自管 host/content-length。
+      req.headers.forEach(request.headers.set);
+
+      if (req.body != null) {
+        request.add(utf8.encode(req.body!));
+      }
+
+      final response = await request.close();
+      if (cancelToken?.isCancelled ?? false) {
+        throw const HttpException('transport request cancelled');
+      }
+
+      // body：按 UTF-8 解析（allowMalformed 防异常）。**已知限制**：非 UTF-8（如 GBK）页面会乱码，
+      // 待后续按 Content-Type charset 解码（多数 .do/JSON 端点为 UTF-8）。
+      final bytes = await _collectBytes(response, maxBodyBytes, cancelToken);
+      final body = utf8.decode(bytes, allowMalformed: true);
+
+      // 原始 Set-Cookie（多条）单独交回——由 B4 jar 捕获，绝不并入普通头、绝不交 adapter。
+      final setCookie = <String>[];
+      final headers = <String, String>{};
+      response.headers.forEach((name, values) {
+        if (name.toLowerCase() == 'set-cookie') {
+          setCookie.addAll(values);
+          return;
+        }
+        // 多值头折叠为逗号连接（HttpHeaders 已小写化 name；broker 脱敏大小写不敏感）。
+        headers[name] = values.join(', ');
+      });
+
+      // 仅无参 URL + 状态码；不记 header/body（红线 #1）。
+      DevLog.instance.network(
+        method: req.method,
+        url: req.url,
+        statusCode: response.statusCode,
+        ok: true,
+      );
+
+      return TransportResponse(
+        status: response.statusCode,
+        headers: headers,
+        setCookie: setCookie,
+        location: response.headers.value('location'),
+        body: body,
+      );
+    } catch (e) {
+      DevLog.instance.network(
+        method: req.method,
+        url: req.url,
+        ok: false,
+        error: e.runtimeType.toString(),
+      );
+      rethrow;
+    }
   }
 
   /// 释放底层连接池。
