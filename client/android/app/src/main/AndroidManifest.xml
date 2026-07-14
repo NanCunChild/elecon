@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- release/main 也需要出网：WebView 登录 + DirectTransport（此前只写在 debug/profile，
+         导致 release 构建的 APK 无法登录）。 -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
