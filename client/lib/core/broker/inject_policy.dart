@@ -13,12 +13,16 @@ import 'url_match.dart';
 
 /// manifest `credentials.<ref>` 的注入相关声明（ADR-013）。**不含凭证值**（红线 #1）。
 class CredentialDecl {
-  const CredentialDecl({required this.scope, required this.type});
+  const CredentialDecl({required this.scope, required this.type, this.role});
 
   final List<String> scope;
 
   /// 注入方式：`cookie` | `header`。
   final String type;
+
+  /// 凭证角色（ADR-017）。`sso-master`=CAS 母凭证；缺省=普通下游。
+  /// **不影响注入决策**（[decideInjection] 忽略之），只驱动收割时的敏感度标注（ADR-012 §2.8）。
+  final String? role;
 }
 
 /// Broker 决策所需的 manifest 视图（仅注入相关字段；绝不含凭证值）。

@@ -12,13 +12,8 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-
-import {
-  sanitizeRequestHeaders,
-  sanitizeResponseHeaders,
-  type HeaderMap,
-} from "./header-sanitize.js";
 import { resolveRepoRoot } from "../__testutils__/smoke-utils.js";
+import { type HeaderMap, sanitizeRequestHeaders, sanitizeResponseHeaders } from "./header-sanitize.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 const goldenPath = `${repoRoot}contract/golden/broker/header-sanitize.json`;
@@ -41,9 +36,7 @@ function main(): void {
   let passed = 0;
   for (const c of golden.cases) {
     const actual =
-      c.direction === "request"
-        ? sanitizeRequestHeaders(c.input)
-        : sanitizeResponseHeaders(c.input);
+      c.direction === "request" ? sanitizeRequestHeaders(c.input) : sanitizeResponseHeaders(c.input);
     assert.deepStrictEqual(
       actual,
       c.expected,

@@ -15,7 +15,7 @@ test/
   dual_run_test.dart   双跑一致性（客户端半边）
   broker_*_test.dart   broker 组件冒烟测试（与 server 共用 contract/golden/ 向量）
 tool/
-  build_qjs_test_lib.sh  构建 flutter_qjs FFI 测试库
+  build_qjs_test_lib.sh  构建 flutter_qjs_next FFI 测试库
 ```
 
 ## 运行
@@ -35,21 +35,21 @@ fvm flutter run
 
 ## 测试（双跑一致性）
 
-adapter 在客户端用 QuickJS（`flutter_qjs`）执行，与服务端 QuickJS-wasm 是同一引擎、
+adapter 在客户端用 QuickJS（`flutter_qjs_next`）执行，与服务端 QuickJS-wasm 是同一引擎、
 零语义漂移（ADR-001 §8、ADR-005）。`test/dual_run_test.dart` 用同一份 parser 夹具验证
 客户端产出 == golden（服务端侧由 `server/src/runtime/sandbox.smoke.ts` 证），传递得两端一致。
 
-`flutter_qjs` 是经典 FFI 插件，纯 `flutter test` 不会构建其原生库。先一次性构建：
+`flutter_qjs_next` 是经典 FFI 插件，纯 `flutter test` 不会构建其原生库。先一次性构建：
 
 ```bash
 fvm flutter pub get
-tool/build_qjs_test_lib.sh        # → test/build/libffiquickjs.so（仅 Linux）
-fvm flutter test test/dual_run_test.dart
+tool/build_qjs_test_lib.sh        # 输出 FLUTTER_QJS_NEXT_LIBRARY 路径（仅 Linux）
+FLUTTER_QJS_NEXT_LIBRARY=/path/to/libflutter_qjs_next_plugin.so fvm flutter test test/dual_run_test.dart
 ```
 
-> **依赖说明**：`flutter_qjs` 选 ekibun 全平台 QuickJS 版（非 flutter_js——后者 iOS 用
-> JavaScriptCore，会破坏“同一引擎零漂移”）。0.3.7 已停更且在 Dart 3.12 编不过，故
-> `pubspec.yaml` 用 `dependency_overrides` 指向打了一行兼容补丁的 fork。详见客户端运行时 ADR。
+> **依赖说明**：`flutter_qjs_next` 是迁移后的 QuickJS 绑定（非 flutter_js——后者 iOS 用
+> JavaScriptCore，会破坏“同一引擎零漂移”）。它使用更新 QuickJS、`ffi` 2.x，并移除了旧
+> `flutter_qjs` 的 Android Kotlin Gradle Plugin 阻塞。
 
 ## 原则
 

@@ -6,6 +6,8 @@
 /// 与 JS 引擎桥接（ctx.fetch → 后台 isolate）属 adapter_runtime.dart 接线，另测。
 ///
 ///   运行：cd client && fvm flutter test test/broker_fetch_proxy_test.dart
+library;
+
 import 'package:elecon/core/broker/assemble.dart';
 import 'package:elecon/core/broker/cookie_jar.dart';
 import 'package:elecon/core/broker/fetch_proxy.dart';

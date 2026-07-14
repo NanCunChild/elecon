@@ -15,19 +15,19 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { resolveRepoRoot, FakeResolver, FakeTransport, resp, runMain } from "../__testutils__/smoke-utils.js";
+import { FakeResolver, FakeTransport, resolveRepoRoot, resp, runMain } from "../__testutils__/smoke-utils.js";
 
 import {
-  assembleRequest,
-  processResponse,
   type AssembleRequestInput,
   type AssembleResult,
+  assembleRequest,
   type ProcessedResponse,
+  processResponse,
   type RawResponse,
 } from "./assemble.js";
 import { CookieJar } from "./cookie-jar.js";
+import { BrokerFetchRejected, proxyFetch } from "./fetch-proxy.js";
 import type { BrokerManifestView } from "./inject-policy.js";
-import { proxyFetch, BrokerFetchRejected } from "./fetch-proxy.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 const goldenPath = `${repoRoot}contract/golden/broker/assemble.json`;
@@ -60,7 +60,6 @@ function goldenTests(): { assemble: number; process: number } {
   return { assemble: golden.assemble.length, process: golden.process.length };
 }
 
-
 async function driverTests(): Promise<number> {
   let checks = 0;
 
@@ -69,12 +68,16 @@ async function driverTests(): Promise<number> {
     const view: BrokerManifestView = { allow: ["https://h.edu.cn/api/*"] };
     const transport = new FakeTransport([]);
     await assert.rejects(
-      proxyFetch("https://evil.example.com/x", {}, {
-        view,
-        resolver: new FakeResolver({}),
-        jar: new CookieJar(),
-        transport,
-      }),
+      proxyFetch(
+        "https://evil.example.com/x",
+        {},
+        {
+          view,
+          resolver: new FakeResolver({}),
+          jar: new CookieJar(),
+          transport,
+        },
+      ),
       (e: unknown) => e instanceof BrokerFetchRejected && e.reason === "outside_allow",
     );
     assert.equal(transport.seen.length, 0, "拒绝时不得发任何请求");
@@ -88,15 +91,28 @@ async function driverTests(): Promise<number> {
       credentials: { session: { scope: ["https://h.edu.cn/api/*"], type: "cookie" } },
     };
     const transport = new FakeTransport([
-      resp({ status: 200, headers: { "Content-Type": "application/json", "Set-Cookie": "leak=1" }, setCookie: ["leak=1"], body: "{}" }),
+      resp({
+        status: 200,
+        headers: { "Content-Type": "application/json", "Set-Cookie": "leak=1" },
+        setCookie: ["leak=1"],
+        body: "{}",
+      }),
     ]);
-    const out = await proxyFetch("https://h.edu.cn/api/grades", {}, {
-      view,
-      resolver: new FakeResolver({ session: { via: "cookie", value: "JSESSIONID=S1" } }),
-      jar: new CookieJar(),
-      transport,
-    });
-    assert.equal(transport.seen[0]!.headers["Cookie"], "JSESSIONID=S1", "broker 注入 cookie 应出现在出站请求");
+    const out = await proxyFetch(
+      "https://h.edu.cn/api/grades",
+      {},
+      {
+        view,
+        resolver: new FakeResolver({ session: { via: "cookie", value: "JSESSIONID=S1" } }),
+        jar: new CookieJar(),
+        transport,
+      },
+    );
+    assert.equal(
+      transport.seen[0]!.headers["Cookie"],
+      "JSESSIONID=S1",
+      "broker 注入 cookie 应出现在出站请求",
+    );
     assert.equal(out.headers["Set-Cookie"], undefined, "响应 Set-Cookie 不得回交 adapter");
     assert.equal(out.status, 200);
     assert.equal(out.requestCount, 1);
@@ -108,14 +124,23 @@ async function driverTests(): Promise<number> {
     const view: BrokerManifestView = { allow: ["https://h.edu.cn/*"] };
     const transport = new FakeTransport([
       resp({ status: 302, location: "https://h.edu.cn/step2", setCookie: ["hop1=a"] }),
-      resp({ status: 200, headers: { "Content-Type": "text/html", "Location": "https://h.edu.cn/leak?t=x" }, setCookie: ["hop2=b"], body: "ok" }),
+      resp({
+        status: 200,
+        headers: { "Content-Type": "text/html", Location: "https://h.edu.cn/leak?t=x" },
+        setCookie: ["hop2=b"],
+        body: "ok",
+      }),
     ]);
-    const out = await proxyFetch("https://h.edu.cn/step1", {}, {
-      view,
-      resolver: new FakeResolver({}),
-      jar: new CookieJar(),
-      transport,
-    });
+    const out = await proxyFetch(
+      "https://h.edu.cn/step1",
+      {},
+      {
+        view,
+        resolver: new FakeResolver({}),
+        jar: new CookieJar(),
+        transport,
+      },
+    );
     assert.equal(out.status, 200);
     assert.equal(out.requestCount, 2, "每跳各计一次请求（计划 §8 #3）");
     assert.equal(out.headers["Location"], undefined, "最终响应 Location（含 token）不得外泄");
@@ -128,14 +153,22 @@ async function driverTests(): Promise<number> {
   {
     const view: BrokerManifestView = { allow: ["https://h.edu.cn/*"] };
     const transport = new FakeTransport([
-      resp({ status: 302, location: "https://evil.example.com/grab?t=secret", headers: { "Location": "https://evil.example.com/grab?t=secret" } }),
+      resp({
+        status: 302,
+        location: "https://evil.example.com/grab?t=secret",
+        headers: { Location: "https://evil.example.com/grab?t=secret" },
+      }),
     ]);
-    const out = await proxyFetch("https://h.edu.cn/start", {}, {
-      view,
-      resolver: new FakeResolver({}),
-      jar: new CookieJar(),
-      transport,
-    });
+    const out = await proxyFetch(
+      "https://h.edu.cn/start",
+      {},
+      {
+        view,
+        resolver: new FakeResolver({}),
+        jar: new CookieJar(),
+        transport,
+      },
+    );
     assert.equal(out.status, 302);
     assert.equal(out.requestCount, 1, "越界跳不发出");
     assert.equal(out.headers["Location"], undefined, "越界 Location 不得外泄");
@@ -154,13 +187,21 @@ async function driverTests(): Promise<number> {
     );
     assert.ok(ok && warnings.length === 0, "passthrough origin 的 ephemeral 写入应被接受");
     const transport = new FakeTransport([resp({ status: 200, body: "[]" })]);
-    await proxyFetch("https://dean.xjtu.edu.cn/list", {}, {
-      view,
-      resolver: new FakeResolver({}),
-      jar,
-      transport,
-    });
-    assert.equal(transport.seen[0]!.headers["Cookie"], "client_id=abc", "ephemeral cookie 应在 passthrough 出站携带");
+    await proxyFetch(
+      "https://dean.xjtu.edu.cn/list",
+      {},
+      {
+        view,
+        resolver: new FakeResolver({}),
+        jar,
+        transport,
+      },
+    );
+    assert.equal(
+      transport.seen[0]!.headers["Cookie"],
+      "client_id=abc",
+      "ephemeral cookie 应在 passthrough 出站携带",
+    );
     checks++;
   }
 

@@ -115,7 +115,11 @@ function codes(findings: { code: string }[]): string[] {
     },
     contract,
   );
-  assert.equal(findings.filter((f) => f.level === "error").length, 0, `合法 parser 不应有 error：${JSON.stringify(findings)}`);
+  assert.equal(
+    findings.filter((f) => f.level === "error").length,
+    0,
+    `合法 parser 不应有 error：${JSON.stringify(findings)}`,
+  );
   console.log("  ✓ 合法 parser 通过（占位符不干扰白名单匹配）");
 }
 
@@ -246,7 +250,11 @@ function codes(findings: { code: string }[]): string[] {
     },
     contract,
   );
-  assert.equal(findings.filter((f) => f.level === "error").length, 0, `合法 login 不应有 error：${JSON.stringify(findings)}`);
+  assert.equal(
+    findings.filter((f) => f.level === "error").length,
+    0,
+    `合法 login 不应有 error：${JSON.stringify(findings)}`,
+  );
   console.log("  ✓ 合法 login 无 error");
 }
 
@@ -316,6 +324,243 @@ function codes(findings: { code: string }[]): string[] {
   assert.equal(l4.length, 1, "login 无 credentials 应触发 1 条 L4");
   assert.equal(l4[0]!.level, "warn", "L4 应为 warn 而非 error");
   console.log("  ✓ login 无 credentials 仅告警（L4 warn）");
+}
+
+// 15) 合法 ssoMint（母凭证覆盖 authEndpoint、services ref 已声明、service/success ⊆ nav、via official 引用已声明 cap）→ 无 error
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://ids.h.edu.cn/*", "https://ehall.h.edu.cn/*", "https://card.h.edu.cn/*"] },
+      login: {
+        url: "https://ids.h.edu.cn/authserver/login",
+        navigationAllow: ["https://ids.h.edu.cn/*", "https://ehall.h.edu.cn/*", "https://card.h.edu.cn/*"],
+        success: { whenUrlMatches: ["https://ehall.h.edu.cn/index*"] },
+        ssoMint: {
+          authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
+          services: {
+            "card-session": {
+              service: "https://card.h.edu.cn/sso",
+              success: ["https://card.h.edu.cn/account*"],
+              via: "grades.list",
+            },
+          },
+        },
+      },
+      credentials: {
+        "ids-cas": { scope: ["https://ids.h.edu.cn/*"], type: "cookie", role: "sso-master" },
+        "ehall-session": { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" },
+        "card-session": { scope: ["https://card.h.edu.cn/*"], type: "cookie" },
+      },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.equal(
+    findings.filter((f) => f.level === "error").length,
+    0,
+    `合法 ssoMint 不应有 error：${JSON.stringify(findings)}`,
+  );
+  console.log("  ✓ 合法 ssoMint 无 error（M1–M5）");
+}
+
+// 16) authEndpoint 非 https + 越 navigationAllow → M1
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://ehall.h.edu.cn/*"] },
+      login: {
+        url: "https://ehall.h.edu.cn/login",
+        navigationAllow: ["https://ehall.h.edu.cn/*"],
+        success: { whenUrlMatches: ["https://ehall.h.edu.cn/index*"] },
+        ssoMint: {
+          authEndpoint: "http://ids.h.edu.cn/authserver/login?service={service}",
+          services: {
+            "ehall-session": {
+              service: "https://ehall.h.edu.cn/sso",
+              success: ["https://ehall.h.edu.cn/index*"],
+            },
+          },
+        },
+      },
+      credentials: { "ehall-session": { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("M1_auth_endpoint_not_https"), "非 https authEndpoint 应触发 M1");
+  assert.ok(codes(findings).includes("M1_auth_endpoint_outside_nav"), "authEndpoint 越 navAllow 应触发 M1");
+  console.log("  ✓ authEndpoint 非 https + 越 navAllow 被拒（M1）");
+}
+
+// 17) service/success 越 navigationAllow → M2；services 键未在 credentials → M3
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://ids.h.edu.cn/*"] },
+      login: {
+        url: "https://ids.h.edu.cn/authserver/login",
+        navigationAllow: ["https://ids.h.edu.cn/*"],
+        success: { whenUrlMatches: ["https://ids.h.edu.cn/done*"] },
+        ssoMint: {
+          authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
+          services: {
+            ghost: { service: "https://evil.h.edu.cn/sso", success: ["https://evil.h.edu.cn/ok*"] },
+          },
+        },
+      },
+      credentials: { "ids-cas": { scope: ["https://ids.h.edu.cn/*"], type: "cookie", role: "sso-master" } },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("M2_service_outside_nav"), "service 越 navAllow 应触发 M2");
+  assert.ok(codes(findings).includes("M2_success_outside_nav"), "success 越 navAllow 应触发 M2");
+  assert.ok(codes(findings).includes("M3_service_ref_undeclared"), "未声明的 services 键应触发 M3");
+  console.log("  ✓ service/success 越 navAllow + 键未声明被拒（M2/M3）");
+}
+
+// 18) authEndpoint 无母凭证承接 → M4_no_master_credential
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://ehall.h.edu.cn/*"] },
+      login: {
+        url: "https://ids.h.edu.cn/authserver/login",
+        navigationAllow: ["https://ids.h.edu.cn/*", "https://ehall.h.edu.cn/*"],
+        success: { whenUrlMatches: ["https://ehall.h.edu.cn/index*"] },
+        ssoMint: {
+          authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
+          services: {
+            "ehall-session": {
+              service: "https://ehall.h.edu.cn/sso",
+              success: ["https://ehall.h.edu.cn/index*"],
+            },
+          },
+        },
+      },
+      credentials: { "ehall-session": { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("M4_no_master_credential"), "无母凭证覆盖 authEndpoint 应触发 M4");
+  console.log("  ✓ authEndpoint 无母凭证承接被拒（M4）");
+}
+
+// 19) 母凭证 scope 与下游数据域重叠 → M4_master_scope_overlaps_downstream
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://ids.h.edu.cn/*"] },
+      login: {
+        url: "https://ids.h.edu.cn/authserver/login",
+        navigationAllow: ["https://ids.h.edu.cn/*"],
+        success: { whenUrlMatches: ["https://ids.h.edu.cn/app/ok*"] },
+        ssoMint: {
+          authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
+          services: {
+            sub: { service: "https://ids.h.edu.cn/app/x", success: ["https://ids.h.edu.cn/app/ok*"] },
+          },
+        },
+      },
+      credentials: {
+        "ids-cas": { scope: ["https://ids.h.edu.cn/*"], type: "cookie", role: "sso-master" },
+        sub: { scope: ["https://ids.h.edu.cn/app/*"], type: "cookie" },
+      },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.ok(
+    codes(findings).includes("M4_master_scope_overlaps_downstream"),
+    "母凭证 scope 覆盖下游域应触发 M4",
+  );
+  console.log("  ✓ 母凭证 scope 与下游域重叠被拒（M4）");
+}
+
+// 20) via 引用未在本 manifest 声明的 capability → M5_via_undeclared_capability
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      mode: "fetch",
+      network: { allow: ["https://ids.h.edu.cn/*", "https://card.h.edu.cn/*"] },
+      login: {
+        url: "https://ids.h.edu.cn/authserver/login",
+        navigationAllow: ["https://ids.h.edu.cn/*", "https://card.h.edu.cn/*"],
+        success: { whenUrlMatches: ["https://card.h.edu.cn/ok*"] },
+        ssoMint: {
+          authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
+          services: {
+            "card-session": {
+              service: "https://card.h.edu.cn/sso",
+              success: ["https://card.h.edu.cn/ok*"],
+              via: "ghost.mint",
+            },
+          },
+        },
+      },
+      credentials: {
+        "ids-cas": { scope: ["https://ids.h.edu.cn/*"], type: "cookie", role: "sso-master" },
+        "card-session": { scope: ["https://card.h.edu.cn/*"], type: "cookie" },
+      },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("M5_via_undeclared_capability"), "via 引用未声明 capability 应触发 M5");
+  console.log("  ✓ via 引用未声明 capability 被拒（M5）");
+}
+
+// 21) sideload + parser 声明 ssoMint via（敏感能力）→ M5_via_requires_official
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "sideload",
+      mode: "parser",
+      network: { allow: ["https://ids.h.edu.cn/*", "https://card.h.edu.cn/*"] },
+      login: {
+        url: "https://ids.h.edu.cn/authserver/login",
+        navigationAllow: ["https://ids.h.edu.cn/*", "https://card.h.edu.cn/*"],
+        success: { whenUrlMatches: ["https://card.h.edu.cn/ok*"] },
+        ssoMint: {
+          authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
+          services: {
+            "card-session": {
+              service: "https://card.h.edu.cn/sso",
+              success: ["https://card.h.edu.cn/ok*"],
+              via: "grades.list",
+            },
+          },
+        },
+      },
+      credentials: {
+        "ids-cas": { scope: ["https://ids.h.edu.cn/*"], type: "cookie", role: "sso-master" },
+        "card-session": { scope: ["https://card.h.edu.cn/*"], type: "cookie" },
+      },
+      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("M5_via_requires_official"), "sideload 声明 via 应触发 M5");
+  console.log("  ✓ sideload 声明 ssoMint via 被拒（M5，红线 #5/#1 门禁）");
 }
 
 console.log("validator smoke 全部通过。");

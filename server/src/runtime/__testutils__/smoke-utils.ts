@@ -1,17 +1,18 @@
-/// Shared test utilities for server-side broker / runtime smoke tests.
-///
-/// Extract common helpers used across multiple smoke test files:
-///   - repoRoot resolution (eliminates 9× duplication of fileURLToPath(new URL(...)))
-///   - FakeResolver / FakeTransport test doubles
-///   - resp() helper for constructing TransportResponse
-///   - readJson / readText helpers
-///   - runMain() wrapper for the catch(process.exit) pattern
+/**
+ * Shared test utilities for server-side broker / runtime smoke tests.
+ *
+ * Extract common helpers used across multiple smoke test files:
+ *   - repoRoot resolution (eliminates 9× duplication of fileURLToPath(new URL(...)))
+ *   - FakeResolver / FakeTransport test doubles
+ *   - resp() helper for constructing TransportResponse
+ *   - readJson / readText helpers
+ *   - runMain() wrapper for the catch(process.exit) pattern
+ */
 
 import { readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-
-import type { CredentialResolver, ResolvedCredential } from "../broker/ports.js";
 import type { Transport, TransportRequest, TransportResponse } from "../broker/fetch-proxy.js";
+import type { CredentialResolver, ResolvedCredential } from "../broker/ports.js";
 
 // ---------------------------------------------------------------------------
 // Repo root resolution
@@ -23,7 +24,9 @@ export function resolveRepoRoot(metaUrl: string): string {
   for (let i = 0; i < 8; i++) {
     try {
       if (statSync(`${dir}/contract`).isDirectory()) return `${dir}/`;
-    } catch { /* not found at this level */ }
+    } catch {
+      /* not found at this level */
+    }
     const parent = dir.substring(0, dir.lastIndexOf("/"));
     if (parent === dir) break;
     dir = parent;
@@ -70,7 +73,9 @@ export function resp(partial: Partial<TransportResponse> & { status: number }): 
 }
 
 export const noResolver: CredentialResolver = {
-  async get() { return null; },
+  async get() {
+    return null;
+  },
 };
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,36 @@
+{
+  "_doc": [
+    "Broker cookie 栅栏的最小 public-suffix 护栏（#79 P0-4，ADR-009 §2.4）——单一事实源。",
+    "语义：cookie 显式 Domain 属性若命中本列表（或为单标签 TLD），整条 Set-Cookie fail-closed 丢弃，",
+    "封堵 `dean.xjtu.edu.cn` 设置 `Domain=edu.cn` 这类过宽父域污染面。完整 PSL 需新依赖与更新机制，",
+    "本阶段先枚举校园场景/常见 ccTLD 的二级公共后缀。",
+    "消费方：",
+    "  - TS：server/src/runtime/broker/cookie-jar.ts 模块加载期直接读本文件（真单源）；",
+    "  - Dart：client/lib/core/broker/cookie_jar.dart 为编译期常量（客户端运行时无仓库文件），",
+    "    由 client/test/broker_cookie_jar_test.dart 与本文件做集合相等断言钉死。",
+    "增删条目：改本文件 + Dart 常量；单边漏改会被 Dart 侧测试（CI flutter test）拦下。",
+    "🔒 红线 #1 写入面数据：改动须人工 + 安全清单复核（AGENTS.md §1）。"
+  ],
+  "multiLabelPublicSuffixes": [
+    "ac.cn",
+    "com.cn",
+    "edu.cn",
+    "gov.cn",
+    "net.cn",
+    "org.cn",
+    "ac.uk",
+    "co.uk",
+    "gov.uk",
+    "org.uk",
+    "ac.jp",
+    "co.jp",
+    "go.jp",
+    "ne.jp",
+    "or.jp",
+    "com.au",
+    "edu.au",
+    "gov.au",
+    "net.au",
+    "org.au"
+  ]
+}

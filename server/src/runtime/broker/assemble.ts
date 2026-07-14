@@ -19,22 +19,16 @@
  * 🔒 红线 #1 凭证注入承重路径：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
  */
 
-import type { CredentialVia, InjectionDecision, RejectReason } from "./inject-policy.js";
-import {
-  sanitizeRequestHeaders,
-  sanitizeResponseHeaders,
-  type HeaderMap,
-} from "./header-sanitize.js";
+import type { InjectionDecision, RejectReason } from "./inject-policy.js";
+import type { ResolvedCredential } from "./ports.js";
+
+export type { ResolvedCredential } from "./ports.js";
+
+import { type HeaderMap, sanitizeRequestHeaders, sanitizeResponseHeaders } from "./header-sanitize.js";
 
 /** 出站 cookie 对（B4 `selectCookies` 的输出形；不外泄 domain/path/source）。 */
 export interface CookiePair {
   name: string;
-  value: string;
-}
-
-/** 已解析的凭证（resolver.get 的产出；`value` 仅核心可见，绝不回交 adapter）。 */
-export interface ResolvedCredential {
-  via: CredentialVia;
   value: string;
 }
 

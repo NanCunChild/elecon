@@ -13,9 +13,8 @@
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-
-import { decideInjection, type BrokerManifestView, type InjectionDecision } from "./inject-policy.js";
 import { resolveRepoRoot } from "../__testutils__/smoke-utils.js";
+import { type BrokerManifestView, decideInjection, type InjectionDecision } from "./inject-policy.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 const goldenPath = `${repoRoot}contract/golden/broker/inject-policy.json`;

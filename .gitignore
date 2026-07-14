@@ -16,3 +16,6 @@ tools/ohos/sign*.env
 client/ohos/local.properties
 client/ohos/.hvigor/
 client/ohos/oh_modules/
+
+# npm workspace 共享包构建产物（prepare 时由 tsc 生成）
+packages/*/dist/

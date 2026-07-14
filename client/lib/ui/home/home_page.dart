@@ -1,4 +1,16 @@
+/// elecon 首页：把核心/adapter 产出的 [CampusSnapshot] 渲染为卡片流。
+///
+/// 数据模型见 `models.dart`；演示数据见 `demo_data.dart`（真实数据闭环前的占位）。
+/// 二者经 `export` 转出，历史 `import '.../home_page.dart'` 的调用点无需改动。
+library;
+
 import 'package:flutter/material.dart';
+
+import 'demo_data.dart';
+import 'models.dart';
+
+export 'demo_data.dart';
+export 'models.dart';
 
 class EleconHomePage extends StatefulWidget {
   const EleconHomePage({super.key, this.loadSnapshot});
@@ -48,16 +60,16 @@ class _EleconHomePageState extends State<EleconHomePage> {
               onRefresh: () async => _reload(),
               child: CustomScrollView(
                 slivers: [
-                  SliverAppBar.large(
-                    title: const Text('elecon'),
-                    actions: [
-                      IconButton(
-                        tooltip: '刷新',
-                        onPressed: _reload,
-                        icon: const Icon(Icons.refresh),
-                      ),
-                    ],
-                  ),
+                    SliverAppBar.large(
+                      title: const Text('elecon'),
+                      actions: [
+                        IconButton(
+                          tooltip: '刷新',
+                          onPressed: _reload,
+                          icon: const Icon(Icons.refresh),
+                        ),
+                      ],
+                    ),
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                     sliver: SliverList.list(
@@ -80,274 +92,6 @@ class _EleconHomePageState extends State<EleconHomePage> {
       ),
     );
   }
-}
-
-class CampusSnapshot {
-  const CampusSnapshot({
-    required this.schoolName,
-    required this.updatedAt,
-    this.grades,
-    this.schedule,
-    this.notices,
-    this.genericSections = const [],
-  });
-
-  final String schoolName;
-  final DateTime updatedAt;
-  final GradesList? grades;
-  final ScheduleWeek? schedule;
-  final NoticeList? notices;
-  final List<GenericSection> genericSections;
-
-  bool get isEmpty =>
-      grades == null &&
-      schedule == null &&
-      notices == null &&
-      genericSections.isEmpty;
-}
-
-class GradesList {
-  const GradesList({required this.term, required this.items});
-
-  final String term;
-  final List<GradeItem> items;
-}
-
-class GradeItem {
-  const GradeItem({
-    required this.courseName,
-    required this.credit,
-    required this.scoreText,
-    required this.category,
-    required this.status,
-    this.gradePoint,
-  });
-
-  final String courseName;
-  final num credit;
-  final String scoreText;
-  final String category;
-  final String status;
-  final num? gradePoint;
-}
-
-class ScheduleWeek {
-  const ScheduleWeek(
-      {required this.term, required this.week, required this.days});
-
-  final String term;
-  final int week;
-  final List<ScheduleDay> days;
-}
-
-class ScheduleDay {
-  const ScheduleDay({required this.dayOfWeek, required this.slots});
-
-  final int dayOfWeek;
-  final List<ScheduleSlot> slots;
-}
-
-class ScheduleSlot {
-  const ScheduleSlot({
-    required this.start,
-    required this.end,
-    required this.courseName,
-    this.teacher,
-    this.location,
-  });
-
-  final String start;
-  final String end;
-  final String courseName;
-  final String? teacher;
-  final String? location;
-}
-
-class NoticeList {
-  const NoticeList({required this.items});
-
-  final List<NoticeItem> items;
-}
-
-class NoticeItem {
-  const NoticeItem({
-    required this.title,
-    required this.category,
-    required this.source,
-    this.summary,
-    this.publishedAt,
-  });
-
-  final String title;
-  final String category;
-  final String source;
-  final String? summary;
-  final DateTime? publishedAt;
-}
-
-class GenericSection {
-  const GenericSection({
-    required this.sectionId,
-    required this.title,
-    this.fields = const [],
-    this.table,
-  });
-
-  final String sectionId;
-  final String title;
-  final List<GenericField> fields;
-  final GenericTable? table;
-}
-
-class GenericField {
-  const GenericField(
-      {required this.label, required this.role, required this.value});
-
-  final String label;
-  final GenericRole role;
-  final Object? value;
-}
-
-class GenericTable {
-  const GenericTable({required this.columns, required this.rows});
-
-  final List<GenericColumn> columns;
-  final List<List<Object?>> rows;
-}
-
-class GenericColumn {
-  const GenericColumn({required this.label, required this.role});
-
-  final String label;
-  final GenericRole role;
-}
-
-enum GenericRole {
-  identifier,
-  label,
-  status,
-  datetime,
-  deadline,
-  amount,
-  quantity,
-  link,
-  unknown,
-}
-
-Future<CampusSnapshot> loadDemoCampusSnapshot() async {
-  await Future<void>.delayed(const Duration(milliseconds: 350));
-  return CampusSnapshot(
-    schoolName: '示例大学',
-    updatedAt: DateTime.utc(2026, 7, 6, 8, 30),
-    schedule: const ScheduleWeek(
-      term: '2025-2026-2',
-      week: 18,
-      days: [
-        ScheduleDay(
-          dayOfWeek: 1,
-          slots: [
-            ScheduleSlot(
-              start: '08:30',
-              end: '10:05',
-              courseName: '数据结构',
-              teacher: '李老师',
-              location: 'A-301',
-            ),
-            ScheduleSlot(
-              start: '14:00',
-              end: '15:35',
-              courseName: '大学英语',
-              location: 'B-104',
-            ),
-          ],
-        ),
-        ScheduleDay(
-          dayOfWeek: 3,
-          slots: [
-            ScheduleSlot(
-              start: '10:25',
-              end: '12:00',
-              courseName: '计算机网络',
-              teacher: '王老师',
-              location: '实验楼 2-206',
-            ),
-          ],
-        ),
-      ],
-    ),
-    grades: const GradesList(
-      term: '2025-2026-1',
-      items: [
-        GradeItem(
-          courseName: '高等数学',
-          credit: 5,
-          scoreText: '91',
-          category: 'required',
-          status: 'final',
-          gradePoint: 4.1,
-        ),
-        GradeItem(
-          courseName: '程序设计基础',
-          credit: 4,
-          scoreText: 'A',
-          category: 'required',
-          status: 'final',
-          gradePoint: 4.3,
-        ),
-        GradeItem(
-          courseName: '创新创业导论',
-          credit: 1,
-          scoreText: '通过',
-          category: 'elective',
-          status: 'final',
-        ),
-      ],
-    ),
-    notices: NoticeList(
-      items: [
-        NoticeItem(
-          title: '期末考试周教学安排提醒',
-          category: 'academic',
-          source: '教务处',
-          summary: '请同学们按准考证时间地点参加考试。',
-          publishedAt: DateTime.utc(2026, 7, 3),
-        ),
-        NoticeItem(
-          title: '暑期校园服务时间调整',
-          category: 'admin',
-          source: '学校办公室',
-          publishedAt: DateTime.utc(2026, 7, 1),
-        ),
-      ],
-    ),
-    genericSections: const [
-      GenericSection(
-        sectionId: 'dorm.energy',
-        title: '宿舍水电',
-        fields: [
-          GenericField(
-              label: '房间', role: GenericRole.identifier, value: '12-345'),
-          GenericField(label: '电费余额', role: GenericRole.amount, value: 3280),
-          GenericField(label: '状态', role: GenericRole.status, value: '正常'),
-        ],
-      ),
-      GenericSection(
-        sectionId: 'library.seats',
-        title: '图书馆座位',
-        table: GenericTable(
-          columns: [
-            GenericColumn(label: '区域', role: GenericRole.label),
-            GenericColumn(label: '剩余', role: GenericRole.quantity),
-            GenericColumn(label: '状态', role: GenericRole.status),
-          ],
-          rows: [
-            ['三层东区', 28, '充足'],
-            ['五层自习区', 6, '紧张'],
-          ],
-        ),
-      ),
-    ],
-  );
 }
 
 class _SnapshotHeader extends StatelessWidget {
@@ -475,7 +219,9 @@ class NoticeCard extends StatelessWidget {
               subtitle: Text([
                 item.source,
                 _noticeCategoryText(item.category),
-                if (item.publishedAt != null) _formatDate(item.publishedAt!),
+                // 契约 publishedAt 为 RFC3339 字符串；经视图扩展转 DateTime 展示。
+                if (item.publishedAtDateTime != null)
+                  _formatDate(item.publishedAtDateTime!),
                 if (item.summary != null) item.summary!,
               ].join(' · ')),
             ),

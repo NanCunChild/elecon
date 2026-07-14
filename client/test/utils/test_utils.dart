@@ -62,7 +62,8 @@ class FakeTransport implements Transport {
   final List<TransportResponse> _queue;
   final List<TransportRequest> seen = [];
   @override
-  Future<TransportResponse> fetch(TransportRequest req) async {
+  Future<TransportResponse> fetch(TransportRequest req,
+      {TransportCancelToken? cancelToken}) async {
     seen.add(req);
     if (_queue.isEmpty) throw StateError('FakeTransport queue exhausted');
     return _queue.removeAt(0);

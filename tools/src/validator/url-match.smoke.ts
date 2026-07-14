@@ -1,13 +1,14 @@
 /**
- * 校验器 URL 匹配原语冒烟测试 —— 用共享 golden 钉死校验器内联的 allowToRegex/
- * urlCoveredByAllow/scopePrefix，使其与 broker 两端（server url-match.ts / client
- * url_match.dart）行为一致。
+ * 校验器 URL 匹配原语冒烟测试 —— 用共享 golden 钉死校验器**实际使用**的
+ * allowToRegex/urlCoveredByAllow/scopePrefix（经 validator/index.ts 的 re-export 面，
+ * 实现单源在 @elecon/broker-primitives，审阅 P2-4），与 broker 两端（server 同包 /
+ * client url_match.dart）行为一致。
  *
  *   contract/golden/broker/url-match.json  →  {urlCoveredByAllow, scopePrefix}  →  逐例等于 expected
  *
  * 校验器是 manifest 的**静态闸门**（C4/C6/C7 用同一匹配约定决定 scope ⊆ allow 等）；
- * broker 是**运行时**注入决策。二者历史上各持一份内联实现——本测试把校验器那份纳入
- * 同一 golden 闭环，任一处正则/转义漂移即 CI 红（关闭"manifest 过校验、运行时行为不同"的缝）。
+ * broker 是**运行时**注入决策。历史上各持内联实现、由本测试事后钉死；现已结构性
+ * 单源，本测试保留为接线哨兵（校验器改用别的实现/re-export 断链即红）。
  * 校验器无运行时 url-vs-scope 匹配（scopeMatches 由 broker 独有），故跳过该节。
  *
  *   运行：cd tools && npm run smoke:urlmatch
@@ -19,7 +20,7 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { urlCoveredByAllow, scopePrefix } from "./index.js";
+import { scopePrefix, urlCoveredByAllow } from "./index.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const goldenPath = `${repoRoot}contract/golden/broker/url-match.json`;
@@ -53,11 +54,7 @@ function main(): void {
     passed++;
   }
   for (const c of g.scopePrefix) {
-    assert.strictEqual(
-      scopePrefix(c.pattern),
-      c.expected,
-      `scopePrefix '${c.name}': pattern=${c.pattern}`,
-    );
+    assert.strictEqual(scopePrefix(c.pattern), c.expected, `scopePrefix '${c.name}': pattern=${c.pattern}`);
     passed++;
   }
 

@@ -14,9 +14,8 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-
-import { runAdapter, SandboxError } from "./sandbox.js";
 import { resolveRepoRoot, runMain } from "./__testutils__/smoke-utils.js";
+import { runAdapter, SandboxError } from "./sandbox.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 const parserDir = `${repoRoot}adapters/_template/parser`;
@@ -103,6 +102,24 @@ async function testTimeoutBites(): Promise<void> {
   console.log("  ✓ 超时限制生效（timeout）");
 }
 
+async function testMemoryBites(): Promise<void> {
+  // 持续分配触碰 wasm 内存上限；必须归为 memory 而非 timeout/adapter_threw。
+  // 错误归类靠消息文案匹配（sandbox-qjs-util unwrap，最佳努力）——本例是哨兵：
+  // 引擎升级改 OOM 文案会让归类静默降级为 adapter_threw，此处即变红（审阅 P1-3）。
+  // timeoutMs 给宽，确保先撞内存墙而非 deadline。
+  const source =
+    "export const capabilities = { hog: () => { const a = []; for (;;) a.push(new Array(65536).fill(1)); } };";
+  await assert.rejects(
+    runAdapter(
+      { source, capability: "hog", params: {}, responses: {} },
+      { timeoutMs: 30_000, memoryBytes: 8 * 1024 * 1024 },
+    ),
+    (err: unknown) => err instanceof SandboxError && err.reason === "memory",
+    "内存越界应归类为 memory（错误文案漂移哨兵）",
+  );
+  console.log("  ✓ 内存上限生效（memory）");
+}
+
 async function testXidianNoticeList(): Promise<void> {
   const xidianDir = `${repoRoot}adapters/school-xidian`;
   const source = readFileSync(`${xidianDir}/index.js`, "utf8");
@@ -135,6 +152,7 @@ async function main(): Promise<void> {
   await testXidianNoticeList();
   await testCapabilityMissing();
   await testTimeoutBites();
+  await testMemoryBites();
   console.log("全部通过。parser 管线端到端跑通。");
 }
 

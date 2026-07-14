@@ -11,12 +11,11 @@
 import { strict as assert } from "node:assert";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-
-import { DirectTransport } from "./direct.js";
-import { proxyFetch } from "../broker/fetch-proxy.js";
-import { CookieJar } from "../broker/cookie-jar.js";
-import type { BrokerManifestView } from "../broker/inject-policy.js";
 import { noResolver, runMain } from "../__testutils__/smoke-utils.js";
+import { CookieJar } from "../broker/cookie-jar.js";
+import { proxyFetch, TransportBodyLimitExceeded } from "../broker/fetch-proxy.js";
+import type { BrokerManifestView } from "../broker/inject-policy.js";
+import { DirectTransport } from "./direct.js";
 
 async function main(): Promise<void> {
   let base = "";
@@ -41,6 +40,10 @@ async function main(): Promise<void> {
       res.statusCode = 302;
       res.setHeader("location", `${base}/echo`);
       res.end();
+    } else if (reqMsg.url === "/big") {
+      res.statusCode = 200;
+      res.setHeader("content-type", "text/plain");
+      res.end("0123456789");
     } else {
       res.statusCode = 404;
       res.end();
@@ -111,11 +114,22 @@ async function main(): Promise<void> {
       assert.deepEqual(harvested, new Set(["a=1", "b=2"]), "逐跳 Set-Cookie 进 jar origin 区");
       checks++;
     }
+
+    // 5. body 上限：流式读取超限 fail-closed
+    {
+      const tiny = new DirectTransport(4);
+      await assert.rejects(
+        tiny.fetch({ url: `${base}/big`, method: "GET", headers: {} }),
+        (e: unknown) => e instanceof TransportBodyLimitExceeded,
+        "响应 body 超上限应拒绝",
+      );
+      checks++;
+    }
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 
-  console.log(`transport direct smoke: ${checks}/4 例通过 ✅`);
+  console.log(`transport direct smoke: ${checks}/5 例通过 ✅`);
 }
 
 runMain(main);

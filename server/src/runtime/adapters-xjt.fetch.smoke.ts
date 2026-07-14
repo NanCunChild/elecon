@@ -16,20 +16,25 @@
  */
 
 import { strict as assert } from "node:assert";
-import { readFileSync } from "node:fs";
-import { resolveRepoRoot, readText, noResolver, FakeTransport, runMain } from "./__testutils__/smoke-utils.js";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-
+// codegen 产物（contract/schema 单源，审阅 P0-1）：ajv 校验通过后以此类型消费，
+// 替代裸 `as { items: ... }` cast。类型声明零运行时，不参与 emit。
+import type { NoticeList } from "../../../contract/generated/ts/notice.list.js";
+import {
+  FakeTransport,
+  noResolver,
+  readText,
+  resolveRepoRoot,
+  runMain,
+} from "./__testutils__/smoke-utils.js";
+import type { BrokerManifestView } from "./broker/inject-policy.js";
 import { runFetchAdapter } from "./sandbox.js";
 import { TrustedAdapterContext } from "./trusted-context.js";
-import type { BrokerManifestView } from "./broker/inject-policy.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 const xjtDir = `${repoRoot}adapters/school-xjt`;
 const fixDir = `${xjtDir}/fixtures/dean.xjtu.edu.cn`;
-
-
 
 async function main(): Promise<void> {
   const source = readText(`${xjtDir}/index.js`);
@@ -43,7 +48,13 @@ async function main(): Promise<void> {
   // 录制的真实握手三步（已脱敏）：
   const transport = new FakeTransport([
     // [1] GET / → JS 挑战页
-    { status: 200, headers: { "content-type": "text/html" }, setCookie: [], location: null, body: challengeHtml },
+    {
+      status: 200,
+      headers: { "content-type": "text/html" },
+      setCookie: [],
+      location: null,
+      body: challengeHtml,
+    },
     // [2] POST /dynamic_challenge → client_id（origin 经 Set-Cookie 下发 + body）
     {
       status: 200,
@@ -53,7 +64,13 @@ async function main(): Promise<void> {
       body: JSON.stringify(challengeResp.body),
     },
     // [3] GET /（带会话 cookie）→ 真实通知页
-    { status: 200, headers: { "content-type": "text/html" }, setCookie: [], location: null, body: noticeHtml },
+    {
+      status: 200,
+      headers: { "content-type": "text/html" },
+      setCookie: [],
+      location: null,
+      body: noticeHtml,
+    },
   ]);
 
   const view: BrokerManifestView = { allow: ["https://dean.xjtu.edu.cn/*"] }; // manifest：全 passthrough、无 credentials
@@ -71,25 +88,25 @@ async function main(): Promise<void> {
   assert.ok(cookie3.includes("client_id="), `第 3 步应携带 client_id 会话 cookie（实得：${cookie3}）`);
   console.log("  ✓ 多步握手 + client_id 会话 cookie 跨步携带");
 
-  // ── 产出结构 ──
-  const result = data as { items: Array<Record<string, unknown>> };
-  assert.ok(Array.isArray(result.items) && result.items.length > 0, "应解析出非空通知列表");
-  for (const it of result.items) {
-    assert.ok(typeof it.id === "string" && it.id.length > 0, "item.id 非空字符串");
-    assert.ok(typeof it.title === "string" && it.title.length > 0, "item.title 非空字符串");
-    assert.ok(typeof it.url === "string" && it.url.startsWith("http"), "item.url 绝对 URL");
-    assert.equal(it.category, "academic");
-    assert.equal(it.source, "教务处");
-  }
-  console.log(`  ✓ 解析出 ${result.items.length} 条通知（结构齐全）`);
-
-  // ── contract schema 校验（elecon.notice.list 1.1）──
+  // ── contract schema 校验（elecon.notice.list 1.1）——先验形状，再类型化消费 ──
   const schema = JSON.parse(readText(`${repoRoot}contract/schema/notice.list.schema.json`));
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   addFormats(ajv);
   const validate = ajv.compile(schema as object);
-  assert.ok(validate(result), `产出未通过 notice.list schema：${JSON.stringify(validate.errors)}`);
+  assert.ok(validate(data), `产出未通过 notice.list schema：${JSON.stringify(validate.errors)}`);
   console.log("  ✓ 通过 contract schema（elecon.notice.list 1.1）");
+
+  // ── 产出语义（ajv 通过 ⇒ 形状即 NoticeList；类型来自 codegen 单源，非手写断言）──
+  const result = data as NoticeList;
+  assert.ok(result.items.length > 0, "应解析出非空通知列表");
+  for (const it of result.items) {
+    assert.ok(it.id.length > 0, "item.id 非空");
+    assert.ok(it.title.length > 0, "item.title 非空");
+    assert.ok(it.url?.startsWith("http"), "item.url 绝对 URL");
+    assert.equal(it.category, "academic");
+    assert.equal(it.source, "教务处");
+  }
+  console.log(`  ✓ 解析出 ${result.items.length} 条通知（结构齐全，typed）`);
 
   console.log("首个真实 fetch adapter（school-xjt notice.list）端到端跑通 ✅");
 }

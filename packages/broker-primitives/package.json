@@ -1,0 +1,26 @@
+{
+  "name": "@elecon/broker-primitives",
+  "version": "0.1.0",
+  "private": true,
+  "description": "elecon Broker/校验器共享纯原语（uri-template url-match）。TS 侧单一实现，供 server broker 与 tools validator 共用；Dart 镜像（client url_match.dart）与本包由 contract/golden/broker/url-match.json 共同钉死（ADR-001 §8）。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

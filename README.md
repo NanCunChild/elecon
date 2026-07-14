@@ -108,7 +108,7 @@ npm run smoke:credential    # 凭证存储 smoke
 
 ## 路线状态
 
-架构决策已接受至 ADR-016。当前处于 **fetch 模式运行时已跑通、登录/分发链路补齐阶段**：
+架构决策已接受至 ADR-017。当前处于 **fetch 模式运行时已跑通、登录/分发链路补齐阶段**：
 
 - **已落地**：Broker 核心零件 B1–B6 两端（TS + Dart）镜像实现；凭证存储原型；`setEphemeralCookie` 契约面；首个真实 fetch adapter（school-xjt `notice.list`）夹具回放端到端跑通。
 - **进行中**：录制/回放夹具机制（B7）；WebView 登录收割探针（XIDIAN 凭证路径前置）；OHOS 平台 scaffold 与 debug-only WebView probe。

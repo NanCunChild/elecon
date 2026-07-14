@@ -11,6 +11,8 @@
 ///   运行：cd client && fvm flutter test test/broker_cookie_jar_test.dart
 ///
 /// ⚠️ 夹具值为显式假值（红线 #8）：绝不使用真实凭证/会话。
+library;
+
 import 'package:elecon/core/broker/cookie_jar.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -172,6 +174,21 @@ void main() {
       expect(jar.cookieHeader('https://ids.xjtu.edu.cn/'), '');
       expect(jar.harvestView(), isEmpty);
       expect(warns.any((w) => w.contains('domain_is_credential')), isTrue);
+    });
+
+    test(
+        'public-suffix 护栏常量 == contract/broker/public-suffixes.json（单源钉死）',
+        () {
+      // TS 侧运行时直接加载该 JSON；Dart 侧是编译期常量。本断言保证单边增删条目
+      // 立即 CI 红（审阅建议：数据形式的双写下沉为 contract 单一 JSON）。
+      final json = readJson(repoPath('contract/broker/public-suffixes.json'));
+      final contractSuffixes = (json['multiLabelPublicSuffixes'] as List)
+          .cast<String>()
+          .map((s) => s.toLowerCase())
+          .toSet();
+      expect(contractSuffixes, isNotEmpty);
+      expect(knownMultiLabelPublicSuffixes, equals(contractSuffixes),
+          reason: '护栏列表与 contract 单源漂移：两处须同步增删');
     });
 
     test('ephemeral-only 在无 origin 同名时生效，且仍不收割', () {

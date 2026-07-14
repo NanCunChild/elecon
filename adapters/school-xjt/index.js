@@ -12,7 +12,14 @@
  * B4 #37 运行时）写入 jar ephemeral 分区，四重栅栏由 Broker 强制。
  */
 
-import { parseDocument, selectAll, getText, getAttributeValue } from "elecon:html";
+import {
+  getAttributeValue,
+  getText,
+  makeUrlAbsolute,
+  normalizeDate,
+  parseDocument,
+  selectAll,
+} from "elecon:html";
 
 const ORIGIN = "https://dean.xjtu.edu.cn";
 
@@ -64,7 +71,8 @@ export const capabilities = {
           challenge_id: cid,
           answer: Number(ansStr),
           browser_info: {
-            userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+            userAgent:
+              "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
             language: "zh-CN",
             platform: "Linux x86_64",
             cookieEnabled: true,
@@ -118,7 +126,7 @@ function parseNotices(html) {
 
     const title = (getAttributeValue(a, "title") || "").trim();
     const href = getAttributeValue(a, "href") || "";
-    const url = href.startsWith("http") ? href : ORIGIN + "/" + href.replace(/^\//, "");
+    const url = makeUrlAbsolute(href, ORIGIN);
 
     const span = selectAll("span", li)[0];
     const dateStr = span ? getText(span).trim() : "";
@@ -138,12 +146,6 @@ function parseNotices(html) {
     items.push(item);
   }
   return items;
-}
-
-/** "2026-06-12" / "2026/06/12" / "2026.06.12" → RFC3339/UTC。无法识别返回 null → 调用方省略 publishedAt。 */
-function normalizeDate(s) {
-  const m = s.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-  return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}T00:00:00Z` : null;
 }
 
 function matchOne(re, s) {

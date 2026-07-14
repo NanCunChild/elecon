@@ -3,6 +3,10 @@ allprojects {
         google()
         mavenCentral()
     }
+    tasks.withType<JavaCompile>().configureEach {
+        sourceCompatibility = JavaVersion.VERSION_11.toString()
+        targetCompatibility = JavaVersion.VERSION_11.toString()
+    }
 }
 
 val newBuildDir: Directory =
@@ -17,33 +21,6 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
-}
-
-subprojects {
-    if (name == "flutter_qjs") {
-        afterEvaluate {
-            extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
-                compileSdk = 36
-                defaultConfig {
-                    externalNativeBuild {
-                        cmake {
-                            arguments.add("-DCMAKE_C_FLAGS=-Wno-int-conversion")
-                        }
-                    }
-                }
-                externalNativeBuild {
-                    cmake {
-                        version = "3.22.1"
-                    }
-                }
-            }
-        }
-        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-            compilerOptions {
-                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
-            }
-        }
-    }
 }
 
 tasks.register<Delete>("clean") {

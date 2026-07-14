@@ -12,6 +12,10 @@
 ///   运行：cd client && fvm flutter test test/fetch_runtime_test.dart
 ///
 /// 🔒 红线 #1 凭证注入 + 出网承重路径：与被测代码一并须人工 + 安全清单复核。
+library;
+
+import 'dart:async';
+
 import 'package:elecon/core/adapter_runtime.dart';
 import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
@@ -132,6 +136,28 @@ void main() {
       expect(transport.seen, isEmpty, reason: 'fail-closed 不得发任何请求');
     });
 
+    test('bad_export：未导出 capabilities 对象 → badExport（与服务端词表对齐）',
+        () async {
+      final view = const BrokerManifestView(allow: ['https://h.edu.cn/*']);
+      final transport = FakeTransport([]);
+      const source = 'export const notCapabilities = {};';
+
+      await expectLater(
+        runFetchAdapter(
+          source: source,
+          trust: TrustedAdapterContext.devSideload(),
+          capability: 'notice.list',
+          view: view,
+          resolver: FakeResolver({}),
+          transport: transport,
+          nowMs: _now,
+        ),
+        throwsA(isA<AdapterRunException>()
+            .having((e) => e.reason, 'reason', AdapterFailureReason.badExport)),
+      );
+      expect(transport.seen, isEmpty, reason: 'bad_export 不得触发任何出网');
+    });
+
     test('请求数限额超限 → fetchLimit + fail 不收割', () async {
       final view = const BrokerManifestView(
         allow: ['https://h.edu.cn/api/*'],
@@ -173,6 +199,46 @@ void main() {
       );
       expect(store.list(), isEmpty, reason: '失败执行不得收割（fail 不收割）');
     });
+
+    test('单请求超时 → cancel in-flight transport + fail 不收割', () async {
+      final view = const BrokerManifestView(
+        allow: ['https://h.edu.cn/api/*'],
+        credentials: {
+          'session':
+              CredentialDecl(scope: ['https://h.edu.cn/api/*'], type: 'cookie'),
+        },
+      );
+      final transport = _SlowTransport();
+      final store = CredentialStore(now: () => _now);
+      const source = '''
+        export const capabilities = {
+          'notice.list': async (ctx) => {
+            try { await ctx.fetch('https://h.edu.cn/api/slow'); return { caught: false }; }
+            catch (e) { return { caught: true }; }
+          }
+        };''';
+
+      await expectLater(
+        runFetchAdapter(
+          source: source,
+          trust: TrustedAdapterContext.devSideload(),
+          capability: 'notice.list',
+          view: view,
+          resolver: FakeResolver({
+            'session': const ResolvedCredential(via: 'cookie', value: 'JSESSIONID=S'),
+          }),
+          transport: transport,
+          harvest: HarvestTarget(put: store.put, schoolId: 'xidian'),
+          nowMs: _now,
+          fetchLimits: const FetchLimits(perRequestTimeoutMs: 1),
+        ),
+        throwsA(isA<AdapterRunException>()
+            .having((e) => e.reason, 'reason', AdapterFailureReason.fetchLimit)),
+      );
+      expect(transport.cancelled, isTrue,
+          reason: '单请求超时应 cancel in-flight transport');
+      expect(store.list(), isEmpty, reason: '失败执行不得收割（fail 不收割）');
+    });
   });
 
   group('信任闸门（ADR-002 §2.6 · #79 P0-1）', () {
@@ -203,4 +269,21 @@ void main() {
       expect(trust.tier, AdapterTrustTier.devSideload);
     });
   });
+}
+
+class _SlowTransport implements Transport {
+  bool cancelled = false;
+
+  @override
+  Future<TransportResponse> fetch(TransportRequest req,
+      {TransportCancelToken? cancelToken}) {
+    cancelToken?.onCancel(() => cancelled = true);
+    final completer = Completer<TransportResponse>();
+    Timer(const Duration(milliseconds: 50), () {
+      if (!completer.isCompleted) {
+        completer.complete(const TransportResponse(status: 200, body: '{}'));
+      }
+    });
+    return completer.future;
+  }
 }

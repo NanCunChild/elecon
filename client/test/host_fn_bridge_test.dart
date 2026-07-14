@@ -1,4 +1,4 @@
-/// flutter_qjs fork 宿主函数通道（host-fn-channel）桥接证明 —— ADR-014 落地验证。
+/// flutter_qjs_next 宿主函数通道（host-fn-channel）桥接证明 —— ADR-014 落地验证。
 ///
 /// 证明：IsolateQjs.setHostFunctions 注入的 Dart 闭包可从 JS 经 globalThis 调用，
 /// 闭包返回 Future → JS Promise，JS await 拿到结果；闭包在**主 isolate** 执行
@@ -7,7 +7,9 @@
 ///   运行：cd client && fvm flutter test test/host_fn_bridge_test.dart
 ///
 /// 🔒 触引擎能力，按 ADR-014 / AGENTS.md §1 须人工 + 安全清单复核。
-import 'package:flutter_qjs/flutter_qjs.dart';
+library;
+
+import 'package:flutter_qjs_next/flutter_qjs.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -113,7 +115,9 @@ void main() {
       }
     });
 
-    test('close() 后重用同一 IsolateQjs：再 setHostFunctions + evaluate（review Minor 2）', () async {
+    test(
+        'close() 后重用同一 IsolateQjs：再 setHostFunctions + evaluate（review Minor 2）',
+        () async {
       final qjs = IsolateQjs(timeout: 5000, memoryLimit: 64 * 1024 * 1024);
       try {
         // 第 1 轮

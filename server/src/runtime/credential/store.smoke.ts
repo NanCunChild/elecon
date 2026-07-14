@@ -11,11 +11,10 @@
  */
 
 import { strict as assert } from "node:assert";
-
-import { decideInjection, type BrokerManifestView } from "../broker/inject-policy.js";
-import { CredentialStore } from "./store.js";
-import { InMemorySecureStore, type SecureStore } from "./secure-store.js";
 import { runMain } from "../__testutils__/smoke-utils.js";
+import { type BrokerManifestView, decideInjection } from "../broker/inject-policy.js";
+import { InMemorySecureStore, type SecureStore } from "./secure-store.js";
+import { CredentialStore } from "./store.js";
 import type { CredentialEntry } from "./types.js";
 
 const FAKE_VALUE = "TEST-SESSION-not-a-real-credential";

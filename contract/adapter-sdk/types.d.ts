@@ -41,7 +41,8 @@ interface CtxFetch {
    * 3. **永不收割**：ephemeral 分区不参与 §2.4 收割，绝不进核心凭证库（ADR-012）。
    * 4. **执行即弃**：随 per-execution jar 在执行结束时整体丢弃，不跨执行、不持久化。
    *
-   * 越栅栏的调用由 Broker 拒绝（非静默放宽）。adapter 永不接触任何凭证值。
+   * 越栅栏的调用由 Broker 静默丢弃并 `ctx.log("warn")`，不抛错、不给 adapter
+   * 探测栅栏边界的异常信号。adapter 永不接触任何凭证值。
    */
   setEphemeralCookie(
     name: string,

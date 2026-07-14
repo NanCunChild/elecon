@@ -40,7 +40,10 @@ const issued = new WeakSet<TrustedAdapterContext>();
 
 /** 经核心信任裁定后签发的执行凭据。运行时防伪见文件头（token + 签发登记）。 */
 export class TrustedAdapterContext {
-  private constructor(token: symbol, readonly tier: AdapterTrustTier) {
+  private constructor(
+    token: symbol,
+    readonly tier: AdapterTrustTier,
+  ) {
     if (token !== issuanceToken) {
       throw new Error("TrustedAdapterContext 只能经核心信任裁定路径构造（ADR-002 §2.6，fail-closed）");
     }

@@ -6,6 +6,8 @@
 ///   运行：cd client && fvm flutter test test/broker_credential_store_test.dart
 ///
 /// ⚠️ 夹具值为显式假值（红线 #8）：绝不使用真实学生凭证。
+library;
+
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:elecon/core/credential/secure_store.dart';
 import 'package:elecon/core/credential/store.dart';

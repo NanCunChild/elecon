@@ -1,8 +1,6 @@
 export const capabilities = {
   "grades.list": async (ctx, params) => {
-    const res = await ctx.fetch(
-      "https://jw.example.edu.cn/api/grades?term=" + params.term
-    );
+    const res = await ctx.fetch("https://jw.example.edu.cn/api/grades?term=" + params.term);
     const json = await res.json();
     return {
       term: params.term,
@@ -23,9 +21,7 @@ export const capabilities = {
   },
 
   "schedule.week": async (ctx, params) => {
-    const res = await ctx.fetch(
-      "https://jw.example.edu.cn/api/schedule?week=" + params.week
-    );
+    const res = await ctx.fetch("https://jw.example.edu.cn/api/schedule?week=" + params.week);
     const json = await res.json();
     return {
       term: params.term,

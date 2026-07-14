@@ -1,4 +1,4 @@
-/// 客户端 adapter 执行运行时 —— QuickJS（flutter_qjs / 全平台同一引擎）。
+/// 客户端 adapter 执行运行时 —— QuickJS（flutter_qjs_next / 全平台同一引擎）。
 ///
 /// 与服务端 QuickJS-wasm（`server/src/runtime/sandbox.ts`）是**同一个 QuickJS
 /// 引擎**，对同一份 adapter 源码零语义漂移（ADR-001 §8、ADR-005）。
@@ -19,12 +19,19 @@ library;
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kDebugMode;
-import 'package:flutter_qjs/flutter_qjs.dart';
+import 'package:flutter_qjs_next/flutter_qjs.dart';
 
 import 'broker/assemble.dart' show RequestInit;
 import 'broker/cookie_jar.dart' show CookieJar, EphemeralWriteInput;
 import 'broker/fetch_proxy.dart'
-    show BrokerFetchRejected, FetchProxyDeps, Transport, proxyFetch;
+    show
+        BrokerFetchRejected,
+        FetchProxyDeps,
+        FetchProxyOutcome,
+        Transport,
+        TransportBodyLimitException,
+        TransportCancelToken,
+        proxyFetch;
 import 'broker/harvest.dart' show decideHarvest, harvestInto;
 import 'broker/inject_policy.dart' show BrokerManifestView;
 import 'broker/ports.dart' show CredentialResolver;
@@ -35,6 +42,9 @@ import 'trust/trusted_context.dart'
 /// 运行时层面的失败原因。**不携带契约 error.kind**——错误词表是领域概念，
 /// 由上层据此映射（与服务端 `SandboxFailureReason` 对称）。
 enum AdapterFailureReason {
+  /// adapter 未导出 `capabilities` 对象（与服务端 `bad_export` 对齐，双端词表一致）。
+  badExport,
+
   /// adapter 未导出指定 capability。
   capabilityMissing,
 
@@ -144,6 +154,11 @@ Future<dynamic> runParserAdapter({
           );
         }
         return outcome['data'];
+      case 'bad_export':
+        throw const AdapterRunException(
+          AdapterFailureReason.badExport,
+          "adapter 未导出 'capabilities' 对象",
+        );
       case 'capability_missing':
         throw AdapterRunException(
           AdapterFailureReason.capabilityMissing,
@@ -207,23 +222,30 @@ String _buildParserBootstrap({
   final paramsLit = jsonEncode(jsonEncode(params));
   final responsesLit = jsonEncode(jsonEncode(responses));
 
+  // 命名空间 import：缺 `capabilities` 导出时不在模块实例化期抛错（命名 import 会），
+  // 而是走结构化 bad_export outcome——与服务端 getProp + typeof 检查同语义。
   return '''
-import { capabilities } from 'adapter';
+import * as __adapterMod from 'adapter';
 const params = JSON.parse($paramsLit);
 const responses = JSON.parse($responsesLit);
 const ctx = {
   log: function () {},
   now: function () { return $nowMs; }
 };
-const fn = capabilities[$capLit];
-if (typeof fn !== "function") {
-  globalThis.__elecon_outcome = JSON.stringify({ status: "capability_missing" });
+const capabilities = __adapterMod.capabilities;
+if (capabilities === null || typeof capabilities !== "object") {
+  globalThis.__elecon_outcome = JSON.stringify({ status: "bad_export" });
 } else {
-  const out = fn(ctx, params, responses);
-  if (out !== null && typeof out === "object" && typeof out.then === "function") {
-    globalThis.__elecon_outcome = JSON.stringify({ status: "async_in_parser" });
+  const fn = capabilities[$capLit];
+  if (typeof fn !== "function") {
+    globalThis.__elecon_outcome = JSON.stringify({ status: "capability_missing" });
   } else {
-    globalThis.__elecon_outcome = JSON.stringify({ status: "ok", data: out });
+    const out = fn(ctx, params, responses);
+    if (out !== null && typeof out === "object" && typeof out.then === "function") {
+      globalThis.__elecon_outcome = JSON.stringify({ status: "async_in_parser" });
+    } else {
+      globalThis.__elecon_outcome = JSON.stringify({ status: "ok", data: out });
+    }
   }
 }
 ''';
@@ -325,6 +347,14 @@ Future<dynamic> runFetchAdapter({
   var requestCount = 0;
   var networkMs = 0;
   AdapterRunException? fatal;
+  final cancelTokens = <TransportCancelToken>{};
+
+  void cancelInFlight() {
+    for (final token in List<TransportCancelToken>.of(cancelTokens)) {
+      token.cancel();
+    }
+    cancelTokens.clear();
+  }
 
   // 引擎墙钟：fetch 流程可合法跑到累计网络上限；引擎 interrupt 只防同步 CPU 死循环
   // （ADR-014 §4.4：interrupt 不在 await 期生效），故设宽到 totalNetworkMs + 缓冲。
@@ -336,31 +366,55 @@ Future<dynamic> runFetchAdapter({
     if (requestCount >= fetchLimits.maxRequests) {
       fatal = const AdapterRunException(
           AdapterFailureReason.fetchLimit, '单次执行请求数超限');
+      cancelInFlight();
       throw fatal!;
     }
     final start = DateTime.now().millisecondsSinceEpoch;
-    final outcome = await proxyFetch(
-      url as String,
-      _requestInitFromJs(init),
-      deps,
-    ).timeout(
-      Duration(milliseconds: fetchLimits.perRequestTimeoutMs),
-      onTimeout: () {
-        fatal = const AdapterRunException(
-            AdapterFailureReason.fetchLimit, '单请求超时');
-        throw fatal!;
-      },
+    final cancelToken = TransportCancelToken();
+    cancelTokens.add(cancelToken);
+    late final FetchProxyDeps fetchDeps;
+    fetchDeps = FetchProxyDeps(
+      view: deps.view,
+      resolver: deps.resolver,
+      jar: deps.jar,
+      transport: deps.transport,
+      maxHops: deps.maxHops,
+      cancelToken: cancelToken,
     );
+    final FetchProxyOutcome outcome;
+    try {
+      outcome = await proxyFetch(
+        url as String,
+        _requestInitFromJs(init),
+        fetchDeps,
+      ).timeout(
+        Duration(milliseconds: fetchLimits.perRequestTimeoutMs),
+        onTimeout: () {
+          fatal = const AdapterRunException(
+              AdapterFailureReason.fetchLimit, '单请求超时');
+          cancelInFlight();
+          throw fatal!;
+        },
+      );
+    } on TransportBodyLimitException catch (e) {
+      fatal = AdapterRunException(AdapterFailureReason.fetchLimit, e.toString());
+      cancelInFlight();
+      throw fatal!;
+    } finally {
+      cancelTokens.remove(cancelToken);
+    }
     networkMs += DateTime.now().millisecondsSinceEpoch - start;
     requestCount += outcome.requestCount;
     if (networkMs > fetchLimits.totalNetworkMs) {
       fatal = const AdapterRunException(
           AdapterFailureReason.fetchLimit, '累计网络耗时超限');
+      cancelInFlight();
       throw fatal!;
     }
     if (requestCount > fetchLimits.maxRequests) {
       fatal = const AdapterRunException(
           AdapterFailureReason.fetchLimit, '单次执行请求数超限');
+      cancelInFlight();
       throw fatal!;
     }
     return <String, Object?>{
@@ -405,8 +459,10 @@ Future<dynamic> runFetchAdapter({
 
   try {
     // step1（module）：加载 capabilities 到 globalThis（同步，复用 parser 加载约定）。
+    // 命名空间 import：缺导出不在实例化期抛错，交给 step2 归为结构化 bad_export。
     await qjs.evaluate(
-      "import { capabilities } from 'adapter'; globalThis.__elecon_caps = capabilities;",
+      "import * as __adapterMod from 'adapter'; "
+      'globalThis.__elecon_caps = __adapterMod.capabilities;',
       name: '<elecon-fetch-load>',
       evalFlags: JSEvalFlag.MODULE,
     );
@@ -417,8 +473,11 @@ Future<dynamic> runFetchAdapter({
             capability: capability, params: params ?? const {}, nowMs: nowMs))
         .timeout(
           Duration(milliseconds: engineTimeoutMs + 1000),
-          onTimeout: () => throw const AdapterRunException(
-              AdapterFailureReason.timeout, 'fetch 执行未在墙钟内完成'),
+          onTimeout: () {
+            cancelInFlight();
+            throw const AdapterRunException(
+                AdapterFailureReason.timeout, 'fetch 执行未在墙钟内完成');
+          },
         );
 
     // 限额终止优先于 outcome：fatal 早于 handler settle 置位（adapter 吞拒绝也不放过）。
@@ -442,6 +501,9 @@ Future<dynamic> runFetchAdapter({
               schoolId: harvest.schoolId, now: () => nowMs);
         }
         return outcome['data'];
+      case 'bad_export':
+        throw const AdapterRunException(AdapterFailureReason.badExport,
+            "adapter 未导出 'capabilities' 对象");
       case 'capability_missing':
         throw AdapterRunException(AdapterFailureReason.capabilityMissing,
             "capability '$capability' 不在 adapter 内");
@@ -460,6 +522,7 @@ Future<dynamic> runFetchAdapter({
   } catch (e) {
     throw _mapEngineError(e);
   } finally {
+    cancelInFlight();
     await qjs.close();
   }
 }
@@ -499,7 +562,10 @@ String _buildFetchInvoke({
 (async () => {
   const params = JSON.parse($paramsLit);
   const caps = globalThis.__elecon_caps;
-  const fn = caps && caps[$capLit];
+  if (caps === null || typeof caps !== "object") {
+    return JSON.stringify({ status: "bad_export" });
+  }
+  const fn = caps[$capLit];
   if (typeof fn !== "function") {
     return JSON.stringify({ status: "capability_missing" });
   }

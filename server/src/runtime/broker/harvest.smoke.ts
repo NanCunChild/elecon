@@ -13,11 +13,10 @@
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { resolveRepoRoot, runMain } from "../__testutils__/smoke-utils.js";
-
-import { decideHarvest, harvestInto, type HarvestPlan } from "./harvest.js";
-import type { JarCookie } from "./cookie-jar.js";
-import type { BrokerManifestView } from "./inject-policy.js";
 import { CredentialStore } from "../credential/store.js";
+import type { JarCookie } from "./cookie-jar.js";
+import { decideHarvest, type HarvestPlan, harvestInto } from "./harvest.js";
+import type { BrokerManifestView } from "./inject-policy.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 const goldenPath = `${repoRoot}contract/golden/broker/harvest.json`;

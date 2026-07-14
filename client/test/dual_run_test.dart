@@ -1,6 +1,6 @@
 /// 双跑一致性（客户端半边）。
 ///
-/// 客户端 QuickJS（flutter_qjs）对同一份 parser adapter + 同一份脱敏夹具，
+/// 客户端 QuickJS（flutter_qjs_next）对同一份 parser adapter + 同一份脱敏夹具，
 /// 产出必须等于夹具 golden `expected`。
 ///
 /// 这是 ADR-001 §8 双跑闸门的客户端侧：
@@ -8,11 +8,13 @@
 ///   - 客户端 QuickJS     == expected  →  本测试
 ///   ⟹ 传递地，客户端 == 服务端（同一引擎，零语义漂移）。
 ///
-/// 原生库依赖：flutter_qjs 在 FLUTTER_TEST 下从 `test/build/libffiquickjs.so` 加载，
-/// 该库由 flutter_qjs 自带的 cxx/QuickJS 源码经 CMake 预构建（见 client/README）。
+/// 原生库依赖：纯 flutter test 不会构建 flutter_qjs_next 原生库；先构建插件 Linux
+/// example，并通过 FLUTTER_QJS_NEXT_LIBRARY 指向 libflutter_qjs_next_plugin.so。
 /// 该构建脚本目前仅 Linux，故本测试在非 Linux 平台整体 skip（而非崩溃）。
 ///
-///   运行：cd client && tool/build_qjs_test_lib.sh && fvm flutter test test/dual_run_test.dart
+///   运行：cd client && tool/build_qjs_test_lib.sh && FLUTTER_QJS_NEXT_LIBRARY=/path/to/libflutter_qjs_next_plugin.so fvm flutter test test/dual_run_test.dart
+library;
+
 import 'dart:io';
 
 import 'package:elecon/core/adapter_runtime.dart';
@@ -31,8 +33,10 @@ void main() {
 
     setUpAll(() {
       // Linux 下原生库非纯 flutter test 自动产物；缺失时给出可操作提示。
-      if (!File('test/build/libffiquickjs.so').existsSync()) {
-        fail('缺少原生库 test/build/libffiquickjs.so；先运行：tool/build_qjs_test_lib.sh');
+      final lib = Platform.environment['FLUTTER_QJS_NEXT_LIBRARY'];
+      if (lib == null || lib.isEmpty || !File(lib).existsSync()) {
+        fail(
+            '缺少 FLUTTER_QJS_NEXT_LIBRARY 指向的原生库；先运行：tool/build_qjs_test_lib.sh');
       }
     });
 
@@ -65,7 +69,8 @@ void main() {
       final data = await runParserAdapter(
         source: source,
         capability: fixture['capability'] as String,
-        params: (fixture['params'] as Map?)?.cast<String, dynamic>() ?? const {},
+        params:
+            (fixture['params'] as Map?)?.cast<String, dynamic>() ?? const {},
         responses: (fixture['responses'] as Map).cast<String, dynamic>(),
         htmlStdlib: htmlStdlib,
         nowMs: 1700000000000, // 固定，保证确定性
@@ -107,6 +112,27 @@ void main() {
       );
 
       expect(data, equals(fixture['expected']));
+    });
+
+    test('bad_export：未导出 capabilities 对象 → badExport（与服务端词表对齐）',
+        () async {
+      const source = 'export const notCapabilities = {};';
+
+      await expectLater(
+        runParserAdapter(
+          source: source,
+          capability: 'x.y',
+          params: const {},
+          responses: const {},
+        ),
+        throwsA(
+          isA<AdapterRunException>().having(
+            (e) => e.reason,
+            'reason',
+            AdapterFailureReason.badExport,
+          ),
+        ),
+      );
     });
 
     test('capability_missing：未声明的 capability 被拒', () async {
@@ -167,6 +193,32 @@ void main() {
             (e) => e.reason,
             'reason',
             AdapterFailureReason.timeout,
+          ),
+        ),
+      );
+    });
+
+    test('memory：触碰内存上限归类为 memory（错误文案漂移哨兵）', () async {
+      // 归类靠 _mapEngineError 的 "out of memory" 子串匹配（最佳努力）。
+      // 引擎升级改 OOM 文案会静默降级为 adapterThrew——本例即变红（审阅 P1-3）。
+      // timeoutMs 给宽，确保先撞内存墙而非 interrupt。
+      const source = 'export const capabilities = { hog: () => { '
+          'const a = []; for (;;) a.push(new Array(65536).fill(1)); } };';
+
+      await expectLater(
+        runParserAdapter(
+          source: source,
+          capability: 'hog',
+          params: const {},
+          responses: const {},
+          timeoutMs: 30000,
+          memoryBytes: 8 * 1024 * 1024,
+        ),
+        throwsA(
+          isA<AdapterRunException>().having(
+            (e) => e.reason,
+            'reason',
+            AdapterFailureReason.memory,
           ),
         ),
       );

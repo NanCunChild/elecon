@@ -14,10 +14,11 @@ void main() {
             grades: const GradesList(
               term: '2025-2026-1',
               items: [
-                GradeItem(
+                GradesListItems(
+                  courseId: 'TEST-101',
                   courseName: '测试课程',
                   credit: 2,
-                  scoreText: '95',
+                  score: GradesListItemsScore(kind: 'numeric', value: 95),
                   category: 'required',
                   status: 'final',
                   gradePoint: 4.0,
@@ -26,7 +27,12 @@ void main() {
             ),
             notices: const NoticeList(
               items: [
-                NoticeItem(title: '测试通知', category: 'admin', source: '测试部门'),
+                NoticeListItems(
+                  id: 'test-1',
+                  title: '测试通知',
+                  category: 'admin',
+                  source: '测试部门',
+                ),
               ],
             ),
             genericSections: const [

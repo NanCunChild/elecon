@@ -13,6 +13,10 @@
  *  C9 凭证注入方式：credentials.<name>.type ∈ {cookie, header}（防御性，schema C1 亦拦）
  *  L1–L4 login 声明（ADR-015）：url 须 https（L1）；url ⊆ navigationAllow（L2）；
  *    success.whenUrlMatches 每条 ⊆ navigationAllow（L3）；login 存在但 credentials 空 → warn（L4）
+ *  M1–M5 SSO 静默签票声明（ADR-017）：authEndpoint 须 https 且 ⊆ navigationAllow（M1）；
+ *    每个 services[*].service 与 success ⊆ navigationAllow（M2）；services 键须 ∈ credentials（M3）；
+ *    母凭证 ref（scope 覆盖 authEndpoint 者）须存在且 scope 不与下游数据域重叠（M4）；
+ *    services[*].via 须为本 manifest 声明的 capability 且 official（M5，红线 #1 门禁，类比 C3）
  *
  * 尚未覆盖（留给优先级 #3 客户端落地）：
  *  - 完整 golden 双跑：客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产出比对。
@@ -23,11 +27,16 @@
  *         cd tools && npm run validate -- --adapter=../adapters/_template/parser
  */
 
-import { readFileSync, readdirSync, existsSync, statSync, realpathSync } from "node:fs";
-import { join, basename } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { allowToRegex, scopePrefix, urlCoveredByAllow } from "@elecon/broker-primitives";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+
+// TS 侧 url-match 单源在 @elecon/broker-primitives（审阅 P2-4，原本文件内联拷贝已删）。
+// re-export 保持既有 API 面（url-match.smoke.ts 经此面验证"校验器实际使用的实现"合 golden）。
+export { allowToRegex, scopePrefix, urlCoveredByAllow };
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const contractDir = join(repoRoot, "contract");
@@ -58,6 +67,22 @@ interface CapabilityDecl {
 interface CredentialDecl {
   scope: string[];
   type: "cookie" | "header";
+  /** 凭证角色（ADR-017）。sso-master=CAS 母凭证。可选；缺省=普通下游凭证。 */
+  role?: "sso-master";
+}
+
+/** ssoMint 单个下游服务（ADR-017 §2.5）。 */
+interface SsoMintService {
+  service: string;
+  success: string[];
+  /** 非简单 GET-redirect 时指向承载 mint 请求构造的 adapter 能力 id（M5）。 */
+  via?: string;
+}
+
+/** CAS SSO 静默签票声明（ADR-017 §2.5）。可选。 */
+interface SsoMintDecl {
+  authEndpoint: string;
+  services: Record<string, SsoMintService>;
 }
 
 /** WebView 登录声明（ADR-015）。可选；仅带凭证学校声明。 */
@@ -65,6 +90,8 @@ interface LoginDecl {
   url: string;
   navigationAllow: string[];
   success: { whenUrlMatches: string[] };
+  /** CAS SSO 静默签票（ADR-017）。可选；缺省=逐服务可见登录。 */
+  ssoMint?: SsoMintDecl;
 }
 
 interface Manifest {
@@ -123,13 +150,20 @@ function loadContract(): Contract {
 
 // ---- C1–C4：manifest 静态检查（纯函数，便于测试）----
 
-export function checkManifest(manifest: Manifest, contract: Pick<Contract, "manifestValidate" | "registry">): Finding[] {
+export function checkManifest(
+  manifest: Manifest,
+  contract: Pick<Contract, "manifestValidate" | "registry">,
+): Finding[] {
   const findings: Finding[] = [];
 
   // C1 schema 合规
   if (!contract.manifestValidate(manifest)) {
     for (const err of contract.manifestValidate.errors ?? []) {
-      findings.push({ level: "error", code: "C1_manifest_schema", message: `manifest${err.instancePath} ${err.message}` });
+      findings.push({
+        level: "error",
+        code: "C1_manifest_schema",
+        message: `manifest${err.instancePath} ${err.message}`,
+      });
     }
     // schema 不合规时后续按字段假设可能不成立，但仍尽量继续给出更多线索
   }
@@ -165,7 +199,11 @@ export function checkManifest(manifest: Manifest, contract: Pick<Contract, "mani
     // C2 capability ∈ registry
     const reg = contract.registry[cap.id];
     if (!reg) {
-      findings.push({ level: "error", code: "C2_unregistered_capability", message: `capability '${cap.id}' 未在 registry.json 注册` });
+      findings.push({
+        level: "error",
+        code: "C2_unregistered_capability",
+        message: `capability '${cap.id}' 未在 registry.json 注册`,
+      });
       continue;
     }
     // C2 emits 与 registry 一致（防 schema 漂移）
@@ -181,7 +219,11 @@ export function checkManifest(manifest: Manifest, contract: Pick<Contract, "mani
     if (manifest.mode === "parser") {
       const requests = cap.requests ?? [];
       if (requests.length === 0) {
-        findings.push({ level: "warn", code: "C4_parser_no_requests", message: `parser capability '${cap.id}' 未声明 requests：核心无从代取数据` });
+        findings.push({
+          level: "warn",
+          code: "C4_parser_no_requests",
+          message: `parser capability '${cap.id}' 未声明 requests：核心无从代取数据`,
+        });
       }
       for (const req of requests) {
         if (!urlCoveredByAllow(req.url, allow)) {
@@ -201,6 +243,9 @@ export function checkManifest(manifest: Manifest, contract: Pick<Contract, "mani
   // L1–L4 WebView 登录声明检查（ADR-015）。login 可选；缺省即跳过。
   findings.push(...checkLogin(manifest));
 
+  // M1–M5 SSO 静默签票声明检查（ADR-017）。login.ssoMint 可选；缺省即跳过。
+  findings.push(...checkSsoMint(manifest));
+
   return findings;
 }
 
@@ -215,11 +260,19 @@ export function checkLogin(manifest: Pick<Manifest, "login" | "credentials">): F
 
   // L1 登录页须 https（凭证经手页面，TLS 底线）；navigationAllow 非 https → 警告
   if (!/^https:\/\//.test(login.url ?? "")) {
-    findings.push({ level: "error", code: "L1_login_url_not_https", message: `login.url 非 https：${login.url}` });
+    findings.push({
+      level: "error",
+      code: "L1_login_url_not_https",
+      message: `login.url 非 https：${login.url}`,
+    });
   }
   for (const p of navAllow) {
     if (!/^https:\/\//.test(p)) {
-      findings.push({ level: "warn", code: "L1_non_https_nav", message: `login.navigationAllow 项非 https：${p}` });
+      findings.push({
+        level: "warn",
+        code: "L1_non_https_nav",
+        message: `login.navigationAllow 项非 https：${p}`,
+      });
     }
   }
 
@@ -255,17 +308,131 @@ export function checkLogin(manifest: Pick<Manifest, "login" | "credentials">): F
   return findings;
 }
 
-// ---- C6–C8：credentials 声明（ADR-013 §2.4）----
+// ---- M1–M5：SSO 静默签票声明（ADR-017 §2.5）----
 
 /**
- * 取 uri-template 第一个 `*` 之前的字面前缀（无 `*` 则取全串）。用于最长前缀消歧。
- * **假设**：scope 是"尾随 `*` 的前缀型"（`https://domain/path/*`，与 C6 同一约定）。
- * 多段 `*` / `{+path}` 等复杂模板不在此约定内，引入时须重评 C6/C7（见文件头与 ADR-013 §2.4）。
+ * 校验 login.ssoMint（CAS 母凭证静默换票声明）。ssoMint 可选；缺省跳过。
+ * 只做可静态验证的部分——**不碰凭证值、不模拟换票**（红线 #1，实现在核心 + official adapter）。
  */
-export function scopePrefix(pattern: string): string {
-  const star = pattern.indexOf("*");
-  return star === -1 ? pattern : pattern.slice(0, star);
+export function checkSsoMint(
+  manifest: Pick<Manifest, "login" | "credentials" | "capabilities" | "trustTier">,
+): Finding[] {
+  const findings: Finding[] = [];
+  const login = manifest.login;
+  const mint = login?.ssoMint;
+  if (!login || !mint) return findings; // 可选；缺省跳过
+
+  const navAllow = login.navigationAllow ?? [];
+  const creds = manifest.credentials ?? {};
+  const capIds = new Set((manifest.capabilities ?? []).map((c) => c.id));
+  const authEndpoint = mint.authEndpoint ?? "";
+
+  // M1 authEndpoint 须 https 且落在 navigationAllow 内
+  if (!/^https:\/\//.test(authEndpoint)) {
+    findings.push({
+      level: "error",
+      code: "M1_auth_endpoint_not_https",
+      message: `ssoMint.authEndpoint 非 https：${authEndpoint}`,
+    });
+  }
+  if (authEndpoint && !urlCoveredByAllow(authEndpoint, navAllow)) {
+    findings.push({
+      level: "error",
+      code: "M1_auth_endpoint_outside_nav",
+      message: `ssoMint.authEndpoint 不在 navigationAllow 内（WebView 换票不可达）：${authEndpoint}`,
+    });
+  }
+
+  // M2/M3/M5 逐服务
+  for (const [ref, svc] of Object.entries(mint.services ?? {})) {
+    // M2 service ⊆ navigationAllow
+    if (svc.service && !urlCoveredByAllow(svc.service, navAllow)) {
+      findings.push({
+        level: "error",
+        code: "M2_service_outside_nav",
+        message: `ssoMint.services['${ref}'].service 越出 navigationAllow：${svc.service}`,
+      });
+    }
+    // M2 success 每条 ⊆ navigationAllow
+    for (const p of svc.success ?? []) {
+      if (!urlCoveredByAllow(p, navAllow)) {
+        findings.push({
+          level: "error",
+          code: "M2_success_outside_nav",
+          message: `ssoMint.services['${ref}'].success 越出 navigationAllow（换票永不判成功）：${p}`,
+        });
+      }
+    }
+    // M3 换票产物 ref 须在 credentials 声明（否则收割判据 b 丢弃）
+    if (!(ref in creds)) {
+      findings.push({
+        level: "error",
+        code: "M3_service_ref_undeclared",
+        message: `ssoMint.services 键 '${ref}' 未在 credentials 声明：换票产物无 ref 可收割`,
+      });
+    }
+    // M5 via ⟹ official + 引用本 manifest 声明的 capability（红线 #1 门禁，类比 C3）
+    if (svc.via !== undefined) {
+      if (manifest.trustTier !== "official") {
+        findings.push({
+          level: "error",
+          code: "M5_via_requires_official",
+          message: `ssoMint.services['${ref}'].via='${svc.via}' 声明了 adapter mint 能力，但 trustTier=${manifest.trustTier}（敏感能力仅 official，红线 #5/#1）`,
+        });
+      }
+      if (!capIds.has(svc.via)) {
+        findings.push({
+          level: "error",
+          code: "M5_via_undeclared_capability",
+          message: `ssoMint.services['${ref}'].via 引用未在本 manifest 声明的 capability '${svc.via}'`,
+        });
+      }
+    }
+  }
+
+  // M4 母凭证：须有 credential 的 scope 覆盖 authEndpoint，且其 scope 不与任何下游数据域重叠
+  const masterRefs = Object.keys(creds).filter((name) =>
+    (creds[name]?.scope ?? []).some((s) => urlCoveredByAllow(authEndpoint, [s])),
+  );
+  if (authEndpoint && masterRefs.length === 0) {
+    findings.push({
+      level: "error",
+      code: "M4_no_master_credential",
+      message: `ssoMint.authEndpoint 无母凭证承接（无 credential 的 scope 覆盖 ${authEndpoint}）：静默换票无票可用`,
+    });
+  }
+  const downstream = Object.keys(creds).filter((n) => !masterRefs.includes(n));
+  for (const m of masterRefs) {
+    for (const ms of creds[m]?.scope ?? []) {
+      for (const d of downstream) {
+        const overlap = (creds[d]?.scope ?? []).some((ds) =>
+          prefixesOverlap(scopePrefix(ms), scopePrefix(ds)),
+        );
+        if (overlap) {
+          findings.push({
+            level: "error",
+            code: "M4_master_scope_overlaps_downstream",
+            message: `母凭证 '${m}' 的 scope '${ms}' 与下游凭证 '${d}' 域重叠：母凭证可能被注入数据请求（红线 #1 外泄）`,
+          });
+        }
+      }
+    }
+  }
+  // role 一致性：声明 role=sso-master 却非母凭证（scope 不覆盖 authEndpoint）→ warn
+  for (const name of Object.keys(creds)) {
+    if (creds[name]?.role === "sso-master" && !masterRefs.includes(name)) {
+      findings.push({
+        level: "warn",
+        code: "M4_role_not_master",
+        message: `credential '${name}' 标注 role=sso-master 但其 scope 未覆盖 ssoMint.authEndpoint`,
+      });
+    }
+  }
+
+  return findings;
 }
+
+// ---- C6–C8：credentials 声明（ADR-013 §2.4）----
 
 /**
  * 两个 scope 前缀是否重叠（其一是另一的字符串前缀，含相等）。
@@ -376,41 +543,42 @@ function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Fin
     if (!file.endsWith(".json")) continue;
     const fx = readJson<{ capability?: string; expected?: unknown }>(join(fixturesDir, file));
     if (!fx.capability || fx.expected === undefined) {
-      findings.push({ level: "warn", code: "C5_fixture_shape", message: `fixtures/${file} 缺 capability 或 expected，跳过` });
+      findings.push({
+        level: "warn",
+        code: "C5_fixture_shape",
+        message: `fixtures/${file} 缺 capability 或 expected，跳过`,
+      });
       continue;
     }
     const cap = byCapability.get(fx.capability);
     if (!cap) {
-      findings.push({ level: "error", code: "C5_fixture_unknown_capability", message: `fixtures/${file} 引用了 manifest 未声明的 capability '${fx.capability}'` });
+      findings.push({
+        level: "error",
+        code: "C5_fixture_unknown_capability",
+        message: `fixtures/${file} 引用了 manifest 未声明的 capability '${fx.capability}'`,
+      });
       continue;
     }
     const validate = contract.schemaFor(cap.emits.schema);
     if (!validate) {
-      findings.push({ level: "warn", code: "C5_schema_absent", message: `schema '${cap.emits.schema}' 尚未落盘，无法校验 fixtures/${file}` });
+      findings.push({
+        level: "warn",
+        code: "C5_schema_absent",
+        message: `schema '${cap.emits.schema}' 尚未落盘，无法校验 fixtures/${file}`,
+      });
       continue;
     }
     if (!validate(fx.expected)) {
       for (const err of validate.errors ?? []) {
-        findings.push({ level: "error", code: "C5_fixture_invalid", message: `fixtures/${file} expected${err.instancePath} ${err.message}` });
+        findings.push({
+          level: "error",
+          code: "C5_fixture_invalid",
+          message: `fixtures/${file} expected${err.instancePath} ${err.message}`,
+        });
       }
     }
   }
   return findings;
-}
-
-// ---- 白名单匹配 ----
-
-/** 把 "https://h/api/*" 形态的白名单项转成锚定正则。 */
-export function allowToRegex(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const withWildcard = escaped.replace(/\\\*/g, ".*");
-  return new RegExp("^" + withWildcard + "$");
-}
-
-export function urlCoveredByAllow(url: string, allow: string[]): boolean {
-  // 把 {param} 占位换成中性 token，避免占位符干扰匹配
-  const concrete = url.replace(/\{[^}]+\}/g, "_");
-  return allow.some((p) => allowToRegex(p).test(concrete));
 }
 
 // ---- 编排 ----
@@ -424,7 +592,13 @@ function validateAdapterDir(dir: string, contract: Contract): Finding[] {
   try {
     manifest = readJson<Manifest>(manifestPath);
   } catch (err) {
-    return [{ level: "error", code: "manifest_unparseable", message: `manifest.json 解析失败：${(err as Error).message}` }];
+    return [
+      {
+        level: "error",
+        code: "manifest_unparseable",
+        message: `manifest.json 解析失败：${(err as Error).message}`,
+      },
+    ];
   }
   return [...checkManifest(manifest, contract), ...checkFixtures(dir, manifest, contract)];
 }

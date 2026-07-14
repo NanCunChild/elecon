@@ -6,6 +6,8 @@
 ///   运行：cd client && fvm flutter test test/transport_direct_test.dart
 ///
 /// 🔒 transport 承载注入凭证的真实请求（红线 #1 路径）：与被测代码一并须人工 + 安全清单复核。
+library;
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -50,6 +52,11 @@ void main() {
         case '/redirect':
           res.statusCode = 302;
           res.headers.set('location', '$base/echo');
+          await res.close();
+        case '/big':
+          res.statusCode = 200;
+          res.headers.set('content-type', 'text/plain');
+          res.write('0123456789');
           await res.close();
         default:
           res.statusCode = 404;
@@ -102,6 +109,19 @@ void main() {
       expect(resp.status, 302, reason: '不跟随 → 返回 302 本身（跟随了会是 200）');
       expect(resp.location, '$base/echo', reason: 'Location 暴露给核心（B3 跟随）');
       expect(resp.body, isEmpty, reason: '未自动抓取 /echo');
+    });
+
+    test('响应 body 超上限 → fail-closed', () async {
+      final tiny = DirectTransport(maxBodyBytes: 4);
+      addTearDown(tiny.close);
+      await expectLater(
+        tiny.fetch(TransportRequest(
+          url: '$base/big',
+          method: 'GET',
+          headers: const {},
+        )),
+        throwsA(isA<TransportBodyLimitException>()),
+      );
     });
   });
 

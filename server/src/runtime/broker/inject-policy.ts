@@ -12,7 +12,7 @@
  * 🔒 安全敏感（红线 #1 凭证注入决策）：AI 起草，须人工 + 安全清单复核（AGENTS.md §1）。
  */
 
-import { scopeMatches, scopePrefix, urlCoveredByAllow } from "./url-match.js";
+import { scopeMatches, scopePrefix, urlCoveredByAllow } from "@elecon/broker-primitives";
 
 export type CredentialVia = "cookie" | "header";
 

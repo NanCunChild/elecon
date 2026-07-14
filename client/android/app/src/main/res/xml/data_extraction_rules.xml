@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- ADR-012 §2.8: never let software-tier credential material enter cloud backup. -->
+        <exclude domain="file" path="credentials/" />
+        <exclude domain="file" path="app_flutter/credentials/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="credentials/" />
+        <exclude domain="file" path="app_flutter/credentials/" />
+    </device-transfer>
+</data-extraction-rules>

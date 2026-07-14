@@ -67,6 +67,46 @@
             }
           },
           "additionalProperties": false
+        },
+        "ssoMint": {
+          "type": "object",
+          "description": "CAS SSO 静默签票声明（ADR-017 §2.5）。可选；缺省=不启用静默换票，退化为逐服务可见登录。仅承载可静态验证部分（服务、成功检测、母凭证/adapter 指向）；mint 请求的实际构造（GET/POST/body/签名）由 via 指向的 official adapter 能力或核心内置 GET-redirect 执行。凭证托管始终在核心（红线 #1）。",
+          "required": ["authEndpoint", "services"],
+          "properties": {
+            "authEndpoint": {
+              "type": "string",
+              "format": "uri-template",
+              "description": "CAS 认证端点模板，含 {service} 占位（如 https://ids.h.edu.cn/authserver/login?service={service}）。须 https 且 ⊆ navigationAllow（校验器 M1）。母凭证只注入此域（M4）。"
+            },
+            "services": {
+              "type": "object",
+              "description": "可静默换取的下游服务；key=换票产物 credential ref（须在 credentials 声明，校验器 M3）。",
+              "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+              "additionalProperties": {
+                "type": "object",
+                "required": ["service", "success"],
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "format": "uri-template",
+                    "description": "目标服务 URL（填入 authEndpoint 的 {service}）；须 ⊆ navigationAllow（M2）。"
+                  },
+                  "success": {
+                    "type": "array",
+                    "description": "换票成功检测 URL 模式（≥1）；每条须 ⊆ navigationAllow（M2）。",
+                    "minItems": 1,
+                    "items": { "type": "string", "format": "uri-template" }
+                  },
+                  "via": {
+                    "type": "string",
+                    "description": "非简单 GET-redirect 时，指向承载 mint 请求构造的 adapter 能力 id（须为本 manifest 声明的 capability 且 official，校验器 M5）。缺省=核心内置 GET-redirect。"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -89,6 +129,11 @@
             "type": "string",
             "description": "注入方式：cookie=附加 Cookie 头；header=附加 Authorization 头。",
             "enum": ["cookie", "header"]
+          },
+          "role": {
+            "type": "string",
+            "description": "凭证角色（ADR-017）。sso-master=CAS 母凭证（TGC 类），用于静默换取下游 session；注入严格限于 CAS 认证域，scope 不得与下游数据域重叠（校验器 M4）。可选；缺省=普通下游凭证。",
+            "enum": ["sso-master"]
           }
         },
         "additionalProperties": false

@@ -36,5 +36,7 @@ cd tools && npm run validate -- --adapter=../adapters/school-<id>
 | trustTier | mode | 能做什么 |
 |---|---|---|
 | `official` | `fetch` | 受限取数（仅白名单内域名注入凭证） |
-| `community` | 待 adr_002 细化 | — |
 | `sideload` | `parser`（强制） | 纯解析器，无网络、无凭证、无副作用 |
+
+> `community` 档已于 ADR-002（2026-06-14 修订）移除，`manifest.schema.json` 的
+> `trustTier` enum 仅 `official` / `sideload`。
