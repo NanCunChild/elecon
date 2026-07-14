@@ -1,7 +1,7 @@
 # 构建/依赖阻塞情况说明（build blockers）
 
 > 状态记录，非 ADR。记录当前卡住工具链升级与依赖更新的几个相互纠缠的问题，供后续处理时参考。
-> 最后更新：2026-07-10。
+> 最后更新：2026-07-14。
 
 ## TL;DR
 
@@ -12,6 +12,8 @@
 | **cryptography 版本** | 已升 2.9.0 | `flutter_qjs_next` 已解除 ffi 冲突 | 已解决 |
 | **path_provider 加不进** | 已加入并接线 | 原 git 依赖阻塞已解除 | 已点亮 §2.8 S 档落盘 |
 | **KGP 弃用警告** | 已解决 | `flutter_qjs_next` 不再 apply KGP | Android debug 构建已无该警告 |
+| **H 硬件档接入** | 已实现 | iOS SE / Android Keystore 原生插件入库（`9f1825e`/`2012e21`）| §2.8 三档存储 H 档点亮 |
+| **release 构建** | 已修复 | `main` manifest 缺 `INTERNET` + 注释含非法 `--`（`345a5fc`）| `--release` 可构建可登录；CI 加 release 构建闸门（`41c14de`）|
 | **git/GPG 网络** | 绕行中 | libsecret 凭证助手挂起 | pub git fetch / commit 签名超时 |
 
 ---
@@ -29,7 +31,7 @@
 `flutter_qjs_next`（唯一上游 `https://github.com/NanCunChild/flutter_qjs_next`，**pin 单次 commit**）。它是 QuickJS
 承重依赖（ADR-008/014），迁移后解除原先纠缠：
 
-- `ffi` 已升到 2.2.0，`cryptography` 2.7+ 的依赖冲突已解除（包版本尚未升级，留单独 PR）。
+- `ffi` 已升到 2.2.0，`cryptography` 冲突已解除并**已升到 2.9.0**（`pubspec.yaml: cryptography: ^2.9.0`）。
 - Android 插件不再 apply Kotlin Gradle Plugin，`flutter build apk --debug` 已无 KGP 未来失败警告。
 - root `build.gradle.kts` 中旧 `flutter_qjs` Java/Kotlin 强钉补丁已移除。
 
@@ -40,7 +42,7 @@
 - ADR-012 §2.8 的 **S 软件档**需要 app 私有目录落盘；现已加入 `path_provider`，`main.dart` 通过
   `getApplicationSupportDirectory()/credentials` 接到 `FileBlobStore`。
 - Android 已同步配置 `allowBackup=false`、`fullBackupContent` 与 `dataExtractionRules`，排除 credentials 目录，避免 S 档 DEK 随系统备份外泄。
-- H 硬件档仍未接入，后续单独走安全敏感 PR。
+- **H 硬件档已接入**（提交 `9f1825e` / `2012e21`）：`BackedHardwareKeyStore`（MethodChannel `elecon/keystore`）+ `HardwareSecureStore` 信封加密；iOS Secure Enclave / Android Keystore 原生插件入库，`secure_store_factory` 已接线。详见 `hardware_persistence_plan.md`。
 
 ## 4. QuickJS 依赖复现性
 

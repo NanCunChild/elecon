@@ -1,6 +1,6 @@
 # Track B 实施草案 —— fetch 模式运行时（受限 `ctx.fetch` + Broker）
 
-> **状态**：草案（draft）。本文落地 [ADR-009 §4](../adr/adr_009_fetch_credential.md) 的运行时清单与 [#3](https://github.com/NanCunChild/elecon/issues/3)。
+> **状态**：**Broker 核心零件 B1–B6 已落地（2026-07-14）**（`server/src/runtime/broker/` + `client/lib/core/broker/` 双端 + golden/集成测试，CI 双跑）；本文落地 [ADR-009 §4](../adr/adr_009_fetch_credential.md) 的运行时清单与 [#3](https://github.com/NanCunChild/elecon/issues/3)，现留作**实现依据 / 历史**，剩余接线（限额执行、adapter 运行时桥接）随实现推进。
 > **🔒 承重路径**：触碰红线 #1（凭证）。按 AGENTS.md §1，**AI 不得独自闭环**——本草案由 AI 起草，
 > 实现与测试须人工主导 + 安全检查清单 + ≥1 人工审。本文只是把决策展开成可审查的小 PR 切片，不替代审阅。
 > **不含**：parser 模式（ADR-005/008 已落地）、登录/认证流程（属 ADR-012 WebView 收割，见下 §0）。

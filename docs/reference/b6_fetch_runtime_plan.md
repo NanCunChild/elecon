@@ -1,6 +1,8 @@
 # B6 实现计划 · 受限 ctx.fetch 代理 + 异步 handler 运行时 + 限额
 
-> 状态：草案（含开放点 §8）。实现属 🔒 安全敏感承重路径（红线 #1 凭证注入 + 出网），
+> 状态：**核心零件已落地（2026-07-14）**——`fetch-proxy.ts` / `fetch_proxy.dart`（`proxyFetch` 逐跳注入 +
+> 自跟随重定向 + 捕获 Set-Cookie）+ 集成测试入库；§8 开放点实现时已定。本文留作**实现依据 / 历史**。
+> 实现属 🔒 安全敏感承重路径（红线 #1 凭证注入 + 出网），
 > 按 [AGENTS.md](../../AGENTS.md) §1 **AI 不得独自闭环**。
 > 依据：[ADR-009](../adr/adr_009_fetch_credential.md) §2.1（数据流）/ §2.5 / §2.7（限额）/ §2.8 ·
 > [ADR-003](../adr/adr_003_transport.md)（transport 出网）· [ADR-005](../adr/adr_005_runtime.md)（QuickJS 双端）·

@@ -115,6 +115,7 @@ class FetchProxyDeps {
     required this.transport,
     this.maxHops,
     this.cancelToken,
+    this.onRedirectSettled,
   });
 
   final BrokerManifestView view;
@@ -127,6 +128,12 @@ class FetchProxyDeps {
 
   /// 单次 ctx.fetch 的取消信号；运行时在超时/fatal 时主动中止上游。
   final TransportCancelToken? cancelToken;
+
+  /// 🔒 **核心专用**回调：重定向链定型（deliver/stop）时回传**终点 URL**给核心。
+  /// 仅宿主（核心）可设 `deps`；adapter 无法构造 [FetchProxyDeps]，故不构成对 adapter 的
+  /// URL 外泄（红线 #1「中间跳转对 adapter 不可见」不变——本回调不回传中间跳，只回终点）。
+  /// 供 SSO 静默换票（ADR-017 §2.2）判定是否抵达目标服务成功页。缺省 null=普通 ctx.fetch 不回传。
+  final void Function(String finalUrl)? onRedirectSettled;
 }
 
 /// 一次 ctx.fetch 的脱敏后产出 + 请求计量。
@@ -206,6 +213,8 @@ Future<FetchProxyOutcome> proxyFetch(
       maxHops: maxHops,
     ));
     if (rd is DeliverDecision || rd is StopDecision) {
+      // 核心专用：回传终点 URL（仅当宿主设了回调；SSO 换票据此判成功页，ADR-017 §2.2）。
+      deps.onRedirectSettled?.call(currentUrl);
       // ⑦ 脱敏后交回 adapter（含 stop：越界/超跳时交付当前响应，其 Location 由脱敏剥除）。
       final processed = processResponse(
         RawResponse(status: resp.status, headers: resp.headers, body: resp.body),

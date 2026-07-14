@@ -1,18 +1,19 @@
 # H 硬件档与持久化接线设计草案（keystore implementation plan）
 
-> 状态：**草案（draft）**。由 AI 起草供维护者评审。触红线 #1（凭证存储最高风险面），
-> 按 AGENTS.md §1 **须人工主导实现 + 安全清单审，不得 AI 独自闭环**。
-> 关联：ADR-012 §2.7/§2.8、`secure_store_factory.dart`、`hardware_keystore.dart`、`build_unblock_plan.md`。
+> 状态：**大部已落地（2026-07-14 更新）**。原为 AI 起草的实现计划；H 硬件档、持久化落盘、备份排除
+> 已按本计划实现并入库（提交 `9f1825e` hardware encryption / `2012e21` iOS SE），经人工 + 安全清单审。
+> 下方 §1–§4 保留为**设计依据 / 历史记录**；当前事实以「现况梗概」表与代码为准。剩余勾稽见 §5。
+> 关联：ADR-012 §2.7/§2.8、`secure_store_factory.dart`、`hardware_secure_store.dart`、`hardware_keystore_channel.dart`。
 
-## 现况梗概
+## 现况梗概（2026-07-14）
 
-| 组件 | 现状 | 阻塞物 |
+| 组件 | 现状 | 备注 |
 |---|---|---|
-| H 硬件档 | `UnavailableHardwareKeyStore`（恒 false） | 各平台原生 keystore 接入未写 |
-| S 软件档 | `SoftwareSecureStore` 已实现（AES-256-GCM AEAD + 明文 DEK 落盘） | 经 UI 测试，**但未真实 FileBlobStore 集成**（path_provider 被构建锁） |
-| M 内存档 | `InMemorySecureStore` 已实现 | —— |
-| 持久化 | `_blobStoreProvider → null` | path_provider 加不进（见 build_unblock_plan PR-A2） |
-| 备份排除 | 未实现 | `allowBackup=false` + `isExcludedFromBackup` 空操作 |
+| H 硬件档 | **已实现**：`BackedHardwareKeyStore`（MethodChannel `elecon/keystore`）+ `HardwareSecureStore`（§2.8 信封 AES-256-GCM + KEK wrap/unwrap）；iOS Secure Enclave / Android Keystore 原生插件已入库 | `secure_store_factory` 已接线 `HardwareSecureStore.open` |
+| S 软件档 | **已实现 + 真实落盘集成**：`SoftwareSecureStore` + `FileBlobStore` | path_provider 阻塞已解除 |
+| M 内存档 | `InMemorySecureStore` 已实现 | 硬件不可用 + 用户拒 S 档时的兜底 |
+| 持久化 | **已点亮**：`_blobStoreProvider` 经 `getApplicationSupportDirectory()/credentials` 接 `FileBlobStore` | 见 `main.dart` |
+| 备份排除 | **已实现**：Android `allowBackup=false` + `dataExtractionRules`/`fullBackupContent` 排除 credentials；iOS `BackupExcludePlugin`（`isExcludedFromBackup`）| 提交 `2012e21` |
 
 ## 1. H 硬件档实现
 
@@ -115,8 +116,8 @@ class BackedHardwareKeyStore implements HardwareKeyStore {
 
 ## 5. 收尾待办
 
-- [ ] H 硬件档各平台实现（PR-H1–H4）🔒
-- [ ] path_provider + FileBlobStore 接线（PR-P1）🔒
-- [ ] 备份排除（PR-P2）🔒
+- [x] H 硬件档各平台实现（PR-H1–H4）🔒 —— iOS SE / Android Keystore 已入库（`9f1825e` / `2012e21`）
+- [x] path_provider + FileBlobStore 接线（PR-P1）🔒
+- [x] 备份排除（PR-P2）🔒 —— Android `allowBackup=false` + iOS `BackupExcludePlugin`
 - [ ] 登出抹除 / 过期 / S 软件档 UI 持续警示在各真实后端（含 H 档）的一致性行为测试
 - [ ] iOS App Store 合规自检（ADR-010 §3.3）——Keychain / Secure Enclave 使用需在隐私申报中声明

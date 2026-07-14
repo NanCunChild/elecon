@@ -182,7 +182,7 @@ CredentialEntry {
   - [ ] iOS/macOS Keychain 后端（§2.7 决策 C）。🔒
   - [ ] Android Keystore 支撑的 EncryptedSharedPreferences 后端（§2.7 决策 C/D）。🔒
   - [ ] 桌面 Secret Service / DPAPI 后端 + 无 keyring 的 fail-closed 回退（§2.7 决策 C/E）。🔒
-  - [ ] **§2.8 分级回退（草案接受后）**：信封加密 DEK/KEK；H 硬件档 wrap/unwrap；S 软件档明文 DEK 落盘 + `allowBackup=false`/备份排除；M 内存档；`sensitivity`/`protection` 标注；母凭证纳入软件档（警告框显式点名）+ 可选「仅母凭证不持久化」开关（默认关）。🔒
+  - [x] **§2.8 分级回退**（已落地，提交 `9f1825e`/`2012e21`）：信封加密 DEK/KEK；H 硬件档 wrap/unwrap（iOS SE / Android Keystore）；S 软件档明文 DEK 落盘 + `allowBackup=false`/备份排除；M 内存档；`sensitivity`/`protection` 标注。**残留**：可选「仅母凭证不持久化」开关（默认关）尚未接入。🔒
   - [ ] **§2.8 UI**：无硬件加密警告框 + 5 秒强制等待 + 继续/取消 + 软件档持续风险标识。
   - [ ] 登出抹除 / 过期 / 吊销联动在各真实后端（含三档）的一致行为测试。
 - **核心托管 WebView 登录 + session 收割**（客户端；导航域闭锁、上下文隔离、收割后销毁）。**登录声明面（去哪登 / 导航闭锁 navigationAllow / 成功检测）见 [ADR-015](./adr_015_manifest_login.md) 的 manifest `login` 块（草案）。**
