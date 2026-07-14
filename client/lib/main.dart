@@ -8,6 +8,7 @@ import 'core/credential/hardware_keystore_channel.dart';
 import 'session/session_controller.dart';
 import 'session/session_scope.dart';
 import 'ui/onboarding/onboarding_page.dart';
+import 'ui/security/hardware_unlock_failed_dialog.dart';
 import 'ui/shell/main_shell.dart';
 
 void main() {
@@ -15,11 +16,13 @@ void main() {
   runApp(const EleconApp());
 }
 
-/// §2.8 落盘目录提供者：S 软件档把密文库写入 app 私有 application support 目录。
-/// Android 侧必须同步维护 allowBackup=false / 备份排除，避免软件档 DEK 随系统备份外泄。
+/// §2.8 落盘目录：H/S 密文 + wrapped DEK 写入 app 私有 application support。
+/// Android：allowBackup=false；iOS：excludeFromBackup（elecon/backup 通道）。
 Future<BlobStore?> _blobStoreProvider() async {
   final dir = await getApplicationSupportDirectory();
-  return FileBlobStore(Directory('${dir.path}/credentials'));
+  final store = FileBlobStore(Directory('${dir.path}/credentials'));
+  await store.ensureDirectoryAndExcludeFromBackup();
+  return store;
 }
 
 class EleconApp extends StatefulWidget {
@@ -79,6 +82,7 @@ class _BootGate extends StatefulWidget {
 
 class _BootGateState extends State<_BootGate> {
   late final Future<void> _boot = widget.session.bootstrap();
+  var _unlockDialogShown = false;
 
   @override
   Widget build(BuildContext context) {
@@ -87,6 +91,15 @@ class _BootGateState extends State<_BootGate> {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (widget.session.hardwareUnlockFailed && !_unlockDialogShown) {
+          _unlockDialogShown = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted) return;
+            await showHardwareUnlockFailedDialog(context);
+            if (!mounted) return;
+            widget.session.acknowledgeHardwareUnlockFailure();
+          });
         }
         return const _RootGate();
       },

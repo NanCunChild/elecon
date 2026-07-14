@@ -50,6 +50,9 @@ class SessionController extends ChangeNotifier {
   SchoolDescriptor? _school;
   bool _debugLog = kDebugMode;
 
+  /// H 档启动解不开时置位；UI 提示后 [acknowledgeHardwareUnlockFailure] 清除。
+  bool _hardwareUnlockFailed = false;
+
   /// 单例凭证库（收割落点 + 状态来源）。
   CredentialStore get store => _store;
 
@@ -59,26 +62,53 @@ class SessionController extends ChangeNotifier {
   bool get isLoggedIn => store.list().isNotEmpty;
   int get credentialCount => store.list().length;
 
+  /// 上次 bootstrap 因 TEE/SE 无法 unwrap 而抹除了 H 档凭证。
+  bool get hardwareUnlockFailed => _hardwareUnlockFailed;
+
   /// 已收割凭证的 ref 列表（升序）；仅名字，**不含值**。
   List<String> get credentialRefs =>
       (store.list().map((e) => e.ref).toList())..sort();
 
   /// 启动引导：优先静默续用 H 硬件档，其次已同意的 S 软件档；无持久化则保持
   /// 默认内存档，待首次登录时 [ensurePersistentStore] 裁定。
+  ///
+  /// H 档存在但 TEE/SE 无法 unwrap / 密文库损坏 → 抹除 H blob，置
+  /// [hardwareUnlockFailed]，保留选校，回到未登录。
   Future<void> bootstrap() async {
     if (_bootstrapped) return;
     _bootstrapped = true;
     final blobs = await _resolveBlobs();
     if (blobs == null) return;
-    if (await HardwareSecureStore.hasPersisted(blobs) &&
-        await _hardware.isAvailable()) {
-      _replaceStore(await HardwareSecureStore.open(_hardware, blobs));
-      _storeResolved = true;
+    if (await HardwareSecureStore.hasPersisted(blobs)) {
+      if (!await _hardware.isAvailable()) {
+        await _failHardwareUnlock(blobs);
+      } else {
+        try {
+          _replaceStore(await HardwareSecureStore.open(_hardware, blobs));
+          _storeResolved = true;
+        } on HardwareUnlockException {
+          await _failHardwareUnlock(blobs);
+        }
+      }
     } else if (await SoftwareSecureStore.hasPersisted(blobs)) {
       _replaceStore(await SoftwareSecureStore.open(blobs));
       _storeResolved = true;
     }
     _school = await _loadSelectedSchool(blobs);
+    notifyListeners();
+  }
+
+  Future<void> _failHardwareUnlock(BlobStore blobs) async {
+    await HardwareSecureStore.wipePersisted(blobs);
+    _replaceStore(InMemorySecureStore(releaseMode: false));
+    _storeResolved = false;
+    _hardwareUnlockFailed = true;
+  }
+
+  /// UI 已展示过「硬件无法解密」提示后调用。
+  void acknowledgeHardwareUnlockFailure() {
+    if (!_hardwareUnlockFailed) return;
+    _hardwareUnlockFailed = false;
     notifyListeners();
   }
 

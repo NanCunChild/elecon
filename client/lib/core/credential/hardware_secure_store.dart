@@ -19,6 +19,17 @@ import 'types.dart';
 const String _wrappedDekBlob = 'store.dek.wrapped';
 const String _storeBlob = 'store.enc';
 
+/// H 档 DEK unwrap 或密文库解密失败（TEE/SE 不可用、密钥轮换、blob 损坏）。
+///
+/// 调用方应抹除 H 档 blob 并引导用户重新登录（fail toward less trust）。
+class HardwareUnlockException implements Exception {
+  HardwareUnlockException(this.cause);
+  final Object cause;
+
+  @override
+  String toString() => 'HardwareUnlockException: $cause';
+}
+
 class HardwareSecureStore implements SecureStore {
   HardwareSecureStore._(this._aead, this._blobs);
 
@@ -31,14 +42,26 @@ class HardwareSecureStore implements SecureStore {
   static Future<bool> hasPersisted(BlobStore blobs) async =>
       (await blobs.read(_wrappedDekBlob)) != null;
 
+  /// 抹除 H 档落盘材料（wrapped DEK + 密文库）。不触碰 S 档或会话元数据。
+  static Future<void> wipePersisted(BlobStore blobs) async {
+    await blobs.delete(_wrappedDekBlob);
+    await blobs.delete(_storeBlob);
+  }
+
   static Future<HardwareSecureStore> open(
     HardwareKeyStore hardware,
     BlobStore blobs,
   ) async {
-    final dek = await _loadOrCreateDek(hardware, blobs);
-    final store = HardwareSecureStore._(Aes256GcmAead(dek), blobs);
-    await store._load();
-    return store;
+    try {
+      final dek = await _loadOrCreateDek(hardware, blobs);
+      final store = HardwareSecureStore._(Aes256GcmAead(dek), blobs);
+      await store._load();
+      return store;
+    } on HardwareUnlockException {
+      rethrow;
+    } catch (e) {
+      throw HardwareUnlockException(e);
+    }
   }
 
   static Future<List<int>> _loadOrCreateDek(
@@ -47,7 +70,11 @@ class HardwareSecureStore implements SecureStore {
   ) async {
     final wrapped = await blobs.read(_wrappedDekBlob);
     if (wrapped != null) {
-      return hardware.unwrapDek(wrapped);
+      try {
+        return await hardware.unwrapDek(wrapped);
+      } catch (e) {
+        throw HardwareUnlockException(e);
+      }
     }
     final rnd = Random.secure();
     final dek =
@@ -60,11 +87,15 @@ class HardwareSecureStore implements SecureStore {
   Future<void> _load() async {
     final sealed = await _blobs.read(_storeBlob);
     if (sealed == null) return;
-    final clear = await _aead.open(sealed);
-    final json = jsonDecode(utf8.decode(clear)) as Map<String, dynamic>;
-    for (final e in (json['entries'] as List)) {
-      final entry = _entryFromJson(e as Map<String, dynamic>);
-      _entries[entry.ref] = entry;
+    try {
+      final clear = await _aead.open(sealed);
+      final json = jsonDecode(utf8.decode(clear)) as Map<String, dynamic>;
+      for (final e in (json['entries'] as List)) {
+        final entry = _entryFromJson(e as Map<String, dynamic>);
+        _entries[entry.ref] = entry;
+      }
+    } catch (e) {
+      throw HardwareUnlockException(e);
     }
   }
 

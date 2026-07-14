@@ -8,6 +8,8 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
+
 abstract interface class BlobStore {
   Future<Uint8List?> read(String name);
   Future<void> write(String name, List<int> bytes);
@@ -45,6 +47,20 @@ class FileBlobStore implements BlobStore {
   Future<void> delete(String name) async {
     final f = _file(name);
     if (await f.exists()) await f.delete();
+  }
+
+  /// 创建目录并标记系统备份排除（iOS isExcludedFromBackup / Android 已 allowBackup=false）。
+  /// 失败吞掉：不得阻断凭证路径。
+  Future<void> ensureDirectoryAndExcludeFromBackup() async {
+    await directory.create(recursive: true);
+    try {
+      await const MethodChannel('elecon/backup')
+          .invokeMethod<void>('excludeFromBackup', directory.path);
+    } on MissingPluginException {
+      // 桌面/测试无插件
+    } on PlatformException {
+      // 非致命
+    }
   }
 }
 

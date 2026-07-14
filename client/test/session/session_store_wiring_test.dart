@@ -4,7 +4,11 @@
 /// confirm=false→M 内存档不落盘、以及 bootstrap 静默续用已持久化的 S 档。
 library;
 
+import 'dart:typed_data';
+
 import 'package:elecon/core/credential/blob_store.dart';
+import 'package:elecon/core/credential/hardware_keystore.dart';
+import 'package:elecon/core/credential/hardware_secure_store.dart';
 import 'package:elecon/core/credential/types.dart';
 import 'package:elecon/catalog/schools.dart';
 import 'package:elecon/session/session_controller.dart';
@@ -109,6 +113,57 @@ void main() {
     expect(e2.protection, CredentialProtection.hardware);
   });
 
+  test('H unwrap 失败 → wipe + hardwareUnlockFailed + 保留选校', () async {
+    final blobs = InMemoryBlobStore();
+    final good = FakeHardwareKeyStore();
+    final c1 = SessionController(
+      hardware: good,
+      blobStoreProvider: () async => blobs,
+    );
+    await c1.ensurePersistentStore(
+      confirmSoftwareFallback: () => Future<bool>.error(TestFailure('no S')),
+    );
+    c1.selectSchool(defaultSchool);
+    c1.store.put(_entry('ehall-session'));
+    await c1.flush();
+
+    final c2 = SessionController(
+      hardware: _BrokenHardwareKeyStore(),
+      blobStoreProvider: () async => blobs,
+    );
+    await c2.bootstrap();
+    expect(c2.hardwareUnlockFailed, isTrue);
+    expect(c2.isLoggedIn, isFalse);
+    expect(c2.selectedSchool?.id, defaultSchool.id);
+    expect(await HardwareSecureStore.hasPersisted(blobs), isFalse);
+
+    c2.acknowledgeHardwareUnlockFailure();
+    expect(c2.hardwareUnlockFailed, isFalse);
+  });
+
+  test('H hasPersisted 但硬件不可用 → 同 wipe 路径', () async {
+    final blobs = InMemoryBlobStore();
+    final good = FakeHardwareKeyStore();
+    final c1 = SessionController(
+      hardware: good,
+      blobStoreProvider: () async => blobs,
+    );
+    await c1.ensurePersistentStore(
+      confirmSoftwareFallback: () => Future<bool>.error(TestFailure('no S')),
+    );
+    c1.store.put(_entry('ehall-session'));
+    await c1.flush();
+
+    final c2 = SessionController(
+      // 默认 UnavailableHardwareKeyStore
+      blobStoreProvider: () async => blobs,
+    );
+    await c2.bootstrap();
+    expect(c2.hardwareUnlockFailed, isTrue);
+    expect(c2.isLoggedIn, isFalse);
+    expect(await HardwareSecureStore.hasPersisted(blobs), isFalse);
+  });
+
   test('logout 仅抹除当前学校凭证，不波及他校（schoolId 过滤）', () async {
     final c = SessionController();
     c.selectSchool(defaultSchool); // xidian
@@ -138,4 +193,18 @@ void main() {
     expect(c2.store.list(), isEmpty);
     expect(c2.isConfigured, isFalse);
   });
+}
+
+/// unwrap 恒失败（模拟 TEE 轮换 / 损坏）。
+class _BrokenHardwareKeyStore implements HardwareKeyStore {
+  @override
+  Future<bool> isAvailable() async => true;
+
+  @override
+  Future<Uint8List> wrapDek(List<int> dek) async =>
+      Uint8List.fromList(List<int>.from(dek));
+
+  @override
+  Future<Uint8List> unwrapDek(List<int> wrapped) async =>
+      throw StateError('broken-tee');
 }

@@ -98,4 +98,44 @@ void main() {
     final reopened = await HardwareSecureStore.open(hw, blobs);
     expect(reopened.get('s'), isNull);
   });
+
+  test('unwrap 失败 → HardwareUnlockException', () async {
+    final blobs = InMemoryBlobStore();
+    final good = FakeHardwareKeyStore();
+    final store = await HardwareSecureStore.open(good, blobs);
+    store.put(_entry('s', 'v'));
+    await store.flush();
+
+    final bad = _FailingUnwrapKeyStore();
+    await expectLater(
+      () => HardwareSecureStore.open(bad, blobs),
+      throwsA(isA<HardwareUnlockException>()),
+    );
+  });
+
+  test('wipePersisted 清除 wrapped DEK 与密文库', () async {
+    final blobs = InMemoryBlobStore();
+    final hw = FakeHardwareKeyStore();
+    final store = await HardwareSecureStore.open(hw, blobs);
+    store.put(_entry('s', 'v'));
+    await store.flush();
+    expect(await HardwareSecureStore.hasPersisted(blobs), isTrue);
+
+    await HardwareSecureStore.wipePersisted(blobs);
+    expect(await HardwareSecureStore.hasPersisted(blobs), isFalse);
+    expect(await blobs.read('store.enc'), isNull);
+  });
+}
+
+class _FailingUnwrapKeyStore implements HardwareKeyStore {
+  @override
+  Future<bool> isAvailable() async => true;
+
+  @override
+  Future<Uint8List> wrapDek(List<int> dek) async =>
+      Uint8List.fromList(dek);
+
+  @override
+  Future<Uint8List> unwrapDek(List<int> wrapped) async =>
+      throw StateError('sim-unwrap-fail');
 }
