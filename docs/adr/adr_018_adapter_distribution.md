@@ -1,0 +1,245 @@
+# ADR-018：adapter 仓库分离 · 分级审计 · 打包与签名途径 · 解释器版本同步
+
+- **状态**：**已接受（Accepted） 2026-07-15 经人工评审批准。** 触碰红线 #4（仅官方签名加载）/#5（adapter 越薄）/#6（契约承重墙）/#2（公网零凭证）/#1（凭证）。**决策已定，可据以实现;但实现层仍受 [AGENTS.md](../../AGENTS.md) §1 约束**——签名/加载/分发/凭证等价物检测属安全敏感承重路径，**AI 不得独自闭环**（实现与测试须人工主导 + 安全清单 + ≥1 人工审），此约束不因 ADR 已接受而解除。
+- **日期**：2026-07-15
+- **依赖**：
+  - [`adr_000_abstract.md`](./adr_000_abstract.md)（§2.1 公网哑服务无状态、§2.2 可信核心、§2.4 推 adapter 不发版的边界、§3.3 凭证边界、§3.4 传输底座）
+  - [`adr_001_contract.md`](./adr_001_contract.md)（manifest / capability registry 契约、schemaVersion）
+  - [`adr_002_trust_model.md`](./adr_002_trust_model.md)（**本文落地其 §2.3 签名管线（含 2026-07-15 KMS→YubiKey 修订）与 §2.4 清单分发**；两档信任、验签 fail-closed、多公钥预埋）
+  - [`adr_005_runtime.md`](./adr_005_runtime.md)（QuickJS 双端同引擎、零漂移）
+  - [`adr_007_public_deploy.md`](./adr_007_public_deploy.md)（公网哑服务部署形态，延后）
+  - [`adr_010_ios_appstore.md`](./adr_010_ios_appstore.md)（DPLA §3.3.2「非代码市场」「热推只在既有能力集内」「bundle 预置基线」）
+- **被依赖**：（待实现 PR / 后续 ADR）
+- **适用范围**：adapter 的**源码托管、社区贡献、分级审计、打包、签名、分发、客户端加载**，以及 adapter 所依赖的**解释器运行时（QuickJS 引擎 + `elecon:html` stdlib）版本同步与安全**。**不含**：签名密码学机制本身（ADR-002 §2.3）、fetch 运行时凭证注入（ADR-009）、UI。
+
+---
+
+## 1. 背景（Context）
+
+至今 adapter 与核心同仓（`adapters/`），贡献即改主仓。要让社区**低门槛提交** adapter、同时让客户端**只加载官方签名包**，需要把「谁写」与「谁签、谁分发」拆开，并回答四个此前未定的问题：
+
+1. **仓库怎么分？** 社区提交在哪、官方源真相在哪、签名与分发在哪，各自信任边界如何？
+2. **审计怎么分级？**（已确认前提：不同风险面审查强度不同。）
+3. **打包/签名走什么途径？**（ADR-002 §2.3 已于 2026-07-15 把签名从 AWS KMS 改为离线 YubiKey。）
+4. **解释器版本怎么同步？** adapter 依赖宿主提供的 QuickJS 引擎 + `elecon:html` stdlib；包与客户端各自独立发版后，版本偏斜会破坏「双端不漂移」与确定性。
+
+红线约束（承重墙）：#1 凭证永不离核心；#2 公网哑服务零凭证/无状态；#4 release 仅官方签名加载、无侧载入口；#5 adapter 越薄（release 第三方=纯解析器）；#6 契约改动先 ADR 且向后兼容。
+
+---
+
+## 2. 决策（Decision）
+
+### 2.1 四个信任域（仓库分离 = 信任边界分离）
+
+「服务器能不能跑 adapter」不是红线的提法；红线管的是**哪个信任域、碰不碰凭证**。把角色拆成四个**必须分开部署/分权**的盒子：
+
+| 信任域 | 职责 | 跑 adapter？ | 持凭证？ | 隔离手段 | 红线 |
+|---|---|---|---|---|---|
+| **A. 社区暂存仓库**（public，如 `elecon-adapters`） | 贡献者 PR;仅预检（validator/scanner/digest），产出**未签名 sideload 素材** | 否（仅静态校验） | 否 | 公开仓库 + CI 无签名能力 | #5/#8 |
+| **B. 审查/打包沙箱**（服务端，构建期） | 二次审查:容器内跑 adapter 做性能/行为验证 + 打包 unsigned bundle + 算 digest | **是** | **仅测试账号**（复用 broker 注入，adapter 仍看不到凭证值） | **容器隔离 + 无生产密钥**（dev-sideload-fetch 的服务端类比，ADR-002 §2.5） | #1（broker 不泄值）/#5 |
+| **C. 签名**（离线，维护者） | 对 digest 做 YubiKey PIN+触碰签名 → `signature.json` | 否 | 否（私钥在硬件） | **离线气隙 + 硬件 token**，私钥连服务器都不上 | #4（ADR-002 §2.3） |
+| **D. 公网分发端点**（`server/src/public` / CDN） | 客户端拉 signed bundle + catalog + revocation | 否 | **否（根本不放）** | **无状态、零凭证**，可退化为静态 CDN | #2 |
+
+> **正交提醒**：运行时的 `server/src/campus`（校内授权中继，带真实凭证取私密数据，红线 #3）与本文的**分发**无关——分发管"把签名包送到客户端"，中继管"运行时取数"。本文不改中继。
+
+**关键不变量**：B（跑未签名 adapter 做审查）与 D（客户端拉包的公网端点）**必须是不同信任域**——不因 B 要跑 adapter 就让面向客户端的 D 持有凭证/状态；C（签名私钥）**不上任何服务器**，即便 A/B/D 全被投毒也偷不到签名权。
+
+### 2.2 分级审计与流水线
+
+```
+社区暂存仓库 A
+  → CI:语法审查 + 性能审查（纯静态 / 沙箱，无凭证）          ← 自动
+  → 人工「简单」安全审查                                     ← 门 1（分级：见下）
+  → 合入「官方 main」（源真相，尚未签名）
+  ─────────────────────────────────────────────
+  → 同步到审查沙箱 B:容器跑 adapter 二次审查（测试账号）      ← 门 2
+  → 打包（unsigned bundle + digest）
+  → 离线 C:YubiKey 签 official + 更新发布台账                ← 签名门 = 门 2 的产物 + 人工触碰
+  → 推到公网端点 D（零凭证静态产物）
+  → 客户端验签 → 查吊销 → 加载
+```
+
+**审查强度分级**（呼应「已确认审查分级前提」）：
+
+| adapter 形态 | 门 1（进 main） | 门 2 + 签名（成 official） |
+|---|---|---|
+| **parser**（无网络、无凭证、纯解析） | 快车道:审查面仅 index.js 映射逻辑（stdlib 是宿主代码，不在包内，见 §2.4） | 沙箱跑夹具比对 golden + 签名 |
+| **fetch**（凭证注入、白名单出网） | 慢车道:重度人工安审（凭证作用域、allow、无副作用），红线 #1 承重 | 沙箱用**测试账号**端到端跑 + 逐项安全清单 + 签名 |
+
+**两条必守不变量**（否则 ADR-010「非代码市场」立论崩）：
+
+1. **签名门 = 门 2 的人工二次审查。** "打包"里的签名必须由持 YubiKey 的维护者**在场触碰**执行,**不得**在审查沙箱 B 上放签名私钥自动签——否则投毒 B = 偷到签名权。
+2. **合入 main ≠ 已签名。** main 是源真相；签名是之后一个受门控的 release 动作（ADR-002 §2.3 release owner 显式签）。
+
+### 2.3 打包与签名途径（离线 YubiKey，落地 ADR-002 §2.3）
+
+- **打包产物 = 规范化 bundle + `signature.json`（detached）**。bundle 规范化 digest 规则已由 ADR-002 §2.3 钉死（字典序 / LF / UTF-8 NFC / 双层 SHA-256），`tools/src/signer` 已实现确定性 digest。
+- **签名 = 离线手动一步**：B 产出 unsigned bundle + digest → 维护者在离线机上**本地重算 digest 确认与 B 一致**（digest 确定性，可独立复现）→ YubiKey **PIN + 物理触碰**对 `{digest, tier=official, adapterId, adapterVersion}` payload 签 Ed25519 → 落 `signature.json`。
+- **实现接缝**：`tools/src/signer` 既有 `SignBackend` 抽象（`sign(payload)→base64`）。新增 `YubiKeySignBackend`（走 PIV/PKCS#11，取**裸 64 字节 Ed25519 签名**以对齐现有 `verifyAdapter`）。`KmsSignBackend` 骨架废弃或删除。**验签侧完全不动。** 🔒 人工闭环。
+- **密钥备份/丢失**：≥2 把 YubiKey，**各持独立密钥**，全部公钥预埋（1 active + 余 dormant，复用 ADR-002 §2.3 多公钥机制）。丢一把 → 晋升 dormant（随发版）。物理异地备份。
+- **审计台账**：无云端逐次日志，改用 **git 跟踪的发布台账**（`adapters-release-ledger` 或仓内文件），每次签名追加一行 `adapterId / version / digest / date / keyId / 签署人`,提交进仓。
+- **过渡**：`YubiKeySignBackend` 就位前，dev/staging 用 `LocalDevSignBackend`（软密钥，产物不分发终端）。**首次面向用户 release 前硬件签必须就位**（ADR-002 §2.3 硬 deadline）。
+
+### 2.4 解释器版本同步与安全（stdlib 走 B-host + append-only）
+
+adapter 依赖两层宿主运行时:**QuickJS 引擎**（ADR-005，双端同引擎）+ **`elecon:html` stdlib**（`adapters/_stdlib/html.bundle.js`，宿主注入，**不随 adapter 分发**）。包与客户端各自发版后，二者版本偏斜会破坏确定性与「双端不漂移」。
+
+**决策:stdlib 由宿主提供（B-host），不打进 adapter 包。** 理由（决定性的是前两条）：
+
+1. **审查面收缩**:社区 parser 包里**只有 index.js 映射逻辑**,htmlparser2/css-select 是**宿主已审计代码**,不进社区供应链。反案（打进包）会放大审查面 + 攻击面（包内可夹带被改的 stdlib，须逐字节比对才发现）。
+2. **App Store 立场更硬**:真正的"代码能力"（HTML 解析）在 **app 二进制里、随发版审核**;网上拉的只是薄映射，离 2.5.2「下载代码改变功能」更远。
+3. stdlib 安全修复**一次发版全体生效**，不用重签所有 adapter。
+4. 包体积小。
+
+**版本偏斜消化（最简模型，不用复杂 range）**：
+
+| 机制 | 做法 |
+|---|---|
+| adapter 声明 | manifest 新增 `runtime.stdlibMin`（如 `"1.2.0"`），声明"至少需要 stdlib 此版本"。此字段在 manifest → **已被签名 digest 覆盖** |
+| 双端锁步 | 每次 release，client 与 server 打**同一个 stdlib 版本**（从同一源构建），保住双端不漂移 |
+| 加载器强制 | 两端加载器:本端 stdlib 版本 `< stdlibMin` → **fail-closed 拒载**（提示需升级 app） |
+| stdlib 纪律 | stdlib 独立 semver + **append-only**:老 API 永不删改、只增 → 高版本恒能跑低版本 adapter，前向兼容自动成立 |
+| QuickJS 引擎 | 引擎版本同理随发版双端锁步;引擎升级视为发版级变更（影响面测试 + golden 复跑），adapter 不声明引擎版本（假设宿主引擎恒兼容既有 ES 子集） |
+
+`runtime.stdlibMin` 是**契约新增**（红线 #6，向后兼容:纯新增可选字段，缺省=不设下限）。
+
+**残余风险**:append-only 是**硬承诺**——一旦破坏（改了老 API 行为），已签名的老 adapter 会在新 stdlib 上静默漂移。须以 stdlib golden 测试 + CI 钉死"老 API 行为不变"。
+
+### 2.5 catalog 作为契约新增（签名分发清单）
+
+客户端需要一份索引才知道有哪些 adapter、版本、digest、下载地址 = **catalog**。它被**可信核心验签消费、fail-closed**，与 manifest schema 同等承重,故**作为契约新增**:
+
+- 新增 `contract/catalog.schema.json`（catalog 条目:`adapterId / adapterVersion / digest / url / stdlibMin / capabilities[]`）+ validator + golden。红线 #6，由本 ADR 引入。
+- **catalog 本身须签名**（同 Ed25519 + pin 公钥体系）+ 带 `sequence` **防回滚** + TTL + last-good 回退——与 revocation list **共用同一「signed distribution manifest」模式**（复用 `tools/src/signer/revocation.ts` 的 `sequence`/`pickNewer`/TTL 机器）。未签名/可回滚的 catalog 可被 CDN 中间人替换成"指向旧的有漏洞版本"。
+- **硬约束:catalog 不得引入新 capability id。** validator 对着 `contract/capability/registry.json` 强制:catalog 里每个 capability 必须已在 registry（既有能力集内）。新 capability/新卡片类型**只能随 app 发版改 registry**（ADR-010 §2.1，守住 §3.3.2(a) 立论）。
+
+### 2.6 客户端加载器设计
+
+- **fail-closed 顺序（不可改）**:取 catalog → **验 catalog 签名 + sequence 不回滚** → 下载 bundle → **重算 digest 比对** → **Ed25519 验签（active pin 公钥）** → **查 revocation**（TTL / last-good / kill-switch / minVersion）→ **校验 `stdlibMin` ≤ 本端 stdlib** → 由签名裁定档位 → 交 QuickJS。任一步失败即拒、不加载。
+- **内容寻址缓存**:以 `digest` 为缓存 key——天然抗篡改、去重、支持回滚校验。**不得"验一次缓存永久信任"**:每次加载以内容寻址保证加载的就是验过的字节。
+- **原子更新**:下载须先验签再落地，杜绝加载半个 bundle。
+- **bundle 预置基线（ADR-010 硬要求）**:app 内打包一组**已签名 baseline adapter + 初始 catalog + 初始 revocation list**,首启/离线可用;远程拉取仅用于"更新/新增数据源"。审核员在提交 build 上即可走通核心功能。
+- **平台节奏（建议，待定）**:远程拉取 **Android 先行**;iOS 首版可只用预置基线，待重做 2.5.2(a) 自检后再开远程更新（与 ADR-016 平台门禁同思路）。
+
+### 2.7 与 App Store 合规的联动（继承 ADR-010）
+
+- 「非代码市场」依赖 **release 无侧载入口 + 仅官方签名分发**。社区仓库 A 是**公开但未签名**素材，非 app 内第三方代码商店——只要加载器只从官方签名渠道（D）加载、且不从任意 URL 拉 adapter，立论成立。
+- 热推只换"数据源映射"、不引入功能:由 §2.5 catalog 不得引入新 capability + §2.4 stdlib/引擎能力在 app 内 共同强制。
+
+### 2.8 单个 adapter 项目结构与 adapters 仓库组织
+
+**单个 adapter 项目**（沿用现 `adapters/school-xidian`、`school-xjt`,越薄越好）:
+
+```
+school-<id>/
+  manifest.json      契约声明(capability / network.allow / mode / trustTier / runtime.stdlibMin / credentials / login)
+  index.js           QuickJS ES module,导出 capabilities;仅归一化逻辑,import 仅 `elecon:html`
+  fixtures/          脱敏抓包样本(golden 输入/输出);真实数据 gitignore,scanner 强扫 PII(红线 #8)
+  README.md          该校信息 / 已知坑
+  [FLOW.md]          可选:多步 fetch 流程说明(如 xjt)
+```
+
+- **`signature.json` 不在项目源码里**——它是**签名阶段（C 域）生成的 detached 产物**,不进社区仓库,由离线签名产出后随 bundle 分发。
+- **stdlib 不在项目里**(B-host,§2.4):`index.js` 只 `import 'elecon:html'`,不打包解析器。
+- **fixtures / README / FLOW.md 是开发期产物,不进交付 bundle**(signer `BUNDLE_EXCLUDE` 已排除 fixtures,§2.9)。
+
+**两仓库、两组织、两可见性（2026-07-15 定）**:
+
+| 仓库 | 组织 / 可见性 | 持有（源真相） | 说明 |
+|---|---|---|---|
+| **私有核心仓 `elecon`** | 主组织 / **private** | **contract**（红线 #6 承重）、**`_stdlib`**（受信任宿主代码）、**`tools/validator`+`scanner`**（闸门逻辑）、client/server 核心、签名、ADR | 一切**受治理 / 受信任**之物;社区改不动自己的闸门 |
+| **公开 adapters 仓 `elecon-adapters`（A 域）** | **另一组织 / public** | `adapters/school-*`、`_template`、`CONTRIBUTING`、CI 配置 | 纯社区**创作面**（薄 adapter）;`main` 分支 = 官方 adapter 源真相 |
+
+**所有权归属（2026-07-15 收回 elecon）**:contract / stdlib / validator / scanner 的**源真相全部在私有核心仓**,不落公开仓——因为 stdlib 最终打进受信任 app 二进制、contract 是红线 #6 承重、validator 是闸门逻辑,若住在社区 PR 会落地的公开仓,一个恶意 PR 即可投毒受信任组件或削弱自身闸门。
+
+**核心 → A 的只读发布（取代原「私有子模块 pin」——私有主仓 + 公开 A 下子模块会断掉外部贡献者）**:核心把 pin 版本的 **contract + stdlib（bundle + `elecon:html` 类型面）+ validator/scanner** 单向发布给 A,供贡献者本地按固定契约创作/校验:
+
+- **MVP:CI 镜像 / vendored 快照**（低基建,单向同步 job,零 npm 发布）。
+- **后续:npm 包**（`@elecon/contract` / `@elecon/stdlib-html` / `@elecon/adapter-kit`,更干净的 `npm i`,待发布流水线就位再上）。
+
+```
+elecon-adapters/（public,另一组织）
+  adapters/
+    _template/                   脚手架(fetch / parser 两模板)
+    school-<id>/ …               各校 adapter(见上)
+  vendor/  (或 node_modules 经 npm)  【只读:核心发布的 pin 版 contract + stdlib + validator/scanner】
+  .github/workflows/             CI:validate + scan + digest 预检(§2.10);无任何签名能力
+  CONTRIBUTING.md                贡献指南 + 分级审查说明(§2.2)
+```
+
+- **消费方向单向**:契约/stdlib/闸门由私有核心定,A 只读消费;**签名向的构建拉取**（核心 → 从 A 的 main 拉源做审查/打包/离线签,§2.1 B/C 域）也是单向,私有产物不外泄。这也是 ADR-002 §2.3「开源走独立仓库」纵深防御的一层。
+- PR 通过 CI + 人工门 1 → 合入 A 的 **main = 官方 main**(此时**仍未签名**,§2.2)。
+
+### 2.9 交付给用户的包形态（signed bundle）
+
+发放给用户的**不是**整个项目目录,而是**签名 bundle**:
+
+- **内容 = digest 覆盖的运行时文件 + detached 签名**:`manifest.json` + `index.js`(+ 运行时资产,若有)+ `signature.json`。**fixtures / README / FLOW.md / node_modules 一律剔除**(signer `BUNDLE_EXCLUDE`)。
+- **内容寻址**:catalog 以 `digest`(ADR-002 §2.3 规范化双层 SHA-256)标识每个 bundle 版本;客户端拿到字节 → 重算 digest → 验签 → 交 QuickJS(§2.6)。
+- **容器封装**:on-wire 容器(确定性 archive 或 files-envelope)的具体格式留加载器/契约实现 PR 敲定,但**硬约束在此定**:① 只含 digest 覆盖文件 + 签名;② 可复现 §2.3 规范化 digest;③ 验签 fail-closed。
+- **预置基线同格式**:app 内预置的 baseline adapter 用同一 bundle 格式(§2.6),保证在线更新与离线基线一致可验。
+- **stdlib 不在 bundle 内**(B-host):运行时由宿主注入,版本经 `stdlibMin` 协商(§2.4)。
+
+### 2.10 语法 / 静态检查的方式（展开 §2.2 门 1 CI,复用既有 `tools/`）
+
+门 1 的"语法审查"是**纯静态、无凭证、可自动**的一层,复用 `tools/validator` + `tools/scanner` + 编译检查:
+
+| # | 检查 | 手段 |
+|---|---|---|
+| 1 | **manifest schema 合法** | ajv(`tools/validator`):结构 + `trustTier`/`mode` 组合 + **拒 `sideload+fetch`** + capability id ∈ `capability/registry.json` + `stdlibMin` 语义 + **`credentials.scope ⊆ network.allow`** 等包含关系 |
+| 2 | **JS 可编译 + import 白名单** | index.js 作为 ES module 解析(esbuild/acorn 或 QuickJS compile 空跑);**import 仅允许 `elecon:html`**,禁止任意外部/相对 import |
+| 3 | **parser 档源码静态检查**(ADR-002 §2.6 闸门) | AST 扫描:parser adapter 不得出现网络/凭证/副作用 API(`fetch`/XHR/`eval`/`Function`/`globalThis` 逃逸等) |
+| 4 | **fixtures 脱敏扫描**(红线 #1/#8) | `tools/scanner`:真实学生数据(PII)**一律拒** + **凭证等价物模式扫描**(ticket / JSESSIONID / Set-Cookie / openid 等,接 Track B B8 token-pattern);**强制通过方可合并** |
+| 5 | **digest 预检** | 算规范化 digest(不签,只算),作后续离线签名的比对基线,防"审的和签的不是同一字节" |
+| 6 | **golden 一致(轻量)** | 对 fixtures 跑 adapter,产出须等 golden;parser 可在 CI 轻量比对,fetch 端到端留沙箱 B(§2.2) |
+
+> **边界**:语法/静态检查是"能否解析 / 是否越权"的**静态门**,**不等于**人工安全审查(门 1 的人工部分)或行为审查(沙箱 B)。三者是纵深防御的不同层,缺一不可。
+>
+> **🔒 MVP 不可推迟项(红线 #1)**:fixtures 一进**公开**仓库,凭证等价物即时外泄风险生效。故上表第 4 项的**「拒绝凭证等价物 + PII」门必须随 MVP 就位**——录制/脱敏**工具**可推迟(§2.11 Phase 3),但这道**门**不可推迟(§2.11)。现有 xidian(公开通知无凭证)/ xjt(反爬 `client_id` 非学生凭证)夹具已安全,可先搬;此门须在任何**带凭证** adapter 落公开仓**之前**生效。
+
+### 2.11 分期落地（MVP 优先,逐步填空白）
+
+分离先立起来,签名远程分发那套重机器逐步填。三期:
+
+| 期 | 目标 | 含 | 消费方式 |
+|---|---|---|---|
+| **MVP（先做）** | 公开 A 成为 adapter 创作/校验之家 | A 脚手架 + 搬 xidian/xjt + `_template` + CONTRIBUTING;核心→A **镜像** pin 的 contract/stdlib/validator(§2.8);CI §2.10 静态子集(schema + 编译 + import 白名单 + **PII/凭证等价物扫描** + digest) | **核心构建期从 A 拉 adapter**(沿用现 vendored,跑现有 sandbox smoke)——**先不上签名远程分发** |
+| **Phase 2** | 签名远程分发 | YubiKey 签名(§2.3)+ bundle 格式(§2.9)+ catalog(§2.5)+ 客户端加载器(§2.6)+ 公网端点 D | 客户端验签→查吊销→远程加载 + 预置基线 |
+| **Phase 3** | 开发者测试层 + 采纳自动化 | 测试 harness CLI(复用零漂移沙箱)+ 夹具/golden 约定 + **fetch 夹具录制/脱敏工具** + 沙箱 B 自动化 + npm 包发布 | — |
+
+- **MVP 本质**:"分离"立即成立(公开创作面 + 静态 CI + 核心构建期消费),不阻塞于重机器。
+- **不可推迟的安全底线随 MVP 走**(§2.10 注):凭证等价物/PII 扫描门。
+- Phase 2/3 各自可再拆小 PR(见 §4);顺序上 **契约先行**(`stdlibMin` + catalog schema)。
+
+---
+
+## 3. 已知约束与风险（Consequences）
+
+1. **安全敏感承重路径（红线 #1/#2/#4）。** 签名（C）、加载器验签顺序（§2.6）、审查沙箱凭证隔离（B）**不得 AI 独自闭环**;实现与测试须人工主导 + 安全清单 + ≥1 人工审。
+2. **采纳规模化瓶颈。** 采纳=人工审查+签名,正是 ADR-000 要减的人力。缓解:parser 快车道（审查面小，§2.2）+ fetch 慢车道分级;绝大多数社区 adapter 是 parser。规模再大时的取舍留后续 ADR。
+3. **签名单人瓶颈/SPOF。** 离线 YubiKey 把签名系于持 token 的人。缓解:≥2 把 token（各自密钥、均预埋）+ 异地备份（§2.3）;急性事件靠 kill-switch/吊销（ADR-002 §2.4）。无云端审计,靠 git 台账 + 人工纪律。
+4. **stdlib append-only 是硬承诺。** 破坏即令已签名老 adapter 静默漂移（§2.4）。须 stdlib golden 钉死老 API 行为不变;引擎升级视为发版级变更、复跑 golden。
+5. **catalog / 分发端点是攻击面。** catalog 未签名/可回滚 → CDN 中间人可降级到有漏洞版本。已以"catalog 签名 + sequence 防回滚 + last-good"封（§2.5）。公网端点 D 严守零凭证/无状态（红线 #2）。
+6. **契约新增（红线 #6）。** 本 ADR 引入 `runtime.stdlibMin`（manifest schema）+ `contract/catalog.schema.json`,均向后兼容（纯新增）。实现须同步 `tools/` validator + 双端 golden。
+7. **审查沙箱 B 跑未签名 fetch adapter + 注入。** 是 ADR-002 §2.5 dev-sideload-fetch 的服务端类比,**仅测试账号**;B 不是 release 二进制，故可跑,但须与 D、C 分域,且测试账号绝不用真实学生凭证（红线 #1/#8）。
+8. **App Store 依赖 ADR-002/010 落地状态。** 硬件签就位前 iOS release 不得开启任何远程/未签名 adapter 加载路径,否则 §3.3.2(b) 立论不成立（ADR-010 §7）。
+9. **跨组织/私有-公开供应链（§2.8）。** 私有核心构建期消费公开仓 A 的社区 adapter——由分级审查 + 签名门兜(§2.2)。核心→A 的**镜像发布 job** 是新面:须单向、只读、pin 版本;绝不反向(A 不得回写 contract/stdlib/validator)。受信任组件(contract/stdlib/闸门)源真相留私有核心(§2.8 所有权),社区 PR 触不到。残余:MVP 镜像为手工/CI 快照,版本漂移靠 pin + 发布纪律,npm 化后收敛(§2.11 Phase 3)。
+
+---
+
+## 4. 落地清单（本 ADR 已接受，拆成可审查的小 PR 落地）
+
+> 🔒 = 安全敏感（人工主导、AI 仅辅助）。
+
+- **契约**（红线 #6，先落）:`contract/manifest.schema.json` 增 `runtime.stdlibMin`（可选）;新增 `contract/catalog.schema.json` + golden;validator 补「catalog capability ⊆ registry」「stdlibMin 语义」校验。
+- 🔒 **signer**:`YubiKeySignBackend`（PIV/PKCS#11，裸 64B Ed25519）接既有 `SignBackend`;废弃 `KmsSignBackend`;catalog 签名/验签复用 revocation 的 `sequence`/`pickNewer`/TTL。
+- 🔒 **审查沙箱 B**:容器化 adapter 运行 + 测试账号 broker 注入 + 性能/行为审查;与 D/C 分域部署。
+- 🔒 **客户端加载器**:§2.6 fail-closed 顺序 + 内容寻址缓存 + 原子更新 + `stdlibMin` 校验 + 预置基线 bootstrap。双端（Dart client / 若需 TS）共享裁定逻辑。
+- 🔒 **公网端点 D**:`server/src/public` 分发 signed bundle + catalog + revocation（静态、零凭证、TTL）。
+- **stdlib 纪律**:stdlib 独立 semver + append-only CI 门（golden 钉老 API 行为）;client/server stdlib+引擎版本锁步构建。
+- **社区仓库 A（另一组织 / public，MVP 优先，§2.11）**:公开仓脚手架 + **核心→A 镜像发布** pin 版 contract/stdlib/validator（§2.8，取代私有子模块）+ CI（validator/scanner/digest 预检，**无签名能力**）+ 贡献指南 + fixtures **PII/凭证等价物强制扫描**（红线 #1/#8，MVP 不可推迟）+ 搬 xidian/xjt。
+- **静态检查扩展**（§2.10）:validator 补 index.js **可编译 + import 白名单（仅 `elecon:html`）** + **parser 档 AST 越权扫描**（无网络/凭证/副作用 API，ADR-002 §2.6 闸门）。
+- **bundle 容器格式**（§2.9）:定义确定性 on-wire 封装 + 「只含 digest 覆盖文件、剔除 fixtures/docs、可复现 §2.3 规范化 digest」校验;预置基线同格式。
+- **发布台账**:git 跟踪的签名台账格式 + 流程文档。
+- **测试**:catalog 验签/防回滚正反例、加载器 fail-closed 各步、stdlibMin 拒载、内容寻址缓存不被绕过、预置基线离线可用;🔒 安全敏感测试人工编写或实质审阅。
+- **文档**:更新 `adapters/README.md`（分离后的贡献路径）、ADR-007（分发端点形态）联动。

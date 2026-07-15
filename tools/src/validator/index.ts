@@ -98,6 +98,8 @@ interface Manifest {
   adapterId: string;
   trustTier: "official" | "sideload";
   mode: "fetch" | "parser";
+  /** 运行时声明。stdlibMin=依赖的 elecon:html stdlib 最低版本（ADR-018 §2.4）。可选。 */
+  runtime?: { engine?: string; entry?: string; stdlibMin?: string };
   network: { allow: string[] };
   /** 凭证引用声明（ADR-013）。可选；缺省即无凭证注入。 */
   credentials?: Record<string, CredentialDecl>;
@@ -111,6 +113,23 @@ interface Contract {
   registry: Record<string, RegistryEntry>;
   /** 按 schema $id 取域 schema 的校验函数；未落盘的返回 undefined。 */
   schemaFor: (id: string) => ValidateFunction | undefined;
+  /** 当前可用的 elecon:html stdlib 版本（读自 adapters/_stdlib/package.json）；读不到=null（C10 降级为 warn）。 */
+  stdlibVersion: string | null;
+}
+
+/**
+ * 极简 semver 比较（仅 x.y.z 数字段）。**刻意自包含**——不依赖 `tools/src/signer`，
+ * 因为签名工具属私有核心、不随镜像发布给公开 adapters 仓（ADR-018 §2.8 所有权），
+ * validator 必须能在镜像后的公开仓独立运行。
+ */
+function cmpSemver(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d > 0 ? 1 : -1;
+  }
+  return 0;
 }
 
 // ---- 契约加载 ----
@@ -141,10 +160,20 @@ function loadContract(): Contract {
     }
   }
 
+  // 当前 stdlib 版本（供 C10 stdlibMin 校验）。读不到不致命 → null，C10 降级 warn。
+  let stdlibVersion: string | null = null;
+  try {
+    const pkg = readJson<{ version?: string }>(join(repoRoot, "adapters", "_stdlib", "package.json"));
+    stdlibVersion = typeof pkg.version === "string" ? pkg.version : null;
+  } catch {
+    stdlibVersion = null;
+  }
+
   return {
     manifestValidate,
     registry: registryRaw.capabilities,
     schemaFor: (id) => ajv.getSchema(id) as ValidateFunction | undefined,
+    stdlibVersion,
   };
 }
 
@@ -152,7 +181,7 @@ function loadContract(): Contract {
 
 export function checkManifest(
   manifest: Manifest,
-  contract: Pick<Contract, "manifestValidate" | "registry">,
+  contract: Pick<Contract, "manifestValidate" | "registry"> & { stdlibVersion?: string | null },
 ): Finding[] {
   const findings: Finding[] = [];
 
@@ -166,6 +195,25 @@ export function checkManifest(
       });
     }
     // schema 不合规时后续按字段假设可能不成立，但仍尽量继续给出更多线索
+  }
+
+  // C10 stdlibMin ≤ 当前可用 stdlib 版本（ADR-018 §2.4 B-host + append-only）。
+  // stdlibMin 可选;声明了但高于当前 stdlib → 加载器会 fail-closed 拒载，作者期即拦。
+  const stdlibMin = manifest.runtime?.stdlibMin;
+  if (stdlibMin) {
+    if (contract.stdlibVersion == null) {
+      findings.push({
+        level: "warn",
+        code: "C10_stdlib_version_unknown",
+        message: `声明 runtime.stdlibMin=${stdlibMin}，但读不到当前 stdlib 版本，跳过校验`,
+      });
+    } else if (cmpSemver(stdlibMin, contract.stdlibVersion) > 0) {
+      findings.push({
+        level: "error",
+        code: "C10_stdlibmin_too_high",
+        message: `runtime.stdlibMin=${stdlibMin} 高于当前可用 stdlib ${contract.stdlibVersion}：加载器将 fail-closed 拒载（ADR-018 §2.4）`,
+      });
+    }
   }
 
   // C3 sideload ⟹ parser（红线 #5）

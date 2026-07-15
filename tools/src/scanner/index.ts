@@ -7,8 +7,10 @@
  *  P2 中国大陆手机号（1[3-9] + 9 位）
  *  P3 学号（连续 8–12 位数字，且上下文含 学号/studentId/xh 等提示词）
  *  P4 邮箱（真实姓名拼音@真实域名——只报告，人工判断）
- *  P5 疑似真实会话凭证（JSESSIONID / CASTGC / token= 后跟长随机串）
+ *  P5 疑似真实会话凭证 / 凭证等价物（JSESSIONID / CASTGC / token / ticket / openid /
+ *     SAMLResponse … `=` 后跟长随机串；红线 #1 等价物，ADR-018 §2.10 MVP 不可推迟门）
  *  P6 银行卡号（16–19 位，Luhn 校验通过）
+ *  P7 CAS 裸票据（ST-/TGT-/PT-/PGT- 前缀，常见于重定向 Location / 日志，无 `ticket=` 前缀；红线 #1）
  *
  * **判据取向**：宁可误报（warn）也不漏报安全项（error）。身份证 / 银行卡（有校验位、
  * 几乎不可能是脱敏占位）判 error；手机号 / 学号 / 凭证判 error；邮箱判 warn（占位邮箱常见）。
@@ -153,9 +155,9 @@ export function scanLine(line: string): PiiFinding[] {
     }
   }
 
-  // P5 会话凭证
+  // P5 会话凭证 / 凭证等价物（红线 #1；含 CAS/SSO 换票链的 ticket / openid / SAML）
   for (const m of line.matchAll(
-    /(JSESSIONID|CASTGC|CASPRIVACY|access_token|refresh_token|token)\s*[=:]\s*["']?([A-Za-z0-9._-]{16,})/gi,
+    /(JSESSIONID|CASTGC|CASPRIVACY|CASST|access_token|refresh_token|id_token|oauth_token|token|ticket|openid|SAMLResponse|SAMLart|TGC)["']?\s*[=:]\s*["']?([A-Za-z0-9._%+/-]{16,})/gi,
   )) {
     const name = m[1] ?? "";
     const val = m[2] ?? "";
@@ -163,8 +165,21 @@ export function scanLine(line: string): PiiFinding[] {
       out.push({
         level: "error",
         code: "P5_session_credential",
-        message: `疑似真实会话凭证（${name}）`,
+        message: `疑似真实凭证/凭证等价物（${name}，红线 #1）`,
         sample: mask(val),
+      });
+    }
+  }
+
+  // P7 CAS 裸票据（ST-/TGT-/PT-/PGT-/PGTIOU- + 计数段 + 随机段；无 `ticket=` 前缀也拦）
+  for (const m of line.matchAll(/\b(ST|TGT|PT|PGT|PGTIOU)-\d+-[A-Za-z0-9._-]{8,}/g)) {
+    const v = m[0];
+    if (!looksLikePlaceholder(v) && !exempt) {
+      out.push({
+        level: "error",
+        code: "P7_cas_ticket",
+        message: "疑似 CAS 票据等价物（ST/TGT/PT，红线 #1）",
+        sample: mask(v),
       });
     }
   }

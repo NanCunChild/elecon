@@ -67,6 +67,28 @@ function codes(findings: { code: string }[]): string[] {
 
   const cas = scanLine('CASTGC="TGT-1234567890abcdef-abcdef1234567890-xyz"');
   assert.ok(codes(cas).includes("P5_session_credential"), "CASTGC 应命中 P5");
+
+  // 凭证等价物（ADR-018 §2.10 MVP 不可推迟门）：CAS 换票链的 ticket / openid / SAML
+  const ticket = scanLine("Location: https://ehall.x.edu.cn/?ticket=ST-987654-aBcDeFgHiJkLmNoPqRsT");
+  assert.ok(codes(ticket).includes("P5_session_credential"), "ticket= 应命中 P5（凭证等价物）");
+
+  const openid = scanLine('"openid": "oOabcd1234efGH5678ijKL"');
+  assert.ok(codes(openid).includes("P5_session_credential"), "openid 应命中 P5（凭证等价物）");
+
+  const saml = scanLine("SAMLResponse=PHNhbWxwOlJlc3BvbnNlIHhtbG5zOnNhbWxw");
+  assert.ok(codes(saml).includes("P5_session_credential"), "SAMLResponse 应命中 P5（凭证等价物）");
+}
+
+// ---- P7 CAS 裸票据（无 ticket= 前缀，重定向 Location / 日志）----
+
+{
+  const st = scanLine("redirect -> ST-123456-aBcDeFgHiJkLmNoP-cas01");
+  assert.ok(codes(st).includes("P7_cas_ticket"), "裸 ST- 票据应命中 P7");
+  assert.strictEqual(st.find((f) => f.code === "P7_cas_ticket")?.level, "error");
+
+  // 占位/示例豁免
+  const exempt = scanLine("example ticket ST-000000-xxxxxxxxxxxx // fixture");
+  assert.ok(!codes(exempt).includes("P7_cas_ticket"), "示例行应豁免 P7");
 }
 
 // ---- P6 银行卡 Luhn ----

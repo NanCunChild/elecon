@@ -563,4 +563,37 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ sideload 声明 ssoMint via 被拒（M5，红线 #5/#1 门禁）");
 }
 
+// C10) runtime.stdlibMin 高于当前 stdlib → error；≤ 当前 → 无 C10；版本未知 → warn（ADR-018 §2.4）
+{
+  const base = {
+    adapterId: "school-x",
+    trustTier: "official" as const,
+    mode: "parser" as const,
+    network: { allow: ["https://x.edu.cn/*"] },
+    capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+  };
+
+  const tooHigh = checkManifest(
+    { ...base, runtime: { engine: "quickjs", entry: "index.js", stdlibMin: "2.0.0" } },
+    { manifestValidate, registry, stdlibVersion: "1.0.0" },
+  );
+  assert.ok(codes(tooHigh).includes("C10_stdlibmin_too_high"), "stdlibMin 高于可用 stdlib 应触发 C10");
+
+  const ok = checkManifest(
+    { ...base, runtime: { engine: "quickjs", entry: "index.js", stdlibMin: "1.0.0" } },
+    { manifestValidate, registry, stdlibVersion: "1.2.0" },
+  );
+  assert.ok(!codes(ok).includes("C10_stdlibmin_too_high"), "stdlibMin ≤ 可用 stdlib 不应触发 C10");
+
+  const unknown = checkManifest(
+    { ...base, runtime: { engine: "quickjs", entry: "index.js", stdlibMin: "1.0.0" } },
+    { manifestValidate, registry, stdlibVersion: null },
+  );
+  assert.ok(codes(unknown).includes("C10_stdlib_version_unknown"), "stdlib 版本未知应 warn（C10）");
+
+  const absent = checkManifest({ ...base, runtime: { engine: "quickjs", entry: "index.js" } }, contract);
+  assert.ok(!codes(absent).some((c) => c.startsWith("C10")), "未声明 stdlibMin 不应触发任何 C10");
+  console.log("  ✓ stdlibMin 版本门校验（C10，ADR-018 §2.4）");
+}
+
 console.log("validator smoke 全部通过。");

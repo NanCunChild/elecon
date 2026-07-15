@@ -1,9 +1,9 @@
 # ADR-002：插件信任模型（签名 / 吊销 / dev 侧载闸门）与能力分档（official / sideload）
 
 - **状态**：已接受（Accepted） 2026-06-13 经人工安全检查清单全项确认后接受。实现仍须按 AGENTS.md §1 人工主导（红线 #1/#4/#5 承重路径）。
-- **日期**：2026-06-11（**修订 2026-06-12**：补 §2.3 签名时档位来源与签名权、公钥轮换搭发版、§2.4 吊销 bootstrap、§2.1 community 取舍——回应人工复核 1–4）（**修订 2026-06-13**：**砍掉 community 档**（社区走 sideload、官方均 official）、§2.3 签名密钥改 **OIDC→AWS KMS 委托签名** + **多公钥预埋分批启用**、§2.5 release 编译期剔除侧载、§2.6 `ctx.fetch` 改"存在但档位校验"——落 #10 评审决策）（**修订 2026-06-13b**：§2.3 **钉死规范化规格**（字典序/LF/UTF-8 NFC/无 trailing newline 篡改）、KMS 硬 deadline = 首次 release 前、dormant 公钥晋升**纯发版**不做热推启用声明）（**修订 2026-06-14**（人工 owner 决策）：① §2.5 **dev/debug build 允许无签名 adapter 跑 fetch**——release 仍 official 独占 fetch，dev 用强警告 + 全占用确认兜底，侧载-fetch 路径编译期从 release 剔除（同步红线 #5 的 dev 例外）；② **community 档从 manifest schema 彻底移除**（不再保留枚举位），契约同步改 `contract/manifest.schema.json` + ADR-001 §5）
+- **日期**：2026-06-11（**修订 2026-06-12**：补 §2.3 签名时档位来源与签名权、公钥轮换搭发版、§2.4 吊销 bootstrap、§2.1 community 取舍——回应人工复核 1–4）（**修订 2026-06-13**：**砍掉 community 档**（社区走 sideload、官方均 official）、§2.3 签名密钥改 **OIDC→AWS KMS 委托签名** + **多公钥预埋分批启用**、§2.5 release 编译期剔除侧载、§2.6 `ctx.fetch` 改"存在但档位校验"——落 #10 评审决策）（**修订 2026-06-13b**：§2.3 **钉死规范化规格**（字典序/LF/UTF-8 NFC/无 trailing newline 篡改）、KMS 硬 deadline = 首次 release 前、dormant 公钥晋升**纯发版**不做热推启用声明）（**修订 2026-06-14**（人工 owner 决策）：① §2.5 **dev/debug build 允许无签名 adapter 跑 fetch**——release 仍 official 独占 fetch，dev 用强警告 + 全占用确认兜底，侧载-fetch 路径编译期从 release 剔除（同步红线 #5 的 dev 例外）；② **community 档从 manifest schema 彻底移除**（不再保留枚举位），契约同步改 `contract/manifest.schema.json` + ADR-001 §5）（**修订 2026-07-15**（**经人工 owner 评审批准**，随 [`adr_018`](./adr_018_adapter_distribution.md) 一并接受）：**§2.3 签名密钥托管由「OIDC→AWS KMS 委托签名」改为「离线硬件密钥（YubiKey）本地签名」**——理由：AWS 连通性/成本对本项目体量不划算，且离线硬件签把私钥彻底移出任何服务器/CI，比 KMS 更贴合 §2.3「私钥永不落盒子 + 签 official=显式人工批准」的意图。签名机制细节与分发/审计管线随 [`adr_018`](./adr_018_adapter_distribution.md) 定；本 ADR 仅同步 §2.3/§3/§4 的对应描述。**验签侧（Ed25519 + 预埋 pin 公钥、fail-closed）与多公钥预埋/晋升机制完全不变。**）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§2.2 可信核心、§3.3 凭证边界、§3.4 传输底座）、[`adr_001_contract.md`](./adr_001_contract.md)（§5.2 信任档字段；community 策略原留给本文细化——本文**决定砍掉**，见 §2.1）
-- **被依赖**：[`adr_009`](./adr_009_fetch_credential.md)（fetch 模式凭证注入，trust tier 由本文裁定）、[`adr_003`](./adr_003_transport.md)（传输底座抽象，仅官方签名可加载）；并为 [`adr_010`](./adr_010_ios_appstore.md) 的 App Store 合规论点 (b)「非代码市场」提供支撑（无侧载入口 + 仅签名分发）。
+- **被依赖**：[`adr_009`](./adr_009_fetch_credential.md)（fetch 模式凭证注入，trust tier 由本文裁定）、[`adr_003`](./adr_003_transport.md)（传输底座抽象，仅官方签名可加载）、[`adr_018`](./adr_018_adapter_distribution.md)（adapter 分离/审计/打包/分发 + 解释器版本同步——落地本文 §2.3 的签名管线与 §2.4 的清单分发）；并为 [`adr_010`](./adr_010_ios_appstore.md) 的 App Store 合规论点 (b)「非代码市场」提供支撑（无侧载入口 + 仅签名分发）。
 - **适用范围**：adapter（QuickJS 脚本）与传输底座（原生模块）的**信任建立、能力分档、分发与吊销**。**不含** 凭证注入的具体脱敏机制（另文）、UI 信任（不在此）。
 
 ---
@@ -61,16 +61,16 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
   6. **哈希拼接**：`SHA-256(file1_bytes) || SHA-256(file2_bytes) || ...`（按上述顺序拼接各文件哈希后，对拼接结果再做一次 SHA-256 得到 **bundle digest**），Ed25519 签名此 digest + 裁定档位的 payload。
 - **签名时的档位来源 = 真正的信任根（不可含糊）。** §2.2 说「档位进签名载荷」，那么*签名那一刻*档位从哪来、谁有权签 official，才是整套机制的信任根，必须显式定，不能甩给"CI/release"四个字：
   - **档位不取自待签 bundle 的 manifest 自报**（那是 claim），而由**签名流程的显式决策**注入——即「签 official」是一个**需显式批准的动作**，由项目维护者（release owner）执行。
-  - **签名密钥托管：OIDC → 云 KMS 委托签名（初选 AWS KMS）。** official 私钥托管于 **AWS KMS / HSM**，**永不导出、绝不入仓、不以裸 GitHub secret 存放**。CI 经 **GitHub OIDC** 取得**短时效**联合身份后，向 KMS 请求**单次签名操作**（拿到的是签名结果，不是密钥）。这把「official 签名权」与「日常 CI 改动权」从**机制层**分离——能改 workflow ≠ 能拿到密钥；即便某次 CI run 被供应链投毒，也只能在持短 token 的窗口内请求有限签名，**偷不走密钥**。本仓库保持 private、开源走另一独立仓库只是**纵深防御的一层**，不替代密钥托管。
-  - **KMS 侧加固**：访问策略限定「仅受保护 tag / release workflow + 带 required reviewer 的 GitHub Environment」可触发签名 → 找回上一条要的**人工批准闸门**；KMS 自带**每次签名审计日志 + 速率限制 + 即时撤销访问**（密钥层 kill-switch）。
-  - **现状 / 过渡（硬 deadline：首次 release 前 KMS 必须就位）**：AWS KMS 托管**尚未 provision**。**开发阶段**（未发布的 dev/staging build）允许使用**本地简单 Ed25519 签名或 CI secret 签名**——此阶段产物不分发给终端用户，风险可控。**首次面向用户的 release 发布前，OIDC→KMS 管线必须就位**——这是硬 deadline，不可拖延至 release 后补。过渡期内的 CI 签名仍须走「受保护 Environment + required reviewer + 仅 tag 触发」，配合 §2.4 吊销 / kill-switch 兜底。
-  - 贡献者**不持任何私钥**。
+  - **签名密钥托管：离线硬件密钥（YubiKey）本地签名（2026-07-15 修订，取代原 OIDC→AWS KMS 方案）。** official 私钥**生成并驻留于硬件安全 token（YubiKey，PIV/PKCS#11 槽位，Ed25519）**，**永不导出、绝不入仓、不上任何服务器/CI**。签名是**离线手动一步**：维护者（release owner）在本地机上对 bundle digest（确定性规范化摘要，§2.3 规则）执行 **PIN + 物理触碰**签名，产出 detached `signature.json`。这把「official 签名权」从**一切自动化中彻底移除**——CI/服务器/审查沙箱即便被供应链投毒，也**够不到私钥、无法自动出签**（签名窗口 = 需人在场触碰硬件）。**为何弃 KMS**：AWS 连通性/成本对本项目体量不划算；离线硬件把私钥移出网络与云,较 KMS 的「短 token 委托」更彻底地满足「私钥永不落盒子」。
+  - **YubiKey 侧加固（等价 KMS 意图的落地）**：① **人工批准闸门** = PIN + 触碰本身（物理在场 = 显式批准，比 required-reviewer 更硬）；② **审计** = 无云端逐次日志，改用 **git 跟踪的发布台账**（每次签名记 `adapterId/version/digest/date/keyId/签署人`，提交进仓，见 [`adr_018`](./adr_018_adapter_distribution.md)）；③ **kill-switch / 撤销** = 走验签侧的公钥吊销 / kill-switch（§2.4）+ 多公钥晋升（§2.3 下条），不依赖密钥托管方的即时撤销。
+  - **现状 / 过渡（硬 deadline：首次 release 前硬件签必须就位）**：YubiKey 签名后端（`YubiKeySignBackend`，接 `tools/src/signer` 既有 `SignBackend` 接缝）**尚未接线**。**开发阶段**（未发布的 dev/staging build）允许使用**本地软 Ed25519 私钥**（`LocalDevSignBackend`）——此阶段产物不分发给终端用户，风险可控。**首次面向用户的 release 发布前，硬件密钥签名必须就位**——硬 deadline，不可拖延至 release 后补。
+  - 贡献者**不持任何私钥**；社区仓库 CI **无任何签名能力**（签名不在任何自动化里，见 [`adr_018`](./adr_018_adapter_distribution.md) 四信任域）。
 - **公钥托管：多公钥预埋 + 分批启用（缓解丢失/泄漏），密钥集合仍随发版变更。** 核心**预埋一组**公钥（pin 进客户端与服务端），而非单把——含 **1 把 active 签名公钥 + 若干 dormant 备用公钥**：
   - **应对私钥丢失**：active 私钥若不可用，**晋升**一把已预埋的备用公钥接替——其公钥已随上次发版下发，无需为"引进新信任根"打紧急发版。
   - **应对私钥泄漏**：对泄漏密钥的**停用 / 吊销走已有签名吊销通道**（§2.4），方向是**收窄信任**（fail toward less trust），可半热生效。
   - **方向不对称（安全要点）**：**收窄信任（停用/吊销）可半热**；**放大信任（晋升一把此前 dormant 的公钥为 active）一律随 App 发版**——不做热推启用声明，不承担边缘安全复杂度。这意味着 active 私钥丢失后的恢复速度受发版节奏限制，用 kill-switch（§2.4）兜急性事件。后续若运营需要更快恢复速度，可另起 ADR 引入签名启用声明机制。
   - **关键不变量**：可被启用的公钥**只能来自已预埋集合**——任何下发信号都无法引入"不在二进制里"的新公钥，§3.2 警告的"更新通道变新信任根入口"因此被**封死在预埋集合内**。增删**整个预埋集合**仍**一律随 App 发版**（与 [`adr_010`](./adr_010_ios_appstore.md)「信任根变更只能随发版」同构，钉在应用商店审核之后）。
-- **校验**：核心在加载 official adapter 与传输底座**之前**验签，针对当前 **active** 的 pin 公钥；验不过 → 拒绝（fail-closed）。`tools/src/signer`（经 OIDC→KMS）产出签名，核心消费。
+- **校验**：核心在加载 official adapter 与传输底座**之前**验签，针对当前 **active** 的 pin 公钥；验不过 → 拒绝（fail-closed）。`tools/src/signer`（经离线 YubiKey 后端）产出签名，核心消费。**验签逻辑与 pin 公钥体系不因签名后端更换而变**——KMS→YubiKey 只改「私钥怎么出签」，不改「核心怎么验签」。
 
 ### 2.4 吊销（Revocation）
 
@@ -108,7 +108,7 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 ## 3. 已知约束与风险（Consequences，草案）
 
 1. **最高敏感路径（红线 #1/#4）。** 实现与测试**不得 AI 独自闭环**；需安全检查清单 + 人工审阅（git.md §3、testing.md）。
-2. **密钥管理是单点，已多重缓解。** 私钥泄露 = 信任根失守。缓解：① 私钥托管 **AWS KMS / HSM、永不导出、OIDC 短时委托签名**（§2.3）——失陷面从"偷走密钥"降为"窃取短 token 窗口内的有限签名 + KMS 审计可溯 + 即时撤销"；② **多公钥预埋 + 分批启用**（§2.3）应对丢失（晋升备用）与泄漏（吊销收窄）；③ kill-switch（§2.4）。残余风险：放大信任方向（晋升 dormant 公钥）**一律随发版**（不做热推启用声明），恢复速度受应用商店审核节奏制约；急性事件靠 kill-switch + 吊销兜。后续若需更快恢复可另起 ADR。
+2. **密钥管理是单点，已多重缓解。** 私钥泄露 = 信任根失守。缓解：① 私钥托管 **离线硬件 token（YubiKey）、永不导出、PIN+触碰本地签名**（§2.3，2026-07-15 修订）——失陷面从"偷走密钥"降为"物理窃取 token 且破 PIN"，且签名不在任何网络/CI 上、无远程出签面；② **多公钥预埋 + 分批启用**（§2.3）应对丢失（晋升备用）与泄漏（吊销收窄）——每把 YubiKey 各持独立密钥、全部公钥预埋，丢一把即晋升 dormant；③ kill-switch（§2.4）。残余风险：(a) 放大信任方向（晋升 dormant 公钥）**一律随发版**（不做热推启用声明），恢复速度受应用商店审核节奏制约；(b) 无云端逐次签名审计，改用 git 台账（§2.3）+ 人工纪律；(c) 单人持 token 是发布瓶颈/SPOF——用 ≥2 把 token（各自密钥、均预埋）+ 物理异地备份缓解。急性事件靠 kill-switch + 吊销兜。后续若需更快恢复可另起 ADR。
 3. **community 档已砍（§2.1）。** 信任模型简化为 **official + sideload** 两档，维护者不再为"可分发性"背书，去掉了审查瓶颈。代价：社区贡献者要么自行 debug 侧载、要么经审查被收编为 official，**没有"已签名可分发但仍由社区维护"的中间态**。`community` 枚举值已于 2026-06-14 修订**从 `contract/manifest.schema.json` 与 ADR-001 §5 移除**（契约改动，红线 #6；向后兼容性见 §2.1——此前无生效验证路径，移除不放松约束）。`tools/scanner` 的 PII/危险 API 静态筛查仍对"收编 official 前的审查"有用，保留。
 4. **离线/陈旧吊销的可用性权衡。** fail-closed 与"拉不到清单时仍可用上次良好状态"之间的策略已在 §2.4 定调（last-good 回退 + bundle 预置初始清单解全新安装的两难），避免吊销机制本身成为 DoS 面。残余权衡：预置清单的新鲜度受发版节奏限制，急性吊销仍依赖联网拉取 + kill-switch。
 5. **签名规范化（canonicalization）已钉死规格（§2.3），残余风险在跨平台实现一致性。** 规则已固定（字典序/LF/UTF-8 NFC/二进制资产不变/Merkle-like 双层 SHA-256），但 Dart/Node/Wasm 三端的 NFC 归一化、路径排序（locale 无关排序）需跨平台 golden test 保证。
@@ -121,8 +121,8 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 
 > 安全敏感项标（人工主导、AI 仅辅助）：
 
-- `tools/src/signer`：bundle 规范化（§2.3 已定规格：字典序/LF/UTF-8 NFC/双层 SHA-256）+ **Ed25519 签名经 OIDC→AWS KMS 委托**（私钥不入仓；开发阶段可用本地密钥）/ 验签 + 吊销清单生成。
-- **OIDC→KMS 签名管线**：GitHub OIDC 联合身份 → AWS KMS 单次签名；访问策略限定受保护 tag/release workflow + required-reviewer Environment。过渡期降级为受保护 Environment 长期 secret。
+- `tools/src/signer`：bundle 规范化（§2.3 已定规格：字典序/LF/UTF-8 NFC/双层 SHA-256）+ **Ed25519 签名经离线 YubiKey 后端**（`YubiKeySignBackend`，接既有 `SignBackend` 接缝；私钥驻留硬件、不入仓；开发阶段可用 `LocalDevSignBackend` 软密钥）/ 验签 + 吊销清单生成。签名管线细节见 [`adr_018`](./adr_018_adapter_distribution.md)。
+- **离线硬件签名工作流**（取代原 OIDC→KMS 管线）：CI/审查沙箱只产出 **unsigned bundle + digest**；维护者本地重算 digest 确认一致 → YubiKey PIN+触碰签 → 提交 `signature.json` + 更新发布台账。签名不在任何自动化上。实现注意：须取**裸 64 字节 Ed25519 签名**（PIV/PKCS#11，非 OpenPGP packet 封装）以对齐现有验签。
 - 可信核心：加载前验签（fail-closed，针对 active 预埋公钥）+ 吊销查询 + 由签名裁定档位 + `ctx.fetch` 档位校验（非 official → 结构化权限错误、永不触达注入）。客户端与服务端核心共享同一裁定逻辑。
 - **多公钥预埋 + 分批启用**：active/dormant 公钥集合；晋升（应对丢失）/ 停用（应对泄漏）方向不对称（§2.3）；**晋升与集合增删一律随 App 发版**（不做热推启用声明）。
 - `tools/` 校验器：补 parser 能力源码静态检查（无网络/凭证 API）；强化 `sideload + fetch` 拒绝（已在 ADR-001 列为闸门）。

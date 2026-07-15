@@ -25,7 +25,12 @@
       "required": ["engine", "entry"],
       "properties": {
         "engine": { "const": "quickjs" },
-        "entry": { "type": "string" }
+        "entry": { "type": "string" },
+        "stdlibMin": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "adapter 依赖的 elecon:html stdlib 最低版本（semver x.y.z，ADR-018 §2.4 B-host）。可选;缺省=不设下限。核心加载器据此 fail-closed 拒载（本端 stdlib < stdlibMin）;stdlib 走 append-only,高版本恒兼容低声明。"
+        }
       }
     },
     "network": {
