@@ -236,6 +236,9 @@ function main(): void {
   const roots = arg
     ? [arg.slice("--path=".length)]
     : SCAN_ROOTS.map((r) => join(repoRoot, r)).filter((p) => existsSync(p));
+  // 显示根：显式 --path 时相对 CWD（镜像后的公开仓从其根跑 scan，避免出现 `../adapters/…`）；
+  // 无 --path（核心默认扫描）时相对 repoRoot，保持既有干净输出。
+  const displayRoot = arg ? process.cwd() : repoRoot;
 
   const files: string[] = [];
   for (const root of roots) {
@@ -249,7 +252,7 @@ function main(): void {
   for (const file of files) {
     const findings = scanFile(file);
     if (findings.length === 0) continue;
-    const rel = relative(repoRoot, file);
+    const rel = relative(displayRoot, file);
     for (const f of findings) {
       if (f.level === "error") errorCount++;
       else warnCount++;

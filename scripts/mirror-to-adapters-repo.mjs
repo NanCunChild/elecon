@@ -91,7 +91,6 @@ console.log("  ✓ packages/broker-primitives（dist + 精简 package.json）");
 // 6) MIRROR.md：pin 记录 + 勿改声明
 const sha = execSync("git rev-parse HEAD", { cwd: coreRoot }).toString().trim();
 const stdlibVer = JSON.parse(readFileSync(join(coreRoot, "adapters/_stdlib/package.json"), "utf8")).version;
-const now = new Date().toISOString();
 writeFileSync(
   join(vendor, "MIRROR.md"),
   `# vendor/ — 核心镜像（只读，勿手改）
@@ -108,7 +107,6 @@ writeFileSync(
 | \`packages/broker-primitives/\` | core \`packages/broker-primitives/dist\` | validator 依赖的 url-match 原语 |
 
 - 源提交（core）：\`${sha}\`
-- 生成时间：${now}
 - stdlib 版本：${stdlibVer}
 
 > 若核心 tool 依赖（ajv / ajv-formats / tsx）版本变化，需同步更新公开仓根 \`package.json\`。

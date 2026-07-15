@@ -19,7 +19,7 @@ from ids.login import IDSSession
 
 LIBRARY_CAS_TARGET = (
     "https://hyytsgxzs.xidian.edu.cn/api/index/casLoginDo.html?"
-    "libraryId=5&openId=o2b1a5Fg6r8hKcL0FXopEkfmiQGc&source=xdbb"
+    "libraryId=5&openId=REDACTED_OPENID&source=xdbb"  # 脱敏：真实 openId 属凭证等价物（红线 #1），勿提交
 )
 
 

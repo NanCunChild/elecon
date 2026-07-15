@@ -1,0 +1,72 @@
+name: mirror-adapters
+
+# core → 公开 adapters 仓（ncc-devlab/elecon-adapters）的**单向只读镜像**（ADR-018 §2.8 / §2.11）。
+# 把 pin 版 contract / stdlib / _template / validator / scanner / broker-primitives 推进公开仓 vendor/。
+# 严格单向 core→public，永不回写 core。签名/凭证零参与（红线 #2/#4）。
+#
+# 前置（维护者一次性配置）：
+#   - 仓库 secret `ADAPTERS_MIRROR_TOKEN`：对 ncc-devlab/elecon-adapters 有 `contents:write`
+#     的 PAT（fine-grained,仅该仓库）或等价 deploy key/GitHub App token。
+#   本工作流本身不需要任何签名密钥。
+
+on:
+  push:
+    branches: [main]
+    # 只有被镜像的受治理产物变化时才触发（避免无关提交刷镜像）。
+    paths:
+      - "contract/**"
+      - "adapters/_stdlib/**"
+      - "adapters/_template/**"
+      - "tools/src/validator/**"
+      - "tools/src/scanner/**"
+      - "packages/broker-primitives/**"
+      - "scripts/mirror-to-adapters-repo.mjs"
+  workflow_dispatch: {}
+
+# 避免并发镜像互相踩（同一时刻只跑一个）。
+concurrency:
+  group: mirror-adapters
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout core（本仓库）
+        uses: actions/checkout@v4
+        with:
+          path: core
+
+      - name: Checkout 公开 adapters 仓
+        uses: actions/checkout@v4
+        with:
+          repository: ncc-devlab/elecon-adapters
+          token: ${{ secrets.ADAPTERS_MIRROR_TOKEN }}
+          path: elecon-adapters
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 构建 broker-primitives dist（dist 未入库，镜像需先产出）
+        working-directory: core
+        run: |
+          npm ci
+          npm run build --workspace @elecon/broker-primitives
+
+      - name: 运行镜像脚本（core → 公开仓 vendor/）
+        run: node core/scripts/mirror-to-adapters-repo.mjs "$GITHUB_WORKSPACE/elecon-adapters"
+
+      - name: 提交并推送到公开仓（仅当 vendor/ 有变化）
+        working-directory: elecon-adapters
+        run: |
+          git config user.name "elecon-mirror[bot]"
+          git config user.email "elecon-mirror[bot]@users.noreply.github.com"
+          git add vendor
+          if git diff --cached --quiet; then
+            echo "vendor/ 无变化，跳过提交。"
+          else
+            git commit -m "chore(mirror): sync vendor from core@${GITHUB_SHA:0:8}"
+            git push
+          fi
