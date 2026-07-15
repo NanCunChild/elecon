@@ -28,7 +28,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { allowToRegex, scopePrefix, urlCoveredByAllow } from "@elecon/broker-primitives";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
@@ -40,7 +40,12 @@ export { allowToRegex, scopePrefix, urlCoveredByAllow };
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const contractDir = join(repoRoot, "contract");
-const adaptersRoot = join(repoRoot, "adapters");
+// adapter 发现根：默认 repoRoot/adapters；ELECON_ADAPTERS_ROOT 可覆盖（相对 CWD 解析）。
+// 用于镜像后的公开仓（ADR-018 §2.8）：vendored 校验器在 vendor/ 下，被校验的社区 adapter
+// 却在仓库根 adapters/——二者不同根，故 discovery 路径必须可配。contract/stdlib 仍随 vendor 走。
+const adaptersRoot = process.env.ELECON_ADAPTERS_ROOT
+  ? resolve(process.env.ELECON_ADAPTERS_ROOT)
+  : join(repoRoot, "adapters");
 
 // ---- 类型 ----
 
