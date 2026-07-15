@@ -31,6 +31,10 @@ concurrency:
 jobs:
   mirror:
     runs-on: ubuntu-latest
+    # 令牌 `ADAPTERS_MIRROR_TOKEN` 配置为 **Environment secret**（同名 Environment）。
+    # 环境 secret 只对声明了 environment 的 job 可见——不声明则 secrets.* 取空，checkout 报
+    # `Input required and not supplied: token`。绑定该环境即可（并可挂保护规则,环境化闸门）。
+    environment: ADAPTERS_MIRROR_TOKEN
     steps:
       - name: Checkout core（本仓库）
         uses: actions/checkout@v4
