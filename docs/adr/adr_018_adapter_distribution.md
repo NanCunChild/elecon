@@ -110,7 +110,7 @@ adapter 依赖两层宿主运行时:**QuickJS 引擎**（ADR-005，双端同引�
 客户端需要一份索引才知道有哪些 adapter、版本、digest、下载地址 = **catalog**。它被**可信核心验签消费、fail-closed**，与 manifest schema 同等承重,故**作为契约新增**:
 
 - 新增 `contract/catalog.schema.json`（catalog 条目:`adapterId / adapterVersion / digest / url / stdlibMin / capabilities[]`）+ validator + golden。红线 #6，由本 ADR 引入。
-- **catalog 本身须签名**（同 Ed25519 + pin 公钥体系）+ 带 `sequence` **防回滚** + TTL + last-good 回退——与 revocation list **共用同一「signed distribution manifest」模式**（复用 `tools/src/signer/revocation.ts` 的 `sequence`/`pickNewer`/TTL 机器）。未签名/可回滚的 catalog 可被 CDN 中间人替换成"指向旧的有漏洞版本"。
+- **catalog 本身须签名**（**2026-07-15 确认:与 adapter bundle 同一 Ed25519 / YubiKey pin 公钥集**）+ 带 `sequence` **防回滚** + TTL + last-good 回退——与 revocation list **共用同一「signed distribution manifest」模式**（复用 `tools/src/signer/revocation.ts` 的 `sequence`/`pickNewer`/TTL 机器）。未签名/可回滚的 catalog 可被 CDN 中间人替换成"指向旧的有漏洞版本"。
 - **硬约束:catalog 不得引入新 capability id。** validator 对着 `contract/capability/registry.json` 强制:catalog 里每个 capability 必须已在 registry（既有能力集内）。新 capability/新卡片类型**只能随 app 发版改 registry**（ADR-010 §2.1，守住 §3.3.2(a) 立论）。
 
 ### 2.6 客户端加载器设计
@@ -119,7 +119,7 @@ adapter 依赖两层宿主运行时:**QuickJS 引擎**（ADR-005，双端同引�
 - **内容寻址缓存**:以 `digest` 为缓存 key——天然抗篡改、去重、支持回滚校验。**不得"验一次缓存永久信任"**:每次加载以内容寻址保证加载的就是验过的字节。
 - **原子更新**:下载须先验签再落地，杜绝加载半个 bundle。
 - **bundle 预置基线（ADR-010 硬要求）**:app 内打包一组**已签名 baseline adapter + 初始 catalog + 初始 revocation list**,首启/离线可用;远程拉取仅用于"更新/新增数据源"。审核员在提交 build 上即可走通核心功能。
-- **平台节奏（建议，待定）**:远程拉取 **Android 先行**;iOS 首版可只用预置基线，待重做 2.5.2(a) 自检后再开远程更新（与 ADR-016 平台门禁同思路）。
+- **平台节奏（2026-07-15 定）**:**两端都先建好基础设施**（bundle 格式 / catalog / 加载器 / 端点 D）。**远程拉取 Android 先行**;**iOS 基础设施同样建好,但远程拉取功能与 2.5.2(a) 自检押后**再开（与 ADR-016 平台门禁同思路）——差异只在"何时开拉取开关",不在"是否建"。
 
 ### 2.7 与 App Store 合规的联动（继承 ADR-010）
 
@@ -176,7 +176,10 @@ elecon-adapters/（public,另一组织）
 
 - **内容 = digest 覆盖的运行时文件 + detached 签名**:`manifest.json` + `index.js`(+ 运行时资产,若有)+ `signature.json`。**fixtures / README / FLOW.md / node_modules 一律剔除**(signer `BUNDLE_EXCLUDE`)。
 - **内容寻址**:catalog 以 `digest`(ADR-002 §2.3 规范化双层 SHA-256)标识每个 bundle 版本;客户端拿到字节 → 重算 digest → 验签 → 交 QuickJS(§2.6)。
-- **容器封装**:on-wire 容器(确定性 archive 或 files-envelope)的具体格式留加载器/契约实现 PR 敲定,但**硬约束在此定**:① 只含 digest 覆盖文件 + 签名;② 可复现 §2.3 规范化 digest;③ 验签 fail-closed。
+- **容器封装（2026-07-15 定，同日修订 tar→gzip-JSON）**:**签名对象 = 确定性 JSON envelope**——`{ bundleFormat, files: [{ path, encoding, content }...] }`,文件为 §2.3 BUNDLE_INCLUDE 集、按路径字典序、内容 NFC/LF 规范化;其 digest **等同**现 signer 的目录式双层 SHA-256（同一批规范化文件,签/验两端可各自复现）。**on-wire = `gzip( JSON.stringify({ envelope, signature }) )`**（`.json.gz`），gzip 在**签名之外**、仅作传输压缩。
+  - **为何弃 tar（原方案）**:① envelope JSON 本身已是多文件容器,tar 的多文件打包冗余;② 手写 tar 需再移植解析器到 🔒 Dart 加载器(验签前的自研二进制解析,edge case 累积);③ gzip 用两端**内建 codec**（node:zlib ↔ Dart `GZipCodec`）——🔒 加载器零自研归档解析;④ gzip 自带压缩省客户端流量。gzip 头非确定性**无碍**:它在签名之外,digest 只认 envelope 内容。
+  - 硬约束:① envelope 只含 digest 覆盖文件 + detached 签名;② 可复现 §2.3 规范化 digest;③ 验签 fail-closed;④ 解包（gunzip+parse）后**以内容寻址校验**（重算 envelope digest 比对签名声明）,不信任传输层元数据。
+- **体积上限（红线 #5 越薄的硬防线）**:validator 对 bundle（BUNDLE_INCLUDE 文件总字节）设上限,超限**加载前拒**（`C11`）。"脚本非常大"由此在提交期挡掉,而非靠容器兜底。
 - **预置基线同格式**:app 内预置的 baseline adapter 用同一 bundle 格式(§2.6),保证在线更新与离线基线一致可验。
 - **stdlib 不在 bundle 内**(B-host):运行时由宿主注入,版本经 `stdlibMin` 协商(§2.4)。
 

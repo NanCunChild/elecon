@@ -9,7 +9,7 @@ import { strict as assert } from "node:assert";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
-import { checkManifest } from "./index.js";
+import { checkBundleSizeBytes, checkManifest, MAX_BUNDLE_BYTES } from "./index.js";
 
 // 一个最小的、宽松的 manifest schema 桩：只验我们关心的字段存在性，
 // 让 C2/C3/C4 的逻辑断言不被 C1 噪声淹没。
@@ -594,6 +594,18 @@ function codes(findings: { code: string }[]): string[] {
   const absent = checkManifest({ ...base, runtime: { engine: "quickjs", entry: "index.js" } }, contract);
   assert.ok(!codes(absent).some((c) => c.startsWith("C10")), "未声明 stdlibMin 不应触发任何 C10");
   console.log("  ✓ stdlibMin 版本门校验（C10，ADR-018 §2.4）");
+}
+
+// C11) bundle 体积上限（ADR-018 §2.9，红线 #5）
+{
+  assert.equal(checkBundleSizeBytes(1024).length, 0, "小 bundle 不应触发 C11");
+  assert.equal(checkBundleSizeBytes(MAX_BUNDLE_BYTES).length, 0, "等于上限不应触发 C11");
+  const over = checkBundleSizeBytes(MAX_BUNDLE_BYTES + 1);
+  assert.ok(
+    over.some((f) => f.code === "C11_bundle_too_large" && f.level === "error"),
+    "超上限应触发 C11 error",
+  );
+  console.log("  ✓ bundle 体积上限（C11，ADR-018 §2.9）");
 }
 
 console.log("validator smoke 全部通过。");

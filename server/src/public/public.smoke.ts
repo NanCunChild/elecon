@@ -1,90 +1,123 @@
 /**
- * public 服务冒烟测试 —— 校验路由与零凭证/无状态不变量（不监听端口，直调 handler）。
+ * 公网端点 D 冒烟 —— 静态分发 + 零凭证/无状态 + 缓存策略 + traversal 守卫（不监听端口，直调 handler）。
  *
- * 🔒 分发验签 gate 未接线（人工闭环），故 /adapters/<id> 期望 501/403，非 200。
+ * 在临时 dist/ 上验证:catalog/revocation/bundle 服务、内容寻址 immutable 缓存、404、路径穿越拒绝、
+ * 方法守卫、/health。端点**不验签**（客户端职责）——这里只证"按原样发静态文件 + 结构不变量"。
  *
  *   运行：cd server && npm run smoke:public
  */
 
 import { strict as assert } from "node:assert";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { handler, listAdapters } from "./index.js";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 
-interface FakeRes {
+// 先建临时 dist 并注入 PUBLIC_DIST_DIR，再 import handler（handler 运行时读取该 env）。
+const dist = mkdtempSync(join(tmpdir(), "elecon-dist-"));
+process.env.PUBLIC_DIST_DIR = dist;
+mkdirSync(join(dist, "bundles"), { recursive: true });
+const CATALOG_GZ = gzipSync(Buffer.from(JSON.stringify({ catalogVersion: "1.0", sequence: 1 })));
+const BUNDLE_GZ = gzipSync(Buffer.from(JSON.stringify({ envelope: { bundleFormat: "elecon-bundle/1" } })));
+writeFileSync(join(dist, "catalog.json.gz"), CATALOG_GZ);
+writeFileSync(join(dist, "revocation.json"), JSON.stringify({ sequence: 1, entries: [] }));
+writeFileSync(join(dist, "bundles", "deadbeef.json.gz"), BUNDLE_GZ);
+
+const { handler } = await import("./index.js");
+
+interface Captured {
   code: number;
-  body: unknown;
+  headers: Record<string, unknown>;
+  body?: Buffer;
 }
 
-function invoke(url: string): FakeRes {
-  const captured: FakeRes = { code: 0, body: undefined };
-  const req = { url, headers: {} } as IncomingMessage;
+function invoke(url: string, method = "GET"): Captured {
+  const cap: Captured = { code: 0, headers: {} };
+  const req = { url, method, headers: {} } as IncomingMessage;
   const res = {
-    writeHead(code: number) {
-      captured.code = code;
+    writeHead(code: number, headers?: Record<string, unknown>) {
+      cap.code = code;
+      cap.headers = headers ?? {};
       return this;
     },
-    end(payload?: string) {
-      captured.body = payload ? JSON.parse(payload) : undefined;
+    end(payload?: Buffer | string) {
+      if (payload !== undefined) cap.body = Buffer.from(payload as Buffer);
     },
   } as unknown as ServerResponse;
   handler(req, res);
-  return captured;
+  return cap;
 }
 
-// health
-{
-  const r = invoke("/health");
-  assert.strictEqual(r.code, 200);
-  assert.deepStrictEqual(r.body, { status: "ok", stateless: true, zeroCredential: true });
-  console.log("✓ /health（无状态/零凭证标注）");
-}
+try {
+  // /health
+  {
+    const r = invoke("/health");
+    assert.equal(r.code, 200);
+    assert.deepEqual(JSON.parse(r.body?.toString() ?? "{}"), {
+      status: "ok",
+      stateless: true,
+      zeroCredential: true,
+    });
+    console.log("✓ /health（无状态/零凭证）");
+  }
 
-// 列表：至少含真实 adapter，且标注 signed 状态
-{
-  const r = invoke("/adapters");
-  assert.strictEqual(r.code, 200);
-  const list = (r.body as { adapters: Array<{ adapterId: string; signed: boolean }> }).adapters;
-  assert.ok(Array.isArray(list), "adapters 应为数组");
-  assert.ok(
-    list.some((a) => a.adapterId === "school-xidian"),
-    "应发现 school-xidian",
-  );
-  // 当前真实 adapter 均未签名 → 分发被拒（红线 #4）
-  assert.ok(
-    list.every((a) => a.signed === false),
-    "当前 adapter 均未签名",
-  );
-  console.log(`✓ /adapters 列表（${list.length} 个）`);
-}
+  // catalog（短缓存 + gzip content-type）
+  {
+    const r = invoke("/catalog.json.gz");
+    assert.equal(r.code, 200);
+    assert.equal(r.headers["content-type"], "application/gzip");
+    assert.equal(r.headers["cache-control"], "public, max-age=60");
+    assert.ok(r.body?.equals(CATALOG_GZ), "catalog 应按原样发出（未改字节）");
+    console.log("✓ /catalog.json.gz（短缓存 + 原样字节）");
+  }
 
-// 未签名 adapter 分发被拒（红线 #4）
-{
-  const r = invoke("/adapters/school-xidian");
-  assert.strictEqual(r.code, 403, "未签名 adapter 应被拒（release 仅分发签名包）");
-  assert.strictEqual((r.body as { status: string }).status, "unsigned_rejected");
-  console.log("✓ 未签名 adapter 分发被拒（403）");
-}
+  // revocation
+  {
+    const r = invoke("/revocation.json");
+    assert.equal(r.code, 200);
+    assert.equal(r.headers["content-type"], "application/json");
+    console.log("✓ /revocation.json");
+  }
 
-// 未知 adapter → 404
-{
-  const r = invoke("/adapters/school-nonexistent");
-  assert.strictEqual(r.code, 404);
-  console.log("✓ 未知 adapter → 404");
-}
+  // bundle（内容寻址 → immutable 长缓存）
+  {
+    const r = invoke("/bundles/deadbeef.json.gz");
+    assert.equal(r.code, 200);
+    assert.equal(r.headers["cache-control"], "public, max-age=31536000, immutable");
+    assert.ok(r.body?.equals(BUNDLE_GZ), "bundle 应按原样发出");
+    console.log("✓ /bundles/<digest>.json.gz（immutable 长缓存 + 原样字节）");
+  }
 
-// 验签 gate 未接线的已签名场景无法在此覆盖（无签名夹具）——留待人工闭环 signer 后补。
-// 吊销清单分发待人工闭环
-{
-  const r = invoke("/revocations");
-  assert.strictEqual(r.code, 501);
-  console.log("✓ /revocations 待人工闭环（501）");
-}
+  // HEAD：有头无体
+  {
+    const r = invoke("/catalog.json.gz", "HEAD");
+    assert.equal(r.code, 200);
+    assert.equal(r.body, undefined, "HEAD 不应有 body");
+    console.log("✓ HEAD（头无体）");
+  }
 
-// listAdapters 纯函数可直接调用
-{
-  const list = listAdapters();
-  assert.ok(list.length >= 2, "应至少发现 xidian + xjt");
-  console.log("✓ listAdapters() 可编程调用");
-}
+  // 未知文件 → 404
+  {
+    assert.equal(invoke("/bundles/nope.json.gz").code, 404);
+    console.log("✓ 未知文件 → 404");
+  }
 
-console.log("\npublic smoke 全部通过 ✅  —— 验签 gate / 吊销分发留待人工闭环。");
+  // 路径穿越 → 拒绝（不泄露 dist 外文件）
+  {
+    assert.equal(invoke("/../index.js").code, 404, "traversal 应被拒");
+    assert.equal(invoke("/..%2f..%2fpackage.json").code, 404, "编码 traversal 应被拒");
+    console.log("✓ 路径穿越被拒（fail-closed）");
+  }
+
+  // 非 GET/HEAD → 405
+  {
+    const r = invoke("/catalog.json.gz", "POST");
+    assert.equal(r.code, 405);
+    console.log("✓ 非 GET/HEAD → 405");
+  }
+
+  console.log("\npublic 端点 D smoke 全部通过 ✅  —— 端点只发静态签名产物,验签是客户端职责。");
+} finally {
+  rmSync(dist, { recursive: true, force: true });
+}

@@ -28,7 +28,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { allowToRegex, scopePrefix, urlCoveredByAllow } from "@elecon/broker-primitives";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
@@ -583,6 +583,50 @@ export function checkCredentials(
   return findings;
 }
 
+// ---- C11：bundle 体积上限（红线 #5 越薄;ADR-018 §2.9）----
+
+/**
+ * bundle 体积上限（超限 → 加载前拒,把"脚本非常大"在提交期挡掉,而非靠容器兜底）。
+ * BUNDLE_INCLUDE/EXCLUDE **须与 tools/src/signer 保持一致**——validator 不能 import signer
+ * （signer 不随镜像发布,ADR-018 §2.8 所有权）,故本地复刻;二者漂移会使"校验的"与"签名的"文件集不一致。
+ */
+const BUNDLE_INCLUDE = /\.(json|js|mjs|ts|html?|css|txt|svg|png)$/i;
+const BUNDLE_EXCLUDE = /(^|\/)(signature\.json|node_modules|\.git|fixtures)(\/|$)/;
+export const MAX_BUNDLE_BYTES = 256 * 1024; // 256 KiB
+
+/** 纯：据总字节判定是否超限（便于单测,不碰文件系统）。 */
+export function checkBundleSizeBytes(totalBytes: number): Finding[] {
+  if (totalBytes > MAX_BUNDLE_BYTES) {
+    return [
+      {
+        level: "error",
+        code: "C11_bundle_too_large",
+        message: `bundle 文件总计 ${totalBytes} 字节，超过上限 ${MAX_BUNDLE_BYTES}（红线 #5 越薄,ADR-018 §2.9）`,
+      },
+    ];
+  }
+  return [];
+}
+
+/** 汇总 BUNDLE_INCLUDE 文件（排除 fixtures 等）的总字节。 */
+export function sumBundleBytes(dir: string): number {
+  let total = 0;
+  const walk = (d: string): void => {
+    for (const entry of readdirSync(d)) {
+      const p = join(d, entry);
+      if (BUNDLE_EXCLUDE.test(relative(dir, p))) continue;
+      if (statSync(p).isDirectory()) walk(p);
+      else if (BUNDLE_INCLUDE.test(entry)) total += statSync(p).size;
+    }
+  };
+  walk(dir);
+  return total;
+}
+
+function checkBundleSize(dir: string): Finding[] {
+  return checkBundleSizeBytes(sumBundleBytes(dir));
+}
+
 // ---- C5：夹具 expected 合 schema（不依赖沙箱）----
 
 function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Finding[] {
@@ -653,7 +697,11 @@ function validateAdapterDir(dir: string, contract: Contract): Finding[] {
       },
     ];
   }
-  return [...checkManifest(manifest, contract), ...checkFixtures(dir, manifest, contract)];
+  return [
+    ...checkManifest(manifest, contract),
+    ...checkBundleSize(dir),
+    ...checkFixtures(dir, manifest, contract),
+  ];
 }
 
 /** 递归发现 adapters/ 下含 manifest.json 的目录。 */
