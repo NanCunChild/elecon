@@ -4,7 +4,7 @@
  * 🔒🔒 安全敏感承重路径（红线 #4：传输底座/adapter 仅官方签名加载）。
  *     按 AGENTS.md §1，**签名相关代码及其测试不得由 AI 独自闭环**——本文件是
  *     **骨架（skeleton）**：确定性部分（bundle 规范化 digest、验签）已实现供审阅，
- *     但**私钥签名操作（KMS）与生产密钥托管必须由维护者人工闭环 + 安全清单审**。
+ *     但**私钥签名操作（YubiKey 硬件）与生产密钥托管必须由维护者人工闭环 + 安全清单审**。
  *     标 `🔒 待人工闭环` 处不得在未经人工审阅前用于任何面向用户的 release。
  *
  * 机制（摘自 ADR-002 §2.3，权威以 ADR 为准）：
@@ -12,8 +12,8 @@
  *  - 规范化（§2.3b 钉死）：文件按路径**字典序**、内容 **UTF-8 NFC**、换行 **LF**；文件末尾不追加也不剥除 newline。
  *  - digest：`SHA-256(SHA-256(file1) || SHA-256(file2) || ...)`（先各文件哈希，拼接后再 SHA-256）。
  *  - 签名：**Ed25519**（RFC 8032）over `{ digest, tier, adapterId, adapterVersion }` 的规范化 payload。
- *  - 私钥托管：**OIDC → 云 KMS 委托签名**（AWS KMS，永不导出/入仓）。dev 过渡期允许本地 Ed25519，
- *    **首次 release 前 KMS 必须就位**（§2.3 硬 deadline）。
+ *  - 私钥托管：**离线硬件密钥（YubiKey，PIV/PKCS#11，Ed25519）**，PIN+触碰本地签名，私钥永不导出/入仓/上服务器
+ *    （2026-07-15 修订，取代 KMS）。dev 过渡期允许本地 Ed25519，**首次 release 前硬件签必须就位**（§2.3 硬 deadline）。
  *  - 校验：核心加载前对 **active** pin 公钥验签，fail-closed。
  *
  *   运行：cd tools && npm run sign -- --adapter=../adapters/school-x --tier=official   # 🔒 dev 后端
@@ -115,11 +115,11 @@ export function serializePayload(p: SignaturePayload): Buffer {
   return Buffer.from(canonical, "utf-8");
 }
 
-// ---- 签名后端（私钥操作接缝；生产 = KMS，🔒 人工闭环） ----
+// ---- 签名后端（私钥操作接缝；生产 = 离线 YubiKey，🔒 人工闭环） ----
 
 /**
  * 签名后端：把「私钥签名操作」抽象为接缝。
- *  - 生产：`KmsSignBackend`（OIDC→AWS KMS，**未实现**，🔒 首次 release 前人工闭环）。
+ *  - 生产：`YubiKeySignBackend`（离线 YubiKey PIV/PKCS#11，硬件出签接缝待人工接线，🔒 首次 release 前）。
  *  - dev 过渡：`LocalDevSignBackend`（本地 Ed25519 私钥，**仅 dev/staging**，产物不分发终端用户）。
  */
 export interface SignBackend {
@@ -129,19 +129,53 @@ export interface SignBackend {
 }
 
 /**
- * 🔒🔒 生产 KMS 后端——**未实现**。
- * 必须由维护者人工实现：GitHub OIDC → AWS KMS 短时联合身份 → 单次签名操作（拿签名，不拿密钥），
- * 配合受保护 Environment + required reviewer + 仅 tag 触发（ADR-002 §2.3）。
+ * 硬件签名提供者接缝（PIV/PKCS#11 `CKM_EDDSA`）。私钥驻留 YubiKey、永不出;签名需 PIN+触碰。
+ * **返回裸 64 字节 Ed25519 签名**（非 OpenPGP packet 封装），以对齐 verifyAdapter 的 `edVerify`。
+ * 这是"硬件出签"的唯一接触点——把 YubiKeySignBackend 与具体 PKCS#11 实现解耦、便于测试。
  */
-export class KmsSignBackend implements SignBackend {
+export interface HardwareEd25519Signer {
   readonly keyId: string;
-  constructor(keyId: string) {
+  /** 对 data 做原始 Ed25519 签名（裸 r||s 64 字节）。私钥永不出硬件。 */
+  signEd25519(data: Buffer): Promise<Buffer>;
+}
+
+/**
+ * 🔒🔒 未接线的硬件提供者——生产须由维护者用 PKCS#11（如 `pkcs11js`/`graphene-pk11`）接
+ *     YubiKey PIV 的 `CKM_EDDSA` 槽位 + PIN。骨架构造即可、调用即 fail-closed，杜绝误用。
+ *     接线属承重路径（红线 #4），AGENTS.md §1 不得 AI 独自闭环。
+ */
+export class UnwiredHardwareSigner implements HardwareEd25519Signer {
+  readonly keyId: string;
+  constructor(keyId = "yubikey-unwired") {
     this.keyId = keyId;
   }
-  async sign(_payload: Buffer): Promise<string> {
+  signEd25519(): Promise<Buffer> {
     throw new Error(
-      "🔒 KmsSignBackend 未实现：生产签名须经 OIDC→KMS，由维护者人工闭环（ADR-002 §2.3，红线 #4）。",
+      "🔒 YubiKey 硬件签名未接线：须人工用 PKCS#11（CKM_EDDSA）+ PIN 接 YubiKey PIV 槽位（ADR-002 §2.3，红线 #4）。",
     );
+  }
+}
+
+/**
+ * 离线 YubiKey 签名后端（ADR-002 §2.3，取代 KMS）。委托 {@link HardwareEd25519Signer} 出裸 64B
+ * Ed25519 签名并转 base64。私钥永不入进程/仓库/服务器;签名需物理 PIN+触碰。
+ * **🔒 生产接线与硬件闭环须维护者人工完成**（AGENTS.md §1）。测试可注入 fake provider 验证本类管线。
+ */
+export class YubiKeySignBackend implements SignBackend {
+  readonly keyId: string;
+  #hw: HardwareEd25519Signer;
+  constructor(hw: HardwareEd25519Signer) {
+    this.#hw = hw;
+    this.keyId = hw.keyId;
+  }
+  async sign(payload: Buffer): Promise<string> {
+    const raw = await this.#hw.signEd25519(payload);
+    if (raw.length !== 64) {
+      throw new Error(
+        `Ed25519 签名须为裸 64 字节，得 ${raw.length}（PKCS#11 用 CKM_EDDSA raw，非 OpenPGP packet 封装）。`,
+      );
+    }
+    return raw.toString("base64");
   }
 }
 
@@ -154,7 +188,9 @@ export class LocalDevSignBackend implements SignBackend {
   #privateKey: KeyObject;
   constructor(privateKey: KeyObject, keyId = "dev-local") {
     if (process.env.NODE_ENV === "production") {
-      throw new Error("🔒 LocalDevSignBackend 禁止在生产使用（红线 #4）；生产须走 KmsSignBackend。");
+      throw new Error(
+        "🔒 LocalDevSignBackend 禁止在生产使用（红线 #4）；生产须走 YubiKeySignBackend（离线硬件）。",
+      );
     }
     this.#privateKey = privateKey;
     this.keyId = keyId;
@@ -168,26 +204,65 @@ export class LocalDevSignBackend implements SignBackend {
 // ---- 验签（无密钥，公钥公开；确定性可测） ----
 
 /**
- * 对 adapter 目录验签：重算 digest → 用 pin 公钥验 Ed25519 → 校验 tier/adapterId 与签名载荷一致。
- * 返回裁定档位（fail 时 throw）。核心加载前调用（fail-closed）。
+ * **tools 层统一验签结果约定**（勿再用裸 bool / 抛异常混用）：失败恒带 `reason`；成功携带**已验证产物**
+ * （如裁定档位、已解析 catalog）——调用方只能经 `ok:true` 分支拿到产物，无法误用未验证数据。
+ * **裁定「是否加载」仍在 🔒 加载器**（ADR-002 §2.6）；本层只回答"这份签名是否成立、成立则得到什么"。
  */
-export function verifyAdapter(dir: string, publicKey: KeyObject): TrustTier {
+export type VerifyResult<T> = { ok: true; value: T } | { ok: false; reason: string };
+
+/** 读 bundle 内 manifest 的权威身份（adapterId/adapterVersion）。 */
+function readManifestIdentity(dir: string): { adapterId: string; adapterVersion: string } | null {
+  try {
+    const m = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8")) as {
+      adapterId?: string;
+      adapterVersion?: string;
+    };
+    if (!m.adapterId || !m.adapterVersion) return null;
+    return { adapterId: m.adapterId, adapterVersion: m.adapterVersion };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 对 adapter 目录验签：重算 digest → 用 pin 公钥验 Ed25519 → **核对签名身份与 bundle 内 manifest 一致**。
+ * 全部通过才返回裁定档位。核心加载前调用（fail-closed）。
+ *
+ * 身份核对（ADR-002 §2.2「与 manifest 自报不符则拒绝加载」）：digest 只绑定**内容**，签名载荷里的
+ * `adapterId/adapterVersion` 是**另一维**——若不核对，一份「内容为 A、身份写 B」的签名仍能验过，
+ * 而运行时用的是 bundle 内 manifest（决定 allow/credentials）→ 身份混淆。故此处强制两者一致。
+ */
+export function verifyAdapter(dir: string, publicKey: KeyObject): VerifyResult<TrustTier> {
   const sigPath = join(dir, "signature.json");
   if (!existsSync(sigPath)) {
-    throw new Error("无 signature.json → 按 sideload 处理（release 拒绝加载）。");
+    return { ok: false, reason: "无 signature.json → 按 sideload 处理（release 拒绝加载）。" };
   }
-  const sig = JSON.parse(readFileSync(sigPath, "utf-8")) as SignatureFile;
-  if (sig.algorithm !== "ed25519") throw new Error(`不支持的签名算法：${sig.algorithm}`);
-
-  const digest = computeBundleDigest(dir);
-  if (digest !== sig.digest) {
-    throw new Error("bundle digest 与签名不符（内容被篡改或签名过期）→ fail-closed。");
+  let sig: SignatureFile;
+  try {
+    sig = JSON.parse(readFileSync(sigPath, "utf-8")) as SignatureFile;
+  } catch (err) {
+    return { ok: false, reason: `signature.json 解析失败：${(err as Error).message}` };
   }
-  const payload = serializePayload(sig);
-  const ok = edVerify(null, payload, publicKey, Buffer.from(sig.signature, "base64"));
-  if (!ok) throw new Error("Ed25519 验签失败 → fail-closed。");
-
-  return sig.tier;
+  if (sig.algorithm !== "ed25519") {
+    return { ok: false, reason: `不支持的签名算法：${sig.algorithm}` };
+  }
+  if (computeBundleDigest(dir) !== sig.digest) {
+    return { ok: false, reason: "bundle digest 与签名不符（内容被篡改或签名过期）→ fail-closed。" };
+  }
+  const identity = readManifestIdentity(dir);
+  if (identity === null) {
+    return { ok: false, reason: "manifest.json 缺失/损坏或无 adapterId/adapterVersion → fail-closed。" };
+  }
+  if (sig.adapterId !== identity.adapterId || sig.adapterVersion !== identity.adapterVersion) {
+    return {
+      ok: false,
+      reason: `签名身份与 bundle 内 manifest 不符（签名 ${sig.adapterId}@${sig.adapterVersion} vs manifest ${identity.adapterId}@${identity.adapterVersion}）→ fail-closed（ADR-002 §2.2）。`,
+    };
+  }
+  if (!edVerify(null, serializePayload(sig), publicKey, Buffer.from(sig.signature, "base64"))) {
+    return { ok: false, reason: "Ed25519 验签失败 → fail-closed。" };
+  }
+  return { ok: true, value: sig.tier };
 }
 
 // ---- 签名流程 ----
@@ -195,7 +270,7 @@ export function verifyAdapter(dir: string, publicKey: KeyObject): TrustTier {
 /**
  * 对 adapter 目录签名并写 signature.json。
  * tier 是**签名流程显式注入的裁定档位**（§2.2），非取自 manifest 自报。
- * 🔒 「签 official」是需显式人工批准的动作——本函数不做批准，批准由 KMS 侧 required reviewer 承担。
+ * 🔒 「签 official」是需显式人工批准的动作——本函数不做批准，批准由持 YubiKey 的 release owner 之 PIN+触碰承担。
  */
 export async function signAdapter(
   dir: string,
@@ -239,7 +314,9 @@ function main(): void {
   // 骨架不在此自动加载任意私钥/公钥（避免 AI 独自闭环签名操作）。
   console.log("🔒 signer 骨架：");
   console.log("  - `digest` 已可用（确定性 bundle 摘要，无密钥）。");
-  console.log("  - `sign` / `verify` 的密钥加载与 KMS 接线由维护者人工闭环（ADR-002 §2.3，AGENTS.md §1）。");
+  console.log(
+    "  - `sign` / `verify` 的密钥加载与 YubiKey 硬件接线由维护者人工闭环（ADR-002 §2.3，AGENTS.md §1）。",
+  );
   console.log("  - 可编程 API：signAdapter() / verifyAdapter() / computeBundleDigest()。");
   process.exitCode = 2;
 }

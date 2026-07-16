@@ -56,6 +56,31 @@ export function buildEnvelope(dir: string): BundleEnvelope {
   return { bundleFormat: BUNDLE_FORMAT, files };
 }
 
+export interface EnvelopeIdentity {
+  adapterId: string;
+  adapterVersion: string;
+}
+
+/**
+ * 从 envelope 内 `manifest.json` 读**权威身份**。
+ *
+ * 这是 envelope 身份的**唯一来源**——签名流程不得接受调用方传入的身份（否则可能签出
+ * 「digest 覆盖内容 A、载荷却写身份 B」的签名，而验签仍通过 → 身份混淆，ADR-002 §2.2）。
+ * manifest.json 本身在 digest 覆盖范围内,故身份与内容由此**结构性绑定**。
+ */
+export function readEnvelopeManifest(env: BundleEnvelope): EnvelopeIdentity {
+  const f = env.files.find((x) => x.path === "manifest.json");
+  if (!f) throw new Error("envelope 缺 manifest.json → 无法确定权威身份（fail-closed）。");
+  const m = JSON.parse(fileBytes(f).toString("utf-8")) as {
+    adapterId?: string;
+    adapterVersion?: string;
+  };
+  if (!m.adapterId || !m.adapterVersion) {
+    throw new Error("envelope 内 manifest.json 缺 adapterId/adapterVersion（fail-closed）。");
+  }
+  return { adapterId: m.adapterId, adapterVersion: m.adapterVersion };
+}
+
 /**
  * envelope digest = `SHA-256( SHA-256(file1) || SHA-256(file2) || … )`,按路径字典序。
  * 与 signer `computeBundleDigest` **同算法**;两端对同一 adapter 得同一 hex digest。

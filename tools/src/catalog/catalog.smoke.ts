@@ -91,4 +91,38 @@ function base(entries: Catalog["entries"]): Catalog {
   console.log("  ✓ entry 额外字段被拒（K0）");
 }
 
+// 7) signCatalog → verifyCatalog 往返 + 篡改拒（dev backend）
+{
+  const { generateKeyPairSync } = await import("node:crypto");
+  const { LocalDevSignBackend } = await import("../signer/index.js");
+  const { signCatalog, verifyCatalog } = await import("./sign.js");
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const backend = new LocalDevSignBackend(privateKey, "dev-local");
+
+  const catalog = base([baseEntry()]);
+  const signed = await signCatalog(catalog, backend);
+  const good = verifyCatalog(signed, publicKey);
+  assert.equal(good.ok, true, "signCatalog 产物应验过");
+  assert.deepEqual(good.ok && good.value, catalog, "验签应返回已解析 catalog");
+
+  // 篡改 sequence（防回滚要点）→ 字节变了 → 验签失败
+  const tampered = {
+    ...signed,
+    catalogJson: JSON.stringify({ ...catalog, sequence: catalog.sequence + 1 }),
+  };
+  assert.equal(verifyCatalog(tampered, publicKey).ok, false, "篡改 catalog 应验签失败");
+
+  const { publicKey: other } = generateKeyPairSync("ed25519");
+  assert.equal(verifyCatalog(signed, other).ok, false, "错公钥应验签失败");
+
+  // 字节精确：签名覆盖**整份 JSON 字节**——新增/未知字段也在签名范围内，改它必然验签失败
+  // （这正是弃用手写 serialize() 的目的：不会有字段"静默落在签名范围外"）
+  const withExtra = {
+    ...signed,
+    catalogJson: JSON.stringify({ ...catalog, futureField: "injected" }),
+  };
+  assert.equal(verifyCatalog(withExtra, publicKey).ok, false, "注入任意新字段应验签失败（签名覆盖全字节）");
+  console.log("  ✓ signCatalog → verifyCatalog 往返 + 篡改/错公钥/注入新字段拒（字节精确）");
+}
+
 console.log("\ncatalog smoke 全部通过 ✅");

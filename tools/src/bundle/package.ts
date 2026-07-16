@@ -12,8 +12,13 @@
 
 import { verify as edVerify, type KeyObject } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { type SignatureFile, serializePayload } from "../signer/index.js";
-import { type BundleEnvelope, envelopeDigest } from "./envelope.js";
+import { type SignatureFile, serializePayload, type TrustTier, type VerifyResult } from "../signer/index.js";
+import {
+  type BundleEnvelope,
+  type EnvelopeIdentity,
+  envelopeDigest,
+  readEnvelopeManifest,
+} from "./envelope.js";
 
 /** 传输载荷:被 gzip 的 JSON。envelope 是签名对象;signature 为可选 detached 签名。 */
 export interface BundlePayload {
@@ -40,19 +45,15 @@ export function unpackBundle(gz: Buffer): UnpackedBundle {
   return { envelope: payload.envelope, signature: payload.signature };
 }
 
-export interface IntegrityResult {
-  ok: boolean;
-  reason?: string;
-}
-
 /**
  * 内容寻址完整性校验（**keyless**）：重算 envelope digest,与签名声明的 digest 比对。
  * 捕获传输损坏/篡改（解包后不信任传输层元数据,只信内容寻址）。**不含** Ed25519 验签。
+ * 成功返回已验证的 digest（统一 `VerifyResult` 约定，见 signer/index.ts）。
  */
 export function verifyBundleIntegrity(
   env: BundleEnvelope,
   signature: Pick<SignatureFile, "digest">,
-): IntegrityResult {
+): VerifyResult<string> {
   const digest = envelopeDigest(env);
   if (digest !== signature.digest) {
     return {
@@ -60,26 +61,50 @@ export function verifyBundleIntegrity(
       reason: `digest 不符：算得 ${digest.slice(0, 12)}… 期望 ${signature.digest.slice(0, 12)}…`,
     };
   }
-  return { ok: true };
+  return { ok: true, value: digest };
 }
 
 /**
- * 🔒 Ed25519 验签（复用 signer `serializePayload`）。先内容寻址校验 digest,再验签名载荷。
+ * 🔒 Ed25519 验签（复用 signer `serializePayload`）。顺序：算法 → 内容寻址 digest → **身份核对**
+ * → Ed25519 验签。全过才返回裁定档位（统一 `VerifyResult`）。
  * 需传入 active pin 公钥——**信任裁定与加载决定不在此**（🔒 加载器,ADR-002 §2.6）。
- * 返回 false 即 fail-closed。
+ *
+ * **身份核对（ADR-002 §2.2）**：digest 只绑定内容;签名载荷里的 adapterId/adapterVersion 是另一维。
+ * 不核对则「内容 A / 身份 B」的签名可验过,而运行时用的是 bundle 内 manifest（决定 allow/credentials）
+ * → 身份混淆。此处与 `signEnvelope`（身份取自 envelope manifest）构成纵深防御：签端不产生、验端不接受。
  */
 export function verifyBundleSignature(
   env: BundleEnvelope,
   signature: SignatureFile,
   publicKey: KeyObject,
-): boolean {
-  if (signature.algorithm !== "ed25519") return false;
-  if (!verifyBundleIntegrity(env, signature).ok) return false;
+): VerifyResult<TrustTier> {
+  if (signature.algorithm !== "ed25519") {
+    return { ok: false, reason: `不支持的签名算法：${signature.algorithm}` };
+  }
+  const integrity = verifyBundleIntegrity(env, signature);
+  if (!integrity.ok) return integrity;
+
+  let identity: EnvelopeIdentity;
+  try {
+    identity = readEnvelopeManifest(env);
+  } catch (err) {
+    return { ok: false, reason: (err as Error).message };
+  }
+  if (signature.adapterId !== identity.adapterId || signature.adapterVersion !== identity.adapterVersion) {
+    return {
+      ok: false,
+      reason: `签名身份与 envelope 内 manifest 不符（签名 ${signature.adapterId}@${signature.adapterVersion} vs manifest ${identity.adapterId}@${identity.adapterVersion}）→ fail-closed（ADR-002 §2.2）。`,
+    };
+  }
+
   const payload = serializePayload({
     adapterId: signature.adapterId,
     adapterVersion: signature.adapterVersion,
     tier: signature.tier,
     digest: signature.digest,
   });
-  return edVerify(null, payload, publicKey, Buffer.from(signature.signature, "base64"));
+  if (!edVerify(null, payload, publicKey, Buffer.from(signature.signature, "base64"))) {
+    return { ok: false, reason: "Ed25519 验签失败 → fail-closed。" };
+  }
+  return { ok: true, value: signature.tier };
 }

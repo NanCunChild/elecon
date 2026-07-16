@@ -112,6 +112,12 @@ adapter 依赖两层宿主运行时:**QuickJS 引擎**（ADR-005，双端同引�
 - 新增 `contract/catalog.schema.json`（catalog 条目:`adapterId / adapterVersion / digest / url / stdlibMin / capabilities[]`）+ validator + golden。红线 #6，由本 ADR 引入。
 - **catalog 本身须签名**（**2026-07-15 确认:与 adapter bundle 同一 Ed25519 / YubiKey pin 公钥集**）+ 带 `sequence` **防回滚** + TTL + last-good 回退——与 revocation list **共用同一「signed distribution manifest」模式**（复用 `tools/src/signer/revocation.ts` 的 `sequence`/`pickNewer`/TTL 机器）。未签名/可回滚的 catalog 可被 CDN 中间人替换成"指向旧的有漏洞版本"。
 - **硬约束:catalog 不得引入新 capability id。** validator 对着 `contract/capability/registry.json` 强制:catalog 里每个 capability 必须已在 registry（既有能力集内）。新 capability/新卡片类型**只能随 app 发版改 registry**（ADR-010 §2.1，守住 §3.3.2(a) 立论）。
+- **签名对象 = catalog 的原始 JSON 字节（byte-exact，2026-07-15 定）。** 线上格式:
+  `SignedCatalog = { catalogJson（被签的原始 JSON 文本）, signature, keyId, algorithm }`——**签 / 传 / 验 / 解析用同一份字节**;验签通过后才 `parse`，且验签函数**返回已解析的 catalog**（调用方拿不到未验签数据，fail-closed）。
+  - **为何不重新规范化序列化**:手写字段列表的 `serialize()` 会**静默漂移**——schema/类型新增字段而序列化没跟上，该字段即落在**签名范围之外**（CDN 可随意改它而签名仍有效）;这种漂移还会**跨语言**（Dart 加载器须再实现一份同样的规范化）。字节精确从根上消除两者:**新增字段自动进签名范围**，Dart 侧只需"验字节 → 再 parse"，零规范化、零漂移。与 §2.9 bundle 的取向同源（envelope digest 哈希的是**文件字节**，故也无键序问题）。
+  - 同理适用于 revocation list（同一「signed distribution manifest」模式）。
+
+> **身份绑定（与 §2.9 联动，2026-07-15 定）**:bundle 签名载荷里的 `adapterId/adapterVersion` 与 digest 是**两个维度**——digest 只绑定内容。故 ① **签端**身份一律取自 envelope 内 `manifest.json`（不接受调用方传入）;② **验端**须核对签名身份 == bundle 内 manifest 身份，不符即 fail-closed。否则「digest 覆盖内容 A、载荷却写身份 B」的签名仍可验过，而运行时用的是 bundle 内 manifest（决定 allow/credentials/scope）→ **身份混淆**。这落实 ADR-002 §2.2「与 manifest 自报不符则拒绝加载」。
 
 ### 2.6 客户端加载器设计
 
