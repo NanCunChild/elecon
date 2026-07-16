@@ -3,7 +3,7 @@ description: "校园信息聚合平台"
 publish_to: none
 
 environment:
-  sdk: ">=3.4.0 <4.0.0"
+  sdk: ">=3.10.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -13,7 +13,7 @@ dependencies:
   flutter_qjs_next:
     git:
       url: https://github.com/NanCunChild/flutter_qjs_next
-      ref: 6b29285
+      ref: 05a12b3
   flutter_inappwebview: ^6.0.0
   # ADR-012 §2.8 三档加密（S 软件档）——纯 Dart AES-256-GCM AEAD。
   # 🔒 红线 #9：Apache-2.0；上游维护状态待 license/安全评审确认。

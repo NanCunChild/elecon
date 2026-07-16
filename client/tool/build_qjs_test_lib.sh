@@ -45,6 +45,14 @@ BUILD_SRC="$(pwd)/.dart_tool/flutter_qjs_next_test_build"
 rm -rf "$BUILD_SRC"
 mkdir -p "$BUILD_SRC"
 cp -a "$PKG/." "$BUILD_SRC/"
+# Path dependencies may point at a developer checkout with generated CMake
+# state. Do not copy build artifacts into the temporary source tree: their
+# absolute paths can point back to the original checkout and poison CMake.
+rm -rf \
+  "$BUILD_SRC/build" \
+  "$BUILD_SRC/.dart_tool" \
+  "$BUILD_SRC/example/build" \
+  "$BUILD_SRC/example/.dart_tool"
 
 (
   cd "$BUILD_SRC/example"

@@ -177,8 +177,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "6b29285"
-      resolved-ref: "6b29285bc5fd60ed15e7469bc05f695c6ff68749"
+      ref: "05a12b3"
+      resolved-ref: "05a12b3b3fc88c99fb9b09ae5518870d8b2f5b44"
       url: "https://github.com/NanCunChild/flutter_qjs_next"
     source: git
     version: "0.0.1"
