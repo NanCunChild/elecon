@@ -45,6 +45,29 @@ BUILD_SRC="$(pwd)/.dart_tool/flutter_qjs_next_test_build"
 rm -rf "$BUILD_SRC"
 mkdir -p "$BUILD_SRC"
 cp -a "$PKG/." "$BUILD_SRC/"
+# Path dependencies may point at a developer checkout with generated CMake
+# state. Do not copy build artifacts into the temporary source tree: their
+# absolute paths can point back to the original checkout and poison CMake.
+rm -rf \
+  "$BUILD_SRC/build" \
+  "$BUILD_SRC/.dart_tool" \
+  "$BUILD_SRC/example/build" \
+  "$BUILD_SRC/example/.dart_tool"
+
+# pub.dev releases do not need to ship the package's example application. When
+# testing a hosted release, create a minimal Linux host app that depends on the
+# copied plugin so Flutter still builds the plugin's native library.
+if [ ! -d "$BUILD_SRC/example" ]; then
+  flutter create \
+    --no-pub \
+    --platforms=linux \
+    --project-name flutter_qjs_next_example \
+    "$BUILD_SRC/example"
+  (
+    cd "$BUILD_SRC/example"
+    flutter pub add flutter_qjs_next --path=..
+  )
+fi
 
 (
   cd "$BUILD_SRC/example"

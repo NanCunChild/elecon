@@ -1,14 +1,14 @@
 # ADR-008：客户端 adapter 执行运行时（QuickJS / Flutter）
 
-- **状态**：已接受（Accepted）
+- **状态**：已接受（Accepted，修订 2026-07-16）
 - **日期**：2026-06-09
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)、[`adr_001_contract.md`](./adr_001_contract.md)、[`adr_005_runtime.md`](./adr_005_runtime.md)
 - **适用范围**：`client/` 客户端对 adapter 的执行栈。与 ADR-005（服务端 QuickJS-wasm）对称——本文是同一根承重墙（"一份 adapter，两端同一引擎"）的客户端落点。
 
-> 2026-07-10 实施注记：主线已从旧 `flutter_qjs` 补丁 fork 迁移到 `flutter_qjs_next`
-> Git 依赖。2026-07-13：唯一上游定为 `https://github.com/NanCunChild/flutter_qjs_next`，
-> `client/pubspec.yaml` 以 **单次 commit ref** pin（不跟 branch HEAD）。保留 `IsolateQjs`/host-fn 通道，
-> QuickJS 升至 2025-09-13，解除 `ffi` 1.x 与 Android KGP 阻塞；OHOS 旁路线仍待单独验证。
+> 2026-07-10 实施注记：主线已从旧 `flutter_qjs` 补丁 fork 迁移到 `flutter_qjs_next`。
+> 2026-07-16 修订：客户端改用 pub.dev **精确版本 `flutter_qjs_next: 1.0.2`**，
+> `pubspec.lock` 固定 hosted 包 SHA-256；包许可证为 MIT，Dart SDK 下限统一为 `>=3.10.0`。
+> 保留 `IsolateQjs`/host-fn 通道；QuickJS 源版本为 2026-06-04；OHOS 旁路线仍待单独验证。
 
 ---
 
@@ -33,7 +33,7 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 
 | 候选 | 取 | 舍 |
 |---|---|---|
-| **flutter_qjs_next（当前主线）** | 全平台 QuickJS，与服务端**同一引擎零漂移**；纯 ffi；保留 `IsolateQjs`/host-fn；QuickJS 2025-09-13；解除旧 KGP/ffi 1.x 阻塞 | 当前以 Git 依赖 pin commit；OHOS 未验证 |
+| **flutter_qjs_next（当前主线）** | 全平台 QuickJS，与服务端**同一引擎零漂移**；纯 ffi；保留 `IsolateQjs`/host-fn；QuickJS 2026-06-04；解除旧 KGP/ffi 1.x 阻塞 | 当前以 pub.dev `1.0.2` 精确版本接入；MIT；OHOS 未验证 |
 | flutter_qjs（ekibun，旧方案） | 全平台 QuickJS；API 干净；自带 cxx/QuickJS 源 | 已停更，0.3.7 在 Dart 3.12 编不过；旧 fork 拖累 ffi/KGP |
 | flutter_js | 维护中 | **iOS/macOS 用 JavaScriptCore** → 引擎漂移，违背承重墙 |
 | kodjodevf/flutter_qjs | 较新 | 实为 flutter_js 改名（`getJavascriptRuntime` API），v0.0.1、未发 pub，来路不稳，不宜作承重依赖 |
@@ -44,11 +44,11 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 
 这些是本决策"不埋雷"的前提，必须随实现一起兜住：
 
-1. **绑定仍是承重 fork。** `flutter_qjs_next` 已吸收 Dart 3/host-fn/timeout/memoryLimit/event loop 等能力，并升到 QuickJS 2025-09-13；当前以 Git 依赖 pin commit 接入。
-   - *风险*：构建依赖 GitHub 可达性；受限环境可能仍受 git/libsecret 影响。
-   - *缓解*：如 CI/本机仍受影响，后续将 `flutter_qjs_next` vendoring 到仓内或发布并 pin 版本。
-2. **pub 不为 git 依赖初始化 submodule。** ekibun 把 QuickJS 源作为 git submodule，经 git ref 消费时为空，会同时打断原生插件构建与 FFI 测试库。fork 已将 QuickJS 源 **vendoring**（提交为普通文件）以自包含。
-3. **原生测试库需预构建。** `flutter_qjs_next` 是经典插件，纯 `flutter test`（host VM）不构建原生库。用 `client/tool/build_qjs_test_lib.sh` 构建插件 Linux example，再通过 `FLUTTER_QJS_NEXT_LIBRARY` 指向 `libflutter_qjs_next_plugin.so` 跑测试。**当前 desktop 测试基建仅 Linux**，其余平台按需补。
+1. **绑定仍是承重第三方依赖。** `flutter_qjs_next 1.0.2` 已吸收 Dart 3/host-fn/timeout/memoryLimit/event loop 等能力，并升到 QuickJS 2026-06-04；当前以 pub.dev 精确版本接入，许可证为 MIT。
+   - *风险*：发布包的原生平台内容、pub.dev 可用性和上游维护状态仍影响构建。
+   - *缓解*：`pubspec.lock` 固定 hosted SHA-256；升级版本必须重跑 host-fn/dual-run/fetch 与 release gate。
+2. **发布包必须自包含原生源。** 当前 `1.0.2` 通过 pub.dev 分发，QuickJS 源与 Linux `example/` 已随包发布；若未来发布包缺少平台源或头文件，原生构建会在测试阶段 fail-closed。
+3. **原生测试库需预构建。** `flutter_qjs_next` 是经典插件，纯 `flutter test`（host VM）不构建原生库。`client/tool/build_qjs_test_lib.sh` 从 package config 定位 hosted 包，复制到临时目录并清理 `build/`/`.dart_tool/` 缓存；若发布包不含 example，则生成最小 Linux 宿主工程，再通过 `FLUTTER_QJS_NEXT_LIBRARY` 指向 `libflutter_qjs_next_plugin.so` 跑测试。**当前 desktop 测试基建仅 Linux**，其余平台按需补。
 4. **iOS App Store 审核（已由 [ADR-010](./adr_010_ios_appstore.md) 定调，[#4](https://github.com/NanCunChild/elecon/issues/4)）。** 在 iOS 上下载并由内置解释器执行 adapter JS，触及指南 2.5.2（下载可执行代码）。QuickJS 是解释器、无 JIT，不触 JIT 禁令。合规依据走 **DPLA §3.3.2**（解释型代码：不改变主要用途 / 非代码市场 / 不绕过系统安全）——本运行时的"无 JIT、沙箱内 background isolate 执行"满足其 (c)；"固定能力集、adapter 只产出已知 schema"满足其 (a)。详见 ADR-010。
 5. **两端加载机制不同但语义对齐。** 服务端用模块命名空间返回、客户端用 import 包装 + global 暴露——都以 ESM/模块作用域加载同一份源码，产出由 golden 双跑闸门兜底。后续可考虑收敛为同一 bootstrap 以进一步降低漂移面。
 6. **两端是同一 Bellard 谱系的【两个不同版本 + 不同编译配置】，不是同一份字节码。** §2 "字面意义上同一引擎" 指引擎家族；2026-06 核查实测的真实情况是：
@@ -56,7 +56,7 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
    | 端 | 引擎 | QuickJS 源版本 | BigInt |
    |---|---|---|---|
    | 服务端 | `quickjs-emscripten@0.31` `RELEASE_SYNC`（`@jitl/quickjs-wasmfile-release-sync`，**非** `quickjs-ng`） | Bellard **2024-02-14**（commit `36911f0d`） | 有 |
-   | 客户端 | `flutter_qjs_next` | Bellard **2025-09-13** | 待以 canary/adapter 约束兜底 |
+   | 客户端 | `flutter_qjs_next 1.0.2` | Bellard **2026-06-04** | 待以 canary/adapter 约束兜底 |
 
    两者**同谱系**（都不是 quickjs-ng，避开了分叉级漂移），但仍不是同一份字节码；客户端版本现在反而新于服务端。adapter 作者仍不得假设任意新内建可用，必须以 engine-floor canary 和共享 fixture 为准。
 
@@ -75,6 +75,6 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 - `client/lib/core/adapter_runtime.dart`：parser 模式运行时（`IsolateQjs` 后台 isolate、ESM/moduleHandler 加载、JSON 跨边界、ctx 仅 log/now、限额对齐服务端、失败用 `AdapterFailureReason` 表达且不携带契约 error.kind）。
 - `client/test/dual_run_test.dart`：双跑一致性（客户端半边）+ capability_missing / async_in_parser 反例 + engine-floor canary。
 - `adapters/_canary/parser/`：引擎地板漂移哨兵（`__canary.engine_floor`）。两端共有内建的 golden + `avoided` 约束清单；服务端半边在 `server/src/runtime/sandbox.smoke.ts`。
-- `client/tool/build_qjs_test_lib.sh`：从 `package_config.json` 动态定位 `flutter_qjs_next`，构建 Linux 测试用原生库。
-- `client/pubspec.yaml`：`flutter_qjs_next` → `NanCunChild/flutter_qjs_next` Git 依赖（**pin 单次 commit**，升级只改 ref）。
+- `client/tool/build_qjs_test_lib.sh`：从 `package_config.json` 动态定位 hosted `flutter_qjs_next`，清理复制缓存；必要时生成最小 Linux 宿主工程，构建测试用原生库。
+- `client/pubspec.yaml`：`flutter_qjs_next: 1.0.2`（pub.dev 精确版本）；升级必须同步 `pubspec.lock` 并重跑完整客户端验证。
 - 待续：fetch 模式 `ctx.fetch` + 凭证注入（红线 #1，人工审阅 PR，[#3](https://github.com/NanCunChild/elecon/issues/3)）——客户端宿主函数桥接见 [ADR-014](./adr_014_client_host_fn.md)；iOS 2.5.2 合规评估（已由 [ADR-010](./adr_010_ios_appstore.md) 给出可上架形态，[#4](https://github.com/NanCunChild/elecon/issues/4)）；其余平台 desktop/device 测试基建。

@@ -176,12 +176,11 @@ packages:
   flutter_qjs_next:
     dependency: "direct main"
     description:
-      path: "."
-      ref: "6b29285"
-      resolved-ref: "6b29285bc5fd60ed15e7469bc05f695c6ff68749"
-      url: "https://github.com/NanCunChild/flutter_qjs_next"
-    source: git
-    version: "0.0.1"
+      name: flutter_qjs_next
+      sha256: "1ca783712d8f7639ea73986f6dd71207bbc06e49bc5a3b85d910402ecd15559c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.2"
   flutter_test:
     dependency: "direct dev"
     description: flutter
