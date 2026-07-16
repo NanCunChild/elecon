@@ -4,11 +4,13 @@
 /// 「上层不要误调用」的调用约定，而要在可信核心边界 fail-closed——入口强制
 /// 接收本类型实例，而本类型**只能经核心的信任裁定路径构造**：
 ///
-///  - **official**：由核心验签流程构造（ADR-002 §2.3 验签 → §2.4 吊销 →
-///    由签名裁定档位）。验签器尚未落地（ADR-002 落地清单项），落地前**无
-///    official 构造路径**——release 下 fetch 模式整体 fail-closed，这正是
-///    签名机制就位前的正确状态：不存在「已验签的 official adapter」，就不
-///    该有任何 adapter 拿到凭证注入能力。
+///  - **official**：由核心验签 + 完整加载门禁裁定（ADR-002 §2.3 验签 → §2.4 吊销 →
+///    由签名裁定档位；ADR-018 §2.6 还含 `stdlibMin` 门）。**当前仍无 official 构造
+///    路径**——`core/loader/verify.dart` 已能验签并产出**不可伪造**的 `VerifiedBundle`
+///    （其构造器库私有），但把 `VerifiedBundle` 铸造成 official 凭据的那一步**刻意留到
+///    编排器（`core/loader/loader.dart`，待落地）**——因为铸造前必须先过吊销 + `stdlibMin`
+///    门（§2.6 第 5/6 步）。**在那套门禁齐备前开放铸造即是 fail-open**，故本轮不开。
+///    release 下 fetch 模式因此整体 fail-closed，这正是门禁就位前的正确状态。
 ///  - **devSideload**：dev 侧载例外（ADR-002 §2.5，红线 #5 dev 例外）。
 ///    仅 debug build 存在：[kDebugMode] 为编译期常量，release/profile 下
 ///    工厂首行恒抛、其余代码作为死代码被剔除——「允许侧载注入」的分支在
@@ -53,8 +55,12 @@ class TrustedAdapterContext {
     return const TrustedAdapterContext._(AdapterTrustTier.devSideload);
   }
 
-  // ADR-002 §2.3 验签器落地后在此增 official 构造路径（入参为验签产物，
-  // 由验签实现的 PR 一并人工审）。在那之前不提供——fail-closed。
+  // official 构造路径**尚未开放**（见类文档）：验签器已能产出不可伪造的
+  // `VerifiedBundle`，但铸造 official 凭据须先过吊销 + stdlibMin 门（ADR-018 §2.6），
+  // 由待落地的编排器承担。在那之前不提供 official 工厂——fail-closed。
+  //
+  // 🔒 红线 #1：将来新增 official 工厂时，其入参必须是**不可伪造**的验签+门禁产物
+  //    （非裸字符串/裸枚举），且须人工 + 安全清单复核。
 }
 
 /// fetch 运行时入场判定（纯函数，负例可测）：official 一律放行；
@@ -62,6 +68,16 @@ class TrustedAdapterContext {
 ///
 /// 生产接线固定为 `debugBuild: kDebugMode`（`runFetchAdapter` 入口），
 /// 本函数把判定逻辑与编译期常量解耦，使 release 语义可被单测覆盖。
+///
+/// **穷尽 switch（不设 default）是刻意的**（2026-07-16 收紧）：原实现
+/// `tier == official || debugBuild` 会在 debug 下**放行任何 tier**——将来新增枚举值
+/// 会被静默允许。改为逐档裁定后，新增枚举值会让本函数**编译不过**，强制显式决策，
+/// 杜绝"默默放行"。对现有两档行为完全不变。
 bool fetchTrustPermitted(AdapterTrustTier tier, {required bool debugBuild}) {
-  return tier == AdapterTrustTier.official || debugBuild;
+  switch (tier) {
+    case AdapterTrustTier.official:
+      return true; // official 一律放行（唯一可在 release 跑 fetch 的档）
+    case AdapterTrustTier.devSideload:
+      return debugBuild; // 侧载仅 debug；release/profile 下 fail-closed
+  }
 }

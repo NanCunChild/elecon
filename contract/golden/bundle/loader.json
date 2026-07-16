@@ -1,0 +1,308 @@
+{
+  "_doc": "Node 签端 × Dart 🔒 加载器的跨语言验签 golden。落实 ADR-002 §3 风险 5（规范化规格已钉死，残余风险在跨平台实现一致性）。两端照同一向量跑：envelopeDigest 的双层 SHA-256 与排序、serializePayload 的固定键序、utf-8/base64 解码、Ed25519 验签、以及 ADR-002 §2.2 的身份核对。任一处漂移即 CI 红。**改动本文件触碰红线 #4 验签路径，须人工 + 安全清单复核。**",
+  "_generator": "tools/src/bundle/make-loader-golden.ts（确定性；重跑应产出逐字节相同的文件）",
+  "_keyNote": "publicKeyRawHex 是**测试**公钥（固定种子派生，Ed25519 确定性）。与生产签名密钥（离线 YubiKey 片上生成、永不导出）无关，**绝不可**出现在客户端预埋 pin 集合里——预埋集见 client/lib/core/loader/trust_anchors.dart。",
+  "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+  "otherPublicKeyRawHex": "28eff91a18bd52b47d4c4029f452b20b8e083c6863c793183928b88602add011",
+  "expectedPayloadUtf8": "{\"adapterId\":\"school-golden\",\"adapterVersion\":\"1.2.3\",\"digest\":\"07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2\",\"tier\":\"official\"}",
+  "expectedDigest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
+  "packedBundleBase64": "H4sIAAAAAAAAA4VTy27TQBT9FWu2zctO/EhQFgHUhD4ohYZIjbMYZ66dCfaM45lUaSNLiE0FCxYVAokNX5Adi0jwOaEqK/gExgmEuptuRvI5595z7/HMHAE7g5DHgBpz5E0ZCWGXJxGWqIEghCFnxQ1a1lEB+TQEgRr9OYqxHCkJZQRmpbFQHLAhJ5QFCp1Kv+goSFVLYOtWs5gnUlOAUCeOsUdDKikIran1XcS4pEMohVRIFw0euAylha0HFgKkKFNVXPIoy1t5WIBVy3m1Wp1yOWg2b/eIMKM+CKlG5ey+Yecu0zQXieEIIvwSEkE5c1FDQXqp4qLChsYExxKSJ2RDKTXnYTHgIQF2V3SniVGqbhW3w8j4fgZnRC6TDBz8rUimTNIIMvH8n1hIElLvkP6fM5s0Y1OXpfk8VWMQJTmT9+WwWi6uP16ulu81iPiYar+/fLj69f3zz6u314tvWvdkt+hoPxafbt69WS1f31x+zWwGaQEJGjAsp8n6Tm1jUg1zGSmrfDpKsI5GESqMRH1y36dDikOFEBqo36ewig2eXakblmnZvu5j0HXPqpvDqkOMuoWNGgHDrhGseADHsWumVzeJY3pO1TJtbKDcfGinc8A7VS8Ko8ekNzYrkz1nJCF4tGNPDk+ftwS/8F/EZ/Zk/5l13G71KuykzQ72Z91Z+3RnrzORR8fUnBhPz2HWnRz1qvEF1eFhdvkK6BWcr7ferFtUocuiwrK9w4AnVI6i7GUQwzT1OkrTP6osgDWMAwAA",
+  "cases": [
+    {
+      "name": "valid_official",
+      "_why": "正例：digest 对、身份对、签名对 → 裁定 official",
+      "envelope": {
+        "bundleFormat": "elecon-bundle/1",
+        "files": [
+          {
+            "path": "index.js",
+            "encoding": "utf-8",
+            "content": "export const capabilities = [\"notice.list\"];\n"
+          },
+          {
+            "path": "assets/icon.bin",
+            "encoding": "base64",
+            "content": "AAH//g=="
+          },
+          {
+            "path": "manifest.json",
+            "encoding": "utf-8",
+            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
+          },
+          {
+            "path": "notes.txt",
+            "encoding": "utf-8",
+            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
+          }
+        ]
+      },
+      "signature": {
+        "adapterId": "school-golden",
+        "adapterVersion": "1.2.3",
+        "tier": "official",
+        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
+        "signature": "+HLoH3bmlmDdWj50qJ8htegC+7qMZRAsozfSpv7qKP6QGAW0nTGnLKxUxGZ+JHqtOQi5q2NyexUqOW3pzi1eBg==",
+        "keyId": "golden-test-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": true,
+        "tier": "official"
+      }
+    },
+    {
+      "name": "tampered_content",
+      "_why": "内容寻址：改一字节即 digest 不符 → 拒（fail-closed）",
+      "envelope": {
+        "bundleFormat": "elecon-bundle/1",
+        "files": [
+          {
+            "path": "index.js",
+            "encoding": "utf-8",
+            "content": "export const capabilities = [\"notice.list\"];\n// tampered\n"
+          },
+          {
+            "path": "assets/icon.bin",
+            "encoding": "base64",
+            "content": "AAH//g=="
+          },
+          {
+            "path": "manifest.json",
+            "encoding": "utf-8",
+            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
+          },
+          {
+            "path": "notes.txt",
+            "encoding": "utf-8",
+            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
+          }
+        ]
+      },
+      "signature": {
+        "adapterId": "school-golden",
+        "adapterVersion": "1.2.3",
+        "tier": "official",
+        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
+        "signature": "+HLoH3bmlmDdWj50qJ8htegC+7qMZRAsozfSpv7qKP6QGAW0nTGnLKxUxGZ+JHqtOQi5q2NyexUqOW3pzi1eBg==",
+        "keyId": "golden-test-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "digest"
+      }
+    },
+    {
+      "name": "wrong_public_key",
+      "_why": "非预埋 pin 公钥签的 → 拒",
+      "envelope": {
+        "bundleFormat": "elecon-bundle/1",
+        "files": [
+          {
+            "path": "index.js",
+            "encoding": "utf-8",
+            "content": "export const capabilities = [\"notice.list\"];\n"
+          },
+          {
+            "path": "assets/icon.bin",
+            "encoding": "base64",
+            "content": "AAH//g=="
+          },
+          {
+            "path": "manifest.json",
+            "encoding": "utf-8",
+            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
+          },
+          {
+            "path": "notes.txt",
+            "encoding": "utf-8",
+            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
+          }
+        ]
+      },
+      "signature": {
+        "adapterId": "school-golden",
+        "adapterVersion": "1.2.3",
+        "tier": "official",
+        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
+        "signature": "+HLoH3bmlmDdWj50qJ8htegC+7qMZRAsozfSpv7qKP6QGAW0nTGnLKxUxGZ+JHqtOQi5q2NyexUqOW3pzi1eBg==",
+        "keyId": "golden-test-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "28eff91a18bd52b47d4c4029f452b20b8e083c6863c793183928b88602add011",
+      "expect": {
+        "ok": false,
+        "reasonContains": "验签"
+      }
+    },
+    {
+      "name": "identity_confusion",
+      "_why": "🔒 ADR-002 §2.2：digest 真、Ed25519 真，但签名身份 ≠ envelope 内 manifest。运行时用的是 bundle 内 manifest（定 allow/credentials），不核对即身份混淆 → 必须拒",
+      "envelope": {
+        "bundleFormat": "elecon-bundle/1",
+        "files": [
+          {
+            "path": "index.js",
+            "encoding": "utf-8",
+            "content": "export const capabilities = [\"notice.list\"];\n"
+          },
+          {
+            "path": "assets/icon.bin",
+            "encoding": "base64",
+            "content": "AAH//g=="
+          },
+          {
+            "path": "manifest.json",
+            "encoding": "utf-8",
+            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
+          },
+          {
+            "path": "notes.txt",
+            "encoding": "utf-8",
+            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
+          }
+        ]
+      },
+      "signature": {
+        "adapterId": "school-evil",
+        "adapterVersion": "9.9.9",
+        "tier": "official",
+        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
+        "signature": "4KJDSUpFvq/J822/zifnA59Jft+qmkVJYF8GJspvKJkQMYYIrq/1ONmtyIV2stz0tanYx+/I89AkXOcYbWI7AQ==",
+        "keyId": "golden-test-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "身份"
+      }
+    },
+    {
+      "name": "unsupported_algorithm",
+      "_why": "算法降级：非 ed25519 一律拒，不做任何回退",
+      "envelope": {
+        "bundleFormat": "elecon-bundle/1",
+        "files": [
+          {
+            "path": "index.js",
+            "encoding": "utf-8",
+            "content": "export const capabilities = [\"notice.list\"];\n"
+          },
+          {
+            "path": "assets/icon.bin",
+            "encoding": "base64",
+            "content": "AAH//g=="
+          },
+          {
+            "path": "manifest.json",
+            "encoding": "utf-8",
+            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
+          },
+          {
+            "path": "notes.txt",
+            "encoding": "utf-8",
+            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
+          }
+        ]
+      },
+      "signature": {
+        "adapterId": "school-golden",
+        "adapterVersion": "1.2.3",
+        "tier": "official",
+        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
+        "signature": "+HLoH3bmlmDdWj50qJ8htegC+7qMZRAsozfSpv7qKP6QGAW0nTGnLKxUxGZ+JHqtOQi5q2NyexUqOW3pzi1eBg==",
+        "keyId": "golden-test-key",
+        "algorithm": "rsa-sha256"
+      },
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "算法"
+      }
+    },
+    {
+      "name": "missing_manifest",
+      "_why": "🔒 envelope 无 manifest.json，但 digest 与 Ed25519 **都真**（对这份 envelope 而言）——故会一路走到身份核对。无权威身份来源时必须拒，**不得**退化为采信签名自报的 adapterId（ADR-002 §2.2）。签端 signEnvelope 本就拒签这种 envelope，此为验端的纵深防御。",
+      "envelope": {
+        "bundleFormat": "elecon-bundle/1",
+        "files": [
+          {
+            "path": "index.js",
+            "encoding": "utf-8",
+            "content": "export const capabilities = [\"notice.list\"];\n"
+          },
+          {
+            "path": "assets/icon.bin",
+            "encoding": "base64",
+            "content": "AAH//g=="
+          },
+          {
+            "path": "notes.txt",
+            "encoding": "utf-8",
+            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
+          }
+        ]
+      },
+      "signature": {
+        "adapterId": "school-golden",
+        "adapterVersion": "1.2.3",
+        "tier": "official",
+        "digest": "40403616a1f8c8b87a6dd61b1ce9b3f5ec84fef63912bb10940b4d6c9efb2b9c",
+        "signature": "toTgt3A2IFOlEo7PkSSS01Bs5m67T19h1Tx1LyxkctBQa9NSbU+/UAtYxJdR7DDsvD23pRmLbUz0ptfVLRkQCw==",
+        "keyId": "golden-test-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "manifest"
+      }
+    },
+    {
+      "name": "valid_signature_sideload_tier",
+      "_why": "🔒 tier=sideload 但**签名对同一 envelope、同一密钥有效**——通过 算法/格式/digest/身份/公钥/Ed25519，**只在第 7 步（档位）被拒**。真正验证「验签只裁定 official，远程签名不能自称 sideload 进 dev 档」（ADR-002 §2.5）。与 wrong_public_key 的区别：那个在第 5 步就拒、根本测不到档位语义。",
+      "envelope": {
+        "bundleFormat": "elecon-bundle/1",
+        "files": [
+          {
+            "path": "index.js",
+            "encoding": "utf-8",
+            "content": "export const capabilities = [\"notice.list\"];\n"
+          },
+          {
+            "path": "assets/icon.bin",
+            "encoding": "base64",
+            "content": "AAH//g=="
+          },
+          {
+            "path": "manifest.json",
+            "encoding": "utf-8",
+            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
+          },
+          {
+            "path": "notes.txt",
+            "encoding": "utf-8",
+            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
+          }
+        ]
+      },
+      "signature": {
+        "adapterId": "school-golden",
+        "adapterVersion": "1.2.3",
+        "tier": "sideload",
+        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
+        "signature": "gjP8QRRv50oMC9YUBOwTd5WFfWet62a8tnrJc7PfP3a75nzZgK0gk5XWTvMG7AsUicCzuqzOQw7T0YaWYSYvBA==",
+        "keyId": "golden-test-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "档位"
+      }
+    }
+  ]
+}
