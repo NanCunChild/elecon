@@ -54,6 +54,21 @@ rm -rf \
   "$BUILD_SRC/example/build" \
   "$BUILD_SRC/example/.dart_tool"
 
+# pub.dev releases do not need to ship the package's example application. When
+# testing a hosted release, create a minimal Linux host app that depends on the
+# copied plugin so Flutter still builds the plugin's native library.
+if [ ! -d "$BUILD_SRC/example" ]; then
+  flutter create \
+    --no-pub \
+    --platforms=linux \
+    --project-name flutter_qjs_next_example \
+    "$BUILD_SRC/example"
+  (
+    cd "$BUILD_SRC/example"
+    flutter pub add flutter_qjs_next --path=..
+  )
+fi
+
 (
   cd "$BUILD_SRC/example"
   flutter build linux --debug
