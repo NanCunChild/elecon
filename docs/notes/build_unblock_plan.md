@@ -3,12 +3,13 @@
 > 状态：**草案（draft）**，非 ADR。由 AI 起草供维护者评审。触 ADR-008/014 承重依赖，**须人工主导执行**。
 > 关联：`docs/notes/build_blockers.md`（现状）、`AGENTS.md` 红线 #4/#5、ADR-008 §3、ADR-014。
 > 环境约束：本草案在**无网络**（libsecret 挂起）环境无法执行验证，仅提供可评审的步骤与 diff。
-> 2026-07-10 更新：主线已迁移到 `flutter_qjs_next` Git 依赖，本草案关于旧 `flutter_qjs`
-> git/KGP/ffi 阻塞的执行步骤已被取代，仅作为历史记录保留。当前现状以 `build_blockers.md` 为准。
+> 2026-07-16 更新：主线已迁移到 pub.dev `flutter_qjs_next: 1.0.2`，本草案关于旧
+> `flutter_qjs` Git/KGP/ffi 阻塞的执行步骤已被取代，仅作为历史记录保留。当前现状以
+> `build_blockers.md` 与 ADR-008 为准。
 
 ## 0. 为什么不能直接改代码
 
-`flutter_qjs` 现以 **git 依赖** 经 `dependency_overrides` 注入（`client/pubspec.yaml:28-32`）。
+历史状态：`flutter_qjs` 曾以 **git 依赖** 经 `dependency_overrides` 注入（`client/pubspec.yaml:28-32`）。
 若此刻把它改成 `path:` 依赖但**尚未把 fork 源码 vendoring 进仓**，`flutter pub get` 会立即失败。
 因此本草案**不预先改 pubspec**——改动必须与 vendoring 动作在同一步完成，且要能联网/离线缓存验证。
 
@@ -28,7 +29,7 @@ flutter_qjs 停更 fork
 
 ---
 
-## 1. 切入点 A：flutter_qjs 去 git 依赖（vendoring / path）
+## 1. 历史切入点 A：flutter_qjs 去 git 依赖（vendoring / path）
 
 ### A.1 步骤（人工，需联网或已有 pub 缓存一次）
 

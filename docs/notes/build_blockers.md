@@ -1,14 +1,14 @@
 # 构建/依赖阻塞情况说明（build blockers）
 
 > 状态记录，非 ADR。记录当前卡住工具链升级与依赖更新的几个相互纠缠的问题，供后续处理时参考。
-> 最后更新：2026-07-14。
+> 最后更新：2026-07-16。
 
 ## TL;DR
 
 | 阻塞 | 现状 | 根因 | 影响 |
 |---|---|---|---|
 | **AGP 版本** | 已修到 8.11.1 | 曾降到 8.9.2（< Flutter 下限）| 已解决（清除弃用警告）|
-| **flutter_qjs 停更 fork** | 已迁 `flutter_qjs_next` Git 依赖 | 上游 ekibun 停更 | 主线已解除 ffi/KGP/Java 兼容阻塞 |
+| **flutter_qjs 停更 fork** | 已迁 `flutter_qjs_next` pub.dev `1.0.2` | 上游 ekibun 停更 | 主线已解除 ffi/KGP/Java 兼容阻塞 |
 | **cryptography 版本** | 已升 2.9.0 | `flutter_qjs_next` 已解除 ffi 冲突 | 已解决 |
 | **path_provider 加不进** | 已加入并接线 | 原 git 依赖阻塞已解除 | 已点亮 §2.8 S 档落盘 |
 | **KGP 弃用警告** | 已解决 | `flutter_qjs_next` 不再 apply KGP | Android debug 构建已无该警告 |
@@ -27,8 +27,8 @@
 
 ## 2. QuickJS 绑定迁移（已处理主线）
 
-主线已从 `flutter_qjs`（ekibun 补丁 fork）迁到 Git 依赖
-`flutter_qjs_next`（唯一上游 `https://github.com/NanCunChild/flutter_qjs_next`，**pin 单次 commit**）。它是 QuickJS
+主线已从 `flutter_qjs`（ekibun 补丁 fork）迁到 pub.dev 精确版本
+`flutter_qjs_next: 1.0.2`（上游 `https://github.com/NanCunChild/flutter_qjs_next`，MIT）。它是 QuickJS
 承重依赖（ADR-008/014），迁移后解除原先纠缠：
 
 - `ffi` 已升到 2.2.0，`cryptography` 冲突已解除并**已升到 2.9.0**（`pubspec.yaml: cryptography: ^2.9.0`）。
@@ -46,8 +46,8 @@
 
 ## 4. QuickJS 依赖复现性
 
-当前用 Git 依赖接入唯一上游 `flutter_qjs_next` 并 pin 单次 commit（不跟 branch）。
-后续若 git fetch/libsecret 仍影响 CI/本机，可再评估 vendoring 到仓内固定路径或发布到可信 pub 源。
+当前用 pub.dev hosted 依赖接入 `flutter_qjs_next: 1.0.2`，`pubspec.lock` 固定 SHA-256。
+测试脚本从 package config 定位包，清理复制的构建缓存，并兼容发布包缺少 example 的情况。
 
 ## 5. git / GPG 网络（libsecret 挂起）
 
@@ -60,7 +60,7 @@
 ## 待办（人工主导）
 
 - [x] 主线迁 `flutter_qjs_next`：解除 KGP 警告 + ffi 1.x 冲突。
-- [x] 将 `flutter_qjs_next` 从本机绝对 path 收敛到 Git 仓库并 pin commit。
+- [x] 将 `flutter_qjs_next` 从 Git commit pin 收敛到 pub.dev `1.0.2`，并固定 hosted SHA-256。
 - [x] 单独升级 cryptography 到 2.9.x。
 - [x] 加 path_provider，点亮 §2.8 S 档落盘 + `allowBackup=false` / 备份排除。
 - [ ] 环境 libsecret / pinentry 修复，恢复正常 git/GPG。
