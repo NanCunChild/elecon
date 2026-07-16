@@ -32,6 +32,9 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1"
   },
+  "optionalDependencies": {
+    "pkcs11js": "^2.1.6"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",

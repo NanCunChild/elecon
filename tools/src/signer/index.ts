@@ -2,10 +2,10 @@
  * signer：官方 adapter 签名 / 验签 / 吊销（ADR-002 §2.3–§2.4）。
  *
  * 🔒🔒 安全敏感承重路径（红线 #4：传输底座/adapter 仅官方签名加载）。
- *     按 AGENTS.md §1，**签名相关代码及其测试不得由 AI 独自闭环**——本文件是
- *     **骨架（skeleton）**：确定性部分（bundle 规范化 digest、验签）已实现供审阅，
- *     但**私钥签名操作（YubiKey 硬件）与生产密钥托管必须由维护者人工闭环 + 安全清单审**。
- *     标 `🔒 待人工闭环` 处不得在未经人工审阅前用于任何面向用户的 release。
+ *     按 AGENTS.md §1，**签名相关代码及其测试不得由 AI 独自闭环**——须人工主导 + 安全清单 + ≥1 人工审。
+ *     硬件出签已接线（`./pkcs11.ts` 的 `YubiKeyPkcs11Signer`，2026-07-16 真机核验，经人工评审批准）。
+ *     **密钥 ceremony（PIN/PUK/管理密钥/生成密钥）永不由自动化执行**——见
+ *     `docs/reference/signing_ceremony.md`。
  *
  * 机制（摘自 ADR-002 §2.3，权威以 ADR 为准）：
  *  - 签什么：bundle 规范化内容摘要（manifest + entry 源码 + 资产）+ **裁定档位**，detached 签名。
@@ -140,9 +140,11 @@ export interface HardwareEd25519Signer {
 }
 
 /**
- * 🔒🔒 未接线的硬件提供者——生产须由维护者用 PKCS#11（如 `pkcs11js`/`graphene-pk11`）接
- *     YubiKey PIV 的 `CKM_EDDSA` 槽位 + PIN。骨架构造即可、调用即 fail-closed，杜绝误用。
- *     接线属承重路径（红线 #4），AGENTS.md §1 不得 AI 独自闭环。
+ * 显式 fail-closed 的硬件提供者占位——**构造即可、调用即抛**，杜绝"忘了接硬件却签出了东西"。
+ *
+ * **生产实现是 `YubiKeyPkcs11Signer`（`./pkcs11.ts`，PIV/PKCS#11 `CKM_EDDSA`，
+ * 2026-07-16 已接线并真机核验）**。本类保留用于：① 需要一个"绝不出签"的哨兵时；
+ * ② 测试 `YubiKeySignBackend` 在无硬件时确实 fail-closed。
  */
 export class UnwiredHardwareSigner implements HardwareEd25519Signer {
   readonly keyId: string;
@@ -151,7 +153,7 @@ export class UnwiredHardwareSigner implements HardwareEd25519Signer {
   }
   signEd25519(): Promise<Buffer> {
     throw new Error(
-      "🔒 YubiKey 硬件签名未接线：须人工用 PKCS#11（CKM_EDDSA）+ PIN 接 YubiKey PIV 槽位（ADR-002 §2.3，红线 #4）。",
+      "🔒 本 HardwareEd25519Signer 是未接线占位，拒绝出签。生产请用 YubiKeyPkcs11Signer（./pkcs11.ts，ADR-002 §2.3，红线 #4）。",
     );
   }
 }
@@ -159,7 +161,11 @@ export class UnwiredHardwareSigner implements HardwareEd25519Signer {
 /**
  * 离线 YubiKey 签名后端（ADR-002 §2.3，取代 KMS）。委托 {@link HardwareEd25519Signer} 出裸 64B
  * Ed25519 签名并转 base64。私钥永不入进程/仓库/服务器;签名需物理 PIN+触碰。
- * **🔒 生产接线与硬件闭环须维护者人工完成**（AGENTS.md §1）。测试可注入 fake provider 验证本类管线。
+ *
+ * 生产的硬件实现见 `./pkcs11.ts` 的 `YubiKeyPkcs11Signer`（2026-07-16 已接线并真机核验）。
+ * 本类只做编排（委托 + 裸 64B 守卫 + keyId 透传），故可注入 fake provider 测试而不碰硬件。
+ * 🔒 **密钥 ceremony（PIN/PUK/管理密钥/生成密钥）仍不得由任何自动化执行**——见
+ * `docs/reference/signing_ceremony.md`（AGENTS.md §1）。
  */
 export class YubiKeySignBackend implements SignBackend {
   readonly keyId: string;
@@ -310,13 +316,16 @@ function main(): void {
     return;
   }
 
-  // sign / verify 是 🔒 承重路径：dev 后端接线与密钥加载留给维护者人工闭环。
-  // 骨架不在此自动加载任意私钥/公钥（避免 AI 独自闭环签名操作）。
-  console.log("🔒 signer 骨架：");
+  // sign / verify 是 🔒 承重路径：本 CLI **刻意不做**「自动加载某把私钥/公钥就签」——
+  // 密钥的选取与出签须是维护者的显式动作（ADR-002 §2.3「签 official = 需显式批准的动作」）。
+  console.log("🔒 signer CLI：");
   console.log("  - `digest` 已可用（确定性 bundle 摘要，无密钥）。");
+  console.log("  - 硬件出签：`npx tsx src/signer/pkcs11.ts selftest`（PIN + 触碰）；");
+  console.log("    密钥 ceremony 见 docs/reference/signing_ceremony.md（永不自动化）。");
   console.log(
-    "  - `sign` / `verify` 的密钥加载与 YubiKey 硬件接线由维护者人工闭环（ADR-002 §2.3，AGENTS.md §1）。",
+    "  - `sign` / `verify` 无 CLI 子命令：请用可编程 API（signAdapter / verifyAdapter）在显式脚本里调，",
   );
+  console.log("    避免「随手一条命令就签出 official」（ADR-002 §2.3，AGENTS.md §1）。");
   console.log("  - 可编程 API：signAdapter() / verifyAdapter() / computeBundleDigest()。");
   process.exitCode = 2;
 }

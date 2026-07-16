@@ -1,7 +1,7 @@
 # ADR-018：adapter 仓库分离 · 分级审计 · 打包与签名途径 · 解释器版本同步
 
 - **状态**：**已接受（Accepted） 2026-07-15 经人工评审批准。** 触碰红线 #4（仅官方签名加载）/#5（adapter 越薄）/#6（契约承重墙）/#2（公网零凭证）/#1（凭证）。**决策已定，可据以实现;但实现层仍受 [AGENTS.md](../../AGENTS.md) §1 约束**——签名/加载/分发/凭证等价物检测属安全敏感承重路径，**AI 不得独自闭环**（实现与测试须人工主导 + 安全清单 + ≥1 人工审），此约束不因 ADR 已接受而解除。
-- **日期**：2026-07-15
+- **日期**：2026-07-15（**修订 2026-07-16**（**经人工 owner 评审批准**，真机接线后回填）：§2.3 硬件签名由「待接线」改为**已接线并经真机核验**（`YubiKeyPkcs11Signer`，`CKM_EDDSA`，首把密钥 `elecon-official-ncc-1`）+ 补**密钥形态**（片上生成 / 槽位 9c / PIN+触碰 ALWAYS / **不放 X.509 证书** / 固件 ≥5.7.0）+ §4 勾掉 signer 项并声明新依赖 `pkcs11js`（MIT）。**四信任域、流水线、catalog/bundle 格式、加载器设计均未变**;ADR-002 §2.3/§3/§4 同步修订。）
 - **依赖**：
   - [`adr_000_abstract.md`](./adr_000_abstract.md)（§2.1 公网哑服务无状态、§2.2 可信核心、§2.4 推 adapter 不发版的边界、§3.3 凭证边界、§3.4 传输底座）
   - [`adr_001_contract.md`](./adr_001_contract.md)（manifest / capability registry 契约、schemaVersion）
@@ -75,10 +75,11 @@
 
 - **打包产物 = 规范化 bundle + `signature.json`（detached）**。bundle 规范化 digest 规则已由 ADR-002 §2.3 钉死（字典序 / LF / UTF-8 NFC / 双层 SHA-256），`tools/src/signer` 已实现确定性 digest。
 - **签名 = 离线手动一步**：B 产出 unsigned bundle + digest → 维护者在离线机上**本地重算 digest 确认与 B 一致**（digest 确定性，可独立复现）→ YubiKey **PIN + 物理触碰**对 `{digest, tier=official, adapterId, adapterVersion}` payload 签 Ed25519 → 落 `signature.json`。
-- **实现接缝**：`tools/src/signer` 既有 `SignBackend` 抽象（`sign(payload)→base64`）。新增 `YubiKeySignBackend`（走 PIV/PKCS#11，取**裸 64 字节 Ed25519 签名**以对齐现有 `verifyAdapter`）。`KmsSignBackend` 骨架废弃或删除。**验签侧完全不动。** 🔒 人工闭环。
+- **实现接缝（✅ 2026-07-16 已接线并真机核验）**：`tools/src/signer` 既有 `SignBackend` 抽象（`sign(payload)→base64`）→ `YubiKeySignBackend` → **`HardwareEd25519Signer` 接缝** → **`YubiKeyPkcs11Signer`**（`tools/src/signer/pkcs11.ts`，PIV/PKCS#11 `CKM_EDDSA`，取**裸 64 字节** Ed25519 以对齐 `verifyAdapter`）。`KmsSignBackend` 已删除。**验签侧完全不动。** 多一层 `HardwareEd25519Signer` 接缝的理由：把「硬件怎么出签」与「签名管线」解耦——换令牌品牌 / 换 PKCS#11 模块只动 `pkcs11.ts`，且管线可用 fake provider 测试而不碰硬件。
+- **密钥形态（落地 ADR-002 §2.3 的证书决策）**：**片上生成**（`CKM_EC_EDWARDS_KEY_PAIR_GEN`，私钥从不存在于硬件之外）、PIV 槽位 **9c**（Digital Signature 语义）、`pin-policy=ALWAYS` + `touch-policy=ALWAYS`（**生成时固化不可改，漏设会静默降级，须复核**）、**不放 X.509 证书**（实测 libykcs11 走 PIV metadata 枚举，无证书亦可出签；信任锚只有裸 32B Ed25519 公钥）。**固件须 ≥ 5.7.0**（PIV Ed25519 下限）。完整 ceremony 见 [`signing_ceremony.md`](../reference/signing_ceremony.md)。
 - **密钥备份/丢失**：≥2 把 YubiKey，**各持独立密钥**，全部公钥预埋（1 active + 余 dormant，复用 ADR-002 §2.3 多公钥机制）。丢一把 → 晋升 dormant（随发版）。物理异地备份。
 - **审计台账**：无云端逐次日志，改用 **git 跟踪的发布台账**（`adapters-release-ledger` 或仓内文件），每次签名追加一行 `adapterId / version / digest / date / keyId / 签署人`,提交进仓。
-- **过渡**：`YubiKeySignBackend` 就位前，dev/staging 用 `LocalDevSignBackend`（软密钥，产物不分发终端）。**首次面向用户 release 前硬件签必须就位**（ADR-002 §2.3 硬 deadline）。
+- **过渡（✅ 硬 deadline 已达成）**：硬件签已就位（首把密钥 `elecon-official-ncc-1`，2026-07-16）。dev/staging 仍可用 `LocalDevSignBackend`（软密钥，产物不分发终端）；**面向用户的 release 一律走硬件签**（ADR-002 §2.3）。
 
 ### 2.4 解释器版本同步与安全（stdlib 走 B-host + append-only）
 
@@ -226,7 +227,7 @@ elecon-adapters/（public,另一组织）
 
 1. **安全敏感承重路径（红线 #1/#2/#4）。** 签名（C）、加载器验签顺序（§2.6）、审查沙箱凭证隔离（B）**不得 AI 独自闭环**;实现与测试须人工主导 + 安全清单 + ≥1 人工审。
 2. **采纳规模化瓶颈。** 采纳=人工审查+签名,正是 ADR-000 要减的人力。缓解:parser 快车道（审查面小，§2.2）+ fetch 慢车道分级;绝大多数社区 adapter 是 parser。规模再大时的取舍留后续 ADR。
-3. **签名单人瓶颈/SPOF。** 离线 YubiKey 把签名系于持 token 的人。缓解:≥2 把 token（各自密钥、均预埋）+ 异地备份（§2.3）;急性事件靠 kill-switch/吊销（ADR-002 §2.4）。无云端审计,靠 git 台账 + 人工纪律。
+3. **签名单人瓶颈/SPOF。** 离线 YubiKey 把签名系于持 token 的人。缓解:≥2 把 token（各自密钥、均预埋）+ 异地备份（§2.3）;急性事件靠 kill-switch/吊销（ADR-002 §2.4）。无云端审计,靠 git 台账 + 人工纪律。**另见 ADR-002 §3 风险 2 的两条残余风险（2026-07-16 补）**:(d) 首把令牌兼作日常随身 GPG 令牌 → 物理失窃面偏高;(e) **「所见非所签」**——签名在维护者本地机（非气隙），被攻陷的本机可在触碰瞬间替换载荷,`touch=ALWAYS` 挡不住,**唯一防线是签前在该机重算 digest 与 B 产出的 unsigned bundle 比对**（§2.3 第二条已要求，不可省）。
 4. **stdlib append-only 是硬承诺。** 破坏即令已签名老 adapter 静默漂移（§2.4）。须 stdlib golden 钉死老 API 行为不变;引擎升级视为发版级变更、复跑 golden。
 5. **catalog / 分发端点是攻击面。** catalog 未签名/可回滚 → CDN 中间人可降级到有漏洞版本。已以"catalog 签名 + sequence 防回滚 + last-good"封（§2.5）。公网端点 D 严守零凭证/无状态（红线 #2）。
 6. **契约新增（红线 #6）。** 本 ADR 引入 `runtime.stdlibMin`（manifest schema）+ `contract/catalog.schema.json`,均向后兼容（纯新增）。实现须同步 `tools/` validator + 双端 golden。
@@ -241,7 +242,7 @@ elecon-adapters/（public,另一组织）
 > 🔒 = 安全敏感（人工主导、AI 仅辅助）。
 
 - **契约**（红线 #6，先落）:`contract/manifest.schema.json` 增 `runtime.stdlibMin`（可选）;新增 `contract/catalog.schema.json` + golden;validator 补「catalog capability ⊆ registry」「stdlibMin 语义」校验。
-- 🔒 **signer**:`YubiKeySignBackend`（PIV/PKCS#11，裸 64B Ed25519）接既有 `SignBackend`;废弃 `KmsSignBackend`;catalog 签名/验签复用 revocation 的 `sequence`/`pickNewer`/TTL。
+- 🔒 ~~**signer**~~ **✅ 2026-07-16 已落地（真机核验，经人工评审批准）**:`YubiKeySignBackend` → `HardwareEd25519Signer` 接缝 → `YubiKeyPkcs11Signer`（PIV/PKCS#11 `CKM_EDDSA`，裸 64B Ed25519）;`KmsSignBackend` 已删;catalog 签名/验签复用 revocation 的 `sequence`/`pickNewer`/TTL。首把密钥 `elecon-official-ncc-1`（槽位 9c / 片上生成 / PIN+触碰 ALWAYS / 无证书）。新依赖 `pkcs11js`（MIT，`optionalDependencies`，仅离线签名机，见 ADR-002 §4）。ceremony:[`signing_ceremony.md`](../reference/signing_ceremony.md)。
 - 🔒 **审查沙箱 B**:容器化 adapter 运行 + 测试账号 broker 注入 + 性能/行为审查;与 D/C 分域部署。
 - 🔒 **客户端加载器**:§2.6 fail-closed 顺序 + 内容寻址缓存 + 原子更新 + `stdlibMin` 校验 + 预置基线 bootstrap。双端（Dart client / 若需 TS）共享裁定逻辑。
 - 🔒 **公网端点 D**:`server/src/public` 分发 signed bundle + catalog + revocation（静态、零凭证、TTL）。

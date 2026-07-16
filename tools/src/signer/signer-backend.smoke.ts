@@ -2,7 +2,8 @@
  * YubiKeySignBackend 管线冒烟（ADR-002 §2.3）—— **仅测本类编排**（委托硬件出签 + 裸 64B 守卫），
  * 用 fake HardwareEd25519Signer（node ed25519 出裸 64B）模拟 YubiKey CKM_EDDSA。
  *
- * 🔒 真实 PKCS#11 接线 + 真机 PIN+触碰闭环留待人工（AGENTS.md §1）。本文件不碰硬件、不加载生产密钥。
+ * 🔒 真实 PKCS#11 接线见 `./pkcs11.ts`（`YubiKeyPkcs11Signer`，2026-07-16 已接线并真机核验）；
+ *    真机出签自检（PIN + 触碰）走 `pkcs11.ts selftest`，须人工执行。本文件不碰硬件、不加载生产密钥。
  *
  *   运行：cd tools && npx tsx src/signer/signer-backend.smoke.ts
  */
@@ -68,4 +69,4 @@ const fakeHw: HardwareEd25519Signer = {
   console.log("✓ UnwiredHardwareSigner 未接线即 fail-closed");
 }
 
-console.log("\nsigner backend smoke 全部通过 ✅  —— 硬件 PKCS#11 接线与真机闭环留待人工。");
+console.log("\nsigner backend smoke 全部通过 ✅  —— 真机出签见 pkcs11.ts selftest（PIN + 触碰，人工执行）。");

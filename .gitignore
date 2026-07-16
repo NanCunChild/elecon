@@ -19,3 +19,9 @@ client/ohos/oh_modules/
 
 # npm workspace 共享包构建产物（prepare 时由 tsc 生成）
 packages/*/dist/
+
+# YubiKey PIV 签名 ceremony 的本机产物（ADR-002 §2.3、docs/reference/signing_ceremony.md）。
+# 公钥不敏感，但**无需入库**：它随时可从令牌重新读出（`pkcs11.ts pubkey`，无需 PIN），
+# 而信任锚的权威副本是 App 内预埋的 pin——散落的 .pem 只会和作废密钥混淆（2026-07-16 即发生过）。
+# 私钥不可能出现在此：它片上生成、永不导出。
+*.pem
