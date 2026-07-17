@@ -9,10 +9,13 @@
 ///   ⟹ 传递地，客户端 == 服务端（同一引擎，零语义漂移）。
 ///
 /// 原生库依赖：纯 flutter test 不会构建 flutter_qjs_next 原生库；先构建插件 Linux
-/// example，并通过 FLUTTER_QJS_NEXT_LIBRARY 指向 libflutter_qjs_next_plugin.so。
-/// 该构建脚本目前仅 Linux，故本测试在非 Linux 平台整体 skip（而非崩溃）。
+/// example。库的定位交给 flutter_qjs_next 的 ffi 加载器——它**先认** `FLUTTER_QJS_NEXT_LIBRARY`
+/// 环境变量，未设则**回退**搜一串常见构建产物路径（`build/linux/.../libflutter_qjs_next_plugin.so`
+/// 等），都找不到才抛带指引的错。故本测试与 host_fn/fetch 等 qjs 测试一致，不额外硬要 env
+/// 变量（那会在库经回退可加载时误判失败）。该构建脚本目前仅 Linux，故非 Linux 平台整体 skip。
 ///
-///   运行：cd client && tool/build_qjs_test_lib.sh && FLUTTER_QJS_NEXT_LIBRARY=/path/to/libflutter_qjs_next_plugin.so fvm flutter test test/dual_run_test.dart
+///   运行：cd client && tool/build_qjs_test_lib.sh && fvm flutter test test/dual_run_test.dart
+///   （脚本会把库路径导出到 FLUTTER_QJS_NEXT_LIBRARY；本地已有构建产物时直接 flutter test 即可）
 library;
 
 import 'dart:io';
@@ -31,14 +34,9 @@ void main() {
   group('dual-run（parser, 客户端 QuickJS）', () {
     final parserDir = repoPath('adapters/_template/parser');
 
-    setUpAll(() {
-      // Linux 下原生库非纯 flutter test 自动产物；缺失时给出可操作提示。
-      final lib = Platform.environment['FLUTTER_QJS_NEXT_LIBRARY'];
-      if (lib == null || lib.isEmpty || !File(lib).existsSync()) {
-        fail(
-            '缺少 FLUTTER_QJS_NEXT_LIBRARY 指向的原生库；先运行：tool/build_qjs_test_lib.sh');
-      }
-    });
+    // 不在此硬检查 FLUTTER_QJS_NEXT_LIBRARY：库定位交给 flutter_qjs_next 加载器
+    // （env 或回退产物路径，见文件头注释）。真找不到时它会在首次 evaluate 抛带指引的错，
+    // 与 host_fn/fetch 等 qjs 测试行为一致。
 
     test('产出与 golden 一致', () async {
       final source = File('$parserDir/index.js').readAsStringSync();
