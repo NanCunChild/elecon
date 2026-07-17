@@ -28,6 +28,7 @@
     "audit": "npm audit --omit=dev",
     "smoke:xjt": "tsx src/runtime/adapters-xjt.fetch.smoke.ts",
     "smoke:xidian-schedule": "tsx src/runtime/adapters-xidian.schedule.fetch.smoke.ts",
+    "smoke:xidian-grades": "tsx src/runtime/adapters-xidian.grades.fetch.smoke.ts",
     "smoke:public": "tsx src/public/public.smoke.ts",
     "smoke:all": "node ../scripts/run-smokes.mjs src"
   },

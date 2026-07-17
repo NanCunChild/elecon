@@ -1,0 +1,111 @@
+{
+  "_doc": "Node 签端 × Dart 🔒 加载器的 catalog 跨语言验签 golden（字节精确：Ed25519 over utf8(catalogJson)）。byteInterop 证 Buffer.from(...,'utf8') == Dart utf8.encode（两端均不归一化）；cases 证端到端验签+解析。**改动触碰红线 #4 验签路径，须人工 + 安全清单复核。**",
+  "_generator": "tools/src/catalog/make-catalog-golden.ts（确定性；重跑应产出逐字节相同的文件）",
+  "_keyNote": "publicKeyRawHex 是**测试**公钥（固定种子派生，Ed25519 确定性）。与生产签名密钥无关，**绝不可**出现在 client 预埋 pin 集（client/lib/core/loader/trust_anchors.dart）。",
+  "publicKeyRawHex": "0c821dfa7ab8dad6ec7a0561fb4e888c8730667f304b99a966f2e0060f27eac9",
+  "otherPublicKeyRawHex": "d2db4ed9f0d1ae76ad540d07a76e296cebaeabd21cfa7ed52e449d1805751ae5",
+  "byteInterop": [
+    {
+      "name": "ascii",
+      "text": "hello world",
+      "utf8Base64": "aGVsbG8gd29ybGQ="
+    },
+    {
+      "name": "chinese",
+      "text": "西安电子科技大学 通知列表",
+      "utf8Base64": "6KW/5a6J55S15a2Q56eR5oqA5aSn5a2mIOmAmuefpeWIl+ihqA=="
+    },
+    {
+      "name": "emoji",
+      "text": "🔒🎓✅🚀",
+      "utf8Base64": "8J+UkvCfjpPinIXwn5qA"
+    },
+    {
+      "name": "combining_nfd",
+      "text": "é café",
+      "utf8Base64": "ZcyBIGNhZmXMgQ=="
+    },
+    {
+      "name": "escapes",
+      "text": "quote \" backslash \\ slash / tab\t",
+      "utf8Base64": "cXVvdGUgIiBiYWNrc2xhc2ggXCBzbGFzaCAvIHRhYgk="
+    },
+    {
+      "name": "newlines",
+      "text": "lf\n crlf\r\n cr\r end",
+      "utf8Base64": "bGYKIGNybGYNCiBjcg0gZW5k"
+    },
+    {
+      "name": "astral",
+      "text": "𝕏 😀 𝟙",
+      "utf8Base64": "8J2VjyDwn5iAIPCdn5k="
+    },
+    {
+      "name": "mixed",
+      "text": "校园-🔒-a\\b\"c\n西电",
+      "utf8Base64": "5qCh5ZutLfCflJItYVxiImMK6KW/55S1"
+    }
+  ],
+  "cases": [
+    {
+      "name": "valid_multibyte_identity",
+      "_why": "正例：adapterId 含中文+emoji，验签过 + 解析保真（证 Node utf8 签 == Dart utf8 验）",
+      "signed": {
+        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":7,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"url\":\"https://cdn.example/bundles/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"url\":\"https://cdn.example/bundles/xjt.json.gz\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
+        "signature": "riT0ErlRTPjWvE/3gowqcDAeHR7E9TmZcYRfAK6RkqKIb1YswC5VnXPIoEZgb1Uwe8iCvFOjdM6vh5W3JCd5AQ==",
+        "keyId": "golden-catalog-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "0c821dfa7ab8dad6ec7a0561fb4e888c8730667f304b99a966f2e0060f27eac9",
+      "expect": {
+        "ok": true,
+        "adapterId0": "school-西电🔒"
+      }
+    },
+    {
+      "name": "tampered_catalog_json",
+      "_why": "字节精确：改一处即 utf8 字节变 → Ed25519 验签失败（fail-closed）",
+      "signed": {
+        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":8,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"url\":\"https://cdn.example/bundles/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"url\":\"https://cdn.example/bundles/xjt.json.gz\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
+        "signature": "riT0ErlRTPjWvE/3gowqcDAeHR7E9TmZcYRfAK6RkqKIb1YswC5VnXPIoEZgb1Uwe8iCvFOjdM6vh5W3JCd5AQ==",
+        "keyId": "golden-catalog-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "0c821dfa7ab8dad6ec7a0561fb4e888c8730667f304b99a966f2e0060f27eac9",
+      "expect": {
+        "ok": false,
+        "reasonContains": "验签"
+      }
+    },
+    {
+      "name": "wrong_public_key",
+      "_why": "非该测试密钥签的（换成另一把公钥）→ 拒",
+      "signed": {
+        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":7,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"url\":\"https://cdn.example/bundles/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"url\":\"https://cdn.example/bundles/xjt.json.gz\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
+        "signature": "riT0ErlRTPjWvE/3gowqcDAeHR7E9TmZcYRfAK6RkqKIb1YswC5VnXPIoEZgb1Uwe8iCvFOjdM6vh5W3JCd5AQ==",
+        "keyId": "golden-catalog-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "d2db4ed9f0d1ae76ad540d07a76e296cebaeabd21cfa7ed52e449d1805751ae5",
+      "expect": {
+        "ok": false,
+        "reasonContains": "验签"
+      }
+    },
+    {
+      "name": "unsupported_algorithm",
+      "_why": "算法降级：非 ed25519 一律拒，不回退",
+      "signed": {
+        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":7,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"url\":\"https://cdn.example/bundles/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"url\":\"https://cdn.example/bundles/xjt.json.gz\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
+        "signature": "riT0ErlRTPjWvE/3gowqcDAeHR7E9TmZcYRfAK6RkqKIb1YswC5VnXPIoEZgb1Uwe8iCvFOjdM6vh5W3JCd5AQ==",
+        "keyId": "golden-catalog-key",
+        "algorithm": "rsa"
+      },
+      "publicKeyRawHex": "0c821dfa7ab8dad6ec7a0561fb4e888c8730667f304b99a966f2e0060f27eac9",
+      "expect": {
+        "ok": false,
+        "reasonContains": "算法"
+      }
+    }
+  ]
+}
