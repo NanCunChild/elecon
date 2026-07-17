@@ -115,6 +115,15 @@ class SignedCatalog {
     );
   }
 
+  /// 持久化用（last-good 落盘 / bootstrap 读回）。与 [fromJson] 逐字段往返。
+  /// **不改动 [catalogJson] 那份被签名字节**（原样存原样取），故往返后验签仍成立。
+  Map<String, dynamic> toJson() => {
+        'catalogJson': catalogJson,
+        'signature': signature,
+        'keyId': keyId,
+        'algorithm': algorithm,
+      };
+
   /// 裸 64 字节 Ed25519 签名。非 64 字节一律拒（镜像 `SignatureFile.signatureBytes`：
   /// 防签端误取封装格式 packet/DER 而非裸签名）。
   Uint8List signatureBytes() {

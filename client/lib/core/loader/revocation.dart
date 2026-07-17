@@ -94,6 +94,15 @@ class SignedRevocationList {
     );
   }
 
+  /// 持久化用（last-good 落盘 / bootstrap 读回）。与 [fromJson] 逐字段往返。
+  /// **不改动 [listJson] 那份被签名字节**（原样存原样取），故往返后验签仍成立。
+  Map<String, dynamic> toJson() => {
+        'listJson': listJson,
+        'signature': signature,
+        'keyId': keyId,
+        'algorithm': algorithm,
+      };
+
   /// 裸 64 字节 Ed25519 签名（非 64B 一律拒；同 catalog/bundle 的守卫）。
   Uint8List signatureBytes() {
     final Uint8List raw;
