@@ -129,6 +129,56 @@ class EnvelopeIdentity {
 /// 用的是 bundle 内 manifest（它决定 allow / credentials 注入范围）→ 身份混淆
 /// （ADR-002 §2.2）。manifest.json 本身在 digest 覆盖范围内，故身份与内容结构性绑定。
 EnvelopeIdentity readEnvelopeIdentity(BundleEnvelope env) {
+  final decoded = _decodeManifest(env);
+  final id = decoded['adapterId'];
+  final version = decoded['adapterVersion'];
+  if (id is! String || id.isEmpty || version is! String || version.isEmpty) {
+    throw const BundleFormatException(
+      'envelope 内 manifest.json 缺 adapterId/adapterVersion（fail-closed）',
+    );
+  }
+  return EnvelopeIdentity(adapterId: id, adapterVersion: version);
+}
+
+/// stdlibMin 版本形态 = x.y.z（逐字镜像 contract manifest.schema 的 `runtime.stdlibMin` pattern）。
+final RegExp _reStdlibVersion = RegExp(r'^\d+\.\d+\.\d+$');
+
+/// 从 envelope 内 manifest 读 **adapter 声明的 stdlibMin**（`runtime.stdlibMin`）。
+///
+/// 这是 stdlibMin 门（`stdlib_gate.dart`）的**权威输入**：stdlibMin 在 manifest 内、已被 digest
+/// 覆盖，随 bundle 一起被验签；catalog 里的同名字段只是**预下载提示**，不作数。故门在验签之后、
+/// 以本函数取值为准（ADR-018 §2.4/§2.6）。
+///
+/// 返回值语义：
+///  - `null` = **未声明下限**（contract：`runtime.stdlibMin` 可选，缺省=不设下限）——非错误。
+///  - `runtime` 缺失或非对象 → [BundleFormatException]（fail-closed）：manifest.schema 要求
+///    `runtime` **必存在且为对象**，故缺失/数组/字符串等皆属畸形已签名内容。此处严格对齐契约，
+///    不把非对象 `runtime` 静默当作"无下限"放行（那是 fail-open 缺口，评审 #2）。加载器 greenfield
+///    （official 铸造未开，无历史 bundle 需兼容），故取严格档而非兼容旧 bundle。
+///  - `stdlibMin` 声明了但非 x.y.z → [BundleFormatException]（fail-closed）。
+String? readEnvelopeStdlibMin(BundleEnvelope env) {
+  final manifest = _decodeManifest(env);
+  final runtime = manifest['runtime'];
+  if (runtime is! Map) {
+    throw const BundleFormatException(
+      'manifest.runtime 缺失或非对象（manifest.schema 要求存在且为对象）（fail-closed）',
+    );
+  }
+  final min = runtime['stdlibMin'];
+  if (min == null) return null;
+  if (min is! String || !_reStdlibVersion.hasMatch(min)) {
+    throw const BundleFormatException(
+      'manifest.runtime.stdlibMin 非法（须 x.y.z）（fail-closed）',
+    );
+  }
+  return min;
+}
+
+/// 定位并解码 envelope 内 `manifest.json`（[readEnvelopeIdentity] 与 [readEnvelopeStdlibMin] 共用）。
+///
+/// manifest 的 utf8/JSON 解码失败/非对象/缺失均落地为 [BundleFormatException]（fail-closed）——
+/// 否则裸 FormatException 会穿透 verify.dart 只 `on BundleFormatException` 的各步 → crash 而非拒绝。
+Map<String, dynamic> _decodeManifest(BundleEnvelope env) {
   EnvelopeFile? manifestFile;
   for (final f in env.files) {
     if (f.path == 'manifest.json') {
@@ -138,11 +188,9 @@ EnvelopeIdentity readEnvelopeIdentity(BundleEnvelope env) {
   }
   if (manifestFile == null) {
     throw const BundleFormatException(
-      'envelope 缺 manifest.json → 无法确定权威身份（fail-closed）',
+      'envelope 缺 manifest.json → 无法确定权威身份/运行时要求（fail-closed）',
     );
   }
-  // manifest 的 utf8/JSON 解码失败也须落地为 BundleFormatException（fail-closed）——
-  // 否则裸 FormatException 穿透 verify.dart 的 `on BundleFormatException` → crash。
   final Object? decoded;
   try {
     decoded = jsonDecode(utf8.decode(manifestFile.bytes()));
@@ -154,14 +202,7 @@ EnvelopeIdentity readEnvelopeIdentity(BundleEnvelope env) {
     throw const BundleFormatException(
         'envelope 内 manifest.json 不是对象（fail-closed）');
   }
-  final id = decoded['adapterId'];
-  final version = decoded['adapterVersion'];
-  if (id is! String || id.isEmpty || version is! String || version.isEmpty) {
-    throw const BundleFormatException(
-      'envelope 内 manifest.json 缺 adapterId/adapterVersion（fail-closed）',
-    );
-  }
-  return EnvelopeIdentity(adapterId: id, adapterVersion: version);
+  return decoded;
 }
 
 /// envelope digest = `SHA-256( SHA-256(file1) || SHA-256(file2) || … )`，**按路径字典序**。
@@ -190,12 +231,64 @@ String _hex(List<int> bytes) {
   return sb.toString();
 }
 
+/// 有界 gunzip：压缩输入 ≤ [kMaxBundleGzBytes]，解压输出 ≤ [kMaxBundlePayloadBytes]。
+/// 解压边解边计数，一超上限即抛，**CPU/内存都封顶**在上限附近（不把整个炸弹解完）。
+Uint8List _boundedGunzip(Uint8List gz) {
+  if (gz.length > kMaxBundleGzBytes) {
+    throw BundleFormatException(
+      'bundle 压缩体过大：${gz.length} > $kMaxBundleGzBytes（fail-closed）',
+    );
+  }
+  final sink = _BoundedByteSink(kMaxBundlePayloadBytes);
+  final input = gzip.decoder.startChunkedConversion(sink);
+  try {
+    input.add(gz);
+    input.close();
+  } on FormatException catch (e) {
+    // 畸形 gzip → 结构化格式异常（与其它拆包失败一致，fail-closed）。
+    throw BundleFormatException('bundle gzip 解码失败：$e（fail-closed）');
+  }
+  return sink.takeBytes();
+}
+
+/// 累积解压字节并在超上限时**立即抛**（中止解压），令压缩炸弹的 CPU/内存都封顶在上限附近。
+class _BoundedByteSink implements Sink<List<int>> {
+  _BoundedByteSink(this._limit);
+  final int _limit;
+  final BytesBuilder _b = BytesBuilder(copy: false);
+  int _total = 0;
+
+  @override
+  void add(List<int> chunk) {
+    _total += chunk.length;
+    if (_total > _limit) {
+      throw BundleFormatException(
+        'bundle 解压体超上限 $_limit（fail-closed，疑压缩炸弹）',
+      );
+    }
+    _b.add(chunk);
+  }
+
+  @override
+  void close() {}
+
+  Uint8List takeBytes() => _b.takeBytes();
+}
+
 /// 拆包结果：envelope + 可选 detached 签名。
 class UnpackedBundle {
   const UnpackedBundle({required this.envelope, this.signature});
   final BundleEnvelope envelope;
   final Map<String, dynamic>? signature;
 }
+
+/// 压缩输入上限（粗闸门）：合法 bundle 压缩后远小于此；超限直接拒，不进解压。
+const int kMaxBundleGzBytes = 512 * 1024;
+
+/// 解压载荷上限（**压缩炸弹护栏**）：解压出的 `JSON({envelope, signature})` 超此即拒。
+/// 略高于签发侧 `MAX_BUNDLE_BYTES`（256 KiB 文件总量）——JSON 结构 + base64 膨胀留冗余
+/// （评审 #5：缓存/bootstrap 的损坏或恶意高压缩比 gzip 不得吃满内存/CPU）。
+const int kMaxBundlePayloadBytes = 1024 * 1024;
 
 /// `gzip(JSON({envelope, signature}))` → 结构化。镜像 `unpackBundle`。
 ///
@@ -204,7 +297,7 @@ class UnpackedBundle {
 UnpackedBundle unpackBundle(Uint8List gz) {
   final Object? decoded;
   try {
-    decoded = jsonDecode(utf8.decode(gzip.decode(gz)));
+    decoded = jsonDecode(utf8.decode(_boundedGunzip(gz)));
   } on FormatException catch (e) {
     throw BundleFormatException('bundle 解码失败：$e（fail-closed）');
   }

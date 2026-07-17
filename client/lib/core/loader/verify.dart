@@ -58,6 +58,7 @@ class VerifiedBundle {
     required this.identity,
     required this.keyId,
     required this.digest,
+    required this.stdlibMin,
   });
 
   /// 已核对的权威身份（取自 envelope 内 manifest，非签名自报）。
@@ -68,6 +69,11 @@ class VerifiedBundle {
 
   /// 已核实的内容寻址 digest —— 上层用它做内容寻址缓存 key（ADR-018 §2.6）。
   final String digest;
+
+  /// adapter 声明的 elecon:html stdlib 最低版本（manifest.runtime.stdlibMin，x.y.z）；
+  /// `null` = 未声明下限。**在验签时从 digest 覆盖的 manifest 捕获**（权威值，非 catalog 提示），
+  /// 供 stdlibMin 门（`stdlib_gate.dart`）裁定，见 ADR-018 §2.6 第 6 步。
+  final String? stdlibMin;
 }
 
 /// keyId → 信任锚的解析器。生产恒为 [activeAnchorByKeyId]（只认预埋 active 集合）。
@@ -140,6 +146,15 @@ Future<VerifyResult<VerifiedBundle>> verifyBundleSignatureWith(
     );
   }
 
+  // 4b. 捕获权威 stdlibMin（manifest.runtime.stdlibMin，已在 digest 覆盖内）。畸形即拒。
+  //     只捕获、不裁定——是否满足下限由 stdlib_gate.dart 在编排器里比对本端 stdlib（ADR-018 §2.6）。
+  final String? stdlibMin;
+  try {
+    stdlibMin = readEnvelopeStdlibMin(env);
+  } on BundleFormatException catch (e) {
+    return VerifyResult.fail('${e.message} → fail-closed');
+  }
+
   // 5. 公钥：keyId 必须命中**预埋且 active** 的信任锚。
   //    dormant 命中也拒——晋升只能随发版（ADR-002 §2.3 放大信任方向不可热推）。
   final anchor = resolveAnchor(signature.keyId);
@@ -183,7 +198,12 @@ Future<VerifyResult<VerifiedBundle>> verifyBundleSignatureWith(
   }
 
   return VerifyResult.ok(
-    VerifiedBundle._(identity: identity, keyId: anchor.keyId, digest: digest),
+    VerifiedBundle._(
+      identity: identity,
+      keyId: anchor.keyId,
+      digest: digest,
+      stdlibMin: stdlibMin,
+    ),
   );
 }
 
