@@ -22,6 +22,9 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart'
     show Ed25519, KeyPairType, Signature, SimplePublicKey;
+// 合法 capability id 集合 —— **契约单源** contract/capability/registry.json 的 codegen 产物
+// （tools/src/codegen；CI 漂移闸门保证同步）。避免客户端手抄 registry。
+import 'package:elecon_contract/capability_registry.dart' show kCapabilityIds;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'trust_anchors.dart';
@@ -33,13 +36,25 @@ const String kCatalogAlgorithm = 'ed25519';
 /// ——防止被签发成未来时间的 catalog 长期"保鲜"（密钥泄露时会放大恶意 catalog 有效期）。
 const int kDefaultMaxFutureSkewMs = 5 * 60 * 1000;
 
+/// **规模上限（DoS 护栏）**。攻击者伪造不出有效签名，但可发超大**无效**输入耗 CPU/内存：
+/// 验签前 UTF-8 编码 + Ed25519 会先摸完整个 [SignedCatalog.catalogJson]。故验签前先按
+/// **UTF-16 码元数**（廉价、无分配）卡上限，解析后再卡条目/字段/能力数量。签发侧 validator
+/// 应保持一致上限（见 tools/src/catalog/validate.ts 的对应约束）。
+const int kMaxCatalogJsonChars = 1 << 20; // ~1M 码元；正常 catalog 远小于此
+const int kMaxCatalogEntries = 4096;
+const int kMaxCapabilitiesPerEntry = 64;
+const int kMaxAdapterIdChars = 128;
+const int kMaxUrlChars = 2048;
+const int kMaxVersionChars = 64;
+
 final RegExp _reCatalogVersion = RegExp(r'^\d+\.\d+$');
 final RegExp _reAdapterId = RegExp(r'^school-\S+$');
-// elecon 版本号形态 = x.y.z，**镜像 contract 的 stdlibMin pattern**（`^\d+\.\d+\.\d+$`，红线 #6
-// 契约单源）。刻意不做 prerelease/build 的"近似 semver"——那会与契约漂移且需独立维护。
-// catalog schema 未给 adapterVersion 定 pattern 属契约缺口，客户端按同一 x.y.z 校验；若契约
-// 改用完整 semver，须走 ADR 并两处 lockstep。注：与契约一致地接受前导零（如 01.02.03）。
-final RegExp _reVersion = RegExp(r'^\d+\.\d+\.\d+$');
+// stdlibMin 版本形态 = x.y.z，**逐字镜像 contract 的 stdlibMin pattern**（`^\d+\.\d+\.\d+$`，
+// 红线 #6 契约单源）。**adapterVersion 不在此约束**：contract（manifest + catalog schema）对
+// adapterVersion 只声明 `type:string`，客户端若强加 x.y.z 会比契约严、产生"签发侧接受、客户端
+// 拒"的隐蔽可用性问题。故 adapterVersion 只校验非空串。若要正式规定 adapterVersion 为 x.y.z，
+// 须走 ADR 改 contract 并同步 tools/client（红线 #6），而非客户端单方面加严。
+final RegExp _reStdlibVersion = RegExp(r'^\d+\.\d+\.\d+$');
 final RegExp _reDigest = RegExp(r'^[0-9a-f]{64}$');
 // 严格 RFC3339：约束月/日/时/分/秒范围（DateTime.parse 会对越界值静默滚动，不能仅靠它）。
 final RegExp _reRfc3339 = RegExp(
@@ -62,24 +77,6 @@ const Set<String> _entryKeys = {
   'url',
   'stdlibMin',
   'capabilities',
-};
-
-/// 客户端内置的合法 capability 集合 —— 单源为 `contract/capability/registry.json`（红线 #6）。
-///
-/// **catalog 不得引入新 capability**（ADR-010 §3.3.2(a)）：签名只证"签发者签了这些内容"，
-/// 不能替代能力集校验，尤其 catalog 属网络输入、密钥泄露时可借"新能力"提权，或让加载器
-/// 收到不认识的能力、UI/schema 映射失败、路由未定义行为。故客户端**独立**复核 ⊆ registry。
-///
-/// 🔒 须与 registry.json 保持同步；`loader_catalog_test.dart` 有漂移哨兵断言二者相等。
-/// 理想由 elecon_contract codegen 产出（当前生成包未导出能力集），未就绪前手工镜像。
-const Set<String> kKnownCapabilities = {
-  'grades.list',
-  'schedule.week',
-  'card.balance',
-  'card.transactions',
-  'library.loans',
-  'notice.list',
-  'generic.section',
 };
 
 /// 线上 `catalog.json.gz` 解压后的**外层签名信封**（与 revocation 的 `SignedRevocationList`
@@ -216,6 +213,14 @@ Future<VerifyResult<VerifiedCatalog>> verifyCatalogWith(
   SignedCatalog signed,
   AnchorResolver resolveAnchor,
 ) async {
+  // 0. 规模护栏：验签前按 UTF-16 码元数卡上限（廉价、无分配），避免超大无效输入让下方的
+  //    utf8 编码 + Ed25519 先摸完整串（DoS）。伪造不出有效签名，但拒绝也不该被拖垮。
+  if (signed.catalogJson.length > kMaxCatalogJsonChars) {
+    return VerifyResult.fail(
+      'catalog 过大：${signed.catalogJson.length} 码元 > $kMaxCatalogJsonChars → fail-closed',
+    );
+  }
+
   // 1. 算法：只认 ed25519（防降级）。
   if (signed.algorithm != kCatalogAlgorithm) {
     return VerifyResult.fail('不支持的 catalog 签名算法：${signed.algorithm} → fail-closed');
@@ -306,6 +311,9 @@ Catalog _parseCatalog(Map<String, dynamic> json) {
   if (entries is! List) {
     throw const FormatException('catalog.entries 须为数组');
   }
+  if (entries.length > kMaxCatalogEntries) {
+    throw FormatException('catalog.entries 过多：${entries.length} > $kMaxCatalogEntries');
+  }
 
   final parsed = entries.map((e) {
     if (e is! Map) throw const FormatException('catalog.entries 含非对象项');
@@ -333,35 +341,45 @@ CatalogEntry _parseEntry(Map<String, dynamic> json) {
   _rejectUnknownKeys(json, _entryKeys, 'catalog entry');
 
   final adapterId = json['adapterId'];
-  if (adapterId is! String || !_reAdapterId.hasMatch(adapterId)) {
-    throw const FormatException('catalog entry.adapterId 非法（须 school-*）');
+  if (adapterId is! String ||
+      adapterId.length > kMaxAdapterIdChars ||
+      !_reAdapterId.hasMatch(adapterId)) {
+    throw const FormatException('catalog entry.adapterId 非法（须 school-* 且不超长）');
   }
+  // adapterVersion：contract 只声明 type:string，故此处只校验非空 + 长度（不加 x.y.z，
+  // 免比契约严；正式规定须走 ADR 改 contract，见文件头 _reStdlibVersion 附近注释）。
   final adapterVersion = json['adapterVersion'];
-  if (adapterVersion is! String || !_reVersion.hasMatch(adapterVersion)) {
-    throw const FormatException('catalog entry.adapterVersion 非法（须 x.y.z）');
+  if (adapterVersion is! String ||
+      adapterVersion.isEmpty ||
+      adapterVersion.length > kMaxVersionChars) {
+    throw const FormatException('catalog entry.adapterVersion 非法（须非空且不超长）');
   }
   final digest = json['digest'];
   if (digest is! String || !_reDigest.hasMatch(digest)) {
     throw const FormatException('catalog entry.digest 非法（须 64 位小写 hex）');
   }
   final url = json['url'];
-  if (url is! String || !_isValidBundleUrl(url)) {
-    throw const FormatException('catalog entry.url 非法（须 https、无 userinfo、含 host）');
+  if (url is! String || url.length > kMaxUrlChars || !_isValidBundleUrl(url)) {
+    throw const FormatException('catalog entry.url 非法（须 https、无 userinfo、含 host、不超长）');
   }
   final stdlibMin = json['stdlibMin'];
-  if (stdlibMin != null && (stdlibMin is! String || !_reVersion.hasMatch(stdlibMin))) {
+  if (stdlibMin != null &&
+      (stdlibMin is! String || !_reStdlibVersion.hasMatch(stdlibMin))) {
     throw const FormatException('catalog entry.stdlibMin 非法（须 x.y.z）');
   }
   final caps = json['capabilities'];
   if (caps is! List || caps.isEmpty) {
     throw const FormatException('catalog entry.capabilities 须为非空数组');
   }
+  if (caps.length > kMaxCapabilitiesPerEntry) {
+    throw FormatException('catalog entry.capabilities 过多：${caps.length} > $kMaxCapabilitiesPerEntry');
+  }
   final capabilities = caps.map((c) {
     if (c is! String || c.isEmpty) {
       throw const FormatException('catalog entry.capabilities 含非字符串/空项');
     }
-    // catalog 不得引入 registry 之外的新 capability（见 [kKnownCapabilities]）。
-    if (!kKnownCapabilities.contains(c)) {
+    // catalog 不得引入 registry 之外的新 capability（[kCapabilityIds] 由契约 codegen 产出）。
+    if (!kCapabilityIds.contains(c)) {
       throw FormatException('catalog entry.capabilities 含未知能力：$c（不得引入新 capability，fail-closed）');
     }
     return c;

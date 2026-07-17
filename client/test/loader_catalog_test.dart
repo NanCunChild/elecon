@@ -15,6 +15,7 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:elecon/core/loader/catalog.dart';
 import 'package:elecon/core/loader/trust_anchors.dart';
+import 'package:elecon_contract/capability_registry.dart' show kCapabilityIds;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'utils/test_utils.dart';
@@ -198,8 +199,13 @@ void main() {
     test('adapterId 非 school-* → 拒', () =>
         reject(_payload(entries: [_entry(adapterId: 'evil-corp')]), contains: 'adapterId'));
 
-    test('adapterVersion 非 semver → 拒', () =>
-        reject(_payload(entries: [_entry(adapterVersion: '1.2')]), contains: 'adapterVersion'));
+    test('adapterVersion 空串 → 拒（但非 x.y.z 的字符串版本被接受，与 contract 一致）', () async {
+      await reject(_payload(entries: [_entry(adapterVersion: '')]),
+          contains: 'adapterVersion');
+      // contract 只声明 adapterVersion:type=string，客户端不加 x.y.z，故 '1.2' 应通过。
+      final v = await verified(_payload(entries: [_entry(adapterVersion: '1.2')]));
+      expect(v.catalog.entries.first.adapterVersion, '1.2');
+    });
 
     test('digest 非 64 位小写 hex → 拒（大写）', () =>
         reject(_payload(entries: [_entry(digest: 'A' * 64)]), contains: 'digest'));
@@ -258,12 +264,53 @@ void main() {
   });
 
   group('capability 集合 × registry 单源', () {
-    test('kKnownCapabilities 与 registry.json 完全一致（漂移哨兵）', () {
+    // kCapabilityIds 由 contract codegen 从 registry.json 产出（CI 漂移闸门保证同步）；此断言是
+    // Dart 侧的额外交叉核对——即便有人手改生成物也会红。
+    test('kCapabilityIds 与 registry.json 完全一致', () {
       final reg = readJson(repoPath('contract/capability/registry.json'));
       final ids = (reg['capabilities'] as Map<String, dynamic>).keys.toSet();
-      expect(kKnownCapabilities, equals(ids),
-          reason: '客户端能力集须与 contract/capability/registry.json 同步（红线 #6）');
+      expect(kCapabilityIds, equals(ids),
+          reason: '生成的能力集须与 contract/capability/registry.json 同步（红线 #6）');
     });
+  });
+
+  group('规模上限（DoS 护栏）', () {
+    test('catalogJson 超码元上限 → 验签前即拒', () async {
+      final huge = SignedCatalog(
+        catalogJson: 'x' * (kMaxCatalogJsonChars + 1),
+        signature: base64.encode(Uint8List(64)),
+        keyId: _testKeyId,
+        algorithm: 'ed25519',
+      );
+      final r = await verifyCatalogWith(huge, resolver());
+      expect(r.ok, isFalse);
+      expect(r.reason, stringContainsInOrder(['过大']));
+    });
+
+    test('entries 超上限 → 拒', () async {
+      // 短 url，令总码元数不触碰 catalogJson 上限——隔离出 entries 计数上限这一步。
+      final many = List.generate(
+        kMaxCatalogEntries + 1,
+        (i) => _entry(adapterId: 'school-$i', url: 'https://c.co/x.json.gz'),
+      );
+      await reject(_payload(entries: many), contains: 'entries 过多');
+    });
+
+    test('单 entry capabilities 超上限 → 拒', () => reject(
+        _payload(entries: [
+          _entry(capabilities: List.filled(kMaxCapabilitiesPerEntry + 1, 'notice.list')),
+        ]),
+        contains: 'capabilities 过多'));
+
+    test('adapterId 超长 → 拒', () => reject(
+        _payload(entries: [_entry(adapterId: 'school-${'a' * kMaxAdapterIdChars}')]),
+        contains: 'adapterId'));
+
+    test('url 超长 → 拒', () => reject(
+        _payload(entries: [
+          _entry(url: 'https://cdn.example/${'a' * kMaxUrlChars}.json.gz'),
+        ]),
+        contains: 'url'));
   });
 
   group('SignedCatalog.fromJson — 外层信封', () {

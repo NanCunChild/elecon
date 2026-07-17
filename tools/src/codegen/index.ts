@@ -28,6 +28,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const schemaDir = join(repoRoot, "contract", "schema");
+const registryPath = join(repoRoot, "contract", "capability", "registry.json");
 const outTsDir = join(repoRoot, "contract", "generated", "ts");
 const outDartDir = join(repoRoot, "contract", "generated", "dart", "lib");
 
@@ -194,6 +195,29 @@ export function generateDart(rootName: string, root: JsonSchema): string {
   return `${blocks.join("\n\n")}\n`;
 }
 
+/**
+ * 从 `contract/capability/registry.json`（capability id 单源）生成 Dart 常量集合。
+ *
+ * 为何 codegen 而非手抄：客户端加载器在**编译期**需要合法 capability 集（catalog 不得引入
+ * registry 之外的新能力，ADR-010 §3.3.2(a)）；客户端运行时读不到 registry.json，只能预埋。
+ * 由 codegen 产出 → CI 漂移闸门（重生成 + git diff）保证与 registry 严格同步，杜绝手抄漂移。
+ * （服务端 `validate.ts` 运行时 `loadRegistryIds()` 直接读文件，故无需 TS 产物。）
+ */
+export function generateCapabilityRegistryDart(): string {
+  const reg = JSON.parse(readFileSync(registryPath, "utf-8")) as {
+    capabilities: Record<string, unknown>;
+  };
+  const ids = Object.keys(reg.capabilities).sort();
+  if (ids.length === 0) throw new Error("registry.json 无 capability——拒绝生成空集合");
+  const entries = ids.map((id) => `  '${id}',`).join("\n");
+  return `${DART_HEADER}/// 所有合法 capability id —— 契约单源 contract/capability/registry.json。
+/// 客户端加载器据此拒绝 catalog 引入 registry 之外的新能力（ADR-010 §3.3.2(a)，红线 #6）。
+const Set<String> kCapabilityIds = {
+${entries}
+};
+`;
+}
+
 // ---- 驱动 ----
 
 const TS_HEADER =
@@ -254,6 +278,8 @@ function main(): void {
     writeFileSync(join(outDartDir, `${base.replace(/\./g, "_")}.dart`), f.dart);
     console.log(`✓ ${f.schemaFile} → ${f.typeName}`);
   }
+  writeFileSync(join(outDartDir, "capability_registry.dart"), generateCapabilityRegistryDart());
+  console.log("✓ capability/registry.json → kCapabilityIds");
   console.log(
     `\n生成 ${files.length} 个类型到 contract/generated/{ts,dart}/${skipped.length ? `（${skipped.length} 个需人工处理）` : ""}。`,
   );
