@@ -1,10 +1,10 @@
-/// Shared test utilities for client-side broker / runtime tests.
+/// 客户端 broker / runtime 测试的共享工具。
 ///
-/// Extract common helpers used across multiple test files:
-///   - repo root lookup (eliminates 8× duplication of `_repoPath` / `_repoDir`)
-///   - golden file JSON decode helpers
-///   - FakeResolver / FakeTransport (doubles for B6b tests)
-///   - golden fixture JSON → domain type decoders
+/// 收敛多个测试文件里重复的辅助逻辑：
+///   - 仓库根查找（消除 8× 重复的 `_repoPath` / `_repoDir`）
+///   - golden 文件 JSON 解码辅助
+///   - FakeResolver / FakeTransport（B6b 测试的替身）
+///   - golden 夹具 JSON → 领域类型解码器
 library;
 
 import 'dart:convert';
@@ -15,7 +15,7 @@ import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:elecon/core/broker/ports.dart';
 
-/// Locate the repo root by walking up from [Directory.current].
+/// 从 [Directory.current] 向上逐层查找仓库根。
 String repoRoot() {
   var dir = Directory.current;
   for (var i = 0; i < 6; i++) {
@@ -27,17 +27,16 @@ String repoRoot() {
   return Directory.current.path;
 }
 
-/// Resolve a path relative to the repo root.
+/// 解析相对仓库根的路径。
 String repoPath(String relPath) => '${repoRoot()}/$relPath';
 
-/// Read and decode a golden JSON file under `contract/golden/broker/`.
+/// 读取并解码 `contract/golden/broker/` 下的 golden JSON 文件。
 Map<String, dynamic> readGolden(String fileName) {
   final path = repoPath('contract/golden/broker/$fileName');
   return jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
 }
 
-/// Read and decode a golden JSON file under `contract/golden/broker/` as a
-/// list of golden cases.
+/// 读取并解码 `contract/golden/broker/` 下的 golden JSON 文件为一组 golden 用例列表。
 List<Map<String, dynamic>> readGoldenCases(String fileName, [String key = 'cases']) {
   final golden = readGolden(fileName);
   return (golden[key] as List).cast<Map<String, dynamic>>();
@@ -47,7 +46,7 @@ Map<String, dynamic> readJson(String path) =>
     jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
 
 // ---------------------------------------------------------------------------
-// Test doubles
+// 测试替身
 // ---------------------------------------------------------------------------
 
 class FakeResolver implements CredentialResolver {
@@ -71,7 +70,7 @@ class FakeTransport implements Transport {
 }
 
 // ---------------------------------------------------------------------------
-// Golden fixture decoders
+// Golden 夹具解码器
 // ---------------------------------------------------------------------------
 
 BrokerManifestView viewFromJson(Map<String, dynamic> v) {

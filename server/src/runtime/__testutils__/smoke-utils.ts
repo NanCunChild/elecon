@@ -1,12 +1,12 @@
 /**
- * Shared test utilities for server-side broker / runtime smoke tests.
+ * 服务端 broker / runtime smoke 测试的共享工具。
  *
- * Extract common helpers used across multiple smoke test files:
- *   - repoRoot resolution (eliminates 9× duplication of fileURLToPath(new URL(...)))
- *   - FakeResolver / FakeTransport test doubles
- *   - resp() helper for constructing TransportResponse
- *   - readJson / readText helpers
- *   - runMain() wrapper for the catch(process.exit) pattern
+ * 收敛多个 smoke 测试文件里重复的辅助逻辑：
+ *   - repoRoot 解析（消除 9× 重复的 `fileURLToPath(new URL(...))`）
+ *   - FakeResolver / FakeTransport 测试替身
+ *   - 构造 TransportResponse 的 resp() 辅助
+ *   - readJson / readText 辅助
+ *   - 封装 catch(process.exit) 模式的 runMain()
  */
 
 import { readFileSync, statSync } from "node:fs";
@@ -15,7 +15,7 @@ import type { Transport, TransportRequest, TransportResponse } from "../broker/f
 import type { CredentialResolver, ResolvedCredential } from "../broker/ports.js";
 
 // ---------------------------------------------------------------------------
-// Repo root resolution
+// 仓库根解析
 // ---------------------------------------------------------------------------
 
 export function resolveRepoRoot(metaUrl: string): string {
@@ -25,7 +25,7 @@ export function resolveRepoRoot(metaUrl: string): string {
     try {
       if (statSync(`${dir}/contract`).isDirectory()) return `${dir}/`;
     } catch {
-      /* not found at this level */
+      /* 本层未找到，继续向上 */
     }
     const parent = dir.substring(0, dir.lastIndexOf("/"));
     if (parent === dir) break;
@@ -35,7 +35,7 @@ export function resolveRepoRoot(metaUrl: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// File helpers
+// 文件辅助
 // ---------------------------------------------------------------------------
 
 export function readText(path: string): string {
@@ -47,7 +47,7 @@ export function readJson<T = unknown>(path: string): T {
 }
 
 // ---------------------------------------------------------------------------
-// Test doubles
+// 测试替身
 // ---------------------------------------------------------------------------
 
 export class FakeResolver implements CredentialResolver {
@@ -79,7 +79,7 @@ export const noResolver: CredentialResolver = {
 };
 
 // ---------------------------------------------------------------------------
-// Entry-point wrapper
+// 入口封装
 // ---------------------------------------------------------------------------
 
 export function runMain(fn: () => void | Promise<void>): void {

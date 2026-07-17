@@ -15,9 +15,11 @@ dependencies:
   # 保留 IsolateQjs/host-fn 通道；升级时跑 host_fn/dual_run/fetch 测试。
   flutter_qjs_next: 1.0.2
   flutter_inappwebview: ^6.0.0
-  # ADR-012 §2.8 三档加密（S 软件档）——纯 Dart AES-256-GCM AEAD。
-  # 🔒 红线 #9：Apache-2.0；上游维护状态待 license/安全评审确认。
-  cryptography: ^2.9.0
+  # ADR-012 §2.8 三档加密（S 软件档）——纯 Dart AES-256-GCM AEAD；亦承 loader 验签
+  # （Ed25519）与 digest（DartSha256）。承重且横跨凭证+验签两条路径。
+  # 🔒 红线 #9：Apache-2.0；上游维护状态待 license/安全评审确认——评审未结前**精确 pin**
+  # （与 flutter_qjs_next 同策略），不用 caret，避免 `pub upgrade` 把承重 crypto 漂到未评审版本。
+  cryptography: 2.9.0
   # ADR-012 §2.8：app 私有目录给 FileBlobStore；Android 同步配 allowBackup=false + 备份排除。
   path_provider: ^2.1.5
   # contract/schema 生成的 Dart 类型（tools codegen 产物包；审阅 P0-1 接线）。
