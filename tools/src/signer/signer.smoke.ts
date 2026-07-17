@@ -12,7 +12,7 @@ import { strict as assert } from "node:assert";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canonicalizeContent, computeBundleDigest, serializePayload } from "./index.js";
-import { compareSemver, isRevoked, pickNewer, type RevocationList } from "./revocation.js";
+import { compareSemver, isRevoked, pickNewer, type RevocationList, signRevocation } from "./revocation.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const xidian = join(repoRoot, "adapters", "school-xidian");
@@ -59,7 +59,12 @@ const xidian = join(repoRoot, "adapters", "school-xidian");
   assert.strictEqual(compareSemver("1.2.0", "1.10.0"), -1, "1.2.0 < 1.10.0（数字非字典序）");
   assert.strictEqual(compareSemver("2.0.0", "1.9.9"), 1);
   assert.strictEqual(compareSemver("1.0.0", "1.0.0"), 0);
-  console.log("✓ semver 比较");
+  // 评审 #2：超大版本号不得丢精度（Number 会在 2^53 以上把不同值当相等）。
+  const huge = "99999999999999999999";
+  assert.strictEqual(compareSemver(`${huge}.0.0`, "1.0.0"), 1, "超大版本号 > 1.0.0（不溢出）");
+  assert.strictEqual(compareSemver(`${huge}.0.0`, `${huge}.0.0`), 0, "超大版本号自比相等");
+  assert.strictEqual(compareSemver("1.02.0", "1.2.0"), 0, "前导零不影响数值序");
+  console.log("✓ semver 比较（含无界大版本号）");
 }
 
 // ---- revocation 判定 ----
@@ -126,6 +131,33 @@ const base: RevocationList = {
   assert.strictEqual(pickNewer(newer, older).sequence, 7, "旧序号不得覆盖新序号");
   assert.strictEqual(pickNewer(base, newer).sequence, 7, "新序号应被采用");
   console.log("✓ 防回滚（sequence 单调）");
+}
+
+// ---- 签发侧拒反向区间（评审 #3） ----
+
+{
+  const noopBackend = {
+    keyId: "smoke",
+    async sign() {
+      return "";
+    },
+  };
+  const bad: RevocationList = {
+    ...base,
+    entries: [
+      {
+        adapterId: "school-x",
+        versionRange: { minInclusive: "2.0.0", maxInclusive: "1.0.0" },
+        reason: "反向区间",
+      },
+    ],
+  };
+  await assert.rejects(
+    () => signRevocation(bad, noopBackend),
+    /下界 2\.0\.0 > 上界 1\.0\.0/,
+    "签发侧应拒绝反向版本区间（空区间静默失效）",
+  );
+  console.log("✓ 签发侧拒反向版本区间");
 }
 
 console.log("\nsigner smoke（确定性部分）全部通过 ✅  —— sign/verify 往返测试留待人工闭环。");

@@ -347,6 +347,11 @@ RevocationEntry _parseEntry(Map<String, dynamic> json) {
     if (lo == null && hi == null) {
       throw const FormatException('versionRange 至少须有一个边界');
     }
+    // 反向区间（下界 > 上界）是空区间，永不命中 → 属畸形规则，会让本该生效的吊销静默失效。
+    // 解析期即拒（评审 #3；签发侧 signRevocation 同步 fail-closed）。
+    if (lo != null && hi != null && compareSemver(lo as String, hi as String) > 0) {
+      throw const FormatException('versionRange 下界大于上界（空区间，永不命中）');
+    }
     range = RevocationVersionRange._(minInclusive: lo as String?, maxInclusive: hi as String?);
   }
   if (digest == null && range == null) {
@@ -385,19 +390,45 @@ class RevocationDecision {
 }
 
 /// 极简 semver 比较（仅 `x.y.z`）。镜像 `revocation.ts` 的 `compareSemver`。
-/// 前置：两参均为已校验 `x.y.z`（[_reSemver]）。
+/// 前置：两参均为已校验 `x.y.z`（[_reSemver] 保证每段为非空十进制数字串）。
+///
+/// **无界比较**：段按十进制**字符串**比（去前导零后先比长度再字典序），不转 int——
+/// 避免超大版本号（如 `99999999999999999999.0.0`，仍匹配 [_reSemver]）溢出 int 被误判为 0，
+/// 从而绕过最低版本/区间吊销（评审 #2）。
 int compareSemver(String a, String b) {
   final pa = a.split('.');
   final pb = b.split('.');
   for (var i = 0; i < 3; i++) {
-    final d = (int.tryParse(pa[i]) ?? 0) - (int.tryParse(pb[i]) ?? 0);
-    if (d != 0) return d > 0 ? 1 : -1;
+    final c = _cmpNumericSegment(pa[i], pb[i]);
+    if (c != 0) return c;
   }
   return 0;
 }
 
+/// 比较两个非空十进制数字串（无界大小）。前置：均由 [_reSemver] 校验，仅含 `0-9`。
+int _cmpNumericSegment(String a, String b) {
+  final na = _stripLeadingZeros(a);
+  final nb = _stripLeadingZeros(b);
+  if (na.length != nb.length) return na.length < nb.length ? -1 : 1;
+  return na.compareTo(nb); // 等长纯数字串：字典序即数值序。
+}
+
+String _stripLeadingZeros(String s) {
+  var i = 0;
+  while (i < s.length - 1 && s.codeUnitAt(i) == 0x30 /* '0' */) {
+    i++;
+  }
+  return s.substring(i);
+}
+
 /// 判定某 adapter 是否被吊销 / 低于最低版本 / 撞 kill-switch。**fail toward less trust**。
 /// 纯函数：不拉取、不验签（清单须已 [verifyRevocation]）。
+///
+/// **前置条件（调用方合约，评审 #4）**：本原语的判定域是 **official-tier adapter**。[AdapterRef]
+/// 不携带信任档，故 kill-switch / minVersion 的"official 语义"**不由本函数强制**——编排器
+/// `loader.dart`（片 E）负责只对 official 加载路径调用 [isRevoked]，对 sideload/dev adapter 不喂
+/// 吊销清单（否则会把针对 official 的 kill-switch 误伤到侧载路径）。tier 若日后要纳入判定输入，
+/// 属 E 的加载器设计决策，不在此层投机添加。
 ///
 /// **relaxed adapterVersion 处理**：catalog 的 adapterVersion 不强制 x.y.z（契约只声明 string）。
 /// 若某规则（minVersion / versionRange）**针对本 adapterId** 而 [ref] 版本非 x.y.z，则无法确认它
@@ -405,7 +436,8 @@ int compareSemver(String a, String b) {
 RevocationDecision isRevoked(VerifiedRevocationList verified, AdapterRef ref) {
   final list = verified.list;
   if (list.killSwitch) {
-    return const RevocationDecision.deny('kill-switch 生效：拒绝加载全部 official adapter');
+    // 调用方须保证 ref 为 official-tier（见上「前置条件」）；本层只表达"该 ref 被 kill-switch 拒"。
+    return const RevocationDecision.deny('kill-switch 生效：拒绝加载该 official adapter');
   }
   final refIsSemver = _reSemver.hasMatch(ref.adapterVersion);
 

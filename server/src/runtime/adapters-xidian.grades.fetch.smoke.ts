@@ -8,22 +8,29 @@ import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import {
+  adapterDirIfPresent,
   FakeResolver,
   FakeTransport,
   readText,
-  resp,
   resolveRepoRoot,
+  resp,
   runMain,
+  skipSmoke,
 } from "./__testutils__/smoke-utils.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 import { runFetchAdapter } from "./sandbox.js";
 import { TrustedAdapterContext } from "./trusted-context.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
-const publicRoot = process.env.ELECON_ADAPTERS_REPO ?? `${repoRoot}../elecon-adapters/`;
-const adapterDir = `${publicRoot.replace(/\/$/, "")}/adapters/school-xidian`;
 
 async function main(): Promise<void> {
+  const adapterDir = adapterDirIfPresent(repoRoot, "school-xidian");
+  if (!adapterDir) {
+    skipSmoke(
+      "缺 elecon-adapters 兄弟仓（CI 未检出）；本 smoke 依赖公开 adapter 源。见 ADR-018 / mirror-adapters。",
+    );
+    return;
+  }
   const source = readText(`${adapterDir}/index.js`);
   const transport = new FakeTransport([
     resp({ status: 302, location: "https://ehall.xidian.edu.cn/new/cjcx.html", body: "" }),
@@ -35,14 +42,16 @@ async function main(): Promise<void> {
         datas: {
           xscjcx: {
             extParams: { code: 1 },
-            rows: [{
-              XSKCM: "示例课程",
-              JXBID: "CLASS-EXAMPLE",
-              XNXQDM: "2025-2026-2",
-              XF: "3",
-              ZCJ: "92",
-              XGXKLBDM_DISPLAY: "必修",
-            }],
+            rows: [
+              {
+                XSKCM: "示例课程",
+                JXBID: "CLASS-EXAMPLE",
+                XNXQDM: "2025-2026-2",
+                XF: "3",
+                ZCJ: "92",
+                XGXKLBDM_DISPLAY: "必修",
+              },
+            ],
           },
         },
       }),
@@ -75,14 +84,16 @@ async function main(): Promise<void> {
   assert.ok(validate(data), `成绩产出未通过 schema：${JSON.stringify(validate.errors)}`);
   assert.deepEqual(data, {
     term: "2025-2026-2",
-    items: [{
-      courseId: "CLASS-EXAMPLE",
-      courseName: "示例课程",
-      credit: 3,
-      score: { kind: "numeric", value: 92, max: 100 },
-      category: "required",
-      status: "final",
-    }],
+    items: [
+      {
+        courseId: "CLASS-EXAMPLE",
+        courseName: "示例课程",
+        credit: 3,
+        score: { kind: "numeric", value: 92, max: 100 },
+        category: "required",
+        status: "final",
+      },
+    ],
   });
   console.log("school-xidian grades.list：凭证注入 + 响应脱敏 + schema 通过 ✅");
 }

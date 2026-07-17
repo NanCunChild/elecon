@@ -61,15 +61,28 @@ export interface SignedRevocationList {
 
 // ---- 纯判定逻辑（无密钥，可测） ----
 
-/** 极简 semver 比较（仅 `x.y.z` 数字段；预发布/构建元数据不支持，需要时人工扩展）。 */
+/**
+ * 极简 semver 比较（仅 `x.y.z` 数字段；预发布/构建元数据不支持，需要时人工扩展）。
+ *
+ * **无界比较**：段按十进制字符串比（去前导零后先比长度再字典序），不转 `Number`——避免超大
+ * 版本号超过 2^53 丢精度、被误判相等而绕过最低版本/区间吊销（评审 #2；对齐 Dart compareSemver）。
+ */
 export function compareSemver(a: string, b: string): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
+  const pa = a.split(".");
+  const pb = b.split(".");
   for (let i = 0; i < 3; i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (d !== 0) return d > 0 ? 1 : -1;
+    const c = cmpNumericSegment(pa[i] ?? "0", pb[i] ?? "0");
+    if (c !== 0) return c;
   }
   return 0;
+}
+
+/** 比较两个十进制数字串（无界大小）。非数字段按去零后字典序处理（tools 侧辅助，客户端 Dart 权威）。 */
+function cmpNumericSegment(a: string, b: string): number {
+  const na = a.replace(/^0+(?=\d)/, "");
+  const nb = b.replace(/^0+(?=\d)/, "");
+  if (na.length !== nb.length) return na.length < nb.length ? -1 : 1;
+  return na < nb ? -1 : na > nb ? 1 : 0;
 }
 
 export interface AdapterRef {
@@ -120,11 +133,27 @@ export function pickNewer(current: RevocationList, incoming: RevocationList): Re
 
 // ---- 签名 / 验签（字节精确，同 SignedCatalog；复用 signer 的 Ed25519 + pin 公钥体系） ----
 
+/**
+ * 签发前校验（当前只做 fail-closed 结构约束，非全量 schema——客户端 Dart 是权威校验方）：
+ *  - 反向版本区间（下界 > 上界）是空区间、永不命中，会让本该生效的吊销静默失效 → 拒签（评审 #3）。
+ */
+function assertSignable(list: RevocationList): void {
+  for (const e of list.entries) {
+    const r = e.versionRange;
+    if (r?.minInclusive && r.maxInclusive && compareSemver(r.minInclusive, r.maxInclusive) > 0) {
+      throw new Error(
+        `拒绝签名：entry ${e.adapterId} 的 versionRange 下界 ${r.minInclusive} > 上界 ${r.maxInclusive}（空区间）`,
+      );
+    }
+  }
+}
+
 /** 🔒 对 RevocationList 签名 → SignedRevocationList（序列化**恰好一次**，此后只用这份字节）。 */
 export async function signRevocation(
   list: RevocationList,
   backend: SignBackend,
 ): Promise<SignedRevocationList> {
+  assertSignable(list);
   const listJson = JSON.stringify(list);
   const signature = await backend.sign(Buffer.from(listJson, "utf-8"));
   return { listJson, signature, keyId: backend.keyId, algorithm: "ed25519" };

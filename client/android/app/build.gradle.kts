@@ -45,10 +45,14 @@ android {
 
     buildTypes {
         release {
-            // Local release runs retain the Flutter template fallback. CI must
-            // provide key.properties and never publishes a debug-signed APK.
-            if (System.getenv("CI") == "true" && !keystorePropertiesFile.exists()) {
-                throw GradleException("CI release builds require android/key.properties")
+            // 签名策略区分「发布」与「门禁」：
+            //  - 发布路径（release.yml 置 ELECON_REQUIRE_RELEASE_SIGNING=true）：必须有 key.properties，
+            //    否则 fail——绝不发布 debug 签名的 APK。
+            //  - CI 门禁（ci.yml 的 client-release 只验证 release 能编出且含 INTERNET）与本地 release：
+            //    无 key.properties 时回退 debug 签名——门禁不产出可发布物，无需生产密钥。
+            //    （此前用 System.getenv("CI") 一刀切，把门禁误当发布 → 门禁无密钥即 fail。）
+            if (System.getenv("ELECON_REQUIRE_RELEASE_SIGNING") == "true" && !keystorePropertiesFile.exists()) {
+                throw GradleException("发布构建要求 android/key.properties（ELECON_REQUIRE_RELEASE_SIGNING=true）")
             }
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")

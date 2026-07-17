@@ -79,6 +79,37 @@ export const noResolver: CredentialResolver = {
 };
 
 // ---------------------------------------------------------------------------
+// 兄弟仓 elecon-adapters（ADR-018 adapter 分离）
+// ---------------------------------------------------------------------------
+
+/** 公开 adapter 兄弟仓根（`ELECON_ADAPTERS_REPO` 可覆盖）；默认与本仓同级。 */
+export function adaptersRepoRoot(repoRoot: string): string {
+  const base = process.env.ELECON_ADAPTERS_REPO ?? `${repoRoot}../elecon-adapters/`;
+  return base.replace(/\/$/, "");
+}
+
+/**
+ * 返回某 adapter 的目录；兄弟仓或其 `index.js` 缺失时返回 null。
+ *
+ * 供依赖公开 adapter 源的 smoke「缺仓即跳过」：adapter 已按 ADR-018 迁至独立仓，
+ * 本仓 CI 不检出兄弟仓 → 缺失即跳过而非 ENOENT 硬失败（本地 / adapters 仓 CI 仍完整跑）。
+ */
+export function adapterDirIfPresent(repoRoot: string, adapterId: string): string | null {
+  const dir = `${adaptersRepoRoot(repoRoot)}/adapters/${adapterId}`;
+  try {
+    if (statSync(`${dir}/index.js`).isFile()) return dir;
+  } catch {
+    /* 缺兄弟仓或缺该 adapter */
+  }
+  return null;
+}
+
+/** smoke 跳过提示（run-smokes 以 exit 0 判通过；跳过须显式打印，以免被误读为「跑过」）。 */
+export function skipSmoke(reason: string): void {
+  console.log(`  ⊘ SKIP：${reason}`);
+}
+
+// ---------------------------------------------------------------------------
 // 入口封装
 // ---------------------------------------------------------------------------
 

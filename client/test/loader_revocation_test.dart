@@ -170,6 +170,40 @@ void main() {
     test('versionRange 边界非 semver → 拒', () => reject(
         _list(entries: [_entry(digest: null, versionRange: {'minInclusive': '1.0'})]),
         contains: 'minInclusive'));
+    test('versionRange 反向区间（下界>上界）→ 拒（评审 #3）', () => reject(
+        _list(entries: [
+          _entry(digest: null, versionRange: {'minInclusive': '2.0.0', 'maxInclusive': '1.0.0'})
+        ]),
+        contains: '下界大于上界'));
+    test('versionRange 下界==上界（单点区间）→ 接受', () async {
+      final v = await verified(_list(entries: [
+        _entry(digest: null, versionRange: {'minInclusive': '1.2.0', 'maxInclusive': '1.2.0'})
+      ]));
+      expect(v.list.entries.single.versionRange!.minInclusive, '1.2.0');
+    });
+  });
+
+  group('compareSemver — 无界数值（评审 #2）', () {
+    test('超大版本号不溢出为 0', () {
+      const huge = '99999999999999999999'; // 远超 2^63
+      expect(compareSemver('$huge.0.0', '1.0.0'), 1);
+      expect(compareSemver('1.0.0', '$huge.0.0'), -1);
+      expect(compareSemver('$huge.0.0', '$huge.0.0'), 0);
+    });
+    test('前导零不影响数值序', () {
+      expect(compareSemver('1.02.0', '1.2.0'), 0);
+      expect(compareSemver('1.10.0', '1.2.0'), 1); // 非字典序
+    });
+    test('超大 minVersion 仍拦住旧版本（不因溢出误放行）', () async {
+      const huge = '99999999999999999999';
+      final v = await verified(_list(minVersions: {'school-xidian': '$huge.0.0'}));
+      final d = isRevoked(
+        v,
+        const AdapterRef(adapterId: 'school-xidian', adapterVersion: '1.0.0', digest: 'x'),
+      );
+      expect(d.allowed, isFalse);
+      expect(d.reason, stringContainsInOrder(['低于最低要求']));
+    });
   });
 
   group('规模上限', () {

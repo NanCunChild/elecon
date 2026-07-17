@@ -12,22 +12,29 @@ import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import {
+  adapterDirIfPresent,
   FakeResolver,
   FakeTransport,
   readText,
-  resp,
   resolveRepoRoot,
+  resp,
   runMain,
+  skipSmoke,
 } from "./__testutils__/smoke-utils.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 import { runFetchAdapter } from "./sandbox.js";
 import { TrustedAdapterContext } from "./trusted-context.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
-const publicRoot = process.env.ELECON_ADAPTERS_REPO ?? `${repoRoot}../elecon-adapters/`;
-const adapterDir = `${publicRoot.replace(/\/$/, "")}/adapters/school-xidian`;
 
 async function main(): Promise<void> {
+  const adapterDir = adapterDirIfPresent(repoRoot, "school-xidian");
+  if (!adapterDir) {
+    skipSmoke(
+      "缺 elecon-adapters 兄弟仓（CI 未检出）；本 smoke 依赖公开 adapter 源。见 ADR-018 / mirror-adapters。",
+    );
+    return;
+  }
   const source = readText(`${adapterDir}/index.js`);
   const transport = new FakeTransport([
     resp({ status: 302, location: "https://ehall.xidian.edu.cn/new/index.html", body: "" }),
@@ -70,7 +77,12 @@ async function main(): Promise<void> {
   };
 
   const { data } = await runFetchAdapter(
-    { source, capability: "schedule.week", params: { term: "2025-2026-2", week: 3 }, nowMs: 1_700_000_000_000 },
+    {
+      source,
+      capability: "schedule.week",
+      params: { term: "2025-2026-2", week: 3 },
+      nowMs: 1_700_000_000_000,
+    },
     {
       trust: TrustedAdapterContext.devSideload(),
       view,
@@ -91,18 +103,22 @@ async function main(): Promise<void> {
   assert.deepEqual(data, {
     term: "2025-2026-2",
     week: 3,
-    days: [{
-      dayOfWeek: 1,
-      slots: [{
-        start: "1",
-        end: "2",
-        courseName: "示例课程",
-        courseId: "COURSE-EXAMPLE",
-        teacher: "示例教师",
-        location: "示例教学楼",
-        weeks: [1, 2, 3, 4],
-      }],
-    }],
+    days: [
+      {
+        dayOfWeek: 1,
+        slots: [
+          {
+            start: "1",
+            end: "2",
+            courseName: "示例课程",
+            courseId: "COURSE-EXAMPLE",
+            teacher: "示例教师",
+            location: "示例教学楼",
+            weeks: [1, 2, 3, 4],
+          },
+        ],
+      },
+    ],
   });
   console.log("school-xidian schedule.week：凭证注入 + 响应脱敏 + schema 通过 ✅");
 }
