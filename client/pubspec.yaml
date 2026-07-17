@@ -1,6 +1,9 @@
 name: elecon
 description: "校园信息聚合平台"
 publish_to: none
+# 本地构建的默认版本基线。CI 发版以 git tag 为准（release.yml 用 `--build-name`
+# 覆盖为 tag 去掉 v 前缀、`--build-number` 用 run number），tag 与此处不必逐位同步。
+version: 0.1.0+1
 
 environment:
   sdk: ">=3.10.0 <4.0.0"

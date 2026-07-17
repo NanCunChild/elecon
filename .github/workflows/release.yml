@@ -17,10 +17,45 @@ env:
   FLUTTER_CHANNEL: stable
 
 jobs:
+  # 发版闸门：tag 推送不触发 flutter-ci（它只跑 main 分支与 PR），故在此复跑
+  # analyze + test。任一失败即阻断 build/publish——绝不发出未过测试的产物。
+  test:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+      - name: Install Linux test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Build QuickJS test library
+        run: ./tool/build_qjs_test_lib.sh
+      - name: Test
+        run: flutter test
+
   build:
     name: Build ${{ matrix.name }}
+    needs: test
     strategy:
       fail-fast: false
+      # OHOS/HAP 刻意不在发版矩阵内：主线依赖已迁 flutter_qjs_next，OHOS 旁路仍用
+      # 旧 flutter_qjs fork（pubspec.ohos.yaml），需单独验证后再纳入，见
+      # docs/notes/build_blockers.md §2。
       matrix:
         include:
           - name: android-v7a
@@ -68,6 +103,17 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      # 仓库只提交了 android/ios/linux 平台目录；macos/windows 的 runner 未入库。
+      # flutter build 不会自动补平台目录，故按需脚手架（目录已存在则跳过）。
+      - name: Ensure desktop platform scaffold
+        if: matrix.platform == 'windows' || matrix.platform == 'macos'
+        shell: bash
+        run: |
+          if [ ! -d "${{ matrix.platform }}" ]; then
+            echo "缺少 ${{ matrix.platform }}/ 平台目录 → flutter create 脚手架"
+            flutter create --no-pub --platforms=${{ matrix.platform }} --project-name elecon .
+          fi
 
       - name: Create Android signing files
         if: matrix.platform == 'android'
@@ -119,11 +165,39 @@ jobs:
           flutter build linux --release --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
           tar -C build/linux/x64/release -czf "$GITHUB_WORKSPACE/elecon-linux-${RELEASE_TAG#v}.tar.gz" bundle
 
+      # macOS 签名渠道：配了证书 secrets 就 codesign，否则产出未签名 .app（现状）。
+      # 未签名包用户侧会被 Gatekeeper 拦（需右键打开）；公证（notarization）待后续接入。
       - name: Build macOS package
         if: matrix.platform == 'macos'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: |
           flutter build macos --release --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
-          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/elecon.app "$GITHUB_WORKSPACE/elecon-macos-${RELEASE_TAG#v}.zip"
+          APP="build/macos/Build/Products/Release/elecon.app"
+          if [ -n "$MACOS_CERTIFICATE_BASE64" ] && [ -n "$MACOS_SIGN_IDENTITY" ]; then
+            echo "检测到 macOS 签名证书 → codesign（identity: $MACOS_SIGN_IDENTITY）"
+            KEYCHAIN="$RUNNER_TEMP/elecon-signing.keychain-db"
+            KEYCHAIN_PASSWORD="$(uuidgen)"
+            CERT_PATH="$RUNNER_TEMP/macos-cert.p12"
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+            printf '%s' "$MACOS_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+            security import "$CERT_PATH" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+            # 把临时 keychain 并入搜索域，让 codesign 能找到导入的私钥。
+            security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed s/\"//g)
+            codesign --force --deep --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$APP"
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            rm -f "$CERT_PATH"
+            security delete-keychain "$KEYCHAIN"
+          else
+            echo "未配置 macOS 签名证书 → 产出未签名 .app（Gatekeeper 将告警）"
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$GITHUB_WORKSPACE/elecon-macos-${RELEASE_TAG#v}.zip"
 
       - name: Build unsigned iOS package
         if: matrix.platform == 'ios'
