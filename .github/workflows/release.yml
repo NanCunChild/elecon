@@ -1,0 +1,160 @@
+name: Release Flutter artifacts
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to release, for example v1.2.3
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_CHANNEL: stable
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: android-v7a
+            platform: android
+            runner: ubuntu-latest
+          - name: android-v8a
+            platform: android
+            runner: ubuntu-latest
+          - name: windows
+            platform: windows
+            runner: windows-latest
+          - name: linux
+            platform: linux
+            runner: ubuntu-latest
+          - name: macos
+            platform: macos
+            runner: macos-14
+          - name: ios
+            platform: ios
+            runner: macos-14
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Create Android signing files
+        if: matrix.platform == 'android'
+        working-directory: .
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo 'ANDROID_KEYSTORE_BASE64 is required'; exit 1; }
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > client/android/upload-keystore.jks
+          cat > client/android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Build Android APK
+        if: matrix.platform == 'android'
+        env:
+          CI: true
+        run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
+
+      - name: Select Android ABI artifact
+        if: matrix.platform == 'android'
+        shell: bash
+        run: |
+          case "${{ matrix.name }}" in
+            android-v7a) abi=armeabi-v7a ;;
+            android-v8a) abi=arm64-v8a ;;
+          esac
+          mkdir -p ../release-artifacts
+          cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "../release-artifacts/elecon-${{ matrix.name }}-${RELEASE_TAG#v}.apk"
+
+      - name: Build Windows package
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          flutter build windows --release --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
+          7z a "$GITHUB_WORKSPACE/elecon-windows-${RELEASE_TAG#v}.zip" build/windows/x64/runner/Release/*
+
+      - name: Build Linux package
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          flutter build linux --release --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
+          tar -C build/linux/x64/release -czf "$GITHUB_WORKSPACE/elecon-linux-${RELEASE_TAG#v}.tar.gz" bundle
+
+      - name: Build macOS package
+        if: matrix.platform == 'macos'
+        run: |
+          flutter build macos --release --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/elecon.app "$GITHUB_WORKSPACE/elecon-macos-${RELEASE_TAG#v}.zip"
+
+      - name: Build unsigned iOS package
+        if: matrix.platform == 'ios'
+        run: |
+          flutter build ios --release --no-codesign --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
+          ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app "$GITHUB_WORKSPACE/elecon-ios-${RELEASE_TAG#v}-unsigned.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: elecon-${{ matrix.name }}
+          path: |
+            elecon-*.zip
+            elecon-*.tar.gz
+            release-artifacts/elecon-*.apk
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          pattern: elecon-*
+          merge-multiple: true
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: release/**
