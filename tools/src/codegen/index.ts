@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const schemaDir = join(repoRoot, "contract", "schema");
 const registryPath = join(repoRoot, "contract", "capability", "registry.json");
+const stdlibPkgPath = join(repoRoot, "adapters", "_stdlib", "package.json");
 const outTsDir = join(repoRoot, "contract", "generated", "ts");
 const outDartDir = join(repoRoot, "contract", "generated", "dart", "lib");
 
@@ -218,6 +219,27 @@ ${entries}
 `;
 }
 
+/**
+ * 生成客户端 `stdlib_version.dart`：`kHostStdlibVersion` = 随 app 打包的 elecon:html stdlib 版本。
+ *
+ * 单源 = `adapters/_stdlib/package.json` 的 version（与 server 双端锁步，ADR-018 §2.4）。
+ * 客户端运行时读不到该 package.json（stdlib 只是 vendored 的 html.bundle.js，无内嵌版本号），
+ * 只能编译期预埋。由 codegen 产出 → CI 漂移闸门（重生成 + git diff）保证与 package.json 严格同步，
+ * 杜绝手抄漂移。加载器的 stdlibMin 门据此 fail-closed（本端 < bundle 声明的 stdlibMin → 拒载）。
+ */
+export function generateStdlibVersionDart(): string {
+  const pkg = JSON.parse(readFileSync(stdlibPkgPath, "utf-8")) as { version?: unknown };
+  const v = pkg.version;
+  if (typeof v !== "string" || !/^\d+\.\d+\.\d+$/.test(v)) {
+    throw new Error(`adapters/_stdlib/package.json 的 version 非法（须 x.y.z）：${String(v)}`);
+  }
+  return `${DART_HEADER}/// 本端随 app 打包的 elecon:html stdlib 版本 —— 契约单源
+/// adapters/_stdlib/package.json（与 server 双端锁步，ADR-018 §2.4 B-host）。
+/// 加载器 stdlibMin 门据此 fail-closed：本端 < bundle manifest 声明的 stdlibMin → 拒载。
+const String kHostStdlibVersion = '${v}';
+`;
+}
+
 // ---- 驱动 ----
 
 const TS_HEADER =
@@ -280,6 +302,8 @@ function main(): void {
   }
   writeFileSync(join(outDartDir, "capability_registry.dart"), generateCapabilityRegistryDart());
   console.log("✓ capability/registry.json → kCapabilityIds");
+  writeFileSync(join(outDartDir, "stdlib_version.dart"), generateStdlibVersionDart());
+  console.log("✓ adapters/_stdlib/package.json → kHostStdlibVersion");
   console.log(
     `\n生成 ${files.length} 个类型到 contract/generated/{ts,dart}/${skipped.length ? `（${skipped.length} 个需人工处理）` : ""}。`,
   );
