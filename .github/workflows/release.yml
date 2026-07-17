@@ -137,7 +137,9 @@ jobs:
       - name: Build Android APK
         if: matrix.platform == 'android'
         env:
-          CI: true
+          # 发布信号：缺 key.properties 时让 gradle fail（绝不发布 debug 签名 APK）。
+          # 上一步已从 secrets 落 key.properties，此处双保险。CI 门禁不置此变量 → 回退 debug 签名。
+          ELECON_REQUIRE_RELEASE_SIGNING: "true"
         run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
 
       - name: Select Android ABI artifact

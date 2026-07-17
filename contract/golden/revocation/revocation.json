@@ -1,0 +1,70 @@
+{
+  "_doc": "Node 签端 × Dart 🔒 加载器的 revocation 跨语言验签 golden（字节精确：Ed25519 over utf8(listJson)）。valid case 的 reason 富文本 + adapterId 中文/emoji 证端到端 utf8 互操作（两端不归一化）。**改动触碰红线 #4 验签路径，须人工 + 安全清单复核。**",
+  "_generator": "tools/src/signer/make-revocation-golden.ts（确定性；重跑应产出逐字节相同的文件）",
+  "_keyNote": "publicKeyRawHex 是**测试**公钥（固定种子派生）。与生产签名密钥无关，**绝不可**出现在 client 预埋 pin 集（client/lib/core/loader/trust_anchors.dart）。",
+  "publicKeyRawHex": "5d6fcfd4c4747d12a81b8baa97b020a274ca1a946405781364fa057eeb62d0cf",
+  "otherPublicKeyRawHex": "3dd08d4d7cfb089c77c47eb9e9854b86957bebcaacc8a1bf68cea1607b3ee9c5",
+  "cases": [
+    {
+      "name": "valid_multibyte_reason",
+      "_why": "正例：reason 富文本 + adapterId 中文/emoji，验签过 + 解析逐字符保真",
+      "signed": {
+        "listJson": "{\"sequence\":5,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"minVersions\":{\"school-西电🔒\":\"2.0.0\"},\"killSwitch\":false,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"密钥泄露事件 🔒\\n受影响版本 1.0.0–1.5.0\\n引号\\\" 反斜杠\\\\ 制表\\t NFD é 星平面 𝕏😀\"},{\"adapterId\":\"school-xjt\",\"versionRange\":{\"minInclusive\":\"1.0.0\",\"maxInclusive\":\"1.5.0\"},\"reason\":\"版本区间吊销\"}]}",
+        "signature": "h7SWtnpVHlYxir7AFeVN1FBTQ3Gk0KmrXdxgh0N8innz7Nf/cu0wdmeMzhG/uGggBon5WKecusiycgXghS1DDg==",
+        "keyId": "golden-revocation-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "5d6fcfd4c4747d12a81b8baa97b020a274ca1a946405781364fa057eeb62d0cf",
+      "expect": {
+        "ok": true,
+        "entry0AdapterId": "school-西电🔒",
+        "entry0Reason": "密钥泄露事件 🔒\n受影响版本 1.0.0–1.5.0\n引号\" 反斜杠\\ 制表\t NFD é 星平面 𝕏😀"
+      }
+    },
+    {
+      "name": "tampered_list_json",
+      "_why": "字节精确：改一处即 utf8 字节变 → Ed25519 验签失败",
+      "signed": {
+        "listJson": "{\"sequence\":6,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"minVersions\":{\"school-西电🔒\":\"2.0.0\"},\"killSwitch\":false,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"密钥泄露事件 🔒\\n受影响版本 1.0.0–1.5.0\\n引号\\\" 反斜杠\\\\ 制表\\t NFD é 星平面 𝕏😀\"},{\"adapterId\":\"school-xjt\",\"versionRange\":{\"minInclusive\":\"1.0.0\",\"maxInclusive\":\"1.5.0\"},\"reason\":\"版本区间吊销\"}]}",
+        "signature": "h7SWtnpVHlYxir7AFeVN1FBTQ3Gk0KmrXdxgh0N8innz7Nf/cu0wdmeMzhG/uGggBon5WKecusiycgXghS1DDg==",
+        "keyId": "golden-revocation-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "5d6fcfd4c4747d12a81b8baa97b020a274ca1a946405781364fa057eeb62d0cf",
+      "expect": {
+        "ok": false,
+        "reasonContains": "验签"
+      }
+    },
+    {
+      "name": "wrong_public_key",
+      "_why": "非该测试密钥签的 → 拒",
+      "signed": {
+        "listJson": "{\"sequence\":5,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"minVersions\":{\"school-西电🔒\":\"2.0.0\"},\"killSwitch\":false,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"密钥泄露事件 🔒\\n受影响版本 1.0.0–1.5.0\\n引号\\\" 反斜杠\\\\ 制表\\t NFD é 星平面 𝕏😀\"},{\"adapterId\":\"school-xjt\",\"versionRange\":{\"minInclusive\":\"1.0.0\",\"maxInclusive\":\"1.5.0\"},\"reason\":\"版本区间吊销\"}]}",
+        "signature": "h7SWtnpVHlYxir7AFeVN1FBTQ3Gk0KmrXdxgh0N8innz7Nf/cu0wdmeMzhG/uGggBon5WKecusiycgXghS1DDg==",
+        "keyId": "golden-revocation-key",
+        "algorithm": "ed25519"
+      },
+      "publicKeyRawHex": "3dd08d4d7cfb089c77c47eb9e9854b86957bebcaacc8a1bf68cea1607b3ee9c5",
+      "expect": {
+        "ok": false,
+        "reasonContains": "验签"
+      }
+    },
+    {
+      "name": "unsupported_algorithm",
+      "_why": "算法降级：非 ed25519 一律拒",
+      "signed": {
+        "listJson": "{\"sequence\":5,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"minVersions\":{\"school-西电🔒\":\"2.0.0\"},\"killSwitch\":false,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"密钥泄露事件 🔒\\n受影响版本 1.0.0–1.5.0\\n引号\\\" 反斜杠\\\\ 制表\\t NFD é 星平面 𝕏😀\"},{\"adapterId\":\"school-xjt\",\"versionRange\":{\"minInclusive\":\"1.0.0\",\"maxInclusive\":\"1.5.0\"},\"reason\":\"版本区间吊销\"}]}",
+        "signature": "h7SWtnpVHlYxir7AFeVN1FBTQ3Gk0KmrXdxgh0N8innz7Nf/cu0wdmeMzhG/uGggBon5WKecusiycgXghS1DDg==",
+        "keyId": "golden-revocation-key",
+        "algorithm": "rsa"
+      },
+      "publicKeyRawHex": "5d6fcfd4c4747d12a81b8baa97b020a274ca1a946405781364fa057eeb62d0cf",
+      "expect": {
+        "ok": false,
+        "reasonContains": "算法"
+      }
+    }
+  ]
+}

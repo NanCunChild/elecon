@@ -11,7 +11,14 @@
  *  - 核心行为：验签清单 → 拒绝加载被吊销 bundle；支持**最低版本下限**强制升级；支持 **kill-switch**。
  *  - 时效/离线：清单自带 TTL；拉取失败回退**上一份已验签清单**（绝不"拉不到=全放行"）。
  *  - bootstrap：App bundle 预置一份初始已签名清单作 last-good 初值（新装即 fail-closed 而不瘫）。
+ *
+ * **字节精确签名**（与 SignedCatalog 同模型，ADR-002 §2.3）：签名对象 = RevocationList 的**原始
+ * JSON 字节**（`SignedRevocationList.listJson`），签/传/验/parse 同一份字节，Dart 侧零规范化、
+ * 零跨语言漂移。**不**重新序列化 list——避免字段漂移把某字段甩出签名范围。
  */
+
+import { verify as edVerify, type KeyObject } from "node:crypto";
+import type { SignBackend, VerifyResult } from "./index.js";
 
 // ---- 数据结构 ----
 
@@ -37,10 +44,16 @@ export interface RevocationList {
   entries: RevocationEntry[];
 }
 
-/** 已签名的吊销清单（复用 signer 的 Ed25519 体系）。 */
+/**
+ * 已签名的吊销清单（复用 signer 的 Ed25519 体系，**字节精确**，同 SignedCatalog）。
+ *
+ * 被签名的是 [listJson] 原始文本；keyId/algorithm/signature 不在签名范围内（改动任一都会
+ * 验签失败或命不中锚，故无需签）。
+ */
 export interface SignedRevocationList {
-  list: RevocationList;
-  /** Ed25519 签名（base64），over 规范化 list。 */
+  /** 被签名的 RevocationList **原始 JSON 文本**（签/传/验/parse 同一份字节）。 */
+  listJson: string;
+  /** Ed25519 签名（base64）over `Buffer.from(listJson,"utf-8")`。 */
   signature: string;
   keyId: string;
   algorithm: "ed25519";
@@ -105,8 +118,42 @@ export function pickNewer(current: RevocationList, incoming: RevocationList): Re
   return incoming.sequence > current.sequence ? incoming : current;
 }
 
+// ---- 签名 / 验签（字节精确，同 SignedCatalog；复用 signer 的 Ed25519 + pin 公钥体系） ----
+
+/** 🔒 对 RevocationList 签名 → SignedRevocationList（序列化**恰好一次**，此后只用这份字节）。 */
+export async function signRevocation(
+  list: RevocationList,
+  backend: SignBackend,
+): Promise<SignedRevocationList> {
+  const listJson = JSON.stringify(list);
+  const signature = await backend.sign(Buffer.from(listJson, "utf-8"));
+  return { listJson, signature, keyId: backend.keyId, algorithm: "ed25519" };
+}
+
+/**
+ * 🔒 验签吊销清单（对 pin 公钥；fail-closed）→ 成功返回**已解析** RevocationList。
+ * **信任哪把公钥 + 是否采用（防回滚/TTL/last-good）** 由客户端加载器裁定，不在此。
+ */
+export function verifyRevocation(
+  signed: SignedRevocationList,
+  publicKey: KeyObject,
+): VerifyResult<RevocationList> {
+  if (signed.algorithm !== "ed25519") {
+    return { ok: false, reason: `不支持的签名算法：${signed.algorithm}` };
+  }
+  const bytes = Buffer.from(signed.listJson, "utf-8");
+  if (!edVerify(null, bytes, publicKey, Buffer.from(signed.signature, "base64"))) {
+    return { ok: false, reason: "Ed25519 验签失败 → fail-closed。" };
+  }
+  try {
+    return { ok: true, value: JSON.parse(signed.listJson) as RevocationList };
+  } catch (err) {
+    return { ok: false, reason: `revocation JSON 解析失败：${(err as Error).message}` };
+  }
+}
+
 // 🔒 待人工闭环：
-//   - 清单签名/验签（复用 signer 的 Ed25519 + pin 公钥；密钥接线人工）。
+//   - 签名密钥接线（YubiKey pin 公钥；密钥接线人工）。
 //   - 公网哑服务分发端点 + 客户端拉取 + TTL + 拉取失败回退 last-good（server/src/public，红线 #2）。
 //   - App bundle 预置初始已签名清单（bootstrap 初值）。
 //   - 与核心加载路径联动（verifyAdapter 通过后再过 isRevoked）+ ADR-012 凭证吊销联动。
