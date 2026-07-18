@@ -1,0 +1,31 @@
+{
+  "capability": "notice.list",
+  "params": {},
+  "responses": [
+    {
+      "status": 200,
+      "headers": { "content-type": "text/html" },
+      "bodyFile": "fixtures/dean.xjtu.edu.cn/challenge.html"
+    },
+    {
+      "status": 200,
+      "headers": { "content-type": "application/json" },
+      "bodyJsonFile": "fixtures/dean.xjtu.edu.cn/challenge_response.json",
+      "bodyJsonPath": "body",
+      "setCookieFile": "fixtures/dean.xjtu.edu.cn/challenge_response.json"
+    },
+    {
+      "status": 200,
+      "headers": { "content-type": "text/html" },
+      "bodyFile": "fixtures/dean.xjtu.edu.cn/notice.html"
+    }
+  ],
+  "assertions": {
+    "requestCount": 3,
+    "methods": ["GET", "POST", "GET"],
+    "cookieIncludes": [{ "request": 2, "value": "client_id=" }],
+    "itemCount": 16,
+    "itemSource": "教务处",
+    "itemCategory": "academic"
+  }
+}
