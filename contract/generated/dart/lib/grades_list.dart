@@ -83,8 +83,7 @@ class GradesListItems {
 }
 
 class GradesListItemsGradeDistribution {
-  const GradesListItemsGradeDistribution({
-  });
+  const GradesListItemsGradeDistribution();
 
 }
 

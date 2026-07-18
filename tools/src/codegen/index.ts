@@ -197,9 +197,10 @@ function dartClass(name: string, s: JsonSchema, root: JsonSchema): { code: strin
     fields.push(`  final ${dt}${nullable} ${key};`);
     ctorParams.push(opt ? `    required this.${key},` : `    this.${key},`);
   }
-  const code = [`class ${name} {`, `  const ${name}({`, ...ctorParams, `  });`, "", ...fields, `}`].join(
-    "\n",
-  );
+  const code =
+    ctorParams.length === 0
+      ? [`class ${name} {`, `  const ${name}();`, "", ...fields, `}`].join("\n")
+      : [`class ${name} {`, `  const ${name}({`, ...ctorParams, `  });`, "", ...fields, `}`].join("\n");
   return { code, children };
 }
 

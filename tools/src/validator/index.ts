@@ -271,8 +271,8 @@ export function checkManifest(
     const registeredParams = reg.params;
     if (
       registeredParams &&
-      (!declaredParams ||
-        declaredParams.schema !== registeredParams.schema ||
+      declaredParams &&
+      (declaredParams.schema !== registeredParams.schema ||
         declaredParams.schemaVersion !== registeredParams.schemaVersion)
     ) {
       findings.push({
