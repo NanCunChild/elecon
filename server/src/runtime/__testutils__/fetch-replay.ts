@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import type { BrokerManifestView } from "../broker/inject-policy.js";
-import { noResolver, FakeTransport, resolveRepoRoot } from "./smoke-utils.js";
 import { runFetchAdapter } from "../sandbox.js";
 import { TrustedAdapterContext } from "../trusted-context.js";
+import { FakeTransport, noResolver, resolveRepoRoot } from "./smoke-utils.js";
 
 interface Manifest {
   network: { allow: string[] };

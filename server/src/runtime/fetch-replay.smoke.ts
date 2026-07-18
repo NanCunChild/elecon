@@ -1,7 +1,7 @@
 /** 通用 fetch fixture 回放 smoke：验证多步握手和 contract schema。 */
 
-import { resolveRepoRoot, runMain } from "./__testutils__/smoke-utils.js";
 import { replayFetchFixture } from "./__testutils__/fetch-replay.js";
+import { resolveRepoRoot, runMain } from "./__testutils__/smoke-utils.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 
