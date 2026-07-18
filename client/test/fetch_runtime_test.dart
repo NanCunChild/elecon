@@ -34,14 +34,19 @@ void main() {
       final view = const BrokerManifestView(
         allow: ['https://h.edu.cn/api/*'],
         credentials: {
-          'session':
-              CredentialDecl(scope: ['https://h.edu.cn/api/*'], type: 'cookie'),
+          'session': CredentialDecl(
+            scope: ['https://h.edu.cn/api/*'],
+            type: 'cookie',
+          ),
         },
       );
       final transport = FakeTransport([
         const TransportResponse(
           status: 200,
-          headers: {'Content-Type': 'application/json', 'Set-Cookie': 'JSESSIONID=ROT'},
+          headers: {
+            'Content-Type': 'application/json',
+            'Set-Cookie': 'JSESSIONID=ROT',
+          },
           setCookie: ['JSESSIONID=ROT'],
           body: '[{"id":1,"t":"hi"}]',
         ),
@@ -55,32 +60,45 @@ void main() {
           }
         };''';
 
-      final data = await runFetchAdapter(
-        source: source,
-        trust: TrustedAdapterContext.devSideload(),
-        capability: 'notice.list',
-        view: view,
-        resolver: FakeResolver({
-          'session': const ResolvedCredential(via: 'cookie', value: 'JSESSIONID=S1'),
-        }),
-        transport: transport,
-        harvest: HarvestTarget(put: store.put, schoolId: 'xidian'),
-        nowMs: _now,
-      ) as Map;
+      final data =
+          await runFetchAdapterForTesting(
+                source: source,
+                trust: TrustedAdapterContext.devSideload(),
+                capability: 'notice.list',
+                view: view,
+                resolver: FakeResolver({
+                  'session': const ResolvedCredential(
+                    via: 'cookie',
+                    value: 'JSESSIONID=S1',
+                  ),
+                }),
+                transport: transport,
+                harvest: HarvestTarget(put: store.put, schoolId: 'xidian'),
+                nowMs: _now,
+              )
+              as Map;
 
       expect(data['items'], [
-        {'id': 1, 't': 'hi'}
+        {'id': 1, 't': 'hi'},
       ]);
-      expect(transport.seen[0].headers['Cookie'], 'JSESSIONID=S1',
-          reason: 'broker 注入 cookie 应出站');
-      expect((data['gotHeaders'] as Map).containsKey('Set-Cookie'), isFalse,
-          reason: 'Set-Cookie 不得回交 adapter');
+      expect(
+        transport.seen[0].headers['Cookie'],
+        'JSESSIONID=S1',
+        reason: 'broker 注入 cookie 应出站',
+      );
+      expect(
+        (data['gotHeaders'] as Map).containsKey('Set-Cookie'),
+        isFalse,
+        reason: 'Set-Cookie 不得回交 adapter',
+      );
       final harvested = await store.get('session');
       expect(harvested?.value, 'JSESSIONID=ROT', reason: '声明 ref 应被收割入库');
     });
 
     test('多步握手 + setEphemeralCookie 跨步携带（XJT body-token 缺口）', () async {
-      final view = const BrokerManifestView(allow: ['https://dean.xjtu.edu.cn/*']);
+      final view = const BrokerManifestView(
+        allow: ['https://dean.xjtu.edu.cn/*'],
+      );
       final transport = FakeTransport([
         const TransportResponse(status: 200, body: '{"client_id":"XYZ"}'),
         const TransportResponse(status: 200, body: '[1,2,3]'),
@@ -96,19 +114,24 @@ void main() {
           }
         };''';
 
-      final data = await runFetchAdapter(
-        source: source,
-        trust: TrustedAdapterContext.devSideload(),
-        capability: 'notice.list',
-        view: view,
-        resolver: FakeResolver({}),
-        transport: transport,
-        nowMs: _now,
-      ) as Map;
+      final data =
+          await runFetchAdapterForTesting(
+                source: source,
+                trust: TrustedAdapterContext.devSideload(),
+                capability: 'notice.list',
+                view: view,
+                resolver: FakeResolver({}),
+                transport: transport,
+                nowMs: _now,
+              )
+              as Map;
 
       expect(data['rows'], [1, 2, 3]);
-      expect(transport.seen[1].headers['Cookie'], 'client_id=XYZ',
-          reason: 'ephemeral cookie 应在第二步携带');
+      expect(
+        transport.seen[1].headers['Cookie'],
+        'client_id=XYZ',
+        reason: 'ephemeral cookie 应在第二步携带',
+      );
     });
 
     test('fail-closed：allow 外被拒、adapter 可 catch、零出网', () async {
@@ -122,28 +145,29 @@ void main() {
           }
         };''';
 
-      final data = await runFetchAdapter(
-        source: source,
-        trust: TrustedAdapterContext.devSideload(),
-        capability: 'notice.list',
-        view: view,
-        resolver: FakeResolver({}),
-        transport: transport,
-        nowMs: _now,
-      ) as Map;
+      final data =
+          await runFetchAdapterForTesting(
+                source: source,
+                trust: TrustedAdapterContext.devSideload(),
+                capability: 'notice.list',
+                view: view,
+                resolver: FakeResolver({}),
+                transport: transport,
+                nowMs: _now,
+              )
+              as Map;
 
       expect(data['blocked'], true);
       expect(transport.seen, isEmpty, reason: 'fail-closed 不得发任何请求');
     });
 
-    test('bad_export：未导出 capabilities 对象 → badExport（与服务端词表对齐）',
-        () async {
+    test('bad_export：未导出 capabilities 对象 → badExport（与服务端词表对齐）', () async {
       final view = const BrokerManifestView(allow: ['https://h.edu.cn/*']);
       final transport = FakeTransport([]);
       const source = 'export const notCapabilities = {};';
 
       await expectLater(
-        runFetchAdapter(
+        runFetchAdapterForTesting(
           source: source,
           trust: TrustedAdapterContext.devSideload(),
           capability: 'notice.list',
@@ -152,8 +176,13 @@ void main() {
           transport: transport,
           nowMs: _now,
         ),
-        throwsA(isA<AdapterRunException>()
-            .having((e) => e.reason, 'reason', AdapterFailureReason.badExport)),
+        throwsA(
+          isA<AdapterRunException>().having(
+            (e) => e.reason,
+            'reason',
+            AdapterFailureReason.badExport,
+          ),
+        ),
       );
       expect(transport.seen, isEmpty, reason: 'bad_export 不得触发任何出网');
     });
@@ -162,13 +191,23 @@ void main() {
       final view = const BrokerManifestView(
         allow: ['https://h.edu.cn/api/*'],
         credentials: {
-          'session':
-              CredentialDecl(scope: ['https://h.edu.cn/api/*'], type: 'cookie'),
+          'session': CredentialDecl(
+            scope: ['https://h.edu.cn/api/*'],
+            type: 'cookie',
+          ),
         },
       );
       final transport = FakeTransport([
-        const TransportResponse(status: 200, setCookie: ['JSESSIONID=A'], body: '{}'),
-        const TransportResponse(status: 200, setCookie: ['JSESSIONID=B'], body: '{}'),
+        const TransportResponse(
+          status: 200,
+          setCookie: ['JSESSIONID=A'],
+          body: '{}',
+        ),
+        const TransportResponse(
+          status: 200,
+          setCookie: ['JSESSIONID=B'],
+          body: '{}',
+        ),
       ]);
       final store = CredentialStore(now: () => _now);
       const source = '''
@@ -181,7 +220,7 @@ void main() {
         };''';
 
       await expectLater(
-        runFetchAdapter(
+        runFetchAdapterForTesting(
           source: source,
           trust: TrustedAdapterContext.devSideload(),
           capability: 'notice.list',
@@ -194,8 +233,13 @@ void main() {
           nowMs: _now,
           fetchLimits: const FetchLimits(maxRequests: 1),
         ),
-        throwsA(isA<AdapterRunException>()
-            .having((e) => e.reason, 'reason', AdapterFailureReason.fetchLimit)),
+        throwsA(
+          isA<AdapterRunException>().having(
+            (e) => e.reason,
+            'reason',
+            AdapterFailureReason.fetchLimit,
+          ),
+        ),
       );
       expect(store.list(), isEmpty, reason: '失败执行不得收割（fail 不收割）');
     });
@@ -204,8 +248,10 @@ void main() {
       final view = const BrokerManifestView(
         allow: ['https://h.edu.cn/api/*'],
         credentials: {
-          'session':
-              CredentialDecl(scope: ['https://h.edu.cn/api/*'], type: 'cookie'),
+          'session': CredentialDecl(
+            scope: ['https://h.edu.cn/api/*'],
+            type: 'cookie',
+          ),
         },
       );
       final transport = _SlowTransport();
@@ -219,24 +265,35 @@ void main() {
         };''';
 
       await expectLater(
-        runFetchAdapter(
+        runFetchAdapterForTesting(
           source: source,
           trust: TrustedAdapterContext.devSideload(),
           capability: 'notice.list',
           view: view,
           resolver: FakeResolver({
-            'session': const ResolvedCredential(via: 'cookie', value: 'JSESSIONID=S'),
+            'session': const ResolvedCredential(
+              via: 'cookie',
+              value: 'JSESSIONID=S',
+            ),
           }),
           transport: transport,
           harvest: HarvestTarget(put: store.put, schoolId: 'xidian'),
           nowMs: _now,
           fetchLimits: const FetchLimits(perRequestTimeoutMs: 1),
         ),
-        throwsA(isA<AdapterRunException>()
-            .having((e) => e.reason, 'reason', AdapterFailureReason.fetchLimit)),
+        throwsA(
+          isA<AdapterRunException>().having(
+            (e) => e.reason,
+            'reason',
+            AdapterFailureReason.fetchLimit,
+          ),
+        ),
       );
-      expect(transport.cancelled, isTrue,
-          reason: '单请求超时应 cancel in-flight transport');
+      expect(
+        transport.cancelled,
+        isTrue,
+        reason: '单请求超时应 cancel in-flight transport',
+      );
       expect(store.list(), isEmpty, reason: '失败执行不得收割（fail 不收割）');
     });
   });
@@ -254,14 +311,19 @@ void main() {
     });
 
     test('official 一律放行；devSideload 仅 debug 放行', () {
-      expect(fetchTrustPermitted(AdapterTrustTier.official, debugBuild: false),
-          isTrue);
-      expect(fetchTrustPermitted(AdapterTrustTier.official, debugBuild: true),
-          isTrue);
       expect(
-          fetchTrustPermitted(AdapterTrustTier.devSideload, debugBuild: true),
-          isTrue,
-          reason: 'debug 下 dev 侧载可跑 fetch（ADR-002 §2.5 owner 决策）');
+        fetchTrustPermitted(AdapterTrustTier.official, debugBuild: false),
+        isTrue,
+      );
+      expect(
+        fetchTrustPermitted(AdapterTrustTier.official, debugBuild: true),
+        isTrue,
+      );
+      expect(
+        fetchTrustPermitted(AdapterTrustTier.devSideload, debugBuild: true),
+        isTrue,
+        reason: 'debug 下 dev 侧载可跑 fetch（ADR-002 §2.5 owner 决策）',
+      );
     });
 
     test('devSideload 上下文在 debug（测试环境）可构造，档位正确', () {
@@ -275,8 +337,10 @@ class _SlowTransport implements Transport {
   bool cancelled = false;
 
   @override
-  Future<TransportResponse> fetch(TransportRequest req,
-      {TransportCancelToken? cancelToken}) {
+  Future<TransportResponse> fetch(
+    TransportRequest req, {
+    TransportCancelToken? cancelToken,
+  }) {
     cancelToken?.onCancel(() => cancelled = true);
     final completer = Completer<TransportResponse>();
     Timer(const Duration(milliseconds: 50), () {

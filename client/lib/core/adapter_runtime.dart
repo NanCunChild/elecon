@@ -18,7 +18,7 @@ library;
 
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
 import 'package:flutter_qjs_next/flutter_qjs.dart';
 
 import 'broker/assemble.dart' show RequestInit;
@@ -33,11 +33,24 @@ import 'broker/fetch_proxy.dart'
         TransportCancelToken,
         proxyFetch;
 import 'broker/harvest.dart' show decideHarvest, harvestInto;
-import 'broker/inject_policy.dart' show BrokerManifestView;
+import 'broker/inject_policy.dart' show BrokerManifestView, CredentialDecl;
 import 'broker/ports.dart' show CredentialResolver;
 import 'credential/types.dart' show CredentialEntry;
+import 'loader/bundle.dart'
+    show
+        BundleEnvelope,
+        BundleFormatException,
+        EnvelopeFile,
+        envelopeDigest,
+        readEnvelopeManifestJson;
+import 'loader/loader.dart' show LoadResult;
 import 'trust/trusted_context.dart'
-    show TrustedAdapterContext, fetchTrustPermitted;
+    show AdapterTrustTier, TrustedAdapterContext, fetchTrustPermitted;
+
+// 🔒 片 G 接线是本库的一部分（part），使其能调用 library-private 的 [_runFetchAdapter]——
+// 从而「运行任意 (source, trust)」的低层入口**不在生产公开面上**，唯一生产入口是 [runLoadedAdapter]
+// （绑定 source⟷凭据 digest，评审 P0-1）。part 共享本文件的 import。
+part 'adapter_launcher.dart';
 
 /// 运行时层面的失败原因。**不携带契约 error.kind**——错误词表是领域概念，
 /// 由上层据此映射（与服务端 `SandboxFailureReason` 对称）。
@@ -292,8 +305,50 @@ class HarvestTarget {
   final String schoolId;
 }
 
+/// 🔒 **仅测试入口**：直接以任意 (source, trust, view) 跑 fetch 引擎，供 `fetch_runtime_test` 穷举
+/// 引擎行为（bad export / 能力缺失 / 限额 / 注入等）。**生产禁用**（[visibleForTesting] lint 兜底）——
+/// 生产唯一入口是 [runLoadedAdapter]（它绑定 source⟷凭据 digest，评审 P0-1）。本 shim 不做绑定，
+/// 故绝不可暴露给生产调用方：那正是「official 票 + 任意源码」的绕过面。
+@visibleForTesting
+Future<dynamic> runFetchAdapterForTesting({
+  required String source,
+  required String capability,
+  required TrustedAdapterContext trust,
+  required BrokerManifestView view,
+  required CredentialResolver resolver,
+  required Transport transport,
+  Map<String, dynamic>? params,
+  CookieJar? jar,
+  HarvestTarget? harvest,
+  String? htmlStdlib,
+  int nowMs = 0,
+  int memoryBytes = _defaultMemoryBytes,
+  FetchLimits fetchLimits = const FetchLimits(),
+  void Function(String level, String message)? onLog,
+}) => _runFetchAdapter(
+  source: source,
+  capability: capability,
+  trust: trust,
+  view: view,
+  resolver: resolver,
+  transport: transport,
+  params: params,
+  jar: jar,
+  harvest: harvest,
+  htmlStdlib: htmlStdlib,
+  nowMs: nowMs,
+  memoryBytes: memoryBytes,
+  fetchLimits: fetchLimits,
+  onLog: onLog,
+);
+
 /// 在后台 isolate 的 QuickJS 中执行一次 **fetch 模式** adapter capability。
 /// 与 [runParserAdapter] 并列、互不干扰（parser 已签收，本路径独立新增）。
+///
+/// 🔒 **library-private（评审 P0-1）**：本函数接受裸 (source, trust)、只校验 [trust] 档位而**不核对
+/// source 是否对应 [trust] 的 digest**。若公开，持一张合法 official 票的调用方即可传另一份源码绕过
+/// 绑定与 manifest 策略组装。故它只对本库开放，生产唯一入口 [runLoadedAdapter] 经 [planLaunch] 完成
+/// 绑定后才调用它；测试经 [runFetchAdapterForTesting]（[visibleForTesting]）。
 ///
 /// 不变量（与 `sandbox.ts` 镜像，🔒 安全清单逐项）：
 ///  - **信任闸门（ADR-002 §2.6 · #79 P0-1）**：入口强制 [trust]（只能经核心裁定路径构造），
@@ -308,7 +363,7 @@ class HarvestTarget {
 ///  - fail 不收割：仅成功执行后调 B5 收割钩子。
 ///  - **限额终止 open question（ADR-014 §4.4）**：单请求由 host 侧 `.timeout` 兜；卡死的 worker
 ///    isolate 的主动中止（`#abort`/`Isolate.kill`）+ in-flight transport cancel（§4.7）为后续项。
-Future<dynamic> runFetchAdapter({
+Future<dynamic> _runFetchAdapter({
   required String source,
   required String capability,
   required TrustedAdapterContext trust,
@@ -365,7 +420,9 @@ Future<dynamic> runFetchAdapter({
     if (fatal != null) throw fatal!;
     if (requestCount >= fetchLimits.maxRequests) {
       fatal = const AdapterRunException(
-          AdapterFailureReason.fetchLimit, '单次执行请求数超限');
+        AdapterFailureReason.fetchLimit,
+        '单次执行请求数超限',
+      );
       cancelInFlight();
       throw fatal!;
     }
@@ -383,21 +440,27 @@ Future<dynamic> runFetchAdapter({
     );
     final FetchProxyOutcome outcome;
     try {
-      outcome = await proxyFetch(
-        url as String,
-        _requestInitFromJs(init),
-        fetchDeps,
-      ).timeout(
-        Duration(milliseconds: fetchLimits.perRequestTimeoutMs),
-        onTimeout: () {
-          fatal = const AdapterRunException(
-              AdapterFailureReason.fetchLimit, '单请求超时');
-          cancelInFlight();
-          throw fatal!;
-        },
-      );
+      outcome =
+          await proxyFetch(
+            url as String,
+            _requestInitFromJs(init),
+            fetchDeps,
+          ).timeout(
+            Duration(milliseconds: fetchLimits.perRequestTimeoutMs),
+            onTimeout: () {
+              fatal = const AdapterRunException(
+                AdapterFailureReason.fetchLimit,
+                '单请求超时',
+              );
+              cancelInFlight();
+              throw fatal!;
+            },
+          );
     } on TransportBodyLimitException catch (e) {
-      fatal = AdapterRunException(AdapterFailureReason.fetchLimit, e.toString());
+      fatal = AdapterRunException(
+        AdapterFailureReason.fetchLimit,
+        e.toString(),
+      );
       cancelInFlight();
       throw fatal!;
     } finally {
@@ -407,13 +470,17 @@ Future<dynamic> runFetchAdapter({
     requestCount += outcome.requestCount;
     if (networkMs > fetchLimits.totalNetworkMs) {
       fatal = const AdapterRunException(
-          AdapterFailureReason.fetchLimit, '累计网络耗时超限');
+        AdapterFailureReason.fetchLimit,
+        '累计网络耗时超限',
+      );
       cancelInFlight();
       throw fatal!;
     }
     if (requestCount > fetchLimits.maxRequests) {
       fatal = const AdapterRunException(
-          AdapterFailureReason.fetchLimit, '单次执行请求数超限');
+        AdapterFailureReason.fetchLimit,
+        '单次执行请求数超限',
+      );
       cancelInFlight();
       throw fatal!;
     }
@@ -454,7 +521,9 @@ Future<dynamic> runFetchAdapter({
     '__elecon_fetch': hostFetch,
     '__elecon_setEph': hostSetEph,
     '__elecon_log': (dynamic level, dynamic message) => onLog?.call(
-        level is String ? level : 'info', message is String ? message : ''),
+      level is String ? level : 'info',
+      message is String ? message : '',
+    ),
   });
 
   try {
@@ -469,14 +538,21 @@ Future<dynamic> runFetchAdapter({
     // step2（global async）：组 ctx + 调 capability + 返回 outcome JSON 串。用 async-IIFE-返回值
     // （host_fn_bridge_test 已证），避开模块 TLA / 动态 import 在 2021-QuickJS 上的不确定性。
     final raw = await qjs
-        .evaluate(_buildFetchInvoke(
-            capability: capability, params: params ?? const {}, nowMs: nowMs))
+        .evaluate(
+          _buildFetchInvoke(
+            capability: capability,
+            params: params ?? const {},
+            nowMs: nowMs,
+          ),
+        )
         .timeout(
           Duration(milliseconds: engineTimeoutMs + 1000),
           onTimeout: () {
             cancelInFlight();
             throw const AdapterRunException(
-                AdapterFailureReason.timeout, 'fetch 执行未在墙钟内完成');
+              AdapterFailureReason.timeout,
+              'fetch 执行未在墙钟内完成',
+            );
           },
         );
 
@@ -485,34 +561,51 @@ Future<dynamic> runFetchAdapter({
 
     if (raw is! String) {
       throw const AdapterRunException(
-          AdapterFailureReason.badResult, 'adapter 未产出 outcome');
+        AdapterFailureReason.badResult,
+        'adapter 未产出 outcome',
+      );
     }
     final outcome = jsonDecode(raw) as Map<String, dynamic>;
     switch (outcome['status']) {
       case 'ok':
         if (!outcome.containsKey('data')) {
           throw const AdapterRunException(
-              AdapterFailureReason.badResult, 'capability 未返回值');
+            AdapterFailureReason.badResult,
+            'capability 未返回值',
+          );
         }
         // 执行结束 B5 收割（仅成功路径；fail 不收割）。
         if (harvest != null) {
           final plan = decideHarvest(theJar.harvestView(), view);
-          harvestInto(plan, view, harvest.put,
-              schoolId: harvest.schoolId, now: () => nowMs);
+          harvestInto(
+            plan,
+            view,
+            harvest.put,
+            schoolId: harvest.schoolId,
+            now: () => nowMs,
+          );
         }
         return outcome['data'];
       case 'bad_export':
-        throw const AdapterRunException(AdapterFailureReason.badExport,
-            "adapter 未导出 'capabilities' 对象");
+        throw const AdapterRunException(
+          AdapterFailureReason.badExport,
+          "adapter 未导出 'capabilities' 对象",
+        );
       case 'capability_missing':
-        throw AdapterRunException(AdapterFailureReason.capabilityMissing,
-            "capability '$capability' 不在 adapter 内");
+        throw AdapterRunException(
+          AdapterFailureReason.capabilityMissing,
+          "capability '$capability' 不在 adapter 内",
+        );
       case 'adapter_threw':
-        throw AdapterRunException(AdapterFailureReason.adapterThrew,
-            outcome['message'] as String? ?? 'adapter threw');
+        throw AdapterRunException(
+          AdapterFailureReason.adapterThrew,
+          outcome['message'] as String? ?? 'adapter threw',
+        );
       default:
-        throw AdapterRunException(AdapterFailureReason.badResult,
-            '未知 outcome status: ${outcome['status']}');
+        throw AdapterRunException(
+          AdapterFailureReason.badResult,
+          '未知 outcome status: ${outcome['status']}',
+        );
     }
   } on AdapterRunException {
     rethrow;

@@ -94,14 +94,16 @@ class BundleEnvelope {
     }
     return BundleEnvelope(
       bundleFormat: format,
-      files: files.map((f) {
-        if (f is! Map) {
-          throw const BundleFormatException(
-            'envelope files 含非对象项（fail-closed）',
-          );
-        }
-        return EnvelopeFile.fromJson(Map<String, dynamic>.from(f));
-      }).toList(growable: false),
+      files: files
+          .map((f) {
+            if (f is! Map) {
+              throw const BundleFormatException(
+                'envelope files 含非对象项（fail-closed）',
+              );
+            }
+            return EnvelopeFile.fromJson(Map<String, dynamic>.from(f));
+          })
+          .toList(growable: false),
     );
   }
 }
@@ -116,8 +118,10 @@ class BundleFormatException implements Exception {
 
 /// adapter 的权威身份（取自 envelope 内 manifest.json）。
 class EnvelopeIdentity {
-  const EnvelopeIdentity(
-      {required this.adapterId, required this.adapterVersion});
+  const EnvelopeIdentity({
+    required this.adapterId,
+    required this.adapterVersion,
+  });
   final String adapterId;
   final String adapterVersion;
 }
@@ -174,6 +178,15 @@ String? readEnvelopeStdlibMin(BundleEnvelope env) {
   return min;
 }
 
+/// 读取并解码 envelope 内 `manifest.json` 为原始 JSON map。
+///
+/// 供接线层（片 G `adapter_launcher.dart`）取权威的 `runtime.entry` / `network.allow` /
+/// `credentials` / `capabilities`——它们都在 digest 覆盖范围内（ADR-002 §2.2 权威身份/策略之源，
+/// 非 catalog 提示、非 adapter 运行时自报）。缺失 / 非对象 / 畸形 → [BundleFormatException]
+/// （fail-closed，与 [readEnvelopeIdentity] 同源）。
+Map<String, dynamic> readEnvelopeManifestJson(BundleEnvelope env) =>
+    _decodeManifest(env);
+
 /// 定位并解码 envelope 内 `manifest.json`（[readEnvelopeIdentity] 与 [readEnvelopeStdlibMin] 共用）。
 ///
 /// manifest 的 utf8/JSON 解码失败/非对象/缺失均落地为 [BundleFormatException]（fail-closed）——
@@ -196,11 +209,13 @@ Map<String, dynamic> _decodeManifest(BundleEnvelope env) {
     decoded = jsonDecode(utf8.decode(manifestFile.bytes()));
   } on FormatException catch (e) {
     throw BundleFormatException(
-        'envelope 内 manifest.json 无法解码：$e（fail-closed）');
+      'envelope 内 manifest.json 无法解码：$e（fail-closed）',
+    );
   }
   if (decoded is! Map<String, dynamic>) {
     throw const BundleFormatException(
-        'envelope 内 manifest.json 不是对象（fail-closed）');
+      'envelope 内 manifest.json 不是对象（fail-closed）',
+    );
   }
   return decoded;
 }
@@ -262,9 +277,7 @@ class _BoundedByteSink implements Sink<List<int>> {
   void add(List<int> chunk) {
     _total += chunk.length;
     if (_total > _limit) {
-      throw BundleFormatException(
-        'bundle 解压体超上限 $_limit（fail-closed，疑压缩炸弹）',
-      );
+      throw BundleFormatException('bundle 解压体超上限 $_limit（fail-closed，疑压缩炸弹）');
     }
     _b.add(chunk);
   }
