@@ -6,13 +6,28 @@
   "required": ["cardNumber", "items"],
   "properties": {
     "cardNumber": { "type": "string" },
+    "cardNumberMasked": { "type": "string" },
+    "cardType": { "type": "string" },
+    "accountType": { "type": "string" },
+    "campus": { "type": "string" },
+    "wallet": { "type": "string" },
+    "page": { "type": "integer", "minimum": 1 },
+    "size": { "type": "integer", "minimum": 1 },
+    "cursor": { "type": "string" },
+    "total": { "type": "integer", "minimum": 0 },
+    "hasNext": { "type": "boolean" },
+    "windowStart": { "type": "string", "format": "date-time" },
+    "windowEnd": { "type": "string", "format": "date-time" },
+    "snapshotAt": { "type": "string", "format": "date-time" },
     "items": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["time", "amountMinor", "currency", "direction"],
+            "required": ["time", "amountMinor", "currency", "direction"],
         "properties": {
           "time": { "type": "string", "format": "date-time" },
+          "transactionId": { "type": "string" },
+          "postedAt": { "type": "string", "format": "date-time" },
           "amountMinor": {
             "type": "integer",
             "minimum": 0,
@@ -22,10 +37,12 @@
           "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
           "direction": {
             "type": "string",
-            "enum": ["debit", "credit"],
+            "enum": ["debit", "credit", "refund", "reversal", "freeze", "transfer", "subsidy", "unknown"],
             "description": "debit=支出 credit=充值/入账"
           },
           "merchant": { "type": "string" },
+          "location": { "type": "string" },
+          "status": { "type": "string", "enum": ["final", "pending", "failed", "cancelled", "unknown"] },
           "balanceAfterMinor": {
             "type": "integer",
             "description": "本笔交易后余额（最小货币单位）；可选"

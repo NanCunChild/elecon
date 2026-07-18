@@ -66,7 +66,7 @@ const noticeSchema = {
   console.log("✓ generateDart（object/array/nullable）");
 }
 
-// ---- 不支持构造应报错（不静默生成错类型） ----
+// ---- 受限引用与联合类型 ----
 
 {
   assert.throws(
@@ -74,12 +74,23 @@ const noticeSchema = {
     /不支持 \$ref/,
     "$ref 应抛错",
   );
+  const localRef = generateTs("X", {
+    type: "object",
+    properties: { a: { $ref: "#/$defs/value" } },
+    $defs: { value: { type: "string" } },
+  });
+  assert.ok(localRef.includes("a?: string;"), "应解析本地 $ref");
+  const union = generateTs("X", {
+    type: "object",
+    properties: { a: { oneOf: [{ type: "string" }, { type: "number" }] } },
+  });
+  assert.ok(union.includes("a?: string | number;"), "应生成 oneOf 联合类型");
   assert.throws(
-    () => generateDart("X", { type: "object", properties: { a: { oneOf: [] } } }),
-    /不支持 allOf\/oneOf\/anyOf/,
-    "oneOf 应抛错",
+    () => generateTs("X", { type: "object", properties: { a: { $ref: "other" } } }),
+    /不支持 \$ref/,
+    "外部 $ref 应抛错",
   );
-  console.log("✓ 不支持构造报错（$ref / oneOf）");
+  console.log("✓ 受限本地 $ref / oneOf 联合类型");
 }
 
 console.log("\ncodegen smoke 全部通过 ✅");

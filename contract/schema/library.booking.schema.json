@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.library.booking", "title": "图书馆预约", "type": "object",
+  "properties": { "items": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" }, "library": { "type": "string" }, "room": { "type": "string" }, "seatId": { "type": "string" }, "startAt": { "type": "string", "format": "date-time" }, "endAt": { "type": "string", "format": "date-time" }, "status": { "type": "string", "enum": ["reserved", "cancelled", "checkedIn", "expired", "unknown"] } } } } }
+}

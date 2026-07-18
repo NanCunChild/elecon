@@ -5,6 +5,13 @@
   "type": "object",
   "required": ["items"],
   "properties": {
+    "page": { "type": "integer", "minimum": 1 },
+    "size": { "type": "integer", "minimum": 1 },
+    "cursor": { "type": "string" },
+    "total": { "type": "integer", "minimum": 0 },
+    "hasNext": { "type": "boolean" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "sourceSystem": { "type": "string" },
     "items": {
       "type": "array",
       "items": {
@@ -14,6 +21,22 @@
           "id": { "type": "string" },
           "title": { "type": "string" },
           "summary": { "type": "string" },
+          "content": { "type": "string" },
+          "author": { "type": "string" },
+          "department": { "type": "string" },
+          "audience": { "type": "array", "items": { "type": "string" } },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "pinned": { "type": "boolean" },
+          "importance": { "type": "string", "enum": ["normal", "important", "urgent", "unknown"] },
+          "validFrom": { "type": "string", "format": "date-time" },
+          "validUntil": { "type": "string", "format": "date-time" },
+          "status": { "type": "string", "enum": ["draft", "published", "withdrawn", "expired", "unknown"] },
+          "attachments": {
+            "type": "array",
+            "items": { "type": "object", "required": ["name", "url"], "properties": {
+              "name": { "type": "string" }, "url": { "type": "string", "format": "uri" }, "sizeBytes": { "type": "integer", "minimum": 0 }, "mimeType": { "type": "string" }
+            } }
+          },
           "url": { "type": "string", "format": "uri" },
           "publishedAt": {
             "type": "string",

@@ -9,8 +9,23 @@ export interface LibraryLoansItems {
   bookId: string;
   title: string;
   author?: string;
+  callNumber?: string;
+  location?: string;
+  branch?: string;
   borrowedAt: string;
   dueAt: string;
   renewCount?: number;
   overdue?: boolean;
+  renewalMax?: number;
+  renewable?: boolean;
+  overdueFee?: LibraryLoansItemsOverdueFee;
+  reserved?: boolean;
+  pickupDeadline?: string;
+  renewalDeadline?: string;
+  returnConfirmed?: boolean;
+}
+
+export interface LibraryLoansItemsOverdueFee {
+  amountMinor: number;
+  currency: string;
 }

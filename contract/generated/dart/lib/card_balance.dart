@@ -6,11 +6,29 @@ library;
 class CardBalance {
   const CardBalance({
     required this.cardNumber,
+    this.cardNumberMasked,
+    this.cardType,
+    this.accountType,
+    this.campus,
+    this.wallet,
+    this.status,
+    this.balanceUpdatedAt,
+    this.snapshotAt,
+    this.errorStatus,
     required this.balance,
     this.lastTransaction,
   });
 
   final String cardNumber;
+  final String? cardNumberMasked;
+  final String? cardType;
+  final String? accountType;
+  final String? campus;
+  final String? wallet;
+  final String? status;
+  final String? balanceUpdatedAt;
+  final String? snapshotAt;
+  final String? errorStatus;
   final CardBalanceBalance balance;
   final CardBalanceLastTransaction? lastTransaction;
 }

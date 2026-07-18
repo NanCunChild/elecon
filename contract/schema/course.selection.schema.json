@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.course.selection", "title": "选课", "type": "object",
+  "properties": { "items": { "type": "array", "items": { "type": "object", "properties": { "courseId": { "type": "string" }, "name": { "type": "string" }, "selected": { "type": "boolean" }, "status": { "type": "string", "enum": ["available", "selected", "dropped", "conflict", "full", "unknown"] }, "reason": { "type": "string" } } } } }
+}

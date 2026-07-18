@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.classroom.available", "title": "空教室", "type": "object",
+  "properties": { "date": { "type": "string", "format": "date" }, "start": { "type": "string" }, "end": { "type": "string" }, "items": { "type": "array", "items": { "type": "object", "required": ["building", "room"], "properties": { "campus": { "type": "string" }, "building": { "type": "string" }, "room": { "type": "string" }, "capacity": { "type": "integer", "minimum": 0 }, "equipment": { "type": "array", "items": { "type": "string" } }, "occupied": { "type": "boolean" }, "status": { "type": "string", "enum": ["available", "occupied", "unknown"] } } } } }
+}

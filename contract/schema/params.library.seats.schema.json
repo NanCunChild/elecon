@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"elecon.params.library.seats","type":"object","properties":{"library":{"type":"string"},"date":{"type":"string","format":"date"}}}

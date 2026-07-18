@@ -267,6 +267,26 @@ export function checkManifest(
         message: `capability '${cap.id}' 的 emits 与 registry 不符：manifest=${cap.emits?.schema}@${cap.emits?.schemaVersion}，registry=${reg.emits.schema}@${reg.emits.schemaVersion}`,
       });
     }
+    const declaredParams = cap.params;
+    const registeredParams = reg.params;
+    if (
+      registeredParams &&
+      (!declaredParams ||
+        declaredParams.schema !== registeredParams.schema ||
+        declaredParams.schemaVersion !== registeredParams.schemaVersion)
+    ) {
+      findings.push({
+        level: "error",
+        code: "C2_params_mismatch",
+        message: `capability '${cap.id}' 的 params 与 registry 不符：manifest=${declaredParams?.schema ?? "<missing>"}@${declaredParams?.schemaVersion ?? "<missing>"}，registry=${registeredParams.schema}@${registeredParams.schemaVersion}`,
+      });
+    } else if (!registeredParams && declaredParams) {
+      findings.push({
+        level: "error",
+        code: "C2_unexpected_params",
+        message: `capability '${cap.id}' 未在 registry 声明 params，但 manifest 提供了 params`,
+      });
+    }
 
     // C4-b parser 模式：每条 requests.url 须被白名单覆盖
     if (manifest.mode === "parser") {

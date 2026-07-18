@@ -33,6 +33,28 @@
       "description": "通用兜底域：长尾/冷门校园数据，由本体渲染，adapter 只给数据+语义角色（见 ADR-001 §3.6）",
       "emits": { "schema": "elecon.generic.section", "schemaVersion": "1.0" },
       "params": { "schema": "elecon.params.generic.section", "schemaVersion": "1.0" }
+    },
+    "profile.me": { "description": "获取当前用户资料", "emits": { "schema": "elecon.profile.me", "schemaVersion": "1.0" } },
+    "term.list": { "description": "获取学年学期列表", "emits": { "schema": "elecon.term.list", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.term.list", "schemaVersion": "1.0" } },
+    "calendar.academic": { "description": "获取校历", "emits": { "schema": "elecon.calendar.academic", "schemaVersion": "1.0" } },
+    "exam.list": { "description": "获取考试安排", "emits": { "schema": "elecon.exam.list", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.exam.list", "schemaVersion": "1.0" } },
+    "classroom.available": { "description": "查询空教室", "emits": { "schema": "elecon.classroom.available", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.classroom.available", "schemaVersion": "1.0" } },
+    "attendance.summary": { "description": "获取考勤汇总", "emits": { "schema": "elecon.attendance.summary", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.attendance.summary", "schemaVersion": "1.0" } },
+    "library.seats": { "description": "查询图书馆座位", "emits": { "schema": "elecon.library.seats", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.library.seats", "schemaVersion": "1.0" } },
+    "library.booking": { "description": "获取图书馆预约", "emits": { "schema": "elecon.library.booking", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.library.booking", "schemaVersion": "1.0" } },
+    "energy.usage": { "description": "获取水电用量", "emits": { "schema": "elecon.energy.usage", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.energy.usage", "schemaVersion": "1.0" } },
+    "course.catalog": { "description": "检索课程目录", "emits": { "schema": "elecon.course.catalog", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.course.catalog", "schemaVersion": "1.0" } },
+    "course.selection": { "description": "获取选课状态", "emits": { "schema": "elecon.course.selection", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.course.selection", "schemaVersion": "1.0" } },
+    "gpa.summary": { "description": "获取绩点汇总", "emits": { "schema": "elecon.gpa.summary", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.gpa.summary", "schemaVersion": "1.0" } }
+    ,"notice.detail": { "description": "获取通知详情", "emits": { "schema": "elecon.notice.detail", "schemaVersion": "1.0" } }
+    ,"dorm.health": { "description": "获取宿舍健康数据", "emits": { "schema": "elecon.dorm.health", "schemaVersion": "1.0" } }
+    ,"dorm.service": { "description": "获取宿舍服务状态", "emits": { "schema": "elecon.dorm.service", "schemaVersion": "1.0" } }
+    ,"transport.schedule": { "description": "获取班车时刻", "emits": { "schema": "elecon.transport.schedule", "schemaVersion": "1.0" } }
+    ,"dining.summary": { "description": "获取餐饮汇总", "emits": { "schema": "elecon.dining.summary", "schemaVersion": "1.0" } }
+    ,"invoice.list": { "description": "获取发票列表", "emits": { "schema": "elecon.invoice.list", "schemaVersion": "1.0" } }
+    ,"program.progress": { "description": "获取培养方案进度", "emits": { "schema": "elecon.program.progress", "schemaVersion": "1.0" } }
+    ,"research.income": { "description": "获取科研收入", "emits": { "schema": "elecon.research.income", "schemaVersion": "1.0" } }
+    ,"campus.network": { "description": "获取校园网络状态", "emits": { "schema": "elecon.campus.network", "schemaVersion": "1.0" } }
+    ,"app.announcement": { "description": "获取应用公告", "emits": { "schema": "elecon.app.announcement", "schemaVersion": "1.0" } }
     }
   }
-}

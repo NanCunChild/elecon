@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.calendar.academic", "title": "校历", "type": "object",
+  "properties": { "term": { "type": "string" }, "startDate": { "type": "string", "format": "date" }, "endDate": { "type": "string", "format": "date" }, "currentWeek": { "type": "integer", "minimum": 1 }, "holidays": { "type": "array", "items": { "type": "object", "required": ["date", "name"], "properties": { "date": { "type": "string", "format": "date" }, "name": { "type": "string" }, "isTeachingDay": { "type": "boolean" } } } } }
+}
