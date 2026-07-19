@@ -17,9 +17,9 @@ import 'utils/test_utils.dart';
 /// 复用 catalog golden：验签得到 (VerifiedCatalog, 其源 SignedCatalog)。
 Future<(VerifiedCatalog, SignedCatalog)> _verifiedCatalog() async {
   final g = readJson(repoPath('contract/golden/catalog/catalog.json'));
-  final c = (g['cases'] as List)
-      .cast<Map<String, dynamic>>()
-      .firstWhere((c) => c['name'] == 'valid_multibyte_identity');
+  final c = (g['cases'] as List).cast<Map<String, dynamic>>().firstWhere(
+    (c) => c['name'] == 'valid_multibyte_identity',
+  );
   final signed = SignedCatalog.fromJson(c['signed'] as Map<String, dynamic>);
   final r = await verifyCatalogWith(
     signed,
@@ -28,19 +28,23 @@ Future<(VerifiedCatalog, SignedCatalog)> _verifiedCatalog() async {
             keyId: keyId,
             publicKeyHex: c['publicKeyRawHex'] as String,
             active: true,
-            note: 'golden 测试锚')
+            note: 'golden 测试锚',
+          )
         : null,
   );
   expect(r.ok, isTrue, reason: r.reason);
   return (r.value!, signed);
 }
 
-Future<(VerifiedRevocationList, SignedRevocationList)> _verifiedRevocation() async {
+Future<(VerifiedRevocationList, SignedRevocationList)>
+_verifiedRevocation() async {
   final g = readJson(repoPath('contract/golden/revocation/revocation.json'));
-  final c = (g['cases'] as List)
-      .cast<Map<String, dynamic>>()
-      .firstWhere((c) => c['name'] == 'valid_multibyte_reason');
-  final signed = SignedRevocationList.fromJson(c['signed'] as Map<String, dynamic>);
+  final c = (g['cases'] as List).cast<Map<String, dynamic>>().firstWhere(
+    (c) => c['name'] == 'valid_multibyte_reason',
+  );
+  final signed = SignedRevocationList.fromJson(
+    c['signed'] as Map<String, dynamic>,
+  );
   final r = await verifyRevocationWith(
     signed,
     (keyId) => keyId == signed.keyId
@@ -48,7 +52,8 @@ Future<(VerifiedRevocationList, SignedRevocationList)> _verifiedRevocation() asy
             keyId: keyId,
             publicKeyHex: c['publicKeyRawHex'] as String,
             active: true,
-            note: 'golden 测试锚')
+            note: 'golden 测试锚',
+          )
         : null,
   );
   expect(r.ok, isTrue, reason: r.reason);
@@ -77,6 +82,26 @@ void main() {
       expect(back.algorithm, signed.algorithm);
     });
 
+    test('较旧 sequence 不得覆盖现有 last-good', () async {
+      final (v, signed) = await _verifiedCatalog();
+      final newer = <String, dynamic>{
+        ...signed.toJson(),
+        'catalogJson': jsonEncode({
+          'catalogVersion': '1.0',
+          'sequence': 999,
+          'issuedAt': '2026-07-19T00:00:00Z',
+          'ttlSeconds': 86400,
+          'entries': <dynamic>[],
+        }),
+      };
+      await store.write(
+        'last-good/catalog.json',
+        Uint8List.fromList(utf8.encode(jsonEncode(newer))),
+      );
+      await lg.writeCatalog(v, signed);
+      expect((await lg.readCatalog())!.catalogJson, newer['catalogJson']);
+    });
+
     test('Signed 与 Verified keyId 不符 → ArgumentError（不落地）', () async {
       final (v, signed) = await _verifiedCatalog();
       final wrong = SignedCatalog(
@@ -90,13 +115,17 @@ void main() {
     });
 
     test('损坏字节 → null（不抛）', () async {
-      await store.write('last-good/catalog.json',
-          Uint8List.fromList(utf8.encode('{not json')));
+      await store.write(
+        'last-good/catalog.json',
+        Uint8List.fromList(utf8.encode('{not json')),
+      );
       expect(await lg.readCatalog(), isNull);
     });
     test('缺字段 → null（fromJson 抛被吞）', () async {
-      await store.write('last-good/catalog.json',
-          Uint8List.fromList(utf8.encode('{"catalogJson":"{}"}')));
+      await store.write(
+        'last-good/catalog.json',
+        Uint8List.fromList(utf8.encode('{"catalogJson":"{}"}')),
+      );
       expect(await lg.readCatalog(), isNull);
     });
   });
@@ -125,8 +154,10 @@ void main() {
     });
 
     test('损坏 → null', () async {
-      await store.write('last-good/revocation.json',
-          Uint8List.fromList([0xff, 0xfe]));
+      await store.write(
+        'last-good/revocation.json',
+        Uint8List.fromList([0xff, 0xfe]),
+      );
       expect(await lg.readRevocation(), isNull);
     });
   });

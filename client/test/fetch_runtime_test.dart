@@ -244,6 +244,47 @@ void main() {
       expect(store.list(), isEmpty, reason: '失败执行不得收割（fail 不收割）');
     });
 
+    test('并发 fetch 也不能超出请求预算', () async {
+      final view = const BrokerManifestView(
+        allow: ['https://h.edu.cn/api/*'],
+        credentials: {},
+      );
+      final transport = _ConcurrentTransport();
+      const source = '''
+        export const capabilities = {
+          'notice.list': async (ctx) => {
+            await Promise.all([
+              ctx.fetch('https://h.edu.cn/api/a'),
+              ctx.fetch('https://h.edu.cn/api/b'),
+              ctx.fetch('https://h.edu.cn/api/c'),
+              ctx.fetch('https://h.edu.cn/api/d'),
+            ]);
+            return { ok: true };
+          }
+        };''';
+
+      await expectLater(
+        runFetchAdapterForTesting(
+          source: source,
+          trust: TrustedAdapterContext.devSideload(),
+          capability: 'notice.list',
+          view: view,
+          resolver: FakeResolver({}),
+          transport: transport,
+          nowMs: _now,
+          fetchLimits: const FetchLimits(maxRequests: 2),
+        ),
+        throwsA(
+          isA<AdapterRunException>().having(
+            (e) => e.reason,
+            'reason',
+            AdapterFailureReason.fetchLimit,
+          ),
+        ),
+      );
+      expect(transport.seen, hasLength(2));
+    });
+
     test('单请求超时 → cancel in-flight transport + fail 不收割', () async {
       final view = const BrokerManifestView(
         allow: ['https://h.edu.cn/api/*'],
@@ -349,5 +390,19 @@ class _SlowTransport implements Transport {
       }
     });
     return completer.future;
+  }
+}
+
+class _ConcurrentTransport implements Transport {
+  final List<TransportRequest> seen = [];
+
+  @override
+  Future<TransportResponse> fetch(
+    TransportRequest req, {
+    TransportCancelToken? cancelToken,
+  }) async {
+    seen.add(req);
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    return const TransportResponse(status: 200, body: '{}');
   }
 }

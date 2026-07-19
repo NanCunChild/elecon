@@ -235,12 +235,28 @@ class AdapterLoader {
   /// 非致命遥测钩子（如缓存写失败）。null = 静默。生产可接日志/上报。
   final void Function(String message)? _onWarning;
 
+  /// Deduplicate concurrent requests for the same adapter. Besides avoiding
+  /// duplicate network and signature work, this keeps last-good writes ordered.
+  final Map<String, Future<LoadResult>> _inFlight = {};
+
   static int _defaultNowMs() => DateTime.now().millisecondsSinceEpoch;
 
   /// 🔒 加载指定 adapterId：走完 §2.6 全序，成功产出 official [LoadResult]。
   ///
   /// 全程 fail-closed：任一步不成立即 [LoadResult.fail]（带原因），绝不产出可加载结果。
   Future<LoadResult> loadAdapter(String adapterId) async {
+    final existing = _inFlight[adapterId];
+    if (existing != null) return existing;
+    final future = _loadAdapter(adapterId);
+    _inFlight[adapterId] = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_inFlight[adapterId], future)) _inFlight.remove(adapterId);
+    }
+  }
+
+  Future<LoadResult> _loadAdapter(String adapterId) async {
     // 步 1：解析 catalog（验签 + 防回滚 + 采纳持久化）。
     final catalog = await _resolveCatalog();
     if (catalog == null) {

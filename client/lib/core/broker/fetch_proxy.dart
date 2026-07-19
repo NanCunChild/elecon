@@ -58,8 +58,10 @@ class TransportResponse {
 }
 
 abstract interface class Transport {
-  Future<TransportResponse> fetch(TransportRequest req,
-      {TransportCancelToken? cancelToken});
+  Future<TransportResponse> fetch(
+    TransportRequest req, {
+    TransportCancelToken? cancelToken,
+  });
 }
 
 class TransportCancelToken {
@@ -93,7 +95,8 @@ class TransportBodyLimitException implements Exception {
   final int maxBytes;
 
   @override
-  String toString() => 'transport response body exceeds limit ($maxBytes bytes)';
+  String toString() =>
+      'transport response body exceeds limit ($maxBytes bytes)';
 }
 
 /// url 不在 allow → fail-closed 受控错误（绝不附凭证、绝不发请求）。
@@ -106,6 +109,12 @@ class BrokerFetchRejected implements Exception {
   String toString() => 'ctx.fetch 被 broker 拒绝（$reason）';
 }
 
+/// Raised by the host before a transport call when the execution-wide request
+/// budget is exhausted.
+class FetchRequestLimitExceeded implements Exception {
+  const FetchRequestLimitExceeded();
+}
+
 /// 驱动依赖（宿主注入；凭证值仅核心可见，红线 #1）。
 class FetchProxyDeps {
   const FetchProxyDeps({
@@ -116,6 +125,7 @@ class FetchProxyDeps {
     this.maxHops,
     this.cancelToken,
     this.onRedirectSettled,
+    this.tryReserveRequest,
   });
 
   final BrokerManifestView view;
@@ -134,6 +144,9 @@ class FetchProxyDeps {
   /// URL 外泄（红线 #1「中间跳转对 adapter 不可见」不变——本回调不回传中间跳，只回终点）。
   /// 供 SSO 静默换票（ADR-017 §2.2）判定是否抵达目标服务成功页。缺省 null=普通 ctx.fetch 不回传。
   final void Function(String finalUrl)? onRedirectSettled;
+
+  /// Host-owned atomic reservation for one transport request.
+  final bool Function()? tryReserveRequest;
 }
 
 /// 一次 ctx.fetch 的脱敏后产出 + 请求计量。
@@ -177,15 +190,18 @@ Future<FetchProxyOutcome> proxyFetch(
     if (decision is RejectDecision) {
       throw BrokerFetchRejected(decision.reason);
     }
-    final resolved =
-        decision is InjectDecision ? await deps.resolver.get(decision.ref) : null;
+    final resolved = decision is InjectDecision
+        ? await deps.resolver.get(decision.ref)
+        : null;
     final jarCookies = deps.jar.selectForSend(currentUrl);
-    final assembled = assembleRequest(AssembleRequestInput(
-      init: RequestInit(method: method, headers: headers, body: body),
-      decision: decision,
-      resolved: resolved,
-      jarCookies: jarCookies,
-    ));
+    final assembled = assembleRequest(
+      AssembleRequestInput(
+        init: RequestInit(method: method, headers: headers, body: body),
+        decision: decision,
+        resolved: resolved,
+        jarCookies: jarCookies,
+      ),
+    );
     // 拼装层也可 fail-closed：inject 但 resolver 未命中 → reject(credential_unavailable)。
     // 任一 reject 都转受控错误（绝不发请求、绝不附凭证）。
     if (assembled is RejectResult) {
@@ -194,30 +210,42 @@ Future<FetchProxyOutcome> proxyFetch(
     final ok = assembled as OkResult;
 
     // ④ 出网（seam）+ ⑤ 吃 Set-Cookie。
-    final resp = await deps.transport.fetch(TransportRequest(
-      url: currentUrl,
-      method: ok.method,
-      headers: ok.headers,
-      body: ok.body,
-    ), cancelToken: deps.cancelToken);
+    if (deps.tryReserveRequest != null && !deps.tryReserveRequest!()) {
+      throw const FetchRequestLimitExceeded();
+    }
+    final resp = await deps.transport.fetch(
+      TransportRequest(
+        url: currentUrl,
+        method: ok.method,
+        headers: ok.headers,
+        body: ok.body,
+      ),
+      cancelToken: deps.cancelToken,
+    );
     requestCount++;
     deps.jar.captureSetCookie(resp.setCookie, currentUrl);
 
     // ⑥ 重定向决策（纯，复用 B3）。deliver/stop → 交付当前响应；follow → 续跳。
-    final rd = decideRedirect(RedirectInput(
-      status: resp.status,
-      location: resp.location,
-      currentUrl: currentUrl,
-      allow: deps.view.allow,
-      hopsSoFar: hops,
-      maxHops: maxHops,
-    ));
+    final rd = decideRedirect(
+      RedirectInput(
+        status: resp.status,
+        location: resp.location,
+        currentUrl: currentUrl,
+        allow: deps.view.allow,
+        hopsSoFar: hops,
+        maxHops: maxHops,
+      ),
+    );
     if (rd is DeliverDecision || rd is StopDecision) {
       // 核心专用：回传终点 URL（仅当宿主设了回调；SSO 换票据此判成功页，ADR-017 §2.2）。
       deps.onRedirectSettled?.call(currentUrl);
       // ⑦ 脱敏后交回 adapter（含 stop：越界/超跳时交付当前响应，其 Location 由脱敏剥除）。
       final processed = processResponse(
-        RawResponse(status: resp.status, headers: resp.headers, body: resp.body),
+        RawResponse(
+          status: resp.status,
+          headers: resp.headers,
+          body: resp.body,
+        ),
       );
       return FetchProxyOutcome(
         status: processed.status,

@@ -90,7 +90,10 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
     if (!widget.debugLog) return;
     final ts = DateTime.now().toIso8601String().substring(11, 23);
     if (kDebugMode) debugPrint('[webview-login] $message');
-    setState(() => _log.insert(0, _LogEntry(ts, message)));
+    setState(() {
+      _log.insert(0, _LogEntry(ts, message));
+      if (_log.length > 500) _log.removeLast();
+    });
   }
 
   String _maskCookie(dynamic value) {
@@ -323,13 +326,13 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       },
       onLoadStart: (c, url) {
         final urlStr = url?.toString() ?? '';
-        _addLog('LoadStart ← $urlStr');
+        _addLog('LoadStart ← ${sanitizeUrlForLog(urlStr)}');
         if (url != null && !_urlAllowed(urlStr)) {
           c.stopLoading();
           _addLog('拦截（不在 allowlist）');
           setState(() {
             _isLoading = false;
-            _errorMessage = '导航被拦截：$urlStr 不在登录域白名单内。';
+            _errorMessage = '导航被拦截：${sanitizeUrlForLog(urlStr)} 不在登录域白名单内。';
           });
         }
       },
@@ -337,7 +340,9 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
         setState(() => _isLoading = false);
         final urlStr = url?.toString() ?? '';
         final isSuccess = url != null && _isSuccessUrl(urlStr);
-        _addLog('LoadStop ← $urlStr${isSuccess ? " ★匹配" : ""}');
+        _addLog(
+          'LoadStop ← ${sanitizeUrlForLog(urlStr)}${isSuccess ? " ★匹配" : ""}',
+        );
         widget.performanceTrace?.mark(
           isSuccess ? 'webview_success_load_stop' : 'webview_load_stop',
         );
@@ -348,7 +353,9 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       shouldOverrideUrlLoading: (c, action) async {
         final requestedUrl = action.request.url?.toString() ?? '';
         final isMain = action.isForMainFrame;
-        _addLog('NavIntent → $requestedUrl${isMain ? " (main)" : ""}');
+        _addLog(
+          'NavIntent → ${sanitizeUrlForLog(requestedUrl)}${isMain ? " (main)" : ""}',
+        );
         if (!_urlAllowed(requestedUrl)) {
           _addLog('拦截（allowlist）');
           return NavigationActionPolicy.CANCEL;
@@ -356,10 +363,12 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
         return NavigationActionPolicy.ALLOW;
       },
       onReceivedError: (c, req, err) {
-        _addLog('WebViewError | type=${err.type} | ${err.description}');
+        _addLog(
+          'WebViewError | type=${err.type} | url=${sanitizeUrlForLog(req.url.toString())}',
+        );
         setState(() {
           _isLoading = false;
-          _errorMessage = err.description;
+          _errorMessage = '登录页面加载失败（${err.type}）。';
         });
       },
       onReceivedServerTrustAuthRequest: (c, challenge) async {

@@ -28,6 +28,7 @@
 /// 🔒 红线 #1/#2/#4 承重件：改动须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -75,16 +76,34 @@ class IoHttpByteFetcher implements HttpByteFetcher {
     required int maxBytes,
     required Duration timeout,
   }) async {
+    HttpClientRequest? request;
     try {
-      return await _get(url, maxBytes).timeout(timeout);
+      return await _get(
+        url,
+        maxBytes,
+        onRequest: (value) => request = value,
+      ).timeout(
+        timeout,
+        onTimeout: () {
+          // Future.timeout does not cancel its source future. Abort the
+          // request explicitly so a stalled response cannot remain active.
+          request?.abort();
+          throw TimeoutException('distribution request timed out', timeout);
+        },
+      );
     } catch (_) {
       // 网络 / 超时 / 超限一律「本源不可用」（上层退化）；不抛、不泄错误细节。
       return null;
     }
   }
 
-  Future<Uint8List?> _get(Uri url, int maxBytes) async {
+  Future<Uint8List?> _get(
+    Uri url,
+    int maxBytes, {
+    required void Function(HttpClientRequest request) onRequest,
+  }) async {
     final req = await _client.getUrl(url);
+    onRequest(req);
     // 单跳、零凭证、不缓存身份：静态产物固定 URL，重定向交回中间人不可取。
     req.followRedirects = false;
     req.cookies.clear();
@@ -102,6 +121,7 @@ class IoHttpByteFetcher implements HttpByteFetcher {
     await for (final chunk in resp) {
       builder.add(chunk);
       if (builder.length > maxBytes) {
+        req.abort();
         return null; // 边下边计数超限即弃（防未声明 content-length 的膨胀）。
       }
     }

@@ -6,7 +6,7 @@
 library;
 
 import 'dart:convert';
-import 'dart:io' show gzip;
+import 'dart:io' show HttpClient, HttpServer, InternetAddress, gzip;
 import 'dart:typed_data';
 
 import 'package:elecon/core/loader/catalog.dart';
@@ -199,5 +199,26 @@ void main() {
       expect(r, isNull);
       expect(f.requested, isEmpty);
     });
+  });
+
+  test('IoHttpByteFetcher 超时后取消停滞响应', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final client = HttpClient();
+    server.listen((request) {
+      request.response.headers.chunkedTransferEncoding = true;
+      request.response.add(const [1]);
+      // Keep the response open. The client must abort it on timeout.
+    });
+    try {
+      final result = await IoHttpByteFetcher(client: client).getBytes(
+        Uri.parse('http://127.0.0.1:${server.port}/stalled'),
+        maxBytes: 1024,
+        timeout: const Duration(milliseconds: 20),
+      );
+      expect(result, isNull);
+    } finally {
+      client.close(force: true);
+      await server.close(force: true);
+    }
   });
 }

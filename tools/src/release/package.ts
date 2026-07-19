@@ -13,11 +13,11 @@
 import { gzipSync } from "node:zlib";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   realpathSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -44,7 +44,6 @@ export interface ReleaseOptions {
   issuedAt: string;
   ttlSeconds: number;
   revocation: RevocationList;
-  validate?: boolean;
 }
 
 export interface ReleaseResult {
@@ -64,13 +63,20 @@ interface AdapterManifest {
 function discoverAdapters(root: string): string[] {
   const found: string[] = [];
   const walk = (dir: string): void => {
+    if (lstatSync(dir).isSymbolicLink()) {
+      throw new Error(`adapter 根目录禁止符号链接：${dir}`);
+    }
     if (existsSync(join(dir, "manifest.json"))) {
       found.push(dir);
       return;
     }
     for (const entry of readdirSync(dir).sort()) {
       const child = join(dir, entry);
-      if (statSync(child).isDirectory()) walk(child);
+      const childStat = lstatSync(child);
+      if (childStat.isSymbolicLink()) {
+        throw new Error(`adapter 目录禁止符号链接：${child}`);
+      }
+      if (childStat.isDirectory()) walk(child);
     }
   };
   walk(resolve(root));
@@ -121,16 +127,14 @@ export async function buildRelease(
   const adapterDirs = discoverAdapters(options.adaptersRoot);
   if (adapterDirs.length === 0) throw new Error("没有发现可发布 adapter（fail-closed）");
 
-  if (options.validate !== false) {
-    const contract = loadContract();
-    for (const dir of adapterDirs) {
-      const findings = validateAdapterDir(dir, contract);
-      const errors = findings.filter((finding) => finding.level === "error");
-      if (errors.length > 0) {
-        throw new Error(
-          `${basename(dir)} 校验失败：${errors.map((finding) => `[${finding.code}] ${finding.message}`).join("; ")}`,
-        );
-      }
+  const contract = loadContract();
+  for (const dir of adapterDirs) {
+    const findings = validateAdapterDir(dir, contract);
+    const errors = findings.filter((finding) => finding.level === "error");
+    if (errors.length > 0) {
+      throw new Error(
+        `${basename(dir)} 校验失败：${errors.map((finding) => `[${finding.code}] ${finding.message}`).join("; ")}`,
+      );
     }
   }
 

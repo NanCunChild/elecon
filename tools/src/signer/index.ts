@@ -22,7 +22,14 @@
  */
 
 import { createHash, sign as edSign, verify as edVerify, type KeyObject } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -57,13 +64,24 @@ const BUNDLE_EXCLUDE = /(^|\/)(signature\.json|node_modules|\.git|fixtures)(\/|$
 /** 递归收集 adapter 目录下参与签名的文件（相对路径），按字典序排序。 */
 export function collectBundleFiles(dir: string): string[] {
   const out: string[] = [];
+  const root = realpathSync(dir);
   const walk = (d: string): void => {
+    if (lstatSync(d).isSymbolicLink()) {
+      throw new Error(`bundle 禁止符号链接：${d}`);
+    }
     for (const entry of readdirSync(d).sort()) {
       const p = join(d, entry);
       const rel = relative(dir, p);
       if (BUNDLE_EXCLUDE.test(rel)) continue;
-      if (statSync(p).isDirectory()) walk(p);
-      else if (BUNDLE_INCLUDE.test(entry)) out.push(rel);
+      const stat = lstatSync(p);
+      if (stat.isSymbolicLink()) {
+        throw new Error(`bundle 禁止符号链接：${p}`);
+      }
+      const resolved = realpathSync(p);
+      const outside = relative(root, resolved).startsWith("..");
+      if (outside) throw new Error(`bundle 路径越界：${p}`);
+      if (stat.isDirectory()) walk(p);
+      else if (stat.isFile() && BUNDLE_INCLUDE.test(entry)) out.push(rel);
     }
   };
   walk(dir);
@@ -119,7 +137,7 @@ export function serializePayload(p: SignaturePayload): Buffer {
 
 /**
  * 签名后端：把「私钥签名操作」抽象为接缝。
- *  - 生产：`YubiKeySignBackend`（离线 YubiKey PIV/PKCS#11，硬件出签接缝待人工接线，🔒 首次 release 前）。
+ *  - 生产：`YubiKeySignBackend`（离线 YubiKey PIV/PKCS#11，需人工 PIN + 触碰）。
  *  - dev 过渡：`LocalDevSignBackend`（本地 Ed25519 私钥，**仅 dev/staging**，产物不分发终端用户）。
  */
 export interface SignBackend {

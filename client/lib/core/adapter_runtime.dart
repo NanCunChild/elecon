@@ -26,6 +26,7 @@ import 'broker/cookie_jar.dart' show CookieJar, EphemeralWriteInput;
 import 'broker/fetch_proxy.dart'
     show
         BrokerFetchRejected,
+        FetchRequestLimitExceeded,
         FetchProxyDeps,
         FetchProxyOutcome,
         Transport,
@@ -400,6 +401,7 @@ Future<dynamic> _runFetchAdapter({
 
   // 执行内计量状态（被 host 闭包按引用捕获）。
   var requestCount = 0;
+  var remainingRequests = fetchLimits.maxRequests;
   var networkMs = 0;
   AdapterRunException? fatal;
   final cancelTokens = <TransportCancelToken>{};
@@ -437,6 +439,18 @@ Future<dynamic> _runFetchAdapter({
       transport: deps.transport,
       maxHops: deps.maxHops,
       cancelToken: cancelToken,
+      tryReserveRequest: () {
+        if (remainingRequests <= 0) {
+          fatal = const AdapterRunException(
+            AdapterFailureReason.fetchLimit,
+            '单次执行请求数超限',
+          );
+          cancelInFlight();
+          return false;
+        }
+        remainingRequests--;
+        return true;
+      },
     );
     final FetchProxyOutcome outcome;
     try {
@@ -460,6 +474,13 @@ Future<dynamic> _runFetchAdapter({
       fatal = AdapterRunException(
         AdapterFailureReason.fetchLimit,
         e.toString(),
+      );
+      cancelInFlight();
+      throw fatal!;
+    } on FetchRequestLimitExceeded {
+      fatal ??= const AdapterRunException(
+        AdapterFailureReason.fetchLimit,
+        '单次执行请求数超限',
       );
       cancelInFlight();
       throw fatal!;
