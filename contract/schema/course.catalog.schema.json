@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.course.catalog", "title": "课程目录", "type": "object",
+  "properties": { "items": { "type": "array", "items": { "type": "object", "properties": { "courseId": { "type": "string" }, "name": { "type": "string" }, "teacher": { "type": "string" }, "capacity": { "type": "integer", "minimum": 0 }, "enrolled": { "type": "integer", "minimum": 0 }, "prerequisites": { "type": "array", "items": { "type": "string" } }, "term": { "type": "string" } } } } }
+}

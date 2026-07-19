@@ -3,6 +3,14 @@
 
 export interface ScheduleWeek {
   term: string;
+  academicYear?: string;
+  termStartDate?: string;
+  termEndDate?: string;
+  teachingWeekStart?: string;
+  teachingWeekEnd?: string;
+  weekType?: "teaching" | "exam" | "holiday" | "unknown";
+  updatedAt?: string;
+  sourceSystem?: string;
   week: number;
   days: ScheduleWeekDays[];
 }
@@ -17,6 +25,24 @@ export interface ScheduleWeekDaysSlots {
   end: string;
   courseName: string;
   courseId?: string;
+  date?: string;
+  timeStart?: string;
+  timeEnd?: string;
+  campus?: string;
+  building?: string;
+  room?: string;
+  roomCapacity?: number;
+  courseNature?: string;
+  classNo?: string;
+  language?: string;
+  courseUrl?: string;
+  group?: string;
+  onlineUrl?: string;
+  meetingNumberPresent?: boolean;
+  meetingPasswordPresent?: boolean;
+  changeType?: "none" | "rescheduled" | "cancelled" | "makeup" | "substitute" | "temporaryRoom" | "unknown";
+  changeReason?: string;
+  weekExceptions?: number[];
   teacher?: string;
   location?: string;
   weeks?: number[];

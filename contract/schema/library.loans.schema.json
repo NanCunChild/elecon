@@ -14,10 +14,20 @@
           "bookId": { "type": "string" },
           "title": { "type": "string" },
           "author": { "type": "string" },
+          "callNumber": { "type": "string" },
+          "location": { "type": "string" },
+          "branch": { "type": "string" },
           "borrowedAt": { "type": "string", "format": "date-time" },
           "dueAt": { "type": "string", "format": "date-time" },
           "renewCount": { "type": "integer", "minimum": 0 },
           "overdue": { "type": "boolean" }
+          ,"renewalMax": { "type": "integer", "minimum": 0 },
+          "renewable": { "type": "boolean" },
+          "overdueFee": { "type": "object", "required": ["amountMinor", "currency"], "properties": { "amountMinor": { "type": "integer", "minimum": 0 }, "currency": { "type": "string", "pattern": "^[A-Z]{3}$" } } },
+          "reserved": { "type": "boolean" },
+          "pickupDeadline": { "type": "string", "format": "date-time" },
+          "renewalDeadline": { "type": "string", "format": "date-time" },
+          "returnConfirmed": { "type": "boolean" }
         }
       }
     }

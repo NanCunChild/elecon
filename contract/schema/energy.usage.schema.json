@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.energy.usage", "title": "能源用量", "type": "object",
+  "properties": { "items": { "type": "array", "items": { "type": "object", "properties": { "campus": { "type": "string" }, "dormitory": { "type": "string" }, "room": { "type": "string" }, "type": { "type": "string", "enum": ["water", "electricity", "unknown"] }, "reading": { "type": "number" }, "usage": { "type": "number" }, "unit": { "type": "string" }, "from": { "type": "string", "format": "date-time" }, "to": { "type": "string", "format": "date-time" } } } } }
+}
