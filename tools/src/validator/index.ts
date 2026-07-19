@@ -49,9 +49,9 @@ const adaptersRoot = process.env.ELECON_ADAPTERS_ROOT
 
 // ---- 类型 ----
 
-type Level = "error" | "warn";
+export type Level = "error" | "warn";
 
-interface Finding {
+export interface Finding {
   level: Level;
   code: string;
   message: string;
@@ -143,7 +143,7 @@ function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
 }
 
-function loadContract(): Contract {
+export function loadContract(): Contract {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   addFormats(ajv);
 
@@ -680,7 +680,7 @@ function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Fin
 
 // ---- 编排 ----
 
-function validateAdapterDir(dir: string, contract: Contract): Finding[] {
+export function validateAdapterDir(dir: string, contract: Contract): Finding[] {
   const manifestPath = join(dir, "manifest.json");
   if (!existsSync(manifestPath)) {
     return [{ level: "error", code: "no_manifest", message: `${dir} 下无 manifest.json` }];

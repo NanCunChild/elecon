@@ -1,0 +1,8 @@
+{
+  "sequence": 1,
+  "issuedAt": "2026-07-19T00:00:00Z",
+  "ttlSeconds": 604800,
+  "minVersions": {},
+  "killSwitch": false,
+  "entries": []
+}

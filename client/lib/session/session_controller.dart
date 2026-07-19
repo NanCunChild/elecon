@@ -15,6 +15,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../catalog/schools.dart';
+import '../core/adapter_service.dart';
 import '../core/credential/blob_store.dart';
 import '../core/credential/hardware_keystore.dart';
 import '../core/credential/hardware_secure_store.dart';
@@ -30,15 +31,22 @@ class SessionController extends ChangeNotifier {
     CredentialStore? store,
     HardwareKeyStore hardware = const UnavailableHardwareKeyStore(),
     Future<BlobStore?> Function()? blobStoreProvider,
-  })  : _store = store ??
-            CredentialStore(store: InMemorySecureStore(releaseMode: false)),
-        _hardware = hardware,
-        _blobStoreProvider = blobStoreProvider,
-        // 注入了 store（测试/自定义）→ 视为已定档，不再重新裁定。
-        _storeResolved = store != null;
+    Future<AdapterService?> Function()? adapterServiceProvider,
+  }) : _store =
+           store ??
+           CredentialStore(store: InMemorySecureStore(releaseMode: false)),
+       _hardware = hardware,
+       _blobStoreProvider = blobStoreProvider,
+       _adapterServiceProvider = adapterServiceProvider,
+       // 注入了 store（测试/自定义）→ 视为已定档，不再重新裁定。
+       _storeResolved = store != null;
 
   final HardwareKeyStore _hardware;
   final Future<BlobStore?> Function()? _blobStoreProvider;
+
+  /// adapter 运行时服务懒装配（生产 = path_provider 目录 + 端点 D；测试注入替身）。
+  final Future<AdapterService?> Function()? _adapterServiceProvider;
+  AdapterService? _adapterService;
 
   CredentialStore _store;
   SecureStore? _secure; // 已裁定的底层后端（用于 flush 等能力探测）
@@ -123,11 +131,13 @@ class SessionController extends ChangeNotifier {
       _storeResolved = true; // 无落盘能力（如 path_provider 未接入）→ 内存档 M
       return;
     }
-    _replaceStore(await resolveSecureStore(
-      hardware: _hardware,
-      blobs: blobs,
-      confirmSoftwareFallback: confirmSoftwareFallback,
-    ));
+    _replaceStore(
+      await resolveSecureStore(
+        hardware: _hardware,
+        blobs: blobs,
+        confirmSoftwareFallback: confirmSoftwareFallback,
+      ),
+    );
     _storeResolved = true;
     notifyListeners();
   }
@@ -197,6 +207,51 @@ class SessionController extends ChangeNotifier {
 
   /// 登录收割完成后调用——store 已被收割路径写入，这里只触发 UI 刷新。
   void onCredentialsChanged() => notifyListeners();
+
+  Future<AdapterService?> _resolveAdapterService() async {
+    if (_adapterService != null) return _adapterService;
+    final provider = _adapterServiceProvider;
+    if (provider == null) return null;
+    _adapterService = await provider();
+    return _adapterService;
+  }
+
+  /// 🔒 跑当前选中学校的 adapter capability（loadAdapter → runLoadedAdapter）。
+  ///
+  /// 凭证解析器固定为本会话的 [store]（凭证只在核心闭包侧注入，UI/本方法不触其值，红线 #1）。
+  /// 全程 fail-closed，归一化为 [CapabilityRun]：未选校 / 学校未接入 adapter / 运行时未装配都落为
+  /// [CapabilityFailureKind.load]，绝不上抛。
+  Future<CapabilityRun> runCapability(
+    String capability, {
+    Map<String, dynamic>? params,
+    String? htmlStdlib,
+  }) async {
+    final school = _school;
+    if (school == null) {
+      return const CapabilityRun.failed(CapabilityFailureKind.load, '未选校');
+    }
+    final adapterId = school.adapterId;
+    if (adapterId == null) {
+      return CapabilityRun.failed(
+        CapabilityFailureKind.load,
+        '学校 ${school.id} 尚未接入 adapter',
+      );
+    }
+    final service = await _resolveAdapterService();
+    if (service == null) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.load,
+        'adapter 运行时未装配',
+      );
+    }
+    return service.run(
+      adapterId: adapterId,
+      capability: capability,
+      resolver: _store,
+      params: params,
+      htmlStdlib: htmlStdlib,
+    );
+  }
 
   void setDebugLog(bool value) {
     if (_debugLog == value) return;

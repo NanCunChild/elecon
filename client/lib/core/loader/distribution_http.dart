@@ -2,7 +2,7 @@
 ///
 /// 端点 D 是**零凭证、无状态、可退化为静态 CDN** 的公网分发面（ADR-018 §2 表格 D 行）。本实现据此
 /// 只做**匿名 GET** 三类静态产物，交回编排器 `loader.dart`（片 E）做全部信任裁定：
-///   - `catalog.json`（明文 JSON 签名清单）→ [SignedCatalog]；
+///   - `catalog.json.gz`（gzip(JSON) 签名清单）→ [SignedCatalog]；gzip 不在签名范围内；
 ///   - `revocation.json`（明文 JSON 签名清单）→ [SignedRevocationList]；
 ///   - catalog entry 指定 url 的 packed bundle（`gzip(JSON({envelope,signature}))`，`.json.gz`）→ 原始字节
 ///     （**不在此解 gzip/解包**——loader 的 `unpackBundle` 带压缩炸弹护栏，本层只搬字节）。
@@ -32,6 +32,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'bundle.dart' show BundleFormatException, boundedGunzip;
 import 'catalog.dart' show SignedCatalog;
 import 'loader.dart' show DistributionSource;
 import 'revocation.dart' show SignedRevocationList;
@@ -136,7 +137,7 @@ class HttpDistributionSource implements DistributionSource {
 
   @override
   Future<SignedCatalog?> fetchCatalog() =>
-      _fetchManifest('catalog.json', SignedCatalog.fromJson);
+      _fetchManifest('catalog.json.gz', SignedCatalog.fromJson, gzip: true);
 
   @override
   Future<SignedRevocationList?> fetchRevocation() =>
@@ -166,8 +167,9 @@ class HttpDistributionSource implements DistributionSource {
   /// 取明文 JSON 签名清单（catalog/revocation）并 parse；任何失败 → null（记遥测）。
   Future<T?> _fetchManifest<T>(
     String name,
-    T Function(Map<String, dynamic>) parse,
-  ) async {
+    T Function(Map<String, dynamic>) parse, {
+    bool gzip = false,
+  }) async {
     final u = _httpsUri(_base.resolve(name).toString());
     if (u == null) {
       _onWarning?.call('分发 base URL 非 https 或畸形，拒拉 $name：$_base');
@@ -184,12 +186,22 @@ class HttpDistributionSource implements DistributionSource {
       return null;
     }
     try {
-      final decoded = jsonDecode(utf8.decode(bytes));
+      final payload = gzip
+          ? boundedGunzip(
+              bytes,
+              maxCompressedBytes: _maxManifestBytes,
+              maxOutputBytes: _maxManifestBytes,
+            )
+          : bytes;
+      final decoded = jsonDecode(utf8.decode(payload));
       if (decoded is! Map<String, dynamic>) {
         _onWarning?.call('$name 顶层非 JSON 对象，弃');
         return null;
       }
       return parse(decoded);
+    } on BundleFormatException catch (e) {
+      _onWarning?.call('$name 解压失败，弃：$e');
+      return null;
     } catch (e) {
       // 畸形 utf8/JSON / 缺字段（Signed*.fromJson 抛）→ 本源不可用。
       _onWarning?.call('$name 解析失败，弃：$e');

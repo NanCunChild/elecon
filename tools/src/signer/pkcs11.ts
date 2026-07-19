@@ -327,7 +327,7 @@ export async function promptPin(prompt = "YubiKey PIV PIN: "): Promise<string> {
 export class YubiKeyPkcs11Signer implements HardwareEd25519Signer {
   readonly keyId: string;
   #opts: Pkcs11Options;
-  #pin: string;
+  #pinProvider: string | (() => Promise<string>);
   #pkcs11js: P11Mod | null = null;
   #m: P11 | null = null;
   #session: Buffer | null = null;
@@ -335,11 +335,11 @@ export class YubiKeyPkcs11Signer implements HardwareEd25519Signer {
   /**
    * @param keyId elecon 的密钥标识（写进 `signature.json`，对应核心预埋 pin 的 active key id）——
    *              **与 PKCS#11 的 CKA_ID 无关**，别混淆。
-   * @param pin   PIV PIN。请用 {@link promptPin} 取，勿从 argv/env 传。
+   * @param pinOrProvider PIV PIN，或每次签名取得 PIN 的 provider。PIN 勿从 argv/env 传。
    */
-  constructor(keyId: string, pin: string, opts: Pkcs11Options = {}) {
+  constructor(keyId: string, pinOrProvider: string | (() => Promise<string>), opts: Pkcs11Options = {}) {
     this.keyId = keyId;
-    this.#pin = pin;
+    this.#pinProvider = pinOrProvider;
     this.#opts = opts;
   }
 
@@ -353,7 +353,6 @@ export class YubiKeyPkcs11Signer implements HardwareEd25519Signer {
     m.C_Initialize();
     const slot = pickSlot(m, this.#opts);
     const session = m.C_OpenSession(slot, pkcs11js.CKF_SERIAL_SESSION | pkcs11js.CKF_RW_SESSION);
-    m.C_Login(session, pkcs11js.CKU_USER, this.#pin);
     this.#pkcs11js = pkcs11js;
     this.#m = m;
     this.#session = session;
@@ -363,6 +362,23 @@ export class YubiKeyPkcs11Signer implements HardwareEd25519Signer {
   /** 对 data 做原始 Ed25519 签名，返回**裸 64 字节**（ADR-002 §4：非 OpenPGP packet 封装）。 */
   async signEd25519(data: Buffer): Promise<Buffer> {
     const { m, pkcs11js, session } = await this.#ensureSession();
+    const pin = typeof this.#pinProvider === "string" ? this.#pinProvider : await this.#pinProvider();
+    // YubiKey pin-policy=ALWAYS may leave the PKCS#11 session unauthenticated
+    // after a sign. Re-authenticate for every signature and explicitly logout
+    // afterwards so each signature keeps the PIN + touch approval boundary.
+    const login = (): void => {
+      try {
+        m.C_Logout(session);
+      } catch {
+        // Not logged in yet; continue to C_Login.
+      }
+      try {
+        m.C_Login(session, pkcs11js.CKU_USER, pin);
+      } catch (error) {
+        throw new Error(`YubiKey PIV 登录失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    };
+    login();
     const ckaId = ckaIdOf(this.#opts);
     const keys = findObjects(m, session, [
       { type: pkcs11js.CKA_CLASS, value: pkcs11js.CKO_PRIVATE_KEY },
@@ -376,14 +392,35 @@ export class YubiKeyPkcs11Signer implements HardwareEd25519Signer {
           `  见 docs/reference/signing_ceremony.md。`,
       );
     }
-    m.C_SignInit(session, { mechanism: CKM_EDDSA }, key as never);
-    process.stderr.write("👆 请触碰 YubiKey 以完成签名…\n");
-    const sig = m.C_Sign(session, data, Buffer.alloc(64));
+    const signOnce = (): Buffer => {
+      m.C_SignInit(session, { mechanism: CKM_EDDSA }, key as never);
+      process.stderr.write("👆 请触碰 YubiKey 以完成签名…\n");
+      return Buffer.from(m.C_Sign(session, data, Buffer.alloc(64)));
+    };
+    let sig: Buffer;
+    try {
+      sig = signOnce();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("CKR_USER_NOT_LOGGED_IN")) throw error;
+      // Some libykcs11 versions enforce pin-policy=ALWAYS by dropping the
+      // login state before C_Sign. Re-login and retry once, fail-closed after.
+      login();
+      sig = signOnce();
+    }
     // 防御性：把"裸 64 字节"的约定钉在最靠近硬件处（YubiKeySignBackend 亦有同样校验，纵深防御）。
     if (sig.length !== 64) {
       throw new Error(`🔒 Ed25519 签名须为裸 64 字节，硬件返回 ${sig.length} 字节（fail-closed）。`);
     }
-    return Buffer.from(sig);
+    try {
+      return sig;
+    } finally {
+      try {
+        m.C_Logout(session);
+      } catch {
+        // The token may already have logged out under pin-policy=ALWAYS.
+      }
+    }
   }
 
   /** 读取槽位公钥（SPKI DER → KeyObject）——供签后自验。复用已登录会话。 */
@@ -402,7 +439,7 @@ export class YubiKeyPkcs11Signer implements HardwareEd25519Signer {
     } catch {
       /* 关闭期错误不掩盖主流程错误 */
     }
-    this.#pin = "";
+    this.#pinProvider = "";
     this.#m = null;
     this.#session = null;
   }

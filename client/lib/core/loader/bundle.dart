@@ -248,20 +248,24 @@ String _hex(List<int> bytes) {
 
 /// 有界 gunzip：压缩输入 ≤ [kMaxBundleGzBytes]，解压输出 ≤ [kMaxBundlePayloadBytes]。
 /// 解压边解边计数，一超上限即抛，**CPU/内存都封顶**在上限附近（不把整个炸弹解完）。
-Uint8List _boundedGunzip(Uint8List gz) {
-  if (gz.length > kMaxBundleGzBytes) {
+Uint8List boundedGunzip(
+  Uint8List gz, {
+  int maxCompressedBytes = kMaxBundleGzBytes,
+  int maxOutputBytes = kMaxBundlePayloadBytes,
+}) {
+  if (gz.length > maxCompressedBytes) {
     throw BundleFormatException(
-      'bundle 压缩体过大：${gz.length} > $kMaxBundleGzBytes（fail-closed）',
+      'gzip 压缩体过大：${gz.length} > $maxCompressedBytes（fail-closed）',
     );
   }
-  final sink = _BoundedByteSink(kMaxBundlePayloadBytes);
+  final sink = _BoundedByteSink(maxOutputBytes);
   final input = gzip.decoder.startChunkedConversion(sink);
   try {
     input.add(gz);
     input.close();
   } on FormatException catch (e) {
     // 畸形 gzip → 结构化格式异常（与其它拆包失败一致，fail-closed）。
-    throw BundleFormatException('bundle gzip 解码失败：$e（fail-closed）');
+    throw BundleFormatException('gzip 解码失败：$e（fail-closed）');
   }
   return sink.takeBytes();
 }
@@ -310,7 +314,7 @@ const int kMaxBundlePayloadBytes = 1024 * 1024;
 UnpackedBundle unpackBundle(Uint8List gz) {
   final Object? decoded;
   try {
-    decoded = jsonDecode(utf8.decode(_boundedGunzip(gz)));
+    decoded = jsonDecode(utf8.decode(boundedGunzip(gz)));
   } on FormatException catch (e) {
     throw BundleFormatException('bundle 解码失败：$e（fail-closed）');
   }

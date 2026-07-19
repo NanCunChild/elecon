@@ -22,6 +22,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/credential/store.dart';
 import '../../core/debug/dev_log.dart';
+import '../../core/debug/perf_trace.dart';
 import '../../core/login/webview_login.dart';
 
 enum WebViewLoginStatus { success, cancelled, error }
@@ -38,12 +39,14 @@ class WebViewLoginPage extends StatefulWidget {
     super.key,
     required this.login,
     required this.store,
+    this.performanceTrace,
     this.tlsProceedHosts = const {},
     this.debugLog = false,
   });
 
   final LoginManifestView login;
   final CredentialStore store;
+  final PerfTrace? performanceTrace;
 
   /// TLS 证书异常放行白名单（host 精确匹配）；仅 debug build 可用。
   final Set<String> tlsProceedHosts;
@@ -122,18 +125,21 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
     }
     return rawCookies
         .where((c) => c.name.isNotEmpty && (c.domain?.isNotEmpty == true))
-        .map((c) => WebViewCookie(
-              name: c.name,
-              value: _safeString(c.value),
-              domain: c.domain!,
-              path: c.path ?? '/',
-            ))
+        .map(
+          (c) => WebViewCookie(
+            name: c.name,
+            value: _safeString(c.value),
+            domain: c.domain!,
+            path: c.path ?? '/',
+          ),
+        )
         .toList();
   }
 
   Future<void> _harvestCookies(WebUri url) async {
     if (_hasHarvested) return;
     _hasHarvested = true;
+    widget.performanceTrace?.mark('harvest_start');
     _addLog('── 收割开始 ──');
     _addLog('target: ${url.host}${url.path}');
 
@@ -151,8 +157,10 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
           login: widget.login,
           cookies: webViewCookies,
         ).map((e) => e.ref).toSet();
-        _addLog('轮询#$round：cookie=${webViewCookies.length} 条 | '
-            '可收割 ref=[${(refs.toList()..sort()).join(", ")}]');
+        _addLog(
+          '轮询#$round：cookie=${webViewCookies.length} 条 | '
+          '可收割 ref=[${(refs.toList()..sort()).join(", ")}]',
+        );
         if (refs.isNotEmpty && setEquals(refs, prevRefs)) break;
         prevRefs = refs;
         if (DateTime.now().isAfter(deadline)) {
@@ -164,7 +172,8 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
 
       for (final c in webViewCookies) {
         _addLog(
-            '  ${c.name} | domain=${c.domain} | path=${c.path} | value=${_maskCookie(c.value)}');
+          '  ${c.name} | domain=${c.domain} | path=${c.path} | value=${_maskCookie(c.value)}',
+        );
       }
       _addLog('有效 cookie（已过滤空名/域）：${webViewCookies.length} 条');
 
@@ -183,14 +192,20 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
 
       _addLog('收割完成：ref=[${result.entries.map((e) => e.ref).join(", ")}]');
       _addLog(
-          'harvested=${result.harvested} | entries=${result.entries.length}');
+        'harvested=${result.harvested} | entries=${result.entries.length}',
+      );
 
+      widget.performanceTrace?.mark('harvest_complete');
       _pop(const WebViewLoginResult(status: WebViewLoginStatus.success));
     } catch (e, st) {
       _addLog('收割异常：$e');
       if (kDebugMode && widget.debugLog) debugPrintStack(stackTrace: st);
-      _pop(WebViewLoginResult(
-          status: WebViewLoginStatus.error, error: e.toString()));
+      _pop(
+        WebViewLoginResult(
+          status: WebViewLoginStatus.error,
+          error: e.toString(),
+        ),
+      );
     }
   }
 
@@ -208,7 +223,9 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('日志已复制到剪贴板'), duration: Duration(seconds: 1)),
+          content: Text('日志已复制到剪贴板'),
+          duration: Duration(seconds: 1),
+        ),
       );
     }
   }
@@ -233,7 +250,8 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
             icon: const Icon(Icons.close),
             tooltip: '取消登录',
             onPressed: () => _pop(
-                const WebViewLoginResult(status: WebViewLoginStatus.cancelled)),
+              const WebViewLoginResult(status: WebViewLoginStatus.cancelled),
+            ),
           ),
           title: const Text('校园登录'),
           actions: [
@@ -249,7 +267,8 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
             if (widget.debugLog) ...[
               IconButton(
                 icon: Icon(
-                    _showLog ? Icons.bug_report : Icons.bug_report_outlined),
+                  _showLog ? Icons.bug_report : Icons.bug_report_outlined,
+                ),
                 tooltip: '日志',
                 onPressed: () => setState(() => _showLog = !_showLog),
               ),
@@ -299,6 +318,7 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       ),
       onWebViewCreated: (c) {
         _controller = c;
+        widget.performanceTrace?.mark('webview_created');
         _addLog('WebView created | incognito=true');
       },
       onLoadStart: (c, url) {
@@ -318,6 +338,9 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
         final urlStr = url?.toString() ?? '';
         final isSuccess = url != null && _isSuccessUrl(urlStr);
         _addLog('LoadStop ← $urlStr${isSuccess ? " ★匹配" : ""}');
+        widget.performanceTrace?.mark(
+          isSuccess ? 'webview_success_load_stop' : 'webview_load_stop',
+        );
         if (isSuccess) {
           await _harvestCookies(url);
         }
@@ -363,12 +386,15 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             child: Row(
               children: [
-                const Text('日志（cookie 值已打码）',
-                    style: TextStyle(color: Colors.white60, fontSize: 12)),
+                const Text(
+                  '日志（cookie 值已打码）',
+                  style: TextStyle(color: Colors.white60, fontSize: 12),
+                ),
                 const Spacer(),
-                Text('${_log.length} 条',
-                    style:
-                        const TextStyle(color: Colors.white38, fontSize: 11)),
+                Text(
+                  '${_log.length} 条',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
                 const SizedBox(width: 4),
                 IconButton(
                   icon: Icon(
@@ -379,14 +405,19 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
                   tooltip: kDebugMode ? '复制全部日志' : 'release 禁用复制日志',
                   onPressed: kDebugMode ? _copyLogs : null,
                   padding: EdgeInsets.zero,
-                  constraints:
-                      const BoxConstraints(minWidth: 24, minHeight: 24),
+                  constraints: const BoxConstraints(
+                    minWidth: 24,
+                    minHeight: 24,
+                  ),
                 ),
                 const SizedBox(width: 2),
                 GestureDetector(
                   onTap: () => setState(_log.clear),
-                  child: const Icon(Icons.delete_sweep,
-                      color: Colors.white38, size: 16),
+                  child: const Icon(
+                    Icons.delete_sweep,
+                    color: Colors.white38,
+                    size: 16,
+                  ),
                 ),
               ],
             ),
@@ -442,8 +473,11 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline,
-                size: 40, color: Theme.of(context).colorScheme.error),
+            Icon(
+              Icons.error_outline,
+              size: 40,
+              color: Theme.of(context).colorScheme.error,
+            ),
             const SizedBox(height: 12),
             const Text('登录页面加载失败'),
             const SizedBox(height: 8),

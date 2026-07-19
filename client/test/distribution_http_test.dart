@@ -6,6 +6,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io' show gzip;
 import 'dart:typed_data';
 
 import 'package:elecon/core/loader/catalog.dart';
@@ -35,9 +36,12 @@ class _FakeFetcher implements HttpByteFetcher {
 Uint8List _jsonBytes(Map<String, dynamic> j) =>
     Uint8List.fromList(utf8.encode(jsonEncode(j)));
 
+Uint8List _gzipJsonBytes(Map<String, dynamic> j) =>
+    Uint8List.fromList(gzip.encode(_jsonBytes(j)));
+
 void main() {
   final base = Uri.parse('https://dist.example.edu/');
-  const catUrl = 'https://dist.example.edu/catalog.json';
+  const catUrl = 'https://dist.example.edu/catalog.json.gz';
   const revUrl = 'https://dist.example.edu/revocation.json';
 
   final signedCatalog = SignedCatalog(
@@ -67,9 +71,9 @@ void main() {
     onWarning: onWarning,
   );
 
-  group('明文清单解析', () {
-    test('fetchCatalog：有效 JSON → SignedCatalog（字段保真 + 请求正确 url）', () async {
-      final f = _FakeFetcher({catUrl: _jsonBytes(signedCatalog.toJson())});
+  group('签名清单解析', () {
+    test('fetchCatalog：gzip JSON → SignedCatalog（字段保真 + 请求正确 url）', () async {
+      final f = _FakeFetcher({catUrl: _gzipJsonBytes(signedCatalog.toJson())});
       final r = await mk(f).fetchCatalog();
       expect(r, isNotNull);
       expect(r!.catalogJson, signedCatalog.catalogJson);
@@ -116,11 +120,21 @@ void main() {
     test('顶层非 JSON 对象（数组）→ null + 遥测', () async {
       final warns = <String>[];
       final f = _FakeFetcher({
-        catUrl: Uint8List.fromList(utf8.encode('[1,2,3]')),
+        catUrl: Uint8List.fromList(gzip.encode(utf8.encode('[1,2,3]'))),
       });
       final r = await mk(f, onWarning: warns.add).fetchCatalog();
       expect(r, isNull);
       expect(warns.any((w) => w.contains('非 JSON 对象')), isTrue);
+    });
+
+    test('catalog gzip 畸形 → null + 遥测', () async {
+      final warns = <String>[];
+      final f = _FakeFetcher({
+        catUrl: Uint8List.fromList([1, 2, 3]),
+      });
+      final r = await mk(f, onWarning: warns.add).fetchCatalog();
+      expect(r, isNull);
+      expect(warns.any((w) => w.contains('解压失败')), isTrue);
     });
   });
 

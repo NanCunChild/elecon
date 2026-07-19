@@ -51,6 +51,21 @@ FLUTTER_QJS_NEXT_LIBRARY=/path/to/libflutter_qjs_next_plugin.so fvm flutter test
 > JavaScriptCore，会破坏“同一引擎零漂移”）。它使用更新 QuickJS、`ffi` 2.x，并移除了旧
 > `flutter_qjs` 的 Android Kotlin Gradle Plugin 阻塞。
 
+## 性能分析（MVP）
+
+性能追踪默认在编译期关闭。开发或 profile 构建时显式开启：
+
+```bash
+fvm flutter run --dart-define=ELECON_PERF=true
+fvm flutter build apk --profile --dart-define=ELECON_PERF=true
+```
+
+开启后输出 `[perf]` JSON 时间线，覆盖启动、存储准备、路由切换、WebView 创建与加载、
+cookie 收割和持久化完成等阶段，同时输出帧总数、超过 16.67ms 的慢帧数和最大帧耗时。
+输出不包含 URL、cookie、请求头、响应体或凭证值。
+未提供该参数时 `performanceTracingEnabled` 为编译期常量 `false`，埋点调用为空操作，
+发布构建不会保留性能追踪行为。
+
 ## 原则
 
 - adapter 在后台 isolate 执行，不在 UI 线程同步阻塞

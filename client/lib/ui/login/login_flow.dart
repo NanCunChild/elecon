@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../catalog/schools.dart';
+import '../../core/debug/perf_trace.dart';
 import '../../session/session_controller.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import 'webview_login_page.dart';
@@ -25,40 +26,61 @@ Future<WebViewLoginResult?> runSchoolLogin(
     );
   }
 
-  // §2.8：首次持久化前确保存储后端就绪。无硬件加密 → 弹警告框（5 秒 + 知情同意）
-  // 选 S 软件档或 M 内存档。凭证收割须写入已定档的 store。
-  await session.ensurePersistentStore(
-    confirmSoftwareFallback: () async {
-      if (!context.mounted) return false;
-      final choice = await showNoHardwareWarningDialog(context);
-      return choice == SoftwareStorageChoice.continueWithSoftware;
-    },
+  final trace = PerfTrace.start(
+    'school_login',
+    attributes: <String, Object?>{'school': school.id},
   );
-  if (!context.mounted) return null;
+  trace.mark('school_tapped');
+  trace.observeFrames();
 
-  final result = await Navigator.of(context).push<WebViewLoginResult>(
-    MaterialPageRoute(
-      builder: (_) => WebViewLoginPage(
-        login: school.login,
-        store: session.store,
-        debugLog: session.debugLog,
-        tlsProceedHosts: school.tlsProceedHosts,
+  try {
+    // §2.8：首次持久化前确保存储后端就绪。无硬件加密 → 弹警告框（5 秒 + 知情同意）
+    // 选 S 软件档或 M 内存档。凭证收割须写入已定档的 store。
+    await session.ensurePersistentStore(
+      confirmSoftwareFallback: () async {
+        if (!context.mounted) return false;
+        final choice = await showNoHardwareWarningDialog(context);
+        return choice == SoftwareStorageChoice.continueWithSoftware;
+      },
+    );
+    trace.mark('persistent_store_ready');
+    if (!context.mounted) return null;
+
+    trace.mark('route_push_start');
+    final result = await Navigator.of(context).push<WebViewLoginResult>(
+      MaterialPageRoute(
+        builder: (_) => WebViewLoginPage(
+          login: school.login,
+          store: session.store,
+          debugLog: session.debugLog,
+          tlsProceedHosts: school.tlsProceedHosts,
+          performanceTrace: trace,
+        ),
       ),
-    ),
-  );
+    );
+    trace.mark(
+      'route_returned',
+      data: <String, Object?>{'status': result?.status.name ?? 'none'},
+    );
 
-  if (result?.status == WebViewLoginStatus.success) {
-    session.onCredentialsChanged();
-    await session.flush(); // S 软件档：确保收割结果落盘
+    if (result?.status == WebViewLoginStatus.success) {
+      session.onCredentialsChanged();
+      await session.flush(); // S 软件档：确保收割结果落盘
+      trace.mark('credential_flush_complete');
+    }
+    return result;
+  } finally {
+    trace.finish();
   }
-  return result;
 }
 
 /// 把登录结果映射为用户可读提示。
-String loginResultMessage(WebViewLoginResult? result, SessionController session) {
+String loginResultMessage(
+  WebViewLoginResult? result,
+  SessionController session,
+) {
   return switch (result?.status) {
-    WebViewLoginStatus.success =>
-      '登录成功！已收割 ${session.credentialCount} 条凭证',
+    WebViewLoginStatus.success => '登录成功！已收割 ${session.credentialCount} 条凭证',
     WebViewLoginStatus.cancelled => '已取消登录',
     WebViewLoginStatus.error => '登录失败：${result?.error ?? "未知错误"}',
     null => '未完成登录',

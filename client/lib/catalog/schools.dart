@@ -20,12 +20,18 @@ class SchoolDescriptor {
     required this.displayName,
     required this.subtitle,
     required this.login,
+    this.adapterId,
     this.tlsProceedHosts = const {},
     this.available = true,
   });
 
   final String id;
   final String displayName;
+
+  /// 该校数据 adapter 的权威 id（catalog `^school-\S+$`），供 [SessionController.runCapability]
+  /// 交编排器 `loadAdapter`。**null = 尚未接入 adapter**（仅登录、无数据能力）。真实 adapter bundle
+  /// 随端点 D 发布后此值才有对应 catalog entry（见 [[loader-orchestration-progress]] 发布前门禁）。
+  final String? adapterId;
 
   /// 副标题（认证体系说明，如 "IDS CAS 统一身份认证"）。
   final String subtitle;
@@ -44,6 +50,8 @@ const _xidian = SchoolDescriptor(
   id: 'xidian',
   displayName: '西安电子科技大学',
   subtitle: 'IDS CAS 统一身份认证',
+  // adapter 权威 id（catalog 匹配用）；对应 signed bundle 随端点 D 发布后才可加载（发布前门禁）。
+  adapterId: 'school-xidian',
   tlsProceedHosts: {'ids.xidian.edu.cn', 'ehall.xidian.edu.cn'},
   login: LoginManifestView(
     schoolId: 'xidian',
