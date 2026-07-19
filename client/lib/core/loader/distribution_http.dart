@@ -77,17 +77,30 @@ class IoHttpByteFetcher implements HttpByteFetcher {
     required Duration timeout,
   }) async {
     HttpClientRequest? request;
+    var timedOut = false;
+    void abortOnTimeout() {
+      timedOut = true;
+      request?.abort();
+    }
+
     try {
       return await _get(
         url,
         maxBytes,
-        onRequest: (value) => request = value,
+        timeout: timeout,
+        onTimeout: abortOnTimeout,
+        onRequest: (value) {
+          request = value;
+          // getUrl() can finish after the outer timeout callback. Abort the
+          // late request as soon as the HttpClient creates it.
+          if (timedOut) value.abort();
+        },
       ).timeout(
         timeout,
         onTimeout: () {
+          abortOnTimeout();
           // Future.timeout does not cancel its source future. Abort the
-          // request explicitly so a stalled response cannot remain active.
-          request?.abort();
+          // request explicitly, including one created after getUrl() stalls.
           throw TimeoutException('distribution request timed out', timeout);
         },
       );
@@ -100,9 +113,19 @@ class IoHttpByteFetcher implements HttpByteFetcher {
   Future<Uint8List?> _get(
     Uri url,
     int maxBytes, {
+    required Duration timeout,
+    required void Function() onTimeout,
     required void Function(HttpClientRequest request) onRequest,
   }) async {
-    final req = await _client.getUrl(url);
+    final req = await _client
+        .getUrl(url)
+        .timeout(
+          timeout,
+          onTimeout: () {
+            onTimeout();
+            throw TimeoutException('distribution request timed out', timeout);
+          },
+        );
     onRequest(req);
     // 单跳、零凭证、不缓存身份：静态产物固定 URL，重定向交回中间人不可取。
     req.followRedirects = false;

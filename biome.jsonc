@@ -32,9 +32,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      // 注：2.5.3 的 preset 语法尚未落地（deprecation 先行），仍用 recommended 布尔；
-      // Biome 3.x 升级时改 preset。
-      "recommended": true,
+      "preset": "recommended",
       "style": {
         // `!` 与 noUncheckedIndexedAccess 配套是仓库既有惯例（守卫后断言）；
         // 逐处改写会无谓搅动 🔒 承重文件。

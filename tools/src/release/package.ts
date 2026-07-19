@@ -10,29 +10,28 @@
  * with a fake SignBackend only for deterministic packaging coverage.
  */
 
-import { gzipSync } from "node:zlib";
 import {
   existsSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 import { buildEnvelope } from "../bundle/envelope.js";
 import { packBundle, unpackBundle, verifyBundleIntegrity } from "../bundle/package.js";
 import { signEnvelope } from "../bundle/sign.js";
 import { signCatalog } from "../catalog/sign.js";
-import { checkCatalog, loadCatalogValidator, loadRegistryIds, type Catalog } from "../catalog/validate.js";
-import { type SignBackend } from "../signer/index.js";
-import { promptPin, YubiKeyPkcs11Signer } from "../signer/pkcs11.js";
+import { type Catalog, checkCatalog, loadCatalogValidator, loadRegistryIds } from "../catalog/validate.js";
+import { type SignBackend, YubiKeySignBackend } from "../signer/index.js";
 import { PinentryPinProvider } from "../signer/pinentry.js";
-import { signRevocation, type RevocationList } from "../signer/revocation.js";
+import { promptPin, YubiKeyPkcs11Signer } from "../signer/pkcs11.js";
+import { type RevocationList, signRevocation } from "../signer/revocation.js";
 import { loadContract, validateAdapterDir } from "../validator/index.js";
-import { YubiKeySignBackend } from "../signer/index.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -99,7 +98,7 @@ function capabilityIds(manifest: AdapterManifest): string[] {
   if (!Array.isArray(manifest.capabilities)) {
     throw new Error(`${manifest.adapterId} manifest.capabilities 非数组（fail-closed）`);
   }
-  return manifest.capabilities.map((cap) => (typeof cap === "string" ? cap : cap.id ?? ""));
+  return manifest.capabilities.map((cap) => (typeof cap === "string" ? cap : (cap.id ?? "")));
 }
 
 function writeGzipJson(path: string, value: unknown): void {
@@ -118,10 +117,7 @@ function writeJson(path: string, value: unknown): void {
  * The caller must supply the signing backend explicitly. The function validates
  * the adapter set and catalog before any signed catalog is written.
  */
-export async function buildRelease(
-  options: ReleaseOptions,
-  backend: SignBackend,
-): Promise<ReleaseResult> {
+export async function buildRelease(options: ReleaseOptions, backend: SignBackend): Promise<ReleaseResult> {
   const baseUrl = requireHttpsBase(options.baseUrl);
   const outputDir = resolve(options.outputDir);
   const adapterDirs = discoverAdapters(options.adaptersRoot);
@@ -213,9 +209,10 @@ function main(): void {
     const revocationPath = requiredArg("revocation");
     const baseUrl = requiredArg("base-url");
     const keyId = arg("key-id") ?? "elecon-official-ncc-1";
-    const pinProvider = arg("pin-provider") === "tty"
-      ? async () => promptPin()
-      : () => new PinentryPinProvider({ command: arg("pinentry-command") }).getPin();
+    const pinProvider =
+      arg("pin-provider") === "tty"
+        ? async () => promptPin()
+        : () => new PinentryPinProvider({ command: arg("pinentry-command") }).getPin();
     const hardware = new YubiKeyPkcs11Signer(keyId, pinProvider, {
       serial: arg("serial"),
       module: arg("pkcs11-module"),

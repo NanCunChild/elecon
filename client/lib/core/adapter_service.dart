@@ -126,7 +126,7 @@ class AdapterService {
     CookieJar? jar,
     HarvestTarget? harvest,
     String? htmlStdlib,
-    int nowMs = 0,
+    int? nowMs,
   }) async {
     final LoadResult load = await _loader.loadAdapter(adapterId);
     if (!load.ok) {
@@ -142,7 +142,7 @@ class AdapterService {
         jar: jar,
         harvest: harvest,
         htmlStdlib: htmlStdlib,
-        nowMs: nowMs,
+        nowMs: nowMs ?? DateTime.now().millisecondsSinceEpoch,
       );
       return CapabilityRun.ok(data);
     } on AdapterLaunchException catch (e) {
