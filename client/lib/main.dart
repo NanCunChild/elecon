@@ -30,14 +30,13 @@ Future<BlobStore?> _blobStoreProvider() async {
   return store;
 }
 
-/// adapter 运行时装配：app 私有目录（bundle 缓存/last-good）+ 端点 D 拉取。
-/// ⚠ base URL 为占位（[kPlaceholderDistributionBaseUrl]），须随端点 D 上线替换；未部署时在线拉取
-/// 拉不到，加载器退化到 last-good/bootstrap（fail-closed）。
+/// adapter 运行时装配：app 私有目录（bundle 缓存/last-good）+ 测试端点 D 拉取。
+/// 端点内容尚未部署时在线拉取会失败，加载器退化到 last-good/bootstrap（fail-closed）。
 Future<AdapterService?> _adapterServiceProvider() async {
   final dir = await getApplicationSupportDirectory();
   return AdapterService.production(
     supportDir: dir,
-    distributionBaseUrl: Uri.parse(kPlaceholderDistributionBaseUrl),
+    distributionBaseUrl: Uri.parse(kDistributionBaseUrl),
   );
 }
 

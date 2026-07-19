@@ -11,8 +11,8 @@
 /// 本层不持有凭证，只搬「哪个 adapter、跑哪个 capability」（红线 #1：凭证仍只在核心闭包侧注入）。
 ///
 /// **未闭合的最后一跳（发布前门禁）**：真实签名 `assets/bootstrap/*` 与已部署的端点 D + 已发布签名
-/// catalog/bundle 尚未就位（阻塞于官方密钥 ceremony / 运营部署）。本层是**代码路径**，二者一到位即点亮；
-/// [kPlaceholderDistributionBaseUrl] 是占位，须随端点 D 上线替换。
+/// catalog/bundle 尚未就位（阻塞于运营部署）。本层是**代码路径**，端点内容就位后即可点亮；
+/// [kDistributionBaseUrl] 指向小范围测试分发端点。
 ///
 /// 🔒 红线 #1/#4 承重件：改动须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
 library;
@@ -38,9 +38,9 @@ import 'loader/last_good_store.dart' show LastGoodStore;
 import 'loader/loader.dart' show AdapterLoader, LoadResult;
 import 'transport/direct.dart' show DirectTransport;
 
-/// ⚠ **占位分发 base URL**（`.invalid` 为 RFC 2606 保留 TLD，恒不可解析）——须随端点 D 部署替换。
-/// 在线拉取拉不到时加载器退化到 last-good/bootstrap（fail-closed，不 fail-open）。
-const String kPlaceholderDistributionBaseUrl = 'https://dist.elecon.invalid/';
+/// 小范围测试分发 base URL。端点只提供公开、已签名的静态产物；内容未就位时加载器仍退化到
+/// last-good/bootstrap（fail-closed，不 fail-open）。
+const String kDistributionBaseUrl = 'https://elecon.xidian.one/adapters/';
 
 /// 一次 capability 执行的结果：成功携产出；失败分档（加载 / 接线 / 运行）供 UI 分流。
 enum CapabilityFailureKind {
