@@ -3,6 +3,15 @@
 
 export interface CardBalance {
   cardNumber: string;
+  cardNumberMasked?: string;
+  cardType?: string;
+  accountType?: string;
+  campus?: string;
+  wallet?: string;
+  status?: "active" | "frozen" | "lost" | "cancelled" | "unknown";
+  balanceUpdatedAt?: string;
+  snapshotAt?: string;
+  errorStatus?: "failed" | "pending" | "unknown";
   balance: CardBalanceBalance;
   lastTransaction?: CardBalanceLastTransaction;
 }

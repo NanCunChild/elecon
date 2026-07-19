@@ -54,6 +54,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck -w tools
       - run: npm run smoke:all -w tools
+      # 红线 #8：提交的 adapter 与 fixture 不得包含真实学生数据或凭证等价物。
+      - run: npm run scan -w tools
       - run: npm run validate -w tools
       # codegen 漂移闸门（仿 stdlib bundle 闸门）：入库生成物必须等于按当前
       # contract/schema 重新生成的产物——schema 改了、生成物没跟上即 fail。

@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.library.seats", "title": "图书馆座位", "type": "object",
+  "properties": { "items": { "type": "array", "items": { "type": "object", "properties": { "library": { "type": "string" }, "floor": { "type": "string" }, "seatId": { "type": "string" }, "status": { "type": "string", "enum": ["available", "occupied", "reserved", "unknown"] }, "availableFrom": { "type": "string", "format": "date-time" }, "availableUntil": { "type": "string", "format": "date-time" } } } } }
+}

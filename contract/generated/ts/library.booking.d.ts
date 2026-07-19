@@ -1,0 +1,16 @@
+// DO NOT EDIT —— 由 tools/src/codegen 从 contract/schema/ 生成。
+// 改动请改 schema 并重跑 `npm run codegen`（红线 #6：契约即承重墙）。
+
+export interface LibraryBooking {
+  items?: LibraryBookingItems[];
+}
+
+export interface LibraryBookingItems {
+  id?: string;
+  library?: string;
+  room?: string;
+  seatId?: string;
+  startAt?: string;
+  endAt?: string;
+  status?: "reserved" | "cancelled" | "checkedIn" | "expired" | "unknown";
+}

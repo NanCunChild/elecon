@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.attendance.summary", "title": "考勤汇总", "type": "object",
+  "properties": { "term": { "type": "string" }, "total": { "type": "integer", "minimum": 0 }, "absent": { "type": "integer", "minimum": 0 }, "late": { "type": "integer", "minimum": 0 }, "items": { "type": "array", "items": { "type": "object", "properties": { "courseId": { "type": "string" }, "courseName": { "type": "string" }, "date": { "type": "string", "format": "date" }, "type": { "type": "string", "enum": ["absent", "late", "leave", "earlyLeave", "unknown"] }, "appealStatus": { "type": "string", "enum": ["none", "pending", "approved", "rejected", "unknown"] } } } } }
+}

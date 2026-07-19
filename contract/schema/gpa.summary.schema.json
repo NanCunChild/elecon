@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.gpa.summary", "title": "绩点汇总", "type": "object",
+  "properties": { "gpa": { "type": "number" }, "earnedCredits": { "type": "number", "minimum": 0 }, "attemptedCredits": { "type": "number", "minimum": 0 }, "rank": { "type": "integer", "minimum": 1 }, "rankTotal": { "type": "integer", "minimum": 1 }, "window": { "type": "string" }, "updatedAt": { "type": "string", "format": "date-time" } }
+}

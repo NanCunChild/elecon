@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"elecon.dining.summary","title":"餐饮汇总","type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"merchant":{"type":"string"},"amountMinor":{"type":"integer"},"currency":{"type":"string","pattern":"^[A-Z]{3}$"},"period":{"type":"string"},"open":{"type":"boolean"}}}}}}

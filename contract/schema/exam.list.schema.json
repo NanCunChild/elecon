@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.exam.list", "title": "考试列表", "type": "object",
+  "properties": { "term": { "type": "string" }, "items": { "type": "array", "items": { "type": "object", "required": ["courseName"], "properties": { "courseId": { "type": "string" }, "courseName": { "type": "string" }, "examAt": { "type": "string", "format": "date-time" }, "campus": { "type": "string" }, "building": { "type": "string" }, "room": { "type": "string" }, "seat": { "type": "string" }, "examType": { "type": "string" }, "status": { "type": "string", "enum": ["scheduled", "changed", "cancelled", "completed", "unknown"] }, "changeReason": { "type": "string" } } } } }
+}

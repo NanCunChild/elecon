@@ -46,8 +46,10 @@ interface JsonSchema {
   description?: string;
   $ref?: string;
   allOf?: unknown;
-  oneOf?: unknown;
+  oneOf?: JsonSchema[];
   anyOf?: unknown;
+  definitions?: Record<string, JsonSchema>;
+  $defs?: Record<string, JsonSchema>;
 }
 
 // ---- 命名 ----
@@ -69,15 +71,31 @@ interface EmittedType {
   schema: JsonSchema;
 }
 
+function resolveRef(s: JsonSchema, root: JsonSchema): JsonSchema {
+  if (!s.$ref) return s;
+  const match = s.$ref.match(/^#\/(?:\$defs|definitions)\/([^/]+)$/);
+  if (!match) throw new Error(`不支持 $ref（外部引用）：${s.$ref}`);
+  const resolved = (root.$defs ?? root.definitions)?.[match[1]!];
+  if (!resolved) throw new Error(`找不到 $ref：${s.$ref}`);
+  return resolved;
+}
+
 function assertSupported(s: JsonSchema, ctx: string): void {
-  if (s.$ref) throw new Error(`${ctx}: 不支持 $ref（需人工处理）`);
-  if (s.allOf || s.oneOf || s.anyOf) throw new Error(`${ctx}: 不支持 allOf/oneOf/anyOf（需人工处理）`);
+  if (s.allOf || s.anyOf) throw new Error(`${ctx}: 不支持 allOf/anyOf（需人工处理）`);
 }
 
 // ---- TS 生成 ----
 
-function tsType(s: JsonSchema, parentName: string, prop: string, emit: EmittedType[]): string {
+function tsType(
+  s: JsonSchema,
+  parentName: string,
+  prop: string,
+  emit: EmittedType[],
+  root: JsonSchema,
+): string {
+  s = resolveRef(s, root);
   assertSupported(s, `${parentName}.${prop}`);
+  if (s.oneOf) return s.oneOf.map((v) => tsType(v, parentName, prop, emit, root)).join(" | ");
   if (s.enum) return s.enum.map((e) => JSON.stringify(e)).join(" | ");
   switch (s.type) {
     case "string":
@@ -89,7 +107,7 @@ function tsType(s: JsonSchema, parentName: string, prop: string, emit: EmittedTy
       return "boolean";
     case "array": {
       const item = s.items ?? {};
-      return `${tsType(item, parentName, prop, emit)}[]`;
+      return `${tsType(item, parentName, prop, emit, root)}[]`;
     }
     case "object": {
       const name = parentName + pascalCase(prop);
@@ -101,14 +119,14 @@ function tsType(s: JsonSchema, parentName: string, prop: string, emit: EmittedTy
   }
 }
 
-function tsInterface(name: string, s: JsonSchema, emit: EmittedType[]): string {
+function tsInterface(name: string, s: JsonSchema, emit: EmittedType[], root: JsonSchema): string {
   const required = new Set(s.required ?? []);
   const props = s.properties ?? {};
   const lines = [`export interface ${name} {`];
   for (const [key, ps] of Object.entries(props)) {
     const opt = required.has(key) ? "" : "?";
     const doc = ps.description ? `  /** ${ps.description} */\n` : "";
-    lines.push(`${doc}  ${key}${opt}: ${tsType(ps, name, key, emit)};`);
+    lines.push(`${doc}  ${key}${opt}: ${tsType(ps, name, key, emit, root)};`);
   }
   lines.push("}");
   return lines.join("\n");
@@ -124,7 +142,7 @@ export function generateTs(rootName: string, root: JsonSchema): string {
     if (rendered.has(t.name)) continue;
     rendered.add(t.name);
     const childEmit: EmittedType[] = [];
-    blocks.push(tsInterface(t.name, t.schema, childEmit));
+    blocks.push(tsInterface(t.name, t.schema, childEmit, root));
     for (const c of childEmit) if (!rendered.has(c.name)) queue.push(c);
   }
   return `${blocks.join("\n\n")}\n`;
@@ -132,8 +150,10 @@ export function generateTs(rootName: string, root: JsonSchema): string {
 
 // ---- Dart 生成 ----
 
-function dartType(s: JsonSchema, parentName: string, prop: string): string {
+function dartType(s: JsonSchema, parentName: string, prop: string, root: JsonSchema): string {
+  s = resolveRef(s, root);
   assertSupported(s, `${parentName}.${prop}`);
+  if (s.oneOf) return "Object";
   if (s.enum) return "String"; // enum 以 String 承载（保持与 schema 校验一致，避免解析期抛错）
   switch (s.type) {
     case "string":
@@ -146,7 +166,7 @@ function dartType(s: JsonSchema, parentName: string, prop: string): string {
       return "bool";
     case "array": {
       const item = s.items ?? {};
-      return `List<${dartType(item, parentName, prop)}>`;
+      return `List<${dartType(item, parentName, prop, root)}>`;
     }
     case "object":
       return parentName + pascalCase(prop);
@@ -155,7 +175,7 @@ function dartType(s: JsonSchema, parentName: string, prop: string): string {
   }
 }
 
-function dartClass(name: string, s: JsonSchema): { code: string; children: EmittedType[] } {
+function dartClass(name: string, s: JsonSchema, root: JsonSchema): { code: string; children: EmittedType[] } {
   const required = new Set(s.required ?? []);
   const props = s.properties ?? {};
   const children: EmittedType[] = [];
@@ -163,21 +183,24 @@ function dartClass(name: string, s: JsonSchema): { code: string; children: Emitt
   const ctorParams: string[] = [];
   for (const [key, ps] of Object.entries(props)) {
     const opt = required.has(key);
-    const dt = dartType(ps, name, key);
+    const dt = dartType(ps, name, key, root);
     // 收集需要单独生成的嵌套 object 类型。
-    if (ps.type === "object") {
-      children.push({ name: name + pascalCase(key), schema: ps });
-    } else if (ps.type === "array" && ps.items?.type === "object") {
-      children.push({ name: name + pascalCase(key), schema: ps.items });
+    const resolved = resolveRef(ps, root);
+    if (resolved.type === "object") {
+      children.push({ name: name + pascalCase(key), schema: resolved });
+    } else if (resolved.type === "array") {
+      const item = resolveRef(resolved.items ?? {}, root);
+      if (item.type === "object") children.push({ name: name + pascalCase(key), schema: item });
     }
     const nullable = opt ? "" : "?";
     if (ps.description) fields.push(`  /// ${ps.description}`);
     fields.push(`  final ${dt}${nullable} ${key};`);
     ctorParams.push(opt ? `    required this.${key},` : `    this.${key},`);
   }
-  const code = [`class ${name} {`, `  const ${name}({`, ...ctorParams, `  });`, "", ...fields, `}`].join(
-    "\n",
-  );
+  const code =
+    ctorParams.length === 0
+      ? [`class ${name} {`, `  const ${name}();`, "", ...fields, `}`].join("\n")
+      : [`class ${name} {`, `  const ${name}({`, ...ctorParams, `  });`, "", ...fields, `}`].join("\n");
   return { code, children };
 }
 
@@ -189,7 +212,7 @@ export function generateDart(rootName: string, root: JsonSchema): string {
     const t = queue.shift()!;
     if (rendered.has(t.name)) continue;
     rendered.add(t.name);
-    const { code, children } = dartClass(t.name, t.schema);
+    const { code, children } = dartClass(t.name, t.schema, root);
     blocks.push(code);
     for (const c of children) if (!rendered.has(c.name)) queue.push(c);
   }

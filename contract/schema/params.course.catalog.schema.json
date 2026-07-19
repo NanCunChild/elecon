@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"elecon.params.course.catalog","type":"object","properties":{"term":{"type":"string"},"query":{"type":"string"}}}

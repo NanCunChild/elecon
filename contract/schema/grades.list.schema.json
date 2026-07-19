@@ -9,6 +9,14 @@
       "type": "string",
       "description": "学期标识，如 2025-2026-2"
     },
+    "academicYear": { "type": "string" },
+    "termName": { "type": "string" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "page": { "type": "integer", "minimum": 1 },
+    "size": { "type": "integer", "minimum": 1 },
+    "cursor": { "type": "string" },
+    "total": { "type": "integer", "minimum": 0 },
+    "hasNext": { "type": "boolean" },
     "items": {
       "type": "array",
       "items": {
@@ -18,15 +26,33 @@
           "courseId": { "type": "string" },
           "courseName": { "type": "string" },
           "credit": { "type": "number", "minimum": 0 },
+          "creditType": { "type": "string" },
+          "courseNature": { "type": "string" },
+          "courseCategory": { "type": "string" },
+          "courseGroup": { "type": "string" },
+          "language": { "type": "string" },
+          "teacher": { "type": "string" },
+          "offeringUnit": { "type": "string" },
+          "classNo": { "type": "string" },
+          "sectionNo": { "type": "string" },
+          "examMethod": { "type": "string" },
+          "examAt": { "type": "string", "format": "date-time" },
+          "retake": { "type": "boolean" },
+          "sourceStatus": { "type": "string", "enum": ["normal", "retake", "makeup", "deferred", "exempt", "改分", "withdrawn", "unknown"] },
+          "rank": { "type": "integer", "minimum": 1 },
+          "gradeDistribution": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+          "courseAverage": { "type": "number" },
           "score": {
             "type": "object",
             "required": ["kind", "value"],
             "properties": {
               "kind": {
                 "type": "string",
-                "enum": ["numeric", "letter", "passfail"]
+                "enum": ["numeric", "letter", "passfail", "unknown"]
               },
               "value": {},
+              "raw": { "type": "string" },
+              "status": { "type": "string", "enum": ["known", "unknown", "absent", "notReleased", "exempt"] },
               "max": { "type": "number" }
             }
           },

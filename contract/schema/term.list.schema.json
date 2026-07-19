@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.term.list", "title": "学期列表", "type": "object",
+  "properties": { "currentTerm": { "type": "string" }, "items": { "type": "array", "items": { "type": "object", "required": ["id", "name"], "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "academicYear": { "type": "string" }, "startDate": { "type": "string", "format": "date" }, "endDate": { "type": "string", "format": "date" }, "teachingWeeks": { "type": "integer", "minimum": 0 } } } } }
+}

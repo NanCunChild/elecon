@@ -6,6 +6,15 @@
   "required": ["cardNumber", "balance"],
   "properties": {
     "cardNumber": { "type": "string" },
+    "cardNumberMasked": { "type": "string" },
+    "cardType": { "type": "string" },
+    "accountType": { "type": "string" },
+    "campus": { "type": "string" },
+    "wallet": { "type": "string" },
+    "status": { "type": "string", "enum": ["active", "frozen", "lost", "cancelled", "unknown"] },
+    "balanceUpdatedAt": { "type": "string", "format": "date-time" },
+    "snapshotAt": { "type": "string", "format": "date-time" },
+    "errorStatus": { "type": "string", "enum": ["failed", "pending", "unknown"] },
     "balance": {
       "type": "object",
       "required": ["amountMinor", "currency"],

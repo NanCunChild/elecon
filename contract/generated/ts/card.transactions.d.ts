@@ -3,17 +3,34 @@
 
 export interface CardTransactions {
   cardNumber: string;
+  cardNumberMasked?: string;
+  cardType?: string;
+  accountType?: string;
+  campus?: string;
+  wallet?: string;
+  page?: number;
+  size?: number;
+  cursor?: string;
+  total?: number;
+  hasNext?: boolean;
+  windowStart?: string;
+  windowEnd?: string;
+  snapshotAt?: string;
   items: CardTransactionsItems[];
 }
 
 export interface CardTransactionsItems {
   time: string;
+  transactionId?: string;
+  postedAt?: string;
   /** 最小货币单位（如分），非负；收支方向由 direction 表示 */
   amountMinor: number;
   currency: string;
   /** debit=支出 credit=充值/入账 */
-  direction: "debit" | "credit";
+  direction: "debit" | "credit" | "refund" | "reversal" | "freeze" | "transfer" | "subsidy" | "unknown";
   merchant?: string;
+  location?: string;
+  status?: "final" | "pending" | "failed" | "cancelled" | "unknown";
   /** 本笔交易后余额（最小货币单位）；可选 */
   balanceAfterMinor?: number;
   /** 交易类型原文/归类；可选 */
