@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
 import '../debug/helloworld_test_page.dart';
+import 'appearance_section.dart';
 import 'dev_log_page.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -137,6 +138,8 @@ class SettingsPage extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          const AppearanceSection(),
           const SizedBox(height: 16),
           _SectionTitle(title: '调试'),
           Card(

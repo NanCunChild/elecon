@@ -27,6 +27,9 @@ dependencies:
   # UI 模型消费此包，消除手写模型与 schema 的漂移（红线 #6 契约单源）。
   elecon_contract:
     path: ../contract/generated/dart
+  # 实验性液态玻璃导航 chrome（iOS 26 风格 shader 毛玻璃）。MIT。
+  # 仅 UI 层；高对比模式走 Material 回退，不参与凭证/adapter 路径。
+  liquid_glass_widgets: 0.22.1
 
 dev_dependencies:
   flutter_test:

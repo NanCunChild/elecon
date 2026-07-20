@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'core/adapter_service.dart';
@@ -12,13 +13,23 @@ import 'session/session_scope.dart';
 import 'ui/onboarding/onboarding_page.dart';
 import 'ui/security/hardware_unlock_failed_dialog.dart';
 import 'ui/shell/main_shell.dart';
+import 'ui/theme/app_theme.dart';
+import 'ui/theme/theme_controller.dart';
+import 'ui/theme/theme_scope.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final startupTrace = PerfTrace.start('app_start');
   startupTrace.mark('flutter_binding_ready');
   startupTrace.observeFrames();
-  runApp(EleconApp(startupTrace: startupTrace));
+  await LiquidGlassWidgets.initialize();
+  startupTrace.mark('liquid_glass_ready');
+  runApp(
+    LiquidGlassWidgets.wrap(
+      child: EleconApp(startupTrace: startupTrace),
+      adaptiveQuality: true,
+    ),
+  );
 }
 
 /// §2.8 落盘目录：H/S 密文 + wrapped DEK 写入 app 私有 application support。
@@ -55,33 +66,45 @@ class _EleconAppState extends State<EleconApp> {
     blobStoreProvider: _blobStoreProvider,
     adapterServiceProvider: _adapterServiceProvider,
   );
+  late final ThemeController _theme = ThemeController();
+  late final Future<void> _themeLoad = _theme.load();
 
   @override
   void dispose() {
     _session.dispose();
+    _theme.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SessionScope(
-      controller: _session,
-      child: MaterialApp(
-        title: 'elecon',
-        debugShowCheckedModeBanner: false,
-        themeMode: ThemeMode.system,
-        theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff3867d6)),
+    return ThemeScope(
+      controller: _theme,
+      child: SessionScope(
+        controller: _session,
+        child: FutureBuilder<void>(
+          future: _themeLoad,
+          builder: (context, _) {
+            // 偏好未落盘前用默认；load 完成后 ThemeController.notify 触发重建。
+            return ListenableBuilder(
+              listenable: _theme,
+              builder: (context, _) {
+                final p = _theme.prefs;
+                return MaterialApp(
+                  title: 'elecon',
+                  debugShowCheckedModeBanner: false,
+                  themeMode: p.themeMode,
+                  theme: AppTheme.light(p),
+                  darkTheme: AppTheme.dark(p),
+                  home: _BootGate(
+                    session: _session,
+                    startupTrace: widget.startupTrace,
+                  ),
+                );
+              },
+            );
+          },
         ),
-        darkTheme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xff7da6ff),
-            brightness: Brightness.dark,
-          ),
-        ),
-        home: _BootGate(session: _session, startupTrace: widget.startupTrace),
       ),
     );
   }
