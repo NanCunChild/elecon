@@ -65,12 +65,18 @@ Future<_Bundle> _mkBundle(
   String capability = 'notice.list',
 }) async {
   final source =
-      "export const capabilities = { '$capability': async (ctx) => ({ items: [1,2,3] }) };";
+      "export const capabilities = { '$capability': async (ctx) => { "
+      "ctx.log('info', 'HelloWorld'); return { items: [1,2,3] }; } };";
   final manifest = {
     'schemaVersion': '1.0',
     'adapterId': adapterId,
     'adapterVersion': adapterVersion,
-    'capabilities': [capability],
+    'capabilities': [
+      {
+        'id': capability,
+        'emits': {'schema': 'elecon.notice.list', 'schemaVersion': '1.0'},
+      },
+    ],
     'runtime': {'entry': 'index.js', 'stdlibMin': '1.0.0'},
     'network': {
       'allow': ['https://x.edu/*'],
@@ -277,13 +283,16 @@ void main() {
     test('happy：加载 + 执行 → ok，携产出（不触 transport/resolver）', () async {
       final b = await _mkBundle(bundleSigner, adapterId: 'school-x');
       final svc = await serviceFor(b, adapterId: 'school-x');
+      final logs = <String>[];
       final r = await svc.run(
         adapterId: 'school-x',
         capability: 'notice.list',
         resolver: _ThrowingResolver(),
+        onLog: (level, message) => logs.add('$level:$message'),
       );
       expect(r.ok, isTrue, reason: r.reason);
       expect((r.data as Map)['items'], [1, 2, 3]);
+      expect(logs, ['info:HelloWorld']);
     });
 
     test('加载失败（无 catalog）→ failed(load)', () async {
@@ -337,9 +346,14 @@ void main() {
         adapterServiceProvider: () async => svc,
       );
       session.selectSchool(defaultSchool);
-      final r = await session.runCapability('notice.list');
+      final logs = <String>[];
+      final r = await session.runCapability(
+        'notice.list',
+        onLog: (level, message) => logs.add('$level:$message'),
+      );
       expect(r.ok, isTrue, reason: r.reason);
       expect((r.data as Map)['items'], [1, 2, 3]);
+      expect(logs, ['info:HelloWorld']);
     });
 
     test('未选校 → failed(load)，不触 service', () async {

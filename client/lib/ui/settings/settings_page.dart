@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
+import '../debug/helloworld_test_page.dart';
 import 'dev_log_page.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -18,8 +19,9 @@ class SettingsPage extends StatelessWidget {
     if (school == null) return;
     final result = await runSchoolLogin(context, session, school);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(loginResultMessage(result, session))));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(loginResultMessage(result, session))),
+    );
   }
 
   Future<void> _logout(BuildContext context) async {
@@ -31,19 +33,22 @@ class SettingsPage extends StatelessWidget {
         content: const Text('将立即抹除本机保存的全部凭证，需要重新登录。'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('退出')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('退出'),
+          ),
         ],
       ),
     );
     if (confirmed != true) return;
     session.logout();
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('已退出登录，凭证已抹除')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已退出登录，凭证已抹除')));
   }
 
   Future<void> _switchSchool(BuildContext context) async {
@@ -55,11 +60,13 @@ class SettingsPage extends StatelessWidget {
         content: const Text('将抹除当前凭证并返回学校选择面板。'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('切换')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('切换'),
+          ),
         ],
       ),
     );
@@ -97,9 +104,11 @@ class SettingsPage extends StatelessWidget {
                         : Theme.of(context).colorScheme.outline,
                   ),
                   title: Text(loggedIn ? '已登录' : '未登录'),
-                  subtitle: Text(loggedIn
-                      ? '已收割 ${session.credentialCount} 条凭证：${session.credentialRefs.join("、")}'
-                      : '登录后聚合校园信息'),
+                  subtitle: Text(
+                    loggedIn
+                        ? '已收割 ${session.credentialCount} 条凭证：${session.credentialRefs.join("、")}'
+                        : '登录后聚合校园信息',
+                  ),
                   trailing: loggedIn
                       ? TextButton(
                           onPressed: () => _logout(context),
@@ -137,9 +146,7 @@ class SettingsPage extends StatelessWidget {
                   leading: const Icon(Icons.receipt_long_outlined),
                   title: const Text('运行时日志'),
                   subtitle: Text(
-                    kDebugMode
-                        ? '全部 Dev 日志；可筛选仅网络'
-                        : '仅网络：无参 URL 与成功状态',
+                    kDebugMode ? '全部 Dev 日志；可筛选仅网络' : '仅网络：无参 URL 与成功状态',
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
@@ -151,6 +158,20 @@ class SettingsPage extends StatelessWidget {
                   },
                 ),
                 if (kDebugMode) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.route_outlined),
+                    title: const Text('HelloWorld adapter 通路测试'),
+                    subtitle: const Text('远端分发、验签、执行、日志和测试卡片'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const HelloWorldTestPage(),
+                        ),
+                      );
+                    },
+                  ),
                   const Divider(height: 1),
                   SwitchListTile(
                     secondary: const Icon(Icons.bug_report_outlined),
@@ -200,8 +221,8 @@ class _SectionTitle extends StatelessWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-            ),
+          color: Theme.of(context).colorScheme.primary,
+        ),
       ),
     );
   }

@@ -51,6 +51,32 @@ FLUTTER_QJS_NEXT_LIBRARY=/path/to/libflutter_qjs_next_plugin.so fvm flutter test
 > JavaScriptCore，会破坏“同一引擎零漂移”）。它使用更新 QuickJS、`ffi` 2.x，并移除了旧
 > `flutter_qjs` 的 Android Kotlin Gradle Plugin 阻塞。
 
+### Linux QuickJS 测试库记录
+
+`flutter test` 运行在 host VM 上，不会自动编译 FFI 插件的 Linux `.so`。当前开发环境
+（Flutter 3.44.1 / Dart 3.12.1，Linux x64）的标准流程是：
+
+```bash
+cd client
+fvm flutter pub get
+tool/build_qjs_test_lib.sh
+FLUTTER_QJS_NEXT_LIBRARY="$PWD/.dart_tool/flutter_qjs_next_test_build/example/build/linux/x64/debug/bundle/lib/libflutter_qjs_next_plugin.so" \
+  fvm flutter test
+```
+
+脚本会从 `.dart_tool/package_config.json` 定位 `flutter_qjs_next`，复制到临时构建目录，
+创建/构建一个最小 Linux example，并输出 `libflutter_qjs_next_plugin.so` 的绝对路径。CI
+通过 `GITHUB_ENV` 自动注入该环境变量；本地 shell 需要按上面的方式显式传入。
+
+更换开发环境、Flutter 版本、架构或 `flutter_qjs_next` 版本时，需检查：
+
+- 安装 Linux Flutter desktop 依赖：`cmake`、`ninja-build`、`pkg-config`、`libgtk-3-dev` 及 C/C++ 编译器。
+- 重新执行 `fvm flutter pub get` 和 `tool/build_qjs_test_lib.sh`，不要复用旧 `.dart_tool/flutter_qjs_next_test_build`。
+- 确认 `.so` 架构与测试运行架构一致，并将 `FLUTTER_QJS_NEXT_LIBRARY` 指向新路径。
+- 若升级 Flutter、Dart、插件或切换 hosted/git/path 依赖，重新核对 package 的 Linux CMake/Rust/FFI 构建接口。
+- 若迁移到 macOS/Windows，扩展脚本的 OS 分支，并分别构建 `.dylib`/`.dll`；当前脚本只支持 Linux。
+- 不提交 `.so`、`build/`、`.dart_tool/flutter_qjs_next_test_build/` 等本机构建产物。
+
 ## 性能分析（MVP）
 
 性能追踪默认在编译期关闭。开发或 profile 构建时显式开启：

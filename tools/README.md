@@ -45,3 +45,61 @@ npm run release:package -- \
 
 `catalog.json.gz` 的 gzip 只用于传输，签名对象仍是内部 `catalogJson` 原始 JSON 字节；不要在 CDN
 设置 `Content-Encoding: gzip`，仅保留 `application/gzip` 内容类型。
+
+## Hardware Signing Setup
+
+`pkcs11js` 是可选的原生依赖：普通开发、校验、扫描、smoke 和验签不需要它；只有实际使用
+YubiKey 出签的离线签名机需要构建 `pkcs11.node`。仓库的 npm 安装策略默认阻止依赖安装脚本，
+因此 `npm rebuild pkcs11js` 可能显示成功但仍不会生成原生模块。推荐显式构建该模块：
+
+```bash
+cd tools
+PKCS11_DIR="$(npm root)/pkcs11js"
+cd "$PKCS11_DIR"
+npx node-gyp rebuild
+node -e "require('pkcs11js'); console.log('pkcs11js native module loaded')"
+cd -
+```
+
+签名机需要预先安装 C/C++ 构建工具、Python、Node.js headers，以及 YubiKey 的 PKCS#11 模块
+（通常为 `libykcs11.so`）。`pkcs11js` 是 Node 到 PKCS#11 的桥接模块，`--pkcs11-module`
+则是 YubiKey 厂商库路径，两者都必须存在；不能用 `--pkcs11-module=/path/to/...` 这样的占位路径。
+
+先确认令牌和签名槽位，再执行真实签名：
+
+```bash
+cd tools
+npx tsx src/signer/pkcs11.ts list \
+  --serial=36415367 \
+  --module=/usr/lib/libykcs11.so
+
+npx tsx src/signer/pkcs11.ts selftest \
+  --serial=36415367 \
+  --module=/usr/lib/libykcs11.so
+```
+
+`selftest` 会执行真实签名，需要 PIN 和物理触碰。签名前必须人工确认待签 adapter、digest、
+`keyId` 和输出目录；密钥 ceremony 不由脚本自动执行。
+
+## HelloWorld Test Release
+
+仓库包含一个不访问网络、不使用凭证的 `adapters/school-helloworld`，用于验证端点 D → 客户端
+接收 → 验签 → 加载 → QuickJS 执行 → 日志/产出链路：
+
+```bash
+cd tools
+npm run release:package -- \
+  --adapters=../adapters/school-helloworld \
+  --out=../dist-helloworld \
+  --base-url=https://elecon.xidian.one/adapters \
+  --revocation=../release/revocation.json \
+  --sequence=1 \
+  --key-id=elecon-official-ncc-1 \
+  --pkcs11-module=/usr/lib/libykcs11.so \
+  --serial=36415367 \
+  --pinentry-command=/usr/bin/pinentry-qt
+```
+
+命令会生成 `catalog.json.gz`、签名 `revocation.json` 和 `bundles/<digest>.json.gz`。上传时将
+`dist-helloworld/` 内的内容直接放到远端 `/adapters/` 目录，不要上传原始 adapter 源码、私钥或
+输入用的未签名 `release/revocation.json`。

@@ -64,6 +64,7 @@ import 'catalog.dart'
         catalogFresh,
         pickNewerCatalog,
         verifyCatalog;
+import 'diagnostics.dart' show AdapterDiagnostic, AdapterDiagnosticKind;
 import 'last_good_store.dart' show LastGoodStore;
 import 'load_grant.dart' show mintOfficialGrant;
 import 'revocation.dart'
@@ -166,6 +167,7 @@ class AdapterLoader {
     DistributionSource? source,
     int Function()? nowMs,
     void Function(String message)? onWarning,
+    void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) : this._(
          cache: cache,
          lastGood: lastGood,
@@ -173,6 +175,7 @@ class AdapterLoader {
          source: source,
          nowMs: nowMs,
          onWarning: onWarning,
+         onDiagnostic: onDiagnostic,
          verifyCatalog: verifyCatalog,
          verifyRevocation: verifyRevocation,
          verifyBundle: verifyBundleSignature,
@@ -188,6 +191,7 @@ class AdapterLoader {
     DistributionSource? source,
     int Function()? nowMs,
     void Function(String message)? onWarning,
+    void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
     required CatalogVerifier verifyCatalogFn,
     required RevocationVerifier verifyRevocationFn,
     required BundleVerifier verifyBundleFn,
@@ -198,6 +202,7 @@ class AdapterLoader {
          source: source,
          nowMs: nowMs,
          onWarning: onWarning,
+         onDiagnostic: onDiagnostic,
          verifyCatalog: verifyCatalogFn,
          verifyRevocation: verifyRevocationFn,
          verifyBundle: verifyBundleFn,
@@ -210,6 +215,7 @@ class AdapterLoader {
     required DistributionSource? source,
     required int Function()? nowMs,
     required void Function(String message)? onWarning,
+    required void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
     required CatalogVerifier verifyCatalog,
     required RevocationVerifier verifyRevocation,
     required BundleVerifier verifyBundle,
@@ -221,7 +227,8 @@ class AdapterLoader {
        _verifyCatalog = verifyCatalog,
        _verifyRevocation = verifyRevocation,
        _verifyBundle = verifyBundle,
-       _onWarning = onWarning;
+       _onWarning = onWarning,
+       _onDiagnostic = onDiagnostic;
 
   final BundleCache _cache;
   final LastGoodStore _lastGood;
@@ -234,10 +241,33 @@ class AdapterLoader {
 
   /// 非致命遥测钩子（如缓存写失败）。null = 静默。生产可接日志/上报。
   final void Function(String message)? _onWarning;
+  final void Function(AdapterDiagnostic diagnostic)? _onDiagnostic;
+
+  void _diagnose(AdapterDiagnosticKind kind, String stage, String message) {
+    final diagnostic = AdapterDiagnostic(
+      kind: kind,
+      stage: stage,
+      message: message,
+    );
+    (_diagnosticSink ?? _onDiagnostic)?.call(diagnostic);
+    _onWarning?.call(diagnostic.summary);
+  }
 
   /// Deduplicate concurrent requests for the same adapter. Besides avoiding
   /// duplicate network and signature work, this keeps last-good writes ordered.
   final Map<String, Future<LoadResult>> _inFlight = {};
+
+  /// AdapterService uses this narrow sink to expose diagnostics without
+  /// exposing loader internals to UI code.
+  void setDiagnosticSink(void Function(AdapterDiagnostic diagnostic)? sink) {
+    _diagnosticSink = sink;
+  }
+
+  void reportDiagnostic(AdapterDiagnostic diagnostic) {
+    (_diagnosticSink ?? _onDiagnostic)?.call(diagnostic);
+  }
+
+  void Function(AdapterDiagnostic diagnostic)? _diagnosticSink;
 
   static int _defaultNowMs() => DateTime.now().millisecondsSinceEpoch;
 
@@ -260,6 +290,11 @@ class AdapterLoader {
     // 步 1：解析 catalog（验签 + 防回滚 + 采纳持久化）。
     final catalog = await _resolveCatalog();
     if (catalog == null) {
+      _diagnose(
+        AdapterDiagnosticKind.missingSource,
+        'catalog',
+        '所有 catalog 来源均不可用或验签失败',
+      );
       return const LoadResult.fail(
         '无可信 catalog（fetch/last-good/bootstrap 均缺或验签失败）',
       );
@@ -269,6 +304,11 @@ class AdapterLoader {
     // 供下方闭包（[_readOrNull] 的 `() => _cache.read(entry.digest)`）安全解引用。
     final entry = _findEntry(catalog, adapterId);
     if (entry == null) {
+      _diagnose(
+        AdapterDiagnosticKind.policy,
+        'catalog',
+        'catalog 中不存在目标 adapter：$adapterId',
+      );
       return LoadResult.fail('catalog 无此 adapter：$adapterId');
     }
 
@@ -289,6 +329,11 @@ class AdapterLoader {
     } else {
       final packed = await _fetchPacked(entry);
       if (packed == null) {
+        _diagnose(
+          AdapterDiagnosticKind.missingSource,
+          'bundle',
+          'cache、bootstrap 和网络均未提供 bundle：$adapterId',
+        );
         return LoadResult.fail(
           '无法获取 bundle 字节（cache/bootstrap/网络均无）：$adapterId',
         );
@@ -305,11 +350,21 @@ class AdapterLoader {
     // 步 5：Ed25519 验签 → 不可伪造 VerifiedBundle。
     final vr = await _verifyBundle(env, sig);
     if (!vr.ok) {
+      _diagnose(
+        AdapterDiagnosticKind.signature,
+        'bundle',
+        vr.reason ?? 'bundle 验签失败',
+      );
       return LoadResult.fail('bundle 验签失败：${vr.reason}');
     }
     final verified = vr.value!;
     // 双保险：验签内部已核 sig.digest==envelopeDigest；此处再确认 == entry.digest（内容寻址锚定）。
     if (verified.digest != entry.digest) {
+      _diagnose(
+        AdapterDiagnosticKind.contentAddress,
+        'bundle',
+        'bundle digest 与 catalog 不符',
+      );
       return LoadResult.fail(
         '验签 digest 与 catalog entry.digest 不符（fail-closed）',
       );
@@ -332,6 +387,11 @@ class AdapterLoader {
     // fail-closed 拒载（无法确认未被吊销，宁可不加载）。
     final revocation = await _resolveRevocation();
     if (revocation == null) {
+      _diagnose(
+        AdapterDiagnosticKind.missingSource,
+        'revocation',
+        '所有 revocation 来源均不可用或验签失败，无法确认未被吊销',
+      );
       return const LoadResult.fail(
         '无可信 revocation（缺或验签失败）→ 无法确认未被吊销，fail-closed 拒载',
       );
@@ -340,6 +400,7 @@ class AdapterLoader {
     // 步 7：吊销 + stdlibMin 门（先吊销后 stdlib；ref 取自 bundle 权威身份，不可伪造）。
     final grant = mintOfficialGrant(bundle: verified, revocation: revocation);
     if (!grant.ok) {
+      _diagnose(AdapterDiagnosticKind.revoked, 'revocation', grant.reason!);
       return LoadResult.fail(grant.reason!);
     }
 
@@ -352,7 +413,7 @@ class AdapterLoader {
       try {
         await _cache.write(verified, packedToCache);
       } catch (e) {
-        _onWarning?.call('bundle 缓存写入失败（不影响本次加载）：$e');
+        _diagnose(AdapterDiagnosticKind.storage, 'cache', 'bundle 缓存写入失败：$e');
       }
     }
 
@@ -406,7 +467,7 @@ class AdapterLoader {
     try {
       return await read();
     } catch (e) {
-      _onWarning?.call('$what 读取失败（视为本源不可用，继续回退）：$e');
+      _diagnose(AdapterDiagnosticKind.storage, what, '读取失败，继续回退：$e');
       return null;
     }
   }
@@ -422,9 +483,11 @@ class AdapterLoader {
         envelope: up.envelope,
         signature: SignatureFile.fromJson(sigJson),
       );
-    } on BundleFormatException {
+    } on BundleFormatException catch (e) {
+      _diagnose(AdapterDiagnosticKind.decompression, 'bundle', '解包失败：$e');
       return null;
-    } on FormatException {
+    } on FormatException catch (e) {
+      _diagnose(AdapterDiagnosticKind.parse, 'bundle', '签名字段解析失败：$e');
       return null; // 签名字段畸形
     }
   }
@@ -443,6 +506,13 @@ class AdapterLoader {
     if (bootstrapSigned != null) {
       final r = await _verifyCatalog(bootstrapSigned);
       if (r.ok) candidates.add(r.value!);
+      if (!r.ok) {
+        _diagnose(
+          AdapterDiagnosticKind.signature,
+          'catalog/bootstrap',
+          r.reason ?? '验签失败',
+        );
+      }
     }
 
     // last-good（运行时采纳的上一份）。
@@ -453,6 +523,13 @@ class AdapterLoader {
     if (lastGoodSigned != null) {
       final r = await _verifyCatalog(lastGoodSigned);
       if (r.ok) candidates.add(r.value!);
+      if (!r.ok) {
+        _diagnose(
+          AdapterDiagnosticKind.signature,
+          'catalog/last-good',
+          r.reason ?? '验签失败',
+        );
+      }
     }
 
     // 网络（最新）。放在最后加入：与 last-good **同 sequence 时不采纳网络**（拒同序号替换，防回滚）。
@@ -463,6 +540,13 @@ class AdapterLoader {
       if (r.ok) {
         fetched = r.value!;
         candidates.add(fetched);
+      }
+      if (!r.ok) {
+        _diagnose(
+          AdapterDiagnosticKind.signature,
+          'catalog/network',
+          r.reason ?? '验签失败',
+        );
       }
     }
 
@@ -497,6 +581,13 @@ class AdapterLoader {
     if (bootstrapSigned != null) {
       final r = await _verifyRevocation(bootstrapSigned);
       if (r.ok) candidates.add(r.value!);
+      if (!r.ok) {
+        _diagnose(
+          AdapterDiagnosticKind.signature,
+          'revocation/bootstrap',
+          r.reason ?? '验签失败',
+        );
+      }
     }
 
     final lastGoodSigned = await _readOrNull(
@@ -506,6 +597,13 @@ class AdapterLoader {
     if (lastGoodSigned != null) {
       final r = await _verifyRevocation(lastGoodSigned);
       if (r.ok) candidates.add(r.value!);
+      if (!r.ok) {
+        _diagnose(
+          AdapterDiagnosticKind.signature,
+          'revocation/last-good',
+          r.reason ?? '验签失败',
+        );
+      }
     }
 
     VerifiedRevocationList? fetched;
@@ -515,6 +613,13 @@ class AdapterLoader {
       if (r.ok) {
         fetched = r.value!;
         candidates.add(fetched);
+      }
+      if (!r.ok) {
+        _diagnose(
+          AdapterDiagnosticKind.signature,
+          'revocation/network',
+          r.reason ?? '验签失败',
+        );
       }
     }
 

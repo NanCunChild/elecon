@@ -470,7 +470,15 @@ export function keyObjectToRawEd25519(key: KeyObject): Buffer {
 async function main(): Promise<void> {
   const cmd = process.argv[2];
   const serialArg = process.argv.find((a) => a.startsWith("--serial="))?.slice(9);
-  const opts: Pkcs11Options = serialArg !== undefined ? { serial: serialArg } : {};
+  const moduleArg =
+    process.argv.find((a) => a.startsWith("--module="))?.slice(9) ??
+    process.argv.find((a) => a.startsWith("--pkcs11-module="))?.slice(16);
+  const pivSlotArg = process.argv.find((a) => a.startsWith("--piv-slot="))?.slice(11);
+  const opts: Pkcs11Options = {
+    ...(serialArg !== undefined ? { serial: serialArg } : {}),
+    ...(moduleArg !== undefined ? { module: moduleArg } : {}),
+    ...(pivSlotArg !== undefined ? { pivSlot: pivSlotArg } : {}),
+  };
 
   if (cmd === "list") {
     const tokens = await listTokens(opts);
@@ -530,13 +538,13 @@ async function main(): Promise<void> {
 
   console.log("用法：");
   console.log(
-    "  npx tsx src/signer/pkcs11.ts list [--serial=<n>]                 # 枚举令牌/密钥（无需 PIN）",
+    "  npx tsx src/signer/pkcs11.ts list [--serial=<n>] [--module=<path>] # 枚举令牌/密钥（无需 PIN）",
   );
   console.log(
-    "  npx tsx src/signer/pkcs11.ts pubkey [--serial=<n>]               # 导出裸 32B 信任锚（无需 PIN）",
+    "  npx tsx src/signer/pkcs11.ts pubkey [--serial=<n>] [--module=<path>] # 导出裸 32B 信任锚（无需 PIN）",
   );
   console.log(
-    "  npx tsx src/signer/pkcs11.ts selftest [--serial=<n>] [--key-id=] # 🔒 出签自检（PIN + 触碰）",
+    "  npx tsx src/signer/pkcs11.ts selftest [--serial=<n>] [--module=<path>] [--key-id=] # 🔒 出签自检（PIN + 触碰）",
   );
   process.exitCode = 2;
 }

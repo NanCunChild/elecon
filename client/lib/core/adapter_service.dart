@@ -35,6 +35,7 @@ import 'loader/bundle_cache.dart' show BundleCache;
 import 'loader/distribution_http.dart'
     show HttpByteFetcher, HttpDistributionSource, IoHttpByteFetcher;
 import 'loader/last_good_store.dart' show LastGoodStore;
+import 'loader/diagnostics.dart' show AdapterDiagnostic;
 import 'loader/loader.dart' show AdapterLoader, LoadResult;
 import 'transport/direct.dart' show DirectTransport;
 
@@ -83,7 +84,11 @@ class CapabilityRun {
 class AdapterService {
   AdapterService({required AdapterLoader loader, required Transport transport})
     : _loader = loader,
-      _transport = transport;
+      _transport = transport {
+    _loader.setDiagnosticSink(
+      (diagnostic) => _diagnosticSink?.call(diagnostic),
+    );
+  }
 
   /// 🔒 生产装配：从 app 私有目录 [supportDir] + 分发端点 [distributionBaseUrl] 组装。
   ///
@@ -96,22 +101,28 @@ class AdapterService {
     void Function(String message)? onWarning,
   }) {
     final blobs = FileBlobStore(Directory('${supportDir.path}/adapters'));
-    final loader = AdapterLoader(
+    void Function(AdapterDiagnostic)? reportDiagnostic;
+    late AdapterLoader loader;
+    final source = HttpDistributionSource(
+      baseUrl: distributionBaseUrl,
+      fetcher: fetcher ?? IoHttpByteFetcher(),
+      onWarning: onWarning,
+      onDiagnostic: (diagnostic) => reportDiagnostic?.call(diagnostic),
+    );
+    loader = AdapterLoader(
       cache: BundleCache(blobs),
       lastGood: LastGoodStore(blobs),
       bootstrap: BootstrapBaseline(const FlutterAssetSource()),
-      source: HttpDistributionSource(
-        baseUrl: distributionBaseUrl,
-        fetcher: fetcher ?? IoHttpByteFetcher(),
-        onWarning: onWarning,
-      ),
+      source: source,
       onWarning: onWarning,
     );
+    reportDiagnostic = loader.reportDiagnostic;
     return AdapterService(loader: loader, transport: DirectTransport());
   }
 
   final AdapterLoader _loader;
   final Transport _transport;
+  void Function(AdapterDiagnostic diagnostic)? _diagnosticSink;
 
   /// 加载 [adapterId] 并执行 [capability]。全程 fail-closed 并归一化为 [CapabilityRun]，绝不上抛。
   ///
@@ -127,8 +138,16 @@ class AdapterService {
     HarvestTarget? harvest,
     String? htmlStdlib,
     int? nowMs,
+    void Function(String level, String message)? onLog,
+    void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) async {
-    final LoadResult load = await _loader.loadAdapter(adapterId);
+    _diagnosticSink = onDiagnostic;
+    final LoadResult load;
+    try {
+      load = await _loader.loadAdapter(adapterId);
+    } finally {
+      _diagnosticSink = null;
+    }
     if (!load.ok) {
       return CapabilityRun.failed(CapabilityFailureKind.load, load.reason);
     }
@@ -143,6 +162,7 @@ class AdapterService {
         harvest: harvest,
         htmlStdlib: htmlStdlib,
         nowMs: nowMs ?? DateTime.now().millisecondsSinceEpoch,
+        onLog: onLog,
       );
       return CapabilityRun.ok(data);
     } on AdapterLaunchException catch (e) {

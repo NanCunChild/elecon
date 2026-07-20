@@ -11,9 +11,8 @@
 ///
 /// **asset 源可注入**（[AssetSource]）：生产 = [FlutterAssetSource]（rootBundle）；测试 = 假源。
 ///
-/// ⚠ **真实签名基线 asset 尚未入库**：baseline 需官方密钥签名，而 official 铸造尚未开
-/// （见 [[loader-orchestration-progress]] 片 E / trust_anchors）。本文件是读取基建，随 official
-/// 铸造落地后再打包真实 `assets/bootstrap/*`。
+/// 当前已随测试版打包 HelloWorld 的真实签名 catalog、revocation 和 bundle；新增/替换基线时
+/// 必须重新走官方签名和发布台账流程，不得用未签名或本地测试锚替代。
 ///
 /// 🔒 改动须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
 library;
@@ -74,7 +73,9 @@ class BootstrapBaseline {
 
   /// 损坏 / 缺失 → null（bootstrap 缺位是合法降级；信任裁定在验签，不在此）。
   Future<T?> _readSigned<T>(
-      String key, T Function(Map<String, dynamic>) parse) async {
+    String key,
+    T Function(Map<String, dynamic>) parse,
+  ) async {
     final bytes = await _assets.load(key);
     if (bytes == null) return null;
     try {

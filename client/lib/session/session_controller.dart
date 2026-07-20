@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 
 import '../catalog/schools.dart';
 import '../core/adapter_service.dart';
+import '../core/loader/diagnostics.dart';
 import '../core/credential/blob_store.dart';
 import '../core/credential/hardware_keystore.dart';
 import '../core/credential/hardware_secure_store.dart';
@@ -225,6 +226,8 @@ class SessionController extends ChangeNotifier {
     String capability, {
     Map<String, dynamic>? params,
     String? htmlStdlib,
+    void Function(String level, String message)? onLog,
+    void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) async {
     final school = _school;
     if (school == null) {
@@ -250,6 +253,43 @@ class SessionController extends ChangeNotifier {
       resolver: _store,
       params: params,
       htmlStdlib: htmlStdlib,
+      onLog: onLog,
+      onDiagnostic: onDiagnostic,
+    );
+  }
+
+  /// Debug-only direct adapter entry for distribution and runtime smoke tests.
+  /// Production callers must use [runCapability] so the selected school owns
+  /// the adapter identity.
+  Future<CapabilityRun> runAdapterCapability({
+    required String adapterId,
+    required String capability,
+    Map<String, dynamic>? params,
+    String? htmlStdlib,
+    void Function(String level, String message)? onLog,
+    void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
+  }) async {
+    if (!kDebugMode) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.load,
+        '测试 adapter 入口仅在 debug build 可用',
+      );
+    }
+    final service = await _resolveAdapterService();
+    if (service == null) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.load,
+        'adapter 运行时未装配',
+      );
+    }
+    return service.run(
+      adapterId: adapterId,
+      capability: capability,
+      resolver: _store,
+      params: params,
+      htmlStdlib: htmlStdlib,
+      onLog: onLog,
+      onDiagnostic: onDiagnostic,
     );
   }
 
