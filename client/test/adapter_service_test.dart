@@ -374,5 +374,16 @@ void main() {
       expect(r.failureKind, CapabilityFailureKind.load);
       expect(r.reason, contains('未装配'));
     });
+
+    test('能力需凭证且 store 空 → failed(auth)，不触 service', () async {
+      final session = SessionController(
+        adapterServiceProvider: () async => throw StateError('provider 不应被调用'),
+      );
+      session.selectSchool(defaultSchool);
+      final r = await session.runCapability('grades.list');
+      expect(r.ok, isFalse);
+      expect(r.failureKind, CapabilityFailureKind.auth);
+      expect(r.reason, isNotNull);
+    });
   });
 }

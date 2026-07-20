@@ -24,6 +24,8 @@ import '../core/credential/secure_store.dart';
 import '../core/credential/secure_store_factory.dart';
 import '../core/credential/software_secure_store.dart';
 import '../core/credential/store.dart';
+import '../core/login/ensure_credential.dart';
+import '../core/login/sso_mint.dart';
 
 const String _sessionMetaBlob = 'session.json';
 
@@ -33,12 +35,16 @@ class SessionController extends ChangeNotifier {
     HardwareKeyStore hardware = const UnavailableHardwareKeyStore(),
     Future<BlobStore?> Function()? blobStoreProvider,
     Future<AdapterService?> Function()? adapterServiceProvider,
+    SsoMinter? ssoMinter,
+    Future<bool> Function(VisibleLoginRequest request)? onVisibleLogin,
   }) : _store =
            store ??
            CredentialStore(store: InMemorySecureStore(releaseMode: false)),
        _hardware = hardware,
        _blobStoreProvider = blobStoreProvider,
        _adapterServiceProvider = adapterServiceProvider,
+       _ssoMinter = ssoMinter,
+       _onVisibleLogin = onVisibleLogin,
        // 注入了 store（测试/自定义）→ 视为已定档，不再重新裁定。
        _storeResolved = store != null;
 
@@ -48,6 +54,15 @@ class SessionController extends ChangeNotifier {
   /// adapter 运行时服务懒装配（生产 = path_provider 目录 + 端点 D；测试注入替身）。
   final Future<AdapterService?> Function()? _adapterServiceProvider;
   AdapterService? _adapterService;
+
+  /// 静默签票执行器（ADR-017）；null = 跳过 L1，缺凭证直接可见登录（mint 闭环 §4.2）。
+  SsoMinter? _ssoMinter;
+
+  /// 可见登录回调（UI 注入）；null = ensure 返回 needVisibleLogin，由调用方引导登录。
+  final Future<bool> Function(VisibleLoginRequest request)? _onVisibleLogin;
+
+  /// 测试 / 生产接线后可替换 minter（headless 就位后装配）。
+  set ssoMinter(SsoMinter? minter) => _ssoMinter = minter;
 
   CredentialStore _store;
   SecureStore? _secure; // 已裁定的底层后端（用于 flush 等能力探测）
@@ -217,11 +232,13 @@ class SessionController extends ChangeNotifier {
     return _adapterService;
   }
 
-  /// 🔒 跑当前选中学校的 adapter capability（loadAdapter → runLoadedAdapter）。
+  /// 🔒 跑当前选中学校的 adapter capability（ensure 凭证 → loadAdapter → runLoadedAdapter）。
   ///
   /// 凭证解析器固定为本会话的 [store]（凭证只在核心闭包侧注入，UI/本方法不触其值，红线 #1）。
-  /// 全程 fail-closed，归一化为 [CapabilityRun]：未选校 / 学校未接入 adapter / 运行时未装配都落为
-  /// [CapabilityFailureKind.load]，绝不上抛。
+  /// 全程 fail-closed，归一化为 [CapabilityRun]：
+  /// - 未选校 / 学校未接入 adapter / 运行时未装配 → [CapabilityFailureKind.load]
+  /// - 能力所需凭证 ensure 未就绪 → [CapabilityFailureKind.auth]
+  /// 绝不上抛。
   Future<CapabilityRun> runCapability(
     String capability, {
     Map<String, dynamic>? params,
@@ -239,6 +256,24 @@ class SessionController extends ChangeNotifier {
         CapabilityFailureKind.load,
         '学校 ${school.id} 尚未接入 adapter',
       );
+    }
+    final required = school.capabilityCredentials[capability] ?? const <String>[];
+    if (required.isNotEmpty) {
+      final ensured = await ensureCredentials(
+        schoolId: school.id,
+        refs: required,
+        hasActive: (sid, ref) => _store.hasActive(schoolId: sid, ref: ref),
+        hasSsoMaster: _store.hasActiveSsoMaster,
+        login: school.login,
+        minter: _ssoMinter,
+        onVisibleLogin: _onVisibleLogin,
+      );
+      if (!ensured.isReady) {
+        return CapabilityRun.failed(
+          CapabilityFailureKind.auth,
+          ensured.reason ?? '需要登录',
+        );
+      }
     }
     return _runOn(
       adapterId,

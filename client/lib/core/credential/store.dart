@@ -67,6 +67,26 @@ class CredentialStore implements CredentialResolver {
     return e.status;
   }
 
+  /// 是否有指定学校下有效的 [ref]（**仅元数据**，不返回凭证值，红线 #1）。
+  /// 供 [ensureCredential] / 能力闸门：缺则 mint 或可见登录（ADR-017 / mint 闭环 §4.2）。
+  bool hasActive({required String schoolId, required String ref}) {
+    final e = _store.get(ref);
+    if (e == null) return false;
+    if (e.schoolId != schoolId) return false;
+    return _effectiveStatus(e) == CredentialStatus.active;
+  }
+
+  /// 该校是否有有效母凭证（[CredentialSensitivity.master]，收割时按 `role: sso-master` 标注）。
+  /// **仅元数据**，不返回值（红线 #1）。
+  bool hasActiveSsoMaster(String schoolId) {
+    for (final e in _store.list()) {
+      if (e.schoolId != schoolId) continue;
+      if (e.sensitivity != CredentialSensitivity.master) continue;
+      if (_effectiveStatus(e) == CredentialStatus.active) return true;
+    }
+    return false;
+  }
+
   /// `CredentialResolver.get`：仅返回**当前有效**（active 且未过期）凭证的值。
   /// 不存在 / 过期 / 吊销 → null——broker 据此 fail，触发 §2.3 续期或 §2.2 重新登录。
   /// 返回 via = store 记录的 type（防御性副本）；注入权威仍是 manifest（§2.4）。

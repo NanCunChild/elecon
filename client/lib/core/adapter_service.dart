@@ -43,7 +43,7 @@ import 'transport/direct.dart' show DirectTransport;
 /// last-good/bootstrap（fail-closed，不 fail-open）。
 const String kDistributionBaseUrl = 'https://elecon.xidian.one/adapters/';
 
-/// 一次 capability 执行的结果：成功携产出；失败分档（加载 / 接线 / 运行）供 UI 分流。
+/// 一次 capability 执行的结果：成功携产出；失败分档（加载 / 接线 / 运行 / 认证）供 UI 分流。
 enum CapabilityFailureKind {
   /// 加载链失败（无可信 catalog/revocation、内容寻址/验签不符、adapter 缺失、网络+基线均无……）。
   load,
@@ -53,6 +53,10 @@ enum CapabilityFailureKind {
 
   /// 运行期失败（引擎错误 / 超时 / 限额 / 信任闸门）——[AdapterRunException]。
   run,
+
+  /// 凭证闸门未过：缺 session / mint 失败需可见登录 / 用户取消登录（mint 闭环 §4.2）。
+  /// UI 应引导 [runSchoolLogin]，**不得**把 reason 当凭证值展示（红线 #1）。
+  auth,
 }
 
 class CapabilityRun {

@@ -1,6 +1,6 @@
 # XIDIAN 全闭环 + SSO mint 签票 —— 设计与落地计划
 
-- **状态**：设计草案（2026-07-20）。实现触红线 #1 的路径须人工主导 + 安全清单，AI 不得独自闭环（AGENTS.md §1 + ADR-017 §4.9）。
+- **状态**：**已批准 · 实施中（M0–M2）**（2026-07-20）。降级阶梯 L1 headless → L2 hidden WebView → L3 visible（§4.4）。触红线 #1 的路径须人工主导 + 安全清单，AI 不得独自闭环（AGENTS.md §1 + ADR-017 §4.9）。
 - **依赖**：ADR-017（母凭证 + 静默签票）、ADR-016（WebView 登录）、ADR-009（Broker 注入）、ADR-012（凭证库）、Track B fetch 运行时（B4–B6）。
 - **目标**：**一次可见登录**收割 `CASTGC`，之后按需静默换取 ehall / 一卡通 / 图书馆 session，再经 official fetch adapter 取数，UI 只看到能力结果（不见凭证）。
 
@@ -142,14 +142,23 @@ ensureCredential(ref):
 
 🔒 `HeadlessSsoMinter` 的 `resolver` / `putCredential` / `transport` 均闭包在核心，UI 零凭证。
 
-### 4.4 降级阶梯（v1 简化 → v2 = PR-5）
+### 4.4 降级阶梯（本闭环目标 = 三级）
 
-| 版本 | 策略 |
+| 级 | 策略 | 说明 |
+|---|---|---|
+| **L1 headless** | `HeadlessSsoMinter` + Broker 注入母票 | 协议模拟；须合规清单（ADR-017 §4.2）；v1 可限 debug/灰度 |
+| **L2 hidden WebView** | 隐藏/离屏 WebView 驱动同一 `MintPlan` | 少模拟优先；平台能力门禁（Android/iOS 先；OHOS 另开） |
+| **L3 visible WebView** | 用户可见登录（安全底） | 母票失效 / 无 master / 无 ssoMint / L1+L2 皆失败 |
+
+**执行顺序**：`ensureCredential` 对可 mint 的 ref：`has?` → **L1** →（失败且非 tgc 必见）**L2**（若平台可用）→ **L3**。  
+`tgcExpired` / 无 `sso-master`：**直接 L3**（不猜原因）。
+
+| 切片 | 范围 |
 |---|---|
-| **v1（本闭环）** | 仅 **headless** mint；失败 → **可见 WebView**。Android/iOS 先；不依赖 OHOS 离屏。 |
-| **v2（PR-5）** | 少模拟优先：隐藏 WebView → headless → 可见；`forms` + 平台能力门禁；声明式 `expiredWhenUrlMatches`。 |
+| **M1–M2（当前）** | L1 + L3；L2 seam 预留（`SsoMinter` 可插拔 / `HiddenWebViewSsoMinter` 后续） |
+| **M6 / PR-5** | L2 实现 + `forms` + `expiredWhenUrlMatches` |
 
-v1 明确接受「headless = 协议模拟」合规灰度，须在合并前过合规清单（ADR-017 §4.2）。
+headless 属协议模拟合规灰度；**不得默认进发版**直至合规评估通过（ADR-017 §4.9）。
 
 ---
 

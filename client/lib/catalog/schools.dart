@@ -23,6 +23,7 @@ class SchoolDescriptor {
     this.adapterId,
     this.tlsProceedHosts = const {},
     this.available = true,
+    this.capabilityCredentials = const {},
   });
 
   final String id;
@@ -43,6 +44,10 @@ class SchoolDescriptor {
 
   /// 是否可选（false = 占位、即将接入）。
   final bool available;
+
+  /// 能力 → 所需凭证 ref（核心声明，非 adapter 自报；ADR-017 / mint 闭环 §4.1）。
+  /// 未出现的 capability = 无凭证要求（如 jwc 公开 `notice.list`）。
+  final Map<String, List<String>> capabilityCredentials;
 }
 
 /// 西安电子科技大学（内置，默认可选）。
@@ -53,6 +58,17 @@ const _xidian = SchoolDescriptor(
   // adapter 权威 id（catalog 匹配用）；对应 signed bundle 随端点 D 发布后才可加载（发布前门禁）。
   adapterId: 'school-xidian',
   tlsProceedHosts: {'ids.xidian.edu.cn', 'ehall.xidian.edu.cn'},
+  // 能力→凭证映射（核心；adapter 不得自报「我要母票」）。
+  capabilityCredentials: {
+    'grades.list': ['ehall-session'],
+    'schedule.week': ['ehall-session'],
+    'exam.list': ['ehall-session'],
+    'classroom.available': ['ehall-session'],
+    'card.balance': ['card-session'],
+    'card.transactions': ['card-session'],
+    'library.loans': ['library-session'],
+    // notice.list 等公开能力：不出现 = 无凭证。
+  },
   login: LoginManifestView(
     schoolId: 'xidian',
     url:
@@ -69,20 +85,25 @@ const _xidian = SchoolDescriptor(
       'https://v8scan.xidian.edu.cn/myaccount/openMyAccount*',
       'https://hyytsgxzs.xidian.edu.cn/*',
     ],
-    // 静默签票声明（ADR-017 §2.5，PR-3 草案）：握有母凭证后按需换下游 session。
-    // TODO(PR-3)：service 的精确 CAS service 参数须取自 adapters_tests/XIDIAN 逆向；
-    // 此处用服务域根占位，执行器落地时校准。执行体（换票驱动）人工主导。
+    // 静默签票声明（ADR-017 §2.5）：握有母凭证后按需换下游 session。
+    // service URL 校准自 adapters_tests/XIDIAN（ehall/session.py、card/balance.py）；
+    // library 仍待 borrow.py 逆向，暂不进 mint 白名单（fail-closed）。
+    // 见 docs/reference/xidian_mint_closed_loop_plan.md §3。
     ssoMint: SsoMintDecl(
       authEndpoint:
           'https://ids.xidian.edu.cn/authserver/login?service={service}',
       services: {
-        'card-session': SsoMintServiceDecl(
-          service: 'https://v8scan.xidian.edu.cn/',
-          success: ['https://v8scan.xidian.edu.cn/myaccount/openMyAccount*'],
+        'ehall-session': SsoMintServiceDecl(
+          service:
+              'https://ehall.xidian.edu.cn/login?service=https://ehall.xidian.edu.cn/new/index.html',
+          success: ['https://ehall.xidian.edu.cn/new/index.html*'],
         ),
-        'library-session': SsoMintServiceDecl(
-          service: 'https://hyytsgxzs.xidian.edu.cn/',
-          success: ['https://hyytsgxzs.xidian.edu.cn/*'],
+        'card-session': SsoMintServiceDecl(
+          service: 'https://v8scan.xidian.edu.cn/home/openXDOAuth2Page',
+          success: [
+            'https://v8scan.xidian.edu.cn/myaccount/*',
+            'https://v8scan.xidian.edu.cn/myaccount/openMyAccount*',
+          ],
         ),
       },
     ),
