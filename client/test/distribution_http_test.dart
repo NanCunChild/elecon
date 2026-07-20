@@ -10,6 +10,7 @@ import 'dart:io' show HttpClient, HttpServer, InternetAddress, gzip;
 import 'dart:typed_data';
 
 import 'package:elecon/core/loader/catalog.dart';
+import 'package:elecon/core/loader/diagnostics.dart';
 import 'package:elecon/core/loader/distribution_http.dart';
 import 'package:elecon/core/loader/revocation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -26,6 +27,7 @@ class _FakeFetcher implements HttpByteFetcher {
     Uri url, {
     required int maxBytes,
     required Duration timeout,
+    void Function(HttpFetchFailure failure)? onFailure,
   }) async {
     requested.add(url);
     maxBytesSeen.add(maxBytes);
@@ -63,15 +65,35 @@ void main() {
     int maxBundleBytes = kMaxDistributionBundleBytes,
     int maxManifestBytes = kMaxDistributionManifestBytes,
     void Function(String)? onWarning,
+    void Function(AdapterDiagnostic)? onDiagnostic,
   }) => HttpDistributionSource(
     baseUrl: baseUrl ?? base,
     fetcher: f,
     maxBundleBytes: maxBundleBytes,
     maxManifestBytes: maxManifestBytes,
     onWarning: onWarning,
+    onDiagnostic: onDiagnostic,
   );
 
   group('签名清单解析', () {
+    test('失败类型透传：网络与解析可区分', () async {
+      final diagnostics = <AdapterDiagnostic>[];
+      final offline = await mk(
+        _FakeFetcher({}),
+        onDiagnostic: diagnostics.add,
+      ).fetchRevocation();
+      expect(offline, isNull);
+      expect(diagnostics.single.kind, AdapterDiagnosticKind.network);
+
+      diagnostics.clear();
+      final malformed = await mk(
+        _FakeFetcher({revUrl: Uint8List.fromList(utf8.encode('{bad'))}),
+        onDiagnostic: diagnostics.add,
+      ).fetchRevocation();
+      expect(malformed, isNull);
+      expect(diagnostics.single.kind, AdapterDiagnosticKind.parse);
+    });
+
     test('fetchCatalog：gzip JSON → SignedCatalog（字段保真 + 请求正确 url）', () async {
       final f = _FakeFetcher({catUrl: _gzipJsonBytes(signedCatalog.toJson())});
       final r = await mk(f).fetchCatalog();
@@ -89,6 +111,15 @@ void main() {
       expect(r, isNotNull);
       expect(r!.listJson, signedRevocation.listJson);
       expect(r.keyId, 'k-rev');
+    });
+
+    test('fetchRevocation：gzip 内容编码 → SignedRevocationList', () async {
+      final f = _FakeFetcher({
+        revUrl: _gzipJsonBytes(signedRevocation.toJson()),
+      });
+      final r = await mk(f).fetchRevocation();
+      expect(r, isNotNull);
+      expect(r!.keyId, 'k-rev');
     });
 
     test('离线（fetcher 返回 null）→ null', () async {

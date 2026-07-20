@@ -35,6 +35,7 @@ import 'dart:typed_data';
 
 import 'bundle.dart' show BundleFormatException, boundedGunzip;
 import 'catalog.dart' show SignedCatalog;
+import 'diagnostics.dart' show AdapterDiagnostic, AdapterDiagnosticKind;
 import 'loader.dart' show DistributionSource;
 import 'revocation.dart' show SignedRevocationList;
 
@@ -56,7 +57,16 @@ abstract interface class HttpByteFetcher {
     Uri url, {
     required int maxBytes,
     required Duration timeout,
+    void Function(HttpFetchFailure failure)? onFailure,
   });
+}
+
+class HttpFetchFailure {
+  const HttpFetchFailure({required this.kind, this.statusCode, this.message});
+
+  final AdapterDiagnosticKind kind;
+  final int? statusCode;
+  final String? message;
 }
 
 /// 生产实现：`dart:io` [HttpClient] 匿名 GET，落实全部安全护栏。
@@ -75,6 +85,7 @@ class IoHttpByteFetcher implements HttpByteFetcher {
     Uri url, {
     required int maxBytes,
     required Duration timeout,
+    void Function(HttpFetchFailure failure)? onFailure,
   }) async {
     HttpClientRequest? request;
     var timedOut = false;
@@ -95,6 +106,7 @@ class IoHttpByteFetcher implements HttpByteFetcher {
           // late request as soon as the HttpClient creates it.
           if (timedOut) value.abort();
         },
+        onFailure: onFailure,
       ).timeout(
         timeout,
         onTimeout: () {
@@ -104,8 +116,16 @@ class IoHttpByteFetcher implements HttpByteFetcher {
           throw TimeoutException('distribution request timed out', timeout);
         },
       );
-    } catch (_) {
+    } on TimeoutException catch (e) {
+      onFailure?.call(
+        HttpFetchFailure(kind: AdapterDiagnosticKind.timeout, message: '$e'),
+      );
+      return null;
+    } catch (e) {
       // 网络 / 超时 / 超限一律「本源不可用」（上层退化）；不抛、不泄错误细节。
+      onFailure?.call(
+        HttpFetchFailure(kind: AdapterDiagnosticKind.network, message: '$e'),
+      );
       return null;
     }
   }
@@ -116,6 +136,7 @@ class IoHttpByteFetcher implements HttpByteFetcher {
     required Duration timeout,
     required void Function() onTimeout,
     required void Function(HttpClientRequest request) onRequest,
+    required void Function(HttpFetchFailure failure)? onFailure,
   }) async {
     final req = await _client
         .getUrl(url)
@@ -132,11 +153,24 @@ class IoHttpByteFetcher implements HttpByteFetcher {
     req.cookies.clear();
     final resp = await req.close();
     if (resp.statusCode != HttpStatus.ok) {
+      onFailure?.call(
+        HttpFetchFailure(
+          kind: AdapterDiagnosticKind.httpStatus,
+          statusCode: resp.statusCode,
+          message: '分发端点返回非 200',
+        ),
+      );
       await resp.drain<void>(); // 3xx/4xx/5xx 均视为不可用；先排空连接。
       return null;
     }
     final declared = resp.contentLength;
     if (declared > maxBytes) {
+      onFailure?.call(
+        const HttpFetchFailure(
+          kind: AdapterDiagnosticKind.sizeLimit,
+          message: '响应 Content-Length 超过上限',
+        ),
+      );
       await resp.drain<void>();
       return null; // 声明就超限，直接弃（不下载正文）。
     }
@@ -144,6 +178,12 @@ class IoHttpByteFetcher implements HttpByteFetcher {
     await for (final chunk in resp) {
       builder.add(chunk);
       if (builder.length > maxBytes) {
+        onFailure?.call(
+          const HttpFetchFailure(
+            kind: AdapterDiagnosticKind.sizeLimit,
+            message: '响应实际大小超过上限',
+          ),
+        );
         req.abort();
         return null; // 边下边计数超限即弃（防未声明 content-length 的膨胀）。
       }
@@ -164,12 +204,14 @@ class HttpDistributionSource implements DistributionSource {
     int maxManifestBytes = kMaxDistributionManifestBytes,
     int maxBundleBytes = kMaxDistributionBundleBytes,
     void Function(String message)? onWarning,
+    void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) : _base = baseUrl,
        _fetcher = fetcher,
        _timeout = timeout,
        _maxManifestBytes = maxManifestBytes,
        _maxBundleBytes = maxBundleBytes,
-       _onWarning = onWarning;
+       _onWarning = onWarning,
+       _onDiagnostic = onDiagnostic;
 
   final Uri _base;
   final HttpByteFetcher _fetcher;
@@ -177,10 +219,29 @@ class HttpDistributionSource implements DistributionSource {
   final int _maxManifestBytes;
   final int _maxBundleBytes;
   final void Function(String message)? _onWarning;
+  final void Function(AdapterDiagnostic diagnostic)? _onDiagnostic;
+
+  void _diagnose(
+    AdapterDiagnosticKind kind,
+    String stage,
+    String message, {
+    Uri? uri,
+    int? statusCode,
+  }) {
+    final diagnostic = AdapterDiagnostic(
+      kind: kind,
+      stage: stage,
+      message: message,
+      uri: uri,
+      statusCode: statusCode,
+    );
+    _onDiagnostic?.call(diagnostic);
+    _onWarning?.call(diagnostic.summary);
+  }
 
   @override
   Future<SignedCatalog?> fetchCatalog() =>
-      _fetchManifest('catalog.json.gz', SignedCatalog.fromJson, gzip: true);
+      _fetchManifest('catalog.json.gz', SignedCatalog.fromJson);
 
   @override
   Future<SignedRevocationList?> fetchRevocation() =>
@@ -190,18 +251,43 @@ class HttpDistributionSource implements DistributionSource {
   Future<Uint8List?> fetchBundle(String url) async {
     final u = _httpsUri(url);
     if (u == null) {
-      _onWarning?.call('bundle url 非 https 或畸形，拒拉：$url');
+      _diagnose(
+        AdapterDiagnosticKind.invalidUrl,
+        'bundle',
+        'URL 非 https 或畸形，拒拉：$url',
+      );
       return null;
     }
+    var failed = false;
     final bytes = await _fetcher.getBytes(
       u,
       maxBytes: _maxBundleBytes,
       timeout: _timeout,
+      onFailure: (failure) {
+        failed = true;
+        _diagnose(
+          failure.kind,
+          'bundle',
+          failure.message ?? 'HTTP 请求失败',
+          uri: u,
+          statusCode: failure.statusCode,
+        );
+      },
     );
-    if (bytes == null) return null; // 网络不可用 / 超限（fetcher 已隔离）。
+    if (bytes == null) {
+      if (!failed) {
+        _diagnose(AdapterDiagnosticKind.network, 'bundle', '未收到响应', uri: u);
+      }
+      return null;
+    }
     // 双保险：即便注入的 fetcher 未截断，也在此复核长度（可测护栏）。
     if (bytes.length > _maxBundleBytes) {
-      _onWarning?.call('bundle 超大小上限，弃：$url');
+      _diagnose(
+        AdapterDiagnosticKind.sizeLimit,
+        'bundle',
+        '响应超大小上限，弃：$url',
+        uri: u,
+      );
       return null;
     }
     return bytes;
@@ -210,26 +296,48 @@ class HttpDistributionSource implements DistributionSource {
   /// 取明文 JSON 签名清单（catalog/revocation）并 parse；任何失败 → null（记遥测）。
   Future<T?> _fetchManifest<T>(
     String name,
-    T Function(Map<String, dynamic>) parse, {
-    bool gzip = false,
-  }) async {
+    T Function(Map<String, dynamic>) parse,
+  ) async {
     final u = _httpsUri(_base.resolve(name).toString());
     if (u == null) {
-      _onWarning?.call('分发 base URL 非 https 或畸形，拒拉 $name：$_base');
+      _diagnose(
+        AdapterDiagnosticKind.invalidUrl,
+        name,
+        '分发 base URL 非 https 或畸形，拒拉：$_base',
+      );
       return null;
     }
+    var failed = false;
     final bytes = await _fetcher.getBytes(
       u,
       maxBytes: _maxManifestBytes,
       timeout: _timeout,
+      onFailure: (failure) {
+        failed = true;
+        _diagnose(
+          failure.kind,
+          name,
+          failure.message ?? 'HTTP 请求失败',
+          uri: u,
+          statusCode: failure.statusCode,
+        );
+      },
     );
-    if (bytes == null) return null;
+    if (bytes == null) {
+      if (!failed) {
+        _diagnose(AdapterDiagnosticKind.network, name, '未收到响应', uri: u);
+      }
+      return null;
+    }
     if (bytes.length > _maxManifestBytes) {
-      _onWarning?.call('$name 超大小上限，弃');
+      _diagnose(AdapterDiagnosticKind.sizeLimit, name, '响应超过大小上限，弃', uri: u);
       return null;
     }
     try {
-      final payload = gzip
+      // The endpoint may apply HTTP Content-Encoding: gzip. The fetcher keeps
+      // raw bytes so bundle payloads are not accidentally decompressed; accept
+      // either representation here for catalog/revocation manifests.
+      final payload = _isGzip(bytes)
           ? boundedGunzip(
               bytes,
               maxCompressedBytes: _maxManifestBytes,
@@ -238,16 +346,22 @@ class HttpDistributionSource implements DistributionSource {
           : bytes;
       final decoded = jsonDecode(utf8.decode(payload));
       if (decoded is! Map<String, dynamic>) {
-        _onWarning?.call('$name 顶层非 JSON 对象，弃');
+        _diagnose(AdapterDiagnosticKind.parse, name, '顶层非 JSON 对象，弃', uri: u);
         return null;
       }
       return parse(decoded);
     } on BundleFormatException catch (e) {
-      _onWarning?.call('$name 解压失败，弃：$e');
+      _diagnose(AdapterDiagnosticKind.decompression, name, '解压失败，弃：$e', uri: u);
       return null;
     } catch (e) {
       // 畸形 utf8/JSON / 缺字段（Signed*.fromJson 抛）→ 本源不可用。
-      _onWarning?.call('$name 解析失败，弃：$e');
+      final kind = name.endsWith('.gz')
+          ? AdapterDiagnosticKind.decompression
+          : AdapterDiagnosticKind.parse;
+      final label = kind == AdapterDiagnosticKind.decompression
+          ? '解压失败'
+          : '解析失败';
+      _diagnose(kind, name, '$label，弃：$e', uri: u);
       return null;
     }
   }
@@ -265,4 +379,7 @@ class HttpDistributionSource implements DistributionSource {
     if (u.host.isEmpty) return null;
     return u;
   }
+
+  static bool _isGzip(Uint8List bytes) =>
+      bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
 }
