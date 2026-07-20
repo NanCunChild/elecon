@@ -7,7 +7,11 @@
 /// 首次持久化前 [ensurePersistentStore] 按硬件可用性 + 用户知情同意裁定 H/S/M。
 /// 落盘目录经**可注入的** [blobStoreProvider] 提供；provider 为 null 时退化为内存档 M。
 ///
-/// 🔒 store 生命周期属核心凭证路径（红线 #1）。
+/// **L1 headless mint**（ADR-017）：[kDebugMode] 下按选校自动装配 [HeadlessSsoMinter]
+/// （`DirectTransport` + 本会话 [store]）；release 不装配（合规灰度，§4.9）。构造注入或
+/// [ssoMinter] setter 优先，跳过自动装配。
+///
+/// 🔒 store / minter 生命周期属核心凭证路径（红线 #1）。
 library;
 
 import 'dart:convert';
@@ -26,6 +30,8 @@ import '../core/credential/software_secure_store.dart';
 import '../core/credential/store.dart';
 import '../core/login/ensure_credential.dart';
 import '../core/login/sso_mint.dart';
+import '../core/login/sso_mint_headless.dart';
+import '../core/transport/direct.dart';
 
 const String _sessionMetaBlob = 'session.json';
 
@@ -44,6 +50,7 @@ class SessionController extends ChangeNotifier {
        _blobStoreProvider = blobStoreProvider,
        _adapterServiceProvider = adapterServiceProvider,
        _ssoMinter = ssoMinter,
+       _ssoMinterInjected = ssoMinter != null,
        _onVisibleLogin = onVisibleLogin,
        // 注入了 store（测试/自定义）→ 视为已定档，不再重新裁定。
        _storeResolved = store != null;
@@ -58,11 +65,25 @@ class SessionController extends ChangeNotifier {
   /// 静默签票执行器（ADR-017）；null = 跳过 L1，缺凭证直接可见登录（mint 闭环 §4.2）。
   SsoMinter? _ssoMinter;
 
+  /// 构造注入或 [ssoMinter] setter 提供的 minter：不自动装配 / 不随选校重建。
+  bool _ssoMinterInjected;
+
+  /// 自动装配 [HeadlessSsoMinter] 时持有的 transport（需 [dispose] 释放连接池）。
+  DirectTransport? _mintTransport;
+
   /// 可见登录回调（UI 注入）；null = ensure 返回 needVisibleLogin，由调用方引导登录。
   final Future<bool> Function(VisibleLoginRequest request)? _onVisibleLogin;
 
-  /// 测试 / 生产接线后可替换 minter（headless 就位后装配）。
-  set ssoMinter(SsoMinter? minter) => _ssoMinter = minter;
+  /// 当前静默签票执行器（测试 / 诊断只读）。
+  @visibleForTesting
+  SsoMinter? get ssoMinter => _ssoMinter;
+
+  /// 测试注入或覆盖 minter；此后不再自动装配 headless。
+  set ssoMinter(SsoMinter? minter) {
+    _disposeAutoMint();
+    _ssoMinterInjected = true;
+    _ssoMinter = minter;
+  }
 
   CredentialStore _store;
   SecureStore? _secure; // 已裁定的底层后端（用于 flush 等能力探测）
@@ -119,6 +140,7 @@ class SessionController extends ChangeNotifier {
       _storeResolved = true;
     }
     _school = await _loadSelectedSchool(blobs);
+    _wireSsoMinterFor(_school);
     notifyListeners();
   }
 
@@ -212,11 +234,39 @@ class SessionController extends ChangeNotifier {
   void _replaceStore(SecureStore secure) {
     _secure = secure;
     _store = CredentialStore(store: secure);
+    // minter 闭包持 store 引用；换后端后须重建（注入 minter 则不动）。
+    _wireSsoMinterFor(_school);
+  }
+
+  /// debug 下按选校装配 [HeadlessSsoMinter]（mint 闭环 M1）；release / 无 ssoMint / 已注入 → null。
+  void _wireSsoMinterFor(SchoolDescriptor? school) {
+    if (_ssoMinterInjected) return;
+    _disposeAutoMint();
+    if (school == null || !kDebugMode) return;
+    final login = school.login;
+    if (login.ssoMint == null) return;
+    final transport = DirectTransport();
+    _mintTransport = transport;
+    _ssoMinter = HeadlessSsoMinter(
+      login: login,
+      brokerView: login.brokerView,
+      resolver: _store,
+      transport: transport,
+      putCredential: _store.put,
+      schoolId: school.id,
+    );
+  }
+
+  void _disposeAutoMint() {
+    _mintTransport?.close();
+    _mintTransport = null;
+    if (!_ssoMinterInjected) _ssoMinter = null;
   }
 
   void selectSchool(SchoolDescriptor school) {
     if (_school?.id == school.id) return;
     _school = school;
+    _wireSsoMinterFor(school);
     _scheduleSessionPersist();
     notifyListeners();
   }
@@ -365,7 +415,14 @@ class SessionController extends ChangeNotifier {
       store.delete(e.ref);
     }
     _school = null;
+    _wireSsoMinterFor(null);
     _scheduleSessionPersist();
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposeAutoMint();
+    super.dispose();
   }
 }

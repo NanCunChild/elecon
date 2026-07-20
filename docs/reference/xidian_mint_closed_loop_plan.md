@@ -14,7 +14,7 @@
 | 内置目录 | `client/lib/catalog/schools.dart`：`ids-cas` + 四下游 ref + `ssoMint`（card/library） | `service` URL 仍是域根占位；**缺 `ehall-session` 的 mint 条目**；energy/xxcapp 未声明 |
 | 登录 | 可见 WebView 收割（判据 b）→ `CredentialStore` | 登录后无「服务就绪」编排；无 mint 触发点 |
 | mint 纯逻辑 | `buildMintPlan` / `classifyMintResult` / `SsoMinter` 接口 | — |
-| mint 执行 | `HeadlessSsoMinter` + 单测（fake Transport） | **未接入 Session**；隐藏 WebView minter 未做；`via` adapter mint 未做 |
+| mint 执行 | `HeadlessSsoMinter` + 单测（fake Transport） | **Session debug 已装配**（M2）；隐藏 WebView minter 未做；`via` adapter mint 未做 |
 | 降级阶梯 | ADR-017 §2.7 已定「少模拟优先」 | PR-5 编排器未实现 |
 | adapter | `school-xidian` = **parser** 教务通知 only | 无 ehall/card/library **fetch** 能力；无 catalog 签名包发布闭环 |
 | 逆向夹具 | `adapters_tests/XIDIAN/*`（ids/ehall/card/…） | 精确 CAS `service=` 未回填 manifest |
@@ -204,8 +204,8 @@ headless 属协议模拟合规灰度；**不得默认进发版**直至合规评�
 | PR | 内容 | 主导 | 红线 |
 |---|---|---|---|
 | **M0** | 校准 `schools.dart`：`ehall-session` mint 条目 + card service URL；注释去掉「域根占位」 | AI 可起草，人审 URL | 声明面 |
-| **M1** | `ensureCredential` + 能力→ref 映射 + `runCapability` 前挂钩；失败降级可见登录 | **人工主导** | #1 |
-| **M2** | 装配 `HeadlessSsoMinter`（真实 Transport + store resolver）；集成测（fake 链 + 可选 debug 真机） | **人工主导** | #1 |
+| **M1** | `ensureCredential` + 能力→ref 映射 + `runCapability` 前挂钩；失败降级可见登录 | ✅ 已合 | #1 |
+| **M2** | 装配 `HeadlessSsoMinter`（真实 Transport + store resolver）；集成测（fake 链 + 可选 debug 真机） | ✅ debug 会话装配已合；真机冒烟待做 | #1 |
 | **M3** | `school-xidian` fetch：`grades.list`（夹具驱动）；manifest network/credentials | AI 解析 + 人审 fetch 边界 | #1 #5 |
 | **M4** | UI：设置页「凭证 ref 列表 / 重新登录 / 服务状态」；取数入口调 `runCapability` | AI 可做 UI | UI 不见值 |
 | **M5** | card mint + `card.balance`（依赖 R2 裁定） | 人工 | #1 |
@@ -233,7 +233,7 @@ headless 属协议模拟合规灰度；**不得默认进发版**直至合规评�
 |---|---|
 | PR-1 契约 | ✅ 已合 |
 | PR-2 收割母票 | ✅ 声明 + 收割路径已有 |
-| PR-3 静默换票 | 执行体草案 ✅；**接线 = M1–M2** |
+| PR-3 静默换票 | 执行体 + Session debug 接线 ✅（M1–M2）；release 仍 fail-closed |
 | PR-4 UI | **M4** |
 | PR-5 阶梯 | **M6**（v2） |
 | PR-6 签名钩子 | 不做（需求触发） |

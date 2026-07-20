@@ -6,8 +6,9 @@
 ///
 /// 🔒 注：这里的 [SchoolDescriptor.login] 仅含 URL / 域模式 / 注入声明，**不含任何凭证值**
 /// （红线 #1）。已声明 CAS 母凭证 `ids-cas`（role=sso-master，ADR-017 §2.1）——收割即捕获
-/// CASTGC 进核心（PR-2）；静默签票（PR-3，ssoMint）仍待人工主导实现。母凭证 scope 仅 `ids`
-/// 认证域、与下游数据域不重叠（ADR-017 §2.4 / 校验器 M4），Broker 最长前缀不会外注。
+/// CASTGC 进核心（PR-2）；静默签票（PR-3）debug 下 Session 已装配 HeadlessSsoMinter。
+/// 母凭证 scope 仅 `ids` 认证域、与下游数据域不重叠（ADR-017 §2.4 / 校验器 M4），
+/// Broker 最长前缀不会外注。
 library;
 
 import '../core/broker/inject_policy.dart';
