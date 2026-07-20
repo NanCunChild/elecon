@@ -4,7 +4,6 @@
 library;
 
 import 'package:elecon/core/broker/inject_policy.dart';
-import 'package:elecon/core/credential/secure_store.dart';
 import 'package:elecon/core/credential/store.dart';
 import 'package:elecon/core/credential/types.dart';
 import 'package:elecon/core/login/ensure_credential.dart';
