@@ -105,7 +105,7 @@ class AppearanceSection extends StatelessWidget {
             subtitle: Text(
               prefs.highContrast
                   ? '高对比模式下已自动关闭（半透明会降低对比度）'
-                  : '导航栏与卡片半透明毛玻璃效果，可能影响性能',
+                  : '底栏使用 iOS 26 风格 shader 液态玻璃（liquid_glass_widgets），可能影响性能',
             ),
             value: prefs.liquidGlass,
             onChanged: prefs.highContrast ? null : themeCtrl.setLiquidGlass,

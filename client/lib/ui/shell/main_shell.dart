@@ -1,19 +1,15 @@
-/// 主界面壳——悬浮底部导航岛 + 四页切换。
-///
-/// 导航栏采用浮动胶囊样式，不贴边（horizontal padding + 圆角），
-/// 向下滚动时折叠收起、向上滚动时重新浮现。
-///
-/// 走形修复要点：
-/// - 用 [Material] `clipBehavior` 裁剪，避免选中指示器 / 水波纹溢出圆角。
-/// - 隐藏用 [AnimatedSize] 折叠槽位（而非 AnimatedSlide 平移），收起时不留白带。
-/// - 采用 M3 `surfaceContainer` 层 + 柔化阴影，高度留足以免标签拥挤。
+/// 主壳：底栏四页（首页 / 课表 / 通知 / 设置）+ 滚动隐藏底栏。
+/// 液态玻璃开启时用 [GlassScaffold] + [GlassTabBar.bottom]（package 真 shader）；
+/// 关闭或高对比时走 Material 悬浮 [NavigationBar]。
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../home/home_page.dart';
 import '../settings/settings_page.dart';
-import '../theme/liquid_glass.dart';
+import '../theme/theme_scope.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -23,46 +19,148 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  int _currentIndex = 0;
-  bool _navVisible = true;
+  var _index = 0;
+  var _navVisible = true;
 
-  static const _scrollThreshold = 10.0;
+  static const _destinations = <_Dest>[
+    _Dest(
+      label: '首页',
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home,
+    ),
+    _Dest(
+      label: '课表',
+      icon: Icons.calendar_today_outlined,
+      selectedIcon: Icons.calendar_today,
+    ),
+    _Dest(
+      label: '通知',
+      icon: Icons.campaign_outlined,
+      selectedIcon: Icons.campaign,
+    ),
+    _Dest(
+      label: '设置',
+      icon: Icons.settings_outlined,
+      selectedIcon: Icons.settings,
+    ),
+  ];
 
-  bool _handleScrollNotification(ScrollNotification notification) {
-    if (notification is! ScrollUpdateNotification) return false;
-    final delta = notification.scrollDelta ?? 0;
-    if (delta > _scrollThreshold && _navVisible) {
-      setState(() => _navVisible = false);
-    } else if (delta < -_scrollThreshold && !_navVisible) {
-      setState(() => _navVisible = true);
+  bool _onScroll(UserScrollNotification n) {
+    if (n.depth != 0) return false;
+    switch (n.direction) {
+      case ScrollDirection.forward:
+        if (!_navVisible) setState(() => _navVisible = true);
+      case ScrollDirection.reverse:
+        if (_navVisible) setState(() => _navVisible = false);
+      case ScrollDirection.idle:
+        break;
     }
     return false;
   }
 
+  void _select(int i) {
+    if (i == _index) return;
+    setState(() {
+      _index = i;
+      _navVisible = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: NotificationListener<ScrollNotification>(
-        onNotification: _handleScrollNotification,
-        child: IndexedStack(
-          index: _currentIndex,
-          children: const [
-            EleconHomePage(),
-            _PlaceholderTab(icon: Icons.schedule, label: '课表'),
-            _PlaceholderTab(icon: Icons.notifications_outlined, label: '通知'),
-            SettingsPage(),
-          ],
+    final glass = ThemeScope.of(context).prefs.effectiveLiquidGlass;
+    final pages = <Widget>[
+      NotificationListener<UserScrollNotification>(
+        onNotification: _onScroll,
+        child: const EleconHomePage(),
+      ),
+      NotificationListener<UserScrollNotification>(
+        onNotification: _onScroll,
+        child: const _PlaceholderTab(
+          icon: Icons.schedule,
+          label: '课表',
         ),
       ),
-      // AnimatedSize 折叠：隐藏时槽位高度归零，底部不留空白带。
+      NotificationListener<UserScrollNotification>(
+        onNotification: _onScroll,
+        child: const _PlaceholderTab(
+          icon: Icons.notifications_outlined,
+          label: '通知',
+        ),
+      ),
+      NotificationListener<UserScrollNotification>(
+        onNotification: _onScroll,
+        child: const SettingsPage(),
+      ),
+    ];
+
+    final body = IndexedStack(index: _index, children: pages);
+
+    if (glass) {
+      return GlassScaffold(
+        contentAwareBrightness: true,
+        extendBody: true,
+        body: body,
+        bottomBar: AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.bottomCenter,
+          child: _navVisible
+              ? GlassTabBar.bottom(
+                  selectedIndex: _index,
+                  onTabSelected: _select,
+                  adaptiveBrightness: true,
+                  tabs: [
+                    for (final d in _destinations)
+                      GlassTab(
+                        icon: Icon(d.icon),
+                        activeIcon: Icon(d.selectedIcon),
+                        label: d.label,
+                      ),
+                  ],
+                )
+              : const SizedBox.shrink(),
+        ),
+      );
+    }
+
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    return Scaffold(
+      body: body,
       bottomNavigationBar: AnimatedSize(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
         alignment: Alignment.topCenter,
         child: _navVisible
-            ? _FloatingNavIsland(
-                currentIndex: _currentIndex,
-                onSelected: (i) => setState(() => _currentIndex = i),
+            ? Padding(
+                padding: EdgeInsets.fromLTRB(24, 0, 24, 12 + bottomInset),
+                child: Material(
+                  elevation: 3,
+                  shadowColor: Theme.of(context)
+                      .colorScheme
+                      .shadow
+                      .withValues(alpha: 0.18),
+                  color: Theme.of(context).colorScheme.surfaceContainer,
+                  shape: const StadiumBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: NavigationBar(
+                    selectedIndex: _index,
+                    onDestinationSelected: _select,
+                    indicatorShape: const StadiumBorder(),
+                    height: 72,
+                    labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                    backgroundColor: Colors.transparent,
+                    surfaceTintColor: Colors.transparent,
+                    destinations: [
+                      for (final d in _destinations)
+                        NavigationDestination(
+                          icon: Icon(d.icon),
+                          selectedIcon: Icon(d.selectedIcon),
+                          label: d.label,
+                        ),
+                    ],
+                  ),
+                ),
               )
             : const SizedBox(width: double.infinity),
       ),
@@ -70,59 +168,16 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-class _FloatingNavIsland extends StatelessWidget {
-  const _FloatingNavIsland({
-    required this.currentIndex,
-    required this.onSelected,
+class _Dest {
+  const _Dest({
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
   });
 
-  final int currentIndex;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    // 手势导航条留白计入内边距，避免悬浮岛贴住系统条。
-    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(24, 0, 24, 12 + bottomInset),
-      child: LiquidGlassSurface(
-        borderRadius: BorderRadius.circular(28),
-        child: NavigationBar(
-          selectedIndex: currentIndex,
-          onDestinationSelected: onSelected,
-          indicatorShape: const StadiumBorder(),
-          height: 72,
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          backgroundColor: Colors.transparent,
-          surfaceTintColor: Colors.transparent,
-          // 高对比：加粗选中态已由 NavigationBarTheme 处理。
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: '首页',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.calendar_today_outlined),
-              selectedIcon: Icon(Icons.calendar_today),
-              label: '课表',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.campaign_outlined),
-              selectedIcon: Icon(Icons.campaign),
-              label: '通知',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
-              label: '设置',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
 }
 
 class _PlaceholderTab extends StatelessWidget {
@@ -141,9 +196,12 @@ class _PlaceholderTab extends StatelessWidget {
           children: [
             Icon(icon, size: 64, color: Theme.of(context).colorScheme.outline),
             const SizedBox(height: 16),
-            Text('$label 页面开发中',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.outline)),
+            Text(
+              '$label 页面开发中',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+            ),
           ],
         ),
       ),
