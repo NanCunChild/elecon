@@ -36,7 +36,7 @@ import 'loader/distribution_http.dart'
     show HttpByteFetcher, HttpDistributionSource, IoHttpByteFetcher;
 import 'loader/last_good_store.dart' show LastGoodStore;
 import 'loader/diagnostics.dart' show AdapterDiagnostic;
-import 'loader/loader.dart' show AdapterLoader, LoadResult;
+import 'loader/loader.dart' show AdapterLoader;
 import 'transport/direct.dart' show DirectTransport;
 
 /// 小范围测试分发 base URL。端点只提供公开、已签名的静态产物；内容未就位时加载器仍退化到
@@ -84,11 +84,7 @@ class CapabilityRun {
 class AdapterService {
   AdapterService({required AdapterLoader loader, required Transport transport})
     : _loader = loader,
-      _transport = transport {
-    _loader.setDiagnosticSink(
-      (diagnostic) => _diagnosticSink?.call(diagnostic),
-    );
-  }
+      _transport = transport;
 
   /// 🔒 生产装配：从 app 私有目录 [supportDir] + 分发端点 [distributionBaseUrl] 组装。
   ///
@@ -122,7 +118,6 @@ class AdapterService {
 
   final AdapterLoader _loader;
   final Transport _transport;
-  void Function(AdapterDiagnostic diagnostic)? _diagnosticSink;
 
   /// 加载 [adapterId] 并执行 [capability]。全程 fail-closed 并归一化为 [CapabilityRun]，绝不上抛。
   ///
@@ -141,13 +136,12 @@ class AdapterService {
     void Function(String level, String message)? onLog,
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) async {
-    _diagnosticSink = onDiagnostic;
-    final LoadResult load;
-    try {
-      load = await _loader.loadAdapter(adapterId);
-    } finally {
-      _diagnosticSink = null;
-    }
+    // 诊断 sink 随本次加载透传给编排器（call-scoped，见 AdapterLoader._activeSink），
+    // 不再由本层持一个被并发 run() 争用的可变字段（评审：可维护性）。
+    final load = await _loader.loadAdapter(
+      adapterId,
+      onDiagnostic: onDiagnostic,
+    );
     if (!load.ok) {
       return CapabilityRun.failed(CapabilityFailureKind.load, load.reason);
     }

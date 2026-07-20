@@ -240,17 +240,9 @@ class SessionController extends ChangeNotifier {
         '学校 ${school.id} 尚未接入 adapter',
       );
     }
-    final service = await _resolveAdapterService();
-    if (service == null) {
-      return const CapabilityRun.failed(
-        CapabilityFailureKind.load,
-        'adapter 运行时未装配',
-      );
-    }
-    return service.run(
-      adapterId: adapterId,
-      capability: capability,
-      resolver: _store,
+    return _runOn(
+      adapterId,
+      capability,
       params: params,
       htmlStdlib: htmlStdlib,
       onLog: onLog,
@@ -275,6 +267,28 @@ class SessionController extends ChangeNotifier {
         '测试 adapter 入口仅在 debug build 可用',
       );
     }
+    return _runOn(
+      adapterId,
+      capability,
+      params: params,
+      htmlStdlib: htmlStdlib,
+      onLog: onLog,
+      onDiagnostic: onDiagnostic,
+    );
+  }
+
+  /// 🔒 [runCapability] / [runAdapterCapability] 的公共尾：解析已装配的 adapter 运行时并执行。
+  /// 凭证解析器固定为本会话 [store]（凭证只在核心闭包侧注入，本方法不触其值，红线 #1）。
+  /// 运行时未装配 → [CapabilityFailureKind.load]（不上抛）。adapterId 的**来源**（选校 vs debug 直传）
+  /// 与门禁由两个公开入口各自裁定，本方法只做「有 service 就跑」。
+  Future<CapabilityRun> _runOn(
+    String adapterId,
+    String capability, {
+    Map<String, dynamic>? params,
+    String? htmlStdlib,
+    void Function(String level, String message)? onLog,
+    void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
+  }) async {
     final service = await _resolveAdapterService();
     if (service == null) {
       return const CapabilityRun.failed(

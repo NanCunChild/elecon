@@ -267,6 +267,12 @@ BrokerManifestView _viewFromManifest(Map<String, dynamic> manifest) {
 }
 
 /// manifest 权威能力集。
+///
+/// **与 `contract/manifest.schema.json` 是两处真值、刻意如此**：此处是**运行时**在已验签 bundle 上做的
+/// **最小结构** fail-closed 校验（不能信任构建期校验，必须独立自证够安全再执行）；contract schema 是
+/// **发布期**的更严格校验（如 `emits.schemaVersion` 须匹配 `^\d+\.\d+$`、`id` 须在 registry 注册）。
+/// 二者会漂移：本函数**故意更宽松**（只查非空 + 形状 + 去重），严格规则不在此复刻。改 manifest 能力结构
+/// 时须**同步**改这两处，并优先在 contract 侧收严（评审：重复逻辑）。
 List<String> _capabilities(Map<String, dynamic> manifest) {
   final raw = manifest['capabilities'];
   if (raw is! List) {

@@ -249,7 +249,7 @@ class AdapterLoader {
       stage: stage,
       message: message,
     );
-    (_diagnosticSink ?? _onDiagnostic)?.call(diagnostic);
+    (_activeSink ?? _onDiagnostic)?.call(diagnostic);
     _onWarning?.call(diagnostic.summary);
   }
 
@@ -257,31 +257,43 @@ class AdapterLoader {
   /// duplicate network and signature work, this keeps last-good writes ordered.
   final Map<String, Future<LoadResult>> _inFlight = {};
 
-  /// AdapterService uses this narrow sink to expose diagnostics without
-  /// exposing loader internals to UI code.
-  void setDiagnosticSink(void Function(AdapterDiagnostic diagnostic)? sink) {
-    _diagnosticSink = sink;
-  }
+  /// 本次加载的 call-scoped 诊断 sink（[loadAdapter] 的 `onDiagnostic`）。编排器自身的
+  /// [_diagnose] 与经 [reportDiagnostic] 上报的**分发源**诊断都路由到它；未设时回落构造期
+  /// [_onDiagnostic]。由 [loadAdapter] 在加载生命周期内 set/restore，加载结束即复原——
+  /// 取代旧的「AdapterService 持一个可变 sink 字段并被并发 run() 争用」两层间接（评审：可维护性）。
+  ///
+  /// **并发语义**：[loadAdapter] 按 adapterId 去重（[_inFlight]），故同一 adapter 的并发请求
+  /// 会合流复用同一次加载与其 sink。分发源诊断经构造期固定的回调（[reportDiagnostic]）上报，属
+  /// **环境态**、无法穿过 [DistributionSource] 接口逐调用透传：因此**并发加载不同 adapter** 时源诊断
+  /// 可能落到相邻加载的 sink——仅影响 debug 诊断归属（不影响任何 fail-closed 裁定），可接受。
+  void Function(AdapterDiagnostic diagnostic)? _activeSink;
 
+  /// 供生产装配把**分发源**（[DistributionSource]）的诊断转接进本次加载的 [_activeSink]。
   void reportDiagnostic(AdapterDiagnostic diagnostic) {
-    (_diagnosticSink ?? _onDiagnostic)?.call(diagnostic);
+    (_activeSink ?? _onDiagnostic)?.call(diagnostic);
   }
-
-  void Function(AdapterDiagnostic diagnostic)? _diagnosticSink;
 
   static int _defaultNowMs() => DateTime.now().millisecondsSinceEpoch;
 
   /// 🔒 加载指定 adapterId：走完 §2.6 全序，成功产出 official [LoadResult]。
   ///
   /// 全程 fail-closed：任一步不成立即 [LoadResult.fail]（带原因），绝不产出可加载结果。
-  Future<LoadResult> loadAdapter(String adapterId) async {
+  /// [onDiagnostic] 为**本次加载**的诊断 sink（debug/遥测用；见 [_activeSink]）。
+  Future<LoadResult> loadAdapter(
+    String adapterId, {
+    void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
+  }) async {
     final existing = _inFlight[adapterId];
     if (existing != null) return existing;
+    // 诊断 sink 随本次加载 call-scoped 挂载；onDiagnostic 为 null 时沿用外层（通常构造期）设置。
+    final previousSink = _activeSink;
+    _activeSink = onDiagnostic ?? previousSink;
     final future = _loadAdapter(adapterId);
     _inFlight[adapterId] = future;
     try {
       return await future;
     } finally {
+      _activeSink = previousSink;
       if (identical(_inFlight[adapterId], future)) _inFlight.remove(adapterId);
     }
   }
@@ -438,13 +450,7 @@ class AdapterLoader {
       () => _bootstrap.bundleByDigest(entry.digest),
     );
     if (baseline != null) return baseline;
-    final src = _source;
-    if (src == null) return null;
-    try {
-      return await src.fetchBundle(entry.url);
-    } catch (_) {
-      return null; // 网络失败 → 本源不可用（fail-closed 由上层退化处理）。
-    }
+    return _tryFetch((src) => src.fetchBundle(entry.url));
   }
 
   /// 在已验签 catalog 内按 adapterId 定位 entry（解析期已拒重复，故至多一条）；无 → null。
@@ -495,73 +501,89 @@ class AdapterLoader {
   /// 解析当前 catalog：三源各自验签，取最高 sequence（防回滚）；采纳的若为网络份则持久化 last-good。
   ///
   /// 返回最高 sequence 的**已验签** catalog；一份都验不过 → null。
-  Future<VerifiedCatalog?> _resolveCatalog() async {
-    final candidates = <VerifiedCatalog>[];
+  Future<VerifiedCatalog?> _resolveCatalog() =>
+      _resolveSigned<SignedCatalog, VerifiedCatalog>(
+        label: 'catalog',
+        readBootstrap: _bootstrap.catalog,
+        readLastGood: _lastGood.readCatalog,
+        fetchNetwork: (src) => src.fetchCatalog(),
+        verify: _verifyCatalog,
+        pickNewer: pickNewerCatalog,
+        persist: _lastGood.writeCatalog,
+      );
 
-    // bootstrap（基线，通常最旧）。存储故障经 [_readOrNull] 隔离，不打断后续 last-good/网络（评审 P1）。
-    final bootstrapSigned = await _readOrNull(
-      'bootstrap catalog',
-      _bootstrap.catalog,
-    );
-    if (bootstrapSigned != null) {
-      final r = await _verifyCatalog(bootstrapSigned);
-      if (r.ok) candidates.add(r.value!);
-      if (!r.ok) {
-        _diagnose(
-          AdapterDiagnosticKind.signature,
-          'catalog/bootstrap',
-          r.reason ?? '验签失败',
-        );
-      }
-    }
+  /// 解析当前 revocation：同 [_resolveCatalog] 的三源 + 防回滚 + 采纳持久化。
+  Future<VerifiedRevocationList?> _resolveRevocation() =>
+      _resolveSigned<SignedRevocationList, VerifiedRevocationList>(
+        label: 'revocation',
+        readBootstrap: _bootstrap.revocation,
+        readLastGood: _lastGood.readRevocation,
+        fetchNetwork: (src) => src.fetchRevocation(),
+        verify: _verifyRevocation,
+        pickNewer: pickNewerRevocation,
+        persist: _lastGood.writeRevocation,
+      );
 
-    // last-good（运行时采纳的上一份）。
-    final lastGoodSigned = await _readOrNull(
-      'last-good catalog',
-      _lastGood.readCatalog,
-    );
-    if (lastGoodSigned != null) {
-      final r = await _verifyCatalog(lastGoodSigned);
-      if (r.ok) candidates.add(r.value!);
-      if (!r.ok) {
-        _diagnose(
-          AdapterDiagnosticKind.signature,
-          'catalog/last-good',
-          r.reason ?? '验签失败',
-        );
-      }
-    }
+  /// 🔒 三源签名清单解析的公共骨架（catalog / revocation 同构：三源各自验签 → 取最高 sequence 防回滚
+  /// → 网络份胜出才持久化 last-good）。抽出以杜绝两份易漂移的孪生实现（评审：重复逻辑）。
+  ///
+  /// **顺序不可乱**：bootstrap、last-good **先**加入，网络**最后**加入——[pickNewer] 仅在**严格新**时
+  /// 替换，故与 last-good/bootstrap **同 sequence 的网络份不被采纳**（拒同序号替换 = 防回滚）。三源读取
+  /// 均经 [_readOrNull] 隔离存储故障、各自验签失败仅记遥测；一份都验不过 → null（调用方据此 fail-closed）。
+  Future<TVerified?> _resolveSigned<TSigned, TVerified>({
+    required String label,
+    required Future<TSigned?> Function() readBootstrap,
+    required Future<TSigned?> Function() readLastGood,
+    required Future<TSigned?> Function(DistributionSource source) fetchNetwork,
+    required Future<VerifyResult<TVerified>> Function(TSigned signed) verify,
+    required TVerified Function(TVerified a, TVerified b) pickNewer,
+    required Future<void> Function(TVerified verified, TSigned signed) persist,
+  }) async {
+    final candidates = <TVerified>[];
 
-    // 网络（最新）。放在最后加入：与 last-good **同 sequence 时不采纳网络**（拒同序号替换，防回滚）。
-    VerifiedCatalog? fetched;
-    final fetchedSigned = await _tryFetchCatalog();
-    if (fetchedSigned != null) {
-      final r = await _verifyCatalog(fetchedSigned);
+    // 单源裁定：验签过则入选，否则仅记遥测（不打断其余源）。返回已验签值，供网络源记住以便持久化。
+    Future<TVerified?> consider(String origin, TSigned? signed) async {
+      if (signed == null) return null;
+      final r = await verify(signed);
       if (r.ok) {
-        fetched = r.value!;
-        candidates.add(fetched);
+        final value = r.value as TVerified; // r.ok ⇒ value 非空（验签契约）。
+        candidates.add(value);
+        return value;
       }
-      if (!r.ok) {
-        _diagnose(
-          AdapterDiagnosticKind.signature,
-          'catalog/network',
-          r.reason ?? '验签失败',
-        );
-      }
+      _diagnose(
+        AdapterDiagnosticKind.signature,
+        '$label/$origin',
+        r.reason ?? '验签失败',
+      );
+      return null;
     }
+
+    // bootstrap（基线，通常最旧）+ last-good（上次采纳）先加入；存储故障经 [_readOrNull] 隔离（评审 P1）。
+    await consider(
+      'bootstrap',
+      await _readOrNull('bootstrap $label', readBootstrap),
+    );
+    await consider(
+      'last-good',
+      await _readOrNull('last-good $label', readLastGood),
+    );
+
+    // 网络（最新）最后加入；单独记住已验签结果 + 原始 signed，供采纳后持久化。
+    final fetchedSigned = await _tryFetch(fetchNetwork);
+    final fetched = await consider('network', fetchedSigned);
 
     if (candidates.isEmpty) return null;
 
     // 取最高 sequence（pickNewer：严格大于才替换 → 同序号保留先加入者 = 防回滚/防同序号替换）。
     var best = candidates.first;
     for (final c in candidates.skip(1)) {
-      best = pickNewerCatalog(best, c);
+      best = pickNewer(best, c);
     }
 
     // 仅当采纳的正是网络份（严格新于 last-good/bootstrap）才持久化为新 last-good。
     if (fetched != null && identical(best, fetched) && fetchedSigned != null) {
       try {
-        await _lastGood.writeCatalog(fetched, fetchedSigned);
+        await persist(fetched, fetchedSigned);
       } catch (_) {
         // 持久化失败不阻断本次加载（下次仍会重新拉取/验签）。
       }
@@ -569,92 +591,16 @@ class AdapterLoader {
     return best;
   }
 
-  /// 解析当前 revocation：同 [_resolveCatalog] 的三源 + 防回滚 + 采纳持久化。
-  Future<VerifiedRevocationList?> _resolveRevocation() async {
-    final candidates = <VerifiedRevocationList>[];
-
-    // 三源读取同样经 [_readOrNull] 隔离存储故障（评审 P1）。
-    final bootstrapSigned = await _readOrNull(
-      'bootstrap revocation',
-      _bootstrap.revocation,
-    );
-    if (bootstrapSigned != null) {
-      final r = await _verifyRevocation(bootstrapSigned);
-      if (r.ok) candidates.add(r.value!);
-      if (!r.ok) {
-        _diagnose(
-          AdapterDiagnosticKind.signature,
-          'revocation/bootstrap',
-          r.reason ?? '验签失败',
-        );
-      }
-    }
-
-    final lastGoodSigned = await _readOrNull(
-      'last-good revocation',
-      _lastGood.readRevocation,
-    );
-    if (lastGoodSigned != null) {
-      final r = await _verifyRevocation(lastGoodSigned);
-      if (r.ok) candidates.add(r.value!);
-      if (!r.ok) {
-        _diagnose(
-          AdapterDiagnosticKind.signature,
-          'revocation/last-good',
-          r.reason ?? '验签失败',
-        );
-      }
-    }
-
-    VerifiedRevocationList? fetched;
-    final fetchedSigned = await _tryFetchRevocation();
-    if (fetchedSigned != null) {
-      final r = await _verifyRevocation(fetchedSigned);
-      if (r.ok) {
-        fetched = r.value!;
-        candidates.add(fetched);
-      }
-      if (!r.ok) {
-        _diagnose(
-          AdapterDiagnosticKind.signature,
-          'revocation/network',
-          r.reason ?? '验签失败',
-        );
-      }
-    }
-
-    if (candidates.isEmpty) return null;
-
-    var best = candidates.first;
-    for (final c in candidates.skip(1)) {
-      best = pickNewerRevocation(best, c);
-    }
-
-    if (fetched != null && identical(best, fetched) && fetchedSigned != null) {
-      try {
-        await _lastGood.writeRevocation(fetched, fetchedSigned);
-      } catch (_) {}
-    }
-    return best;
-  }
-
-  Future<SignedCatalog?> _tryFetchCatalog() async {
+  /// 经**可选**网络源拉取（源为 null / 抛错 → null）：所有网络访问的统一 null-源 + 异常隔离点。
+  Future<T?> _tryFetch<T>(
+    Future<T?> Function(DistributionSource source) fetch,
+  ) async {
     final src = _source;
     if (src == null) return null;
     try {
-      return await src.fetchCatalog();
+      return await fetch(src);
     } catch (_) {
-      return null;
-    }
-  }
-
-  Future<SignedRevocationList?> _tryFetchRevocation() async {
-    final src = _source;
-    if (src == null) return null;
-    try {
-      return await src.fetchRevocation();
-    } catch (_) {
-      return null;
+      return null; // 网络失败 → 本源不可用（fail-closed 由上层退化处理）。
     }
   }
 }
