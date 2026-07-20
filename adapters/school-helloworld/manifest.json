@@ -1,0 +1,17 @@
+{
+  "manifestVersion": "1.0",
+  "adapterId": "school-helloworld",
+  "adapterVersion": "0.1.0",
+  "schoolId": "test-helloworld",
+  "displayName": "HelloWorld 通路测试",
+  "trustTier": "official",
+  "mode": "fetch",
+  "runtime": { "engine": "quickjs", "entry": "index.js" },
+  "network": { "allow": ["https://hello.invalid/*"] },
+  "capabilities": [
+    {
+      "id": "app.announcement",
+      "emits": { "schema": "elecon.app.announcement", "schemaVersion": "1.0" }
+    }
+  ]
+}

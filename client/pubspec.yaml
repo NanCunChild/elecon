@@ -37,3 +37,5 @@ flutter:
 
   assets:
     - assets/
+    - assets/bootstrap/
+    - assets/bootstrap/bundles/
