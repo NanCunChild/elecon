@@ -12,6 +12,9 @@ import 'session/session_scope.dart';
 import 'ui/onboarding/onboarding_page.dart';
 import 'ui/security/hardware_unlock_failed_dialog.dart';
 import 'ui/shell/main_shell.dart';
+import 'ui/theme/app_theme.dart';
+import 'ui/theme/theme_controller.dart';
+import 'ui/theme/theme_scope.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,33 +58,45 @@ class _EleconAppState extends State<EleconApp> {
     blobStoreProvider: _blobStoreProvider,
     adapterServiceProvider: _adapterServiceProvider,
   );
+  late final ThemeController _theme = ThemeController();
+  late final Future<void> _themeLoad = _theme.load();
 
   @override
   void dispose() {
     _session.dispose();
+    _theme.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SessionScope(
-      controller: _session,
-      child: MaterialApp(
-        title: 'elecon',
-        debugShowCheckedModeBanner: false,
-        themeMode: ThemeMode.system,
-        theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff3867d6)),
+    return ThemeScope(
+      controller: _theme,
+      child: SessionScope(
+        controller: _session,
+        child: FutureBuilder<void>(
+          future: _themeLoad,
+          builder: (context, _) {
+            // 偏好未落盘前用默认；load 完成后 ThemeController.notify 触发重建。
+            return ListenableBuilder(
+              listenable: _theme,
+              builder: (context, _) {
+                final p = _theme.prefs;
+                return MaterialApp(
+                  title: 'elecon',
+                  debugShowCheckedModeBanner: false,
+                  themeMode: p.themeMode,
+                  theme: AppTheme.light(p),
+                  darkTheme: AppTheme.dark(p),
+                  home: _BootGate(
+                    session: _session,
+                    startupTrace: widget.startupTrace,
+                  ),
+                );
+              },
+            );
+          },
         ),
-        darkTheme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xff7da6ff),
-            brightness: Brightness.dark,
-          ),
-        ),
-        home: _BootGate(session: _session, startupTrace: widget.startupTrace),
       ),
     );
   }

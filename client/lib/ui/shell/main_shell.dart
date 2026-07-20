@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../home/home_page.dart';
 import '../settings/settings_page.dart';
+import '../theme/liquid_glass.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -80,19 +81,13 @@ class _FloatingNavIsland extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     // 手势导航条留白计入内边距，避免悬浮岛贴住系统条。
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(24, 0, 24, 12 + bottomInset),
-      child: Material(
-        color: theme.colorScheme.surfaceContainer,
-        surfaceTintColor: theme.colorScheme.surfaceTint,
-        shadowColor: Colors.black.withValues(alpha: 0.2),
-        elevation: 3,
+      child: LiquidGlassSurface(
         borderRadius: BorderRadius.circular(28),
-        clipBehavior: Clip.antiAlias, // 裁剪指示器 / 水波纹，修圆角破形
         child: NavigationBar(
           selectedIndex: currentIndex,
           onDestinationSelected: onSelected,
@@ -101,6 +96,7 @@ class _FloatingNavIsland extends StatelessWidget {
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           backgroundColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
+          // 高对比：加粗选中态已由 NavigationBarTheme 处理。
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.home_outlined),
