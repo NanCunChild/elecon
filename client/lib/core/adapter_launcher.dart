@@ -276,12 +276,34 @@ List<String> _capabilities(Map<String, dynamic> manifest) {
   }
   final caps = <String>[];
   for (final c in raw) {
-    if (c is! String || c.isEmpty) {
+    if (c is! Map) {
       throw const AdapterLaunchException(
         'manifest.capabilities 含非法项（fail-closed）',
       );
     }
-    caps.add(c);
+    final id = c['id'];
+    final emits = c['emits'];
+    if (id is! String || id.isEmpty || emits is! Map) {
+      throw const AdapterLaunchException(
+        'manifest.capabilities 含非法项（fail-closed）',
+      );
+    }
+    final schema = emits['schema'];
+    final schemaVersion = emits['schemaVersion'];
+    if (schema is! String ||
+        schema.isEmpty ||
+        schemaVersion is! String ||
+        schemaVersion.isEmpty) {
+      throw const AdapterLaunchException(
+        'manifest.capabilities 含非法项（fail-closed）',
+      );
+    }
+    if (caps.contains(id)) {
+      throw const AdapterLaunchException(
+        'manifest.capabilities 含重复项（fail-closed）',
+      );
+    }
+    caps.add(id);
   }
   return caps;
 }

@@ -78,7 +78,13 @@ Future<_Bundle> _mkBundle(
     'schemaVersion': '1.0',
     'adapterId': adapterId,
     'adapterVersion': adapterVersion,
-    'capabilities': capabilities,
+    'capabilities': [
+      for (final id in capabilities)
+        {
+          'id': id,
+          'emits': {'schema': 'elecon.notice.list', 'schemaVersion': '1.0'},
+        },
+    ],
     'runtime': runtime,
     if (includeNetwork)
       'network': {
