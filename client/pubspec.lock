@@ -177,10 +177,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_qjs_next
-      sha256: "1ca783712d8f7639ea73986f6dd71207bbc06e49bc5a3b85d910402ecd15559c"
+      sha256: e88e42e35739b884dcf5e01afd448fc8c898714e2c88d1f2f8c6cdba89948924
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.2"
+    version: "1.1.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter

@@ -13,7 +13,8 @@ dependencies:
     sdk: flutter
   # ADR-008/014：客户端 QuickJS 运行时。固定 pub.dev 版本，避免 Git 依赖漂移。
   # 保留 IsolateQjs/host-fn 通道；升级时跑 host_fn/dual_run/fetch 测试。
-  flutter_qjs_next: 1.0.2
+  # 1.1.1：修复部分（请求体/句柄）泄露问题（2026-07-20 人工授权升级）。
+  flutter_qjs_next: 1.1.1
   flutter_inappwebview: ^6.0.0
   # ADR-012 §2.8 三档加密（S 软件档）——纯 Dart AES-256-GCM AEAD；亦承 loader 验签
   # （Ed25519）与 digest（DartSha256）。承重且横跨凭证+验签两条路径。
