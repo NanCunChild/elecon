@@ -1,6 +1,6 @@
 /// Settings → 运行时日志查看页。
 ///
-/// release：仅网络条目（无参 URL + 状态）；debug：可切换全部 / 仅网络。
+/// release：仅网络条目（无参 URL + 状态）；debug：可切换全部 / 仅网络，可关闭脱敏联调。
 library;
 
 import 'package:flutter/foundation.dart';
@@ -99,20 +99,32 @@ class _DevLogPageState extends State<DevLogPage> {
                         ? (_) => setState(() => _networkOnly = true)
                         : null,
                   ),
+                  if (kDebugMode)
+                    FilterChip(
+                      label: Text(_log.redact ? '已脱敏' : '未脱敏'),
+                      selected: _log.redact,
+                      onSelected: (v) {
+                        _log.setRedact(v);
+                        setState(() {});
+                      },
+                    ),
                 ],
               ),
             ),
           ),
-          if (!kDebugMode)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '正式版仅显示无参数 URL 与成功状态，不含请求/响应内容。',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-              ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              kDebugMode
+                  ? (_log.redact
+                      ? '默认脱敏：URL 无参、cookie 仅长度。关闭「已脱敏」后新条目可保留 query（仍无 body）。'
+                      : '脱敏已关：新条目可含 query / cookie 原文；仅存本机环缓冲，勿外传。')
+                  : '正式版仅显示无参数 URL 与成功状态，不含请求/响应内容。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
             ),
+          ),
           const Divider(height: 1),
           Expanded(
             child: entries.isEmpty

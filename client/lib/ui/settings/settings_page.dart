@@ -149,7 +149,9 @@ class SettingsPage extends StatelessWidget {
                   leading: const Icon(Icons.receipt_long_outlined),
                   title: const Text('运行时日志'),
                   subtitle: Text(
-                    kDebugMode ? '全部 Dev 日志；可筛选仅网络' : '仅网络：无参 URL 与成功状态',
+                    kDebugMode
+                        ? '唯一观测 sink：network/runtime/webview/adapter；默认脱敏'
+                        : '仅网络：无参 URL 与状态码（无 body/凭证）',
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {

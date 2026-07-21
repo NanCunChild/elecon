@@ -6,6 +6,7 @@
 - [B6 实现计划 —— ctx.fetch 代理 + 异步运行时 + 限额](./b6_fetch_runtime_plan.md)（ADR-009 §2.1/§2.7，🔒 人工主导，含开放点）
 - [WebView 登录收割 + XIDIAN fetch 取数可行性](./webview_login_fetch_feasibility.md)（ADR-012/015/016，🔒 人工主导）
 - [XIDIAN 全闭环 + SSO mint 签票](./xidian_mint_closed_loop_plan.md)（ADR-017，🔒 接线/执行人工主导）
+- [跨端日志策略](./cross_end_logging.md)（DevLog 唯一 sink、默认脱敏、campus 不落凭证）
 - [adapter-sdk 类型声明](../../contract/adapter-sdk/types.d.ts)
 - [manifest 规范](../../contract/manifest.schema.json)
 - [标准 schema 索引](../../contract/schema/)

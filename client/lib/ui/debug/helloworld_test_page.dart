@@ -7,7 +7,6 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../core/adapter_service.dart';
-import '../../core/debug/dev_log.dart';
 import '../../core/loader/diagnostics.dart';
 import '../../session/session_scope.dart';
 import '../../session/session_controller.dart';
@@ -37,16 +36,13 @@ class _HelloWorldTestPageState extends State<HelloWorldTestPage> {
 
   Future<CapabilityRun> _execute() {
     _diagnostics.clear();
+    // onLog/onDiagnostic 默认已由 SessionController 桥到 DevLog；此处只叠页面诊断列表。
     return _session.runAdapterCapability(
       adapterId: 'school-helloworld',
       capability: 'app.announcement',
-      onLog: (level, message) {
-        DevLog.instance.runtime('adapter[$level] $message');
-      },
       onDiagnostic: (diagnostic) {
         if (!mounted) return;
         setState(() => _diagnostics.add(diagnostic));
-        DevLog.instance.runtime(diagnostic.summary);
       },
     );
   }

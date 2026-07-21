@@ -96,10 +96,11 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
     });
   }
 
-  String _maskCookie(dynamic value) {
-    final s = _safeString(value);
-    return '<${s.length}B>';
-  }
+  String _maskCookie(dynamic value) =>
+      maskCookieValue(value, redact: DevLog.instance.redact);
+
+  String _urlForLog(String raw) =>
+      formatUrlForLog(raw, redact: DevLog.instance.redact);
 
   bool _urlAllowed(String url) => isLoginNavigationAllowed(url, widget.login);
 
@@ -326,13 +327,13 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       },
       onLoadStart: (c, url) {
         final urlStr = url?.toString() ?? '';
-        _addLog('LoadStart ← ${sanitizeUrlForLog(urlStr)}');
+        _addLog('LoadStart ← ${_urlForLog(urlStr)}');
         if (url != null && !_urlAllowed(urlStr)) {
           c.stopLoading();
           _addLog('拦截（不在 allowlist）');
           setState(() {
             _isLoading = false;
-            _errorMessage = '导航被拦截：${sanitizeUrlForLog(urlStr)} 不在登录域白名单内。';
+            _errorMessage = '导航被拦截：${_urlForLog(urlStr)} 不在登录域白名单内。';
           });
         }
       },
@@ -341,7 +342,7 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
         final urlStr = url?.toString() ?? '';
         final isSuccess = url != null && _isSuccessUrl(urlStr);
         _addLog(
-          'LoadStop ← ${sanitizeUrlForLog(urlStr)}${isSuccess ? " ★匹配" : ""}',
+          'LoadStop ← ${_urlForLog(urlStr)}${isSuccess ? " ★匹配" : ""}',
         );
         widget.performanceTrace?.mark(
           isSuccess ? 'webview_success_load_stop' : 'webview_load_stop',
@@ -354,7 +355,7 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
         final requestedUrl = action.request.url?.toString() ?? '';
         final isMain = action.isForMainFrame;
         _addLog(
-          'NavIntent → ${sanitizeUrlForLog(requestedUrl)}${isMain ? " (main)" : ""}',
+          'NavIntent → ${_urlForLog(requestedUrl)}${isMain ? " (main)" : ""}',
         );
         if (!_urlAllowed(requestedUrl)) {
           _addLog('拦截（allowlist）');
@@ -364,7 +365,7 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       },
       onReceivedError: (c, req, err) {
         _addLog(
-          'WebViewError | type=${err.type} | url=${sanitizeUrlForLog(req.url.toString())}',
+          'WebViewError | type=${err.type} | url=${_urlForLog(req.url.toString())}',
         );
         setState(() {
           _isLoading = false;
