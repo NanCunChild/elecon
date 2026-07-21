@@ -20,6 +20,7 @@ import 'package:flutter/foundation.dart';
 
 import '../catalog/schools.dart';
 import '../core/adapter_service.dart';
+import '../core/debug/dev_log.dart';
 import '../core/loader/diagnostics.dart';
 import '../core/credential/blob_store.dart';
 import '../core/credential/hardware_keystore.dart';
@@ -366,6 +367,8 @@ class SessionController extends ChangeNotifier {
   /// 凭证解析器固定为本会话 [store]（凭证只在核心闭包侧注入，本方法不触其值，红线 #1）。
   /// 运行时未装配 → [CapabilityFailureKind.load]（不上抛）。adapterId 的**来源**（选校 vs debug 直传）
   /// 与门禁由两个公开入口各自裁定，本方法只做「有 service 就跑」。
+  ///
+  /// [onLog] / [onDiagnostic] 默认桥接到 [DevLog]（client 唯一观测 sink）；调用方可叠加。
   Future<CapabilityRun> _runOn(
     String adapterId,
     String capability, {
@@ -387,8 +390,14 @@ class SessionController extends ChangeNotifier {
       resolver: _store,
       params: params,
       htmlStdlib: htmlStdlib,
-      onLog: onLog,
-      onDiagnostic: onDiagnostic,
+      onLog: (level, message) {
+        DevLog.instance.adapter(level, message);
+        onLog?.call(level, message);
+      },
+      onDiagnostic: (diagnostic) {
+        DevLog.instance.runtime(diagnostic.summary);
+        onDiagnostic?.call(diagnostic);
+      },
     );
   }
 
