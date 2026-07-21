@@ -1,232 +1,192 @@
-/// 由 [ThemePrefs] 构建 M3 [ThemeData]；高对比覆盖全部色面策略。
+/// 应用主题：Material 3 + 可选高对比 + 液态玻璃标记。
+///
+/// 卡片 / 底栏等圆角统一用 [RoundedSuperellipseBorder]（连续曲率，接近
+/// iOS continuous corner），避免普通 RRect 在拐角处的“硬圆”。
 library;
-
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import 'theme_prefs.dart';
 
-/// 实验性液态玻璃：通过 [ThemeExtension] 下发，组件按需读取。
+/// 主题扩展：是否启用液态玻璃（由 prefs 有效开关驱动）。
 @immutable
 class LiquidGlassTokens extends ThemeExtension<LiquidGlassTokens> {
-  const LiquidGlassTokens({
-    required this.enabled,
-    required this.blurSigma,
-    required this.fillOpacity,
-    required this.borderOpacity,
-  });
+  const LiquidGlassTokens({required this.enabled});
 
   final bool enabled;
-  final double blurSigma;
-  final double fillOpacity;
-  final double borderOpacity;
-
-  static const disabled = LiquidGlassTokens(
-    enabled: false,
-    blurSigma: 0,
-    fillOpacity: 1,
-    borderOpacity: 0,
-  );
-
-  static const experimental = LiquidGlassTokens(
-    enabled: true,
-    blurSigma: 24,
-    fillOpacity: 0.55,
-    borderOpacity: 0.28,
-  );
 
   @override
-  LiquidGlassTokens copyWith({
-    bool? enabled,
-    double? blurSigma,
-    double? fillOpacity,
-    double? borderOpacity,
-  }) {
-    return LiquidGlassTokens(
-      enabled: enabled ?? this.enabled,
-      blurSigma: blurSigma ?? this.blurSigma,
-      fillOpacity: fillOpacity ?? this.fillOpacity,
-      borderOpacity: borderOpacity ?? this.borderOpacity,
-    );
-  }
+  LiquidGlassTokens copyWith({bool? enabled}) =>
+      LiquidGlassTokens(enabled: enabled ?? this.enabled);
 
   @override
   LiquidGlassTokens lerp(ThemeExtension<LiquidGlassTokens>? other, double t) {
     if (other is! LiquidGlassTokens) return this;
-    double mix(double a, double b) => a + (b - a) * t;
-    return LiquidGlassTokens(
-      enabled: t < 0.5 ? enabled : other.enabled,
-      blurSigma: mix(blurSigma, other.blurSigma),
-      fillOpacity: mix(fillOpacity, other.fillOpacity),
-      borderOpacity: mix(borderOpacity, other.borderOpacity),
-    );
+    return t < 0.5 ? this : other;
   }
 }
 
-class AppTheme {
-  AppTheme._();
+/// 应用主题工厂。
+abstract final class AppTheme {
+  static const _cardRadius = 16.0;
+  static const _barRadius = 28.0;
+  static const _buttonRadius = 12.0;
 
-  static ThemeData light(ThemePrefs prefs) => _build(prefs, Brightness.light);
+  static ShapeBorder get cardShape => const RoundedSuperellipseBorder(
+        borderRadius: BorderRadius.all(Radius.circular(_cardRadius)),
+      );
 
-  static ThemeData dark(ThemePrefs prefs) => _build(prefs, Brightness.dark);
+  static ShapeBorder get barShape => const RoundedSuperellipseBorder(
+        borderRadius: BorderRadius.all(Radius.circular(_barRadius)),
+      );
 
-  static ThemeData _build(ThemePrefs prefs, Brightness brightness) {
-    final seed = prefs.seedColor;
+  static ThemeData light(ThemePrefs prefs) =>
+      _build(Brightness.light, prefs);
+
+  static ThemeData dark(ThemePrefs prefs) =>
+      _build(Brightness.dark, prefs);
+
+  static ThemeData _build(Brightness brightness, ThemePrefs prefs) {
+    final seed = SeedPalette.byId(prefs.seedId).seed;
     var scheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: brightness,
     );
 
     if (prefs.highContrast) {
-      scheme = _highContrastScheme(scheme, brightness, seed);
+      scheme = _highContrast(scheme, brightness);
     }
 
-    final glass = prefs.effectiveLiquidGlass
-        ? LiquidGlassTokens.experimental
-        : LiquidGlassTokens.disabled;
-
-    final cardColor = glass.enabled
-        ? scheme.surfaceContainerHighest.withValues(alpha: glass.fillOpacity)
-        : null;
-
-    return ThemeData(
+    final base = ThemeData(
       useMaterial3: true,
-      brightness: brightness,
       colorScheme: scheme,
-      visualDensity: prefs.highContrast
-          ? VisualDensity.comfortable
-          : VisualDensity.standard,
-      applyElevationOverlayColor: !prefs.highContrast,
-      cardTheme: CardThemeData(
-        color: cardColor,
-        elevation: glass.enabled ? 0 : (prefs.highContrast ? 0 : null),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(glass.enabled ? 20 : 12),
-          side: glass.enabled
-              ? BorderSide(
-                  color: scheme.outlineVariant
-                      .withValues(alpha: glass.borderOpacity),
-                )
-              : (prefs.highContrast
-                  ? BorderSide(color: scheme.outline, width: 1.5)
-                  : BorderSide.none),
-        ),
-      ),
+      brightness: brightness,
+      visualDensity: VisualDensity.standard,
+    );
+
+    // 液态玻璃开启时：底面略带 seed/primary，作为主色贡献源；
+    // 卡片玻璃只留极浅 tint（见 liquid_glass.dart）。
+    final scaffoldBg = prefs.effectiveLiquidGlass
+        ? Color.alphaBlend(
+            seed.withValues(
+              alpha: brightness == Brightness.light ? 0.06 : 0.10,
+            ),
+            scheme.surface,
+          )
+        : scheme.surface;
+
+    return base.copyWith(
+      extensions: <ThemeExtension<dynamic>>[
+        LiquidGlassTokens(enabled: prefs.effectiveLiquidGlass),
+      ],
+      scaffoldBackgroundColor: scaffoldBg,
       appBarTheme: AppBarTheme(
         centerTitle: false,
-        scrolledUnderElevation: prefs.highContrast ? 0 : 1,
-        backgroundColor: prefs.highContrast
-            ? scheme.surface
-            : (glass.enabled
-                ? scheme.surface.withValues(alpha: glass.fillOpacity)
-                : null),
+        backgroundColor: scaffoldBg,
         foregroundColor: scheme.onSurface,
+        elevation: 0,
+        scrolledUnderElevation: prefs.highContrast ? 0 : 1,
+      ),
+      cardTheme: CardThemeData(
+        elevation: prefs.highContrast ? 0 : 0.5,
+        shape: cardShape,
+        clipBehavior: Clip.antiAlias,
+        margin: EdgeInsets.zero,
+        color: scheme.surfaceContainerLow,
+      ),
+      dialogTheme: DialogThemeData(
+        shape: const RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.all(Radius.circular(28)),
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        shape: const RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          shape: const RoundedSuperellipseBorder(
+            borderRadius: BorderRadius.all(Radius.circular(_buttonRadius)),
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          shape: const RoundedSuperellipseBorder(
+            borderRadius: BorderRadius.all(Radius.circular(_buttonRadius)),
+          ),
+        ),
       ),
       navigationBarTheme: NavigationBarThemeData(
+        height: 64,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        indicatorColor: scheme.secondaryContainer,
+        indicatorShape: const RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.all(Radius.circular(20)),
+        ),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            size: 24,
+            color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
+          );
+        }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
             fontSize: 12,
-            fontWeight: selected || prefs.highContrast
-                ? FontWeight.w700
-                : FontWeight.w500,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
           );
         }),
       ),
-      dividerTheme: prefs.highContrast
-          ? DividerThemeData(color: scheme.outline, thickness: 1.2)
-          : null,
-      extensions: [glass],
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      listTileTheme: ListTileThemeData(
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
     );
   }
 
-  /// 高对比色面：固定黑/白表面，强化 on* 与 outline，保留 seed 作 primary 倾向。
-  static ColorScheme _highContrastScheme(
-    ColorScheme base,
-    Brightness brightness,
-    Color seed,
-  ) {
-    final isDark = brightness == Brightness.dark;
-    final surface = isDark ? Colors.black : Colors.white;
-    final onSurface = isDark ? Colors.white : Colors.black;
-    final primary = _ensureContrast(seed, surface, minRatio: 4.5);
-    final onPrimary = _onFor(primary);
-    final secondary =
-        isDark ? const Color(0xff80deea) : const Color(0xff006064);
-    final error = isDark ? const Color(0xffff8a80) : const Color(0xffb71c1c);
-
+  static ColorScheme _highContrast(ColorScheme base, Brightness brightness) {
+    if (brightness == Brightness.light) {
+      return base.copyWith(
+        surface: Colors.white,
+        onSurface: Colors.black,
+        surfaceContainerLowest: Colors.white,
+        surfaceContainerLow: const Color(0xFFF2F2F2),
+        surfaceContainer: const Color(0xFFE6E6E6),
+        surfaceContainerHigh: const Color(0xFFD9D9D9),
+        surfaceContainerHighest: const Color(0xFFCCCCCC),
+        outline: Colors.black,
+        outlineVariant: const Color(0xFF444444),
+        shadow: Colors.black,
+        scrim: Colors.black,
+        surfaceTint: Colors.transparent,
+      );
+    }
     return base.copyWith(
-      primary: primary,
-      onPrimary: onPrimary,
-      primaryContainer: primary,
-      onPrimaryContainer: onPrimary,
-      secondary: secondary,
-      onSecondary: _onFor(secondary),
-      secondaryContainer: secondary,
-      onSecondaryContainer: _onFor(secondary),
-      error: error,
-      onError: _onFor(error),
-      errorContainer: error,
-      onErrorContainer: _onFor(error),
-      surface: surface,
-      onSurface: onSurface,
-      onSurfaceVariant: onSurface,
-      surfaceContainerLowest: surface,
-      surfaceContainerLow: surface,
-      surfaceContainer: surface,
-      surfaceContainerHigh: surface,
-      surfaceContainerHighest: surface,
-      surfaceTint: Colors.transparent,
-      outline: onSurface,
-      outlineVariant: onSurface.withValues(alpha: 0.7),
-      inverseSurface: onSurface,
-      onInverseSurface: surface,
-      inversePrimary: primary,
-      scrim: Colors.black,
+      surface: Colors.black,
+      onSurface: Colors.white,
+      surfaceContainerLowest: Colors.black,
+      surfaceContainerLow: const Color(0xFF121212),
+      surfaceContainer: const Color(0xFF1A1A1A),
+      surfaceContainerHigh: const Color(0xFF242424),
+      surfaceContainerHighest: const Color(0xFF2E2E2E),
+      outline: Colors.white,
+      outlineVariant: const Color(0xFFBBBBBB),
       shadow: Colors.black,
+      scrim: Colors.black,
+      surfaceTint: Colors.transparent,
     );
-  }
-
-  static Color _onFor(Color bg) {
-    return ThemeData.estimateBrightnessForColor(bg) == Brightness.dark
-        ? Colors.white
-        : Colors.black;
-  }
-
-  static Color _ensureContrast(
-    Color fg,
-    Color bg, {
-    required double minRatio,
-  }) {
-    if (_contrastRatio(fg, bg) >= minRatio) return fg;
-    final target = ThemeData.estimateBrightnessForColor(bg) == Brightness.dark
-        ? Colors.white
-        : Colors.black;
-    var best = fg;
-    for (var i = 0; i <= 20; i++) {
-      final c = Color.lerp(fg, target, i / 20)!;
-      best = c;
-      if (_contrastRatio(c, bg) >= minRatio) return c;
-    }
-    return best;
-  }
-
-  static double _contrastRatio(Color a, Color b) {
-    final l1 = _relLuminance(a);
-    final l2 = _relLuminance(b);
-    final lighter = math.max(l1, l2);
-    final darker = math.min(l1, l2);
-    return (lighter + 0.05) / (darker + 0.05);
-  }
-
-  static double _relLuminance(Color c) {
-    double lin(double channel) {
-      return channel <= 0.04045
-          ? channel / 12.92
-          : math.pow((channel + 0.055) / 1.055, 2.4).toDouble();
-    }
-
-    return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
   }
 }

@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
 import '../debug/helloworld_test_page.dart';
+import '../theme/liquid_glass.dart';
 import 'appearance_section.dart';
 import 'dev_log_page.dart';
 
@@ -85,10 +86,15 @@ class SettingsPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          liquidGlassEnabled(context) ? 100 : 24,
+        ),
         children: [
           _SectionTitle(title: '账户'),
-          Card(
+          LiquidGlassSurface(
             child: Column(
               children: [
                 ListTile(
@@ -142,7 +148,7 @@ class SettingsPage extends StatelessWidget {
           const AppearanceSection(),
           const SizedBox(height: 16),
           _SectionTitle(title: '调试'),
-          Card(
+          LiquidGlassSurface(
             child: Column(
               children: [
                 ListTile(
@@ -191,7 +197,7 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _SectionTitle(title: '关于'),
-          Card(
+          LiquidGlassSurface(
             child: Column(
               children: [
                 const ListTile(
