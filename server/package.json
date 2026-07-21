@@ -29,6 +29,7 @@
     "smoke:xjt": "tsx src/runtime/adapters-xjt.fetch.smoke.ts",
     "smoke:xidian-schedule": "tsx src/runtime/adapters-xidian.schedule.fetch.smoke.ts",
     "smoke:xidian-grades": "tsx src/runtime/adapters-xidian.grades.fetch.smoke.ts",
+    "smoke:xidian-exams": "tsx src/runtime/adapters-xidian.exams.fetch.smoke.ts",
     "smoke:fudan-notice": "tsx src/runtime/adapters-fudan.notice.fetch.smoke.ts",
     "smoke:public": "tsx src/public/public.smoke.ts",
     "smoke:all": "node ../scripts/run-smokes.mjs src"
