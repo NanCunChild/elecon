@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../theme/liquid_glass.dart';
 import 'demo_data.dart';
 import 'models.dart';
 
@@ -71,7 +72,12 @@ class _EleconHomePageState extends State<EleconHomePage> {
                       ],
                     ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      0,
+                      16,
+                      liquidGlassEnabled(context) ? 100 : 24,
+                    ),
                     sliver: SliverList.list(
                       children: [
                         _SnapshotHeader(snapshot: data),
@@ -102,22 +108,21 @@ class _SnapshotHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card.filled(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('你好，校园信息已就绪', style: theme.textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(
-              '${snapshot.schoolName} · ${_formatDateTime(snapshot.updatedAt)} 更新',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+    return LiquidGlassSurface(
+      borderRadius: 16,
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('你好，校园信息已就绪', style: theme.textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(
+            '${snapshot.schoolName} · ${_formatDateTime(snapshot.updatedAt)} 更新',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -318,25 +323,24 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return LiquidGlassSurface(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 2),
-            Text(
-              subtitle,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            child,
-          ],
-        ),
+      borderRadius: 16,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 8),
+          child,
+        ],
       ),
     );
   }

@@ -1,15 +1,16 @@
-/// 主壳：底栏四页（首页 / 课表 / 通知 / 设置）+ 滚动隐藏底栏。
-/// 液态玻璃开启时用 [GlassScaffold] + [GlassTabBar.bottom]（package 真 shader）；
-/// 关闭或高对比时走 Material 悬浮 [NavigationBar]。
+/// 主壳：底部导航在「首页 / 设置」间切换。
+///
+/// 开启液态玻璃时底栏为 [GlassTabBar]；关闭时为自绘满高 tab 指示器底栏
+///（指示器高度撑满每个 tab，形状为超椭圆）。
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../home/home_page.dart';
 import '../settings/settings_page.dart';
-import '../theme/theme_scope.dart';
+import '../theme/app_theme.dart';
+import '../theme/liquid_glass.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -19,157 +20,54 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  var _index = 0;
-  var _navVisible = true;
+  int _index = 0;
 
-  static const _destinations = <_Dest>[
-    _Dest(
+  static const _tabs = <_ShellTab>[
+    _ShellTab(
       label: '首页',
       icon: Icons.home_outlined,
       selectedIcon: Icons.home,
     ),
-    _Dest(
-      label: '课表',
-      icon: Icons.calendar_today_outlined,
-      selectedIcon: Icons.calendar_today,
-    ),
-    _Dest(
-      label: '通知',
-      icon: Icons.campaign_outlined,
-      selectedIcon: Icons.campaign,
-    ),
-    _Dest(
+    _ShellTab(
       label: '设置',
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings,
     ),
   ];
 
-  bool _onScroll(UserScrollNotification n) {
-    if (n.depth != 0) return false;
-    switch (n.direction) {
-      case ScrollDirection.forward:
-        if (!_navVisible) setState(() => _navVisible = true);
-      case ScrollDirection.reverse:
-        if (_navVisible) setState(() => _navVisible = false);
-      case ScrollDirection.idle:
-        break;
-    }
-    return false;
-  }
-
-  void _select(int i) {
-    if (i == _index) return;
-    setState(() {
-      _index = i;
-      _navVisible = true;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final glass = ThemeScope.of(context).prefs.effectiveLiquidGlass;
-    final pages = <Widget>[
-      NotificationListener<UserScrollNotification>(
-        onNotification: _onScroll,
-        child: const EleconHomePage(),
-      ),
-      NotificationListener<UserScrollNotification>(
-        onNotification: _onScroll,
-        child: const _PlaceholderTab(
-          icon: Icons.schedule,
-          label: '课表',
-        ),
-      ),
-      NotificationListener<UserScrollNotification>(
-        onNotification: _onScroll,
-        child: const _PlaceholderTab(
-          icon: Icons.notifications_outlined,
-          label: '通知',
-        ),
-      ),
-      NotificationListener<UserScrollNotification>(
-        onNotification: _onScroll,
-        child: const SettingsPage(),
-      ),
-    ];
+    final glass = liquidGlassEnabled(context);
+    final scheme = Theme.of(context).colorScheme;
 
-    final body = IndexedStack(index: _index, children: pages);
-
-    if (glass) {
-      return GlassScaffold(
-        contentAwareBrightness: true,
-        extendBody: true,
-        body: body,
-        bottomBar: AnimatedSize(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.bottomCenter,
-          child: _navVisible
-              ? GlassTabBar.bottom(
-                  selectedIndex: _index,
-                  onTabSelected: _select,
-                  adaptiveBrightness: true,
-                  tabs: [
-                    for (final d in _destinations)
-                      GlassTab(
-                        icon: Icon(d.icon),
-                        activeIcon: Icon(d.selectedIcon),
-                        label: d.label,
-                      ),
-                  ],
-                )
-              : const SizedBox.shrink(),
-        ),
-      );
-    }
-
-    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     return Scaffold(
-      body: body,
-      bottomNavigationBar: AnimatedSize(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        alignment: Alignment.topCenter,
-        child: _navVisible
-            ? Padding(
-                padding: EdgeInsets.fromLTRB(24, 0, 24, 12 + bottomInset),
-                child: Material(
-                  elevation: 3,
-                  shadowColor: Theme.of(context)
-                      .colorScheme
-                      .shadow
-                      .withValues(alpha: 0.18),
-                  color: Theme.of(context).colorScheme.surfaceContainer,
-                  shape: const StadiumBorder(),
-                  clipBehavior: Clip.antiAlias,
-                  child: NavigationBar(
-                    selectedIndex: _index,
-                    onDestinationSelected: _select,
-                    indicatorShape: const StadiumBorder(),
-                    height: 72,
-                    labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-                    backgroundColor: Colors.transparent,
-                    surfaceTintColor: Colors.transparent,
-                    destinations: [
-                      for (final d in _destinations)
-                        NavigationDestination(
-                          icon: Icon(d.icon),
-                          selectedIcon: Icon(d.selectedIcon),
-                          label: d.label,
-                        ),
-                    ],
-                  ),
-                ),
-              )
-            : const SizedBox(width: double.infinity),
+      // 内容延伸到底栏后，玻璃折射才有内容可采样。
+      extendBody: glass,
+      body: IndexedStack(
+        index: _index,
+        children: const [
+          EleconHomePage(),
+          SettingsPage(),
+        ],
       ),
+      bottomNavigationBar: glass
+          ? _GlassShellBar(
+              tabs: _tabs,
+              selectedIndex: _index,
+              onSelected: (i) => setState(() => _index = i),
+              scheme: scheme,
+            )
+          : _MaterialShellBar(
+              tabs: _tabs,
+              selectedIndex: _index,
+              onSelected: (i) => setState(() => _index = i),
+            ),
     );
   }
 }
 
-class _Dest {
-  const _Dest({
+class _ShellTab {
+  const _ShellTab({
     required this.label,
     required this.icon,
     required this.selectedIcon,
@@ -180,28 +78,169 @@ class _Dest {
   final IconData selectedIcon;
 }
 
-class _PlaceholderTab extends StatelessWidget {
-  const _PlaceholderTab({required this.icon, required this.label});
+/// 液态玻璃底栏：指示器为每个 tab 的满高玻璃胶囊。
+class _GlassShellBar extends StatelessWidget {
+  const _GlassShellBar({
+    required this.tabs,
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.scheme,
+  });
 
-  final IconData icon;
-  final String label;
+  final List<_ShellTab> tabs;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final ColorScheme scheme;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(label)),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 64, color: Theme.of(context).colorScheme.outline),
-            const SizedBox(height: 16),
-            Text(
-              '$label 页面开发中',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+    return GlassTabBar.bottom(
+      tabs: [
+        for (final t in tabs)
+          GlassTab(
+            label: t.label,
+            icon: Icon(t.icon),
+            activeIcon: Icon(t.selectedIcon),
+          ),
+      ],
+      selectedIndex: selectedIndex,
+      onTabSelected: onSelected,
+      barHeight: 68,
+      horizontalPadding: 16,
+      verticalPadding: 10,
+      // 指示器相对 tab 槽外扩，竖直撑满 bar 成胶囊（包默认 vertical: 8）。
+      indicatorExpansion:
+          const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+      indicatorBorderRadius: 28,
+      selectedIconColor: scheme.primary,
+      selectedLabelColor: scheme.primary,
+      unselectedIconColor: scheme.onSurfaceVariant,
+      unselectedLabelColor: scheme.onSurfaceVariant,
+      quality: GlassQuality.standard,
+      magnification: 1.08,
+      // 底栏 / 指示器承担主色；卡片表面仅极浅 tint。
+      settings: liquidGlassBarSettings(scheme),
+      indicatorSettings: liquidGlassIndicatorSettings(scheme),
+    );
+  }
+}
+
+/// Material 底栏：Stack + 满高超椭圆指示器（非仅图标后 32px 小条）。
+class _MaterialShellBar extends StatelessWidget {
+  const _MaterialShellBar({
+    required this.tabs,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final List<_ShellTab> tabs;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  static const _height = 64.0;
+  static const _padH = 12.0;
+  static const _padV = 8.0;
+  static const _inset = 4.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
+    return Material(
+      color: Colors.transparent,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(_padH, 0, _padH, _padV + bottomInset),
+        child: Material(
+          elevation: 3,
+          shadowColor: scheme.shadow.withValues(alpha: 0.2),
+          surfaceTintColor: Colors.transparent,
+          color: scheme.surfaceContainer,
+          shape: AppTheme.barShape,
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(
+            height: _height,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final n = tabs.length;
+                final tabW = constraints.maxWidth / n;
+                return Stack(
+                  children: [
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                      left: selectedIndex * tabW + _inset,
+                      top: _inset,
+                      bottom: _inset,
+                      width: tabW - _inset * 2,
+                      child: DecoratedBox(
+                        decoration: ShapeDecoration(
+                          color: scheme.secondaryContainer,
+                          shape: const RoundedSuperellipseBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(20)),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        for (var i = 0; i < n; i++)
+                          Expanded(
+                            child: _MaterialTab(
+                              tab: tabs[i],
+                              selected: i == selectedIndex,
+                              onTap: () => onSelected(i),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                );
+              },
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MaterialTab extends StatelessWidget {
+  const _MaterialTab({
+    required this.tab,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _ShellTab tab;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
+    final labelStyle = Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          fontSize: 12,
+        );
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: tab.label,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.all(Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(selected ? tab.selectedIcon : tab.icon, size: 24, color: color),
+            const SizedBox(height: 2),
+            Text(tab.label, style: labelStyle, maxLines: 1),
           ],
         ),
       ),

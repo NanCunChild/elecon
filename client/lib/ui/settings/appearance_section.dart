@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../theme/liquid_glass.dart';
 import '../theme/theme_prefs.dart';
 import '../theme/theme_scope.dart';
 
@@ -19,7 +20,7 @@ class AppearanceSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _SectionTitle(title: '外观'),
-        Card(
+        LiquidGlassSurface(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -81,7 +82,7 @@ class AppearanceSection extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const _SectionTitle(title: '无障碍'),
-        Card(
+        LiquidGlassSurface(
           child: SwitchListTile(
             secondary: Icon(
               Icons.contrast,
@@ -95,7 +96,7 @@ class AppearanceSection extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const _SectionTitle(title: '实验性'),
-        Card(
+        LiquidGlassSurface(
           child: SwitchListTile(
             secondary: Icon(
               Icons.water_drop_outlined,
@@ -105,7 +106,7 @@ class AppearanceSection extends StatelessWidget {
             subtitle: Text(
               prefs.highContrast
                   ? '高对比模式下已自动关闭（半透明会降低对比度）'
-                  : '底栏使用 iOS 26 风格 shader 液态玻璃（liquid_glass_widgets），可能影响性能',
+                  : '底栏与卡片使用 iOS 26 风格 shader 液态玻璃，可能影响性能',
             ),
             value: prefs.liquidGlass,
             onChanged: prefs.highContrast ? null : themeCtrl.setLiquidGlass,

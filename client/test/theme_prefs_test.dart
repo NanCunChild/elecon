@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:elecon/ui/theme/app_theme.dart';
+import 'package:elecon/ui/theme/liquid_glass.dart';
 import 'package:elecon/ui/theme/theme_controller.dart';
 import 'package:elecon/ui/theme/theme_prefs.dart';
 import 'package:elecon/ui/theme/theme_store.dart';
@@ -68,6 +69,46 @@ void main() {
       final blue = AppTheme.light(const ThemePrefs(seedId: 'blue'));
       final rose = AppTheme.light(const ThemePrefs(seedId: 'rose'));
       expect(blue.colorScheme.primary, isNot(equals(rose.colorScheme.primary)));
+    });
+
+    test('liquid glass scaffold picks up seed tint', () {
+      final glassOn = AppTheme.light(
+        const ThemePrefs(seedId: 'rose', liquidGlass: true),
+      );
+      final glassOff = AppTheme.light(
+        const ThemePrefs(seedId: 'rose', liquidGlass: false),
+      );
+      expect(
+        glassOn.scaffoldBackgroundColor,
+        isNot(equals(glassOff.scaffoldBackgroundColor)),
+      );
+      // 与 primary 有可见混合（非纯 surface）。
+      expect(
+        glassOn.scaffoldBackgroundColor,
+        isNot(equals(glassOn.colorScheme.surface)),
+      );
+    });
+  });
+
+  group('themed glass settings', () {
+    test('surface tint is weaker than bar tint', () {
+      final scheme = ColorScheme.fromSeed(
+        seedColor: const Color(0xffe11d48),
+        brightness: Brightness.light,
+      );
+      final surface = liquidGlassSurfaceSettings(scheme);
+      final bar = liquidGlassBarSettings(scheme);
+      final indicator = liquidGlassIndicatorSettings(scheme);
+      expect(surface.glassColor.a, lessThan(bar.glassColor.a));
+      expect(bar.glassColor.a, lessThanOrEqualTo(indicator.glassColor.a));
+    });
+
+    test('seed changes glass hue family', () {
+      final blue = ColorScheme.fromSeed(seedColor: const Color(0xff3867d6));
+      final rose = ColorScheme.fromSeed(seedColor: const Color(0xffe11d48));
+      final blueBar = liquidGlassBarSettings(blue).glassColor;
+      final roseBar = liquidGlassBarSettings(rose).glassColor;
+      expect(blueBar.toARGB32(), isNot(equals(roseBar.toARGB32())));
     });
   });
 
