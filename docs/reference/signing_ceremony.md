@@ -201,12 +201,15 @@ App 的信任锚，按 ADR-002 §2.3「多公钥预埋 + 分批启用」登记�
 
 ADR-002 §4：CI / 审查沙箱只产出 **unsigned bundle + digest**，签名不在任何自动化上。
 
-1. CI 产出 unsigned bundle 与其 digest。
-2. **本地重算 digest 并与 CI 的比对**——`npx tsx src/signer/index.ts digest --adapter=<dir>`。
+**完整命令、端点 D 布局、bootstrap 派生见 [`adapter_release.md`](./adapter_release.md)**（含 `school-xidian@0.3.0` 实例）。摘要：
+
+1. A 域产出 unsigned bundle 与其 digest（`elecon-adapters`：`npm run bundle`）。
+2. **本地重算 digest 并与 A 比对**——`npx tsx src/signer/index.ts digest --adapter=<dir>`。
    > 这一步是对「本机被攻陷 → 触碰瞬间替换载荷（所见非所签）」的唯一防线（ADR-002 §3 风险 2）。
    > 别跳过，也别只看 CI 的输出——要在你**即将触碰的这台机器上**算一遍。
-3. PIN + 触碰出签 → `signature.json`。
-4. 更新台账（§7）→ 提交。
+3. PIN + 触碰：`tools` 下 `npm run release:package -- …` → 签 bundle + catalog + revocation，写出 dist 树。
+4. 上传 dist 到端点 D（`https://elecon.xidian.one/adapters/`）；可选 `bootstrap:sync`。
+5. 更新台账（§7）→ 提交。
 
 ---
 
