@@ -13,6 +13,7 @@ const Set<String> kCapabilityIds = {
   'card.balance',
   'card.transactions',
   'classroom.available',
+  'classroom.buildings',
   'course.catalog',
   'course.selection',
   'dining.summary',
