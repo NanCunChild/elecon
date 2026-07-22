@@ -127,10 +127,13 @@ const _xidian = SchoolDescriptor(
           scope: ['https://ehall.xidian.edu.cn/*'],
           type: 'cookie',
         ),
+        // openid 落 URL query：ADR-020 已接受；实现落地后改为 type:query + queryParam:openid。
+        // 落地前 card mint 收割可能空值，取数 fail-closed（闭环计划 R2）。
         'card-session': CredentialDecl(
           scope: ['https://v8scan.xidian.edu.cn/*'],
           type: 'cookie',
         ),
+        // library 会话常为 form-body token（非 cookie/query）——另案，勿假设 cookie 足够。
         'library-session': CredentialDecl(
           scope: ['https://hyytsgxzs.xidian.edu.cn/*'],
           type: 'cookie',

@@ -166,3 +166,6 @@ QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 a
 - `adr_015`：manifest `login` 声明（WebView 登录配置契约扩展，落 ADR-012 §2.2 登录声明面）—— **已接受**
 - `adr_016`：复杂登录的 WebView 选型 + headless 路线（能力门禁，无新信任档）—— **已接受**
 - `adr_017`：CAS SSO 母凭证收割 + 静默签票（一次登录、按需换取下游 session；母凭证可选、mint 机制下放 adapter）—— **已接受**
+- `adr_018`：adapter 分发（签名 bundle / catalog / 吊销）—— **已接受**（见 `adr_018_adapter_distribution.md`）
+- `adr_019`：`classroom.available` 契约扩面 —— **已接受**
+- `adr_020`：URL query 凭证（openid 等）收割与注入 —— **已接受**（2026-07-22；闭环计划 R2；触红线 #1/#6；实现仍人工主导）

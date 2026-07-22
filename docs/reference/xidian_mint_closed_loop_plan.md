@@ -11,7 +11,7 @@
 | 层 | 已有 | 缺口 |
 |---|---|---|
 | 契约 | `credentials.role: sso-master`、`login.ssoMint` schema；校验器 M1–M5 | `forms` / M6–M7（PR-5）；声明式过期判据（rev-2 §2.9）未进 schema |
-| 内置目录 | `client/lib/catalog/schools.dart`：`ids-cas` + 四下游 ref + `ssoMint`（card/library） | `service` URL 仍是域根占位；**缺 `ehall-session` 的 mint 条目**；energy/xxcapp 未声明 |
+| 内置目录 | `client/lib/catalog/schools.dart`：`ids-cas` + 四下游 ref；`ssoMint` 已含 **ehall + card**（service URL 校准自探针） | **library 未进 mint 白名单**（borrow 逆向/body token 待另案）；energy/xxcapp 未声明；**card 依赖 ADR-020（R2）落地后才可闭环** |
 | 登录 | 可见 WebView 收割（判据 b）→ `CredentialStore` | 登录后无「服务就绪」编排；无 mint 触发点 |
 | mint 纯逻辑 | `buildMintPlan` / `classifyMintResult` / `SsoMinter` 接口 | — |
 | mint 执行 | `HeadlessSsoMinter` + 单测（fake Transport） | **Session debug 已装配**（M2）；隐藏 WebView minter 未做；`via` adapter mint 未做 |
@@ -190,7 +190,7 @@ headless 属协议模拟合规灰度；**不得默认进发版**直至合规评�
 | # | 风险 | 对策 |
 |---|---|---|
 | R1 | 母凭证泄露面 | 注入仅 CAS；日志打码；安全清单 + 人工审 |
-| R2 | card openid 落 URL | 收割是否进 store、是否当 cookie 等价物——**专项裁定**后再接 card mint；v1 可先只做 ehall |
+| R2 | card openid 落 URL | **ADR-020 已接受**（[`adr_020_url_query_credential.md`](../adr/adr_020_url_query_credential.md)：`type: query` + 核心收割/注入）。**实现落地前** card mint 不得声称闭环；v1 可先只做 ehall |
 | R3 | headless 合规 | v1 限 debug/灰度；发版前合规评估；v2 隐藏 WebView 优先 |
 | R4 | TGC 静默失效 | `classifyMintResult` → tgcExpired → 可见重登；不猜原因 |
 | R5 | service URL 漂移 | 声明面可热更新（签名 manifest）；逆向夹具回归 |
