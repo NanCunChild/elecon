@@ -114,6 +114,44 @@ void main() {
       expect(transport.seen, isEmpty);
     });
 
+    test('未声明 credential 但 URL 落在凭证 scope → 拒绝，零出网', () async {
+      // 双向权威：请求没写 credential，却因 URL 命中 session 的 scope 会被静默注入 →
+      // fail-closed，绝不放行（否则 manifest 的 credential 字段不可审计）。
+      final view = const BrokerManifestView(
+        allow: ['https://h.edu/*'],
+        credentials: {
+          'session': CredentialDecl(
+            scope: ['https://h.edu/*'],
+            type: 'cookie',
+          ),
+        },
+      );
+      final transport = FakeTransport([]);
+      await expectLater(
+        fulfillParserRequests(
+          requests: const [
+            ParserRequestDecl(
+              key: 'raw',
+              method: 'GET',
+              url: 'https://h.edu/api/x',
+              // 故意不写 credential —— 但 URL 落在 session scope 内
+            ),
+          ],
+          params: const {},
+          view: view,
+          resolver: FakeResolver({
+            'session': const ResolvedCredential(
+              via: 'cookie',
+              value: 'JSESSIONID=S1',
+            ),
+          }),
+          transport: transport,
+        ),
+        throwsA(isA<ParserHostException>()),
+      );
+      expect(transport.seen, isEmpty);
+    });
+
     test('credential inject 端到端', () async {
       final view = const BrokerManifestView(
         allow: ['https://h.edu/*'],

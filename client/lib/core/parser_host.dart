@@ -146,7 +146,19 @@ void _assertCredentialPolicy(
   InjectionDecision decision,
 ) {
   final want = req.credential;
-  if (want == null || want.isEmpty) return;
+  if (want == null || want.isEmpty) {
+    // 未声明 credential 的请求：注入决策**不得**命中任何凭证。否则展开后的 URL 恰落在某
+    // 凭证 scope 时会被 broker 静默注入，令 `requests[].credential` 字段失去可审计性
+    // （审阅者读 manifest 会误判"无字段=不带凭证"）。fail-closed：强制每条带凭证的请求
+    // 都在 manifest 里显式声明——`credential` 字段双向权威（红线 #1 可审计面）。
+    if (decision is InjectDecision) {
+      throw ParserHostException(
+        'parser 请求未声明 credential，但 URL 命中凭证注入 ref=${decision.ref}'
+        '（须在 requests[].credential 显式声明）→ fail-closed',
+      );
+    }
+    return;
+  }
   if (decision is! InjectDecision) {
     throw ParserHostException(
       'parser 请求 credential=$want 但注入决策非 inject（${decision.toJson()}）',
