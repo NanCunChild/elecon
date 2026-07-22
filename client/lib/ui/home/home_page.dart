@@ -1,17 +1,23 @@
 /// elecon 首页：把核心/adapter 产出的 [CampusSnapshot] 渲染为卡片流。
 ///
-/// 数据模型见 `models.dart`；演示数据见 `demo_data.dart`（真实数据闭环前的占位）。
-/// 二者经 `export` 转出，历史 `import '.../home_page.dart'` 的调用点无需改动。
+/// 默认经 [SessionScope] 跑 `notice.list` 真数据（MVP-A）；可注入 [loadSnapshot] 覆盖（测试/demo）。
+/// 数据模型见 `models.dart`；`demo_data.dart` 仍 export 供调试占位。
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../session/session_scope.dart';
 import '../theme/liquid_glass.dart';
+import 'campus_snapshot_loader.dart';
 import 'demo_data.dart';
 import 'models.dart';
 
 export 'demo_data.dart';
 export 'models.dart';
+
+/// debug 下强制走 demo 快照（设置/联调开关可后接；默认 false = 真数据）。
+const bool kForceDemoHomeSnapshot = false;
 
 class EleconHomePage extends StatefulWidget {
   const EleconHomePage({super.key, this.loadSnapshot});
@@ -24,15 +30,23 @@ class EleconHomePage extends StatefulWidget {
 
 class _EleconHomePageState extends State<EleconHomePage> {
   late Future<CampusSnapshot> _snapshot;
+  var _bound = false;
 
   @override
-  void initState() {
-    super.initState();
-    _snapshot = _load();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_bound) {
+      _bound = true;
+      _snapshot = _load();
+    }
   }
 
   Future<CampusSnapshot> _load() {
-    return widget.loadSnapshot?.call() ?? loadDemoCampusSnapshot();
+    if (widget.loadSnapshot != null) return widget.loadSnapshot!();
+    if (kDebugMode && kForceDemoHomeSnapshot) {
+      return loadDemoCampusSnapshot();
+    }
+    return loadCampusSnapshot(SessionScope.of(context));
   }
 
   void _reload() {
