@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart';
 import '../catalog/schools.dart';
 import '../core/adapter_service.dart';
 import '../core/debug/dev_log.dart';
+import '../core/html_stdlib.dart';
 import '../core/loader/diagnostics.dart';
 import '../core/credential/blob_store.dart';
 import '../core/credential/hardware_keystore.dart';
@@ -384,12 +385,14 @@ class SessionController extends ChangeNotifier {
         'adapter 运行时未装配',
       );
     }
+    // adapter 普遍 import "elecon:html"；调用方未注入时从 app 资产加载（ADR-011）。
+    final stdlib = htmlStdlib ?? await loadHtmlStdlib();
     return service.run(
       adapterId: adapterId,
       capability: capability,
       resolver: _store,
       params: params,
-      htmlStdlib: htmlStdlib,
+      htmlStdlib: stdlib,
       onLog: (level, message) {
         DevLog.instance.adapter(level, message);
         onLog?.call(level, message);
