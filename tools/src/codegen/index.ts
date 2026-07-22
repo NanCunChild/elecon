@@ -84,6 +84,40 @@ function assertSupported(s: JsonSchema, ctx: string): void {
   if (s.allOf || s.anyOf) throw new Error(`${ctx}: 不支持 allOf/anyOf（需人工处理）`);
 }
 
+/**
+ * 枚举 schema 内缺 `description` 的 `properties` 字段（含嵌套 object / array item）。
+ * 返回点分路径列表。契约风格规范：每字段必有 description（docs/rules/schema_style.md §2）。
+ * description 可写在引用处或 `$defs` 定义处任一。$ref 环用 seenDefs 防无限递归。
+ */
+export function collectMissingDescriptions(root: JsonSchema): string[] {
+  const missing: string[] = [];
+  const seenDefs = new Set<string>();
+
+  const walkNode = (s: JsonSchema, path: string, refName?: string): void => {
+    if (refName) {
+      const m = refName.match(/^#\/(?:\$defs|definitions)\/([^/]+)$/);
+      if (m) {
+        if (seenDefs.has(m[1]!)) return;
+        seenDefs.add(m[1]!);
+      }
+    }
+    if (s.type === "object" && s.properties) {
+      for (const [key, raw] of Object.entries(s.properties)) {
+        const child = raw.$ref ? resolveRef(raw, root) : raw;
+        const p = path ? `${path}.${key}` : key;
+        if (!(raw.description ?? child.description)) missing.push(p);
+        walkNode(child, p, raw.$ref);
+      }
+    } else if (s.type === "array" && s.items) {
+      const item = s.items.$ref ? resolveRef(s.items, root) : s.items;
+      walkNode(item, `${path}[]`, s.items.$ref);
+    }
+  };
+
+  walkNode(root, "");
+  return missing;
+}
+
 // ---- TS 生成 ----
 
 function tsType(
@@ -310,8 +344,26 @@ function main(): void {
   }
 
   if (check) {
-    console.log(`codegen --check：${files.length} 个 schema 可生成，${skipped.length} 个需人工处理。`);
+    // description 门（docs/rules/schema_style.md §2）：默认只报告（给出 backfill 规模）；
+    // 传 --require-descriptions 才硬失败——backfill 完成后 CI 切到该 flag 强制。
+    const requireDesc = process.argv.includes("--require-descriptions");
+    const misses: { file: string; path: string }[] = [];
+    for (const file of readdirSync(schemaDir)
+      .filter((f) => f.endsWith(".schema.json"))
+      .sort()) {
+      const schema = JSON.parse(readFileSync(join(schemaDir, file), "utf-8")) as JsonSchema;
+      if (schema.type !== "object") continue;
+      for (const p of collectMissingDescriptions(schema)) misses.push({ file, path: p });
+    }
+    if (misses.length === 0) {
+      console.log("✓ description 全覆盖");
+    } else {
+      console.log(`\n⚠ description 缺失 ${misses.length} 处（每 properties 字段须有 description，见 docs/rules/schema_style.md §2）：`);
+      for (const m of misses) console.log(`  ✗ ${m.file}  ${m.path}`);
+    }
+    console.log(`\ncodegen --check：${files.length} 个 schema 可生成，${skipped.length} 个需人工处理。`);
     if (skipped.length > 0) process.exitCode = 1;
+    if (requireDesc && misses.length > 0) process.exitCode = 1;
     return;
   }
 

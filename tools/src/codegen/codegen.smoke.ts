@@ -6,7 +6,7 @@
  */
 
 import { strict as assert } from "node:assert";
-import { generateDart, generateTs, pascalCase } from "./index.js";
+import { collectMissingDescriptions, generateDart, generateTs, pascalCase } from "./index.js";
 
 // ---- pascalCase ----
 
@@ -91,6 +91,39 @@ const noticeSchema = {
     "外部 $ref 应抛错",
   );
   console.log("✓ 受限本地 $ref / oneOf 联合类型");
+}
+
+// ---- collectMissingDescriptions（description 门，schema_style.md §2）----
+
+{
+  const miss = collectMissingDescriptions({
+    type: "object",
+    properties: {
+      a: { type: "string", description: "有" },
+      b: { type: "string" }, // 缺
+      items: {
+        type: "array",
+        description: "有",
+        items: {
+          type: "object",
+          properties: {
+            c: { type: "integer" }, // 缺（嵌套）
+            d: { type: "string", description: "有" },
+          },
+        },
+      },
+      fee: { $ref: "#/$defs/money" }, // 引用处无 description、$defs 处也无 → 缺
+    },
+    $defs: { money: { type: "object", properties: { amountMinor: { type: "integer", description: "分" } } } },
+  });
+  assert.deepStrictEqual(miss.sort(), ["b", "fee", "items[].c"].sort(), "应精确枚举缺 description 的字段（含嵌套/数组，$ref 解析）");
+
+  const full = collectMissingDescriptions({
+    type: "object",
+    properties: { a: { type: "string", description: "有" } },
+  });
+  assert.deepStrictEqual(full, [], "全覆盖时应为空");
+  console.log("✓ collectMissingDescriptions（嵌套/数组/$ref/全覆盖）");
 }
 
 console.log("\ncodegen smoke 全部通过 ✅");
