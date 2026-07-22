@@ -309,6 +309,8 @@ void main() {
         expect(plan.view.credentials['x-session']!.type, 'cookie');
         expect(plan.view.credentials['x-session']!.role, 'sso-master');
         expect(plan.capabilities, ['notice.list']);
+        expect(plan.mode, 'fetch');
+        expect(plan.capabilityRequests['notice.list'], isEmpty);
       },
     );
 
@@ -317,6 +319,7 @@ void main() {
       final plan = planLaunch(await load(b));
       expect(plan.view.credentials, isEmpty);
       expect(plan.view.allow, ['https://x.edu/*']);
+      expect(plan.mode, 'fetch');
     });
   });
 
