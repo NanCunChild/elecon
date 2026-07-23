@@ -4,7 +4,7 @@
   "title": "Capability Manifest Schema",
   "description": "adapter 对核心的声明契约。tools/ 校验器据此验证 manifest 合法性。",
   "type": "object",
-  "required": ["manifestVersion", "adapterId", "adapterVersion", "schoolId", "displayName", "trustTier", "mode", "runtime", "network", "capabilities"],
+  "required": ["manifestVersion", "adapterId", "adapterVersion", "schoolId", "displayName", "trustTier", "runtime", "network", "capabilities"],
   "properties": {
     "manifestVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
     "adapterId": { "type": "string", "pattern": "^school-\\S+$" },
@@ -15,10 +15,6 @@
       "type": "string",
       "description": "official | sideload（community 档已于 ADR-002 2026-06-14 修订移除）",
       "enum": ["official", "sideload"]
-    },
-    "mode": {
-      "type": "string",
-      "enum": ["fetch", "parser"]
     },
     "runtime": {
       "type": "object",
@@ -118,7 +114,7 @@
     },
     "credentials": {
       "type": "object",
-      "description": "凭证引用声明（ADR-013）。key=ref（对应 ADR-012 CredentialEntry.ref），值声明注入作用域与方式。仅含引用名+作用域+注入方式，绝不含凭证值（红线 #1）。可选；缺省即无凭证注入（fetch 全 passthrough / parser 无 credential 请求）。",
+      "description": "凭证引用声明（ADR-013）。key=ref（对应 ADR-012 CredentialEntry.ref），值声明注入作用域与方式。仅含引用名+作用域+注入方式，绝不含凭证值（红线 #1）。可选；缺省即无凭证注入（imperative 全 passthrough / declarative 无 credential 请求）。",
       "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
       "additionalProperties": {
         "type": "object",
@@ -148,7 +144,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "emits"],
+        "required": ["id", "emits", "requestGraph"],
         "properties": {
           "id": {
             "type": "string",
@@ -162,6 +158,11 @@
               "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" }
             }
           },
+          "requestGraph": {
+            "type": "string",
+            "enum": ["declarative", "imperative"],
+            "description": "取数请求图声明性（ADR-022）。declarative=manifest requests[] 静态声明、核心代取、adapter 纯解析同步；imperative=adapter 代码 ctx.fetch 自取异步。信任门：release 下 sideload 的每个 capability 须 declarative。**required、无 default**（缺字段=校验失败，避免隐式命令式提权）。"
+          },
           "params": {
             "type": "object",
             "properties": {
@@ -171,7 +172,7 @@
           },
           "requests": {
             "type": "array",
-            "description": "仅 parser 模式使用，声明核心代取的请求配方",
+            "description": "仅 declarative requestGraph 使用，声明核心代取的请求配方；imperative capability 不得声明",
             "items": {
               "type": "object",
               "required": ["key", "method", "url"],
