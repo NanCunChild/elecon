@@ -677,9 +677,9 @@ function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Fin
   for (const file of readdirSync(fixturesDir)) {
     if (!file.endsWith(".json")) continue;
     const fx = readJson<{ kind?: string; capability?: string; expected?: unknown }>(join(fixturesDir, file));
-    // fetch-replay fixture 的 expected 由 FakeTransport replay runner 断言；C5
-    // 只负责 parser 的静态 expected schema 校验，避免把两种 fixture 语义混为一谈。
-    if (fx.kind === "fetch-replay") continue;
+    // imperative-replay fixture 的 expected 由 FakeTransport replay runner 断言；C5
+    // 只负责 declarative 的静态 expected schema 校验，避免把两种 fixture 语义混为一谈。
+    if (fx.kind === "imperative-replay") continue;
     if (!fx.capability || fx.expected === undefined) {
       findings.push({
         level: "warn",

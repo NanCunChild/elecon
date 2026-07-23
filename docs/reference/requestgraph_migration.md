@@ -184,7 +184,7 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
 | `sandbox.smoke.ts` | `_template/parser` → `_template/declarative`；`_canary/parser` → `_canary/declarative`（若改名） |
 | `parser-replay.smoke.ts` → `declarative-replay.smoke.ts` | 路径 + 日志 + `replayDeclarativeFixture` |
 | `__testutils__/parser-replay.ts` → `declarative-replay.ts` | 注释术语；API rename |
-| `__testutils__/fetch-replay.ts` | 注释 imperative；逻辑不动 |
+| `__testutils__/fetch-replay.ts` → `imperative-replay.ts` | 路径 + 注释 + `replayImperativeFixture` |
 | `sandbox.fetch.smoke.ts` | 注释「fetch 模式」→ imperative；**信任闸门用例保留** |
 | 各 `adapters-*.fetch.smoke.ts` | 仅注释/术语；manifest 由 §5 改 |
 
@@ -329,7 +329,7 @@ adapters/_template/fetch
 | `docs/rules/testing.md` | ✅ 「纯解析器 / parser」→ declarative requestGraph |
 | `docs/rules/ai_coding.md` | ✅ 同上 |
 | `AGENTS.md` / `README.md` / `adapters/README.md` | ✅ 红线 #5 / 信任级别用语 |
-| `docs/reference/track_b_*` / `b4_*` / `webview_*` | 历史计划：可脚注「已由 ADR-022 术语替代」，不必全文重写 |
+| `docs/reference/track_b_*` / `b4_*` / `b5_*` / `b6_*` / `webview_*` | ✅ 重命名 + 术语脚注（`track_b_imperative_runtime_plan` / `b6_imperative_runtime_plan`；manifest 示例去顶层 `mode`） |
 | 本文件 | 完成后把各 `[ ]` 勾掉 |
 
 **ADR 历史叙述**可保留「旧称 parser/fetch」一句；**现行契约/错误码/路径**不留旧概念（§7 grep）。

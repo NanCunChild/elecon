@@ -847,10 +847,7 @@ function codes(findings: { code: string }[]): string[] {
     },
     { manifestValidate, registry: reg2 },
   );
-  assert.ok(
-    !codes(findings).includes("C3_sideload_must_declarative"),
-    "official 混用不应触发 C3",
-  );
+  assert.ok(!codes(findings).includes("C3_sideload_must_declarative"), "official 混用不应触发 C3");
   assert.ok(
     !codes(findings).some((c) => c.startsWith("C4") || c.startsWith("C12")),
     "official 合法混用不应触发 C4/C12",

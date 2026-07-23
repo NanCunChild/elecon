@@ -33,7 +33,7 @@ writeFileSync(
     displayName: "Test School",
     trustTier: "official",
     runtime: { engine: "quickjs", entry: "index.js", stdlibMin: "1.0.0" },
-    network: { allow: [] },
+    network: { allow: ["https://example.edu/*"] },
     capabilities: [
       {
         id: "notice.list",

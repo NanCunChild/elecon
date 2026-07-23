@@ -55,7 +55,10 @@ async function testInjectAndHarvest(): Promise<void> {
     transport,
     harvest: { sink: store, schoolId: "xidian" },
   };
-  const { data } = await runImperativeAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps);
+  const { data } = await runImperativeAdapter(
+    { source, capability: "notice.list", params: {}, nowMs: NOW },
+    deps,
+  );
 
   const d = data as { items: unknown; gotHeaders: Record<string, string> };
   assert.deepEqual(d.items, [{ id: 1, t: "hi" }], "产出 items 不符");
@@ -90,7 +93,10 @@ async function testEphemeralMultiStep(): Promise<void> {
     resolver: new FakeResolver({}),
     transport,
   };
-  const { data } = await runImperativeAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps);
+  const { data } = await runImperativeAdapter(
+    { source, capability: "notice.list", params: {}, nowMs: NOW },
+    deps,
+  );
 
   assert.deepEqual((data as { rows: unknown }).rows, [1, 2, 3], "第二步产出不符");
   assert.equal(transport.seen[1]!.headers["Cookie"], "client_id=XYZ", "ephemeral cookie 应在第二步携带");
@@ -114,7 +120,10 @@ async function testFailClosedCatchable(): Promise<void> {
     resolver: new FakeResolver({}),
     transport,
   };
-  const { data } = await runImperativeAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps);
+  const { data } = await runImperativeAdapter(
+    { source, capability: "notice.list", params: {}, nowMs: NOW },
+    deps,
+  );
 
   assert.deepEqual(data, { blocked: true }, "allow 外应被拒、adapter 可 catch");
   assert.equal(transport.seen.length, 0, "fail-closed 不得发任何请求");

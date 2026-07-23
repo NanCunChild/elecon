@@ -25,7 +25,7 @@ interface ResponseFixture {
   setCookieFile?: string;
 }
 
-interface FetchFixture {
+interface ImperativeFixture {
   capability: string;
   params?: unknown;
   responses: ResponseFixture[];
@@ -51,13 +51,13 @@ function jsonPath(value: unknown, path: string | undefined): unknown {
   }, value);
 }
 
-export async function replayFetchFixture(
+export async function replayImperativeFixture(
   metaUrl: string,
   adapterDir: string,
   fixtureName: string,
 ): Promise<unknown> {
   const repoRoot = resolveRepoRoot(metaUrl);
-  const fixture = readJson<FetchFixture>(join(adapterDir, fixtureName));
+  const fixture = readJson<ImperativeFixture>(join(adapterDir, fixtureName));
   const manifest = readJson<Manifest>(join(adapterDir, "manifest.json"));
   const capability = manifest.capabilities.find((item) => item.id === fixture.capability);
   assert.ok(capability, `fixture capability 未在 manifest 中声明：${fixture.capability}`);
@@ -119,7 +119,7 @@ export async function replayFetchFixture(
   const validate = ajv.compile(schema);
   assert.ok(
     validate(data),
-    `fetch fixture 产出未通过 ${capability.emits.schema}：${JSON.stringify(validate.errors)}`,
+    `imperative fixture 产出未通过 ${capability.emits.schema}：${JSON.stringify(validate.errors)}`,
   );
   return data;
 }

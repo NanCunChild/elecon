@@ -1,13 +1,14 @@
-# WebView 登录收割 + XIDIAN fetch 取数可行性
+# WebView 登录收割 + XIDIAN 取数可行性
 
 > 状态：实施前参考清单。依据 ADR-012 / ADR-015 / ADR-016。本文不新增契约；若实现中发现需要扩 `contract/`，须先开 ADR。
 > 边界：本文覆盖 Android / iOS 主线。OHOS 仍按 probe 线路等待 fork / 真机验证，不阻塞主线。
+> **术语（ADR-022）**：旧称「fetch 模式」= 今 **imperative requestGraph**；`ctx.fetch` 方法名不变。
 
 ## 1. 当前结论
 
 - Android / iOS 可以先落 WebView 登录收割；平台 SDK 本身不是阻塞项。
 - XIDIAN 私密能力不能让 adapter 自己登录；登录、ticket、openid、cookie 收割必须在可信核心内完成。
-- fetch 直接取数可行，但只适合 official adapter，并依赖 WebView 收割得到的 session 已进入 `CredentialStore`。
+- 经 `ctx.fetch` 直接取数可行，但只适合 official adapter（imperative requestGraph），并依赖 WebView 收割得到的 session 已进入 `CredentialStore`。
 - XIDIAN 首批适合落：`grades.list`、`schedule.week`。一卡通次之；水电最后。
 
 ## 2. WebView 登录收割最小闭环
@@ -49,7 +50,9 @@
   "adapterId": "school-xidian",
   "schoolId": "xidian",
   "trustTier": "official",
-  "mode": "fetch",
+  "capabilities": {
+    "grades.list": { "requestGraph": "imperative" }
+  },
   "network": {
     "allow": [
       "https://ehall.xidian.edu.cn/*",
@@ -82,11 +85,11 @@
 
 注意：`ids-cas` 是否需要持久收割取决于续期策略。若首版只需要登录后直接建立 `ehall-session`，可先不持久化 `ids` 域 cookie，减少凭证面。
 
-## 4. fetch 直接取数可行性
+## 4. 经 `ctx.fetch` 直接取数可行性
 
 ### 4.1 可行路径
 
-WebView 登录后，核心已有 session cookie。official fetch adapter 可以调用 `ctx.fetch` 请求 XIDIAN 数据接口：
+WebView 登录后，核心已有 session cookie。official adapter（imperative requestGraph）可以调用 `ctx.fetch` 请求 XIDIAN 数据接口：
 
 1. adapter 发起 `ctx.fetch("https://ehall.xidian.edu.cn/...", init)`。
 2. Broker 根据 `credentials.scope` 注入 cookie。
@@ -114,13 +117,13 @@ WebView 登录后，核心已有 session cookie。official fetch adapter 可以�
 
 ## 5. XIDIAN 各能力判断
 
-| 能力 | 当前资料 | 建议模式 | 落地优先级 | 备注 |
+| 能力 | 当前资料 | 建议 requestGraph | 落地优先级 | 备注 |
 |---|---|---|---|---|
-| `notice.list` | 已正式落地 | parser | 已完成 | 公开数据，无凭证 |
-| `grades.list` | `adapters_tests/XIDIAN/ehall/scores.py` | fetch 或 parser+核心代取 | 高 | E-Hall JSON，适合首批 |
-| `schedule.week` | `ehall/schedule.py` | fetch 或 parser+核心代取 | 高 | 需周次/学期参数归一化 |
-| `card.balance` | `card/balance.py` | fetch | 中 | openid 是凭证等价物，必须核心内处理 |
-| `card.transactions` | `card/balance.py` | fetch | 中 | 需分页参数与脱敏 fixture |
+| `notice.list` | 已正式落地 | declarative | 已完成 | 公开数据，无凭证 |
+| `grades.list` | `adapters_tests/XIDIAN/ehall/scores.py` | imperative 或 declarative+核心代取 | 高 | E-Hall JSON，适合首批 |
+| `schedule.week` | `ehall/schedule.py` | imperative 或 declarative+核心代取 | 高 | 需周次/学期参数归一化 |
+| `card.balance` | `card/balance.py` | imperative | 中 | openid 是凭证等价物，必须核心内处理 |
+| `card.transactions` | `card/balance.py` | imperative | 中 | 需分页参数与脱敏 fixture |
 | `library.loans` | `library/borrow.py` 标注待完成 | 待定 | 低 | 先补逆向与 fixture |
 | exams / empty classroom | 已有脚本 | `generic.section` 或新增 ADR | 低 | contract 暂无专用 capability |
 | energy | `energy/meter.py` 标注待完成 | campus/headless | 最低 | 校园网内 + AES/sign，复杂度最高 |
@@ -130,14 +133,14 @@ WebView 登录后，核心已有 session cookie。official fetch adapter 可以�
 1. Android/iOS WebView 登录收割最小闭环：只支持 manifest 声明、导航闭锁、成功 URL、cookie 收割到内存 store。
 2. 替换真实 secure store：Android Keystore / iOS Keychain。未完成前不得录入真实学生凭证。
 3. XIDIAN manifest 加 `login` + `credentials`，用测试 ref 和 fake cookie 做校验器/运行时测试。
-4. XIDIAN `grades.list` fetch adapter：以脱敏 JSON fixture 先跑通归一化，再接真实登录后的 `ctx.fetch`。
+4. XIDIAN `grades.list` imperative adapter：以脱敏 JSON fixture 先跑通归一化，再接真实登录后的 `ctx.fetch`。
 5. XIDIAN `schedule.week` 同步落地。
 6. 一卡通单独评审 openid 处理：优先把 openid 视作凭证等价物留在核心，不回交 adapter。
-7. iOS release 仍按 ADR-010 复核：若含 fetch/private 能力，必须补隐私说明和 2.5.2 自检；首版可继续 parser-only。
+7. iOS release 仍按 ADR-010 复核：若含 imperative/private 能力，必须补隐私说明和 2.5.2 自检；首版可继续 declarative-only。
 
 ## 7. 需要人工拍板的问题
 
 - WebView 登录是否先只做 Android/iOS，OHOS 继续挂起：建议是。
 - 首版是否持久化 `ids-cas`：建议先不持久化，能不用就不用。
-- XIDIAN E-Hall 取数采用 fetch adapter 还是 parser+核心代取：若接口请求固定，parser 更薄；若需要 useApp / 动态多步，fetch 更省实现。
+- XIDIAN E-Hall 取数采用 imperative 还是 declarative+核心代取：若接口请求固定，declarative 更薄；若需要 useApp / 动态多步，imperative 更省实现。
 - 一卡通 openid 如何建模：若必须跨请求持久使用，应作为 `CredentialEntry` ref，而非 adapter 可见字段。
