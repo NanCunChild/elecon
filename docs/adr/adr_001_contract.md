@@ -104,7 +104,7 @@ ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端
 }
 ```
 
-> 说明：`score.kind` 支持 `numeric` / `letter` / `passfail`，以容纳不同学校的记分制；`gradePoint` 等派生值若学校不直接给出，**由 UI/视图层计算，adapter 不擅自推算**（adapter 越薄越好）。
+> 说明：`score.kind` 支持 `numeric` / `letter` / `passfail`，以容纳不同学校的记分制；`gradePoint` 等派生值若学校不直接给出，**由 UI/视图层计算，adapter 不擅自推算**——注意这**不是**因为"adapter 要薄"（那是能力面的安全口号，见 [`adr_000`](./adr_000_abstract.md) §3.1「两个轴」），而是因为 GPA 这类**跨校统一、本体要自己施加智能（排序 / 聚合 / 算法一致性）的派生语义**归本体所有。**反向的一类必须分清**：**校本特有的派生（如脏日期格式归一化、从校历推当前教学周、单位换算、多接口拼装）是 adapter 的重活**，应尽量吸收进 adapter，不上抛核心/UI——本体不该知道每所学校的校历。判据一句话：**跨校统一的派生 → 本体；校本特有的派生 → adapter（尽量重）。**
 
 首批落地的域（其余按需经 ADR 扩展）：`grades`、`schedule`、`card`、`library`、`notice`，外加通用兜底域 `generic`（见 §3.6）。
 
