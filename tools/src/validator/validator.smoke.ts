@@ -27,20 +27,25 @@ function codes(findings: { code: string }[]): string[] {
   return findings.map((f) => f.code);
 }
 
-// 1) sideload + fetch → C3
+// 1) sideload + imperative → C3
 {
   const findings = checkManifest(
     {
       adapterId: "school-x",
       trustTier: "sideload",
-      mode: "fetch",
       network: { allow: ["https://h/api/*"] },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
-  assert.ok(codes(findings).includes("C3_sideload_must_parser"), "sideload+fetch 应触发 C3");
-  console.log("  ✓ sideload + fetch 被拒（C3）");
+  assert.ok(codes(findings).includes("C3_sideload_must_declarative"), "sideload+imperative 应触发 C3");
+  console.log("  ✓ sideload + imperative 被拒（C3）");
 }
 
 // 2) 未注册 capability → C2
@@ -49,9 +54,14 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://h/api/*"] },
-      capabilities: [{ id: "ghost.cap", emits: { schema: "elecon.ghost", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "ghost.cap",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.ghost", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -59,17 +69,17 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ 未注册 capability 被拒（C2）");
 }
 
-// 3) parser request 越出白名单 → C4
+// 3) declarative request 越出白名单 → C4
 {
   const findings = checkManifest(
     {
       adapterId: "school-x",
       trustTier: "sideload",
-      mode: "parser",
       network: { allow: ["https://allowed.edu/api/*"] },
       capabilities: [
         {
           id: "grades.list",
+          requestGraph: "declarative",
           emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
           requests: [{ key: "raw", method: "GET", url: "https://evil.example/api/x?t={term}" }],
         },
@@ -87,9 +97,14 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://h/api/*"] },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "2.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "2.0" },
+        },
+      ],
     },
     contract,
   );
@@ -97,17 +112,17 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ emits 与 registry 漂移被拒（C2）");
 }
 
-// 5) 合法 parser（request 命中白名单，且占位符不干扰）→ 无 error
+// 5) 合法 declarative（request 命中白名单，且占位符不干扰）→ 无 error
 {
   const findings = checkManifest(
     {
       adapterId: "school-x",
       trustTier: "sideload",
-      mode: "parser",
       network: { allow: ["https://jw.example.edu.cn/api/*"] },
       capabilities: [
         {
           id: "grades.list",
+          requestGraph: "declarative",
           emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
           requests: [{ key: "raw", method: "GET", url: "https://jw.example.edu.cn/api/grades?term={term}" }],
         },
@@ -118,9 +133,9 @@ function codes(findings: { code: string }[]): string[] {
   assert.equal(
     findings.filter((f) => f.level === "error").length,
     0,
-    `合法 parser 不应有 error：${JSON.stringify(findings)}`,
+    `合法 declarative 不应有 error：${JSON.stringify(findings)}`,
   );
-  console.log("  ✓ 合法 parser 通过（占位符不干扰白名单匹配）");
+  console.log("  ✓ 合法 declarative 通过（占位符不干扰白名单匹配）");
 }
 
 // 6) credential scope 越出 network.allow → C6
@@ -129,10 +144,15 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://h/api/*"] },
       credentials: { session: { scope: ["https://evil/api/*"], type: "cookie" } },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -146,13 +166,18 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://h/*"] },
       credentials: {
         a: { scope: ["https://h/api/*"], type: "cookie" },
         b: { scope: ["https://h/api/*"], type: "header" },
       },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -160,17 +185,17 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ 等长重叠的凭证 scope 被拒（C7）");
 }
 
-// 8) parser request 引用未声明的 credential → C8
+// 8) declarative request 引用未声明的 credential → C8
 {
   const findings = checkManifest(
     {
       adapterId: "school-x",
       trustTier: "sideload",
-      mode: "parser",
       network: { allow: ["https://h/api/*"] },
       capabilities: [
         {
           id: "grades.list",
+          requestGraph: "declarative",
           emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
           requests: [{ key: "raw", method: "GET", url: "https://h/api/x", credential: "session" }],
         },
@@ -179,22 +204,27 @@ function codes(findings: { code: string }[]): string[] {
     contract,
   );
   assert.ok(codes(findings).includes("C8_undeclared_credential_ref"), "未声明 credential 引用应触发 C8");
-  console.log("  ✓ parser 引用未声明 credential 被拒（C8）");
+  console.log("  ✓ declarative 引用未声明 credential 被拒（C8）");
 }
 
-// 9) 合法 fetch + credentials：不同长度前缀重叠由最长前缀消解，非错误
+// 9) 合法 imperative + credentials：不同长度前缀重叠由最长前缀消解，非错误
 {
   const findings = checkManifest(
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://h/*"] },
       credentials: {
         broad: { scope: ["https://h/*"], type: "cookie" },
         api: { scope: ["https://h/api/*"], type: "header" },
       },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -206,18 +236,18 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ 不同长度前缀重叠由最长前缀消解，不报错（C7 不误杀）");
 }
 
-// 10) parser 声明了 credential 但无 request 引用 → C8_unused_credential（warn，非 error）
+// 10) declarative 声明了 credential 但无 request 引用 → C8_unused_credential（warn，非 error）
 {
   const findings = checkManifest(
     {
       adapterId: "school-x",
       trustTier: "sideload",
-      mode: "parser",
       network: { allow: ["https://h/api/*"] },
       credentials: { session: { scope: ["https://h/api/*"], type: "cookie" } },
       capabilities: [
         {
           id: "grades.list",
+          requestGraph: "declarative",
           emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
           requests: [{ key: "raw", method: "GET", url: "https://h/api/x" }],
         },
@@ -229,7 +259,7 @@ function codes(findings: { code: string }[]): string[] {
   assert.equal(unused.length, 1, "声明未用的 credential 应触发 1 条 C8_unused_credential");
   assert.equal(unused[0]!.level, "warn", "C8_unused_credential 应为 warn 而非 error");
   assert.equal(findings.filter((f) => f.level === "error").length, 0, "声明未用不应产生 error");
-  console.log("  ✓ parser 声明未用的 credential 仅告警不报错（C8 warn）");
+  console.log("  ✓ declarative 声明未用的 credential 仅告警不报错（C8 warn）");
 }
 
 // 11) 合法 login（url ⊆ navAllow、success ⊆ navAllow、有 credentials）→ 无 error
@@ -238,7 +268,6 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://ehall.h.edu.cn/*"] },
       login: {
         url: "https://ids.h.edu.cn/authserver/login?service=https://ehall.h.edu.cn/index",
@@ -246,7 +275,13 @@ function codes(findings: { code: string }[]): string[] {
         success: { whenUrlMatches: ["https://ehall.h.edu.cn/index*"] },
       },
       credentials: { "ehall-session": { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -264,7 +299,6 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://ehall.h.edu.cn/*"] },
       login: {
         url: "http://ids.h.edu.cn/login",
@@ -272,7 +306,13 @@ function codes(findings: { code: string }[]): string[] {
         success: { whenUrlMatches: ["https://ehall.h.edu.cn/index*"] },
       },
       credentials: { s: { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -287,7 +327,6 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://ehall.h.edu.cn/*"] },
       login: {
         url: "https://ids.h.edu.cn/login",
@@ -295,7 +334,13 @@ function codes(findings: { code: string }[]): string[] {
         success: { whenUrlMatches: ["https://ehall.h.edu.cn/index*"] },
       },
       credentials: { s: { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -309,14 +354,19 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://ehall.h.edu.cn/*"] },
       login: {
         url: "https://ids.h.edu.cn/login",
         navigationAllow: ["https://ids.h.edu.cn/*"],
         success: { whenUrlMatches: ["https://ids.h.edu.cn/done*"] },
       },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -332,7 +382,6 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://ids.h.edu.cn/*", "https://ehall.h.edu.cn/*", "https://card.h.edu.cn/*"] },
       login: {
         url: "https://ids.h.edu.cn/authserver/login",
@@ -354,7 +403,13 @@ function codes(findings: { code: string }[]): string[] {
         "ehall-session": { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" },
         "card-session": { scope: ["https://card.h.edu.cn/*"], type: "cookie" },
       },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -372,7 +427,6 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://ehall.h.edu.cn/*"] },
       login: {
         url: "https://ehall.h.edu.cn/login",
@@ -389,7 +443,13 @@ function codes(findings: { code: string }[]): string[] {
         },
       },
       credentials: { "ehall-session": { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -404,7 +464,6 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://ids.h.edu.cn/*"] },
       login: {
         url: "https://ids.h.edu.cn/authserver/login",
@@ -418,7 +477,13 @@ function codes(findings: { code: string }[]): string[] {
         },
       },
       credentials: { "ids-cas": { scope: ["https://ids.h.edu.cn/*"], type: "cookie", role: "sso-master" } },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -434,7 +499,6 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://ehall.h.edu.cn/*"] },
       login: {
         url: "https://ids.h.edu.cn/authserver/login",
@@ -451,7 +515,13 @@ function codes(findings: { code: string }[]): string[] {
         },
       },
       credentials: { "ehall-session": { scope: ["https://ehall.h.edu.cn/*"], type: "cookie" } },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -465,7 +535,6 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://ids.h.edu.cn/*"] },
       login: {
         url: "https://ids.h.edu.cn/authserver/login",
@@ -482,7 +551,13 @@ function codes(findings: { code: string }[]): string[] {
         "ids-cas": { scope: ["https://ids.h.edu.cn/*"], type: "cookie", role: "sso-master" },
         sub: { scope: ["https://ids.h.edu.cn/app/*"], type: "cookie" },
       },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -499,7 +574,6 @@ function codes(findings: { code: string }[]): string[] {
     {
       adapterId: "school-x",
       trustTier: "official",
-      mode: "fetch",
       network: { allow: ["https://ids.h.edu.cn/*", "https://card.h.edu.cn/*"] },
       login: {
         url: "https://ids.h.edu.cn/authserver/login",
@@ -520,7 +594,13 @@ function codes(findings: { code: string }[]): string[] {
         "ids-cas": { scope: ["https://ids.h.edu.cn/*"], type: "cookie", role: "sso-master" },
         "card-session": { scope: ["https://card.h.edu.cn/*"], type: "cookie" },
       },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
     },
     contract,
   );
@@ -528,13 +608,12 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ via 引用未声明 capability 被拒（M5）");
 }
 
-// 21) sideload + parser 声明 ssoMint via（敏感能力）→ M5_via_requires_official
+// 21) sideload + declarative 声明 ssoMint via（敏感能力）→ M5_via_requires_official
 {
   const findings = checkManifest(
     {
       adapterId: "school-x",
       trustTier: "sideload",
-      mode: "parser",
       network: { allow: ["https://ids.h.edu.cn/*", "https://card.h.edu.cn/*"] },
       login: {
         url: "https://ids.h.edu.cn/authserver/login",
@@ -555,7 +634,14 @@ function codes(findings: { code: string }[]): string[] {
         "ids-cas": { scope: ["https://ids.h.edu.cn/*"], type: "cookie", role: "sso-master" },
         "card-session": { scope: ["https://card.h.edu.cn/*"], type: "cookie" },
       },
-      capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "declarative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+          requests: [{ key: "raw", method: "GET", url: "https://card.h.edu.cn/x" }],
+        },
+      ],
     },
     contract,
   );
@@ -568,9 +654,15 @@ function codes(findings: { code: string }[]): string[] {
   const base = {
     adapterId: "school-x",
     trustTier: "official" as const,
-    mode: "parser" as const,
     network: { allow: ["https://x.edu.cn/*"] },
-    capabilities: [{ id: "grades.list", emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } }],
+    capabilities: [
+      {
+        id: "grades.list",
+        requestGraph: "declarative" as const,
+        emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        requests: [{ key: "raw", method: "GET", url: "https://x.edu.cn/api" }],
+      },
+    ],
   };
 
   const tooHigh = checkManifest(
@@ -606,6 +698,102 @@ function codes(findings: { code: string }[]): string[] {
     "超上限应触发 C11 error",
   );
   console.log("  ✓ bundle 体积上限（C11，ADR-018 §2.9）");
+}
+
+// C12) imperative 不得声明 requests（含 empty 数组）
+{
+  const withReqs = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: ["https://h/api/*"] },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+          requests: [{ key: "raw", method: "GET", url: "https://h/api/x" }],
+        },
+      ],
+    },
+    contract,
+  );
+  assert.ok(codes(withReqs).includes("C12_imperative_with_requests"), "imperative+requests 应触发 C12");
+
+  const emptyReqs = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: ["https://h/api/*"] },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+          requests: [],
+        },
+      ],
+    },
+    contract,
+  );
+  assert.ok(codes(emptyReqs).includes("C12_imperative_with_requests"), "imperative+空 requests 应触发 C12");
+  console.log("  ✓ imperative 声明 requests 被拒（C12）");
+}
+
+// C4) declarative 无 requests → error（升级自原 warn）
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "sideload",
+      network: { allow: ["https://h/api/*"] },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "declarative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("C4_declarative_no_requests"), "declarative 无 requests 应 error");
+  console.log("  ✓ declarative 无 requests 被拒（C4 error）");
+}
+
+// C3) sideload 混合：一个 declarative + 一个 imperative → 仅 imperative 触发 C3
+{
+  // 用 registry 只有 grades.list；再加一个未注册 cap 会触发 C2。此处只测单 cap imperative。
+  // 混合需扩展 registry 桩。
+  const reg2 = {
+    ...registry,
+    "notice.list": { emits: { schema: "elecon.notice.list", schemaVersion: "1.0" } },
+  };
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "sideload",
+      network: { allow: ["https://h/api/*"] },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "declarative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+          requests: [{ key: "raw", method: "GET", url: "https://h/api/x" }],
+        },
+        {
+          id: "notice.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.notice.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    { manifestValidate, registry: reg2 },
+  );
+  const c3 = findings.filter((f) => f.code === "C3_sideload_must_declarative");
+  assert.equal(c3.length, 1, "混合 sideload 应仅对 imperative cap 触发 1 条 C3");
+  assert.ok(c3[0]!.message.includes("notice.list"), "C3 应点名 imperative capability");
+  console.log("  ✓ sideload 混合 capability 仅对 imperative 触发 C3");
 }
 
 console.log("validator smoke 全部通过。");
