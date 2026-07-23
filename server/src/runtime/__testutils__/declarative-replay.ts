@@ -13,16 +13,16 @@ import addFormats from "ajv-formats";
 import { runDeclarativeAdapter } from "../sandbox.js";
 import { resolveRepoRoot } from "./smoke-utils.js";
 
-export interface ParserFixtureResponse {
+export interface DeclarativeFixtureResponse {
   status: number;
   headers: Record<string, string>;
   body: string;
 }
 
-export interface ParserFixture {
+export interface DeclarativeFixture {
   capability: string;
   params?: unknown;
-  responses: Record<string, ParserFixtureResponse>;
+  responses: Record<string, DeclarativeFixtureResponse>;
   expected: unknown;
 }
 
@@ -34,13 +34,13 @@ function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
 }
 
-export async function replayParserFixture(
+export async function replayDeclarativeFixture(
   metaUrl: string,
   adapterDir: string,
   fixtureName = "fixtures/default.json",
 ): Promise<unknown> {
   const repoRoot = resolveRepoRoot(metaUrl);
-  const fixture = readJson<ParserFixture>(join(adapterDir, fixtureName));
+  const fixture = readJson<DeclarativeFixture>(join(adapterDir, fixtureName));
   const manifest = readJson<AdapterManifest>(join(adapterDir, "manifest.json"));
   const capability = manifest.capabilities.find((item) => item.id === fixture.capability);
 

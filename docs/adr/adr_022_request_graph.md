@@ -16,7 +16,7 @@
 
 ADR-001 §6 把 adapter 的调用分成两种**模式**：`fetch`（adapter 用 `ctx.fetch` 自取）与 `parser`（宿主据 manifest `requests[]` 代取、adapter 纯解析）。这个二分在命名与心智上都**误导**：
 
-- **命名骗人**：`fetch` / `parser` 暗示「一个发请求、一个不发」。但**两种模式里真正发请求、注入凭证的都是核心的 broker**。代码实证——`client/lib/core/parser_host.dart` 的宿主代取本身就是调 `proxyFetch`（broker）并按 scope 注入凭证，与 fetch 模式**同一套 broker、同一套注入、同一套脱敏**。parser 模式的 adapter「无网络」，但它消费的数据**同样来自带凭证的请求**。
+- **命名骗人**：`fetch` / `parser` 暗示「一个发请求、一个不发」。但**两种模式里真正发请求、注入凭证的都是核心的 broker**。代码实证——`client/lib/core/declarative_host.dart` 的宿主代取本身就是调 `proxyFetch`（broker）并按 scope 注入凭证，与 imperative 模式**同一套 broker、同一套注入、同一套脱敏**。declarative 模式的 adapter「无网络」，但它消费的数据**同样来自带凭证的请求**。
 - **真实差别只有一个**：**请求图由谁编排**——
   - **声明式**（今 `parser`）：请求形状**静态声明**在 manifest `requests[]`，核心跑之前即可枚举、可人工/工具审计；adapter 是同步纯函数。
   - **命令式**（今 `fetch`）：请求编排在 **adapter 代码**里（`ctx.fetch` 驱动，可循环、可依响应决定下一跳）；表达力强，但请求图运行时生成、无法静态枚举。
@@ -73,7 +73,7 @@ ADR-001 §6 把 adapter 的调用分成两种**模式**：`fetch`（adapter 用 
 
 **声明式不是「弱一档、不能碰凭证」的模式——它的凭证能力与命令式完全对等**，唯一差别只是请求图由谁编排：
 
-- **凭证注入**：声明式经 `requests[].credential` 引用凭证名，由 **broker 在宿主代取时注入**（ADR-001 §6.2；`client/lib/core/parser_host.dart` 的 `proxyFetch` + fail-closed 守卫）。adapter 永不见凭证值。
+- **凭证注入**：声明式经 `requests[].credential` 引用凭证名，由 **broker 在宿主代取时注入**（ADR-001 §6.2；`client/lib/core/declarative_host.dart` 的 `proxyFetch` + fail-closed 守卫）。adapter 永不见凭证值。
 - **请求 / 响应剥离（脱敏）**：交给声明式 adapter 的 `responses` 已由宿主剥除 `Set-Cookie` / `Authorization` / 重定向中间 token（ADR-001 §6.3，两种 requestGraph 通用）。
 - 「把请求从 adapter 剥离进 manifest」本身即声明式的定义。
 
@@ -105,7 +105,7 @@ XJT 那种「取挑战页 → 提 `client_id` → 拼下一跳」是**固定拓�
 
 **Runtime 🔒**（server + client）
 - `server/src/runtime/sandbox.ts`：ctx 分派键从 `input.mode` → 被分派 capability 的 `requestGraph`；`buildParserCtx`≡声明式 ctx、fetch ctx≡命令式；错误码 **`async_in_parser` 删除，一律 `async_in_declarative`**（类型联合 / 诊断文案同步，不留旧别名）。
-- `client/lib/core/{adapter_runtime,parser_host,adapter_launcher,loader}.dart`：分派同步；`parser_host` 是声明式的宿主代取路径（保留 980bfc0 的「未声明 credential 却命中注入 → fail-closed」守卫）；客户端同样只识别 `async_in_declarative`。
+- `client/lib/core/{adapter_runtime,declarative_host,adapter_launcher,loader}.dart`：分派同步；`declarative_host` 是声明式的宿主代取路径（保留 980bfc0 的「未声明 credential 却命中注入 → fail-closed」守卫）；客户端同样只识别 `async_in_declarative`。
 - ADR-002 §2.6 闸门触发条件更新（imperative → 档位校验）。
 
 **Validator 🔒 `tools/src/validator/index.ts`**（逐条）

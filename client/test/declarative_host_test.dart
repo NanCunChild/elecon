@@ -1,4 +1,4 @@
-/// A2 核心代取 parser 请求 —— [fulfillParserRequests] / [expandRequestUrl]。
+/// A2 核心代取 declarative 请求 —— [fulfillDeclarativeRequests] / [expandRequestUrl]。
 ///
 /// 用 FakeTransport 驱动，不经真实网络；验证 allow 闸门、脱敏、URL 模板展开。
 library;
@@ -7,7 +7,7 @@ import 'package:elecon/core/broker/cookie_jar.dart';
 import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:elecon/core/broker/ports.dart';
-import 'package:elecon/core/parser_host.dart';
+import 'package:elecon/core/declarative_host.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'utils/test_utils.dart';
@@ -29,7 +29,7 @@ void main() {
     });
   });
 
-  group('fulfillParserRequests', () {
+  group('fulfillDeclarativeRequests', () {
     test('公开 GET：body 交回且 Set-Cookie 不进 responses', () async {
       final view = const BrokerManifestView(
         allow: ['https://jwc.example.edu/*'],
@@ -45,9 +45,9 @@ void main() {
           body: '<html>ok</html>',
         ),
       ]);
-      final out = await fulfillParserRequests(
+      final out = await fulfillDeclarativeRequests(
         requests: const [
-          ParserRequestDecl(
+          DeclarativeRequestDecl(
             key: 'page',
             method: 'GET',
             url: 'https://jwc.example.edu/index.htm',
@@ -68,12 +68,12 @@ void main() {
       expect(transport.seen.single.method, 'GET');
     });
 
-    test('allow 外 → ParserHostException，零出网', () async {
+    test('allow 外 → DeclarativeHostException，零出网', () async {
       final transport = FakeTransport([]);
       await expectLater(
-        fulfillParserRequests(
+        fulfillDeclarativeRequests(
           requests: const [
-            ParserRequestDecl(
+            DeclarativeRequestDecl(
               key: 'page',
               method: 'GET',
               url: 'https://evil.example.com/x',
@@ -84,7 +84,7 @@ void main() {
           resolver: FakeResolver({}),
           transport: transport,
         ),
-        throwsA(isA<ParserHostException>()),
+        throwsA(isA<DeclarativeHostException>()),
       );
       expect(transport.seen, isEmpty);
     });
@@ -92,9 +92,9 @@ void main() {
     test('credential 声明但 scope 未命中 → 拒绝', () async {
       final transport = FakeTransport([]);
       await expectLater(
-        fulfillParserRequests(
+        fulfillDeclarativeRequests(
           requests: const [
-            ParserRequestDecl(
+            DeclarativeRequestDecl(
               key: 'raw',
               method: 'GET',
               url: 'https://h.edu/api/x',
@@ -109,7 +109,7 @@ void main() {
           resolver: FakeResolver({}),
           transport: transport,
         ),
-        throwsA(isA<ParserHostException>()),
+        throwsA(isA<DeclarativeHostException>()),
       );
       expect(transport.seen, isEmpty);
     });
@@ -128,9 +128,9 @@ void main() {
       );
       final transport = FakeTransport([]);
       await expectLater(
-        fulfillParserRequests(
+        fulfillDeclarativeRequests(
           requests: const [
-            ParserRequestDecl(
+            DeclarativeRequestDecl(
               key: 'raw',
               method: 'GET',
               url: 'https://h.edu/api/x',
@@ -147,7 +147,7 @@ void main() {
           }),
           transport: transport,
         ),
-        throwsA(isA<ParserHostException>()),
+        throwsA(isA<DeclarativeHostException>()),
       );
       expect(transport.seen, isEmpty);
     });
@@ -165,9 +165,9 @@ void main() {
       final transport = FakeTransport([
         const TransportResponse(status: 200, body: '{"ok":true}'),
       ]);
-      final out = await fulfillParserRequests(
+      final out = await fulfillDeclarativeRequests(
         requests: const [
-          ParserRequestDecl(
+          DeclarativeRequestDecl(
             key: 'raw',
             method: 'GET',
             url: 'https://h.edu/api?term={term}',

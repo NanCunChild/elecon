@@ -244,7 +244,7 @@ export function checkManifest(
   if (hasImperative && allow.length === 0) {
     findings.push({
       level: "error",
-      code: "C4_fetch_empty_allow",
+      code: "C4_imperative_empty_allow",
       message: "存在 imperative capability 时 network.allow 为空：无任何域名可请求，adapter 取不到数",
     });
   }

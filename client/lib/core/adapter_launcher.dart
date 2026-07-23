@@ -61,7 +61,7 @@ class LaunchPlan {
   final Map<String, String> capabilityRequestGraphs;
 
   /// capability id → `requests[]` 配方（仅 declarative 用；imperative 为空 map）。
-  final Map<String, List<ParserRequestDecl>> capabilityRequests;
+  final Map<String, List<DeclarativeRequestDecl>> capabilityRequests;
 }
 
 /// 🔒 纯函数：校验 official [LoadResult] 并组装 [LaunchPlan]。任何不一致 → [AdapterLaunchException]。
@@ -133,7 +133,7 @@ LaunchPlan planLaunch(LoadResult result) {
 /// （它们属凭证存储 / 传输子系统，不由本层拥有）。能力越权在此 fail-closed。
 ///
 /// 按本次 capability 的 `requestGraph` 分派（ADR-022）：
-/// `declarative` → 核心代取 [fulfillParserRequests] + [runDeclarativeAdapter]；
+/// `declarative` → 核心代取 [fulfillDeclarativeRequests] + [runDeclarativeAdapter]；
 /// `imperative` → 官方签名 imperative 路径 [_runImperativeAdapter]。
 Future<dynamic> runLoadedAdapter({
   required LoadResult result,
@@ -167,7 +167,7 @@ Future<dynamic> runLoadedAdapter({
     final requests = plan.capabilityRequests[capability] ?? const [];
     final Map<String, dynamic> responses;
     try {
-      responses = await fulfillParserRequests(
+      responses = await fulfillDeclarativeRequests(
         requests: requests,
         params: params ?? const {},
         view: plan.view,
@@ -176,7 +176,7 @@ Future<dynamic> runLoadedAdapter({
         jar: jar,
         maxRequests: fetchLimits.maxRequests,
       );
-    } on ParserHostException catch (e) {
+    } on DeclarativeHostException catch (e) {
       throw AdapterRunException(
         e.limitExceeded
             ? AdapterFailureReason.fetchLimit
@@ -266,12 +266,12 @@ Map<String, String> _capabilityRequestGraphs(Map<String, dynamic> manifest) {
 }
 
 /// 各 capability 的 `requests[]`（declarative 代取配方）。畸形 → fail-closed。
-Map<String, List<ParserRequestDecl>> _capabilityRequests(
+Map<String, List<DeclarativeRequestDecl>> _capabilityRequests(
   Map<String, dynamic> manifest,
 ) {
   final raw = manifest['capabilities'];
   if (raw is! List) return const {};
-  final out = <String, List<ParserRequestDecl>>{};
+  final out = <String, List<DeclarativeRequestDecl>>{};
   for (final c in raw) {
     if (c is! Map) continue;
     final id = c['id'];
@@ -286,7 +286,7 @@ Map<String, List<ParserRequestDecl>> _capabilityRequests(
         'capabilities.$id.requests 非数组（fail-closed）',
       );
     }
-    final list = <ParserRequestDecl>[];
+    final list = <DeclarativeRequestDecl>[];
     final keys = <String>{};
     for (final r in reqsRaw) {
       if (r is! Map) {
@@ -319,7 +319,7 @@ Map<String, List<ParserRequestDecl>> _capabilityRequests(
         );
       }
       list.add(
-        ParserRequestDecl(
+        DeclarativeRequestDecl(
           key: key,
           method: method,
           url: url,

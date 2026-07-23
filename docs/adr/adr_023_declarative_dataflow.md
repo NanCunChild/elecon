@@ -8,7 +8,7 @@
   - [`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（broker 注入 / 脱敏 seam——本文复用）
   - [`adr_013_manifest_credentials.md`](./adr_013_manifest_credentials.md)（`credentials` 声明）
   - [`adr_001_contract.md`](./adr_001_contract.md)（§3.4 缺失语义、§6.2 声明式代取、§6.3 凭证零泄露）
-- **被依赖**：`adapters/*` 迁移（命令式收窄至罕见）；`contract/manifest.schema.json`（新增 `bind`/`compute`/`inject`）；`contract/adapter-sdk/types.d.ts`；`tools/src/validator`；两端 runtime（`parser_host.dart` / `sandbox.ts` 的代取编排）。
+- **被依赖**：`adapters/*` 迁移（命令式收窄至罕见）；`contract/manifest.schema.json`（新增 `bind`/`compute`/`inject`）；`contract/adapter-sdk/types.d.ts`；`tools/src/validator`；两端 runtime（`declarative_host.dart` / `sandbox.ts` 的代取编排）。
 - **适用范围**：**声明式** capability 内「响应派生值 → 计算 → 注入下一请求」的契约面与执行模型。**不含**：命令式（ADR-022）、broker 凭证注入机制本身（ADR-009 不变）、UI。
 
 ---
@@ -112,7 +112,7 @@ auth_A        auth_B
 
 ## 3. 落地性（挂现有 seam，非新造）
 
-- 现声明式执行体已在：`client/lib/core/parser_host.dart` `fulfillParserRequests`（逐条 `proxyFetch` → 组装 `responses` → 交 adapter）；server 侧 `sandbox.ts` 对称。
+- 现声明式执行体已在：`client/lib/core/declarative_host.dart` `fulfillDeclarativeRequests`（逐条 `proxyFetch` → 组装 `responses` → 交 adapter）；server 侧 `sandbox.ts` 对称。
 - 增量：① 解析 `bind`/`compute`/`inject`；② 代取从**平铺**改**依赖拓扑序**（静态 DAG，一次拓扑排序）；③ 抽取（脱敏前）→ broker 侧 phantom map；④ `compute` 原生执行；⑤ 注入**复用凭证注入 seam**；⑥ 脱敏剥注入值 + `Set-Cookie`/token。
 - **唯一结构性改动 = 平铺 → 拓扑序**。**两端双跑一致**（ADR-001 §8 golden）。
 

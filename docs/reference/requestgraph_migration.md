@@ -95,7 +95,7 @@
 | 编号 | 旧条件 / code | 新条件 / code | 说明 |
 |---|---|---|---|
 | **C3** | `trustTier==sideload && mode!="parser"` / `C3_sideload_must_parser` | `trustTier==sideload` 且 **任一** cap `requestGraph!="declarative"` / **`C3_sideload_must_declarative`** | 红线 #5；message 列出违规 cap id |
-| **C4-a** | `mode=="fetch" && allow.length==0` / `C4_fetch_empty_allow` | **存在** cap `requestGraph=="imperative"` 且 `allow.length==0` / 可保留 code 或改 `C4_imperative_empty_allow`（二选一，改则 smoke 同步） | 无 allow 则 imperative 无处可请求 |
+| **C4-a** | `mode=="fetch" && allow.length==0` / `C4_fetch_empty_allow` | **存在** cap `requestGraph=="imperative"` 且 `allow.length==0` / **`C4_imperative_empty_allow`** | 无 allow 则 imperative 无处可请求 |
 | **C4-b** | `mode=="parser"` 整 manifest 扫 requests / `C4_parser_no_requests` | **仅** `requestGraph=="declarative"` 的 cap：无 `requests` 或 empty → **`C4_declarative_no_requests`**；url ⊆ allow 逻辑保留 | 原 C4 白名单覆盖不变 |
 | **C8** | `mode=="parser"` 时 credential 引用闭合 + unused warn | **仅 declarative cap 集合** 的 `requests.credential` | unused warn 文案去掉「parser 模式」 |
 | **C12 新** | — | `requestGraph=="imperative"` 且声明了 `requests`（含 empty 数组？→ 建议有字段即拒） / **`C12_imperative_with_requests`** | 互斥 |
@@ -182,8 +182,8 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
 | 文件 | 改动 |
 |---|---|
 | `sandbox.smoke.ts` | `_template/parser` → `_template/declarative`；`_canary/parser` → `_canary/declarative`（若改名） |
-| `parser-replay.smoke.ts` | 路径 + 日志「parser」→ declarative（函数名可暂留 `replayParserFixture` 或 rename） |
-| `__testutils__/parser-replay.ts` | 注释术语；路径调用方改 |
+| `parser-replay.smoke.ts` → `declarative-replay.smoke.ts` | 路径 + 日志 + `replayDeclarativeFixture` |
+| `__testutils__/parser-replay.ts` → `declarative-replay.ts` | 注释术语；API rename |
 | `__testutils__/fetch-replay.ts` | 注释 imperative；逻辑不动 |
 | `sandbox.fetch.smoke.ts` | 注释「fetch 模式」→ imperative；**信任闸门用例保留** |
 | 各 `adapters-*.fetch.smoke.ts` | 仅注释/术语；manifest 由 §5 改 |
@@ -212,9 +212,9 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
   final rg = plan.capabilityRequestGraphs[capability];
   if (rg == null) throw AdapterLaunchException('capability 缺 requestGraph…');
   if (rg == 'declarative') {
-    // fulfillParserRequests + runParserAdapter（可 rename 见下）
+    // fulfillDeclarativeRequests + runDeclarativeAdapter
   } else if (rg == 'imperative') {
-    // _runFetchAdapter
+    // _runImperativeAdapter
   } else {
     throw … // fail-closed
   }
@@ -233,9 +233,9 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
 | `runFetchAdapter` / `_runFetchAdapter` | 注释 imperative；信任闸门条件不变 |
 | 文件头「parser 模式 / fetch 模式」 | 改 requestGraph 术语 |
 
-### 4.3 `parser_host.dart`
+### 4.3 `parser_host.dart` → `declarative_host.dart`
 
-- [x] 文件/API 名可暂留 `fulfillParserRequests` / `ParserRequestDecl`（实现语义=declarative 代取）。
+- [x] rename：`fulfillDeclarativeRequests` / `DeclarativeRequestDecl` / `DeclarativeHostException`。
 - [x] 注释：parser → declarative；**保留** commit 980bfc0「未声明 credential 却命中注入 → fail-closed」守卫。🔒
 - [x] 不改注入/代取算法。
 
@@ -308,7 +308,7 @@ adapters/_template/fetch
 - `tools/src/validator/index.ts` 注释
 - `tools/src/schema/schema-golden.smoke.ts`
 - `server/src/runtime/sandbox.smoke.ts`
-- `server/src/runtime/parser-replay.smoke.ts`
+- `server/src/runtime/declarative-replay.smoke.ts`
 - `client/test/dual_run_test.dart`
 - `adapters/README.md` / template README
 
@@ -385,9 +385,9 @@ rg -n 'manifest\.mode|plan\.mode|_runtimeMode' client/ server/ tools/
 
 ### 7.3 安全签收 🔒
 
-- [ ] Validator C3/C12 与 runtime 信任闸门：安全清单勾选。
-- [ ] Client `planLaunch` 缺 `requestGraph` fail-closed（无默认 imperative）。
-- [ ] 人工审 runtime + validator diff 后才 merge（AGENTS.md §1）。
+- [x] Validator C3/C12 与 runtime 信任闸门：安全清单勾选。
+- [x] Client `planLaunch` 缺 `requestGraph` fail-closed（无默认 imperative）。
+- [x] 人工审 runtime + validator diff 后才 merge（AGENTS.md §1）。
 
 ---
 

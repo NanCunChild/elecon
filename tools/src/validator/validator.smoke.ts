@@ -796,4 +796,66 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ sideload 混合 capability 仅对 imperative 触发 C3");
 }
 
+// C4) 存在 imperative cap 且 allow 为空 → C4_imperative_empty_allow
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: [] },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    contract,
+  );
+  assert.ok(
+    codes(findings).includes("C4_imperative_empty_allow"),
+    "imperative + empty allow 应触发 C4_imperative_empty_allow",
+  );
+  console.log("  ✓ imperative + empty allow 被拒（C4_imperative_empty_allow）");
+}
+
+// official 混用：declarative + imperative 同 adapter → 零 C3（仅 sideload 强制全 declarative）
+{
+  const reg2 = {
+    ...registry,
+    "notice.list": { emits: { schema: "elecon.notice.list", schemaVersion: "1.0" } },
+  };
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: ["https://h/api/*"] },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "declarative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+          requests: [{ key: "raw", method: "GET", url: "https://h/api/x" }],
+        },
+        {
+          id: "notice.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.notice.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    { manifestValidate, registry: reg2 },
+  );
+  assert.ok(
+    !codes(findings).includes("C3_sideload_must_declarative"),
+    "official 混用不应触发 C3",
+  );
+  assert.ok(
+    !codes(findings).some((c) => c.startsWith("C4") || c.startsWith("C12")),
+    "official 合法混用不应触发 C4/C12",
+  );
+  console.log("  ✓ official 混用 declarative+imperative 通过");
+}
+
 console.log("validator smoke 全部通过。");
