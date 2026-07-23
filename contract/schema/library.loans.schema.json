@@ -11,19 +11,37 @@
         "type": "object",
         "required": ["bookId", "title", "borrowedAt", "dueAt"],
         "properties": {
-          "bookId": { "type": "string" },
+          "bookId": {
+            "type": "string",
+            "description": "馆藏条码/记录 id；无独立 id 时可用条码。禁止空串。"
+          },
           "title": { "type": "string" },
           "author": { "type": "string" },
           "callNumber": { "type": "string" },
-          "location": { "type": "string" },
-          "branch": { "type": "string" },
-          "borrowedAt": { "type": "string", "format": "date-time" },
-          "dueAt": { "type": "string", "format": "date-time" },
+          "location": { "type": "string", "description": "馆藏位置/架位描述" },
+          "branch": { "type": "string", "description": "分馆/校区馆" },
+          "borrowedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "借出时刻 RFC3339/UTC。源站仅有日历日时，adapter 归一为该日 00:00:00Z（ADR-001 §3.4）。"
+          },
+          "dueAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "应还时刻 RFC3339/UTC。源站仅有日历日时，adapter 归一为该日 23:59:59Z 或次日 00:00:00Z（同校内一致即可，须在 adapter 注释固定）。"
+          },
           "renewCount": { "type": "integer", "minimum": 0 },
-          "overdue": { "type": "boolean" }
-          ,"renewalMax": { "type": "integer", "minimum": 0 },
+          "renewalMax": { "type": "integer", "minimum": 0 },
           "renewable": { "type": "boolean" },
-          "overdueFee": { "type": "object", "required": ["amountMinor", "currency"], "properties": { "amountMinor": { "type": "integer", "minimum": 0 }, "currency": { "type": "string", "pattern": "^[A-Z]{3}$" } } },
+          "overdue": { "type": "boolean" },
+          "overdueFee": {
+            "type": "object",
+            "required": ["amountMinor", "currency"],
+            "properties": {
+              "amountMinor": { "type": "integer", "minimum": 0 },
+              "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+            }
+          },
           "reserved": { "type": "boolean" },
           "pickupDeadline": { "type": "string", "format": "date-time" },
           "renewalDeadline": { "type": "string", "format": "date-time" },

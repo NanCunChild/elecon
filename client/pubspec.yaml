@@ -43,3 +43,4 @@ flutter:
     - assets/
     - assets/bootstrap/
     - assets/bootstrap/bundles/
+    - assets/stdlib/html.bundle.js

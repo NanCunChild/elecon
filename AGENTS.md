@@ -16,7 +16,7 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 2. **公网服务端零凭证、无状态。** 不得为公网哑服务（`server/src/public`）添加任何凭证存储或私密数据持久化。
 3. **私密数据不经公网。** 私密 / 认证数据只走客户端直连或校内授权中继（`server/src/campus`）。
 4. **传输底座仅官方签名加载。** release 包内**无侧载入口**；dev 传输只在 debug build 存在。
-5. **adapter 越薄越好。** 只做归一化。**release 下**第三方 / 侧载 adapter 必须是**纯解析器**（无网络、无凭证、无副作用）。**dev/debug build 例外**（仿红线 #4）：可加载无签名 fetch adapter 用于本地开发，须经强警告 + 全占用确认，且该侧载-fetch 路径**编译期从 release 剔除**，永不进发版二进制。详见 [`adr_002`](docs/adr/adr_002_trust_model.md) §2.5。
+5. **adapter 能力面越薄越好（安全口号，非工程口号）。**「越薄」约束的是**能力 / 信任面**，不是功能复杂度——**工程上 adapter 是吸收对端混乱的 shim，功能上越重越好**（归一化、校本派生尽量压进这层；分工线与「两个轴」见 [`adr_000`](docs/adr/adr_000_abstract.md) §3.1）。能力面的硬约束不变：**release 下**第三方 / 侧载 adapter 必须是**纯解析器**（无网络、无凭证、无副作用）。**dev/debug build 例外**（仿红线 #4）：可加载无签名 fetch adapter 用于本地开发，须经强警告 + 全占用确认，且该侧载-fetch 路径**编译期从 release 剔除**，永不进发版二进制。详见 [`adr_002`](docs/adr/adr_002_trust_model.md) §2.5。
 6. **契约即承重墙。** 改动 `contract/`（schema、manifest）必须先有 ADR，且默认保持向后兼容。
 7. **adapter 不在 UI 线程同步执行。** 一律背景 isolate，UI 永远异步。
 8. **不提交真实学生数据。** 测试夹具必须脱敏。

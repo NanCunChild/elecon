@@ -27,7 +27,7 @@ class AdapterLaunchException implements Exception {
   String toString() => 'AdapterLaunchException: $message';
 }
 
-/// 从 [LoadResult] 组装好、可直接喂 [runFetchAdapter] 的入参。
+/// 从 [LoadResult] 组装好、可直接喂 [runLoadedAdapter] 的入参。
 ///
 /// [source] 恒取自 [LoadResult.envelope]（不接受外部另传）；[view] 取自 bundle 内权威 manifest；
 /// [trust] 为 official 凭据，其 [TrustedAdapterContext.digest] 已复核 == 本 envelope 的重算 digest。
@@ -38,6 +38,8 @@ class LaunchPlan {
     required this.view,
     required this.capabilities,
     required this.digest,
+    required this.mode,
+    required this.capabilityRequests,
   });
 
   /// adapter 入口 JS 源码（envelope 内 `runtime.entry` 指向的 utf-8 文件）。
@@ -54,6 +56,12 @@ class LaunchPlan {
 
   /// 绑定 digest（== trust.digest == 重算 envelope digest）。
   final String digest;
+
+  /// `manifest.runtime.mode`：`parser` → 核心代取 + [runParserAdapter]；其余走 fetch。
+  final String mode;
+
+  /// capability id → `requests[]` 配方（仅 parser 用；fetch 为空 map）。
+  final Map<String, List<ParserRequestDecl>> capabilityRequests;
 }
 
 /// 🔒 纯函数：校验 official [LoadResult] 并组装 [LaunchPlan]。任何不一致 → [AdapterLaunchException]。
@@ -107,6 +115,8 @@ LaunchPlan planLaunch(LoadResult result) {
   final source = _entrySource(env, manifest);
   final view = _viewFromManifest(manifest);
   final capabilities = _capabilities(manifest);
+  final mode = _runtimeMode(manifest);
+  final capabilityRequests = _capabilityRequests(manifest);
 
   return LaunchPlan(
     source: source,
@@ -114,11 +124,16 @@ LaunchPlan planLaunch(LoadResult result) {
     view: view,
     capabilities: capabilities,
     digest: boundDigest,
+    mode: mode,
+    capabilityRequests: capabilityRequests,
   );
 }
 
 /// 🔒 薄尾：[planLaunch] 后执行 adapter。session 注入 resolver / transport / jar / harvest 等运行时依赖
 /// （它们属凭证存储 / 传输子系统，不由本层拥有）。能力越权在此 fail-closed。
+///
+/// `runtime.mode == parser` → 核心代取 [fulfillParserRequests] + [runParserAdapter]（ADR-001 §6.2）；
+/// 否则 → 官方签名 fetch 路径 [_runFetchAdapter]。
 Future<dynamic> runLoadedAdapter({
   required LoadResult result,
   required String capability,
@@ -132,13 +147,46 @@ Future<dynamic> runLoadedAdapter({
   int memoryBytes = _defaultMemoryBytes,
   FetchLimits fetchLimits = const FetchLimits(),
   void Function(String level, String message)? onLog,
-}) {
+}) async {
   final plan = planLaunch(result);
   if (!plan.capabilities.contains(capability)) {
     throw AdapterLaunchException(
       'adapter 未声明能力 $capability（manifest 权威能力集：${plan.capabilities}）→ fail-closed',
     );
   }
+
+  if (plan.mode == 'parser') {
+    final requests = plan.capabilityRequests[capability] ?? const [];
+    final Map<String, dynamic> responses;
+    try {
+      responses = await fulfillParserRequests(
+        requests: requests,
+        params: params ?? const {},
+        view: plan.view,
+        resolver: resolver,
+        transport: transport,
+        jar: jar,
+        maxRequests: fetchLimits.maxRequests,
+      );
+    } on ParserHostException catch (e) {
+      throw AdapterRunException(
+        e.limitExceeded
+            ? AdapterFailureReason.fetchLimit
+            : AdapterFailureReason.badResult,
+        e.message,
+      );
+    }
+    return runParserAdapter(
+      source: plan.source,
+      capability: capability,
+      params: params,
+      responses: responses,
+      htmlStdlib: htmlStdlib,
+      nowMs: nowMs,
+      memoryBytes: memoryBytes,
+    );
+  }
+
   return _runFetchAdapter(
     source: plan.source,
     capability: capability,
@@ -187,6 +235,87 @@ String _entrySource(BundleEnvelope env, Map<String, dynamic> manifest) {
   } on FormatException catch (e) {
     throw AdapterLaunchException('入口文件 $entry 解码失败：$e（fail-closed）');
   }
+}
+
+/// `manifest.runtime.mode`；缺省 `fetch`（与历史 official 接线一致）。
+String _runtimeMode(Map<String, dynamic> manifest) {
+  final runtime = manifest['runtime'];
+  if (runtime is! Map) return 'fetch';
+  final mode = runtime['mode'];
+  if (mode == null) return 'fetch';
+  if (mode is! String || mode.isEmpty) {
+    throw const AdapterLaunchException(
+      'manifest.runtime.mode 非法（fail-closed）',
+    );
+  }
+  return mode;
+}
+
+/// 各 capability 的 `requests[]`（parser 代取配方）。畸形 → fail-closed。
+Map<String, List<ParserRequestDecl>> _capabilityRequests(
+  Map<String, dynamic> manifest,
+) {
+  final raw = manifest['capabilities'];
+  if (raw is! List) return const {};
+  final out = <String, List<ParserRequestDecl>>{};
+  for (final c in raw) {
+    if (c is! Map) continue;
+    final id = c['id'];
+    if (id is! String || id.isEmpty) continue;
+    final reqsRaw = c['requests'];
+    if (reqsRaw == null) {
+      out[id] = const [];
+      continue;
+    }
+    if (reqsRaw is! List) {
+      throw AdapterLaunchException(
+        'capabilities.$id.requests 非数组（fail-closed）',
+      );
+    }
+    final list = <ParserRequestDecl>[];
+    final keys = <String>{};
+    for (final r in reqsRaw) {
+      if (r is! Map) {
+        throw AdapterLaunchException(
+          'capabilities.$id.requests 含非法项（fail-closed）',
+        );
+      }
+      final key = r['key'];
+      final method = r['method'];
+      final url = r['url'];
+      if (key is! String ||
+          key.isEmpty ||
+          method is! String ||
+          method.isEmpty ||
+          url is! String ||
+          url.isEmpty) {
+        throw AdapterLaunchException(
+          'capabilities.$id.requests 项缺 key/method/url（fail-closed）',
+        );
+      }
+      if (!keys.add(key)) {
+        throw AdapterLaunchException(
+          'capabilities.$id.requests 重复 key=$key（fail-closed）',
+        );
+      }
+      final cred = r['credential'];
+      if (cred != null && cred is! String) {
+        throw AdapterLaunchException(
+          'capabilities.$id.requests.$key.credential 非字符串（fail-closed）',
+        );
+      }
+      list.add(
+        ParserRequestDecl(
+          key: key,
+          method: method,
+          url: url,
+          credential: cred as String?,
+        ),
+      );
+    }
+    out[id] = list;
+  }
+  return out;
 }
 
 /// 从权威 manifest 解出注入策略视图（allow + credentials）。任何畸形 → fail-closed。

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.classroom.buildings",
+  "title": "教学楼列表",
+  "type": "object",
+  "description": "classroom.available 的 discovery 伴生结果。见 ADR-019。",
+  "properties": {
+    "campus": {
+      "type": "string"
+    },
+    "term": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["building"],
+        "properties": {
+          "campus": {
+            "type": "string"
+          },
+          "building": {
+            "type": "string",
+            "minLength": 1,
+            "description": "教学楼展示名；禁止空串；未知填 \"-\""
+          },
+          "buildingId": {
+            "type": "string"
+          },
+          "roomCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

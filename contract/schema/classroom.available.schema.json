@@ -1,4 +1,132 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.classroom.available", "title": "空教室", "type": "object",
-  "properties": { "date": { "type": "string", "format": "date" }, "start": { "type": "string" }, "end": { "type": "string" }, "items": { "type": "array", "items": { "type": "object", "required": ["building", "room"], "properties": { "campus": { "type": "string" }, "building": { "type": "string" }, "room": { "type": "string" }, "capacity": { "type": "integer", "minimum": 0 }, "equipment": { "type": "array", "items": { "type": "string" } }, "occupied": { "type": "boolean" }, "status": { "type": "string", "enum": ["available", "occupied", "unknown"] } } } } }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.classroom.available",
+  "title": "空教室",
+  "type": "object",
+  "description": "空教室查询结果。building/room 必填且 minLength≥1；未知展示名填 \"-\"。见 ADR-019。",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "term": {
+      "type": "string"
+    },
+    "week": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "weekday": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 7
+    },
+    "start": {
+      "type": "string"
+    },
+    "end": {
+      "type": "string"
+    },
+    "timeZone": {
+      "type": "string",
+      "description": "IANA 时区；adapter 声明；有墙钟字段时应填"
+    },
+    "sectionStart": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sectionEnd": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sourceSystem": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["building", "room"],
+        "properties": {
+          "campus": {
+            "type": "string"
+          },
+          "building": {
+            "type": "string",
+            "minLength": 1,
+            "description": "教学楼展示名；禁止空串；未知填 \"-\""
+          },
+          "buildingId": {
+            "type": "string"
+          },
+          "room": {
+            "type": "string",
+            "minLength": 1,
+            "description": "教室展示名；禁止空串；未知填 \"-\""
+          },
+          "roomId": {
+            "type": "string"
+          },
+          "floor": {
+            "type": "string",
+            "description": "楼层，字符串以兼容「B1」「东3」等"
+          },
+          "capacity": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "equipment": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "occupied": {
+            "type": "boolean",
+            "description": "在查询窗口上的聚合占用；无窗口则「当日是否曾占用」由 adapter 定义并尽量文档化"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["available", "occupied", "partial", "unknown"],
+            "description": "available=窗口内全空闲；occupied=窗口内全占用；partial=窗口内部分节次占用；unknown=无法判定"
+          },
+          "sections": {
+            "type": "array",
+            "maxItems": 24,
+            "description": "分节占用；缺失=该校不提供节次粒度；至多 24 节",
+            "items": {
+              "type": "object",
+              "required": ["index", "occupied"],
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 24
+                },
+                "occupied": {
+                  "type": "boolean"
+                },
+                "label": {
+                  "type": "string",
+                  "description": "展示用，如「第3节」"
+                },
+                "timeStart": {
+                  "type": "string",
+                  "description": "该节墙钟起点，推荐 HH:mm；解释时区见顶栏 timeZone"
+                },
+                "timeEnd": {
+                  "type": "string",
+                  "description": "该节墙钟终点，推荐 HH:mm"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }

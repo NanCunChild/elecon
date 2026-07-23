@@ -104,7 +104,7 @@ ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端
 }
 ```
 
-> 说明：`score.kind` 支持 `numeric` / `letter` / `passfail`，以容纳不同学校的记分制；`gradePoint` 等派生值若学校不直接给出，**由 UI/视图层计算，adapter 不擅自推算**（adapter 越薄越好）。
+> 说明：`score.kind` 支持 `numeric` / `letter` / `passfail`，以容纳不同学校的记分制；`gradePoint` 等派生值若学校不直接给出，**由 UI/视图层计算，adapter 不擅自推算**——注意这**不是**因为"adapter 要薄"（那是能力面的安全口号，见 [`adr_000`](./adr_000_abstract.md) §3.1「两个轴」），而是因为 GPA 这类**跨校统一、本体要自己施加智能（排序 / 聚合 / 算法一致性）的派生语义**归本体所有。**反向的一类必须分清**：**校本特有的派生（如脏日期格式归一化、从校历推当前教学周、单位换算、多接口拼装）是 adapter 的重活**，应尽量吸收进 adapter，不上抛核心/UI——本体不该知道每所学校的校历。判据一句话：**跨校统一的派生 → 本体；校本特有的派生 → adapter（尽量重）。**
 
 首批落地的域（其余按需经 ADR 扩展）：`grades`、`schedule`、`card`、`library`、`notice`，外加通用兜底域 `generic`（见 §3.6）。
 
@@ -336,11 +336,20 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
   - **草案（draft）状态约定**：上述 5 个 `params.*` 在经本 ADR **正式确认（"转正"）前不属稳定契约面**——adapter / UI 不得将其当稳定依赖。**草案期内其形状可自由调整（增删字段、改约束）而不触发 §8 的 MAJOR/MINOR 版本治理**；版本治理仅自该 schema 转正后生效。此约定为契约早期高频迭代（按真实接口反复校准）留出空间，同时不削弱红线 #6——草案明标、不被依赖、转正须在本节补记。
   - **待人工确认的设计点（草案期跟进，非阻塞本次补齐）**：
     1. `params.schedule.week.week` 设为 `required` 是否需核心侧配套「当前教学周」能力（否则消费方无从得知传第几周）；
-    2. `params.card.transactions` 的 `from`/`to` 与 `page`/`size`：已知学校（XIDIAN）流水接口仅支持分页（`pageNo`/`pageSize`）、不支持日期范围，故 `from`/`to` 设可选以适配跨校差异，由 adapter 归一化映射。
+     2. `params.card.transactions` 的 `from`/`to` 与 `page`/`size`：已知学校（XIDIAN）流水接口仅支持分页（`pageNo`/`pageSize`）、不支持日期范围，故 `from`/`to` 设可选以适配跨校差异，由 adapter 归一化映射。
+
+- **2026-07-22 · `classroom.available` 1.0 → 1.1 + 新增 `classroom.buildings`（ADR-019）**
+  - **改动**：
+    1. **`elecon.params.classroom.available` / `elecon.classroom.available` → 1.1**：双时间轴（`date`/`week`/`term`/`weekday` + 节次 `sectionStart`/`sectionEnd` + 墙钟 `start`/`end`）；楼/室过滤 `building`/`buildingId`/`room`/`roomId`；`onlyAvailable`；emits 增 `sections[]`（`maxItems:24`）、`status` 枚举追加 `partial`、`timeZone`（IANA，adapter 声明）、`floor` 等。`items[].building`+`room` 仍 required 且 `minLength:1`，未知填 `"-"`。
+    2. **新增伴生 capability `classroom.buildings@1.0`**（discovery）：params 可选 `campus`/`term`；emits `items[]` required `building`。
+    3. registry 级联 `schemaVersion`；codegen Dart/TS 同步。
+  - **为何是 MINOR**：仅新增可选字段 + 枚举扩展（放宽消费方须按 §3.4 对未知枚举兜底 `unknown`）+ 新 capability；不删字段、不改既有类型；旧 1.0 数据在 1.1 下仍合法。
+  - **依据**：[ADR-019](./adr_019_classroom_available.md)（2026-07-22 Accepted）。
 
 ---
 
 ## 9. 取舍（Consequences）
+
 
 **收益**
 - adapter 与 UI 彻底解耦，UI 不含任何学校逻辑；新学校只写 adapter + manifest。

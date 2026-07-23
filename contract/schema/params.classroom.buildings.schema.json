@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.classroom.buildings",
+  "title": "教学楼列表参数",
+  "type": "object",
+  "description": "空教室 discovery：列出可选楼栋。见 ADR-019。",
+  "properties": {
+    "campus": {
+      "type": "string",
+      "description": "校区过滤（可选）"
+    },
+    "term": {
+      "type": "string",
+      "description": "学期（可选；多数校与学期无关）"
+    }
+  }
+}

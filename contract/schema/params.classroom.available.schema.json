@@ -1,1 +1,75 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"elecon.params.classroom.available","type":"object","properties":{"date":{"type":"string","format":"date"},"start":{"type":"string"},"end":{"type":"string"},"campus":{"type":"string"}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.classroom.available",
+  "title": "空教室查询参数",
+  "type": "object",
+  "description": "双时间轴：墙钟（date+start/end）与/或节次（date/week/term + sectionStart/End）。字段组合由宿主与 adapter 约定；tools 不做 oneOf 强校验。见 ADR-019。",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "查询日历日 YYYY-MM-DD"
+    },
+    "term": {
+      "type": "string",
+      "description": "学期标识，如 2025-2026-2；省略=当前学期（若源站需要）"
+    },
+    "week": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "教学周序号"
+    },
+    "weekday": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 7,
+      "description": "星期 1=周一 … 7=周日"
+    },
+    "campus": {
+      "type": "string",
+      "description": "校区名称或校内 code（校作用域）"
+    },
+    "building": {
+      "type": "string",
+      "description": "教学楼展示名；模糊匹配时 adapter 自定，优先用 buildingId"
+    },
+    "buildingId": {
+      "type": "string",
+      "description": "教学楼校内 id/code（如西电 JXLDM）"
+    },
+    "room": {
+      "type": "string",
+      "description": "教室展示名过滤"
+    },
+    "roomId": {
+      "type": "string",
+      "description": "教室校内 id"
+    },
+    "start": {
+      "type": "string",
+      "description": "窗口起点，推荐 HH:mm（墙钟）"
+    },
+    "end": {
+      "type": "string",
+      "description": "窗口终点，推荐 HH:mm（墙钟）"
+    },
+    "timeZone": {
+      "type": "string",
+      "description": "IANA 时区；调用方可选提示；权威声明在 adapter emits"
+    },
+    "sectionStart": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "节次窗口起点（含），1-based"
+    },
+    "sectionEnd": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "节次窗口终点（含），1-based；须 ≥ sectionStart"
+    },
+    "onlyAvailable": {
+      "type": "boolean",
+      "description": "true=只返回在查询窗口内判定为空闲的教室；默认 false=返回楼内对照列表"
+    }
+  }
+}

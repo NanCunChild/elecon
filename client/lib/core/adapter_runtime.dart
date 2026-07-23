@@ -45,6 +45,11 @@ import 'loader/bundle.dart'
         envelopeDigest,
         readEnvelopeManifestJson;
 import 'loader/loader.dart' show LoadResult;
+import 'parser_host.dart'
+    show
+        ParserHostException,
+        ParserRequestDecl,
+        fulfillParserRequests;
 import 'trust/trusted_context.dart'
     show AdapterTrustTier, TrustedAdapterContext, fetchTrustPermitted;
 

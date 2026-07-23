@@ -1,1 +1,34 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"elecon.transport.schedule","title":"班车时刻","type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"route":{"type":"string"},"stop":{"type":"string"},"departureAt":{"type":"string","format":"date-time"},"operatingDate":{"type":"string","format":"date"},"status":{"type":"string","enum":["scheduled","delayed","cancelled","unknown"]}}}}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.transport.schedule",
+  "title": "班车时刻",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "班次列表；无班车信息时为空数组（禁止省略 items）。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "route": { "type": "string", "description": "线路名/编号（如「南校区—北校区」）" },
+          "stop": { "type": "string", "description": "站点名" },
+          "departureAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "发车时刻 RFC3339/UTC。源站仅有钟点时，adapter 归一到 operatingDate 当日（ADR-001 §3.4）。"
+          },
+          "operatingDate": {
+            "type": "string",
+            "format": "date",
+            "description": "运营日历日 YYYY-MM-DD（本地校历日，不含时区）。"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["scheduled", "delayed", "cancelled", "unknown"],
+            "description": "班次状态；源站无对应信息时用 unknown（禁止臆造 scheduled）。"
+          }
+        }
+      }
+    }
+  }
+}

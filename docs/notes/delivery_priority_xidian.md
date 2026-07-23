@@ -81,8 +81,8 @@
 |---|---|---|---|
 | A1 | **bootstrap 可加载 school-xidian** | 冷启动无网也能 `loadAdapter('school-xidian')` 成功，或失败原因是运维配置而非代码洞 | 签名/pin 人工过一遍；可先用已有 `assets/bootstrap` 扩包 |
 | A2 | 核心代取 parser 请求 | 宿主对 manifest `requests` 拉 HTML，脱敏后喂 parser | 无凭证；红线 #5 仍是纯解析器 |
-| A3 | `SessionController` / 薄 facade 出「首页快照」 | `Future<CampusSnapshot>` 内调 `runCapability('notice.list')` 填 notices | 其它字段可空 |
-| A4 | `MainShell` / `EleconHomePage` 接真 `loadSnapshot` | 去掉默认 demo 路径（debug 可留开关） | 破坏 UI 约定可接受 |
+| A3 | `SessionController` / 薄 facade 出「首页快照」 | `Future<CampusSnapshot>` 内调 `runCapability('notice.list')` 填 notices | 其它字段可空 · **已接** `campus_snapshot_loader` + 资产 `html.bundle.js` |
+| A4 | `MainShell` / `EleconHomePage` 接真 `loadSnapshot` | 去掉默认 demo 路径（debug 可留开关） | 破坏 UI 约定可接受 · **已接**（`kForceDemoHomeSnapshot`） |
 | A5 | Android 真机/模拟器演示 | 能刷出 jwc 列表；记录一次成功日志截图 | **本阶段完成门** |
 
 **故意不做**：grades、登录、mint、第二校、server 新能力。
