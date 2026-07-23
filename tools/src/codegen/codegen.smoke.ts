@@ -116,7 +116,11 @@ const noticeSchema = {
     },
     $defs: { money: { type: "object", properties: { amountMinor: { type: "integer", description: "分" } } } },
   });
-  assert.deepStrictEqual(miss.sort(), ["b", "fee", "items[].c"].sort(), "应精确枚举缺 description 的字段（含嵌套/数组，$ref 解析）");
+  assert.deepStrictEqual(
+    miss.sort(),
+    ["b", "fee", "items[].c"].sort(),
+    "应精确枚举缺 description 的字段（含嵌套/数组，$ref 解析）",
+  );
 
   const full = collectMissingDescriptions({
     type: "object",

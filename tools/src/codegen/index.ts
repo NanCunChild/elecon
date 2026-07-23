@@ -358,7 +358,9 @@ function main(): void {
     if (misses.length === 0) {
       console.log("✓ description 全覆盖");
     } else {
-      console.log(`\n⚠ description 缺失 ${misses.length} 处（每 properties 字段须有 description，见 docs/rules/schema_style.md §2）：`);
+      console.log(
+        `\n⚠ description 缺失 ${misses.length} 处（每 properties 字段须有 description，见 docs/rules/schema_style.md §2）：`,
+      );
       for (const m of misses) console.log(`  ✗ ${m.file}  ${m.path}`);
     }
     console.log(`\ncodegen --check：${files.length} 个 schema 可生成，${skipped.length} 个需人工处理。`);

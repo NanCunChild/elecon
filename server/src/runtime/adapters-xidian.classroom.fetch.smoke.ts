@@ -7,6 +7,9 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+// codegen 产物：ajv 通过后以此类型消费（与 adapters-xjt.fetch.smoke 一致）
+import type { ClassroomAvailable } from "../../../contract/generated/ts/classroom.available.js";
+import type { ClassroomBuildings } from "../../../contract/generated/ts/classroom.buildings.js";
 import {
   adapterDirIfPresent,
   FakeResolver,
@@ -106,7 +109,8 @@ async function smokeBuildings(source: string): Promise<void> {
 
   const validate = compileSchema(`${repoRoot}contract/schema/classroom.buildings.schema.json`);
   assert.ok(validate(data), `buildings 产出未通过 schema：${JSON.stringify(validate.errors)}`);
-  assert.deepEqual(data, {
+  const buildings = data as ClassroomBuildings;
+  assert.deepEqual(buildings, {
     items: [
       { building: "示例教学楼A", buildingId: "BLDG-A", campus: "示例校区" },
       { building: "示例教学楼B", buildingId: "BLDG-B", campus: "示例校区" },
@@ -170,23 +174,24 @@ async function smokeAvailable(source: string): Promise<void> {
 
   const validate = compileSchema(`${repoRoot}contract/schema/classroom.available.schema.json`);
   assert.ok(validate(data), `available 产出未通过 schema：${JSON.stringify(validate.errors)}`);
+  const result = data as ClassroomAvailable;
 
-  assert.equal(data.date, "2026-03-16");
-  assert.equal(data.term, "2025-2026-2");
-  assert.equal(data.week, 5);
-  assert.equal(data.weekday, 1);
-  assert.equal(data.sectionStart, 1);
-  assert.equal(data.sectionEnd, 4);
-  assert.equal(data.items.length, 2);
+  assert.equal(result.date, "2026-03-16");
+  assert.equal(result.term, "2025-2026-2");
+  assert.equal(result.week, 5);
+  assert.equal(result.weekday, 1);
+  assert.equal(result.sectionStart, 1);
+  assert.equal(result.sectionEnd, 4);
+  assert.equal(result.items?.length, 2);
 
-  const free = data.items.find((i: { room: string }) => i.room === "A101");
+  const free = result.items?.find((i) => i.room === "A101");
   assert.ok(free);
   assert.equal(free.status, "available");
   assert.equal(free.occupied, false);
-  assert.equal(free.sections.length, 11);
-  assert.equal(free.sections[4].occupied, true);
+  assert.equal(free.sections?.length, 11);
+  assert.equal(free.sections?.[4]?.occupied, true);
 
-  const partial = data.items.find((i: { room: string }) => i.room === "A102");
+  const partial = result.items?.find((i) => i.room === "A102");
   assert.ok(partial);
   assert.equal(partial.status, "partial");
   assert.equal(partial.occupied, true);
