@@ -2,9 +2,9 @@
  * sandbox QuickJS 底层工具 —— 从 sandbox.ts 抽出的**通用引擎/错误 plumbing**。
  *
  * 抽出动机（审阅：sandbox.ts 569 行 God File）：这些是**不含凭证语义**的 QuickJS handle
- * 编解码与错误归一化，与 parser/fetch 两模式共用。抽出后单向依赖（本文件不 import sandbox.ts），
- * 无循环。**凭证承重逻辑（buildFetchCtx / invokeFetchHandler）仍留在 sandbox.ts**，其进一步
- * 拆分是 🔒 承重路径，须人工主导。
+ * 编解码与错误归一化，与 declarative/imperative requestGraph 两路径共用。抽出后单向依赖
+ * （本文件不 import sandbox.ts），无循环。**凭证承重逻辑（buildImperativeCtx /
+ * invokeImperativeHandler）仍留在 sandbox.ts**，其进一步拆分是 🔒 承重路径，须人工主导。
  */
 
 import type { QuickJSContext, QuickJSHandle, Scope } from "quickjs-emscripten";
@@ -12,7 +12,7 @@ import type { QuickJSContext, QuickJSHandle, Scope } from "quickjs-emscripten";
 export type SandboxFailureReason =
   | "bad_export"
   | "capability_missing"
-  | "async_in_parser"
+  | "async_in_declarative"
   | "adapter_threw"
   | "timeout"
   | "memory"
@@ -56,7 +56,7 @@ export function unwrap(
   throw new SandboxError("adapter_threw", message);
 }
 
-/** scope 托管版 JSON marshal（parser 路径）。 */
+/** scope 托管版 JSON marshal（declarative 路径）。 */
 export function marshal(ctx: QuickJSContext, scope: Scope, value: unknown): QuickJSHandle {
   const json = JSON.stringify(value);
   if (json === undefined) return ctx.undefined;
@@ -66,7 +66,7 @@ export function marshal(ctx: QuickJSContext, scope: Scope, value: unknown): Quic
   return scope.manage(unwrap(ctx, ctx.callFunction(parseFn, jsonObj, strHandle), Number.POSITIVE_INFINITY));
 }
 
-/** scope 托管版 thenable 判定（parser 路径）。 */
+/** scope 托管版 thenable 判定（declarative 路径）。 */
 export function isThenable(ctx: QuickJSContext, scope: Scope, handle: QuickJSHandle): boolean {
   const t = ctx.typeof(handle);
   if (t !== "object" && t !== "function") return false;
@@ -74,7 +74,7 @@ export function isThenable(ctx: QuickJSContext, scope: Scope, handle: QuickJSHan
   return ctx.typeof(thenHandle) === "function";
 }
 
-/** 手动 dispose 版 JSON marshal（fetch 路径，无 Scope）。 */
+/** 手动 dispose 版 JSON marshal（imperative 路径，无 Scope）。 */
 export function jsonToHandle(ctx: QuickJSContext, value: unknown): QuickJSHandle {
   const json = JSON.stringify(value) ?? "null";
   const strH = ctx.newString(json);
@@ -90,7 +90,7 @@ export function jsonToHandle(ctx: QuickJSContext, value: unknown): QuickJSHandle
   throw new SandboxError("adapter_threw", `marshal 失败：${JSON.stringify(dumped)}`);
 }
 
-/** 手动 dispose 版 thenable 判定（fetch 路径）。 */
+/** 手动 dispose 版 thenable 判定（imperative 路径）。 */
 export function isThenableHandle(ctx: QuickJSContext, handle: QuickJSHandle): boolean {
   const t = ctx.typeof(handle);
   if (t !== "object" && t !== "function") return false;

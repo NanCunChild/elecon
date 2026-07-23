@@ -11,16 +11,16 @@
 
 ## 1. 背景（Context）
 
-ADR-005/008 的 parser 模式靠"核心代取 + 脱敏 → adapter 纯解析"。但"**代取**"这一步本身就需要凭证——而当前核心**没有任何凭证获取/存储机制**：客户端未接入任何安全存储，`server/src/campus` 是 stub（"尚未实现"）。
+ADR-005/008 的 declarative requestGraph 靠"核心代取 + 脱敏 → adapter 纯解析"。但"**代取**"这一步本身就需要凭证——而当前核心**没有任何凭证获取/存储机制**：客户端未接入任何安全存储，`server/src/campus` 是 stub（"尚未实现"）。
 
-ADR-009 假定"按 reference 注入凭证"，ADR-002 假定"official 才有凭证注入资格"，但**凭证从哪来、存哪、是什么数据形态**——两者都没认领。这是 fetch 模式（乃至 parser 模式代取）真正的**地基**。#8 与 #10 的评审都把它点成了悬空缺口。
+ADR-009 假定"按 reference 注入凭证"，ADR-002 假定"official 才有凭证注入资格"，但**凭证从哪来、存哪、是什么数据形态**——两者都没认领。这是 imperative requestGraph（乃至 declarative 代取）真正的**地基**。#8 与 #10 的评审都把它点成了悬空缺口。
 
 红线约束：
 - #1 凭证（值与任何等价物）永不离开可信核心。
 - #2 公网哑服务零凭证、无状态。
 - #3 私密数据只走 client-direct 或 campus-relay。
 
-**核心难题（本文要解的张力）**：登录流程**高度校校异**——端点、CSRF、验证码、2FA、SSO 跳转、JS 挑战各不相同，天然像"需要一段 per-school 代码"；但红线 #1 + #5 要求**凭证绝不经过 adapter**（adapter 必须是无凭证的纯解析器）。**如何在不让 adapter 碰凭证的前提下完成校异登录？**
+**核心难题（本文要解的张力）**：登录流程**高度校校异**——端点、CSRF、验证码、2FA、SSO 跳转、JS 挑战各不相同，天然像"需要一段 per-school 代码"；但红线 #1 + #5 要求**凭证绝不经过 adapter**（release 侧载 adapter 必须是 declarative 纯解析）。**如何在不让 adapter 碰凭证的前提下完成校异登录？**
 
 ---
 
@@ -42,7 +42,7 @@ ADR-009 假定"按 reference 注入凭证"，ADR-002 假定"official 才有凭�
 2. 用户在**学校自己的页面**输入账号密码——凭证进的是学校页面，**不经过 adapter，甚至不必进核心的字段存储**。
 3. 登录成功后，核心从 WebView 的 cookie jar / 存储中**收割 session 凭证**（cookie / token），存入 §2.1 安全存储。**核心收割的是登录结果（session），不强制持有原始口令**——进一步缩小红线 #1 暴露面。
 
-   > **同一收割动作也服务 fetch 模式握手（2026-06-14，与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 协调）**：fetch 模式 adapter 经 `ctx.fetch` 完成多步反爬/握手后，origin 下发的**耐久 session cookie** 同样在执行结束时由核心收割进本存储——触发点从"WebView 登录页"扩展到"fetch 握手结束"，但收割逻辑、安全边界、`CredentialEntry` 形态一致。**收割判据 = manifest `credentials.<name>` 显式声明的 ref（判据 b）**，未声明者一律丢弃（不持久化），封死"诱导 origin 下发任意 cookie 入库"的面。adapter 全程不可见值。
+   > **同一收割动作也服务 imperative 握手（2026-06-14，与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 协调）**：imperative adapter 经 `ctx.fetch` 完成多步反爬/握手后，origin 下发的**耐久 session cookie** 同样在执行结束时由核心收割进本存储——触发点从"WebView 登录页"扩展到"imperative 握手结束"，但收割逻辑、安全边界、`CredentialEntry` 形态一致。**收割判据 = manifest `credentials.<name>` 显式声明的 ref（判据 b）**，未声明者一律丢弃（不持久化），封死"诱导 origin 下发任意 cookie 入库"的面。adapter 全程不可见值。
 4. WebView 是**核心代码、非 adapter**；其中跑的是学校页面的 JS，在隔离 WebView 内，**不接触 adapter 运行时、不接触其它学校的凭证**。
 
 **为什么 WebView 而非"核心 headless 模拟登录"**：验证码、2FA、SSO 联合登录、JS 反爬挑战这些**人机交互/反爬**用 headless 请求几乎不可维护（正是 ADR-009 §3.4 主动划走的"JS 挑战"领域）。WebView 让学校页面自己处理这些，核心只取最终 session——**最大兼容 + 最少维护**，与项目"对接口变动保持韧性、最小人力"的主线一致。
@@ -165,9 +165,9 @@ CredentialEntry {
 3. **收割 session 而非口令降低暴露，但 session 本身仍是凭证。** at-rest 加密 + OS keystore 是底线；内存中明文窗口最小化（注入瞬间解密、用完即弃）。
 4. **声明式刷新配方若入 manifest = 契约改动**（红线 #6），独立 ADR、向后兼容；配方表达力须谨慎（避免变成图灵完备的"伪 adapter"反而成新代码注入面）。
 5. **campus-relay 凭证传输是开放风险**（§2.6），未解前 fetch-via-relay 不落地。
-6. **iOS 联动 ADR-010。** WebView 登录 + Keychain + session 收割需在 5.1.1 隐私申报披露；首版仅 parser，本文随 fetch 模式一并做 2.5.2 自检。
+6. **iOS 联动 ADR-010。** WebView 登录 + Keychain + session 收割需在 5.1.1 隐私申报披露；首版仅 declarative，本文随 imperative requestGraph 一并做 2.5.2 自检。
 7. **桌面 Linux secret storage 可用性是已知弱点**（无统一 keyring 时的回退策略需定，且回退不得降级为明文落盘）。**回退策略已由 §2.7 决策 E 定案（2026-07-04，已接受）**：无 Secret Service → 凭证内存-only + fail-closed，绝不明文落盘；passphrase 派生 KEK 留待后续独立决策。**（§2.8 修订，2026-07-09 已接受：放宽为知情同意的分级回退，见下条 9。）**
-8. **首次"代取"也需要凭证。** 即便 parser 模式，"核心代取私密页"也依赖本文的凭证——因此本文不仅服务 fetch 模式，也是 parser 模式取私密数据的前提。
+8. **首次"代取"也需要凭证。** 即便 declarative requestGraph，"核心代取私密页"也依赖本文的凭证——因此本文不仅服务 imperative，也是 declarative 取私密数据的前提。
 9. **S 软件档是有意识的安全弱化，非疏漏（§2.8）。** 软件档下明文 DEK 与密文并存，对能读 app 私有目录者（root / 备份导出 / 取证）保密性≈明文。补偿控制 = 5 秒强制等待 + 知情同意（警告框**显式点名** SSO 母凭证一并以≈明文持久化，§2.8 决策）+ 备份排除 + 持续 UI 警示。**文档 / UI 绝不得把软件档描述为"受保护加密"而误导用户。** 更强的软件档升级路径是 **passphrase 派生 KEK（Argon2id）** 包裹 DEK（DEK 不明文落盘），本修订未采用（引入口令 UX + KDF 参数面，§2.7 决策 E 已推迟），列为可选未来增强。
 10. **备份排除是 S 软件档最关键实现细节。** `allowBackup=false` / auto-backup 排除（Android）、`isExcludedFromBackup`（iOS）遗漏则软件档明文 DEK 随云备份外泄，风险陡升——须列入 §2.8 实现的安全清单必检项。
 
@@ -199,6 +199,6 @@ CredentialEntry {
 
 > 从头部 **日期** 行移出，便于阅读；内容不变（红线 #1 决策，历次均经人工 + 安全清单审）。
 
-- **2026-06-14**：① §2.2 增 fetch 模式握手的耐久 session 收割——与 WebView 登录同一动作、判据 = manifest 声明的 credential ref（判据 b），与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 / [`adr_013`](./adr_013_manifest_credentials.md) 协调；② §2.4 闭合 scope/type 双源——store 保留为防御性副本+一致性基准，注入权威唯一在已验签 manifest，不一致以 manifest 为准并告警；③ §2.6 钉定首版仅 client-direct，relay 凭证落点推迟、本 ADR 不依赖 relay，relay 须满足"零落盘+用完即弃/客户端注入"硬约束。
+- **2026-06-14**：① §2.2 增 imperative 握手的耐久 session 收割——与 WebView 登录同一动作、判据 = manifest 声明的 credential ref（判据 b），与 [`adr_009`](./adr_009_fetch_credential.md) §2.4 / [`adr_013`](./adr_013_manifest_credentials.md) 协调；② §2.4 闭合 scope/type 双源——store 保留为防御性副本+一致性基准，注入权威唯一在已验签 manifest，不一致以 manifest 为准并告警；③ §2.6 钉定首版仅 client-direct，relay 凭证落点推迟、本 ADR 不依赖 relay，relay 须满足"零落盘+用完即弃/客户端注入"硬约束。
 - **2026-07-04（已接受，#79 P0-2）**：新增 §2.7 安全存储威胁模型 + 保护对象边界 + 平台后端矩阵 + 密钥托管 + 无 keyring 桌面 fail-closed 回退 + 生产禁默认明文后端护栏——认领 §2.1/§3.7 遗留的 key custody 开放问题；护栏部分已实现 PR #82，平台后端按本补全拆 PR。
 - **2026-07-09（已接受）**：新增 §2.8——无硬件加密时由「一律内存-only / fail-closed」放宽为「知情同意的分级回退」：H 硬件档（KEK 包裹 DEK）/ S 软件档（DEK 明文落盘，5 秒警示后用户同意）/ M 内存档（取消即旧 fail-closed 行为）；修订 §2.7 决策 E 与不变量 ②；触红线 #1，须人工 + 安全清单审。

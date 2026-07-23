@@ -9,7 +9,7 @@
 ## 原定覆盖内容（留档，待条件成熟时按需展开）
 
 1. **认证模式分类**：各校属哪一档（纯 UA 校验 / CAS SSO / OIDC 联合登录 / 微信小程序 code2session / 多因素 2FA）。
-2. **各档的 adapter 对接策略**：parser 模式够不够、是否需要 fetch 模式多步握手、是否需要 WebView 登录配合。
+2. **各档的 adapter 对接策略**：declarative requestGraph 够不够、是否需要 imperative 多步握手、是否需要 WebView 登录配合。
 3. **微信绑定天花板**：code2session 无 AppSecret 下的可解/不可解边界；依赖信息处给 API 的必要条件。
 4. **逐校可行性矩阵**：已知学校的认证模式、逆向难度、维护风险评估。
 

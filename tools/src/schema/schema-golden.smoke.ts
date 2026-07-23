@@ -40,7 +40,7 @@ const cases: Array<{ schema: string; valid: unknown }> = [
   },
   {
     schema: "grades.list",
-    valid: readJson<{ expected: unknown }>(`${repoRoot}adapters/_template/parser/fixtures/grades.list.json`)
+    valid: readJson<{ expected: unknown }>(`${repoRoot}adapters/_template/declarative/fixtures/grades.list.json`)
       .expected,
   },
   {

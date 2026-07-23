@@ -3,14 +3,14 @@
 /// 与服务端 QuickJS-wasm（`server/src/runtime/sandbox.ts`）是**同一个 QuickJS
 /// 引擎**，对同一份 adapter 源码零语义漂移（ADR-001 §8、ADR-005）。
 ///
-/// 当前实现：**parser 模式**（无网络、无凭证、纯解析器）+ **fetch 模式**
-/// （受限 ctx.fetch、凭证白名单注入，B6b-Dart，见文件下半部）。fetch 是承重 +
-/// 安全敏感路径（红线 #1、AGENTS.md §1）：入口有信任闸门（ADR-002 §2.6），
-/// 改动须人工 + 安全清单复核。
+/// 当前实现：**declarative requestGraph**（无网络、无凭证、纯解析器）+
+/// **imperative requestGraph**（受限 ctx.fetch、凭证白名单注入，B6b-Dart，见文件下半部）。
+/// imperative 是承重 + 安全敏感路径（红线 #1、AGENTS.md §1）：入口有信任闸门
+/// （ADR-002 §2.6），改动须人工 + 安全清单复核。
 ///
 /// 不变量：
 ///  - adapter 在**后台 isolate** 执行（红线 #7：不在 UI 线程同步阻塞）。
-///  - parser 模式的 ctx 只有 log/now，**没有 fetch**（无网络能力）。
+///  - declarative 的 ctx 只有 log/now，**没有 fetch**（无网络能力）。
 ///  - 两端用同一加载约定：以 ES module 加载 adapter、读其 `capabilities` 导出。
 ///  - 产出**不在此处按 schema 校验**——校验在宿主（Dart 核心）边界做，
 ///    与服务端一致（ADR-001 §2.2：QuickJS 不背校验器）。
@@ -53,7 +53,7 @@ import 'parser_host.dart'
 import 'trust/trusted_context.dart'
     show AdapterTrustTier, TrustedAdapterContext, fetchTrustPermitted;
 
-// 🔒 片 G 接线是本库的一部分（part），使其能调用 library-private 的 [_runFetchAdapter]——
+// 🔒 片 G 接线是本库的一部分（part），使其能调用 library-private 的 [_runImperativeAdapter]——
 // 从而「运行任意 (source, trust)」的低层入口**不在生产公开面上**，唯一生产入口是 [runLoadedAdapter]
 // （绑定 source⟷凭据 digest，评审 P0-1）。part 共享本文件的 import。
 part 'adapter_launcher.dart';
@@ -67,8 +67,8 @@ enum AdapterFailureReason {
   /// adapter 未导出指定 capability。
   capabilityMissing,
 
-  /// parser capability 返回了 Promise（parser 模式必须同步、无 I/O）。
-  asyncInParser,
+  /// declarative capability 返回了 Promise（declarative requestGraph 必须同步、无 I/O）。
+  asyncInDeclarative,
 
   /// 超过墙钟超时被引擎中断。
   timeout,
@@ -82,10 +82,10 @@ enum AdapterFailureReason {
   /// adapter 未产出可解析的结果。
   badResult,
 
-  /// fetch 模式：单请求 10s / 累计 30s / 单次 ≤20 请求任一超限（ADR-009 §2.7）。
+  /// imperative：单请求 10s / 累计 30s / 单次 ≤20 请求任一超限（ADR-009 §2.7）。
   fetchLimit,
 
-  /// fetch 模式：信任闸门拒绝——档位 × build 模式不满足入场条件
+  /// imperative：信任闸门拒绝——档位 × build 模式不满足入场条件
   /// （ADR-002 §2.6 结构化权限错误；非 official 在 release 永不触达凭证注入）。
   trustRejected,
 }
@@ -104,7 +104,7 @@ class AdapterRunException implements Exception {
 const int _defaultTimeoutMs = 5000;
 const int _defaultMemoryBytes = 64 * 1024 * 1024;
 
-/// 在后台 isolate 的 QuickJS 中执行一次 parser 模式的 adapter capability。
+/// 在后台 isolate 的 QuickJS 中执行一次 **declarative requestGraph** adapter capability。
 ///
 /// [source] 是 adapter 源码（同一份脚本，两端共用）；[responses] 是核心代取并
 /// 脱敏后的原始响应（按 manifest `requests[].key` 索引）；[nowMs] 注入 ctx.now()，
@@ -117,7 +117,7 @@ const int _defaultMemoryBytes = 64 * 1024 * 1024;
 /// 服务端 `setModuleLoader` 的未知模块语义对称（红线 #5：解析器无网络、无副作用）。
 ///
 /// 返回归一化后的产出（已 JSON 往返的 Dart 结构）。失败抛 [AdapterRunException]。
-Future<dynamic> runParserAdapter({
+Future<dynamic> runDeclarativeAdapter({
   required String source,
   required String capability,
   Map<String, dynamic>? params,
@@ -140,7 +140,7 @@ Future<dynamic> runParserAdapter({
   );
 
   try {
-    final bootstrap = _buildParserBootstrap(
+    final bootstrap = _buildDeclarativeBootstrap(
       capability: capability,
       params: params ?? const {},
       responses: responses ?? const {},
@@ -183,10 +183,10 @@ Future<dynamic> runParserAdapter({
           AdapterFailureReason.capabilityMissing,
           "capability '$capability' 不在 adapter 内",
         );
-      case 'async_in_parser':
+      case 'async_in_declarative':
         throw const AdapterRunException(
-          AdapterFailureReason.asyncInParser,
-          'parser capability 返回了 Promise；parser 模式必须同步（无 I/O）',
+          AdapterFailureReason.asyncInDeclarative,
+          'declarative capability 返回了 Promise；declarative requestGraph 必须同步（无 I/O）',
         );
       default:
         throw AdapterRunException(
@@ -225,12 +225,12 @@ AdapterRunException _mapEngineError(Object e) {
   return AdapterRunException(AdapterFailureReason.adapterThrew, msg);
 }
 
-/// 构造 parser bootstrap：import adapter → 组装受限 ctx（仅 log/now，无 fetch）
+/// 构造 declarative bootstrap：import adapter → 组装受限 ctx（仅 log/now，无 fetch）
 /// → 调用 capability → 把**结构化 outcome** 以 JSON 字符串写入 globalThis。
 ///
 /// 入参以 `JSON.parse(<JS 字符串字面量>)` 注入，避免拼接 JS 代码引入注入面。
 /// adapter 自身抛错不在此拦截——任其冒泡为异常，由宿主侧 catch 处理。
-String _buildParserBootstrap({
+String _buildDeclarativeBootstrap({
   required String capability,
   required Object params,
   required Object responses,
@@ -261,7 +261,7 @@ if (capabilities === null || typeof capabilities !== "object") {
   } else {
     const out = fn(ctx, params, responses);
     if (out !== null && typeof out === "object" && typeof out.then === "function") {
-      globalThis.__elecon_outcome = JSON.stringify({ status: "async_in_parser" });
+      globalThis.__elecon_outcome = JSON.stringify({ status: "async_in_declarative" });
     } else {
       globalThis.__elecon_outcome = JSON.stringify({ status: "ok", data: out });
     }
@@ -271,9 +271,9 @@ if (capabilities === null || typeof capabilities !== "object") {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// fetch 模式运行时（Gate A · B6b-Dart）—— ADR-009 §2.1/§2.7 · ADR-014（host-fn 通道）
+// imperative requestGraph 运行时（Gate A · B6b-Dart）—— ADR-009 §2.1/§2.7 · ADR-014（host-fn 通道）
 //
-// 镜像服务端 sandbox.ts runFetchAdapter：用 fork 的 host-fn 通道把受限 ctx.fetch 接到
+// 镜像服务端 sandbox.ts runImperativeAdapter：用 fork 的 host-fn 通道把受限 ctx.fetch 接到
 // B6a proxyFetch（Dart 镜像 fetch_proxy.dart）。**host 闭包跑在主 isolate**（凭证 resolver /
 // transport / jar 都在主 isolate），worker/JS 只见脱敏 {status,headers,body}——凭证永不入
 // isolate（红线 #1，ADR-014 核心安全断言）。
@@ -281,7 +281,7 @@ if (capabilities === null || typeof capabilities !== "object") {
 // 🔒 触引擎 + 凭证注入 + 出网承重路径：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环。
 // ───────────────────────────────────────────────────────────────────────────
 
-/// fetch 模式资源限额（ADR-009 §2.7；数值占位，待实测校准 §2.8）。
+/// imperative requestGraph 资源限额（ADR-009 §2.7；数值占位，待实测校准 §2.8）。
 class FetchLimits {
   const FetchLimits({
     this.perRequestTimeoutMs = 10000,
@@ -311,12 +311,12 @@ class HarvestTarget {
   final String schoolId;
 }
 
-/// 🔒 **仅测试入口**：直接以任意 (source, trust, view) 跑 fetch 引擎，供 `fetch_runtime_test` 穷举
+/// 🔒 **仅测试入口**：直接以任意 (source, trust, view) 跑 imperative 引擎，供 `imperative_runtime_test` 穷举
 /// 引擎行为（bad export / 能力缺失 / 限额 / 注入等）。**生产禁用**（[visibleForTesting] lint 兜底）——
 /// 生产唯一入口是 [runLoadedAdapter]（它绑定 source⟷凭据 digest，评审 P0-1）。本 shim 不做绑定，
 /// 故绝不可暴露给生产调用方：那正是「official 票 + 任意源码」的绕过面。
 @visibleForTesting
-Future<dynamic> runFetchAdapterForTesting({
+Future<dynamic> runImperativeAdapterForTesting({
   required String source,
   required String capability,
   required TrustedAdapterContext trust,
@@ -331,7 +331,7 @@ Future<dynamic> runFetchAdapterForTesting({
   int memoryBytes = _defaultMemoryBytes,
   FetchLimits fetchLimits = const FetchLimits(),
   void Function(String level, String message)? onLog,
-}) => _runFetchAdapter(
+}) => _runImperativeAdapter(
   source: source,
   capability: capability,
   trust: trust,
@@ -348,13 +348,13 @@ Future<dynamic> runFetchAdapterForTesting({
   onLog: onLog,
 );
 
-/// 在后台 isolate 的 QuickJS 中执行一次 **fetch 模式** adapter capability。
-/// 与 [runParserAdapter] 并列、互不干扰（parser 已签收，本路径独立新增）。
+/// 在后台 isolate 的 QuickJS 中执行一次 **imperative requestGraph** adapter capability。
+/// 与 [runDeclarativeAdapter] 并列、互不干扰。
 ///
 /// 🔒 **library-private（评审 P0-1）**：本函数接受裸 (source, trust)、只校验 [trust] 档位而**不核对
 /// source 是否对应 [trust] 的 digest**。若公开，持一张合法 official 票的调用方即可传另一份源码绕过
 /// 绑定与 manifest 策略组装。故它只对本库开放，生产唯一入口 [runLoadedAdapter] 经 [planLaunch] 完成
-/// 绑定后才调用它；测试经 [runFetchAdapterForTesting]（[visibleForTesting]）。
+/// 绑定后才调用它；测试经 [runImperativeAdapterForTesting]（[visibleForTesting]）。
 ///
 /// 不变量（与 `sandbox.ts` 镜像，🔒 安全清单逐项）：
 ///  - **信任闸门（ADR-002 §2.6 · #79 P0-1）**：入口强制 [trust]（只能经核心裁定路径构造），
@@ -369,7 +369,7 @@ Future<dynamic> runFetchAdapterForTesting({
 ///  - fail 不收割：仅成功执行后调 B5 收割钩子。
 ///  - **限额终止 open question（ADR-014 §4.4）**：单请求由 host 侧 `.timeout` 兜；卡死的 worker
 ///    isolate 的主动中止（`#abort`/`Isolate.kill`）+ in-flight transport cancel（§4.7）为后续项。
-Future<dynamic> _runFetchAdapter({
+Future<dynamic> _runImperativeAdapter({
   required String source,
   required String capability,
   required TrustedAdapterContext trust,
@@ -390,7 +390,7 @@ Future<dynamic> _runFetchAdapter({
   if (!fetchTrustPermitted(trust.tier, debugBuild: kDebugMode)) {
     throw AdapterRunException(
       AdapterFailureReason.trustRejected,
-      '非 official adapter 无 fetch 权限（档位 ${trust.tier.name}，release/profile '
+      '非 official adapter 无 imperative 权限（档位 ${trust.tier.name}，release/profile '
       'build）——ADR-002 §2.6 结构化权限错误，凭证注入路径不可达',
     );
   }

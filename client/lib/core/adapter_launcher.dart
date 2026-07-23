@@ -1,17 +1,17 @@
-// 🔒🔒 片 G —— 把编排器产出的 official LoadResult 桥接到 fetch 运行时（ADR-018 §2.6 终点，红线 #1）。
+// 🔒🔒 片 G —— 把编排器产出的 official LoadResult 桥接到 adapter 运行时（ADR-018 §2.6 终点，红线 #1）。
 //
 // **本文件是 `adapter_runtime.dart` 的 part**（评审 P0-1）：唯一生产执行入口 [runLoadedAdapter] 需调用
-// library-private 的 `_runFetchAdapter`，故与其同库；从而「运行任意 (source, trust)」的低层入口**不在
+// library-private 的 `_runImperativeAdapter`，故与其同库；从而「运行任意 (source, trust)」的低层入口**不在
 // 生产公开面上**。编排器（片 E `loader.dart`）验签 + 全门后产出 LoadResult（official 凭据 + 已验签
 // envelope）。本层在触达运行时前把三件事钉死一致：
 //
-//   1. **source⟷凭据绑定（落实评审 E#2 的 enforcement）**：`_runFetchAdapter` 只收 source 字符串、
+//   1. **source⟷凭据绑定（落实评审 E#2 的 enforcement）**：`_runImperativeAdapter` 只收 source 字符串、
 //      拿不到 envelope，无法自证「要跑的字节就是凭据所指的那份」。本层即那个核对点：source **只从
 //      LoadResult.envelope 取**（不接受外部另传 source），并**重算 envelope digest 复核 == 凭据
 //      digest**——从结构上消除「A 的 official 票 + B 的源码」的错配。
 //   2. **注入策略取自权威 manifest**（ADR-002 §2.2）：BrokerManifestView（allow / credentials）从
 //      bundle 内 manifest（digest 覆盖）解出，非 catalog 提示、非旁路配置。
-//   3. **能力门**：只放行 manifest 声明的 capability（纵深，`_runFetchAdapter` 内仍复核档位）。
+//   3. **能力门**：只放行 manifest 声明的 capability（纵深，`_runImperativeAdapter` 内仍复核档位）。
 //
 // fail-closed：[planLaunch] 任一步不一致即抛 [AdapterLaunchException]，绝不产出可执行 plan；只有
 // official 档 LoadResult 走此路（dev 侧载有独立 debug-only 路径）。
@@ -38,7 +38,7 @@ class LaunchPlan {
     required this.view,
     required this.capabilities,
     required this.digest,
-    required this.mode,
+    required this.capabilityRequestGraphs,
     required this.capabilityRequests,
   });
 
@@ -57,10 +57,10 @@ class LaunchPlan {
   /// 绑定 digest（== trust.digest == 重算 envelope digest）。
   final String digest;
 
-  /// `manifest.runtime.mode`：`parser` → 核心代取 + [runParserAdapter]；其余走 fetch。
-  final String mode;
+  /// capability id → `requestGraph`（`declarative` | `imperative`；按本次 capability 分派）。
+  final Map<String, String> capabilityRequestGraphs;
 
-  /// capability id → `requests[]` 配方（仅 parser 用；fetch 为空 map）。
+  /// capability id → `requests[]` 配方（仅 declarative 用；imperative 为空 map）。
   final Map<String, List<ParserRequestDecl>> capabilityRequests;
 }
 
@@ -115,7 +115,7 @@ LaunchPlan planLaunch(LoadResult result) {
   final source = _entrySource(env, manifest);
   final view = _viewFromManifest(manifest);
   final capabilities = _capabilities(manifest);
-  final mode = _runtimeMode(manifest);
+  final capabilityRequestGraphs = _capabilityRequestGraphs(manifest);
   final capabilityRequests = _capabilityRequests(manifest);
 
   return LaunchPlan(
@@ -124,7 +124,7 @@ LaunchPlan planLaunch(LoadResult result) {
     view: view,
     capabilities: capabilities,
     digest: boundDigest,
-    mode: mode,
+    capabilityRequestGraphs: capabilityRequestGraphs,
     capabilityRequests: capabilityRequests,
   );
 }
@@ -132,8 +132,9 @@ LaunchPlan planLaunch(LoadResult result) {
 /// 🔒 薄尾：[planLaunch] 后执行 adapter。session 注入 resolver / transport / jar / harvest 等运行时依赖
 /// （它们属凭证存储 / 传输子系统，不由本层拥有）。能力越权在此 fail-closed。
 ///
-/// `runtime.mode == parser` → 核心代取 [fulfillParserRequests] + [runParserAdapter]（ADR-001 §6.2）；
-/// 否则 → 官方签名 fetch 路径 [_runFetchAdapter]。
+/// 按本次 capability 的 `requestGraph` 分派（ADR-022）：
+/// `declarative` → 核心代取 [fulfillParserRequests] + [runDeclarativeAdapter]；
+/// `imperative` → 官方签名 imperative 路径 [_runImperativeAdapter]。
 Future<dynamic> runLoadedAdapter({
   required LoadResult result,
   required String capability,
@@ -155,7 +156,14 @@ Future<dynamic> runLoadedAdapter({
     );
   }
 
-  if (plan.mode == 'parser') {
+  final requestGraph = plan.capabilityRequestGraphs[capability];
+  if (requestGraph == null) {
+    throw AdapterLaunchException(
+      'capability $capability 缺 requestGraph（fail-closed）',
+    );
+  }
+
+  if (requestGraph == 'declarative') {
     final requests = plan.capabilityRequests[capability] ?? const [];
     final Map<String, dynamic> responses;
     try {
@@ -176,7 +184,7 @@ Future<dynamic> runLoadedAdapter({
         e.message,
       );
     }
-    return runParserAdapter(
+    return runDeclarativeAdapter(
       source: plan.source,
       capability: capability,
       params: params,
@@ -187,7 +195,7 @@ Future<dynamic> runLoadedAdapter({
     );
   }
 
-  return _runFetchAdapter(
+  return _runImperativeAdapter(
     source: plan.source,
     capability: capability,
     trust: plan.trust,
@@ -237,21 +245,27 @@ String _entrySource(BundleEnvelope env, Map<String, dynamic> manifest) {
   }
 }
 
-/// `manifest.runtime.mode`；缺省 `fetch`（与历史 official 接线一致）。
-String _runtimeMode(Map<String, dynamic> manifest) {
-  final runtime = manifest['runtime'];
-  if (runtime is! Map) return 'fetch';
-  final mode = runtime['mode'];
-  if (mode == null) return 'fetch';
-  if (mode is! String || mode.isEmpty) {
-    throw const AdapterLaunchException(
-      'manifest.runtime.mode 非法（fail-closed）',
-    );
+/// 各 capability 的 `requestGraph`（`declarative` | `imperative`）。缺省 / 非法 → fail-closed。
+Map<String, String> _capabilityRequestGraphs(Map<String, dynamic> manifest) {
+  final raw = manifest['capabilities'];
+  if (raw is! List) return const {};
+  final out = <String, String>{};
+  for (final c in raw) {
+    if (c is! Map) continue;
+    final id = c['id'];
+    if (id is! String || id.isEmpty) continue;
+    final rg = c['requestGraph'];
+    if (rg != 'declarative' && rg != 'imperative') {
+      throw AdapterLaunchException(
+        'capabilities.$id.requestGraph 缺失或非法（fail-closed）',
+      );
+    }
+    out[id] = rg as String;
   }
-  return mode;
+  return out;
 }
 
-/// 各 capability 的 `requests[]`（parser 代取配方）。畸形 → fail-closed。
+/// 各 capability 的 `requests[]`（declarative 代取配方）。畸形 → fail-closed。
 Map<String, List<ParserRequestDecl>> _capabilityRequests(
   Map<String, dynamic> manifest,
 ) {

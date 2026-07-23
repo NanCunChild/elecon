@@ -1,13 +1,14 @@
 /**
- * 沙箱冒烟测试 —— 证明 parser 管线端到端跑通。
+ * 沙箱冒烟测试 —— 证明 declarative requestGraph 管线端到端跑通（ADR-022）。
  *
  *   adapter 源码 + 脱敏夹具  →  QuickJS-wasm 沙箱  →  归一化产出
  *                                                   ├─ 逐字段等于 golden
  *                                                   └─ 通过 contract schema（ajv）
  *
- * 这不是正式校验器（那是 tools/src/validator，下一步）。这是让管线先转起来的最小驱动。
+ * 这不是正式校验器（那是 tools/src/validator）。这是让管线先转起来的最小驱动。
  *
  *   运行：cd server && npm run smoke:sandbox
+ *
  */
 
 import { strict as assert } from "node:assert";
@@ -15,10 +16,10 @@ import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { resolveRepoRoot, runMain } from "./__testutils__/smoke-utils.js";
-import { runAdapter, SandboxError } from "./sandbox.js";
+import { runDeclarativeAdapter, SandboxError } from "./sandbox.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
-const parserDir = `${repoRoot}adapters/_template/parser`;
+const declarativeDir = `${repoRoot}adapters/_template/declarative`;
 const schemaPath = `${repoRoot}contract/schema/grades.list.schema.json`;
 
 interface Fixture {
@@ -33,11 +34,11 @@ function readJson<T>(path: string): T {
 }
 
 async function testGoldenAndSchema(): Promise<void> {
-  const source = readFileSync(`${parserDir}/index.js`, "utf8");
-  const fixture = readJson<Fixture>(`${parserDir}/fixtures/grades.list.json`);
+  const source = readFileSync(`${declarativeDir}/index.js`, "utf8");
+  const fixture = readJson<Fixture>(`${declarativeDir}/fixtures/grades.list.json`);
 
   const logs: string[] = [];
-  const { data } = await runAdapter({
+  const { data } = await runDeclarativeAdapter({
     source,
     capability: fixture.capability,
     params: fixture.params,
@@ -61,11 +62,11 @@ async function testGoldenAndSchema(): Promise<void> {
 
 /** 引擎地板漂移哨兵（服务端半边）。详见 ADR-008 §3。 */
 async function testEngineFloorCanary(): Promise<void> {
-  const canaryDir = `${repoRoot}adapters/_canary/parser`;
+  const canaryDir = `${repoRoot}adapters/_canary/declarative`;
   const source = readFileSync(`${canaryDir}/index.js`, "utf8");
   const fixture = readJson<Fixture>(`${canaryDir}/fixtures/engine_floor.json`);
 
-  const { data } = await runAdapter({
+  const { data } = await runDeclarativeAdapter({
     source,
     capability: fixture.capability,
     params: fixture.params,
@@ -79,9 +80,9 @@ async function testEngineFloorCanary(): Promise<void> {
 }
 
 async function testCapabilityMissing(): Promise<void> {
-  const source = readFileSync(`${parserDir}/index.js`, "utf8");
+  const source = readFileSync(`${declarativeDir}/index.js`, "utf8");
   await assert.rejects(
-    runAdapter({ source, capability: "schedule.week", params: {}, responses: {} }),
+    runDeclarativeAdapter({ source, capability: "schedule.week", params: {}, responses: {} }),
     (err: unknown) => err instanceof SandboxError && err.reason === "capability_missing",
     "未声明的 capability 应抛 capability_missing",
   );
@@ -89,10 +90,10 @@ async function testCapabilityMissing(): Promise<void> {
 }
 
 async function testTimeoutBites(): Promise<void> {
-  // parser 同步死循环；interrupt handler 应在 deadline 后中断
+  // declarative 同步死循环；interrupt handler 应在 deadline 后中断
   const source = "export const capabilities = { spin: () => { while (true) {} } };";
   await assert.rejects(
-    runAdapter(
+    runDeclarativeAdapter(
       { source, capability: "spin", params: {}, responses: {} },
       { timeoutMs: 200, memoryBytes: 64 * 1024 * 1024 },
     ),
@@ -110,7 +111,7 @@ async function testMemoryBites(): Promise<void> {
   const source =
     "export const capabilities = { hog: () => { const a = []; for (;;) a.push(new Array(65536).fill(1)); } };";
   await assert.rejects(
-    runAdapter(
+    runDeclarativeAdapter(
       { source, capability: "hog", params: {}, responses: {} },
       { timeoutMs: 30_000, memoryBytes: 8 * 1024 * 1024 },
     ),
@@ -126,7 +127,7 @@ async function testXidianNoticeList(): Promise<void> {
   const fixture = readJson<Fixture>(`${xidianDir}/fixtures/notice.list.json`);
   const noticeSchema = readJson(`${repoRoot}contract/schema/notice.list.schema.json`);
 
-  const { data } = await runAdapter({
+  const { data } = await runDeclarativeAdapter({
     source,
     capability: fixture.capability,
     params: fixture.params,
@@ -153,7 +154,7 @@ async function main(): Promise<void> {
   await testCapabilityMissing();
   await testTimeoutBites();
   await testMemoryBites();
-  console.log("全部通过。parser 管线端到端跑通。");
+  console.log("全部通过。declarative 管线端到端跑通。");
 }
 
 runMain(main);

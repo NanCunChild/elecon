@@ -14,7 +14,7 @@ XIDIAN 把复杂登录的全貌照清楚了（`adapters_tests/XIDIAN/` 已完整
 - **IDS（统一认证 CAS）**：AES 密码加密（salt 取自登录页，iv 固定）+ **滑块验证码**（脚本侧用 NCC 图像匹配 + 仿真鼠标轨迹自动求解）+ CAS 跨子域 ticket 链（`ids` → `ehall`）。
 - 其上鉴权能力：成绩 / 课表 / 考试（ehall useApp）、一卡通（OAuth openid via `v8scan`）、图书馆（CAS → `hyytsgxzs` → `shuwo`）、**水电（`ignypt.xidian.edu.cn`，仅校园网内可达，请求体 AES + 每请求签名）**。
 
-现状：XIDIAN **唯一生产可用**的是公开通知 `notice.list`（parser，零凭证）；全部鉴权能力**已逆向验证可行但无一落地**，共同卡在「登录收割（拿到 session 进核心）」。ADR-012 §2.2 定了「核心托管 WebView 登录 → cookie jar 收割」主路径、ADR-015 定了 manifest `login` 声明面，但：① **WebView 选型未定**（包体积 / 平台一致性 / **OHOS 鸿蒙** / cookie jar 可取性）；② 水电这类**校园网内、服务端取数**场景没有 WebView 可弹，主路径覆盖不到。
+现状：XIDIAN **唯一生产可用**的是公开通知 `notice.list`（declarative，零凭证）；全部鉴权能力**已逆向验证可行但无一落地**，共同卡在「登录收割（拿到 session 进核心）」。ADR-012 §2.2 定了「核心托管 WebView 登录 → cookie jar 收割」主路径、ADR-015 定了 manifest `login` 声明面，但：① **WebView 选型未定**（包体积 / 平台一致性 / **OHOS 鸿蒙** / cookie jar 可取性）；② 水电这类**校园网内、服务端取数**场景没有 WebView 可弹，主路径覆盖不到。
 
 核心矛盾：复杂登录既要**合规稳健、覆盖广**（→ WebView），又要能在**无 WebView 的服务端**跑（→ headless），且不能把 per-school 登录逻辑焊进核心二进制（ADR-000 §5.1 已舍弃编译期 per-school 定制）。
 
@@ -35,17 +35,17 @@ WebView 为默认主路线；headless **仅在上述两类场景**按需开启�
 
 **沿用 ADR-002 的 official / sideload 两档，不为登录脚本新增信任档。** headless 登录与凭证收割不是「另一档信任的脚本」，而是**能力**——由**能力门禁**约束：
 
-- **敏感能力 = official-only**：仅官方签名 adapter 可声明；**debug build 例外**（与红线 #5 的 dev 侧载-fetch 例外同范式，编译期从 release 剔除）。**敏感能力集**当前为：
-  - **`fetch` 模式（带凭证注入的 `ctx.fetch`）** —— 见下方说明，这是门禁的**既有锚点**；
+- **敏感能力 = official-only**：仅官方签名 adapter 可声明；**debug build 例外**（与红线 #5 的 dev 侧载-imperative 例外同范式，编译期从 release 剔除）。**敏感能力集**当前为：
+  - **imperative requestGraph（带凭证注入的 `ctx.fetch`）** —— 见下方说明，这是门禁的**既有锚点**；
   - **登录**（触发核心托管 WebView / headless 登录流）；
   - **凭证收割**（从 WebView cookie jar / headless 握手结果收割 session 入核心）；
   - **headless 登录**（直接走协议的登录脚本，含验证码自动求解）。
-- 校验器加一条静态检查（**类比 C3「sideload ⟹ parser」**）：sideload 声明敏感能力 → 拒绝（release）；运行时**双重 enforce**（不信任上游已校验，红线 #1 纵深防御）。
-- **公开 parser 能力**（如 `notice.list`，零凭证、纯解析）不受此门禁，按既有 official/sideload 规则。注意：**带凭证取数的数据能力**（如 `scores` / `schedule` / 一卡通——它们经 fetch 模式注入 session）天然落在 `fetch` 门禁内，亦为 official-only。
+- 校验器加一条静态检查（**类比 C3「sideload ⟹ 每 capability 声明式」**）：sideload 声明敏感能力 → 拒绝（release）；运行时**双重 enforce**（不信任上游已校验，红线 #1 纵深防御）。
+- **公开 declarative 能力**（如 `notice.list`，零凭证、纯解析）不受此门禁，按既有 official/sideload 规则。注意：**带凭证取数的数据能力**（如 `scores` / `schedule` / 一卡通——它们经 imperative 注入 session）天然落在 imperative 门禁内，亦为 official-only。
 
-**`fetch` 能力说明（门禁锚点）**：「能力门禁 official-only」不是本 ADR 新发明——ADR-009 §2.6 早已定「**仅官方签名 adapter 可跑 fetch 模式**」，红线 #5 定「sideload ⟹ 纯 parser（无网络/无凭证）、dev build 例外」。即 `fetch`（带凭证注入）**本就是**一条 official-only-except-debug 的能力门禁，已在校验器 C3 + 运行时落地。本 ADR 只是把**登录 / 收割 / headless 登录**纳入**同一条已验证的门禁**，与 `fetch` 同档对待——这正是「不必新增信任档、用能力确认即可」的依据：门禁模式已被 `fetch` 证明可行，复用即可。
+**imperative 能力说明（门禁锚点）**：「能力门禁 official-only」不是本 ADR 新发明——ADR-009 §2.6 / ADR-022 早已定「**仅官方签名 adapter 可跑 imperative requestGraph**」，红线 #5 定「sideload ⟹ 每 capability declarative（无网络/无凭证）、dev build 例外」。即 imperative（带凭证注入）**本就是**一条 official-only-except-debug 的能力门禁，已在校验器 C3 + 运行时落地。本 ADR 只是把**登录 / 收割 / headless 登录**纳入**同一条已验证的门禁**，与 imperative 同档对待——这正是「不必新增信任档、用能力确认即可」的依据：门禁模式已被 imperative 证明可行，复用即可。
 
-**为何不新增信任档**：增一档 = 增概念面 + 维护面 + 全套签名/吊销/校验逻辑的再适配；而「能力门禁」复用现有 `trustTier` + capability registry + 校验器机制（且 `fetch` 已是先例），维护省、心智负担低（维护者 2026-06-18 拍板）。
+**为何不新增信任档**：增一档 = 增概念面 + 维护面 + 全套签名/吊销/校验逻辑的再适配；而「能力门禁」复用现有 `trustTier` + capability registry + 校验器机制（且 imperative 已是先例），维护省、心智负担低（维护者 2026-06-18 拍板）。
 
 ### 2.3 凭证边界不变（红线 #1）
 

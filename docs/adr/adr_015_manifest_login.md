@@ -25,7 +25,6 @@ manifest 增一个**可选**顶层对象 `login`，与 `network` / `credentials`
 
 ```json
 {
-  "mode": "fetch",
   "network": { "allow": ["https://ehall.xidian.edu.cn/*"] },
   "login": {
     "url": "https://ids.xidian.edu.cn/authserver/login?service=https://ehall.xidian.edu.cn/new/index.html",
@@ -39,7 +38,14 @@ manifest 增一个**可选**顶层对象 `login`，与 `network` / `credentials`
   },
   "credentials": {
     "ehall-session": { "scope": ["https://ehall.xidian.edu.cn/*"], "type": "cookie" }
-  }
+  },
+  "capabilities": [
+    {
+      "id": "example.list",
+      "requestGraph": "imperative",
+      "emits": { "schema": "elecon.example.list", "schemaVersion": "1.0" }
+    }
+  ]
 }
 ```
 

@@ -4,7 +4,7 @@
 - **日期**：2026-06-12（起草）／2026-06-13（接受 + 首批落地：bundle、两端 runtime、双跑闸门）
 - **落地 PR**：[#15](https://github.com/NanCunChild/elecon/pull/15)（`elecon:html` bundle + 服务端/客户端 moduleHandler + XIDIAN `notice.list` + 两端 golden）
 - **依赖**：[`adr_001_contract.md`](./adr_001_contract.md)（SDK 类型 / 契约）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端 QuickJS-wasm）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端 QuickJS + moduleHandler + engine-floor canary）
-- **关联**：[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（fetch 模式响应体同样复用本解析器，但 HTML 解析本身不依赖 fetch 模式的存在）
+- **关联**：[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（imperative 响应体同样复用本解析器，但 HTML 解析本身不依赖 imperative 的存在）
 - **被依赖**：HTML 源 adapter（首例 XIDIAN `notice.list`，见 §4）
 - **适用范围**：adapter 在 QuickJS 内**解析 HTML** 的能力如何提供。**不含** JSON 解析（已可 `JSON.parse`）、不含 JS 挑战/反爬执行（见 §3.4 与 ADR-009）、不含某校具体 adapter。
 
@@ -14,7 +14,7 @@
 
 首批逆向 adapter（XIDIAN / XJT 教务通知公告）暴露一个共性事实：**很多学校的通知公告是 HTML 页面、无 JSON feed**，adapter 必须从 HTML 抓取。而当前运行时**完全没有 HTML 解析能力**：
 
-- `ctx` 只给 `log`/`now`（parser）或 `fetch`/`log`/`now`（fetch），**无 DOM**（`contract/adapter-sdk/types.d.ts`）。
+- `ctx` 只给 `log`/`now`（declarative）或 `fetch`/`log`/`now`（imperative），**无 DOM**（`contract/adapter-sdk/types.d.ts`）。
 - 客户端 QuickJS 是 Bellard **2021-03** 版（ADR-008 §3.6），**无 DOM、无 ES2022+、无 BigInt**。
 - 现有模板 adapter 全靠 `JSON.parse`——HTML 抓取目前**无支持**。
 
@@ -77,7 +77,7 @@ adapter 通过 `elecon:html` 模块获得以下能力（底层由 htmlparser2 + 
 1. **版本锁定是新契约约束。** htmlparser2 版本升级可能改变容错行为 → 双跑 golden 飘。升级须走 ADR/版本化流程（§2.3），CI 双跑闸门拦截。
 2. **体积/性能。** 两端各加载同一份 ~205KB（未压缩）解析器源码；notice 类小页面无压力，但需对"大页面 × QuickJS"做基准，避免在 UI 端拖慢（background isolate 已兜，ADR-008 §2.2）。
 3. **安全：纯解析、无副作用。** htmlparser2 是纯 JS 字符串处理，不碰网络/凭证（非红线 #1）。解析器**无网络能力**即天然不外泄；bundle 前经审计确认无隐藏 I/O。
-4. **不解决 JS 挑战 / 反爬。** XJT 类"解析内联 JS 算 answer + 伪造指纹"需在 **fetch 模式**执行握手，**不在本解析器职责内**（见 [`adr_009`](./adr_009_fetch_credential.md) 的 HTML/多步贴合说明）。
+4. **不解决 JS 挑战 / 反爬。** XJT 类"解析内联 JS 算 answer + 伪造指纹"需在 **imperative requestGraph** 执行握手，**不在本解析器职责内**（见 [`adr_009`](./adr_009_fetch_credential.md) 的 HTML/多步贴合说明）。
 5. **上游依赖风险。** htmlparser2 虽成熟但仍是第三方——上游停维或引入破坏性变更时，可 fork 锁定（MIT 许可证允许），代价可控。
 
 ---
@@ -91,4 +91,4 @@ adapter 通过 `elecon:html` 模块获得以下能力（底层由 htmlparser2 + 
 - [ ] **SDK 类型声明**：`contract/adapter-sdk/` 增 `elecon:html` 模块 `.d.ts`（re-export §2.2 的公开 API 子集），让 adapter 作者有类型提示。 — **待补**（不阻断运行，仅 DX；adapter 现以 JS 写，无类型门禁）
 - [ ] **畸形 HTML 容错矩阵**：把"未闭合 / 可选闭合 li·p / void 元素 / 属性引号缺失 / 实体解码 / 注释·CDATA"做成两端共跑的 golden 套件（§2.3）。当前仅 XIDIAN 真实页 + 模板覆盖，矩阵化待补。 — **待补**
 - [ ] **文档**：adapter 编写指南补"HTML 源 adapter"小节 + `elecon:html` API 参考（指向 htmlparser2 官方文档）。 — **待补**
-- [x] **首例落地**：XIDIAN `notice.list`（parser 模式），`adapters/school-xidian/`，含脱敏夹具。 — PR #15
+- [x] **首例落地**：XIDIAN `notice.list`（declarative），`adapters/school-xidian/`，含脱敏夹具。 — PR #15

@@ -1,10 +1,11 @@
-/// 核心代取 parser 请求（delivery A2）—— ADR-001 §6.2 / 红线 #5。
+/// 核心代取 declarative 请求（delivery A2）—— ADR-001 §6.2 / 红线 #5 / ADR-022。
 ///
-/// parser adapter **无网络**：宿主据 manifest `capabilities[].requests[]` 出网代取，
+/// declarative capability **无网络**：宿主据 manifest `capabilities[].requests[]` 出网代取，
 /// 经 broker（allow 闸门 / 可选凭证注入 / 重定向自跟随 / 响应脱敏）后，按 `key`
-/// 组装 `responses` 喂 [runParserAdapter]。凭证值永不进 adapter（红线 #1）。
+/// 组装 `responses` 喂 declarative 入口。凭证值永不进 adapter（红线 #1）。
 ///
 /// 公开能力（如 `school-xidian` `notice.list`）无 `credential` → passthrough。
+/// 文件/API 名可暂留 parser_*（实现语义 = declarative 代取）。
 library;
 
 import 'broker/assemble.dart' show RequestInit;

@@ -1,4 +1,4 @@
-/** 通用 fetch fixture 回放器：固定响应队列，禁止测试访问真实学校接口。 */
+/** 通用 imperative fixture 回放器（ADR-022）：固定响应队列，禁止测试访问真实学校接口。 */
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import type { BrokerManifestView } from "../broker/inject-policy.js";
-import { runFetchAdapter } from "../sandbox.js";
+import { runImperativeAdapter } from "../sandbox.js";
 import { TrustedAdapterContext } from "../trusted-context.js";
 import { FakeTransport, noResolver, resolveRepoRoot } from "./smoke-utils.js";
 
@@ -88,7 +88,7 @@ export async function replayFetchFixture(
   const transport = new FakeTransport(responses);
   const view: BrokerManifestView = { allow: manifest.network.allow };
   const source = readFileSync(join(adapterDir, "index.js"), "utf8");
-  const { data } = await runFetchAdapter(
+  const { data } = await runImperativeAdapter(
     { source, capability: fixture.capability, params: fixture.params ?? {}, nowMs: 1_700_000_000_000 },
     { trust: TrustedAdapterContext.devSideload(), view, resolver: noResolver, transport },
   );

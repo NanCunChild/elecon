@@ -1,21 +1,21 @@
-# ADR-014：fetch 模式客户端宿主函数桥接（IsolateQjs 宿主函数通道扩展）
+# ADR-014：imperative 客户端宿主函数桥接（IsolateQjs 宿主函数通道扩展）
 
 - **状态**：已接受（Accepted，2026-06-17 经人工 review 后接受）。本文触碰红线 #1（凭证）与 #7（后台 isolate），且改动客户端 QuickJS 承重依赖（flutter_qjs fork）。按 [AGENTS.md](../../AGENTS.md) §1 + §10，**AI 不得独自闭环**：本草案由 AI 起草、经人工 review 后接受；**实现（fork 扩展 + adapter_runtime 接线）及其测试仍须人工主导 + 安全检查清单 + ≥1 人工审**。
 - **日期**：2026-06-17
-- **依赖**：[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端 QuickJS / `IsolateQjs` / fork）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（fetch 凭证注入数据流 §2.1 / 限额 §2.7）、[`adr_005_runtime.md`](./adr_005_runtime.md)（两端同一引擎）、[`adr_001_contract.md`](./adr_001_contract.md) §8（双跑闸门）
-- **适用范围**：`client/lib/core/adapter_runtime.dart` 的 **fetch 模式**接线，及其所依赖的 `flutter_qjs` fork 引擎扩展。是 ADR-008 §2.5 / §4「待续：fetch 模式 `ctx.fetch`」的落点。
+- **依赖**：[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端 QuickJS / `IsolateQjs` / fork）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（imperative 凭证注入数据流 §2.1 / 限额 §2.7）、[`adr_005_runtime.md`](./adr_005_runtime.md)（两端同一引擎）、[`adr_001_contract.md`](./adr_001_contract.md) §8（双跑闸门）
+- **适用范围**：`client/lib/core/adapter_runtime.dart` 的 **imperative requestGraph** 接线，及其所依赖的 `flutter_qjs` fork 引擎扩展。是 ADR-008 §2.5 / §4「待续：imperative `ctx.fetch`」的落点。
 
 ---
 
 ## 1. 背景（Context）
 
-服务端 fetch 运行时已落地（B6b-TS，PR #51）：`server/src/runtime/sandbox.ts` 的 `runFetchAdapter` 用 `quickjs-emscripten` 原生的 `newFunction`（暴露宿主函数）+ `newPromise`（宿主侧异步 → VM Promise）+ `executePendingJobs`（pump job queue），把受限 `ctx.fetch` 接到 B6a 的 `proxyFetch`。客户端需对称落地（B6b-Dart），但**Dart 侧缺一项 TS 侧白来的能力**。
+服务端 imperative 运行时已落地（B6b-TS，PR #51）：`server/src/runtime/sandbox.ts` 的 `runFetchAdapter` 用 `quickjs-emscripten` 原生的 `newFunction`（暴露宿主函数）+ `newPromise`（宿主侧异步 → VM Promise）+ `executePendingJobs`（pump job queue），把受限 `ctx.fetch` 接到 B6a 的 `proxyFetch`。客户端需对称落地（B6b-Dart），但**Dart 侧缺一项 TS 侧白来的能力**。
 
 **事实（2026-06-17 通读 fork `fd7273` 实证）**：
 
 - ADR-008 §2.2 定的 **`IsolateQjs`（后台 isolate，红线 #7）只有两类跨 isolate 消息：`#evaluate`（求值脚本串）与 `#close`**。**没有把宿主 Dart 函数注入 VM 全局、供 JS 调用的通道。** 唯一的跨边界宿主异步回调是 `moduleHandler`（用于模块解析，且 isolate 内以 `sleep` 忙等同步阻塞拿模块串）与 `hostPromiseRejectionHandler`。
-- **parser 模式之所以可行**：它零宿主回调——`ctx.log` 是 JS 空函数、`ctx.now` 注入字面量、入参经 `JSON.parse` 字面量注入、产出读 `globalThis.__elecon_outcome`。全程不需要 JS→Dart 的运行期回调。
-- **fetch 模式必须有**异步 `ctx.fetch`：JS `await ctx.fetch(url, init)` → 回调 Dart 宿主跑 `proxyFetch`（B1 注入/B2 净化/B3 重定向/B4 jar/resolver，**凭证仅核心可见**）→ 把脱敏响应交回 JS。这是一条 JS→Dart 的运行期异步回调，`IsolateQjs` 当前给不了。
+- **declarative 之所以可行**：它零宿主回调——`ctx.log` 是 JS 空函数、`ctx.now` 注入字面量、入参经 `JSON.parse` 字面量注入、产出读 `globalThis.__elecon_outcome`。全程不需要 JS→Dart 的运行期回调。
+- **imperative 必须有**异步 `ctx.fetch`：JS `await ctx.fetch(url, init)` → 回调 Dart 宿主跑 `proxyFetch`（B1 注入/B2 净化/B3 重定向/B4 jar/resolver，**凭证仅核心可见**）→ 把脱敏响应交回 JS。这是一条 JS→Dart 的运行期异步回调，`IsolateQjs` 当前给不了。
 
 非 isolate 的 `FlutterQjs` 引擎**支持**宿主函数（Dart 函数返回 `Future` → JS `Promise`），但用它跑 adapter **违反红线 #7**（adapter 必须后台 isolate，不在 UI 线程同步阻塞）。故不能退到非 isolate 引擎。
 
@@ -33,14 +33,14 @@
 2. **宿主只暴露 broker 中介过的受限面，凭证永不入 isolate / JS。** 经此通道暴露给 JS 的宿主函数**仅**：
    - `ctx.fetch(url, init)` → 主 isolate 跑 `proxyFetch`（凭证在**主 isolate 核心内**拼头、出网、脱敏）；**跨回 isolate 的只有脱敏后的 `{status, headers, body}`**——无凭证值、无 `Set-Cookie`、无 `Authorization` 回显、无中间 `Location`（B2/B3 已剥）。
    - `ctx.setEphemeralCookie(name, value, {domain, path?})` → 主 isolate 的 per-execution jar ephemeral 分区（四重栅栏由 B4 强制）。
-   - `ctx.log` / `ctx.now`（与 parser 同）。
+   - `ctx.log` / `ctx.now`（与 declarative 同）。
    - **入参方向**：JS→Dart 只传 `url` + `init`（method/headers/body）。adapter 自设的 Cookie/Authorization 由 `proxyFetch` 内 B2 无条件剥除（纵深防御不变）。
 
 3. **限额与收割语义与 TS 对齐**（ADR-009 §2.7）：单请求 10s（含重定向链）/ 累计 30s / 单次 ≤20 请求（每跳计一次，计划 §8 #3）；超限 → 终止执行、fail 不收割。执行结束 B5 收割钩子（`decideHarvest`+`harvestInto`）。这些在 `adapter_runtime.dart` 宿主侧实现，与 `sandbox.ts` 镜像。
 
-4. **两端无共享 golden，各自集成测试**（计划 §2：运行时触引擎、不可纯 golden 化）。两端共享的是 `proxyFetch` 逻辑（`fetch_proxy.dart` 已镜像 `fetch-proxy.ts`，由纯 Dart fake-transport 测试钉死）；引擎接线各端用 fake transport 驱动集成 smoke（服务端 `sandbox.fetch.smoke.ts`，客户端新增 `adapter_runtime` fetch 集成测试）。
+4. **两端无共享 golden，各自集成测试**（计划 §2：运行时触引擎、不可纯 golden 化）。两端共享的是 `proxyFetch` 逻辑（`fetch_proxy.dart` 已镜像 `fetch-proxy.ts`，由纯 Dart fake-transport 测试钉死）；引擎接线各端用 fake transport 驱动集成 smoke（服务端 `sandbox.fetch.smoke.ts`，客户端新增 `adapter_runtime` imperative 集成测试）。
 
-5. **parser 路径零扰动。** parser 不经此通道（零宿主回调），fetch 通道为**新增**、对 parser 不可见；engine-floor canary（ADR-008 §3.6）继续在双跑闸门两侧守地板漂移。
+5. **declarative 路径零扰动。** declarative 不经此通道（零宿主回调），imperative 通道为**新增**、对 declarative 不可见；engine-floor canary（ADR-008 §3.6）继续在双跑闸门两侧守地板漂移。
 
 ---
 
@@ -75,10 +75,10 @@
 ## 5. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
 
 - **fork 扩展** ✅（commit `0dd8069`，分支 `feat/host-fn-channel`；elecon 接入 PR #54）：`NanCunChild/flutter_qjs` 增 `IsolateQjs.setHostFunctions` 宿主函数通道（复用 `IsolateFunction` + Future→Promise）；纯 Dart、仅 `isolate.dart`、不动 vendored C；`client/pubspec.yaml` ref `fd7273→0dd8069`；`build_qjs_test_lib.sh` 已重建（C 源不变、ABI 兼容）。桥接证明 `test/host_fn_bridge_test.dart` 4/4（Future→Promise 往返 / 多次调用 / 抛错→reject / inject-once）。
-- **`client/lib/core/adapter_runtime.dart`**：增 `runFetchAdapter`（与 parser `runParserAdapter` 并列、互不干扰）——受限 `ctx.fetch` → `proxyFetch`、`ctx.setEphemeralCookie`、限额硬执行（10s/30s/≤20）、执行结束 B5 收割钩子；与 `sandbox.ts` 镜像。
-- **客户端 fetch 集成测试**：fake transport 驱动（镜像 `sandbox.fetch.smoke.ts` 4 例：inject+脱敏+收割 / 多步握手 ephemeral / fail-closed 可 catch / 请求数限额+fail 不收割）。
+- **`client/lib/core/adapter_runtime.dart`**：增 `runFetchAdapter` / imperative 路径（与 declarative 路径并列、互不干扰；符号名随 ADR-022 迁移）——受限 `ctx.fetch` → `proxyFetch`、`ctx.setEphemeralCookie`、限额硬执行（10s/30s/≤20）、执行结束 B5 收割钩子；与 `sandbox.ts` 镜像。
+- **客户端 imperative 集成测试**：fake transport 驱动（镜像 `sandbox.fetch.smoke.ts` 4 例：inject+脱敏+收割 / 多步握手 ephemeral / fail-closed 可 catch / 请求数限额+fail 不收割）。
 - **已就绪前置**（B6b-Dart 第一部分，分支 `gate-a/b6b-fetch-runtime-dart`）：`fetch_proxy.dart`（proxyFetch + Transport 镜像）+ `cookie_jar.dart` `selectForSend` + 驱动测试 6 例——纯 Dart、与引擎解耦，已绿。
-- **交叉引用更新**：ADR-008 §4「待续 fetch 模式」指向本 ADR；ADR-000 §6 索引登记。
+- **交叉引用更新**：ADR-008 §4「待续 imperative」指向本 ADR；ADR-000 §6 索引登记。
 
 ---
 

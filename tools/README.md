@@ -4,7 +4,7 @@
 
 | 工具 | 目录 | 用途 |
 |---|---|---|
-| validator | `src/validator/` | manifest 合法性校验（ajv）、白名单越界检查、sideload 强制 parser、fixture golden 测试 |
+| validator | `src/validator/` | manifest 合法性校验（ajv）、白名单越界检查、sideload 强制 declarative requestGraph、fixture golden 测试 |
 | codegen | `src/codegen/` | JSON Schema → Dart / TS 类型生成 |
 | signer | `src/signer/` | 官方 adapter 签名 / 吊销 |
 | release | `src/release/` | 生成 endpoint D 的 signed catalog、revocation 和 bundle dist；从 dist 派生客户端 bootstrap 基线资产 |

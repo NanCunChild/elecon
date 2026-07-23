@@ -1,15 +1,15 @@
 /**
- * 信任裁定上下文 —— fetch 运行时的强制入场凭据（ADR-002 §2.6 运行时闸门）。
+ * 信任裁定上下文 —— imperative requestGraph 运行时的强制入场凭据（ADR-002 §2.6 运行时闸门）。
  * 镜像 `client/lib/core/trust/trusted_context.dart`（#79 P0-1）。
  *
- * 立场：`runFetchAdapter` 是凭证注入的入口，其安全性不得依赖「上层不要误调用」
+ * 立场：`runImperativeAdapter` 是凭证注入的入口，其安全性不得依赖「上层不要误调用」
  * 的调用约定，而要在可信核心边界 fail-closed——入口强制接收本类型实例，而
  * 本类型只能经核心的信任裁定路径构造：
  *
  *  - **official**：由核心验签流程构造（ADR-002 §2.3 验签 → §2.4 吊销 → 由签名
  *    裁定档位）。验签器尚未落地，落地前**无 official 构造路径**——生产环境下
- *    fetch 模式整体 fail-closed（不存在已验签的 official adapter，就不该有任何
- *    adapter 拿到凭证注入能力）。
+ *    imperative requestGraph 入场整体 fail-closed（不存在已验签的 official adapter，
+ *    就不该有任何 adapter 拿到凭证注入能力）。
  *  - **dev_sideload**：dev 例外（ADR-002 §2.5）。服务端无「debug build」概念，
  *    对应边界取 `NODE_ENV !== "production"`：生产下构造即抛。与客户端的编译期
  *    剔除（kDebugMode 死代码消除）语义等价但机制不同——服务端二进制不向终端
@@ -73,8 +73,9 @@ export function isTrustedAdapterContext(value: unknown): value is TrustedAdapter
 }
 
 /**
- * fetch 运行时入场判定（纯函数，负例可测）：official 一律放行；dev_sideload 仅
- * 非生产放行；其余 fail-closed。生产接线固定为 `production: NODE_ENV === "production"`。
+ * imperative（ctx.fetch）运行时入场判定（纯函数，负例可测）：official 一律放行；
+ * dev_sideload 仅非生产放行；其余 fail-closed。生产接线固定为
+ * `production: NODE_ENV === "production"`。
  */
 export function fetchTrustPermitted(tier: AdapterTrustTier, opts: { production: boolean }): boolean {
   return tier === "official" || !opts.production;

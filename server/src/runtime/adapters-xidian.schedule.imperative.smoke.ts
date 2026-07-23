@@ -22,7 +22,7 @@ import {
   skipSmoke,
 } from "./__testutils__/smoke-utils.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
-import { runFetchAdapter } from "./sandbox.js";
+import { runImperativeAdapter } from "./sandbox.js";
 import { TrustedAdapterContext } from "./trusted-context.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
@@ -108,7 +108,7 @@ async function main(): Promise<void> {
 
   async function runWeek(week: number) {
     const transport = makeTransport();
-    const { data } = await runFetchAdapter(
+    const { data } = await runImperativeAdapter(
       {
         source,
         capability: "schedule.week",

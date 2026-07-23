@@ -3,9 +3,8 @@
   "adapterId": "school-template",
   "adapterVersion": "0.1.0",
   "schoolId": "0000",
-  "displayName": "模板学校（fetch 模式）",
+  "displayName": "模板学校（imperative requestGraph）",
   "trustTier": "official",
-  "mode": "fetch",
   "runtime": { "engine": "quickjs", "entry": "index.js" },
   "network": {
     "allow": [
@@ -26,11 +25,13 @@
   "capabilities": [
     {
       "id": "grades.list",
+      "requestGraph": "imperative",
       "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
       "params": { "schema": "elecon.params.grades.list", "schemaVersion": "1.0" }
     },
     {
       "id": "schedule.week",
+      "requestGraph": "imperative",
       "emits": { "schema": "elecon.schedule.week", "schemaVersion": "1.0" },
       "params": { "schema": "elecon.params.schedule.week", "schemaVersion": "1.0" }
     }

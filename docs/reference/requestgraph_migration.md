@@ -41,10 +41,10 @@
 
 ### 1.1 `contract/manifest.schema.json`
 
-- [ ] 顶层 `required` 数组：**删除** `"mode"`。
-- [ ] **删除** `properties.mode`（整个对象）。
-- [ ] `properties.capabilities.items.required`：现 `["id","emits"]` → **增** `"requestGraph"` → `["id","emits","requestGraph"]`。
-- [ ] `properties.capabilities.items.properties` **增**：
+- [x] 顶层 `required` 数组：**删除** `"mode"`。
+- [x] **删除** `properties.mode`（整个对象）。
+- [x] `properties.capabilities.items.required`：现 `["id","emits"]` → **增** `"requestGraph"` → `["id","emits","requestGraph"]`。
+- [x] `properties.capabilities.items.properties` **增**：
   ```json
   "requestGraph": {
     "type": "string",
@@ -52,10 +52,10 @@
     "description": "取数请求图声明性（ADR-022）。declarative=manifest requests[] 静态声明、核心代取、adapter 纯解析同步；imperative=adapter 代码 ctx.fetch 自取异步。信任门：release 下 sideload 的每个 capability 须 declarative。**required、无 default**（缺字段=校验失败，避免隐式命令式提权）。"
   }
   ```
-- [ ] ⚠️ **禁止**给 `requestGraph` 设 `default`。
-- [ ] `requests.description` 改：`"仅 declarative requestGraph 使用，声明核心代取的请求配方；imperative capability 不得声明"`。
+- [x] ⚠️ **禁止**给 `requestGraph` 设 `default`。
+- [x] `requests.description` 改：`"仅 declarative requestGraph 使用，声明核心代取的请求配方；imperative capability 不得声明"`。
 - [ ] （可选 schema 层）`if/then`：`requestGraph==imperative` ⇒ 不得有 `requests`；或完全交给 validator C12。
-- [ ] 扫 schema 描述文案中的「parser 模式 / fetch 模式」→ declarative / imperative（如 `credentials` 描述 L121）。
+- [x] 扫 schema 描述文案中的「parser 模式 / fetch 模式」→ declarative / imperative（如 `credentials` 描述 L121）。
 
 ### 1.2 `contract/adapter-sdk/types.d.ts`
 
@@ -66,15 +66,15 @@
 | `ParserCapabilityHandler` | `DeclarativeCapabilityHandler` | `(ctx, params, responses) => Result` |
 | `FetchCapabilityHandler` | `ImperativeCapabilityHandler` | `(ctx, params) => Promise<Result>` |
 
-- [ ] 顶部注释：`模式由 manifest 的 mode 决定` → `请求图由每 capability 的 requestGraph 决定`。
-- [ ] 段注释 `// ---- fetch 模式的 ctx ----` → imperative；`// ---- parser 模式的 ctx ----` → declarative。
-- [ ] `CapabilityModule.capabilities` 联合类型改用新 handler 名。
-- [ ] **不留** `CtxParser` / `CtxFetch` 类型别名（破坏性清场，与错误码策略一致）。
+- [x] 顶部注释：`模式由 manifest 的 mode 决定` → `请求图由每 capability 的 requestGraph 决定`。
+- [x] 段注释 `// ---- fetch 模式的 ctx ----` → imperative；`// ---- parser 模式的 ctx ----` → declarative。
+- [x] `CapabilityModule.capabilities` 联合类型改用新 handler 名。
+- [x] **不留** `CtxParser` / `CtxFetch` 类型别名（破坏性清场，与错误码策略一致）。
 
 ### 1.3 契约其它（若有）
 
-- [ ] `contract/` 下 grep：`mode` / `parser` / `CtxParser` / `CtxFetch` — 仅保留与 HTTP method、文件扩展名无关的命中。
-- [ ] 若有 schema golden / 示例 manifest 在 contract 树内，同步改。
+- [x] `contract/` 下 grep：`mode` / `parser` / `CtxParser` / `CtxFetch` — 仅保留与 HTTP method、文件扩展名无关的命中。
+- [x] 若有 schema golden / 示例 manifest 在 contract 树内，同步改。
 
 ---
 
@@ -82,13 +82,13 @@
 
 ### 2.1 `tools/src/validator/index.ts` — 类型
 
-- [ ] `interface Manifest`：删 `mode: "fetch" | "parser"`。
-- [ ] `interface CapabilityDecl` 增：
+- [x] `interface Manifest`：删 `mode: "fetch" | "parser"`。
+- [x] `interface CapabilityDecl` 增：
   ```ts
   requestGraph: "declarative" | "imperative";
   ```
-- [ ] 文件头检查项注释 C3/C4/C8 全文改写（见下表）。
-- [ ] 示例命令路径：`_template/parser` → `_template/declarative`。
+- [x] 文件头检查项注释 C3/C4/C8 全文改写（见下表）。
+- [x] 示例命令路径：`_template/parser` → `_template/declarative`。
 
 ### 2.2 检查逻辑对照表
 
@@ -141,9 +141,9 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
 
 ### 2.4 其它 tools 引用
 
-- [ ] `tools/src/schema/schema-golden.smoke.ts`：路径 `adapters/_template/parser` → `declarative`。
-- [ ] `tools/` 全树 grep：`mode:` / `_template/parser` / `_template/fetch` / `C3_sideload_must_parser` / `C4_parser_no_requests`。
-- [ ] 校验通过命令示例与 `package.json` scripts 注释（若有）。
+- [x] `tools/src/schema/schema-golden.smoke.ts`：路径 `adapters/_template/parser` → `declarative`。
+- [x] `tools/` 全树 grep：`mode:` / `_template/parser` / `_template/fetch` / `C3_sideload_must_parser` / `C4_parser_no_requests`。
+- [x] 校验通过命令示例与 `package.json` scripts 注释（若有）。
 
 ---
 
@@ -160,22 +160,22 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
 
 调用方（replay smoke、各 school smoke）按 fixture/manifest 的 **该 capability 的 requestGraph** 选入口——与客户端一致。
 
-- [ ] `AdapterRunInput`：若后续统一入口，增 `requestGraph`；若保持双入口，注释写清「由调用方按 capability.requestGraph 选择」。
-- [ ] **不**在 sandbox 内读完整 manifest 亦可：调用方已知道图类型。
+- [x] `AdapterRunInput`：若后续统一入口，增 `requestGraph`；若保持双入口，注释写清「由调用方按 capability.requestGraph 选择」。
+- [x] **不**在 sandbox 内读完整 manifest 亦可：调用方已知道图类型。
 
 ### 3.2 `server/src/runtime/sandbox.ts`
 
-- [ ] `buildParserCtx` → 可重命名 `buildDeclarativeCtx`（或保留函数名、注释改 declarative）。
-- [ ] `buildFetchCtx` → 可重命名 `buildImperativeCtx`（同策略）。
-- [ ] 错误码：**`async_in_parser` → `async_in_declarative`**（删除旧码，不留别名）。
-- [ ] 错误文案：`parser capability…` → `declarative capability…`。
-- [ ] 段注释 `// Parser mode` / `// Fetch mode` → Declarative / Imperative requestGraph。
-- [ ] `fetchTrustPermitted` 闸门触发条件：仍挂在 **imperative 入口**（保证：非 official 永不触达注入）。🔒 语义不变。
+- [x] `buildParserCtx` → 可重命名 `buildDeclarativeCtx`（或保留函数名、注释改 declarative）。
+- [x] `buildFetchCtx` → 可重命名 `buildImperativeCtx`（同策略）。
+- [x] 错误码：**`async_in_parser` → `async_in_declarative`**（删除旧码，不留别名）。
+- [x] 错误文案：`parser capability…` → `declarative capability…`。
+- [x] 段注释 `// Parser mode` / `// Fetch mode` → Declarative / Imperative requestGraph。
+- [x] `fetchTrustPermitted` 闸门触发条件：仍挂在 **imperative 入口**（保证：非 official 永不触达注入）。🔒 语义不变。
 
 ### 3.3 `server/src/runtime/sandbox-qjs-util.ts`
 
-- [ ] `SandboxErrorReason` 联合类型：`"async_in_parser"` → `"async_in_declarative"`。
-- [ ] 注释中的 parser/fetch 措辞。
+- [x] `SandboxErrorReason` 联合类型：`"async_in_parser"` → `"async_in_declarative"`。
+- [x] 注释中的 parser/fetch 措辞。
 
 ### 3.4 Smoke / testutils 路径与命名
 
@@ -190,8 +190,8 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
 
 ### 3.5 `trusted-context.ts` / broker
 
-- [ ] 注释「fetch 模式整体 fail-closed」→「imperative requestGraph 入场 fail-closed」。
-- [ ] **逻辑不改**（仍 `fetchTrustPermitted`）。
+- [x] 注释「fetch 模式整体 fail-closed」→「imperative requestGraph 入场 fail-closed」。
+- [x] **逻辑不改**（仍 `fetchTrustPermitted`）。
 
 ---
 
@@ -201,13 +201,13 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
 
 核心分派从 **manifest 级 mode** 改为 **capability 级 requestGraph**：
 
-- [ ] `LaunchPlan.mode: String` → 删除。
-- [ ] 增 `LaunchPlan.capabilityRequestGraphs: Map<String, String>`  
+- [x] `LaunchPlan.mode: String` → 删除。
+- [x] 增 `LaunchPlan.capabilityRequestGraphs: Map<String, String>`  
   （或 `Map<String, RequestGraph>` enum：`declarative` / `imperative`）。
-- [ ] 增保留 `capabilityRequests`（仅 declarative 有非空列表）。
-- [ ] `planLaunch`：解析每个 cap 的 `requestGraph`（**缺字段 / 非法值 → fail-closed**，与 schema 一致，禁止 default 提权）。
-- [ ] **删除** `_runtimeMode`（及对 `runtime.mode` 的读取）。
-- [ ] `runLoadedAdapter`：
+- [x] 增保留 `capabilityRequests`（仅 declarative 有非空列表）。
+- [x] `planLaunch`：解析每个 cap 的 `requestGraph`（**缺字段 / 非法值 → fail-closed**，与 schema 一致，禁止 default 提权）。
+- [x] **删除** `_runtimeMode`（及对 `runtime.mode` 的读取）。
+- [x] `runLoadedAdapter`：
   ```dart
   final rg = plan.capabilityRequestGraphs[capability];
   if (rg == null) throw AdapterLaunchException('capability 缺 requestGraph…');
@@ -219,7 +219,7 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
     throw … // fail-closed
   }
   ```
-- [ ] 混用 adapter：同一 `LaunchPlan` 可同时含两种 graph；**按本次 capability 分派**。
+- [x] 混用 adapter：同一 `LaunchPlan` 可同时含两种 graph；**按本次 capability 分派**。
 
 ### 4.2 `adapter_runtime.dart` 🔒
 
@@ -235,14 +235,14 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
 
 ### 4.3 `parser_host.dart`
 
-- [ ] 文件/API 名可暂留 `fulfillParserRequests` / `ParserRequestDecl`（实现语义=declarative 代取）。
-- [ ] 注释：parser → declarative；**保留** commit 980bfc0「未声明 credential 却命中注入 → fail-closed」守卫。🔒
-- [ ] 不改注入/代取算法。
+- [x] 文件/API 名可暂留 `fulfillParserRequests` / `ParserRequestDecl`（实现语义=declarative 代取）。
+- [x] 注释：parser → declarative；**保留** commit 980bfc0「未声明 credential 却命中注入 → fail-closed」守卫。🔒
+- [x] 不改注入/代取算法。
 
 ### 4.4 `loader.dart` / 其它 core
 
-- [ ] grep `mode` / `parser` 分派：凡把顶层 mode 当执行键的，改 requestGraph。
-- [ ] `trusted_context` / `fetchTrustPermitted`：注释同步；逻辑不变。
+- [x] grep `mode` / `parser` 分派：凡把顶层 mode 当执行键的，改 requestGraph。
+- [x] `trusted_context` / `fetchTrustPermitted`：注释同步；逻辑不变。
 
 ### 4.5 Client 测试
 
@@ -250,8 +250,9 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
 |---|---|
 | `client/test/dual_run_test.dart` | 路径 `_template/parser`→`declarative`；用例名/期望 `async_in_parser`→`async_in_declarative`；`runParserAdapter` 若 rename 则跟 |
 | `client/test/adapter_launcher_test.dart` | `plan.mode` 断言 → `capabilityRequestGraphs[cap]`；fixture manifest 补 `requestGraph`、删 `mode`；**增混用 cap 分派用例** |
-| `client/test/fetch_runtime_test.dart`（若有） | 术语 |
-| 其它 test 内嵌假 manifest | 全量补 `requestGraph` |
+| `client/test/fetch_runtime_test.dart` → `imperative_runtime_test.dart` | 文件重命名 + 术语 |
+| `client/test/adapter_service_test.dart` | 内嵌假 manifest 的 capability 补 `requestGraph`（`_mkBundle` 的 `notice.list`：原无 `mode`→缺省 fetch，故补 `imperative`）。**易漏**：不在分派单测里，只有跑完整套件才暴露 fail-closed 拒绝 |
+| 其它 test 内嵌假 manifest | 全量补 `requestGraph`（`rg -l "'capabilities'" client/test` 逐一核） |
 
 ---
 
@@ -278,17 +279,17 @@ adapters/_template/fetch   →  adapters/_template/imperative
 adapters/_canary/parser    →  adapters/_canary/declarative   # 若保留 canary 树
 ```
 
-- [ ] `git mv` 保留历史。
-- [ ] 新目录内 `manifest.json`：`requestGraph` 显式写出；`adapterId`/`displayName` 可含 declarative/imperative。
-- [ ] `adapters/_template/*/README.md`：validate 路径与术语。
-- [ ] `adapters/README.md`：`cp -r …/_template/fetch` → `…/_template/imperative`；表格/说明同步。
-- [ ] `adapters/_canary/README.md`：路径与术语。
+- [x] `git mv` 保留历史。
+- [x] 新目录内 `manifest.json`：`requestGraph` 显式写出；`adapterId`/`displayName` 可含 declarative/imperative。
+- [x] `adapters/_template/*/README.md`：validate 路径与术语。
+- [x] `adapters/README.md`：`cp -r …/_template/fetch` → `…/_template/imperative`；表格/说明同步。
+- [x] `adapters/_canary/README.md`：路径与术语。
 
 ### 5.3 index.js 注释
 
-- [ ] `school-xjt/index.js`：`@param {CtxFetch}` → `{CtxImperative}`（或双写过渡——本迁移选破坏性则直接新名）。
-- [ ] 其它 adapter：`rg 'CtxFetch|CtxParser|mode' adapters --glob '!**/node_modules/**'` 清零。
-- [ ] **handler 签名与运行时约定不变**（declarative 仍同步三参；imperative 仍 async 两参）——多数 index.js **逻辑零改**。
+- [x] `school-xjt/index.js`：`@param {CtxFetch}` → `{CtxImperative}`（或双写过渡——本迁移选破坏性则直接新名）。
+- [x] 其它 adapter：`rg 'CtxFetch|CtxParser|mode' adapters --glob '!**/node_modules/**'` 清零。
+- [x] **handler 签名与运行时约定不变**（declarative 仍同步三参；imperative 仍 async 两参）——多数 index.js **逻辑零改**。
 
 ### 5.4 全仓路径引用同步（grep 清单）
 
@@ -317,17 +318,18 @@ adapters/_template/fetch
 
 | 文档 | 动作 |
 |---|---|
-| `docs/adr/adr_001_contract.md` | §6「两种调用模式」→「请求图声明性」；§5.1 示例删 mode、cap 加 requestGraph；§5.2 信任档 |
-| `docs/adr/adr_002_trust_model.md` | §2.1 能力表、§2.6 闸门：fetch 模式 → imperative requestGraph；parser ctx → declarative |
-| `docs/adr/adr_009_fetch_credential.md` | 文首加术语脚注：旧称「fetch 模式」= 今 imperative；机制章节可保留旧称一句 |
-| `docs/adr/adr_008_client_runtime.md` | `async_in_parser` → `async_in_declarative` |
-| `docs/adr/adr_013_manifest_credentials.md` | 示例 mode → requestGraph |
-| `docs/adr/adr_015_manifest_login.md` | 示例同步 |
-| `docs/adr/adr_018_adapter_distribution.md` | 表中 parser 行 → declarative |
-| `docs/adr/adr_014_client_host_fn.md` | 术语（若写 parser/fetch 并列） |
-| `docs/rules/testing.md` | 「纯解析器 / parser」→ declarative requestGraph |
-| `docs/rules/ai_coding.md` | 同上 |
-| `docs/reference/track_b_*` / `b4_*` / `webview_*` | 历史计划：脚注「已由 ADR-022 术语替代」即可，不必全文重写 |
+| `docs/adr/adr_001_contract.md` | ✅ §6「两种调用模式」→「请求图声明性」；§5.1 示例删 mode、cap 加 requestGraph；§5.2 信任档 |
+| `docs/adr/adr_002_trust_model.md` | ✅ §2.1 能力表、§2.6 闸门：fetch 模式 → imperative requestGraph；parser ctx → declarative |
+| `docs/adr/adr_009_fetch_credential.md` | ✅ 文首术语脚注 + 正文现行术语；`CtxFetch`→`CtxImperative` 叙述 |
+| `docs/adr/adr_008_client_runtime.md` | ✅ `async_in_parser` → `async_in_declarative` |
+| `docs/adr/adr_013_manifest_credentials.md` | ✅ 示例 mode → requestGraph |
+| `docs/adr/adr_015_manifest_login.md` | ✅ 示例同步（若适用） |
+| `docs/adr/adr_018_adapter_distribution.md` | ✅ 表中 parser 行 → declarative |
+| `docs/adr/adr_014_client_host_fn.md` | ✅ 术语（declarative 路径并列表述） |
+| `docs/rules/testing.md` | ✅ 「纯解析器 / parser」→ declarative requestGraph |
+| `docs/rules/ai_coding.md` | ✅ 同上 |
+| `AGENTS.md` / `README.md` / `adapters/README.md` | ✅ 红线 #5 / 信任级别用语 |
+| `docs/reference/track_b_*` / `b4_*` / `webview_*` | 历史计划：可脚注「已由 ADR-022 术语替代」，不必全文重写 |
 | 本文件 | 完成后把各 `[ ]` 勾掉 |
 
 **ADR 历史叙述**可保留「旧称 parser/fetch」一句；**现行契约/错误码/路径**不留旧概念（§7 grep）。
@@ -360,8 +362,8 @@ cd client && dart test test/dual_run_test.dart test/adapter_launcher_test.dart
 # + 既有 fetch_runtime 等
 ```
 
-- [ ] 两端 golden 双跑一致（同夹具 → 同标准 schema，ADR-001 §8）。
-- [ ] 混用 manifest 手工或 smoke：official 同时 declarative+imperative 两 cap 均过。
+- [x] 两端 golden 双跑一致（同夹具 → 同标准 schema，ADR-001 §8）。
+- [x] 混用 manifest 手工或 smoke：official 同时 declarative+imperative 两 cap 均过。
 
 ### 7.2 全仓 grep 零残留（现行代码路径）
 
@@ -395,33 +397,33 @@ rg -n 'manifest\.mode|plan\.mode|_runtimeMode' client/ server/ tools/
 
 ```
 契约
-- [ ] manifest.schema.json：删 mode，cap 强制 requestGraph
-- [ ] adapter-sdk/types.d.ts：Ctx*/Handler 重命名
+- [x] manifest.schema.json：删 mode，cap 强制 requestGraph
+- [x] adapter-sdk/types.d.ts：Ctx*/Handler 重命名
 
 Validator 🔒
-- [ ] index.ts 类型 + C3/C4/C8/C12
-- [ ] validator.smoke.ts 矩阵（含混用 + sideload 负例）
-- [ ] schema-golden / 路径
+- [x] index.ts 类型 + C3/C4/C8/C12
+- [x] validator.smoke.ts 矩阵（含混用 + sideload 负例）
+- [x] schema-golden / 路径
 
 Server 🔒
-- [ ] sandbox.ts + sandbox-qjs-util 错误码
-- [ ] smoke 路径 declarative
+- [x] sandbox.ts + sandbox-qjs-util 错误码
+- [x] smoke 路径 declarative
 
 Client 🔒
-- [ ] LaunchPlan 按 capability requestGraph 分派
-- [ ] async_in_declarative
-- [ ] dual_run + launcher 测试
+- [x] LaunchPlan 按 capability requestGraph 分派
+- [x] async_in_declarative
+- [x] dual_run + launcher 测试
 
 Adapters
-- [ ] 三校 + template + canary + adapters_tests manifest
-- [ ] git mv _template/_canary 目录
-- [ ] README / 注释 Ctx*
+- [x] 三校 + template + canary + adapters_tests manifest
+- [x] git mv _template/_canary 目录
+- [x] README / 注释 Ctx*
 
 文档
-- [ ] adr_001/002/008/009/013/015/018 + rules
+- [x] adr_001/002/008/009/013/015/018 + rules
 
 收尾
-- [ ] validate 全过 + grep 清场 + 安全审
+- [x] validate 全过 + grep 清场 + 安全审
 ```
 
 ---
@@ -440,4 +442,3 @@ Adapters
 ---
 
 *本大清单由 ADR-022 落地用；勾完 §7 即迁移完成。*
-)

@@ -1,7 +1,7 @@
 /**
- * school-xidian（西安电子科技大学教务处）—— parser 模式 adapter。
+ * school-xidian（西安电子科技大学教务处）—— declarative requestGraph adapter。
  *
- * 目标：公开通知 notice.list。站点为纯静态 HTML，不需要 fetch 模式。核心代取并脱敏后
+ * 目标：公开通知 notice.list。站点为纯静态 HTML，不需要 imperative。核心代取并脱敏后
  * 传入原始响应，adapter 只做 HTML → 标准 schema 的纯解析。
  *
  * 现状：**已端到端跑通**——QuickJS-wasm 沙箱对录制夹具产出等于 golden，通过 contract schema

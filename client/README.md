@@ -6,7 +6,7 @@
 lib/
   main.dart            入口
   core/
-    adapter_runtime.dart  QuickJS adapter 运行时（parser 模式，后台 isolate）
+    adapter_runtime.dart  QuickJS adapter 运行时（declarative/imperative requestGraph，后台 isolate）
   ui/                  UI 层（数据驱动 / SDUI，只认标准 schema）
 assets/                静态资源
 test/
@@ -36,7 +36,7 @@ fvm flutter run
 ## 测试（双跑一致性）
 
 adapter 在客户端用 QuickJS（`flutter_qjs_next`）执行，与服务端 QuickJS-wasm 是同一引擎、
-零语义漂移（ADR-001 §8、ADR-005）。`test/dual_run_test.dart` 用同一份 parser 夹具验证
+零语义漂移（ADR-001 §8、ADR-005）。`test/dual_run_test.dart` 用同一份 declarative 夹具验证
 客户端产出 == golden（服务端侧由 `server/src/runtime/sandbox.smoke.ts` 证），传递得两端一致。
 
 `flutter_qjs_next` 是经典 FFI 插件，纯 `flutter test` 不会构建其原生库。先一次性构建：

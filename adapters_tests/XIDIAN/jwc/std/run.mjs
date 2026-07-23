@@ -1,4 +1,4 @@
-// spike 运行器：用夹具喂 parser 模式 adapter，做 schema 结构校验 + golden 比对。
+// spike 运行器：用夹具喂 declarative requestGraph adapter，做 schema 结构校验 + golden 比对。
 // 真实运行时是 QuickJS；node 仅用于本地验证 API 形态与产出（代码本身引擎地板安全）。
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

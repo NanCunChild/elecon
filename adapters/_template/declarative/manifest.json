@@ -1,11 +1,10 @@
 {
   "manifestVersion": "1.0",
-  "adapterId": "school-template-parser",
+  "adapterId": "school-template-declarative",
   "adapterVersion": "0.1.0",
   "schoolId": "0000",
-  "displayName": "模板学校（parser 模式）",
+  "displayName": "模板学校（declarative requestGraph）",
   "trustTier": "sideload",
-  "mode": "parser",
   "runtime": { "engine": "quickjs", "entry": "index.js" },
   "network": {
     "allow": [
@@ -21,6 +20,7 @@
   "capabilities": [
     {
       "id": "grades.list",
+      "requestGraph": "declarative",
       "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
       "requests": [
         {

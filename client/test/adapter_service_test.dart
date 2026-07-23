@@ -74,6 +74,7 @@ Future<_Bundle> _mkBundle(
     'capabilities': [
       {
         'id': capability,
+        'requestGraph': 'imperative',
         'emits': {'schema': 'elecon.notice.list', 'schemaVersion': '1.0'},
       },
     ],

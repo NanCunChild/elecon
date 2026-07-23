@@ -1,10 +1,10 @@
 /**
- * school-xjt（西安交通大学教务处）—— 首个 **fetch 模式** adapter（spike）。
+ * school-xjt（西安交通大学教务处）—— 首个 **imperative requestGraph** adapter（spike）。
  *
- * 目标：公开通知 notice.list。需要 fetch 模式是因为站点有 **JS 反爬挑战**（多步握手），
+ * 目标：公开通知 notice.list。需要 imperative 是因为站点有 **JS 反爬挑战**（多步握手），
  * 数据本身公开、**不碰学生凭证**（credentials 块为空，全程 passthrough）。
  *
- * 现状：**已端到端跑通**（首个真实 fetch adapter）——B6 运行时（runFetchAdapter）+ direct
+ * 现状：**已端到端跑通**（首个真实 imperative adapter）——B6 运行时（runImperativeAdapter）+ direct
  * Transport 落地后，经录制夹具回放验证解析出真实通知（server `npm run smoke:xjt`）。流程见 ./FLOW.md。
  *
  * body-token 缺口（FLOW.md §3，已修补）：client_id 仅在响应 body、origin 零 Set-Cookie
@@ -43,7 +43,7 @@ async function safeJson(res) {
 
 export const capabilities = {
   /**
-   * @param {CtxFetch} ctx  受限 fetch（Broker 注入/脱敏；本 adapter 全 passthrough）
+   * @param {import("elecon:adapter-sdk").CtxImperative} ctx  受限 fetch（Broker 注入/脱敏；本 adapter 全 passthrough）
    * @param {unknown} _params
    */
   "notice.list": async (ctx, _params) => {

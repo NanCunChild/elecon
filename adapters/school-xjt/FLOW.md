@@ -1,8 +1,8 @@
-# XJT dean（西安交大教务处）fetch 模式流程 + spike 记录
+# XJT dean（西安交大教务处）imperative requestGraph 流程 +spike 记录
 
-> Track A spike：第一个 fetch 模式 adapter 的逆向与设计验证。目标数据 = 教务处**公开通知**
-> （`notice.list`）。选它是因为它需要 fetch 模式（多步 + JS 反爬挑战），但数据公开、
-> **不碰学生凭证**——以最低风险锻炼整条 fetch 链（ADR-009）。
+> Track A spike：第一个 imperative adapter 的逆向与设计验证。目标数据 = 教务处**公开通知**
+> （`notice.list`）。选它是因为它需要 imperative requestGraph（多步 + JS 反爬挑战），但数据公开、
+> **不碰学生凭证**——以最低风险锻炼整条 broker/`ctx.fetch` 链（ADR-009；旧称 fetch 模式，见 ADR-022）。
 
 ## 1. 实测流程（来自 `fetch.py` 逆向）
 
@@ -22,14 +22,14 @@
 实测 cookie（`pac.txt`，已脱敏）：最终请求带 `client_id=<REDACTED>; JSESSIONID=<REDACTED>`。
 两者都是 origin 下发的会话态，**非学生认证**。
 
-## 2. 映射到 ADR-009 fetch 模式
+## 2. 映射到 ADR-009（imperative requestGraph / broker）
 
 | 流程节点 | ADR-009 机制 |
 |---|---|
 | GET 挑战页 / POST 挑战 | passthrough（`network.allow` 内、不命中任何 `credentials.scope` → 放行不注入，§2.4） |
 | origin 下发的 `JSESSIONID` | per-execution cookie jar 自动持久化 `Set-Cookie`、后续请求自动带（§2.4） |
 | HTML 解析 | `elecon:html`（两端零漂移，§2.4 第 1 条 / ADR-011） |
-| 反爬挑战由 adapter 解 | official 独占 fetch（§2.4 第 3 条），解析内联值 + 伪造指纹属 fetch 模式职责 |
+| 反爬挑战由 adapter 解 | official 独占 imperative（§2.4 第 3 条），解析内联值 + 伪造指纹属命令式职责 |
 | client_id（见下） | **⚠️ 缺口** |
 
 **无学生凭证**：`credentials` 块为空 → 全程 passthrough。不需要 ADR-012 凭证存储 / WebView 登录。

@@ -91,7 +91,7 @@ npm run smoke:credential    # 凭证存储 smoke
 4. 在 `fixtures/` 放抓包样本，写归一化回归测试。
 5. 在该 adapter 的 `README.md` 记录：该校属哪一档（UA 门禁 / CAS 逃生口 / openid 唯一身份 / 微信小程序）及已知坑。
 
-**信任级别：** 官方签名 adapter 可用"能力限定的取数"；第三方/侧载 dev adapter 在客户端退化为**纯解析器**（无网络、无凭证），且仅在 debug build / 显式开发者模式下可加载，release 包从编译期拒绝。
+**信任级别：** 官方签名 adapter 可用 imperative / declarative `requestGraph`；第三方/侧载 dev adapter 在客户端强制 **declarative**（无网络、无凭证、纯解析），且仅在 debug build / 显式开发者模式下可加载，release 包从编译期拒绝。
 
 ---
 
@@ -108,9 +108,9 @@ npm run smoke:credential    # 凭证存储 smoke
 
 ## 路线状态
 
-架构决策已接受至 ADR-017。当前处于 **fetch 模式运行时已跑通、登录/分发链路补齐阶段**：
+架构决策已接受至 ADR-022。当前处于 **imperative requestGraph 运行时已跑通、登录/分发链路补齐阶段**：
 
-- **已落地**：Broker 核心零件 B1–B6 两端（TS + Dart）镜像实现；凭证存储原型；`setEphemeralCookie` 契约面；首个真实 fetch adapter（school-xjt `notice.list`）夹具回放端到端跑通。
+- **已落地**：Broker 核心零件 B1–B6 两端（TS + Dart）镜像实现；凭证存储原型；`setEphemeralCookie` 契约面；首个真实 imperative adapter（school-xjt `notice.list`）夹具回放端到端跑通；ADR-022 抹除 adapter 级 `mode`，改 per-capability `requestGraph`。
 - **进行中**：录制/回放夹具机制（B7）；WebView 登录收割探针（XIDIAN 凭证路径前置）；OHOS 平台 scaffold 与 debug-only WebView probe。
 - **待补齐**：真实 OS keystore 凭证存储、官方签名/吊销工具、public adapter 分发、campus relay、产品 UI 数据闭环。
 

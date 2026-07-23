@@ -31,8 +31,8 @@ void main() {
       ? null
       : 'dual-run 测试目前仅支持 Linux desktop（原生库构建脚本仅 Linux）';
 
-  group('dual-run（parser, 客户端 QuickJS）', () {
-    final parserDir = repoPath('adapters/_template/parser');
+  group('dual-run（declarative, 客户端 QuickJS）', () {
+    final parserDir = repoPath('adapters/_template/declarative');
 
     // 不在此硬检查 FLUTTER_QJS_NEXT_LIBRARY：库定位交给 flutter_qjs_next 加载器
     // （env 或回退产物路径，见文件头注释）。真找不到时它会在首次 evaluate 抛带指引的错，
@@ -42,7 +42,7 @@ void main() {
       final source = File('$parserDir/index.js').readAsStringSync();
       final fixture = readJson('$parserDir/fixtures/grades.list.json');
 
-      final data = await runParserAdapter(
+      final data = await runDeclarativeAdapter(
         source: source,
         capability: fixture['capability'] as String,
         params: (fixture['params'] as Map).cast<String, dynamic>(),
@@ -64,7 +64,7 @@ void main() {
       final htmlStdlib = File('$stdlibDir/html.bundle.js').readAsStringSync();
       final fixture = readJson('$xidianDir/fixtures/notice.list.json');
 
-      final data = await runParserAdapter(
+      final data = await runDeclarativeAdapter(
         source: source,
         capability: fixture['capability'] as String,
         params:
@@ -84,7 +84,7 @@ void main() {
       final fixture = readJson('$xidianDir/fixtures/notice.list.json');
 
       await expectLater(
-        runParserAdapter(
+        runDeclarativeAdapter(
           source: source,
           capability: fixture['capability'] as String,
           responses: (fixture['responses'] as Map).cast<String, dynamic>(),
@@ -97,11 +97,11 @@ void main() {
 
     // 引擎地板漂移哨兵（客户端半边）。详见 ADR-008 §3。
     test('engine-floor canary：地板内建产出与 golden 一致', () async {
-      final canaryDir = repoPath('adapters/_canary/parser');
+      final canaryDir = repoPath('adapters/_canary/declarative');
       final source = File('$canaryDir/index.js').readAsStringSync();
       final fixture = readJson('$canaryDir/fixtures/engine_floor.json');
 
-      final data = await runParserAdapter(
+      final data = await runDeclarativeAdapter(
         source: source,
         capability: fixture['capability'] as String,
         params: (fixture['params'] as Map).cast<String, dynamic>(),
@@ -117,7 +117,7 @@ void main() {
       const source = 'export const notCapabilities = {};';
 
       await expectLater(
-        runParserAdapter(
+        runDeclarativeAdapter(
           source: source,
           capability: 'x.y',
           params: const {},
@@ -137,7 +137,7 @@ void main() {
       final source = File('$parserDir/index.js').readAsStringSync();
 
       await expectLater(
-        runParserAdapter(
+        runDeclarativeAdapter(
           source: source,
           capability: 'schedule.week',
           params: const {},
@@ -153,12 +153,12 @@ void main() {
       );
     });
 
-    test('async_in_parser：parser 返回 Promise 被拒', () async {
+    test('async_in_declarative：declarative 返回 Promise 被拒', () async {
       const source =
           'export const capabilities = { "x.y": () => Promise.resolve(1) };';
 
       await expectLater(
-        runParserAdapter(
+        runDeclarativeAdapter(
           source: source,
           capability: 'x.y',
           params: const {},
@@ -168,7 +168,7 @@ void main() {
           isA<AdapterRunException>().having(
             (e) => e.reason,
             'reason',
-            AdapterFailureReason.asyncInParser,
+            AdapterFailureReason.asyncInDeclarative,
           ),
         ),
       );
@@ -179,7 +179,7 @@ void main() {
           'export const capabilities = { spin: () => { while (true) {} } };';
 
       await expectLater(
-        runParserAdapter(
+        runDeclarativeAdapter(
           source: source,
           capability: 'spin',
           params: const {},
@@ -204,7 +204,7 @@ void main() {
           'const a = []; for (;;) a.push(new Array(65536).fill(1)); } };';
 
       await expectLater(
-        runParserAdapter(
+        runDeclarativeAdapter(
           source: source,
           capability: 'hog',
           params: const {},
