@@ -176,3 +176,7 @@ QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 a
 - `adr_018`：adapter 分发（签名 bundle / catalog / 吊销）—— **已接受**（见 `adr_018_adapter_distribution.md`）
 - `adr_019`：`classroom.available` 契约扩面 —— **已接受**
 - `adr_020`：URL query 凭证（openid 等）收割与注入 —— **已接受**（2026-07-22；闭环计划 R2；触红线 #1/#6；实现仍人工主导）
+- `adr_021`：共享具名类型（`$defs` / 一份 `Money`）codegen 支持 —— **预留**（结构改动，见 `docs/rules/schema_style.md` §58，未起草）
+- `adr_022`：抹除 fetch/parser 模式，改每 capability 的 `requestGraph`（声明式/命令式）—— **已接受**（2026-07-23；§6 开放问题已勾决：template→`{declarative,imperative}`、`requestGraph` required 无默认、`async_in_declarative` 不留旧码；触红线 #1/#5/#6；runtime/validator 人工主导，AI 不闭环）· adapter 轨 A1
+- `adr_023`：声明式跨请求数据流（假想变量 / 不透明句柄；接 ADR-017 §2.8 PR-6）—— **已接受**（2026-07-23；触红线 #1/#5/#6；数据流/污点人工主导；§5 开放问题仍待落地前勾决）· adapter 轨 A2（依赖 022）
+- `adr_024`：信任 profile 解绑优化等级（侧载判别器 `kReleaseMode`→自定义编译期 flag；修订 ADR-002 §2.5）—— **已接受**（2026-07-23；触红线 #4；人工主导；§5 开放问题见该文）· 构建 flag 轨（独立）
