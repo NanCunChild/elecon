@@ -4,7 +4,7 @@
 >
 > ADR-022 已完成迁移并作为前置条件。本文涉及凭证派生值、句柄解引用、注入和响应脱敏，属于安全承重路径：实现与测试必须人工主导，配套安全清单，并至少经过 1 名人工审阅；AI 不得独自闭环。
 >
-> **当前状态：契约（§2）+ validator（§3）已落地（2026-07-24），两端 runtime（§4/§5）+ adapter 迁移（§6）待动工。** §0 全部 7 项已勾决（第 7 项 owner 定为**不加 `if/then`**，组合约束全归 validator）。
+> **当前状态：✅ MVP 已落地（2026-07-24）。** §2 契约 + §3 validator + §4 服务端参考执行器/golden + §5 客户端对称执行器/接线 + §6 迁移登记全部完成；owner 人工安全审 + 代码签收通过（安全清单三处缺陷已修复补测）。§0 全部 7 项已勾决（第 7 项 owner 定为**不加 `if/then`**，组合约束全归 validator）。后续增量见文末。
 >
 > **动工门禁**：第 7 项直接决定 §2 契约的实现方式（schema 承担多少组合约束）。**已决：schema 不加 `if/then`**（§0 第 7 项），`bind/compute/inject` 的组合约束由 validator D1–D16 承担。两端 broker/runtime（§4/§5）仍按 §8 顺序排在契约与 validator 之后；§4/§5/§6 属 🔒 人工主导路径，AI 不得独自闭环。
 >
@@ -136,9 +136,9 @@
 
 - [x] contract、validator、server、client、adapter 的测试全通过。（tools `smoke:dataflow` + `validate` 5/5；server `smoke:dataflow` 39 例；client `flutter test` 568 全绿。）
 - [x] server/client golden 双跑一致。（`contract/golden/broker/dataflow.json` 由 server smoke 与 client `broker_dataflow_test.dart` 各自跑，产出 == expected，逐字节一致。）
-- [~] 全仓检查旧平铺代取假设、开放的句柄值、非静态注入和任意 compute。（本轮引入的路径均 fail-closed；**全仓静态审留待人工安全审**，见下条。）
-- [~] 检查 release 下 sideload 门禁未被放宽，公网服务端仍无凭证存储。（D13 正向允许表未放宽 release；服务端 dataflow 为 golden 基准、无凭证存储——**须人工复核 ADR-024 DEPLOY profile 剔除路径**。）
-- [ ] 🔒 **人工安全签收 + owner 签收**：ADR-023 §5 决策与本清单已由 owner 勾决；**代码（§4/§5 触红线 #1 取数路径）+ 测试的人工安全审 + 安全清单尚未完成**——AI 不得独自闭环（AGENTS.md §1）。**此条未完成前，ADR-023 不得标记为「已落地」。**
+- [x] 全仓检查旧平铺代取假设、开放的句柄值、非静态注入和任意 compute。（本轮引入的路径均 fail-closed；owner 人工安全审已覆盖，见安全清单 B 组。）
+- [x] 检查 release 下 sideload 门禁未被放宽，公网服务端仍无凭证存储。（D13 正向允许表未放宽 release；服务端 dataflow 为 golden 基准、无凭证存储；ADR-024 DEPLOY profile 剔除路径经 owner 复核。）
+- [x] 🔒 **人工安全签收 + owner 签收（2026-07-24）**：owner 逐条复核安全清单（`declarative_dataflow_security_checklist.md`）A–F 全绿、G 组残余风险知情接受，并签收 §4/§5 触红线 #1 取数路径的代码与测试。三处审阅缺陷（url 编码回显 / 短值回读 / DAG 计量不对称）已修复并补测（commit `67f3319`）。
 
 ## 8. 建议实施顺序
 
@@ -149,3 +149,5 @@
 5. 通过人工安全审阅后扩大迁移范围并完成收尾。
 
 *本清单由 ADR-023 落地使用；所有条目完成且人工签收后，才可称 ADR-023 已落地。*
+
+**✅ 落地完成（2026-07-24）**：§0–§7 全部完成，owner 人工安全审 + 代码签收通过（安全清单 `declarative_dataflow_security_checklist.md`）。**ADR-023 MVP 已落地。** 后续增量（真实 adapter 迁移、污点自动围栏、regex 步数预算、`css-select`/任意计算/`at:body` 扩展）按各自触发条件另启。

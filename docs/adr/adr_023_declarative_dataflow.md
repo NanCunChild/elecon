@@ -3,7 +3,8 @@
 - **状态**：**已接受（Accepted）** · 2026-07-23 owner 评审通过（决策面锁定：仅交付封闭 op 词表，任意计算预设为 QJS-复用的零依赖后续升级，见 §2.4）。
   **修订 2026-07-24（owner 勾决落地决策）**：§5 原「开放问题」1–6 全部转为决策记录（提取器词表与限额、compute 词表与类型化、嵌套复杂度限额、MVP 允许凭证派生值、缺失语义 fail-closed）；§2.5 增记 MVP 凭证派生值决策与两条已接受残余风险；**§2.6 决策被推翻并改写**——`devSideload` 在 DEV 下与 official 同权（原为「带 `compute` official-only」），附 🔒 防扩散条款。
   **修订 2026-07-24（§5 第 7 项勾决 + §2/§3 落地）**：schema 层**不加 `if/then`**（组合约束全归 validator）；契约面（`manifest.schema.json` 增 `bind`/`compute`/`inject`）与 validator（`dataflow.ts` D1–D16 + 安全负例）已落地。
-  **修订 2026-07-24（§4/§5/§6 落地，待人工安全审）**：§4 服务端 TS 参考执行器 + `contract/golden/broker/dataflow.json`（39 例）；§5 客户端 Dart 对称执行器（双跑 golden 一致）+ 接线进 `fulfillDeclarativeRequests`（含 `fetch_proxy.dart` 脱敏前抽取钩子 + broker 置头，🔒 红线 #1 取数路径）；§6 无合格迁移标的，以 `_template/declarative` 为参考试点、`school-xjt` 登记保留 imperative 理由。**🔒 代码 + 测试的人工安全审 + 安全清单尚未完成，ADR-023 未标记「已落地」**（落地清单 §7 末条，AI 不得独自闭环）。
+  **修订 2026-07-24（§4/§5/§6 落地）**：§4 服务端 TS 参考执行器 + `contract/golden/broker/dataflow.json`；§5 客户端 Dart 对称执行器（双跑 golden 一致）+ 接线进 `fulfillDeclarativeRequests`（含 `fetch_proxy.dart` 脱敏前抽取钩子 + broker 置头，🔒 红线 #1 取数路径）；§6 无合格迁移标的，以 `_template/declarative` 为参考试点、`school-xjt` 登记保留 imperative 理由。
+  **✅ MVP 已落地（2026-07-24）**：owner 人工安全审 + 代码签收通过（`declarative_dataflow_security_checklist.md` A–F 全绿、G 组残余风险知情接受）；审阅发现的三处缺陷（url 编码回显剥离 / 短值回读 / 全 DAG 计量跨端不对称）已修复补测。后续增量（真实 adapter 迁移、污点自动围栏、regex 步数预算、`css-select`/任意计算/`at:body`）按各自触发条件另启。
   触碰红线 #1（凭证）、#5（adapter 能力面）、#6（契约承重墙）。按 [AGENTS.md](../../AGENTS.md) §1：**数据流执行、句柄解引用、注入、脱敏、污点围栏的实现与测试须人工主导 + 安全清单 + ≥1 人工审，AI 不得独自闭环**。本文只固定契约面与执行模型决策。
 - **日期**：2026-07-23
 - **依赖**：

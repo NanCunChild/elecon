@@ -397,13 +397,15 @@ Map<String, CapabilityDataflow> _capabilityDataflow(
 
 List<BindDecl> _parseBinds(String capId, Object? raw) {
   if (raw == null) return const [];
-  if (raw is! List)
+  if (raw is! List) {
     throw AdapterLaunchException('capabilities.$capId.bind 非数组（fail-closed）');
+  }
   return raw.map((e) {
-    if (e is! Map)
+    if (e is! Map) {
       throw AdapterLaunchException(
         'capabilities.$capId.bind 含非法项（fail-closed）',
       );
+    }
     final varName = e['var'];
     final from = e['from'];
     final source = e['source'];
@@ -427,15 +429,17 @@ List<BindDecl> _parseBinds(String capId, Object? raw) {
 
 List<ComputeDecl> _parseComputes(String capId, Object? raw) {
   if (raw == null) return const [];
-  if (raw is! List)
+  if (raw is! List) {
     throw AdapterLaunchException(
       'capabilities.$capId.compute 非数组（fail-closed）',
     );
+  }
   return raw.map((e) {
-    if (e is! Map)
+    if (e is! Map) {
       throw AdapterLaunchException(
         'capabilities.$capId.compute 含非法项（fail-closed）',
       );
+    }
     final varName = e['var'];
     final op = e['op'];
     final args = e['args'];
@@ -448,10 +452,11 @@ List<ComputeDecl> _parseComputes(String capId, Object? raw) {
       varName: varName,
       op: op,
       args: args.map((a) {
-        if (a is! Map)
+        if (a is! Map) {
           throw AdapterLaunchException(
             'capabilities.$capId.compute.args 含非法项（fail-closed）',
           );
+        }
         return ComputeArg(ref: a['ref'] as String?, text: a['text'] as String?);
       }).toList(),
       params: (e['params'] as Map?)?.cast<String, dynamic>(),
@@ -461,13 +466,15 @@ List<ComputeDecl> _parseComputes(String capId, Object? raw) {
 
 List<InjectDecl> _parseInjects(String capId, Object? raw) {
   if (raw == null) return const [];
-  if (raw is! List)
+  if (raw is! List) {
     throw AdapterLaunchException('capabilities.$capId.inject 非数组（fail-closed）');
+  }
   return raw.map((e) {
-    if (e is! Map)
+    if (e is! Map) {
       throw AdapterLaunchException(
         'capabilities.$capId.inject 含非法项（fail-closed）',
       );
+    }
     final varName = e['var'];
     final into = e['into'];
     final at = e['at'];
