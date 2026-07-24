@@ -17,6 +17,7 @@
     "smoke:sandbox": "tsx src/runtime/sandbox.smoke.ts",
     "smoke:imperative": "tsx src/runtime/sandbox.imperative.smoke.ts",
     "smoke:broker": "tsx src/runtime/broker/inject-policy.smoke.ts",
+    "smoke:dataflow": "tsx src/runtime/broker/dataflow.smoke.ts",
     "smoke:urlmatch": "tsx src/runtime/broker/url-match.smoke.ts",
     "smoke:credential": "tsx src/runtime/credential/store.smoke.ts",
     "smoke:header": "tsx src/runtime/broker/header-sanitize.smoke.ts",
