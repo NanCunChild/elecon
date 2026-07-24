@@ -171,6 +171,54 @@ void main() {
       expect((out['b']?['body'] as String).contains('longsecret9911'), isFalse);
       expect((out['b']?['body'] as String).contains('[stripped]'), isTrue);
     });
+
+    test('url 注入的编码形回显也被剥离（审阅 issue 1）', () async {
+      final view = const BrokerManifestView(allow: ['https://h.edu/*']);
+      final transport = FakeTransport([
+        // a 抽出含特殊字符的值（空格 + &）
+        const TransportResponse(status: 200, body: 'seed=a b&c9911xx'),
+        // b 的响应回显的是**编码形** a%20b%26c9911xx（原样反射 query 串）
+        const TransportResponse(
+          status: 200,
+          body: 'echo q=a%20b%26c9911xx done',
+        ),
+      ]);
+      final out = await fulfillDeclarativeRequests(
+        requests: const [
+          DeclarativeRequestDecl(
+            key: 'a',
+            method: 'GET',
+            url: 'https://h.edu/a',
+          ),
+          DeclarativeRequestDecl(
+            key: 'b',
+            method: 'GET',
+            url: 'https://h.edu/b',
+          ),
+        ],
+        params: const {},
+        view: view,
+        resolver: FakeResolver({}),
+        transport: transport,
+        binds: const [
+          BindDecl(
+            varName: 's',
+            from: 'a',
+            source: 'regex',
+            extract: {'pattern': r'seed=(.+)$', 'group': 1},
+          ),
+        ],
+        injects: const [
+          InjectDecl(varName: 's', into: 'b', at: 'url', name: 'q'),
+        ],
+      );
+      // 编码形不得残留在交回 adapter 的 body 里。
+      expect(
+        (out['b']?['body'] as String).contains('a%20b%26c9911xx'),
+        isFalse,
+      );
+      expect((out['b']?['body'] as String).contains('[stripped]'), isTrue);
+    });
   });
 
   group('安全负例：fail-closed', () {
@@ -259,6 +307,48 @@ void main() {
               into: 'b',
               at: 'header',
               name: 'Authorization',
+            ),
+          ],
+        ),
+        throwsA(isA<DeclarativeHostException>()),
+      );
+    });
+
+    test('未被注入引用的 compute 仍被求值 → 失败即 fail-closed（审阅 issue 3）', () async {
+      // vc 不被任何 inject 引用，但它 substring 越界会失败。客户端须像服务端
+      // evalComputeGraph「eval 全部」一样补算它并 fail-closed，而非惰性跳过。
+      final view = const BrokerManifestView(allow: ['https://h.edu/*']);
+      final transport = FakeTransport([
+        const TransportResponse(status: 200, body: 'v=ab'),
+      ]);
+      await expectLater(
+        fulfillDeclarativeRequests(
+          requests: const [
+            DeclarativeRequestDecl(
+              key: 'a',
+              method: 'GET',
+              url: 'https://h.edu/a',
+            ),
+          ],
+          params: const {},
+          view: view,
+          resolver: FakeResolver({}),
+          transport: transport,
+          binds: const [
+            BindDecl(
+              varName: 'v',
+              from: 'a',
+              source: 'regex',
+              extract: {'pattern': r'v=(\w+)', 'group': 1},
+            ),
+          ],
+          computes: const [
+            // "ab" 只有 2 字符，start=0 length=99 → 越界 fail-closed。无 inject 引用 vc。
+            ComputeDecl(
+              varName: 'vc',
+              op: 'substring',
+              args: [ComputeArg(ref: 'v')],
+              params: {'start': 0, 'length': 99},
             ),
           ],
         ),

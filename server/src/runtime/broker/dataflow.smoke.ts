@@ -24,6 +24,8 @@ import {
   extractHandle,
   type HandleValue,
   type InjectDecl,
+  type InjectionEffect,
+  injectionEchoTargets,
   planRequestOrder,
   type RawResponse,
   type RequestDecl,
@@ -67,6 +69,7 @@ interface GoldenFile {
     error?: string;
   }>;
   strip: Array<{ name: string; response: RawResponse; injectedValues: string[]; expected: RawResponse }>;
+  echoTargets: Array<{ name: string; effect: InjectionEffect; expected: string[] }>;
   topo: Array<{
     name: string;
     requests: RequestDecl[];
@@ -149,6 +152,13 @@ for (const c of golden.strip) {
   passed++;
 }
 console.log(`  ✓ strip: ${golden.strip.length} 例`);
+
+// ---- echoTargets（审阅 issue 1：url 注入回显目标含编码形）----
+for (const c of golden.echoTargets) {
+  assert.deepStrictEqual(injectionEchoTargets(c.effect), c.expected, `echoTargets ${c.name}`);
+  passed++;
+}
+console.log(`  ✓ echoTargets: ${golden.echoTargets.length} 例`);
 
 // ---- topo ----
 for (const c of golden.topo) {

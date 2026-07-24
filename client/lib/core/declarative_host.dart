@@ -122,8 +122,20 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
   final bound = <String, df.HandleValue>{};
   final computeByVar = {for (final c in computes) c.varName: c};
   final computeMemo = <String, df.HandleValue>{};
-  final injectedValues = <String>[]; // 已注入的文本值，供回显剥离
+  final injectedValues = <String>[]; // 已注入的文本值（含 url 编码形），供回显剥离
   var dagBytes = 0;
+
+  // 🔒 全 DAG 4 MB 预算：**每个** bind 句柄 + **每个** compute 输出都计入，按 UTF-8 字节
+  //（`df.handleByteLen`）——与服务端 `evalComputeGraph` 计量口径一致（审阅 issue 3 / C2）。
+  void chargeBudget(df.HandleValue h) {
+    dagBytes += df.handleByteLen(h);
+    if (dagBytes > df.maxDagHandleBytes) {
+      throw const DeclarativeHostException(
+        '数据流全 DAG 句柄总预算超限',
+        limitExceeded: true,
+      );
+    }
+  }
 
   df.HandleValue resolveVar(String name) {
     final b = bound[name];
@@ -145,15 +157,7 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
     } on df.DataflowException catch (e) {
       throw DeclarativeHostException('数据流 compute 失败：${e.message}');
     }
-    dagBytes += r is df.BytesHandle
-        ? r.bytes.length
-        : (r as df.TextHandle).text.length;
-    if (dagBytes > df.maxDagHandleBytes) {
-      throw const DeclarativeHostException(
-        '数据流全 DAG 句柄总预算超限',
-        limitExceeded: true,
-      );
-    }
+    chargeBudget(r);
     computeMemo[name] = r;
     return r;
   }
@@ -173,15 +177,16 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
             'declarative 注入 ${inj.varName} 非 text（注入面只接受 text）',
           );
         }
-        effects.add(
-          df.InjectionEffect(
-            into: key,
-            at: inj.at,
-            name: inj.name,
-            value: v.text,
-          ),
+        final effect = df.InjectionEffect(
+          into: key,
+          at: inj.at,
+          name: inj.name,
+          value: v.text,
         );
-        injectedValues.add(v.text);
+        effects.add(effect);
+        // 🔒 回显剥离目标含 url 注入的编码形（如 a%20b），否则下游回显编码值仍能被 adapter
+        // 看到秘密等价物（审阅 issue 1 / B7）。
+        injectedValues.addAll(df.injectionEchoTargets(effect));
       }
 
       // ② 展开 URL 模板，再应用注入（url 追加 query / header 交 broker 置头）。
@@ -244,14 +249,17 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
               'declarative bind 抽取缺原始响应（内部错误）',
             );
           }
+          final df.HandleValue handle;
           try {
-            bound[b.varName] = df.extractHandle(b, rawForExtract!);
+            handle = df.extractHandle(b, rawForExtract!);
           } on df.DataflowException catch (e) {
             // 🔒 错误只进宿主诊断，不含句柄内容；adapter 侧只见整条 capability 失败。
             throw DeclarativeHostException(
               'declarative bind 抽取失败：${e.message}',
             );
           }
+          bound[b.varName] = handle;
+          chargeBudget(handle); // 🔒 bind 句柄计入全 DAG 预算（与服务端一致，issue 3）
         }
 
         // ⑥ 交回 adapter 前剥除注入值回显（🔒 MVP 必做，堵回读，ADR-023 §2.5）。
@@ -284,6 +292,13 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
         throw DeclarativeHostException('declarative 代取网络失败：$e');
       }
     }
+  }
+
+  // 🔒 补算未被任何注入引用到的 compute（全部 bind 此刻已就绪）：使**所有** compute 都被求值
+  // 与计入预算，且任何求值失败都 fail-closed——与服务端 evalComputeGraph「eval 全部 + 计全部」
+  // 对称（审阅 issue 3 / C2）。否则「惰性只算被引用的」会在两端产生放行/拒绝差异。
+  for (final c in computes) {
+    resolveVar(c.varName);
   }
 
   return out;

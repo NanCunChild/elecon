@@ -1,0 +1,113 @@
+# ADR-023 声明式数据流 · 人工安全审清单
+
+> 按 [AGENTS.md](../../AGENTS.md) §1：数据流执行、句柄解引用、注入、脱敏的实现与测试**须人工主导 + 安全清单 + ≥1 人工审，AI 不得独自闭环**。本清单是 §7 发布门槛「配套安全清单」的落地物，供审阅人逐条核对。
+>
+> **状态：待人工审。** AI 已起草实现与测试（§2–§6）；本清单的每一条须由**人类审阅人**独立核验后打勾。全部勾选 + owner 代码签收后，才可在 [`declarative_dataflow_migration.md`](./declarative_dataflow_migration.md) §7 末条标记完成。
+>
+> 相关决策与残余风险见 [ADR-023](../adr/adr_023_declarative_dataflow.md) §2.5/§2.6/§5；逐 op 语义见 [`declarative_dataflow_ops.md`](./declarative_dataflow_ops.md)。
+
+## 审阅范围（🔒 文件清单）
+
+| 文件 | 角色 | 红线 |
+|---|---|---|
+| `contract/manifest.schema.json`（bind/compute/inject 段） | 声明面形状 + 封闭枚举 | #6 |
+| `tools/src/validator/dataflow.ts` | 声明期唯一静态闸门（D1–D16） | #1 #5 #6 |
+| `server/src/runtime/broker/dataflow.ts` | TS 参考执行器（golden 基准） | #1 |
+| `client/lib/core/broker/dataflow.dart` | Dart 生产执行器 | #1 |
+| `client/lib/core/broker/fetch_proxy.dart`（改动段） | 脱敏前抽取钩子 + broker 置头 | #1 |
+| `client/lib/core/declarative_host.dart`（`fulfillDeclarativeRequests`） | 生产代取编排 | #1 |
+| `client/lib/core/adapter_launcher.dart`（`_capabilityDataflow` 等） | manifest→执行器接线 | #1 |
+| `contract/golden/broker/dataflow.json` | 双端 golden 向量 | #1 |
+
+---
+
+## A. 红线不变量（逐条独立核验）
+
+### 红线 #1 — 凭证 / 句柄永不离开核心
+- [ ] **A1** adapter 拿不到句柄字节：`CtxDeclarative`（`contract/adapter-sdk/types.d.ts`）无任何句柄/响应值解引用 API；句柄只存在于 host 侧 `bound`/`computeMemo`（`declarative_host.dart`）与执行器内部。
+- [ ] **A2** 抽取只读**响应**（`extractHandle` 只接受 `RawResponse{status,headers,body}`），无请求侧入参——broker 自拼的请求头 / 注入的凭证值不可被 `bind` 引用。
+- [ ] **A3** `onRawResponse` 回调**只有核心能构造**（adapter 无法构造 `FetchProxyDeps`），且只在链路定型时回传**一次终点响应**，不回传中间跳；交回 adapter 的仍是 `processResponse` 脱敏后响应。核验：raw 不经任何路径流回 adapter。
+- [ ] **A4** `brokerInjectHeaders` 在 `assembleRequest` 脱敏**之后**、与凭证注入**同侧**叠加，不经 adapter；`_brokerInjectHeaderForbidden` 运行期拒 `cookie/authorization/proxy-authorization/...`（纵深防御 validator D16）。核验：越护栏 → `BrokerFetchRejected`（fail-closed），不静默丢弃。
+- [x] **A5** 🔒 **回显剥离**（`stripEchoes`）在交回 adapter 前把注入值从 body + 响应头替换为 `[stripped]`。长值优先替换（防边界破坏）。**审阅 issue 1/2 已修**：① url 注入的**编码形**（`injectionEchoTargets`）也纳入剥除集；② **移除长度下限**，剥全部非空注入值（短 token/nonce 不再漏）。golden `strip_url_encoded_echo`/`strip_short_value_stripped` + host `url 注入的编码形回显也被剥离` 覆盖。
+- [ ] **A6** 密钥形态：`hmac-sha256` 的 key / `hkdf` 的 ikm **必须是 `ref`**（validator D10 + 执行器 `refOnly`）；字面量密钥一律拒。核验 manifest 是已签名分发产物，字面量 = 公开。
+- [ ] **A7** 缺失语义**统一 fail-closed**（决策 6）：抽取失败 / 匹配失败 / 注入时句柄缺失 → 整条 capability 失败，**不**省略下游注入（不发未认证请求）。核验 `declarative_host.dart` 各 catch 路径与 `resolveInjections` 的缺失分支。
+- [ ] **A8** 🔒 错误只进宿主诊断，**不含句柄内容、不回流 adapter**：核验 `DataflowError`/`DeclarativeHostException` 的 message 不含句柄值；adapter 侧观测到的是整条 capability 失败，与正常失败**不可区分**（长度预言机因此进一步收窄，ADR-023 §2.5）。
+
+### 红线 #2 — 公网服务端零凭证、无状态
+- [ ] **A9** 服务端 `dataflow.ts` 是 **golden 基准**，不做生产代取、不接触凭证、不落库。核验它未被任何 `server/src/public` 生产路径调用（仅 smoke 引用）。
+
+### 红线 #5 — adapter 能力面
+- [ ] **A10** 数据流放宽的是**声明面表达力**，不是能力/信任面：adapter 仍无 `ctx.fetch`、不见句柄；数据流全程 broker 执行。
+- [ ] **A11** 🔒 信任门 **D13 正向允许表** `{official, sideload}`，**非**「非 official 即放行」否定式。核验：将来新增「生产环境可存在的第三方档」不自动继承（ADR-023 §2.6 防扩散）。
+
+### 红线 #6 — 契约承重墙
+- [ ] **A12** schema 改动向后兼容（新增可选段，未改既有字段语义）；`bind/compute/inject` 全为可选，缺省即无数据流。
+
+---
+
+## B. 数据流特有威胁（预言机 / 侧信道 / 走私）
+
+- [ ] **B1** **依值选汇聚点** 不可表达：`inject.into/at/name` 静态声明死；`applyInjections` 不据句柄值选择目标。核验声明面无任何「据 tainted 值改变注入目标」的途径。
+- [ ] **B2** **依值改变请求形状/数量** 不可表达：声明面无分支构造；`planRequestOrder` 纯据静态声明推导拓扑；请求数受 `maxRequests` 静态上限。核验决策 6「省略注入=泄漏位」已被 fail-closed 堵死。
+- [ ] **B3** **比较预言机（每次运行 1 bit）** 是 ADR-023 §2.5 **已接受**残余风险（缓解：official 人工审 + 用户触发不可高频循环）。核验审阅人确认接受，且随污点自动围栏落地而消除。
+- [ ] **B4** **长度预言机** 是 §2.5 **已接受**残余风险（单句柄 64KB 上限报错泄漏「是否超 64KB」）；因错误只进宿主日志（A8）而收窄。核验接受。
+- [ ] **B5** **请求走私**：`brokerInjectHeaders` 护栏含逐跳头（`host/content-length/transfer-encoding/connection/...`）。核验 `_brokerInjectHeaderForbidden` 与 validator `INJECT_HEADER_DENYLIST` 一致，且后者是 server `REQUEST_HEADER_DENYLIST` 超集。
+- [ ] **B6** **双重编码 / URL 破坏**：`inject at=url` 由 broker `urlencode(component)` 自动编码；核验文档已警示 url 汇聚点前不得再 `urlencode`（模板已据此简化）。
+- [x] **B7** **回读闭环完整性**：注入值→下游响应→若回显→`stripEchoes`。核验多跳/重定向下注入值仍被剥（`injectedValues` 累积；strip 用交付响应）。**审阅 issue 1 已修**：url 注入的原始+编码两形都进 `injectedValues`（`injectionEchoTargets`）。
+
+---
+
+## C. 限额与 fail-closed 完整性
+
+- [ ] **C1** 单句柄 64KB（`MAX_HANDLE_BYTES`/`maxHandleBytes`）**约束输出**（`capText`/`capBytes` 在每个 op 输出与每次抽取后检查），非仅输入——防 `concat` 自倍增放大（2¹⁶）。
+- [x] **C2** 全 DAG 4MB（`MAX_DAG_HANDLE_BYTES`/`maxDagHandleBytes`）累计预算，超出 fail-closed。**审阅 issue 3 已修**：client host 现 ① 计入**每个 bind 句柄**（此前漏）；② 用共享 `handleByteLen`（**UTF-8 字节**，此前误用 Dart `String.length`=UTF-16 码元）；③ 循环末**补算所有未被引用的 compute**，与 server `evalComputeGraph`「eval 全部 + 计全部」对称——消除放行/拒绝/失败的跨端差异。host 测试 `未被注入引用的 compute 仍被求值` 锁定此行为。
+- [ ] **C3** 抽取输入上限：header 4KB / body 8MB / regex 8KB；🔒 regex **超限失败而非截断**（截断=随响应大小静默改变行为）。
+- [ ] **C4** `substring` 越界 **fail-closed 不钳制**（消除 JS 钳制 vs Dart 抛异常分歧）；两端均不透传原生 `substring`。
+- [ ] **C5** 请求数复用现有 `maxRequests`（默认 20）；`tryReserveRequest` 原子预留在拓扑编排下仍生效。
+- [ ] **C6** 静态复杂度限额（节点 ≤64 / 深度 ≤16 / 每 op 参数 ≤8）由 validator D11 在**声明期**挡下；执行器不重复但假定已过校验。核验「假定已过校验」在生产接线上成立（manifest 已签名 + 加载期校验链）。
+
+---
+
+## D. 跨端一致（双跑 golden）
+
+- [ ] **D1** `contract/golden/broker/dataflow.json` 由 **server smoke 与 client test 各自独立跑**，产出 == expected。核验 golden 覆盖跨端陷阱：`substring` 越界、`urlencode` component/form（`%20` vs `+`）、`base64url` 去填充、`hmac`/`hkdf`（RFC 向量）、`now` 三格式、UTF-8 多字节。
+- [ ] **D2** 🔒 **crypto 手写实现审查**：client `_hmacSha256`/`_hkdfSha256`（建于 `DartSha256.hashSync`）vs server `node:crypto`。核验 HMAC 分块/ipad/opad、HKDF extract+expand（空 salt→全零、counter 字节序、L≤255×32）逐字节正确——**这是最需盯的手写密码学**。
+- [ ] **D3** `now` 两端均从 `nowMs` 定值喂入，不读真实时钟；`iso8601` 两端均 `.sssZ` 三位毫秒。
+- [ ] **D4** JSONPath 子集两端 tokenizer 同构（`$`/`.key`/`['key']`/`[n]`；不支持 `*`/`..`/`?()`）；数字→文本序列化两端一致（`_numToText` vs `String(number)`）。
+- [ ] **D5** 拓扑分层 `planRequestOrder` 两端同序（层内保持声明序，确定性）。
+
+---
+
+## E. 声明期闸门（validator D1–D16）
+
+- [ ] **E1** 逐条核对 D1–D16 语义与 `dataflow.smoke.ts` 负例覆盖（imperative 带数据流 / 未知 request / 重名 / extract 形状 / regex 白名单 / arg 形状 / 前向引用 / op 签名 / 类型 / 字面量密钥 / 限额 / 汇聚点 / 信任门 / 成环 / 凭证头）。
+- [ ] **E2** 🔒 **regex 语法白名单** `checkRegexSyntax`：核验嵌套量词检测（含 `((a+))+` 外传）、lookbehind、反向引用、命名组的拒绝逻辑无绕过；lookahead 放行是否可接受。
+- [ ] **E3** **regex 回溯步数预算 MVP 延后**（owner 决策）：核验审阅人**接受**「靠白名单 + 8KB 输入 + 无逐步计数」的残余灾难性回溯风险，且两端未因此产生 golden 漂移（都用原生引擎 `firstMatch`/`exec`）。
+- [ ] **E4** validator 本地复刻的常量（`INJECT_HEADER_DENYLIST`、`cmpSemver`）与其权威源的漂移风险已知且可控（镜像后独立运行需要，ADR-018 §2.8）。
+
+---
+
+## F. 测试充分性
+
+- [ ] **F1** 安全负例覆盖：`declarative_dataflow_host_test.dart`（抽取失败不发下游 / 凭证头护栏拒绝 / 回显剥离 / header 源脱敏前可读）+ `dataflow.smoke.ts`（15 组）+ `broker_dataflow_test.dart`（fail-closed 向量）。核验是否有未覆盖的 fail-closed 分支。
+- [ ] **F2** 回归保护：无数据流退化为平铺代取（等价），既有 `declarative_host_test.dart` 全过。
+- [ ] **F3** 端到端：驱动场景（challenge→regex→url 注入→带凭证下一跳）经 FakeTransport 验证拓扑序 + 凭证注入不受干扰。
+- [ ] **F4** 🔒 **安全敏感测试不得由 AI 独自闭环**：本轮测试由 AI 起草，须审阅人复核测试断言的**充分性与正确性**（尤其 fail-closed 是否真的 fail-closed、golden 期望值是否可信）。
+
+---
+
+## G. 明确出范围 / 已接受残余风险（审阅人确认知情接受）
+
+- [ ] **G1** **污点自动围栏**未落地：MVP 依赖 official 人工审 + 格式自带约束（无分支 / 静态汇聚点）。触发点 = 不再逐条亲审（ADR-023 §2.5）。
+- [ ] **G2** **regex 步数预算**延后（E3）。
+- [ ] **G3** **比较 / 长度预言机**已接受（B3/B4）。
+- [ ] **G4** **恶意 official 作者 + 自控白名单端点读日志** 出范围，归 official 人工审 + 签名兜（ADR-023 §2.5 threat scoping）。
+- [ ] **G5** 真实站点 **replay fixture** 待真实合格 adapter（§6 无合格标的，未虚构）。
+
+---
+
+## 签收
+
+- [ ] 人工安全审阅人：________________  日期：________  （A–F 全绿、G 知情接受）
+- [ ] owner 代码签收（§4/§5 触红线 #1 取数路径）：________________  日期：________
+- [ ] 签收后在 `declarative_dataflow_migration.md` §7 末条打勾，方可称 ADR-023「已落地」。

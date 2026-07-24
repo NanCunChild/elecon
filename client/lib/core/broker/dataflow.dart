@@ -303,8 +303,9 @@ HandleValue _extractRegex(BindDecl bind, RawResponse response) {
 HandleValue _scalarToText(String varName, Object? value) {
   if (value is String) return _capText(varName, value);
   if (value is int) return _capText(varName, value.toString());
-  if (value is double && value.isFinite)
+  if (value is double && value.isFinite) {
     return _capText(varName, _numToText(value));
+  }
   if (value is bool) return _capText(varName, value ? 'true' : 'false');
   throw DataflowException('extract_not_scalar', "bind '$varName'：选中值非标量");
 }
@@ -404,7 +405,10 @@ String _asText(HandleValue v, String opName, int pos) {
   return v.text;
 }
 
-int _byteLen(HandleValue v) =>
+/// 句柄字节长度：bytes 按字节、text 按 **UTF-8 字节**（非 Dart String 的 UTF-16 码元）。
+/// 🔒 全 DAG 4 MB 预算的计量口径——与服务端 `handleByteLen` **必须一致**，否则同一 manifest
+/// 在两端的放行/拒绝会漂移（审阅 issue 3 / C2）。host 侧预算累计亦复用本函数。
+int handleByteLen(HandleValue v) =>
     v is BytesHandle ? v.bytes.length : _utf8Len((v as TextHandle).text);
 
 /// 执行单个封闭 op。[args] 已解引用为句柄值；[params] 是 op 的标量参数。
@@ -550,7 +554,7 @@ Map<String, HandleValue> evalComputeGraph(
   final env = Map<String, HandleValue>.from(bound);
   var totalBytes = 0;
   for (final v in env.values) {
-    totalBytes += _byteLen(v);
+    totalBytes += handleByteLen(v);
   }
   for (final c in computes) {
     final argVals = c.args.map((arg) {
@@ -565,7 +569,7 @@ Map<String, HandleValue> evalComputeGraph(
       return ref;
     }).toList();
     final result = evalOp(c.op, argVals, c.params, nowMs);
-    totalBytes += _byteLen(result);
+    totalBytes += handleByteLen(result);
     if (totalBytes > maxDagHandleBytes) {
       throw DataflowException(
         'dag_budget_exceeded',
@@ -692,6 +696,16 @@ List<InjectionEffect> resolveInjections(
   return (url: url, headers: headers);
 }
 
+/// 一次注入在下游响应里**可能回显的所有形态**——供 [stripEchoes] 堵回读（审阅 issue 1 / B7）。
+///
+/// 🔒 `at=url` 时**上线的是 component 编码形**（如 `a b&c` → `a%20b%26c`）：下游既可能回显
+/// 原始解码值（服务器解码后写回），也可能回显编码形（原样反射 query 串）。**两者都须剥**，
+/// 否则 adapter 仍能看到秘密的等价物。`at=header` 值原样上线，只回原始值。
+List<String> injectionEchoTargets(InjectionEffect effect) {
+  if (effect.at == 'url') return [effect.value, urlencode(effect.value, false)];
+  return [effect.value];
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ④ 脱敏：剥掉响应里回显的注入值（🔒 MVP 必做，堵回读通道，ADR-023 §2.5）。
 // ═══════════════════════════════════════════════════════════════════════════
@@ -699,15 +713,16 @@ List<InjectionEffect> resolveInjections(
 /// 注入值在响应体 / 头里的回显掩码。
 const String echoMask = '[stripped]';
 
-/// 回显剥离的最短注入值长度：短于此不剥（避免误伤高频子串）。
-const int echoMinLen = 8;
-
 /// 从交给 adapter 前的响应里剥除注入值回显。broker 知道注入值真实字节，像剥 Set-Cookie
 /// 一样替换为定值掩码——adapter 无从「注入猜测 → 观察回显」套值。
+///
+/// 🔒 **剥除全部非空注入值，不设长度下限**（审阅 issue 2）：短 token / nonce / 凭证派生值
+/// 同样是回读面，ADR-023 §2.5 只接受**比较 / 长度**预言机，**未接受**短值直接回读。代价是
+/// 极短且高频的注入值可能过度掩码 body——安全侧取舍（掩码是保守方向）。仅跳过空串（空串
+/// replace 会在每个位置插掩码，且空串无秘密可言）。
 RawResponse stripEchoes(RawResponse response, List<String> injectedValues) {
-  final targets =
-      injectedValues.where((v) => v.length >= echoMinLen).toSet().toList()
-        ..sort((a, b) => b.length - a.length); // 长值优先，避免短值先替换破坏长值边界
+  final targets = injectedValues.where((v) => v.isNotEmpty).toSet().toList()
+    ..sort((a, b) => b.length - a.length); // 长值优先，避免短值先替换破坏长值边界
   if (targets.isEmpty) return response;
   var body = response.body;
   for (final val in targets) {

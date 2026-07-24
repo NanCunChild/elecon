@@ -171,6 +171,25 @@ void main() {
     }
   });
 
+  group('echoTargets（审阅 issue 1：url 回显目标含编码形）', () {
+    for (final raw
+        in (golden['echoTargets'] as List).cast<Map<String, dynamic>>()) {
+      test(raw['name'] as String, () {
+        final e = (raw['effect'] as Map).cast<String, dynamic>();
+        final effect = InjectionEffect(
+          into: e['into'] as String,
+          at: e['at'] as String,
+          name: e['name'] as String,
+          value: e['value'] as String,
+        );
+        expect(
+          injectionEchoTargets(effect),
+          equals((raw['expected'] as List).cast<String>()),
+        );
+      });
+    }
+  });
+
   group('topo（请求依赖分层）', () {
     for (final raw in (golden['topo'] as List).cast<Map<String, dynamic>>()) {
       test(raw['name'] as String, () {
