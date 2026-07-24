@@ -90,27 +90,31 @@
 
 ## 4. Server runtime / broker 🔒
 
-- [ ] 在现有 declarative 代取 seam 上实现请求依赖拓扑排序；无依赖请求可并发。
-- [ ] 在脱敏前完成 broker 侧提取，句柄仅存在于 broker 内部。
-- [ ] 实现封闭 compute op；不得引入任意脚本执行或新运行时依赖。
-- [ ] **运行时限额执行**：单句柄 64 KB、全 DAG 句柄总预算 4 MB，超出 fail-closed（§0.1）。
-- [ ] **`regex` 回溯步数预算**：超预算抛 fail-closed 错误（非超时）；两端步数计数一致。
-- [ ] **`now` 由既有 `AdapterRunInput.nowMs` 喂入定值**（复用现有固定 `NOW` golden 约定），不得读真实时钟。
-- [ ] **逐 op 形式化语义表 + 每 op ≥1 条双端 golden**：重点 `substring` 越界（JS 钳制 vs Dart 抛）、`urlencode` 变体（component/query/RFC3986，空格 `%20` vs `+`）。
-- [ ] 复用现有 credential injection seam，并对注入请求执行 fail-closed 校验。
-- [ ] 剥离响应中的凭证、注入值回显和重定向中间 token（🔒 **回显剥离为 MVP 必做项**，ADR-023 §2.5）。
-- [ ] **错误只进宿主日志 / 用户诊断，绝不回流 adapter**：adapter 侧观测到的须是整条 capability 失败，与正常失败路径不可区分。
-- [ ] 增加双端 golden、拓扑/超时/请求数/响应大小/错误路径测试。
-- [ ] 完成安全清单和人工 runtime/broker 审阅后才可合并。
+> **落地**：`server/src/runtime/broker/dataflow.ts`（TS 参考执行器 = 语言无关 golden 基准，非生产代取，红线 #2）+ `dataflow.smoke.ts`（39 例）。逐 op 语义权威见 `declarative_dataflow_ops.md`。人工安全审见 `declarative_dataflow_security_checklist.md`（A–F 全绿，owner 2026-07-24 签收）；下方括注为对应清单条目。
+
+- [x] 在现有 declarative 代取 seam 上实现请求依赖拓扑排序；无依赖请求可并发。（`planRequestOrder` Kahn 分层，层内保声明序、确定性；成环兜底 fail-closed。清单 D5。）
+- [x] 在脱敏前完成 broker 侧提取，句柄仅存在于 broker 内部。（`extractHandle` 读脱敏前 `RawResponse`，句柄只存执行器内部 `env`。清单 A2/A5。）
+- [x] 实现封闭 compute op；不得引入任意脚本执行或新运行时依赖。（`evalOp` 封闭 `switch`，仅依赖 `node:crypto`；无脚本引擎。清单 A10。）
+- [x] **运行时限额执行**：单句柄 64 KB、全 DAG 句柄总预算 4 MB，超出 fail-closed（§0.1）。（`MAX_HANDLE_BYTES`/`MAX_DAG_HANDLE_BYTES`，`capText`/`capBytes` 约束**输出**防自倍增。清单 C1/C2。）
+- [~] **`regex` 回溯步数预算**：超预算抛 fail-closed 错误（非超时）；两端步数计数一致。**（MVP 延后 — owner 决策，清单 E3/G2：靠 D5 语法白名单 + 8 KB 输入上限兜底，两端均用原生引擎 `exec`/`firstMatch`、无逐步计数，故无 golden 漂移；灾难性回溯残余风险已知情接受。触发实现见文末增量。）**
+- [x] **`now` 由既有 `AdapterRunInput.nowMs` 喂入定值**（复用现有固定 `NOW` golden 约定），不得读真实时钟。（`formatNow(nowMs, …)` 三格式；清单 D3。）
+- [x] **逐 op 形式化语义表 + 每 op ≥1 条双端 golden**：重点 `substring` 越界（JS 钳制 vs Dart 抛）、`urlencode` 变体（component/query/RFC3986，空格 `%20` vs `+`）。（`declarative_dataflow_ops.md` + `dataflow.json`；`substring` 两端统一 fail-closed 不钳制。清单 C4/D1。）
+- [x] 复用现有 credential injection seam，并对注入请求执行 fail-closed 校验。（注入与凭证注入同侧叠加，越 `brokerInjectHeaders` 护栏 → fail-closed。清单 A4。）
+- [x] 剥离响应中的凭证、注入值回显和重定向中间 token（🔒 **回显剥离为 MVP 必做项**，ADR-023 §2.5）。（`stripEchoes` 剥全部非空注入值 + url 编码形回显。清单 A5/B7。）
+- [x] **错误只进宿主日志 / 用户诊断，绝不回流 adapter**：adapter 侧观测到的须是整条 capability 失败，与正常失败路径不可区分。（`DataflowError` message 不含句柄值。清单 A8。）
+- [x] 增加双端 golden、拓扑/超时/请求数/响应大小/错误路径测试。（拓扑/输入大小/错误路径由 `dataflow.smoke.ts` + `dataflow.json` 覆盖；请求数/超时属传输层，由 client host 侧 `declarative_dataflow_host_test.dart` 覆盖。清单 D1/F1。）
+- [x] 完成安全清单和人工 runtime/broker 审阅后才可合并。（owner 2026-07-24 逐条签收，见清单「签收」段。）
 
 ## 5. Client runtime 🔒
 
-- [ ] 在 `client/lib/core/declarative_host.dart` 实现与 server 对称的 DAG 执行。
-- [ ] 保证客户端 QuickJS adapter 仍只执行末端同步解析，不接触句柄或中间响应。
-- [ ] 对凭证 scope、静态注入位置、请求上限、超时和响应脱敏保持 fail-closed。
-- [ ] **与 server 对称实现**：§0.1 全部限额、`regex` 步数预算、句柄类型语义、`now` 定值喂入、错误只进宿主日志。
-- [ ] 增加 Dart golden，与 server 对同一 fixture 产出完全一致（含逐 op 语义 golden）。
-- [ ] 增加客户端安全负例并完成人工 runtime 审阅。
+> **落地**：`client/lib/core/broker/dataflow.dart`（Dart 生产执行器，与 §4 TS 逐字节对称）+ 接线 `declarative_host.dart` `fulfillDeclarativeRequests` + `fetch_proxy.dart` 脱敏前抽取钩子/置头。客户端是唯一生产编排方（凭证在客户端核心）。人工审见安全清单 A–F。
+
+- [x] 在 `client/lib/core/declarative_host.dart` 实现与 server 对称的 DAG 执行。（执行器 `dataflow.dart` 同名纯函数 `planRequestOrder`/`extractHandle`/`evalOp`/`resolveInjections`/`stripEchoes`，接线进 `fulfillDeclarativeRequests`。清单 D1/D5。）
+- [x] 保证客户端 QuickJS adapter 仍只执行末端同步解析，不接触句柄或中间响应。（`CtxDeclarative` 无句柄/fetch API；adapter 只收 `stripEchoes` 后 `responses`。清单 A1/A10。）
+- [x] 对凭证 scope、静态注入位置、请求上限、超时和响应脱敏保持 fail-closed。（`tryReserveRequest` 复用 `maxRequests`；汇聚点静态；缺失/越界统一 fail-closed。清单 A4/A5/A7/B1/C5。）
+- [~] **与 server 对称实现**：§0.1 全部限额、`regex` 步数预算、句柄类型语义、`now` 定值喂入、错误只进宿主日志。**（限额/类型语义/`now`/错误路径均与 §4 逐字节对称并双跑 golden 锁定；唯 `regex` 步数预算两端**一致地延后**（清单 E3/G2），非单端缺口。审阅 issue 3 已修正 `handleByteLen` 用 UTF-8 字节口径以消除全 DAG 计量跨端漂移。清单 C2/D1–D5。）**
+- [x] 增加 Dart golden，与 server 对同一 fixture 产出完全一致（含逐 op 语义 golden）。（`broker_dataflow_test.dart` 跑 `contract/golden/broker/dataflow.json`，与 server smoke 逐字节一致。清单 D1。）
+- [x] 增加客户端安全负例并完成人工 runtime 审阅。（`declarative_dataflow_host_test.dart` 端到端 + fail-closed 负例；owner 2026-07-24 签收 §4/§5 取数路径。清单 F1/F3/签收。）
 
 ## 6. Adapter 迁移
 
