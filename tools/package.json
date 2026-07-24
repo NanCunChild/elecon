@@ -24,6 +24,7 @@
     "smoke:bootstrap": "tsx src/release/bootstrap.smoke.ts",
     "scan": "tsx src/scanner/index.ts",
     "smoke:validator": "tsx src/validator/validator.smoke.ts",
+    "smoke:dataflow": "tsx src/validator/dataflow.smoke.ts",
     "smoke:urlmatch": "tsx src/validator/url-match.smoke.ts",
     "smoke:scanner": "tsx src/scanner/scanner.smoke.ts",
     "smoke:codegen": "tsx src/codegen/codegen.smoke.ts",

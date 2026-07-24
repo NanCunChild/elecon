@@ -1,7 +1,8 @@
 # ADR-023：声明式跨请求数据流（假想变量 / 不透明句柄）——把数据依赖链从命令式收回声明式
 
 - **状态**：**已接受（Accepted）** · 2026-07-23 owner 评审通过（决策面锁定：仅交付封闭 op 词表，任意计算预设为 QJS-复用的零依赖后续升级，见 §2.4）。
-  **修订 2026-07-24（owner 勾决落地决策）**：§5 原「开放问题」1–6 全部转为决策记录（提取器词表与限额、compute 词表与类型化、嵌套复杂度限额、MVP 允许凭证派生值、缺失语义 fail-closed）；§2.5 增记 MVP 凭证派生值决策与两条已接受残余风险；**§2.6 决策被推翻并改写**——`devSideload` 在 DEV 下与 official 同权（原为「带 `compute` official-only」），附 🔒 防扩散条款。**§5 第 7 项（schema `if/then`）仍开放。**
+  **修订 2026-07-24（owner 勾决落地决策）**：§5 原「开放问题」1–6 全部转为决策记录（提取器词表与限额、compute 词表与类型化、嵌套复杂度限额、MVP 允许凭证派生值、缺失语义 fail-closed）；§2.5 增记 MVP 凭证派生值决策与两条已接受残余风险；**§2.6 决策被推翻并改写**——`devSideload` 在 DEV 下与 official 同权（原为「带 `compute` official-only」），附 🔒 防扩散条款。
+  **修订 2026-07-24（§5 第 7 项勾决 + §2/§3 落地）**：schema 层**不加 `if/then`**（组合约束全归 validator）；契约面（`manifest.schema.json` 增 `bind`/`compute`/`inject`）与 validator（`dataflow.ts` D1–D16 + 安全负例）已落地。两端 runtime（§4/§5）与 adapter 迁移（§6）仍待落地（🔒 人工主导，AI 不得独自闭环）。
   触碰红线 #1（凭证）、#5（adapter 能力面）、#6（契约承重墙）。按 [AGENTS.md](../../AGENTS.md) §1：**数据流执行、句柄解引用、注入、脱敏、污点围栏的实现与测试须人工主导 + 安全清单 + ≥1 人工审，AI 不得独自闭环**。本文只固定契约面与执行模型决策。
 - **日期**：2026-07-23
 - **依赖**：
@@ -221,6 +222,8 @@ auth_A        auth_B
 
 🔒 **错误只进宿主日志 / 面向用户的诊断，绝不回流 adapter**：若 adapter 能观测到「某句柄提取失败」，那本身就是一条回读通道（可探测值的存在性与形状）。adapter 侧看到的必须是整条 capability 失败，与正常失败路径**不可区分**。
 
-### 7 · 仍开放：schema 层是否新增 `if/then`
+### 决策 7 · schema 层不新增 `if/then`（2026-07-24 owner 勾决）
 
-**未勾决。** 建议：**保持 schema 不加 `if/then`，`bind`/`compute`/`inject` 的组合约束全部由 validator 承担**——与 ADR-022 先例一致（`requestGraph`/`requests` 互斥走 validator C12 而非 schema），且本 ADR 的约束（引用闭合、DAG 无环、类型匹配、汇聚点静态、复杂度限额）**本质超出 JSON Schema 表达力**，硬塞 `if/then` 只能覆盖皮毛却制造两套真相。
+**已决：保持 schema 不加 `if/then`，`bind`/`compute`/`inject` 的组合约束全部由 validator 承担**——与 ADR-022 先例一致（`requestGraph`/`requests` 互斥走 validator C12 而非 schema），且本 ADR 的约束（引用闭合、DAG 无环、类型匹配、汇聚点静态、复杂度限额）**本质超出 JSON Schema 表达力**，硬塞 `if/then` 只能覆盖皮毛却制造两套真相。
+
+**落地（§2/§3，2026-07-24）**：schema 只承担字段形状 + 封闭枚举 + 类型标签；组合约束落 `tools/src/validator/dataflow.ts` 规则 **D1–D16**（`extract` 键集合与 `source` 对应、regex 语法白名单、op 签名与静态 bytes/text 类型、🔒 密钥位须 ref、复杂度限额、请求依赖无环、🔒 信任门正向允许表、🔒 凭证头护栏）。逐 op 形式化语义见 [`declarative_dataflow_ops.md`](../reference/declarative_dataflow_ops.md)。两端 runtime（§4/§5）与 adapter 迁移（§6）仍待落地（🔒 人工主导）。

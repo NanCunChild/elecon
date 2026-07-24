@@ -18,6 +18,11 @@
  *    每个 services[*].service 与 success ⊆ navigationAllow（M2）；services 键须 ∈ credentials（M3）；
  *    母凭证 ref（scope 覆盖 authEndpoint 者）须存在且 scope 不与下游数据域重叠（M4）；
  *    services[*].via 须为本 manifest 声明的 capability 且 official（M5，红线 #1 门禁，类比 C3）
+ *  D1–D16 声明式跨请求数据流（ADR-023，见 dataflow.ts）：仅 declarative 可声明 bind/compute/inject（D1）；
+ *    bind.from/inject.into 指向已声明 request（D2/D12）；变量名唯一 + 引用闭合无环（D3/D7）；
+ *    extract 键集合与 source 对应 + regex 语法白名单（D4/D5）；封闭 op 签名 + 静态类型 bytes/text（D8/D9）；
+ *    🔒 密钥位须 ref（D10）；复杂度限额（D11）；🔒 信任门正向允许表（D13）；请求依赖无环（D15）；
+ *    🔒 凭证头 / 逐跳头不得注入（D16）
  *
  * 尚未覆盖（留给优先级 #3 客户端落地）：
  *  - 完整 golden 双跑：客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产出比对。
@@ -34,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import { allowToRegex, scopePrefix, urlCoveredByAllow } from "@elecon/broker-primitives";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+import { type BindDecl, type ComputeDecl, checkDataflow, type InjectDecl } from "./dataflow.js";
 
 // TS 侧 url-match 单源在 @elecon/broker-primitives（审阅 P2-4，原本文件内联拷贝已删）。
 // re-export 保持既有 API 面（url-match.smoke.ts 经此面验证"校验器实际使用的实现"合 golden）。
@@ -70,6 +76,10 @@ interface CapabilityDecl {
   requestGraph: "declarative" | "imperative";
   params?: { schema: string; schemaVersion: string };
   requests?: Array<{ key: string; method: string; url: string; credential?: string }>;
+  /** 声明式跨请求数据流（ADR-023）。可选；仅 declarative capability 可声明（D1）。 */
+  bind?: BindDecl[];
+  compute?: ComputeDecl[];
+  inject?: InjectDecl[];
 }
 
 interface CredentialDecl {
@@ -335,6 +345,9 @@ export function checkManifest(
 
   // M1–M5 SSO 静默签票声明检查（ADR-017）。login.ssoMint 可选；缺省即跳过。
   findings.push(...checkSsoMint(manifest));
+
+  // D1–D16 声明式跨请求数据流检查（ADR-023）。bind/compute/inject 可选；缺省即跳过。
+  findings.push(...checkDataflow(manifest));
 
   return findings;
 }

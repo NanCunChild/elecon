@@ -7,6 +7,17 @@
 - **requestGraph**：declarative（无网络、无凭证、纯解析；核心按 `requests[]` 代取）
 - **已知坑**：
 
+## 声明式跨请求数据流示例（ADR-023）
+
+本模板 `grades.list` 演示「挑战页 → 派生值 → 注入下一跳」这类数据依赖链，全程 **broker 侧**执行、adapter 永不见值：
+
+1. `requests.chal` 先取挑战页（无凭证、passthrough）。
+2. `bind.client_id`：用 `regex` 从 `chal` 响应体抽出 `client_id`，绑为不透明句柄。
+3. `compute.cid_q`：`urlencode`（`component`）——封闭 op，broker 原生执行。
+4. `inject`：把 `cid_q` 注入 `raw` 请求 URL 的 `cid` 参数（**静态汇聚点**，绝不依值选择注入到哪）。
+
+`index.js` 的解析函数**只读 `responses.raw`**——句柄、中间响应、注入值都不进 adapter。这正是数据流比命令式更安全之处（命令式下 adapter 必须自己读 body 才拿得到中间 token）。逐 op 语义见 [`docs/reference/declarative_dataflow_ops.md`](../../../docs/reference/declarative_dataflow_ops.md)。
+
 ## 夹具说明
 
 `fixtures/` 中的样本均已脱敏。

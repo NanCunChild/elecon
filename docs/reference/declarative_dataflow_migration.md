@@ -4,9 +4,16 @@
 >
 > ADR-022 已完成迁移并作为前置条件。本文涉及凭证派生值、句柄解引用、注入和响应脱敏，属于安全承重路径：实现与测试必须人工主导，配套安全清单，并至少经过 1 名人工审阅；AI 不得独自闭环。
 >
-> **当前状态：决策已勾决（2026-07-24），待动工。** §0 的第 1–6 项已由 owner 勾决并写回 ADR-023 §2.5 / §2.6 / §5；**第 7 项（schema 是否新增 `if/then`）仍开放**。
+> **当前状态：契约（§2）+ validator（§3）已落地（2026-07-24），两端 runtime（§4/§5）+ adapter 迁移（§6）待动工。** §0 全部 7 项已勾决（第 7 项 owner 定为**不加 `if/then`**，组合约束全归 validator）。
 >
-> **动工门禁**：第 7 项直接决定 §2 契约的实现方式（schema 承担多少组合约束），故 **`contract/manifest.schema.json` 动工前须先决第 7 项**；§3 validator 的规则设计与安全负例可依 §0.1 / §0.2 先行。两端 broker/runtime（§4/§5）仍按 §8 顺序排在契约与 validator 之后。
+> **动工门禁**：第 7 项直接决定 §2 契约的实现方式（schema 承担多少组合约束）。**已决：schema 不加 `if/then`**（§0 第 7 项），`bind/compute/inject` 的组合约束由 validator D1–D16 承担。两端 broker/runtime（§4/§5）仍按 §8 顺序排在契约与 validator 之后；§4/§5/§6 属 🔒 人工主导路径，AI 不得独自闭环。
+>
+> **已落地产物（§2/§3）**：
+> - `contract/manifest.schema.json`：per declarative capability 增 `bind`/`compute`/`inject` 三段（字段形状 + 封闭枚举 + 类型标签由 schema 承担）。
+> - `docs/reference/declarative_dataflow_ops.md`：逐 op 形式化语义表（validator 签名检查与两端 runtime 的共同事实来源）。
+> - `tools/src/validator/dataflow.ts`：规则 D1–D16（引用闭合/DAG 无环/静态类型/密钥形态/复杂度限额/汇聚点/信任门/凭证头护栏）。
+> - `tools/src/validator/dataflow.smoke.ts`：正例 + 15 组安全负例，`npm run smoke:dataflow`。
+> - `adapters/_template/declarative`：挑战页→派生→注入的端到端示例 manifest（adapter 解析仍纯末端）。
 
 ## 0. 落地前必须勾决
 
@@ -18,7 +25,7 @@
 - [x] **MVP 允许凭证派生值**；🔒 回显剥离为 MVP 必做项；残余风险（比较预言机、长度预言机）已由 owner 明示接受，见 ADR-023 §2.5。
 - [x] **`devSideload` 在 DEV 下与 official 同权**（推翻初稿 official-only）；🔒 防扩散条款见 ADR-023 §2.6——能力判定挂 `devSideload` 档本身，**不得写成「非 official 即放行」的否定式**。
 - [x] **缺失语义统一 fail-closed**：提取失败 / 匹配失败 / 注入时句柄缺失 → 整条 capability 失败；**不提供「缺失即省略下游注入」**。🔒 错误只进宿主日志与用户诊断，**绝不回流 adapter**。
-- [ ] **（仍开放）** owner 确认是否保持 schema 层不新增 `if/then`，由 validator 承担 `bind/compute/inject` 组合约束。**建议：保持不加**（同 ADR-022 走 validator C12 的先例；本 ADR 约束本质超出 JSON Schema 表达力）。
+- [x] **（已决 2026-07-24）** owner 确认**保持 schema 层不新增 `if/then`**，由 validator（D1–D16）承担 `bind/compute/inject` 组合约束（同 ADR-022 走 validator C12 的先例；本 ADR 约束本质超出 JSON Schema 表达力）。ADR-023 §5 第 7 项同步定稿。
 
 ### 0.1 限额常量（实施基准，两端必须一致）
 
@@ -54,28 +61,30 @@
 
 ## 2. 契约与 SDK
 
-- [ ] `contract/manifest.schema.json` 为 declarative capability 增加 `bind`、`compute`、`inject`。
-- [ ] schema 限定提取器、compute op、注入位置和引用名的封闭集合。
-- [ ] 明确并实现数组唯一性、引用闭合、DAG 无环、静态汇聚点和字段类型约束。
-- [ ] 提取器枚举**只放行** `header` / `body` / `regex`（**`css-select` 不进首批**）；`bind` 结果恒为标量，**不引入数组句柄**。
-- [ ] compute op 枚举含 `now`，**不含** `random` / `uuid`（双跑 golden 不变量）。
-- [ ] 句柄声明**带类型标签（bytes / text）**；`base64` / `hex` 为唯一 bytes→text 通道。
-- [ ] `contract/adapter-sdk/types.d.ts` 同步声明面；adapter 不获得响应值或句柄解引用 API。
-- [ ] 更新 schema golden 与脱敏 fixture；禁止真实学生数据和真实凭证。
+- [x] `contract/manifest.schema.json` 为 declarative capability 增加 `bind`、`compute`、`inject`。
+- [x] schema 限定提取器、compute op、注入位置和引用名的封闭集合。
+- [x] 明确并实现数组唯一性、引用闭合、DAG 无环、静态汇聚点和字段类型约束。（形状+封闭枚举由 schema；引用闭合/无环/类型/汇聚点由 validator D3/D7/D9/D12/D15，见 §0 第 7 项决策。）
+- [x] 提取器枚举**只放行** `header` / `body` / `regex`（**`css-select` 不进首批**）；`bind` 结果恒为标量，**不引入数组句柄**。
+- [x] compute op 枚举含 `now`，**不含** `random` / `uuid`（双跑 golden 不变量）。
+- [x] 句柄声明**带类型标签（bytes / text）**；`base64` / `hex` 为唯一 bytes→text 通道。（类型标签为**静态推导**：bind→text、hmac/hkdf→bytes，adapter 不显式写 type；validator D9 强制。逐 op 见 `declarative_dataflow_ops.md`。）
+- [ ] ~~`contract/adapter-sdk/types.d.ts` 同步声明面~~；adapter 不获得响应值或句柄解引用 API。**（无需改动：`CtxDeclarative` 已无 fetch/句柄 API，`bind/compute/inject` 是 manifest 声明面而非 adapter 运行期 API 面，types.d.ts 只描述后者。已复核确认。）**
+- [x] 更新 schema golden 与脱敏 fixture；禁止真实学生数据和真实凭证。（`adapters/_template/declarative` 端到端示例；无真实数据。）
 
 ## 3. Validator 🔒
 
-- [ ] 校验 `bind.from` 指向已声明 request，source/extract 符合封闭词表。
-- [ ] 校验 compute 输入变量已定义且 op 合法；拒绝循环、未定义引用和越界复杂度。
-- [ ] 校验 inject 目标 request、位置、字段名静态且引用已定义。
-- [ ] **静态类型检查**：句柄 bytes/text 类型匹配，不匹配即拒（如 `concat` 混接 bytes 与 text）。
-- [ ] **`hmac-sha256`/`hkdf` 的 key 必须是句柄引用**，字面量密钥一律拒（manifest 已签名分发 = 公开）。
-- [ ] **静态复杂度限额**：嵌套深度 ≤16、节点数 ≤64、每 op 参数 ≤8（§0.1）。
-- [ ] **`regex` 语法白名单**：禁嵌套量词、禁 lookbehind；模式串静态校验。
-- [ ] 校验 declarative-only 与信任门：**能力判定挂 `devSideload` 档本身**，🔒 **不得写成「非 official 即放行」的否定式**（ADR-023 §2.6 防扩散条款）。
-- [ ] 为缺失值、凭证派生值、回显值、越界注入、循环和非法 op 增加安全负例。
-- [ ] 新增安全负例：类型不匹配、字面量 key、超深度/超节点/超参数、非法 regex 语法。
-- [ ] 运行 validator smoke、schema golden 和全量 adapter validate。
+> 落地于 `tools/src/validator/dataflow.ts`（规则 D1–D16），接入 `checkManifest`。负例见 `dataflow.smoke.ts`。
+
+- [x] 校验 `bind.from` 指向已声明 request，source/extract 符合封闭词表。（D2/D4）
+- [x] 校验 compute 输入变量已定义且 op 合法；拒绝循环、未定义引用和越界复杂度。（D6/D7/D8/D11；无环由「只引用声明序在前」+ D15 请求依赖 DFS 双重保证）
+- [x] 校验 inject 目标 request、位置、字段名静态且引用已定义。（D12）
+- [x] **静态类型检查**：句柄 bytes/text 类型匹配，不匹配即拒（如 `concat` 混接 bytes 与 text）。（D9）
+- [x] **`hmac-sha256`/`hkdf` 的 key 必须是句柄引用**，字面量密钥一律拒（manifest 已签名分发 = 公开）。（D10）
+- [x] **静态复杂度限额**：嵌套深度 ≤16、节点数 ≤64、每 op 参数 ≤8（§0.1）。（D11）
+- [x] **`regex` 语法白名单**：禁嵌套量词、禁 lookbehind、禁反向引用/命名组；模式串静态校验。（D5，`checkRegexSyntax`）
+- [x] 校验 declarative-only 与信任门：**能力判定挂 `devSideload` 档本身**，🔒 **不得写成「非 official 即放行」的否定式**（ADR-023 §2.6 防扩散条款）。（D1 + D13 `DATAFLOW_ALLOWED_TRUST_TIERS` 正向允许表）
+- [~] 为缺失值、凭证派生值、回显值、越界注入、循环和非法 op 增加安全负例。**（静态可查项已覆盖：非法 op/越界注入/循环 = D8/D12/D15/D16 负例；缺失值语义、凭证派生值回显剥离属**运行期** fail-closed，随 §4/§5 runtime 落地并配 golden。）**
+- [x] 新增安全负例：类型不匹配、字面量 key、超深度/超节点/超参数、非法 regex 语法。（dataflow.smoke.ts）
+- [x] 运行 validator smoke、schema golden 和全量 adapter validate。（`smoke:dataflow` + `smoke:validator` + `smoke:all` 15/15 + `validate` 5/5 通过）
 
 ## 4. Server runtime / broker 🔒
 

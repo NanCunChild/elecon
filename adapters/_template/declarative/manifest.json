@@ -8,7 +8,8 @@
   "runtime": { "engine": "quickjs", "entry": "index.js" },
   "network": {
     "allow": [
-      "https://jw.example.edu.cn/api/*"
+      "https://jw.example.edu.cn/api/*",
+      "https://jw.example.edu.cn/challenge*"
     ]
   },
   "credentials": {
@@ -24,11 +25,30 @@
       "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
       "requests": [
         {
+          "key": "chal",
+          "method": "GET",
+          "url": "https://jw.example.edu.cn/challenge"
+        },
+        {
           "key": "raw",
           "method": "GET",
           "url": "https://jw.example.edu.cn/api/grades?term={term}",
           "credential": "session"
         }
+      ],
+      "bind": [
+        {
+          "var": "client_id",
+          "from": "chal",
+          "source": "regex",
+          "extract": { "pattern": "client_id=([a-z0-9]+)", "group": 1 }
+        }
+      ],
+      "compute": [
+        { "var": "cid_q", "op": "urlencode", "args": [{ "ref": "client_id" }], "params": { "variant": "component" } }
+      ],
+      "inject": [
+        { "var": "cid_q", "into": "raw", "at": "url", "name": "cid" }
       ]
     }
   ]
