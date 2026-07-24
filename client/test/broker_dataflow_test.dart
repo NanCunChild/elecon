@@ -28,9 +28,9 @@ HandleValue _toHandle(Map<String, dynamic> g) {
 
 /// HandleValue → golden 可比对形（bytes 转 hex）。
 Map<String, dynamic> _fromHandle(HandleValue h) => switch (h) {
-      BytesHandle(:final bytes) => {'type': 'bytes', 'hex': _bytesToHex(bytes)},
-      TextHandle(:final text) => {'type': 'text', 'text': text},
-    };
+  BytesHandle(:final bytes) => {'type': 'bytes', 'hex': _bytesToHex(bytes)},
+  TextHandle(:final text) => {'type': 'text', 'text': text},
+};
 
 List<int> _hexToBytes(String hex) {
   final out = <int>[];
@@ -49,10 +49,10 @@ String _bytesToHex(List<int> bytes) {
 }
 
 RawResponse _rawResponse(Map<String, dynamic> j) => RawResponse(
-      status: j['status'] as int,
-      headers: (j['headers'] as Map).cast<String, String>(),
-      body: j['body'] as String,
-    );
+  status: j['status'] as int,
+  headers: (j['headers'] as Map).cast<String, String>(),
+  body: j['body'] as String,
+);
 
 /// 断言 [fn] 抛出 DataflowException 且 code 匹配。
 void _expectError(void Function() fn, String code, String label) {
@@ -81,9 +81,15 @@ void main() {
             .toList();
         final params = (raw['params'] as Map?)?.cast<String, dynamic>();
         if (raw['error'] != null) {
-          _expectError(() => evalOp(raw['op'] as String, args, params, nowMs), raw['error'] as String, raw['name'] as String);
+          _expectError(
+            () => evalOp(raw['op'] as String, args, params, nowMs),
+            raw['error'] as String,
+            raw['name'] as String,
+          );
         } else {
-          final actual = _fromHandle(evalOp(raw['op'] as String, args, params, nowMs));
+          final actual = _fromHandle(
+            evalOp(raw['op'] as String, args, params, nowMs),
+          );
           expect(actual, equals(raw['expected']));
         }
       });
@@ -91,12 +97,21 @@ void main() {
   });
 
   group('extract（抽取 + fail-closed）', () {
-    for (final raw in (golden['extract'] as List).cast<Map<String, dynamic>>()) {
+    for (final raw
+        in (golden['extract'] as List).cast<Map<String, dynamic>>()) {
       test(raw['name'] as String, () {
-        final bind = BindDecl.fromJson((raw['bind'] as Map).cast<String, dynamic>());
-        final response = _rawResponse((raw['response'] as Map).cast<String, dynamic>());
+        final bind = BindDecl.fromJson(
+          (raw['bind'] as Map).cast<String, dynamic>(),
+        );
+        final response = _rawResponse(
+          (raw['response'] as Map).cast<String, dynamic>(),
+        );
         if (raw['error'] != null) {
-          _expectError(() => extractHandle(bind, response), raw['error'] as String, raw['name'] as String);
+          _expectError(
+            () => extractHandle(bind, response),
+            raw['error'] as String,
+            raw['name'] as String,
+          );
         } else {
           final actual = _fromHandle(extractHandle(bind, response));
           expect(actual, equals(raw['expected']));
@@ -117,12 +132,21 @@ void main() {
             e.key: _toHandle((e.value as Map).cast<String, dynamic>()),
         };
         if (raw['error'] != null) {
-          _expectError(() => resolveInjections(injects, env), raw['error'] as String, raw['name'] as String);
+          _expectError(
+            () => resolveInjections(injects, env),
+            raw['error'] as String,
+            raw['name'] as String,
+          );
         } else {
-          final request = DataflowRequestDecl.fromJson((raw['request'] as Map).cast<String, dynamic>());
+          final request = DataflowRequestDecl.fromJson(
+            (raw['request'] as Map).cast<String, dynamic>(),
+          );
           final effects = resolveInjections(injects, env);
           final applied = applyInjections(request, effects);
-          expect({'url': applied.url, 'headers': applied.headers}, equals(raw['expected']));
+          expect({
+            'url': applied.url,
+            'headers': applied.headers,
+          }, equals(raw['expected']));
         }
       });
     }
@@ -131,13 +155,18 @@ void main() {
   group('strip（回显剥离）', () {
     for (final raw in (golden['strip'] as List).cast<Map<String, dynamic>>()) {
       test(raw['name'] as String, () {
-        final response = _rawResponse((raw['response'] as Map).cast<String, dynamic>());
+        final response = _rawResponse(
+          (raw['response'] as Map).cast<String, dynamic>(),
+        );
         final injected = (raw['injectedValues'] as List).cast<String>();
         final actual = stripEchoes(response, injected);
         final expected = (raw['expected'] as Map).cast<String, dynamic>();
         expect(actual.status, expected['status']);
         expect(actual.body, expected['body']);
-        expect(actual.headers, equals((expected['headers'] as Map).cast<String, String>()));
+        expect(
+          actual.headers,
+          equals((expected['headers'] as Map).cast<String, String>()),
+        );
       });
     }
   });
@@ -149,11 +178,22 @@ void main() {
             .cast<Map<String, dynamic>>()
             .map(DataflowRequestDecl.fromJson)
             .toList();
-        final binds = (raw['binds'] as List).cast<Map<String, dynamic>>().map(BindDecl.fromJson).toList();
-        final computes = (raw['computes'] as List).cast<Map<String, dynamic>>().map(ComputeDecl.fromJson).toList();
-        final injects = (raw['injects'] as List).cast<Map<String, dynamic>>().map(InjectDecl.fromJson).toList();
+        final binds = (raw['binds'] as List)
+            .cast<Map<String, dynamic>>()
+            .map(BindDecl.fromJson)
+            .toList();
+        final computes = (raw['computes'] as List)
+            .cast<Map<String, dynamic>>()
+            .map(ComputeDecl.fromJson)
+            .toList();
+        final injects = (raw['injects'] as List)
+            .cast<Map<String, dynamic>>()
+            .map(InjectDecl.fromJson)
+            .toList();
         final actual = planRequestOrder(requests, binds, computes, injects);
-        final expected = (raw['expected'] as List).map((l) => (l as List).cast<String>()).toList();
+        final expected = (raw['expected'] as List)
+            .map((l) => (l as List).cast<String>())
+            .toList();
         expect(actual, equals(expected));
       });
     }
@@ -163,20 +203,53 @@ void main() {
     const chalBody = 'session_key=SECRETKEY0011; client_id=cust42';
     final chal = RawResponse(status: 200, headers: const {}, body: chalBody);
     final binds = [
-      BindDecl(varName: 'key', from: 'chal', source: 'regex', extract: const {'pattern': r'session_key=(\w+)', 'group': 1}),
-      BindDecl(varName: 'cid', from: 'chal', source: 'regex', extract: const {'pattern': r'client_id=(\w+)', 'group': 1}),
+      BindDecl(
+        varName: 'key',
+        from: 'chal',
+        source: 'regex',
+        extract: const {'pattern': r'session_key=(\w+)', 'group': 1},
+      ),
+      BindDecl(
+        varName: 'cid',
+        from: 'chal',
+        source: 'regex',
+        extract: const {'pattern': r'client_id=(\w+)', 'group': 1},
+      ),
     ];
-    final bound = <String, HandleValue>{for (final b in binds) b.varName: extractHandle(b, chal)};
+    final bound = <String, HandleValue>{
+      for (final b in binds) b.varName: extractHandle(b, chal),
+    };
     final computes = [
-      const ComputeDecl(varName: 'mac', op: 'hmac-sha256', args: [ComputeArg(ref: 'key'), ComputeArg(ref: 'cid')]),
-      const ComputeDecl(varName: 'sig', op: 'hex', args: [ComputeArg(ref: 'mac')], params: {'case': 'lower'}),
+      const ComputeDecl(
+        varName: 'mac',
+        op: 'hmac-sha256',
+        args: [
+          ComputeArg(ref: 'key'),
+          ComputeArg(ref: 'cid'),
+        ],
+      ),
+      const ComputeDecl(
+        varName: 'sig',
+        op: 'hex',
+        args: [ComputeArg(ref: 'mac')],
+        params: {'case': 'lower'},
+      ),
     ];
     final env = evalComputeGraph(bound, computes, nowMs);
-    final effects = resolveInjections([const InjectDecl(varName: 'sig', into: 'raw', at: 'url', name: 'sig')], env);
-    final applied = applyInjections(const DataflowRequestDecl(key: 'raw', url: 'https://h.edu.cn/api/grades'), effects);
+    final effects = resolveInjections([
+      const InjectDecl(varName: 'sig', into: 'raw', at: 'url', name: 'sig'),
+    ], env);
+    final applied = applyInjections(
+      const DataflowRequestDecl(key: 'raw', url: 'https://h.edu.cn/api/grades'),
+      effects,
+    );
     expect(applied.url, startsWith('https://h.edu.cn/api/grades?sig='));
     final sig = env['sig']! as TextHandle;
-    final echoed = RawResponse(status: 200, headers: const {}, body: 'ok sig=${sig.text}');
+    final echoed = RawResponse(
+      status: 200,
+      headers: const {},
+      body: 'ok sig=${sig.text}',
+    );
     final stripped = stripEchoes(echoed, [sig.text]);
     expect(stripped.body.contains(sig.text), isFalse);
   });

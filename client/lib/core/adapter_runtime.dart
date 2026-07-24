@@ -47,8 +47,12 @@ import 'loader/bundle.dart'
 import 'loader/loader.dart' show LoadResult;
 import 'declarative_host.dart'
     show
+        BindDecl,
+        ComputeArg,
+        ComputeDecl,
         DeclarativeHostException,
         DeclarativeRequestDecl,
+        InjectDecl,
         fulfillDeclarativeRequests;
 import 'trust/trusted_context.dart'
     show AdapterTrustTier, TrustedAdapterContext, fetchTrustPermitted;

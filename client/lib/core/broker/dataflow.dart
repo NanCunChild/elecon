@@ -82,11 +82,11 @@ class BindDecl {
   final Map<String, dynamic> extract; // name / jsonpath / pattern / group
 
   static BindDecl fromJson(Map<String, dynamic> j) => BindDecl(
-        varName: j['var'] as String,
-        from: j['from'] as String,
-        source: j['source'] as String,
-        extract: (j['extract'] as Map).cast<String, dynamic>(),
-      );
+    varName: j['var'] as String,
+    from: j['from'] as String,
+    source: j['source'] as String,
+    extract: (j['extract'] as Map).cast<String, dynamic>(),
+  );
 }
 
 /// compute 的单个位置参数：引用句柄（ref）或内联文本字面量（text），恰择其一。
@@ -113,13 +113,13 @@ class ComputeDecl {
   final Map<String, dynamic>? params;
 
   static ComputeDecl fromJson(Map<String, dynamic> j) => ComputeDecl(
-        varName: j['var'] as String,
-        op: j['op'] as String,
-        args: (j['args'] as List)
-            .map((a) => ComputeArg.fromJson((a as Map).cast<String, dynamic>()))
-            .toList(),
-        params: (j['params'] as Map?)?.cast<String, dynamic>(),
-      );
+    varName: j['var'] as String,
+    op: j['op'] as String,
+    args: (j['args'] as List)
+        .map((a) => ComputeArg.fromJson((a as Map).cast<String, dynamic>()))
+        .toList(),
+    params: (j['params'] as Map?)?.cast<String, dynamic>(),
+  );
 }
 
 /// inject 段一项。
@@ -136,27 +136,39 @@ class InjectDecl {
   final String name;
 
   static InjectDecl fromJson(Map<String, dynamic> j) => InjectDecl(
-        varName: j['var'] as String,
-        into: j['into'] as String,
-        at: j['at'] as String,
-        name: j['name'] as String,
-      );
+    varName: j['var'] as String,
+    into: j['into'] as String,
+    at: j['at'] as String,
+    name: j['name'] as String,
+  );
 }
 
 /// requests[] 一项。
 class DataflowRequestDecl {
-  const DataflowRequestDecl({required this.key, required this.url, this.method});
+  const DataflowRequestDecl({
+    required this.key,
+    required this.url,
+    this.method,
+  });
   final String key;
   final String url;
   final String? method;
 
   static DataflowRequestDecl fromJson(Map<String, dynamic> j) =>
-      DataflowRequestDecl(key: j['key'] as String, url: j['url'] as String, method: j['method'] as String?);
+      DataflowRequestDecl(
+        key: j['key'] as String,
+        url: j['url'] as String,
+        method: j['method'] as String?,
+      );
 }
 
 /// 脱敏**前**的响应（抽取读它；含尚未剥除的 header）。
 class RawResponse {
-  const RawResponse({required this.status, required this.headers, required this.body});
+  const RawResponse({
+    required this.status,
+    required this.headers,
+    required this.body,
+  });
   final int status;
   final Map<String, String> headers;
   final String body;
@@ -188,36 +200,60 @@ HandleValue _extractHeader(BindDecl bind, RawResponse response) {
   response.headers.forEach((name, value) {
     if (name.toLowerCase() == wanted) {
       if (_utf8Len(value) > maxHeaderInputBytes) {
-        throw DataflowException('extract_input_too_large', "响应头超过 $maxHeaderInputBytes 字节");
+        throw DataflowException(
+          'extract_input_too_large',
+          "响应头超过 $maxHeaderInputBytes 字节",
+        );
       }
       matches.add(value);
     }
   });
   if (matches.isEmpty) {
-    throw DataflowException('extract_not_found', "bind '${bind.varName}'：响应头不存在");
+    throw DataflowException(
+      'extract_not_found',
+      "bind '${bind.varName}'：响应头不存在",
+    );
   }
   if (matches.length > 1) {
-    throw DataflowException('extract_ambiguous', "bind '${bind.varName}'：响应头出现 ${matches.length} 次（须恰 1）");
+    throw DataflowException(
+      'extract_ambiguous',
+      "bind '${bind.varName}'：响应头出现 ${matches.length} 次（须恰 1）",
+    );
   }
   return _capText(bind.varName, matches.first);
 }
 
 HandleValue _extractBody(BindDecl bind, RawResponse response) {
   if (_utf8Len(response.body) > maxBodyInputBytes) {
-    throw DataflowException('extract_input_too_large', "bind '${bind.varName}'：响应体超过 $maxBodyInputBytes 字节");
+    throw DataflowException(
+      'extract_input_too_large',
+      "bind '${bind.varName}'：响应体超过 $maxBodyInputBytes 字节",
+    );
   }
   Object? root;
   try {
     root = jsonDecode(response.body);
   } catch (_) {
-    throw DataflowException('extract_not_json', "bind '${bind.varName}'：响应体非 JSON");
+    throw DataflowException(
+      'extract_not_json',
+      "bind '${bind.varName}'：响应体非 JSON",
+    );
   }
-  final selected = evalJsonPath(bind.extract['jsonpath'] as String? ?? '', root);
+  final selected = evalJsonPath(
+    bind.extract['jsonpath'] as String? ?? '',
+    root,
+  );
   if (selected.isEmpty) {
-    throw DataflowException('extract_not_found', "bind '${bind.varName}'：jsonpath 未选中任何值");
+    throw DataflowException(
+      'extract_not_found',
+      "bind '${bind.varName}'：jsonpath 未选中任何值",
+    );
   }
   if (selected.length > 1) {
-    throw DataflowException('extract_ambiguous', "bind '${bind.varName}'：jsonpath 选中 ${selected.length} 个（须恰 1）");
+    throw DataflowException(
+      'extract_ambiguous',
+      "bind '${bind.varName}'：jsonpath 选中 ${selected.length} 个（须恰 1）",
+    );
   }
   return _scalarToText(bind.varName, selected.first);
 }
@@ -225,25 +261,40 @@ HandleValue _extractBody(BindDecl bind, RawResponse response) {
 HandleValue _extractRegex(BindDecl bind, RawResponse response) {
   if (_utf8Len(response.body) > maxRegexInputBytes) {
     // 🔒 超输入上限**失败而非截断**：截断会让行为随响应大小静默改变。
-    throw DataflowException('extract_input_too_large', "bind '${bind.varName}'：regex 输入超过 $maxRegexInputBytes 字节");
+    throw DataflowException(
+      'extract_input_too_large',
+      "bind '${bind.varName}'：regex 输入超过 $maxRegexInputBytes 字节",
+    );
   }
   final RegExp re;
   try {
     re = RegExp(bind.extract['pattern'] as String? ?? '');
   } catch (e) {
-    throw DataflowException('extract_bad_pattern', "bind '${bind.varName}'：模式串非法（$e）");
+    throw DataflowException(
+      'extract_bad_pattern',
+      "bind '${bind.varName}'：模式串非法（$e）",
+    );
   }
   final m = re.firstMatch(response.body);
   if (m == null) {
-    throw DataflowException('extract_not_found', "bind '${bind.varName}'：regex 未匹配");
+    throw DataflowException(
+      'extract_not_found',
+      "bind '${bind.varName}'：regex 未匹配",
+    );
   }
   final group = (bind.extract['group'] as int?) ?? 0;
   if (group > m.groupCount) {
-    throw DataflowException('extract_not_found', "bind '${bind.varName}'：regex group $group 越界");
+    throw DataflowException(
+      'extract_not_found',
+      "bind '${bind.varName}'：regex group $group 越界",
+    );
   }
   final captured = m.group(group);
   if (captured == null) {
-    throw DataflowException('extract_not_found', "bind '${bind.varName}'：regex group $group 未参与匹配");
+    throw DataflowException(
+      'extract_not_found',
+      "bind '${bind.varName}'：regex group $group 未参与匹配",
+    );
   }
   return _capText(bind.varName, captured);
 }
@@ -252,7 +303,8 @@ HandleValue _extractRegex(BindDecl bind, RawResponse response) {
 HandleValue _scalarToText(String varName, Object? value) {
   if (value is String) return _capText(varName, value);
   if (value is int) return _capText(varName, value.toString());
-  if (value is double && value.isFinite) return _capText(varName, _numToText(value));
+  if (value is double && value.isFinite)
+    return _capText(varName, _numToText(value));
   if (value is bool) return _capText(varName, value ? 'true' : 'false');
   throw DataflowException('extract_not_scalar', "bind '$varName'：选中值非标量");
 }
@@ -268,7 +320,10 @@ String _numToText(double v) {
 /// 单句柄上限（64 KB）检查，超出 fail-closed。
 HandleValue _capText(String varName, String value) {
   if (_utf8Len(value) > maxHandleBytes) {
-    throw DataflowException('handle_too_large', "句柄 '$varName' 超过单句柄上限 $maxHandleBytes 字节");
+    throw DataflowException(
+      'handle_too_large',
+      "句柄 '$varName' 超过单句柄上限 $maxHandleBytes 字节",
+    );
   }
   return TextHandle(value);
 }
@@ -318,7 +373,8 @@ List<Object>? _tokenizeJsonPath(String path) {
       final inner = path.substring(i + 1, close).trim();
       if (RegExp(r'^\d+$').hasMatch(inner)) {
         out.add(int.parse(inner));
-      } else if (RegExp("^'[^']*'\$").hasMatch(inner) || RegExp('^"[^"]*"\$').hasMatch(inner)) {
+      } else if (RegExp("^'[^']*'\$").hasMatch(inner) ||
+          RegExp('^"[^"]*"\$').hasMatch(inner)) {
         out.add(inner.substring(1, inner.length - 1));
       } else {
         return null;
@@ -335,20 +391,30 @@ List<Object>? _tokenizeJsonPath(String path) {
 // ② 计算（compute）：封闭 op 词表，broker 原生执行。逐 op 语义见 dataflow_ops.md §2。
 // ═══════════════════════════════════════════════════════════════════════════
 
-List<int> _toBytes(HandleValue v) => v is BytesHandle ? v.bytes : utf8.encode((v as TextHandle).text);
+List<int> _toBytes(HandleValue v) =>
+    v is BytesHandle ? v.bytes : utf8.encode((v as TextHandle).text);
 
 String _asText(HandleValue v, String opName, int pos) {
   if (v is! TextHandle) {
-    throw DataflowException('op_type_mismatch', "$opName args[$pos] 需要 text，实得 bytes");
+    throw DataflowException(
+      'op_type_mismatch',
+      "$opName args[$pos] 需要 text，实得 bytes",
+    );
   }
   return v.text;
 }
 
-int _byteLen(HandleValue v) => v is BytesHandle ? v.bytes.length : _utf8Len((v as TextHandle).text);
+int _byteLen(HandleValue v) =>
+    v is BytesHandle ? v.bytes.length : _utf8Len((v as TextHandle).text);
 
 /// 执行单个封闭 op。[args] 已解引用为句柄值；[params] 是 op 的标量参数。
 /// 假定已过静态校验，此处只做运行期语义与限额。
-HandleValue evalOp(String op, List<HandleValue> args, Map<String, dynamic>? params, int nowMs) {
+HandleValue evalOp(
+  String op,
+  List<HandleValue> args,
+  Map<String, dynamic>? params,
+  int nowMs,
+) {
   final p = params ?? const {};
   switch (op) {
     case 'concat':
@@ -363,21 +429,32 @@ HandleValue evalOp(String op, List<HandleValue> args, Map<String, dynamic>? para
       final length = p['length'] as int;
       // 🔒 越界一律 fail-closed，不钳制（消除 JS 钳制 vs Dart 抛异常的分歧）。
       if (start + length > s.length) {
-        throw DataflowException('substring_out_of_range', "substring 越界：start=$start+length=$length > 长度 ${s.length}");
+        throw DataflowException(
+          'substring_out_of_range',
+          "substring 越界：start=$start+length=$length > 长度 ${s.length}",
+        );
       }
       return _capText('substring', s.substring(start, start + length));
     case 'base64':
       final bytes = _toBytes(args[0]);
       final out = (p['variant'] as String) == 'url'
-          ? base64Url.encode(bytes).replaceAll('=', '') // RFC 4648 §5 无填充
+          ? base64Url
+                .encode(bytes)
+                .replaceAll('=', '') // RFC 4648 §5 无填充
           : base64.encode(bytes);
       return _capText('base64', out);
     case 'hex':
       final hex = _hex(_toBytes(args[0]));
-      return _capText('hex', (p['case'] as String) == 'upper' ? hex.toUpperCase() : hex);
+      return _capText(
+        'hex',
+        (p['case'] as String) == 'upper' ? hex.toUpperCase() : hex,
+      );
     case 'urlencode':
       final s = _asText(args[0], 'urlencode', 0);
-      return _capText('urlencode', urlencode(s, (p['variant'] as String) == 'form'));
+      return _capText(
+        'urlencode',
+        urlencode(s, (p['variant'] as String) == 'form'),
+      );
     case 'hmac-sha256':
       final mac = _hmacSha256(_toBytes(args[0]), _toBytes(args[1]));
       return _capBytes('hmac-sha256', mac);
@@ -398,7 +475,10 @@ HandleValue evalOp(String op, List<HandleValue> args, Map<String, dynamic>? para
 
 HandleValue _capBytes(String opName, List<int> bytes) {
   if (bytes.length > maxHandleBytes) {
-    throw DataflowException('handle_too_large', "$opName 输出超过单句柄上限 $maxHandleBytes 字节");
+    throw DataflowException(
+      'handle_too_large',
+      "$opName 输出超过单句柄上限 $maxHandleBytes 字节",
+    );
   }
   return BytesHandle(bytes);
 }
@@ -417,7 +497,8 @@ String urlencode(String s, bool form) {
   final bytes = utf8.encode(s);
   final sb = StringBuffer();
   for (final b in bytes) {
-    final unreserved = (b >= 0x41 && b <= 0x5a) ||
+    final unreserved =
+        (b >= 0x41 && b <= 0x5a) ||
         (b >= 0x61 && b <= 0x7a) ||
         (b >= 0x30 && b <= 0x39) ||
         b == 0x2d ||
@@ -438,7 +519,10 @@ String urlencode(String s, bool form) {
 /// now 定值格式化（不读真实时钟；nowMs 由宿主喂入）。
 String formatNow(int nowMs, String format) {
   if (nowMs < 0) {
-    throw DataflowException('now_out_of_range', "now：nowMs=$nowMs 不在支持范围（须 ≥0）");
+    throw DataflowException(
+      'now_out_of_range',
+      "now：nowMs=$nowMs 不在支持范围（须 ≥0）",
+    );
   }
   switch (format) {
     case 'epoch-seconds':
@@ -447,7 +531,10 @@ String formatNow(int nowMs, String format) {
       return nowMs.toString();
     case 'iso8601':
       // 恒带毫秒与 Z：YYYY-MM-DDTHH:MM:SS.sssZ（对齐 JS toISOString）。
-      return DateTime.fromMillisecondsSinceEpoch(nowMs, isUtc: true).toIso8601String();
+      return DateTime.fromMillisecondsSinceEpoch(
+        nowMs,
+        isUtc: true,
+      ).toIso8601String();
     default:
       throw DataflowException('now_bad_format', "now：未知 format '$format'");
   }
@@ -470,14 +557,20 @@ Map<String, HandleValue> evalComputeGraph(
       if (arg.text != null) return TextHandle(arg.text!) as HandleValue;
       final ref = env[arg.ref];
       if (ref == null) {
-        throw DataflowException('ref_undefined', "compute '${c.varName}'：引用 '${arg.ref}' 未定义");
+        throw DataflowException(
+          'ref_undefined',
+          "compute '${c.varName}'：引用 '${arg.ref}' 未定义",
+        );
       }
       return ref;
     }).toList();
     final result = evalOp(c.op, argVals, c.params, nowMs);
     totalBytes += _byteLen(result);
     if (totalBytes > maxDagHandleBytes) {
-      throw DataflowException('dag_budget_exceeded', "全 DAG 句柄总字节超过 $maxDagHandleBytes（累计 $totalBytes）");
+      throw DataflowException(
+        'dag_budget_exceeded',
+        "全 DAG 句柄总字节超过 $maxDagHandleBytes（累计 $totalBytes）",
+      );
     }
     env[c.varName] = result;
   }
@@ -517,7 +610,11 @@ List<int> _hkdfSha256({
   var t = <int>[];
   var counter = 1;
   while (out.length < length) {
-    t = _hmacSha256(prk, [...t, ...info, counter]); // expand: T(i)=HMAC(prk, T(i-1)|info|i)
+    t = _hmacSha256(prk, [
+      ...t,
+      ...info,
+      counter,
+    ]); // expand: T(i)=HMAC(prk, T(i-1)|info|i)
     out.addAll(t);
     counter++;
   }
@@ -530,7 +627,12 @@ List<int> _hkdfSha256({
 
 /// 一次注入对某请求的效果：追加 query 参数或设置请求头。
 class InjectionEffect {
-  const InjectionEffect({required this.into, required this.at, required this.name, required this.value});
+  const InjectionEffect({
+    required this.into,
+    required this.at,
+    required this.name,
+    required this.value,
+  });
   final String into;
   final String at;
   final String name;
@@ -538,18 +640,34 @@ class InjectionEffect {
 }
 
 /// 把注入解析为效果列表。句柄须为 text（validator D9 保证；运行期兜底）。
-List<InjectionEffect> resolveInjections(List<InjectDecl> injects, Map<String, HandleValue> env) {
+List<InjectionEffect> resolveInjections(
+  List<InjectDecl> injects,
+  Map<String, HandleValue> env,
+) {
   final effects = <InjectionEffect>[];
   for (final inj in injects) {
     final v = env[inj.varName];
     if (v == null) {
       // 决策 6：注入时句柄缺失 → 整条 capability fail-closed，不省略注入。
-      throw DataflowException('inject_missing_handle', "inject：句柄 '${inj.varName}' 未就绪");
+      throw DataflowException(
+        'inject_missing_handle',
+        "inject：句柄 '${inj.varName}' 未就绪",
+      );
     }
     if (v is! TextHandle) {
-      throw DataflowException('inject_type_mismatch', "inject '${inj.varName}'：注入面只接受 text（bytes 须先 base64/hex）");
+      throw DataflowException(
+        'inject_type_mismatch',
+        "inject '${inj.varName}'：注入面只接受 text（bytes 须先 base64/hex）",
+      );
     }
-    effects.add(InjectionEffect(into: inj.into, at: inj.at, name: inj.name, value: v.text));
+    effects.add(
+      InjectionEffect(
+        into: inj.into,
+        at: inj.at,
+        name: inj.name,
+        value: v.text,
+      ),
+    );
   }
   return effects;
 }
@@ -587,8 +705,9 @@ const int echoMinLen = 8;
 /// 从交给 adapter 前的响应里剥除注入值回显。broker 知道注入值真实字节，像剥 Set-Cookie
 /// 一样替换为定值掩码——adapter 无从「注入猜测 → 观察回显」套值。
 RawResponse stripEchoes(RawResponse response, List<String> injectedValues) {
-  final targets = injectedValues.where((v) => v.length >= echoMinLen).toSet().toList()
-    ..sort((a, b) => b.length - a.length); // 长值优先，避免短值先替换破坏长值边界
+  final targets =
+      injectedValues.where((v) => v.length >= echoMinLen).toSet().toList()
+        ..sort((a, b) => b.length - a.length); // 长值优先，避免短值先替换破坏长值边界
   if (targets.isEmpty) return response;
   var body = response.body;
   for (final val in targets) {
@@ -610,7 +729,10 @@ RawResponse stripEchoes(RawResponse response, List<String> injectedValues) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 每个 var 可追溯到的上游 request key 集合（bind 直接给出；compute 沿引用并上游）。
-Map<String, Set<String>> traceOrigins(List<BindDecl> binds, List<ComputeDecl> computes) {
+Map<String, Set<String>> traceOrigins(
+  List<BindDecl> binds,
+  List<ComputeDecl> computes,
+) {
   final origin = <String, Set<String>>{};
   for (final b in binds) {
     origin[b.varName] = {b.from};
@@ -657,7 +779,10 @@ List<List<String>> planRequestOrder(
       return true;
     }).toSet();
     if (ready.isEmpty) {
-      throw DataflowException('request_cycle', "请求依赖成环，无拓扑序：${remaining.join(', ')}");
+      throw DataflowException(
+        'request_cycle',
+        "请求依赖成环，无拓扑序：${remaining.join(', ')}",
+      );
     }
     final ordered = keys.where(ready.contains).toList(); // 层内保持声明序，确定性
     layers.add(ordered);

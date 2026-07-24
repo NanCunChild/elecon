@@ -78,6 +78,8 @@
 
 其余字节一律 `%XX` **大写**十六进制；先 UTF-8 编码再逐字节转义。
 
+> **注入到 `at: url` 会自动做 `component` 编码**（broker 保证 URL 良构）。故**不要**在 url 汇聚点前再加 `urlencode` compute——会双重编码。`urlencode` op 是给**签名基串 / `at: header` 值 / body**（首批未开）这类不经 broker 自动编码的场景用的。
+
 ### `hmac-sha256`
 标准 HMAC-SHA-256（RFC 2104），输出 32 字节 `bytes`。key 与 message 为 `text` 时按 UTF-8 编码。
 

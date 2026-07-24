@@ -40,6 +40,7 @@ class LaunchPlan {
     required this.digest,
     required this.capabilityRequestGraphs,
     required this.capabilityRequests,
+    this.capabilityDataflow = const {},
   });
 
   /// adapter 入口 JS 源码（envelope 内 `runtime.entry` 指向的 utf-8 文件）。
@@ -62,6 +63,25 @@ class LaunchPlan {
 
   /// capability id → `requests[]` 配方（仅 declarative 用；imperative 为空 map）。
   final Map<String, List<DeclarativeRequestDecl>> capabilityRequests;
+
+  /// capability id → 声明式跨请求数据流（ADR-023 `bind`/`compute`/`inject`）。
+  /// 仅 declarative 用；缺省即无数据流（退化为平铺代取）。校验器 D1–D16 已在提交期把关。
+  final Map<String, CapabilityDataflow> capabilityDataflow;
+}
+
+/// 一个 declarative capability 的数据流三段（ADR-023）。空 = 无数据流。
+class CapabilityDataflow {
+  const CapabilityDataflow({
+    this.binds = const [],
+    this.computes = const [],
+    this.injects = const [],
+  });
+
+  final List<BindDecl> binds;
+  final List<ComputeDecl> computes;
+  final List<InjectDecl> injects;
+
+  bool get isEmpty => binds.isEmpty && computes.isEmpty && injects.isEmpty;
 }
 
 /// 🔒 纯函数：校验 official [LoadResult] 并组装 [LaunchPlan]。任何不一致 → [AdapterLaunchException]。
@@ -117,6 +137,7 @@ LaunchPlan planLaunch(LoadResult result) {
   final capabilities = _capabilities(manifest);
   final capabilityRequestGraphs = _capabilityRequestGraphs(manifest);
   final capabilityRequests = _capabilityRequests(manifest);
+  final capabilityDataflow = _capabilityDataflow(manifest);
 
   return LaunchPlan(
     source: source,
@@ -126,6 +147,7 @@ LaunchPlan planLaunch(LoadResult result) {
     digest: boundDigest,
     capabilityRequestGraphs: capabilityRequestGraphs,
     capabilityRequests: capabilityRequests,
+    capabilityDataflow: capabilityDataflow,
   );
 }
 
@@ -165,6 +187,8 @@ Future<dynamic> runLoadedAdapter({
 
   if (requestGraph == 'declarative') {
     final requests = plan.capabilityRequests[capability] ?? const [];
+    final dataflow =
+        plan.capabilityDataflow[capability] ?? const CapabilityDataflow();
     final Map<String, dynamic> responses;
     try {
       responses = await fulfillDeclarativeRequests(
@@ -175,6 +199,10 @@ Future<dynamic> runLoadedAdapter({
         transport: transport,
         jar: jar,
         maxRequests: fetchLimits.maxRequests,
+        nowMs: nowMs,
+        binds: dataflow.binds,
+        computes: dataflow.computes,
+        injects: dataflow.injects,
       );
     } on DeclarativeHostException catch (e) {
       throw AdapterRunException(
@@ -330,6 +358,130 @@ Map<String, List<DeclarativeRequestDecl>> _capabilityRequests(
     out[id] = list;
   }
   return out;
+}
+
+/// 解出各 declarative capability 的数据流三段（ADR-023 `bind`/`compute`/`inject`）。
+///
+/// 结构合法性（引用闭合、类型、汇聚点、限额）由提交期校验器 D1–D16 把关；此处只做**形状**
+/// 解码 + fail-closed（畸形 = 拒启动）。imperative capability 若带这三段亦拒（对应校验器 D1）。
+Map<String, CapabilityDataflow> _capabilityDataflow(
+  Map<String, dynamic> manifest,
+) {
+  final raw = manifest['capabilities'];
+  if (raw is! List) return const {};
+  final out = <String, CapabilityDataflow>{};
+  for (final c in raw) {
+    if (c is! Map) continue;
+    final id = c['id'];
+    if (id is! String || id.isEmpty) continue;
+
+    final binds = _parseBinds(id, c['bind']);
+    final computes = _parseComputes(id, c['compute']);
+    final injects = _parseInjects(id, c['inject']);
+    if (binds.isEmpty && computes.isEmpty && injects.isEmpty) continue;
+
+    // 纵深防御（校验器 D1）：非 declarative 不得带数据流。
+    if (c['requestGraph'] != 'declarative') {
+      throw AdapterLaunchException(
+        'capabilities.$id 非 declarative 却声明了数据流 bind/compute/inject（fail-closed）',
+      );
+    }
+    out[id] = CapabilityDataflow(
+      binds: binds,
+      computes: computes,
+      injects: injects,
+    );
+  }
+  return out;
+}
+
+List<BindDecl> _parseBinds(String capId, Object? raw) {
+  if (raw == null) return const [];
+  if (raw is! List)
+    throw AdapterLaunchException('capabilities.$capId.bind 非数组（fail-closed）');
+  return raw.map((e) {
+    if (e is! Map)
+      throw AdapterLaunchException(
+        'capabilities.$capId.bind 含非法项（fail-closed）',
+      );
+    final varName = e['var'];
+    final from = e['from'];
+    final source = e['source'];
+    final extract = e['extract'];
+    if (varName is! String ||
+        from is! String ||
+        source is! String ||
+        extract is! Map) {
+      throw AdapterLaunchException(
+        'capabilities.$capId.bind 项缺 var/from/source/extract（fail-closed）',
+      );
+    }
+    return BindDecl(
+      varName: varName,
+      from: from,
+      source: source,
+      extract: extract.cast<String, dynamic>(),
+    );
+  }).toList();
+}
+
+List<ComputeDecl> _parseComputes(String capId, Object? raw) {
+  if (raw == null) return const [];
+  if (raw is! List)
+    throw AdapterLaunchException(
+      'capabilities.$capId.compute 非数组（fail-closed）',
+    );
+  return raw.map((e) {
+    if (e is! Map)
+      throw AdapterLaunchException(
+        'capabilities.$capId.compute 含非法项（fail-closed）',
+      );
+    final varName = e['var'];
+    final op = e['op'];
+    final args = e['args'];
+    if (varName is! String || op is! String || args is! List) {
+      throw AdapterLaunchException(
+        'capabilities.$capId.compute 项缺 var/op/args（fail-closed）',
+      );
+    }
+    return ComputeDecl(
+      varName: varName,
+      op: op,
+      args: args.map((a) {
+        if (a is! Map)
+          throw AdapterLaunchException(
+            'capabilities.$capId.compute.args 含非法项（fail-closed）',
+          );
+        return ComputeArg(ref: a['ref'] as String?, text: a['text'] as String?);
+      }).toList(),
+      params: (e['params'] as Map?)?.cast<String, dynamic>(),
+    );
+  }).toList();
+}
+
+List<InjectDecl> _parseInjects(String capId, Object? raw) {
+  if (raw == null) return const [];
+  if (raw is! List)
+    throw AdapterLaunchException('capabilities.$capId.inject 非数组（fail-closed）');
+  return raw.map((e) {
+    if (e is! Map)
+      throw AdapterLaunchException(
+        'capabilities.$capId.inject 含非法项（fail-closed）',
+      );
+    final varName = e['var'];
+    final into = e['into'];
+    final at = e['at'];
+    final name = e['name'];
+    if (varName is! String ||
+        into is! String ||
+        at is! String ||
+        name is! String) {
+      throw AdapterLaunchException(
+        'capabilities.$capId.inject 项缺 var/into/at/name（fail-closed）',
+      );
+    }
+    return InjectDecl(varName: varName, into: into, at: at, name: name);
+  }).toList();
 }
 
 /// 从权威 manifest 解出注入策略视图（allow + credentials）。任何畸形 → fail-closed。

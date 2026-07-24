@@ -44,11 +44,8 @@
           "extract": { "pattern": "client_id=([a-z0-9]+)", "group": 1 }
         }
       ],
-      "compute": [
-        { "var": "cid_q", "op": "urlencode", "args": [{ "ref": "client_id" }], "params": { "variant": "component" } }
-      ],
       "inject": [
-        { "var": "cid_q", "into": "raw", "at": "url", "name": "cid" }
+        { "var": "client_id", "into": "raw", "at": "url", "name": "cid" }
       ]
     }
   ]
