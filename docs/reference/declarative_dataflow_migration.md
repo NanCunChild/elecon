@@ -52,12 +52,14 @@
 
 ## 1. 不变量与范围
 
-- [ ] adapter 只持有变量名/不透明句柄，永远不能读取句柄字节。
-- [ ] 抽取只读取响应头/body；不得读取 broker 注入的请求头或凭证值。
-- [ ] 数据流是固定 DAG；拓扑、`inject.into/at/name` 均静态可枚举。
-- [ ] `tainted` 值不得决定分支、请求数量、目标请求或 adapter 输出。
-- [ ] 响应交给 adapter 前剥除 `Set-Cookie`、Authorization、重定向 token 及注入值回显。
-- [ ] 命令式仍只覆盖动态拓扑和不可枚举计算；固定拓扑数据依赖迁回 declarative。
+> 状态标注：[x]=已由代码/测试保证；括注实现点。人工安全审仍须逐条复核（§7）。
+
+- [x] adapter 只持有变量名/不透明句柄，永远不能读取句柄字节。（句柄只存在于 host 侧 broker/dataflow；`CtxDeclarative` 无句柄 API；adapter 只收脱敏后 `responses`。）
+- [x] 抽取只读取响应头/body；不得读取 broker 注入的请求头或凭证值。（`extractHandle` 只吃 `RawResponse`{status,headers,body}，无请求侧入参。）
+- [x] 数据流是固定 DAG；拓扑、`inject.into/at/name` 均静态可枚举。（schema 静态声明 + validator D12/D15；`planRequestOrder` 纯据声明推导。）
+- [x] `tainted` 值不得决定分支、请求数量、目标请求或 adapter 输出。（声明面无分支构造；汇聚点静态；句柄不进 adapter 解析输出——格式自带，MVP 期免费成立，ADR-023 §2.5。）
+- [x] 响应交给 adapter 前剥除 `Set-Cookie`、Authorization、重定向 token 及注入值回显。（`processResponse` allowlist + `stripEchoes` 注入值回显剥离。）
+- [x] 命令式仍只覆盖动态拓扑和不可枚举计算；固定拓扑数据依赖迁回 declarative。（§6：`school-xjt` 保留 imperative 已登记理由；参考试点为 `_template/declarative`。）
 
 ## 2. 契约与 SDK
 
@@ -112,19 +114,31 @@
 
 ## 6. Adapter 迁移
 
-- [ ] 选定一个固定拓扑、纯提取/封闭计算的 imperative capability 作为试点，记录迁移前后请求图。
-- [ ] 将试点迁为 declarative `bind/compute/inject`，业务解析代码保持末端纯解析。
-- [ ] 为试点补脱敏 replay fixture、标准 schema golden 和双端回归。
-- [ ] 仅在试点通过人工安全审阅后，逐个迁移其它 capability。
-- [ ] 对仍保留 imperative 的 capability 写明动态拓扑或不可枚举计算理由。
+> **2026-07-24 决策（owner）**：当前仓库**无合格迁移标的**——唯二的 imperative capability
+> 都不满足「固定拓扑 + 纯提取/封闭计算」：`school-xjt` `notice.list` 命中动态拓扑 + 指纹伪造
+> （应保留 imperative，已在其 README 登记理由）；`school-helloworld` `app.announcement` 不发
+> 请求（返回常量 + `now()`，无 requests 可声明）。故**以 `adapters/_template/declarative` 的
+> dataflow 示例为参考试点**，记录前后请求图与回归；真实合格 adapter 出现时再按本表逐个迁移。
+
+- [x] ~~选定 imperative capability 作为试点~~ → 无合格标的；以 `_template/declarative`（挑战页→
+  regex 抽 `client_id`→url 注入）为**参考试点**，前后请求图见其 README「声明式跨请求数据流示例」。
+- [x] 参考试点为 declarative `bind`/`inject`，业务解析（`index.js`）保持末端纯解析（只读 `responses.raw`）。
+- [~] 脱敏 replay fixture、schema golden 和双端回归：**dataflow 编排回归**由
+  `client/test/declarative_dataflow_host_test.dart`（FakeTransport 端到端）覆盖；**执行器语义**
+  双端 golden 由 `contract/golden/broker/dataflow.json` + 两端 smoke 覆盖；schema golden 由
+  `npm run validate` 对模板 manifest 覆盖。**真实站点 replay fixture 待真实 adapter**（模板无真实
+  站点来源，不虚构）。
+- [ ] 仅在（真实）试点通过人工安全审阅后，逐个迁移其它 capability。
+- [x] 对仍保留 imperative 的 capability 写明理由：`school-xjt` README 已登记（动态拓扑 + 不可枚举
+  指纹计算 + 值回读，ADR-022 §2.5 两类）。
 
 ## 7. 收尾与发布门槛
 
-- [ ] contract、validator、server、client、adapter 的测试全通过。
-- [ ] server/client golden 双跑一致。
-- [ ] 全仓检查旧平铺代取假设、开放的句柄值、非静态注入和任意 compute。
-- [ ] 检查 release 下 sideload 门禁未被放宽，公网服务端仍无凭证存储。
-- [ ] 人工安全签收、owner 签收 ADR-023 §5 决策和本清单后，才标记迁移完成。
+- [x] contract、validator、server、client、adapter 的测试全通过。（tools `smoke:dataflow` + `validate` 5/5；server `smoke:dataflow` 39 例；client `flutter test` 568 全绿。）
+- [x] server/client golden 双跑一致。（`contract/golden/broker/dataflow.json` 由 server smoke 与 client `broker_dataflow_test.dart` 各自跑，产出 == expected，逐字节一致。）
+- [~] 全仓检查旧平铺代取假设、开放的句柄值、非静态注入和任意 compute。（本轮引入的路径均 fail-closed；**全仓静态审留待人工安全审**，见下条。）
+- [~] 检查 release 下 sideload 门禁未被放宽，公网服务端仍无凭证存储。（D13 正向允许表未放宽 release；服务端 dataflow 为 golden 基准、无凭证存储——**须人工复核 ADR-024 DEPLOY profile 剔除路径**。）
+- [ ] 🔒 **人工安全签收 + owner 签收**：ADR-023 §5 决策与本清单已由 owner 勾决；**代码（§4/§5 触红线 #1 取数路径）+ 测试的人工安全审 + 安全清单尚未完成**——AI 不得独自闭环（AGENTS.md §1）。**此条未完成前，ADR-023 不得标记为「已落地」。**
 
 ## 8. 建议实施顺序
 
