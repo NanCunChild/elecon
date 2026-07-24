@@ -1,0 +1,312 @@
+{
+  "_doc": "声明式跨请求数据流 golden 向量（ADR-023 §2.3/§2.4）。语言无关唯一事实源：TS（server broker/dataflow.smoke.ts）与 Dart（client，§5）照同一向量双跑，钉死两端逐字节一致。bytes 值以小写 hex 表示。nowMs 固定 1700000000000（对齐现有 NOW golden 约定）。改动此文件须人工 + 安全清单复核（红线 #1）。逐 op 语义见 docs/reference/declarative_dataflow_ops.md。",
+  "nowMs": 1700000000000,
+  "ops": [
+    {
+      "name": "concat_text",
+      "op": "concat",
+      "args": [{ "type": "text", "text": "abc" }, { "type": "text", "text": "-" }, { "type": "text", "text": "def" }],
+      "expected": { "type": "text", "text": "abc-def" }
+    },
+    {
+      "name": "concat_empty",
+      "op": "concat",
+      "args": [{ "type": "text", "text": "" }, { "type": "text", "text": "x" }],
+      "expected": { "type": "text", "text": "x" }
+    },
+    {
+      "name": "substring_basic",
+      "op": "substring",
+      "args": [{ "type": "text", "text": "hello world" }],
+      "params": { "start": 6, "length": 5 },
+      "expected": { "type": "text", "text": "world" }
+    },
+    {
+      "name": "substring_out_of_range_fail_closed",
+      "op": "substring",
+      "args": [{ "type": "text", "text": "abc" }],
+      "params": { "start": 2, "length": 5 },
+      "error": "substring_out_of_range"
+    },
+    {
+      "name": "base64_standard_padding",
+      "op": "base64",
+      "args": [{ "type": "text", "text": "Man" }],
+      "params": { "variant": "standard" },
+      "expected": { "type": "text", "text": "TWFu" }
+    },
+    {
+      "name": "base64_standard_with_pad",
+      "op": "base64",
+      "args": [{ "type": "text", "text": "Ma" }],
+      "params": { "variant": "standard" },
+      "expected": { "type": "text", "text": "TWE=" }
+    },
+    {
+      "name": "base64_url_no_pad",
+      "op": "base64",
+      "args": [{ "type": "bytes", "hex": "fbf0" }],
+      "params": { "variant": "url" },
+      "expected": { "type": "text", "text": "-_A" }
+    },
+    {
+      "name": "hex_lower",
+      "op": "hex",
+      "args": [{ "type": "bytes", "hex": "0a1bff" }],
+      "params": { "case": "lower" },
+      "expected": { "type": "text", "text": "0a1bff" }
+    },
+    {
+      "name": "hex_upper",
+      "op": "hex",
+      "args": [{ "type": "text", "text": "AB" }],
+      "params": { "case": "upper" },
+      "expected": { "type": "text", "text": "4142" }
+    },
+    {
+      "name": "urlencode_component_space_pct20",
+      "op": "urlencode",
+      "args": [{ "type": "text", "text": "a b+c/d" }],
+      "params": { "variant": "component" },
+      "expected": { "type": "text", "text": "a%20b%2Bc%2Fd" }
+    },
+    {
+      "name": "urlencode_form_space_plus",
+      "op": "urlencode",
+      "args": [{ "type": "text", "text": "a b+c" }],
+      "params": { "variant": "form" },
+      "expected": { "type": "text", "text": "a+b%2Bc" }
+    },
+    {
+      "name": "urlencode_unreserved_untouched",
+      "op": "urlencode",
+      "args": [{ "type": "text", "text": "A-Z_a.z~0" }],
+      "params": { "variant": "component" },
+      "expected": { "type": "text", "text": "A-Z_a.z~0" }
+    },
+    {
+      "name": "urlencode_utf8_multibyte",
+      "op": "urlencode",
+      "args": [{ "type": "text", "text": "中" }],
+      "params": { "variant": "component" },
+      "expected": { "type": "text", "text": "%E4%B8%AD" }
+    },
+    {
+      "name": "hmac_sha256_rfc_ish",
+      "op": "hmac-sha256",
+      "args": [{ "type": "text", "text": "key" }, { "type": "text", "text": "The quick brown fox jumps over the lazy dog" }],
+      "expected": { "type": "bytes", "hex": "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8" }
+    },
+    {
+      "name": "hkdf_rfc5869_a1",
+      "op": "hkdf",
+      "args": [
+        { "type": "bytes", "hex": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b" },
+        { "type": "bytes", "hex": "000102030405060708090a0b0c" },
+        { "type": "bytes", "hex": "f0f1f2f3f4f5f6f7f8f9" }
+      ],
+      "params": { "length": 42 },
+      "expected": { "type": "bytes", "hex": "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865" }
+    },
+    {
+      "name": "now_epoch_seconds",
+      "op": "now",
+      "args": [],
+      "params": { "format": "epoch-seconds" },
+      "expected": { "type": "text", "text": "1700000000" }
+    },
+    {
+      "name": "now_epoch_millis",
+      "op": "now",
+      "args": [],
+      "params": { "format": "epoch-millis" },
+      "expected": { "type": "text", "text": "1700000000000" }
+    },
+    {
+      "name": "now_iso8601",
+      "op": "now",
+      "args": [],
+      "params": { "format": "iso8601" },
+      "expected": { "type": "text", "text": "2023-11-14T22:13:20.000Z" }
+    }
+  ],
+  "extract": [
+    {
+      "name": "header_single",
+      "bind": { "var": "auth", "from": "A", "source": "header", "extract": { "name": "X-Auth" } },
+      "response": { "status": 200, "headers": { "X-Auth": "tok-123", "Content-Type": "text/plain" }, "body": "" },
+      "expected": { "type": "text", "text": "tok-123" }
+    },
+    {
+      "name": "header_case_insensitive",
+      "bind": { "var": "auth", "from": "A", "source": "header", "extract": { "name": "x-auth" } },
+      "response": { "status": 200, "headers": { "X-AUTH": "tok-xyz" }, "body": "" },
+      "expected": { "type": "text", "text": "tok-xyz" }
+    },
+    {
+      "name": "header_missing_fail_closed",
+      "bind": { "var": "auth", "from": "A", "source": "header", "extract": { "name": "X-None" } },
+      "response": { "status": 200, "headers": {}, "body": "" },
+      "error": "extract_not_found"
+    },
+    {
+      "name": "body_jsonpath_dot",
+      "bind": { "var": "tok", "from": "B", "source": "body", "extract": { "jsonpath": "$.token" } },
+      "response": { "status": 200, "headers": {}, "body": "{\"token\":\"abc\",\"n\":1}" },
+      "expected": { "type": "text", "text": "abc" }
+    },
+    {
+      "name": "body_jsonpath_nested_index",
+      "bind": { "var": "id", "from": "B", "source": "body", "extract": { "jsonpath": "$.data.items[0].id" } },
+      "response": { "status": 200, "headers": {}, "body": "{\"data\":{\"items\":[{\"id\":\"first\"},{\"id\":\"second\"}]}}" },
+      "expected": { "type": "text", "text": "first" }
+    },
+    {
+      "name": "body_jsonpath_number_to_text",
+      "bind": { "var": "n", "from": "B", "source": "body", "extract": { "jsonpath": "$.count" } },
+      "response": { "status": 200, "headers": {}, "body": "{\"count\":42}" },
+      "expected": { "type": "text", "text": "42" }
+    },
+    {
+      "name": "body_jsonpath_missing_fail_closed",
+      "bind": { "var": "x", "from": "B", "source": "body", "extract": { "jsonpath": "$.nope" } },
+      "response": { "status": 200, "headers": {}, "body": "{\"a\":1}" },
+      "error": "extract_not_found"
+    },
+    {
+      "name": "body_jsonpath_non_scalar_fail_closed",
+      "bind": { "var": "x", "from": "B", "source": "body", "extract": { "jsonpath": "$.obj" } },
+      "response": { "status": 200, "headers": {}, "body": "{\"obj\":{\"k\":1}}" },
+      "error": "extract_not_scalar"
+    },
+    {
+      "name": "regex_group_1",
+      "bind": { "var": "cid", "from": "A", "source": "regex", "extract": { "pattern": "client_id=([a-z0-9]+)", "group": 1 } },
+      "response": { "status": 200, "headers": {}, "body": "var x = 'client_id=ab12cd'; //" },
+      "expected": { "type": "text", "text": "ab12cd" }
+    },
+    {
+      "name": "regex_group_0_whole",
+      "bind": { "var": "m", "from": "A", "source": "regex", "extract": { "pattern": "[0-9]{4}" } },
+      "response": { "status": 200, "headers": {}, "body": "code 8642 end" },
+      "expected": { "type": "text", "text": "8642" }
+    },
+    {
+      "name": "regex_no_match_fail_closed",
+      "bind": { "var": "m", "from": "A", "source": "regex", "extract": { "pattern": "zzz([0-9]+)", "group": 1 } },
+      "response": { "status": 200, "headers": {}, "body": "nothing here" },
+      "error": "extract_not_found"
+    }
+  ],
+  "inject": [
+    {
+      "name": "url_query_first_param",
+      "request": { "key": "C", "method": "GET", "url": "https://h.edu.cn/submit" },
+      "injects": [{ "var": "sig", "into": "C", "at": "url", "name": "sig" }],
+      "env": { "sig": { "type": "text", "text": "a b" } },
+      "expected": { "url": "https://h.edu.cn/submit?sig=a%20b", "headers": {} }
+    },
+    {
+      "name": "url_query_append_param",
+      "request": { "key": "C", "method": "GET", "url": "https://h.edu.cn/submit?term=2025" },
+      "injects": [{ "var": "cid", "into": "C", "at": "url", "name": "client_id" }],
+      "env": { "cid": { "type": "text", "text": "xyz" } },
+      "expected": { "url": "https://h.edu.cn/submit?term=2025&client_id=xyz", "headers": {} }
+    },
+    {
+      "name": "header_set",
+      "request": { "key": "C", "method": "POST", "url": "https://h.edu.cn/submit" },
+      "injects": [{ "var": "tok", "into": "C", "at": "header", "name": "X-Token" }],
+      "env": { "tok": { "type": "text", "text": "bearer-abc" } },
+      "expected": { "url": "https://h.edu.cn/submit", "headers": { "X-Token": "bearer-abc" } }
+    },
+    {
+      "name": "inject_missing_handle_fail_closed",
+      "request": { "key": "C", "method": "GET", "url": "https://h.edu.cn/submit" },
+      "injects": [{ "var": "ghost", "into": "C", "at": "url", "name": "p" }],
+      "env": {},
+      "error": "inject_missing_handle"
+    }
+  ],
+  "strip": [
+    {
+      "name": "strip_body_and_header_echo",
+      "response": { "status": 200, "headers": { "X-Echo": "sig=deadbeefcafe0011" }, "body": "{\"got\":\"deadbeefcafe0011\"}" },
+      "injectedValues": ["deadbeefcafe0011"],
+      "expected": { "status": 200, "headers": { "X-Echo": "sig=[stripped]" }, "body": "{\"got\":\"[stripped]\"}" }
+    },
+    {
+      "name": "strip_short_value_stripped",
+      "_doc": "审阅 issue 2：短注入值同样剥（不设长度下限）。此前固化「不剥」的用例已改。",
+      "response": { "status": 200, "headers": {}, "body": "x=ab" },
+      "injectedValues": ["ab"],
+      "expected": { "status": 200, "headers": {}, "body": "x=[stripped]" }
+    },
+    {
+      "name": "strip_empty_value_noop",
+      "_doc": "空串跳过（否则每个位置插掩码）。",
+      "response": { "status": 200, "headers": {}, "body": "abc" },
+      "injectedValues": [""],
+      "expected": { "status": 200, "headers": {}, "body": "abc" }
+    },
+    {
+      "name": "strip_url_encoded_echo",
+      "_doc": "审阅 issue 1：url 注入上线的是编码形；下游回显编码形也须被剥。injectedValues 由 host 经 injectionEchoTargets 展开为原始+编码两形。",
+      "response": { "status": 200, "headers": {}, "body": "reflected q=a%20b%26c end" },
+      "injectedValues": ["a b&c", "a%20b%26c"],
+      "expected": { "status": 200, "headers": {}, "body": "reflected q=[stripped] end" }
+    }
+  ],
+  "echoTargets": [
+    {
+      "name": "url_raw_and_encoded",
+      "_doc": "审阅 issue 1：at=url 回显目标 = 原始值 + component 编码形。",
+      "effect": { "into": "C", "at": "url", "name": "sig", "value": "a b&c" },
+      "expected": ["a b&c", "a%20b%26c"]
+    },
+    {
+      "name": "header_raw_only",
+      "effect": { "into": "C", "at": "header", "name": "X-Token", "value": "tok-1" },
+      "expected": ["tok-1"]
+    }
+  ],
+  "topo": [
+    {
+      "name": "challenge_then_submit",
+      "requests": [
+        { "key": "chal", "method": "GET", "url": "https://h.edu.cn/challenge" },
+        { "key": "raw", "method": "GET", "url": "https://h.edu.cn/api/grades" }
+      ],
+      "binds": [{ "var": "cid", "from": "chal", "source": "regex", "extract": { "pattern": "id=(\\w+)", "group": 1 } }],
+      "computes": [],
+      "injects": [{ "var": "cid", "into": "raw", "at": "url", "name": "cid" }],
+      "expected": [["chal"], ["raw"]]
+    },
+    {
+      "name": "two_independent_concurrent",
+      "requests": [
+        { "key": "A", "method": "GET", "url": "https://h.edu.cn/a" },
+        { "key": "B", "method": "GET", "url": "https://h.edu.cn/b" }
+      ],
+      "binds": [],
+      "computes": [],
+      "injects": [],
+      "expected": [["A", "B"]]
+    },
+    {
+      "name": "diamond_via_compute",
+      "requests": [
+        { "key": "A", "method": "GET", "url": "https://h.edu.cn/a" },
+        { "key": "B", "method": "GET", "url": "https://h.edu.cn/b" },
+        { "key": "C", "method": "POST", "url": "https://h.edu.cn/c" }
+      ],
+      "binds": [
+        { "var": "va", "from": "A", "source": "header", "extract": { "name": "X-A" } },
+        { "var": "vb", "from": "B", "source": "header", "extract": { "name": "X-B" } }
+      ],
+      "computes": [{ "var": "vc", "op": "concat", "args": [{ "ref": "va" }, { "ref": "vb" }] }],
+      "injects": [{ "var": "vc", "into": "C", "at": "url", "name": "sig" }],
+      "expected": [["A", "B"], ["C"]]
+    }
+  ]
+}

@@ -1,9 +1,9 @@
-# school-xidian（西安电子科技大学）— parser 模式 adapter
+# school-xidian（西安电子科技大学）— declarative requestGraph adapter
 
-**首个 parser 模式正式 adapter。状态：已端到端跑通**——QuickJS-wasm 沙箱对录制夹具产出等于 golden（`server npm run smoke:sandbox` 的 `testXidianNoticeList`）。
+**首个 declarative 正式 adapter。状态：已端到端跑通**——QuickJS-wasm 沙箱对录制夹具产出等于 golden（`server npm run smoke:sandbox` 的 `testXidianNoticeList`）。
 
 - **数据**：教务处公开通知 `notice.list`（emits `elecon.notice.list@1.1`）。
-- **为何 parser 模式**：`jwc.xidian.edu.cn` 通知页是纯静态 HTML，无 JS 反爬，核心代取并脱敏后传入原始响应，adapter 只做 HTML → 标准 schema 的纯解析（不网络、不持凭证，红线 #5）。
+- **为何 declarative**：`jwc.xidian.edu.cn` 通知页是纯静态 HTML，无 JS 反爬，核心代取并脱敏后传入原始响应，adapter 只做 HTML → 标准 schema 的纯解析（不网络、不持凭证，红线 #5）。
 - **域名白名单**：`https://jwc.xidian.edu.cn/*`（见 `manifest.json` `network.allow`）。
 
 ## 已知坑

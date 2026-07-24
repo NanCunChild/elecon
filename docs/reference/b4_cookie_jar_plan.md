@@ -3,19 +3,19 @@
 > 状态：草案（计划已经人工拍板三处开放点，见 §8）。实现属 🔒 安全敏感运行时路径，
 > 按 [AGENTS.md](../../AGENTS.md) §1 **AI 不得独自闭环**，须人工 + 安全清单主导。
 > 依据：[ADR-009](../adr/adr_009_fetch_credential.md) §2.4 / §2.8 ·
-> [Track B 运行时计划](./track_b_fetch_runtime_plan.md) §3/§4/§5。
+> [Track B 运行时计划](./track_b_imperative_runtime_plan.md) §3/§4/§5。
 > 跟踪 issue：见 GitHub（挂 #17 §C / #27 依赖闸门）。
 
 ## 0. 背景与前置
 
-B4 是 fetch 模式 Broker（Gate A）的「执行内 cookie jar」件。解的核心缺口：多步握手中
+B4 是 imperative requestGraph Broker（Gate A）的「执行内 cookie jar」件。解的核心缺口：多步握手中
 origin 在流程中途下发的会话态——既包括标准 `Set-Cookie`，也包括 XJT 教务那种
 「token 在响应 body、零 `Set-Cookie`、靠页面 JS `document.cookie` 写入」的真实缺口
 （证据 `adapters_tests/XJT/dean/pac.txt`）。
 
 **前置已就绪**：
 
-- 契约面 `ctx.setEphemeralCookie`（PR #34，CtxFetch 纯新增方法签名）。
+- 契约面 `ctx.setEphemeralCookie`（PR #34，CtxImperative 纯新增方法签名）。
 - B1 `url-match` / `scope` 匹配原语 + `BrokerManifestView`（`inject-policy.ts`）。
 - B2 头净化（`Set-Cookie` 从交给 adapter 的响应里剥除）。
 - B3 `followRedirects` 异步 driver（多步握手常经 302）。

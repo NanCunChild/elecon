@@ -1,6 +1,6 @@
-/// 信任裁定上下文 —— fetch 运行时的强制入场凭据（ADR-002 §2.6 运行时闸门）。
+/// 信任裁定上下文 —— imperative 运行时的强制入场凭据（ADR-002 §2.6 运行时闸门）。
 ///
-/// 立场（#79 P0-1）：`runFetchAdapter` 是凭证注入的入口，其安全性不得依赖
+/// 立场（#79 P0-1）：`runImperativeAdapter` 是凭证注入的入口，其安全性不得依赖
 /// 「上层不要误调用」的调用约定，而要在可信核心边界 fail-closed——入口强制
 /// 接收本类型实例，而本类型**只能经核心的信任裁定路径构造**：
 ///
@@ -19,7 +19,7 @@
 ///    release 二进制里不存在（红线 #4 同构手法）。
 ///
 /// 纵深防御（ADR-002 §2.6：运行时不信任上游）：即便持有本类型实例，
-/// `runFetchAdapter` 入口仍以 [fetchTrustPermitted] 复核档位 × build 模式。
+/// `runImperativeAdapter` 入口仍以 [fetchTrustPermitted] 复核档位 × build 模式。
 ///
 /// 🔒 红线 #1 凭证路径承重件：改动本文件须人工 + 安全清单复核，不得 AI 独自闭环。
 library;
@@ -32,10 +32,10 @@ import '../loader/load_grant.dart' show AdapterLoadGrant;
 ///
 /// 权威档位来自核心对签名的验证，**不信任 manifest 自报**（§2.2）。
 enum AdapterTrustTier {
-  /// 官方签名 adapter：核心验签通过、未被吊销。唯一可在 release 跑 fetch 的档。
+  /// 官方签名 adapter：核心验签通过、未被吊销。唯一可在 release 跑 imperative 的档。
   official,
 
-  /// dev 侧载（无签名）：仅 debug build 可构造/可跑 fetch（§2.5 owner 决策）。
+  /// dev 侧载（无签名）：仅 debug build 可构造/可跑 imperative（§2.5 owner 决策）。
   devSideload,
 }
 
@@ -60,16 +60,16 @@ class TrustedAdapterContext {
   ///
   /// **devSideload 为 null**（无签名 bundle，无权威身份可绑）。
   ///
-  /// **上层绑定合约（🔒 必须遵守）**：`runFetchAdapter` 的调用方（片 G 接线）在运行前须确认「将要执行的
+  /// **上层绑定合约（🔒 必须遵守）**：`runImperativeAdapter` 的调用方（片 G 接线）在运行前须确认「将要执行的
   /// adapter 源码就是本凭据 [digest] 所指的那一份」——例如源码取自同一次 `AdapterLoader.loadAdapter`
-  /// 返回的 envelope。把「凭据」与「要跑的字节」的一致性核对留在接线层，因 `runFetchAdapter` 只收源码
+  /// 返回的 envelope。把「凭据」与「要跑的字节」的一致性核对留在接线层，因 `runImperativeAdapter` 只收源码
   /// 字符串、拿不到 envelope 无法自算 digest；本字段是那道核对的**数据来源**。
   final String? adapterId;
   final String? adapterVersion;
   final String? digest;
 
   /// dev 侧载裁定（ADR-002 §2.5）：开发者在 debug build 显式确认加载无签名
-  /// fetch adapter 后由核心调用。**仅 debug build 存在**——[kDebugMode] 是
+  /// imperative adapter 后由核心调用。**仅 debug build 存在**——[kDebugMode] 是
   /// 编译期常量，release/profile 下首行恒抛 [StateError]、返回分支被死代码
   /// 剔除；调用方的警告 UI 与本调用同属 debug-only 条件编译。
   factory TrustedAdapterContext.devSideload() {
@@ -90,8 +90,8 @@ class TrustedAdapterContext {
   /// adapterId/adapterVersion/digest 存入凭据（见 [adapterId] 字段文档），使 official 凭据不再是通用
   /// bearer 票。这些值来自 grant.bundle（已验签、已过门），调用方无法伪造。
   ///
-  /// **无 build 模式闸门**：official 是唯一可在 release 跑 fetch 的档（见 [fetchTrustPermitted]），
-  /// 故此处不设 [kDebugMode] 守卫（与 [devSideload] 相反）。纵深防御仍在 `runFetchAdapter` 入口
+  /// **无 build 模式闸门**：official 是唯一可在 release 跑 imperative 的档（见 [fetchTrustPermitted]），
+  /// 故此处不设 [kDebugMode] 守卫（与 [devSideload] 相反）。纵深防御仍在 `runImperativeAdapter` 入口
   /// 以 [fetchTrustPermitted] 复核。
   factory TrustedAdapterContext.official(AdapterLoadGrant grant) {
     // grant 不可伪造 → 门禁全过。把其验签产物的权威身份/digest 绑进凭据（评审 #2），
@@ -106,10 +106,10 @@ class TrustedAdapterContext {
   }
 }
 
-/// fetch 运行时入场判定（纯函数，负例可测）：official 一律放行；
+/// imperative 运行时入场判定（纯函数，负例可测）：official 一律放行；
 /// devSideload 仅 debug build 放行；其余 fail-closed。
 ///
-/// 生产接线固定为 `debugBuild: kDebugMode`（`runFetchAdapter` 入口），
+/// 生产接线固定为 `debugBuild: kDebugMode`（`runImperativeAdapter` 入口），
 /// 本函数把判定逻辑与编译期常量解耦，使 release 语义可被单测覆盖。
 ///
 /// **穷尽 switch（不设 default）是刻意的**（2026-07-16 收紧）：原实现
@@ -119,7 +119,7 @@ class TrustedAdapterContext {
 bool fetchTrustPermitted(AdapterTrustTier tier, {required bool debugBuild}) {
   switch (tier) {
     case AdapterTrustTier.official:
-      return true; // official 一律放行（唯一可在 release 跑 fetch 的档）
+      return true; // official 一律放行（唯一可在 release 跑 imperative 的档）
     case AdapterTrustTier.devSideload:
       return debugBuild; // 侧载仅 debug；release/profile 下 fail-closed
   }

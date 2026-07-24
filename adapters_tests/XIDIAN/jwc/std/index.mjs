@@ -1,4 +1,4 @@
-// XIDIAN 教务处 通知公告 → elecon.notice.list（parser 模式 / spike）
+// XIDIAN 教务处 通知公告 → elecon.notice.list（declarative requestGraph / spike）
 //
 // 生产形态：`import { parse } from 'elecon:html'`（ADR-011 经 moduleHandler 注入）。
 // spike 期：import 本地参考实现，验证 API 形态与端到端产出。

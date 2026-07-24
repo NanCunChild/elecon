@@ -4,7 +4,7 @@
 > + 冒烟测试入库、CI 双跑；§8 开放点实现时已定。本文留作**实现依据 / 历史**。实现属 🔒 安全敏感承重路径
 > （红线 #1：凭证入核心库），按 [AGENTS.md](../../AGENTS.md) §1 **AI 不得独自闭环**。
 > 依据：[ADR-009](../adr/adr_009_fetch_credential.md) §2.4（收割判据 b + 匹配算法）·
-> [ADR-012](../adr/adr_012_credential_store.md) §2.2/§2.4/§2.5 · [Track B 计划](./track_b_fetch_runtime_plan.md) §4。
+> [ADR-012](../adr/adr_012_credential_store.md) §2.2/§2.4/§2.5 · [Track B 计划](./track_b_imperative_runtime_plan.md) §4。
 > 前置：B4 cookie jar（#37 TS / #38 Dart）· 凭证存储原型（#32/#33）。
 
 ## 0. 这件事是什么

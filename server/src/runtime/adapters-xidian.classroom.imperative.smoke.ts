@@ -7,7 +7,7 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-// codegen 产物：ajv 通过后以此类型消费（与 adapters-xjt.fetch.smoke 一致）
+// codegen 产物：ajv 通过后以此类型消费（与 adapters-xjt.imperative.smoke 一致）
 import type { ClassroomAvailable } from "../../../contract/generated/ts/classroom.available.js";
 import type { ClassroomBuildings } from "../../../contract/generated/ts/classroom.buildings.js";
 import {
@@ -21,7 +21,7 @@ import {
   skipSmoke,
 } from "./__testutils__/smoke-utils.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
-import { runFetchAdapter } from "./sandbox.js";
+import { runImperativeAdapter } from "./sandbox.js";
 import { TrustedAdapterContext } from "./trusted-context.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
@@ -92,7 +92,7 @@ async function smokeBuildings(source: string): Promise<void> {
     }),
   ]);
 
-  const { data } = await runFetchAdapter(
+  const { data } = await runImperativeAdapter(
     { source, capability: "classroom.buildings", params: {}, nowMs: 1_700_000_000_000 },
     {
       trust: TrustedAdapterContext.devSideload(),
@@ -142,7 +142,7 @@ async function smokeAvailable(source: string): Promise<void> {
     }),
   ]);
 
-  const { data } = await runFetchAdapter(
+  const { data } = await runImperativeAdapter(
     {
       source,
       capability: "classroom.available",

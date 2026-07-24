@@ -1,17 +1,17 @@
-// 🔒🔒 片 G —— 把编排器产出的 official LoadResult 桥接到 fetch 运行时（ADR-018 §2.6 终点，红线 #1）。
+// 🔒🔒 片 G —— 把编排器产出的 official LoadResult 桥接到 adapter 运行时（ADR-018 §2.6 终点，红线 #1）。
 //
 // **本文件是 `adapter_runtime.dart` 的 part**（评审 P0-1）：唯一生产执行入口 [runLoadedAdapter] 需调用
-// library-private 的 `_runFetchAdapter`，故与其同库；从而「运行任意 (source, trust)」的低层入口**不在
+// library-private 的 `_runImperativeAdapter`，故与其同库；从而「运行任意 (source, trust)」的低层入口**不在
 // 生产公开面上**。编排器（片 E `loader.dart`）验签 + 全门后产出 LoadResult（official 凭据 + 已验签
 // envelope）。本层在触达运行时前把三件事钉死一致：
 //
-//   1. **source⟷凭据绑定（落实评审 E#2 的 enforcement）**：`_runFetchAdapter` 只收 source 字符串、
+//   1. **source⟷凭据绑定（落实评审 E#2 的 enforcement）**：`_runImperativeAdapter` 只收 source 字符串、
 //      拿不到 envelope，无法自证「要跑的字节就是凭据所指的那份」。本层即那个核对点：source **只从
 //      LoadResult.envelope 取**（不接受外部另传 source），并**重算 envelope digest 复核 == 凭据
 //      digest**——从结构上消除「A 的 official 票 + B 的源码」的错配。
 //   2. **注入策略取自权威 manifest**（ADR-002 §2.2）：BrokerManifestView（allow / credentials）从
 //      bundle 内 manifest（digest 覆盖）解出，非 catalog 提示、非旁路配置。
-//   3. **能力门**：只放行 manifest 声明的 capability（纵深，`_runFetchAdapter` 内仍复核档位）。
+//   3. **能力门**：只放行 manifest 声明的 capability（纵深，`_runImperativeAdapter` 内仍复核档位）。
 //
 // fail-closed：[planLaunch] 任一步不一致即抛 [AdapterLaunchException]，绝不产出可执行 plan；只有
 // official 档 LoadResult 走此路（dev 侧载有独立 debug-only 路径）。
@@ -38,8 +38,9 @@ class LaunchPlan {
     required this.view,
     required this.capabilities,
     required this.digest,
-    required this.mode,
+    required this.capabilityRequestGraphs,
     required this.capabilityRequests,
+    this.capabilityDataflow = const {},
   });
 
   /// adapter 入口 JS 源码（envelope 内 `runtime.entry` 指向的 utf-8 文件）。
@@ -57,11 +58,30 @@ class LaunchPlan {
   /// 绑定 digest（== trust.digest == 重算 envelope digest）。
   final String digest;
 
-  /// `manifest.runtime.mode`：`parser` → 核心代取 + [runParserAdapter]；其余走 fetch。
-  final String mode;
+  /// capability id → `requestGraph`（`declarative` | `imperative`；按本次 capability 分派）。
+  final Map<String, String> capabilityRequestGraphs;
 
-  /// capability id → `requests[]` 配方（仅 parser 用；fetch 为空 map）。
-  final Map<String, List<ParserRequestDecl>> capabilityRequests;
+  /// capability id → `requests[]` 配方（仅 declarative 用；imperative 为空 map）。
+  final Map<String, List<DeclarativeRequestDecl>> capabilityRequests;
+
+  /// capability id → 声明式跨请求数据流（ADR-023 `bind`/`compute`/`inject`）。
+  /// 仅 declarative 用；缺省即无数据流（退化为平铺代取）。校验器 D1–D16 已在提交期把关。
+  final Map<String, CapabilityDataflow> capabilityDataflow;
+}
+
+/// 一个 declarative capability 的数据流三段（ADR-023）。空 = 无数据流。
+class CapabilityDataflow {
+  const CapabilityDataflow({
+    this.binds = const [],
+    this.computes = const [],
+    this.injects = const [],
+  });
+
+  final List<BindDecl> binds;
+  final List<ComputeDecl> computes;
+  final List<InjectDecl> injects;
+
+  bool get isEmpty => binds.isEmpty && computes.isEmpty && injects.isEmpty;
 }
 
 /// 🔒 纯函数：校验 official [LoadResult] 并组装 [LaunchPlan]。任何不一致 → [AdapterLaunchException]。
@@ -115,8 +135,9 @@ LaunchPlan planLaunch(LoadResult result) {
   final source = _entrySource(env, manifest);
   final view = _viewFromManifest(manifest);
   final capabilities = _capabilities(manifest);
-  final mode = _runtimeMode(manifest);
+  final capabilityRequestGraphs = _capabilityRequestGraphs(manifest);
   final capabilityRequests = _capabilityRequests(manifest);
+  final capabilityDataflow = _capabilityDataflow(manifest);
 
   return LaunchPlan(
     source: source,
@@ -124,16 +145,18 @@ LaunchPlan planLaunch(LoadResult result) {
     view: view,
     capabilities: capabilities,
     digest: boundDigest,
-    mode: mode,
+    capabilityRequestGraphs: capabilityRequestGraphs,
     capabilityRequests: capabilityRequests,
+    capabilityDataflow: capabilityDataflow,
   );
 }
 
 /// 🔒 薄尾：[planLaunch] 后执行 adapter。session 注入 resolver / transport / jar / harvest 等运行时依赖
 /// （它们属凭证存储 / 传输子系统，不由本层拥有）。能力越权在此 fail-closed。
 ///
-/// `runtime.mode == parser` → 核心代取 [fulfillParserRequests] + [runParserAdapter]（ADR-001 §6.2）；
-/// 否则 → 官方签名 fetch 路径 [_runFetchAdapter]。
+/// 按本次 capability 的 `requestGraph` 分派（ADR-022）：
+/// `declarative` → 核心代取 [fulfillDeclarativeRequests] + [runDeclarativeAdapter]；
+/// `imperative` → 官方签名 imperative 路径 [_runImperativeAdapter]。
 Future<dynamic> runLoadedAdapter({
   required LoadResult result,
   required String capability,
@@ -155,11 +178,20 @@ Future<dynamic> runLoadedAdapter({
     );
   }
 
-  if (plan.mode == 'parser') {
+  final requestGraph = plan.capabilityRequestGraphs[capability];
+  if (requestGraph == null) {
+    throw AdapterLaunchException(
+      'capability $capability 缺 requestGraph（fail-closed）',
+    );
+  }
+
+  if (requestGraph == 'declarative') {
     final requests = plan.capabilityRequests[capability] ?? const [];
+    final dataflow =
+        plan.capabilityDataflow[capability] ?? const CapabilityDataflow();
     final Map<String, dynamic> responses;
     try {
-      responses = await fulfillParserRequests(
+      responses = await fulfillDeclarativeRequests(
         requests: requests,
         params: params ?? const {},
         view: plan.view,
@@ -167,8 +199,12 @@ Future<dynamic> runLoadedAdapter({
         transport: transport,
         jar: jar,
         maxRequests: fetchLimits.maxRequests,
+        nowMs: nowMs,
+        binds: dataflow.binds,
+        computes: dataflow.computes,
+        injects: dataflow.injects,
       );
-    } on ParserHostException catch (e) {
+    } on DeclarativeHostException catch (e) {
       throw AdapterRunException(
         e.limitExceeded
             ? AdapterFailureReason.fetchLimit
@@ -176,7 +212,7 @@ Future<dynamic> runLoadedAdapter({
         e.message,
       );
     }
-    return runParserAdapter(
+    return runDeclarativeAdapter(
       source: plan.source,
       capability: capability,
       params: params,
@@ -187,7 +223,7 @@ Future<dynamic> runLoadedAdapter({
     );
   }
 
-  return _runFetchAdapter(
+  return _runImperativeAdapter(
     source: plan.source,
     capability: capability,
     trust: plan.trust,
@@ -237,27 +273,33 @@ String _entrySource(BundleEnvelope env, Map<String, dynamic> manifest) {
   }
 }
 
-/// `manifest.runtime.mode`；缺省 `fetch`（与历史 official 接线一致）。
-String _runtimeMode(Map<String, dynamic> manifest) {
-  final runtime = manifest['runtime'];
-  if (runtime is! Map) return 'fetch';
-  final mode = runtime['mode'];
-  if (mode == null) return 'fetch';
-  if (mode is! String || mode.isEmpty) {
-    throw const AdapterLaunchException(
-      'manifest.runtime.mode 非法（fail-closed）',
-    );
+/// 各 capability 的 `requestGraph`（`declarative` | `imperative`）。缺省 / 非法 → fail-closed。
+Map<String, String> _capabilityRequestGraphs(Map<String, dynamic> manifest) {
+  final raw = manifest['capabilities'];
+  if (raw is! List) return const {};
+  final out = <String, String>{};
+  for (final c in raw) {
+    if (c is! Map) continue;
+    final id = c['id'];
+    if (id is! String || id.isEmpty) continue;
+    final rg = c['requestGraph'];
+    if (rg != 'declarative' && rg != 'imperative') {
+      throw AdapterLaunchException(
+        'capabilities.$id.requestGraph 缺失或非法（fail-closed）',
+      );
+    }
+    out[id] = rg as String;
   }
-  return mode;
+  return out;
 }
 
-/// 各 capability 的 `requests[]`（parser 代取配方）。畸形 → fail-closed。
-Map<String, List<ParserRequestDecl>> _capabilityRequests(
+/// 各 capability 的 `requests[]`（declarative 代取配方）。畸形 → fail-closed。
+Map<String, List<DeclarativeRequestDecl>> _capabilityRequests(
   Map<String, dynamic> manifest,
 ) {
   final raw = manifest['capabilities'];
   if (raw is! List) return const {};
-  final out = <String, List<ParserRequestDecl>>{};
+  final out = <String, List<DeclarativeRequestDecl>>{};
   for (final c in raw) {
     if (c is! Map) continue;
     final id = c['id'];
@@ -272,7 +314,7 @@ Map<String, List<ParserRequestDecl>> _capabilityRequests(
         'capabilities.$id.requests 非数组（fail-closed）',
       );
     }
-    final list = <ParserRequestDecl>[];
+    final list = <DeclarativeRequestDecl>[];
     final keys = <String>{};
     for (final r in reqsRaw) {
       if (r is! Map) {
@@ -305,7 +347,7 @@ Map<String, List<ParserRequestDecl>> _capabilityRequests(
         );
       }
       list.add(
-        ParserRequestDecl(
+        DeclarativeRequestDecl(
           key: key,
           method: method,
           url: url,
@@ -316,6 +358,137 @@ Map<String, List<ParserRequestDecl>> _capabilityRequests(
     out[id] = list;
   }
   return out;
+}
+
+/// 解出各 declarative capability 的数据流三段（ADR-023 `bind`/`compute`/`inject`）。
+///
+/// 结构合法性（引用闭合、类型、汇聚点、限额）由提交期校验器 D1–D16 把关；此处只做**形状**
+/// 解码 + fail-closed（畸形 = 拒启动）。imperative capability 若带这三段亦拒（对应校验器 D1）。
+Map<String, CapabilityDataflow> _capabilityDataflow(
+  Map<String, dynamic> manifest,
+) {
+  final raw = manifest['capabilities'];
+  if (raw is! List) return const {};
+  final out = <String, CapabilityDataflow>{};
+  for (final c in raw) {
+    if (c is! Map) continue;
+    final id = c['id'];
+    if (id is! String || id.isEmpty) continue;
+
+    final binds = _parseBinds(id, c['bind']);
+    final computes = _parseComputes(id, c['compute']);
+    final injects = _parseInjects(id, c['inject']);
+    if (binds.isEmpty && computes.isEmpty && injects.isEmpty) continue;
+
+    // 纵深防御（校验器 D1）：非 declarative 不得带数据流。
+    if (c['requestGraph'] != 'declarative') {
+      throw AdapterLaunchException(
+        'capabilities.$id 非 declarative 却声明了数据流 bind/compute/inject（fail-closed）',
+      );
+    }
+    out[id] = CapabilityDataflow(
+      binds: binds,
+      computes: computes,
+      injects: injects,
+    );
+  }
+  return out;
+}
+
+List<BindDecl> _parseBinds(String capId, Object? raw) {
+  if (raw == null) return const [];
+  if (raw is! List) {
+    throw AdapterLaunchException('capabilities.$capId.bind 非数组（fail-closed）');
+  }
+  return raw.map((e) {
+    if (e is! Map) {
+      throw AdapterLaunchException(
+        'capabilities.$capId.bind 含非法项（fail-closed）',
+      );
+    }
+    final varName = e['var'];
+    final from = e['from'];
+    final source = e['source'];
+    final extract = e['extract'];
+    if (varName is! String ||
+        from is! String ||
+        source is! String ||
+        extract is! Map) {
+      throw AdapterLaunchException(
+        'capabilities.$capId.bind 项缺 var/from/source/extract（fail-closed）',
+      );
+    }
+    return BindDecl(
+      varName: varName,
+      from: from,
+      source: source,
+      extract: extract.cast<String, dynamic>(),
+    );
+  }).toList();
+}
+
+List<ComputeDecl> _parseComputes(String capId, Object? raw) {
+  if (raw == null) return const [];
+  if (raw is! List) {
+    throw AdapterLaunchException(
+      'capabilities.$capId.compute 非数组（fail-closed）',
+    );
+  }
+  return raw.map((e) {
+    if (e is! Map) {
+      throw AdapterLaunchException(
+        'capabilities.$capId.compute 含非法项（fail-closed）',
+      );
+    }
+    final varName = e['var'];
+    final op = e['op'];
+    final args = e['args'];
+    if (varName is! String || op is! String || args is! List) {
+      throw AdapterLaunchException(
+        'capabilities.$capId.compute 项缺 var/op/args（fail-closed）',
+      );
+    }
+    return ComputeDecl(
+      varName: varName,
+      op: op,
+      args: args.map((a) {
+        if (a is! Map) {
+          throw AdapterLaunchException(
+            'capabilities.$capId.compute.args 含非法项（fail-closed）',
+          );
+        }
+        return ComputeArg(ref: a['ref'] as String?, text: a['text'] as String?);
+      }).toList(),
+      params: (e['params'] as Map?)?.cast<String, dynamic>(),
+    );
+  }).toList();
+}
+
+List<InjectDecl> _parseInjects(String capId, Object? raw) {
+  if (raw == null) return const [];
+  if (raw is! List) {
+    throw AdapterLaunchException('capabilities.$capId.inject 非数组（fail-closed）');
+  }
+  return raw.map((e) {
+    if (e is! Map) {
+      throw AdapterLaunchException(
+        'capabilities.$capId.inject 含非法项（fail-closed）',
+      );
+    }
+    final varName = e['var'];
+    final into = e['into'];
+    final at = e['at'];
+    final name = e['name'];
+    if (varName is! String ||
+        into is! String ||
+        at is! String ||
+        name is! String) {
+      throw AdapterLaunchException(
+        'capabilities.$capId.inject 项缺 var/into/at/name（fail-closed）',
+      );
+    }
+    return InjectDecl(varName: varName, into: into, at: at, name: name);
+  }).toList();
 }
 
 /// 从权威 manifest 解出注入策略视图（allow + credentials）。任何畸形 → fail-closed。

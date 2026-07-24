@@ -6,6 +6,11 @@
  *   - QuickJS-wasm 同时给到：真正的沙箱、与客户端**同一个引擎**（零语义漂移）、
  *     纯 JS/wasm 无 cgo。
  * 详见 docs/adr/adr_005_runtime.md。
+ *
+ * 分派（ADR-022）：调用方按被执行 capability 的 `requestGraph` 选择入口——
+ *   - `declarative` → [runDeclarativeAdapter]（同步纯解析，无 ctx.fetch）
+ *   - `imperative`  → [runImperativeAdapter]（ctx.fetch 自编排；入场前信任闸门）
+ * 本模块不读完整 manifest；不在入口间根据 mode 自动切换。
  */
 
 import { readFileSync } from "node:fs";
@@ -84,10 +89,15 @@ export const DEFAULT_LIMITS: SandboxLimits = {
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
+/**
+ * 双入口共用输入。调用方按 capability.requestGraph 选择
+ * [runDeclarativeAdapter] / [runImperativeAdapter]（本结构不携带 requestGraph 字段）。
+ */
 export interface AdapterRunInput {
   source: string;
   capability: string;
   params: unknown;
+  /** declarative 路径：宿主代取后的脱敏响应 map */
   responses?: Record<string, { status: number; headers: Record<string, string>; body: string }>;
   nowMs?: number;
   onLog?: (level: LogLevel, message: string) => void;
@@ -107,7 +117,7 @@ interface RuntimeContext {
   deadline: number;
 }
 
-/** Shared QuickJS-wasm initialization for both parser and fetch modes. */
+/** Shared QuickJS-wasm initialization for both declarative and imperative paths. */
 async function createRuntime(limits: SandboxLimits): Promise<RuntimeContext> {
   const QuickJS = await getQuickJS();
   const runtime = QuickJS.newRuntime();
@@ -125,10 +135,11 @@ async function createRuntime(limits: SandboxLimits): Promise<RuntimeContext> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Parser mode
+// Declarative requestGraph（同步纯解析；无 ctx.fetch）
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function runAdapter(
+/** declarative capability：宿主已代取 → 同步 handler(ctx, params, responses)。 */
+export async function runDeclarativeAdapter(
   input: AdapterRunInput,
   limits: SandboxLimits = DEFAULT_LIMITS,
 ): Promise<AdapterRunResult> {
@@ -149,7 +160,7 @@ export async function runAdapter(
         throw new SandboxError("capability_missing", `capability '${input.capability}' 不在 adapter 内`);
       }
 
-      const ctxArg = buildParserCtx(ctx, scope, input);
+      const ctxArg = buildDeclarativeCtx(ctx, scope, input);
       const paramsArg = marshal(ctx, scope, input.params ?? null);
       const responsesArg = marshal(ctx, scope, input.responses ?? {});
 
@@ -164,8 +175,8 @@ export async function runAdapter(
 
       if (isThenable(ctx, scope, retHandle)) {
         throw new SandboxError(
-          "async_in_parser",
-          "parser capability 返回了 Promise；parser 模式必须同步（无 I/O）",
+          "async_in_declarative",
+          "declarative capability 返回了 Promise；declarative 模式必须同步（无 I/O）",
         );
       }
 
@@ -177,7 +188,7 @@ export async function runAdapter(
   }
 }
 
-function buildParserCtx(ctx: QuickJSContext, scope: Scope, input: AdapterRunInput): QuickJSHandle {
+function buildDeclarativeCtx(ctx: QuickJSContext, scope: Scope, input: AdapterRunInput): QuickJSHandle {
   const obj = scope.manage(ctx.newObject());
   const logFn = scope.manage(
     ctx.newFunction("log", (levelH, msgH) => {
@@ -194,7 +205,7 @@ function buildParserCtx(ctx: QuickJSContext, scope: Scope, input: AdapterRunInpu
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Fetch mode
+// Imperative requestGraph（ctx.fetch 自编排；入场前信任闸门）
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface FetchLimits {
@@ -211,7 +222,7 @@ export const DEFAULT_FETCH_LIMITS: FetchLimits = {
   maxHopsPerRequest: envLimit("FETCH_MAX_HOPS_PER_REQUEST", 5, 20),
 };
 
-export interface FetchAdapterDeps {
+export interface ImperativeAdapterDeps {
   /**
    * 信任裁定凭据（ADR-002 §2.6 · #79 P0-1）：必填，只能经核心裁定路径构造
    * （`TrustedAdapterContext`，见 trusted-context.ts）。入口在触达引擎/host-fn
@@ -224,8 +235,8 @@ export interface FetchAdapterDeps {
   harvest?: { sink: HarvestSink; schoolId: string };
 }
 
-/** fetch 模式执行内状态。 */
-interface FetchExecState {
+/** imperative 执行内状态。 */
+interface ImperativeExecState {
   jar: CookieJar;
   requestCount: number;
   networkMs: number;
@@ -234,7 +245,7 @@ interface FetchExecState {
   abortControllers: Set<AbortController>;
 }
 
-function abortInFlight(state: FetchExecState): void {
+function abortInFlight(state: ImperativeExecState): void {
   for (const controller of state.abortControllers) {
     controller.abort();
   }
@@ -283,14 +294,14 @@ function bridgeHostPromise(
 }
 
 /**
- * Create the per-execution fetch-mode ctx object (log, now, fetch, setEphemeralCookie).
+ * Create the per-execution imperative ctx object (log, now, fetch, setEphemeralCookie).
  */
-function buildFetchCtx(
+function buildImperativeCtx(
   ctx: QuickJSContext,
   runtime: QuickJSRuntime,
-  deps: FetchAdapterDeps,
+  deps: ImperativeAdapterDeps,
   input: AdapterRunInput,
-  state: FetchExecState,
+  state: ImperativeExecState,
   fetchLimits: FetchLimits,
   deadline: number,
   disposables: QuickJSHandle[],
@@ -417,13 +428,13 @@ function buildFetchCtx(
  * Evaluate the adapter module, locate the capability handler, invoke it,
  * and await the result (async handler support).
  */
-async function invokeFetchHandler(
+async function invokeImperativeHandler(
   ctx: QuickJSContext,
   runtime: QuickJSRuntime,
   input: AdapterRunInput,
   ctxObj: QuickJSHandle,
   deadline: number,
-  state: FetchExecState,
+  state: ImperativeExecState,
   disposables: QuickJSHandle[],
 ): Promise<unknown> {
   const track = (h: QuickJSHandle): QuickJSHandle => {
@@ -455,7 +466,7 @@ async function invokeFetchHandler(
       ctx.resolvePromise(retHandle),
       Math.max(0, deadline - Date.now()),
       () => {
-        state.fatal = new SandboxError("timeout", "fetch handler 未在墙钟内完成");
+        state.fatal = new SandboxError("timeout", "imperative handler 未在墙钟内完成");
         abortInFlight(state);
         return state.fatal;
       },
@@ -476,9 +487,13 @@ async function invokeFetchHandler(
   return ctx.dump(dataHandle);
 }
 
-export async function runFetchAdapter(
+/**
+ * imperative capability：ctx.fetch 自编排。入场前 fail-closed 信任闸门
+ * （ADR-002 §2.6；非 official 永不触达凭证注入）。
+ */
+export async function runImperativeAdapter(
   input: AdapterRunInput,
-  deps: FetchAdapterDeps,
+  deps: ImperativeAdapterDeps,
   limits: SandboxLimits = DEFAULT_LIMITS,
   fetchLimits: FetchLimits = DEFAULT_FETCH_LIMITS,
 ): Promise<AdapterRunResult> {
@@ -494,13 +509,13 @@ export async function runFetchAdapter(
   if (!fetchTrustPermitted(deps.trust.tier, { production: process.env.NODE_ENV === "production" })) {
     throw new SandboxError(
       "trust_rejected",
-      `非 official adapter 无 fetch 权限（档位 ${deps.trust.tier}，生产环境）——ADR-002 §2.6 结构化权限错误，凭证注入路径不可达`,
+      `非 official adapter 无 imperative（ctx.fetch）权限（档位 ${deps.trust.tier}，生产环境）——ADR-002 §2.6 结构化权限错误，凭证注入路径不可达`,
     );
   }
 
   const { runtime, ctx, deadline } = await createRuntime(limits);
 
-  const state: FetchExecState = {
+  const state: ImperativeExecState = {
     jar: new CookieJar(),
     requestCount: 0,
     networkMs: 0,
@@ -511,8 +526,8 @@ export async function runFetchAdapter(
   const disposables: QuickJSHandle[] = [];
 
   try {
-    const ctxObj = buildFetchCtx(ctx, runtime, deps, input, state, fetchLimits, deadline, disposables);
-    const data = await invokeFetchHandler(ctx, runtime, input, ctxObj, deadline, state, disposables);
+    const ctxObj = buildImperativeCtx(ctx, runtime, deps, input, state, fetchLimits, deadline, disposables);
+    const data = await invokeImperativeHandler(ctx, runtime, input, ctxObj, deadline, state, disposables);
 
     if (deps.harvest) {
       const plan = decideHarvest([...state.jar.harvestView()], deps.view);

@@ -126,6 +126,8 @@ class FetchProxyDeps {
     this.cancelToken,
     this.onRedirectSettled,
     this.tryReserveRequest,
+    this.onRawResponse,
+    this.brokerInjectHeaders,
   });
 
   final BrokerManifestView view;
@@ -147,6 +149,45 @@ class FetchProxyDeps {
 
   /// Host-owned atomic reservation for one transport request.
   final bool Function()? tryReserveRequest;
+
+  /// 🔒 **核心专用**回调：交付响应**脱敏前**回传给核心（status/头/body 原样）。
+  /// 供 ADR-023 声明式数据流的 `bind` 抽取——`source: header` 须在 allowlist 脱敏前读，
+  /// 否则被丢弃。**只有宿主（核心）能构造 [FetchProxyDeps]，adapter 永远拿不到本回调**，
+  /// 故不构成对 adapter 的原始响应外泄（红线 #1 边界不变：交回 adapter 的仍是脱敏后响应）。
+  /// 只在链路**定型**（deliver/stop，即将交付）时回传一次，不回传中间跳。缺省 null=不回传。
+  final void Function(int status, Map<String, String> headers, String? body)?
+  onRawResponse;
+
+  /// 🔒 **核心专用**：broker 置入的注入请求头（ADR-023 声明式数据流 `inject at=header`）。
+  /// 在 [assembleRequest] 脱敏**之后**叠加——与凭证注入同侧，故不会被 adapter 头净化剥掉，
+  /// 也**不经 adapter**。只在**首跳**应用（重定向跳不回灌，同 adapter 头）。名字受
+  /// [_brokerInjectHeaderForbidden] 运行期护栏（纵深防御 validator D16）：凭证头一律 fail-closed。
+  /// 缺省 null=无 header 注入。
+  final Map<String, String>? brokerInjectHeaders;
+}
+
+/// 🔒 broker header 注入的运行期护栏（纵深防御，红线 #1）：凭证头 / 逐跳头不得由数据流注入。
+/// 与 validator D16（声明期）+ header_sanitize denylist（出站净化）三重设防；此处任一命中 →
+/// fail-closed，不静默丢弃（避免给 adapter 探测护栏边界的信号，与 §2.5 错误不回流一致）。
+bool _brokerInjectHeaderForbidden(String lowerName) {
+  const forbidden = {
+    'cookie',
+    'cookie2',
+    'set-cookie',
+    'set-cookie2',
+    'authorization',
+    'proxy-authorization',
+    'host',
+    'content-length',
+    'transfer-encoding',
+    'connection',
+    'keep-alive',
+    'upgrade',
+    'te',
+    'trailer',
+    'expect',
+  };
+  return forbidden.contains(lowerName);
 }
 
 /// 一次 ctx.fetch 的脱敏后产出 + 请求计量。
@@ -209,6 +250,22 @@ Future<FetchProxyOutcome> proxyFetch(
     }
     final ok = assembled as OkResult;
 
+    // 🔒 broker header 注入（ADR-023 inject at=header）：仅**首跳**、脱敏**后**叠加，
+    // 与凭证注入同侧（不被 adapter 头净化剥掉、不经 adapter）。重定向跳不回灌。
+    var outHeaders = ok.headers;
+    if (hops == 0 &&
+        deps.brokerInjectHeaders != null &&
+        deps.brokerInjectHeaders!.isNotEmpty) {
+      outHeaders = Map<String, String>.from(ok.headers);
+      deps.brokerInjectHeaders!.forEach((name, value) {
+        if (_brokerInjectHeaderForbidden(name.toLowerCase())) {
+          // fail-closed：凭证/逐跳头一律拒（纵深防御 validator D16）。
+          throw BrokerFetchRejected('inject_header_forbidden');
+        }
+        outHeaders[name] = value;
+      });
+    }
+
     // ④ 出网（seam）+ ⑤ 吃 Set-Cookie。
     if (deps.tryReserveRequest != null && !deps.tryReserveRequest!()) {
       throw const FetchRequestLimitExceeded();
@@ -217,7 +274,7 @@ Future<FetchProxyOutcome> proxyFetch(
       TransportRequest(
         url: currentUrl,
         method: ok.method,
-        headers: ok.headers,
+        headers: outHeaders,
         body: ok.body,
       ),
       cancelToken: deps.cancelToken,
@@ -239,6 +296,9 @@ Future<FetchProxyOutcome> proxyFetch(
     if (rd is DeliverDecision || rd is StopDecision) {
       // 核心专用：回传终点 URL（仅当宿主设了回调；SSO 换票据此判成功页，ADR-017 §2.2）。
       deps.onRedirectSettled?.call(currentUrl);
+      // 🔒 核心专用：脱敏**前**回传原始响应给核心，供数据流 bind 抽取（header 源须在
+      // allowlist 脱敏前读）。adapter 拿不到本回调；交回 adapter 的仍是下方脱敏后响应。
+      deps.onRawResponse?.call(resp.status, resp.headers, resp.body);
       // ⑦ 脱敏后交回 adapter（含 stop：越界/超跳时交付当前响应，其 Location 由脱敏剥除）。
       final processed = processResponse(
         RawResponse(

@@ -1,4 +1,4 @@
-# B6 实现计划 · 受限 ctx.fetch 代理 + 异步 handler 运行时 + 限额
+# B6 实现计划 · 受限 `ctx.fetch` 代理 + 异步 handler 运行时 + 限额
 
 > 状态：**核心零件已落地（2026-07-14）**——`fetch-proxy.ts` / `fetch_proxy.dart`（`proxyFetch` 逐跳注入 +
 > 自跟随重定向 + 捕获 Set-Cookie）+ 集成测试入库；§8 开放点实现时已定。本文留作**实现依据 / 历史**。
@@ -6,15 +6,16 @@
 > 按 [AGENTS.md](../../AGENTS.md) §1 **AI 不得独自闭环**。
 > 依据：[ADR-009](../adr/adr_009_fetch_credential.md) §2.1（数据流）/ §2.5 / §2.7（限额）/ §2.8 ·
 > [ADR-003](../adr/adr_003_transport.md)（transport 出网）· [ADR-005](../adr/adr_005_runtime.md)（QuickJS 双端）·
-> [Track B 计划](./track_b_fetch_runtime_plan.md) §2 B6。
+> [Track B 计划](./track_b_imperative_runtime_plan.md) §2 B6。
 > 前置：B1 注入决策（#28/#31）· B2 头净化（#29）· B3 重定向（#30）· B4 cookie jar（#37/#38）·
 > 凭证存储（#32/#33）· B5 收割桥接（计划中）。
+> **术语（ADR-022）**：旧称「fetch 模式」= 今 **imperative requestGraph**；`ctx.fetch` 方法名与 `fetch-proxy` 模块名不变。
 
 ## 0. 这件事是什么
 
 B6 是把 **B1–B5 各零件 + 凭证 resolver + transport 出网**编织成真正可跑的受限
 `ctx.fetch` 的**集成层**，并提供**异步 handler 运行时**（QuickJS job queue pump/await）
-与**资源限额**。这是 fetch 模式从「零件齐备」到「端到端可执行」的最后一步，也是首个
+与**资源限额**。这是 imperative requestGraph 从「零件齐备」到「端到端可执行」的最后一步，也是首个
 **触及 QuickJS 引擎本身**（非纯逻辑）的 broker 件。
 
 ## 1. 范围
@@ -41,7 +42,7 @@ B6 是把 **B1–B5 各零件 + 凭证 resolver + transport 出网**编织成真
 B1–B5 是**纯决策**，golden 双跑钉两端。B6 的**请求拼装管线**仍可大部分抽成纯函数
 `assembleRequest` / `processResponse`（golden 双跑）；但**异步运行时 + 限额 + transport 驱动**
 触及 QuickJS 引擎与 I/O，**不可纯 golden 化**——沿用 `sandbox.smoke.ts` 的引擎集成测试
-范式（parser 模式已有先例），用 fake transport 驱动端到端。
+范式（declarative requestGraph 已有先例），用 fake transport 驱动端到端。
 
 ## 3. 模块拆分（TS 权威 + Dart 镜像）
 
@@ -49,7 +50,7 @@ B1–B5 是**纯决策**，golden 双跑钉两端。B6 的**请求拼装管线**
 |---|---|---|
 | `server/src/runtime/broker/assemble.ts` | 纯：`assembleRequest`（注入决策→取值→合并 jar→净化头）/ `processResponse`（脱敏） | golden 双跑 |
 | `server/src/runtime/broker/fetch-proxy.ts` | 有态驱动：编织 assemble + transport seam + B3 redirect + B4 jar 捕获 + 限额计量 | smoke（fake transport） |
-| `server/src/runtime/sandbox.ts`（改） | fetch 模式：async handler、job queue pump、await、limit 注入、执行结束 B5 钩子 | sandbox.smoke |
+| `server/src/runtime/sandbox.ts`（改） | imperative：async handler、job queue pump、await、limit 注入、执行结束 B5 钩子 | sandbox.smoke |
 | `contract/golden/broker/assemble.json` | 请求拼装/响应脱敏共享向量 | — |
 | `client/lib/core/...` 对应件 + `adapter_runtime.dart`（改） | Dart 镜像 | dual_run |
 

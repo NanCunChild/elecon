@@ -1,7 +1,7 @@
 /**
- * 首个真实 fetch adapter 端到端冒烟（Gate A）—— school-xjt（西安交通大学教务处通知）。
+ * 首个真实 imperative adapter 端到端冒烟（Gate A）—— school-xjt（西安交通大学教务处通知）。
  *
- * adapter（index.js，fetch 模式）→ runFetchAdapter（sandbox.ts 引擎）→ ctx.fetch → proxyFetch
+ * adapter（index.js，requestGraph: imperative）→ runImperativeAdapter → ctx.fetch → proxyFetch
  *   → **录制夹具回放 Transport**（adapters/school-xjt/fixtures/，已脱敏）。
  *
  * 验证整条真实管线（用录制的真实响应，可复现、CI 友好，不打活网）：
@@ -12,7 +12,7 @@
  *
  *   运行：cd server && npm run smoke:xjt
  *
- * 🔒 fetch 模式承重路径（红线 #1）：与被测代码一并须人工 + 安全清单复核。
+ * 🔒 imperative 凭证注入承重路径（红线 #1）：与被测代码一并须人工 + 安全清单复核。
  */
 
 import { strict as assert } from "node:assert";
@@ -29,7 +29,7 @@ import {
   runMain,
 } from "./__testutils__/smoke-utils.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
-import { runFetchAdapter } from "./sandbox.js";
+import { runImperativeAdapter } from "./sandbox.js";
 import { TrustedAdapterContext } from "./trusted-context.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
 
   const view: BrokerManifestView = { allow: ["https://dean.xjtu.edu.cn/*"] }; // manifest：全 passthrough、无 credentials
 
-  const { data } = await runFetchAdapter(
+  const { data } = await runImperativeAdapter(
     { source, capability: "notice.list", params: {}, nowMs: 1_700_000_000_000 },
     { trust: TrustedAdapterContext.devSideload(), view, resolver: noResolver, transport },
   );

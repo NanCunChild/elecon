@@ -32,10 +32,16 @@ writeFileSync(
     schoolId: "test",
     displayName: "Test School",
     trustTier: "official",
-    mode: "parser",
     runtime: { engine: "quickjs", entry: "index.js", stdlibMin: "1.0.0" },
-    network: { allow: [] },
-    capabilities: [{ id: "notice.list", emits: { schema: "elecon.notice.list", schemaVersion: "1.1" } }],
+    network: { allow: ["https://example.edu/*"] },
+    capabilities: [
+      {
+        id: "notice.list",
+        requestGraph: "declarative",
+        emits: { schema: "elecon.notice.list", schemaVersion: "1.1" },
+        requests: [{ key: "raw", method: "GET", url: "https://example.edu/notice" }],
+      },
+    ],
   }),
 );
 writeFileSync(join(adapter, "index.js"), "export const capabilities = {};\n");

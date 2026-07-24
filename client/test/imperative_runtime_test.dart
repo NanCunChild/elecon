@@ -1,4 +1,4 @@
-/// fetch 模式运行时集成测试（Gate A · B6b-Dart）—— 镜像服务端 sandbox.fetch.smoke.ts。
+/// imperative requestGraph 运行时集成测试（Gate A · B6b-Dart）—— 镜像服务端 sandbox.imperative.smoke.ts。
 ///
 /// adapter（async handler）→ ctx.fetch（host-fn 通道）→ proxyFetch（主 isolate）→ FakeTransport
 ///   ① inject 出站 + 响应脱敏交回 adapter + 执行结束 B5 收割
@@ -9,7 +9,7 @@
 /// 运行时触 QuickJS 引擎、不可纯 golden 化（计划 §2），用 fake transport 驱动集成。
 /// **凭证只在主 isolate 闭包侧**（FakeResolver/FakeTransport 都在主 isolate），worker/JS 仅见脱敏结果。
 ///
-///   运行：cd client && fvm flutter test test/fetch_runtime_test.dart
+///   运行：cd client && fvm flutter test test/imperative_runtime_test.dart
 ///
 /// 🔒 红线 #1 凭证注入 + 出网承重路径：与被测代码一并须人工 + 安全清单复核。
 library;
@@ -29,7 +29,7 @@ import 'utils/test_utils.dart';
 const _now = 1700000000000;
 
 void main() {
-  group('B6b-Dart fetch 运行时（host-fn 通道 + fake transport）', () {
+  group('B6b-Dart imperative 运行时（host-fn 通道 + fake transport）', () {
     test('inject 出站 + 响应脱敏 + 执行结束 B5 收割', () async {
       final view = const BrokerManifestView(
         allow: ['https://h.edu.cn/api/*'],
@@ -61,7 +61,7 @@ void main() {
         };''';
 
       final data =
-          await runFetchAdapterForTesting(
+          await runImperativeAdapterForTesting(
                 source: source,
                 trust: TrustedAdapterContext.devSideload(),
                 capability: 'notice.list',
@@ -115,7 +115,7 @@ void main() {
         };''';
 
       final data =
-          await runFetchAdapterForTesting(
+          await runImperativeAdapterForTesting(
                 source: source,
                 trust: TrustedAdapterContext.devSideload(),
                 capability: 'notice.list',
@@ -146,7 +146,7 @@ void main() {
         };''';
 
       final data =
-          await runFetchAdapterForTesting(
+          await runImperativeAdapterForTesting(
                 source: source,
                 trust: TrustedAdapterContext.devSideload(),
                 capability: 'notice.list',
@@ -167,7 +167,7 @@ void main() {
       const source = 'export const notCapabilities = {};';
 
       await expectLater(
-        runFetchAdapterForTesting(
+        runImperativeAdapterForTesting(
           source: source,
           trust: TrustedAdapterContext.devSideload(),
           capability: 'notice.list',
@@ -220,7 +220,7 @@ void main() {
         };''';
 
       await expectLater(
-        runFetchAdapterForTesting(
+        runImperativeAdapterForTesting(
           source: source,
           trust: TrustedAdapterContext.devSideload(),
           capability: 'notice.list',
@@ -264,7 +264,7 @@ void main() {
         };''';
 
       await expectLater(
-        runFetchAdapterForTesting(
+        runImperativeAdapterForTesting(
           source: source,
           trust: TrustedAdapterContext.devSideload(),
           capability: 'notice.list',
@@ -306,7 +306,7 @@ void main() {
         };''';
 
       await expectLater(
-        runFetchAdapterForTesting(
+        runImperativeAdapterForTesting(
           source: source,
           trust: TrustedAdapterContext.devSideload(),
           capability: 'notice.list',
@@ -341,7 +341,7 @@ void main() {
 
   group('信任闸门（ADR-002 §2.6 · #79 P0-1）', () {
     // 入场判定纯函数：release 语义无法在 flutter_test（debug 模式）下经
-    // runFetchAdapter 端到端触发，负例由纯函数覆盖；生产接线
+    // runImperativeAdapter 端到端触发，负例由纯函数覆盖；生产接线
     // （debugBuild: kDebugMode 硬接、无注入点）由人工审阅把关（🔒）。
     test('release/profile 下非 official 拒绝（fail-closed 负例）', () {
       expect(
@@ -363,7 +363,7 @@ void main() {
       expect(
         fetchTrustPermitted(AdapterTrustTier.devSideload, debugBuild: true),
         isTrue,
-        reason: 'debug 下 dev 侧载可跑 fetch（ADR-002 §2.5 owner 决策）',
+        reason: 'debug 下 dev 侧载可跑 imperative（ADR-002 §2.5 owner 决策）',
       );
     });
 

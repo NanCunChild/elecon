@@ -1,7 +1,7 @@
 /**
- * 通用 parser fixture 回放器。
+ * 通用 declarative fixture 回放器（ADR-022）。
  *
- * fixture -> QuickJS parser -> expected golden -> contract schema。
+ * fixture -> QuickJS declarative handler -> expected golden -> contract schema。
  * 只接受仓库内脱敏 fixture，禁止测试路径访问真实学校接口。
  */
 
@@ -10,19 +10,19 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import { runAdapter } from "../sandbox.js";
+import { runDeclarativeAdapter } from "../sandbox.js";
 import { resolveRepoRoot } from "./smoke-utils.js";
 
-export interface ParserFixtureResponse {
+export interface DeclarativeFixtureResponse {
   status: number;
   headers: Record<string, string>;
   body: string;
 }
 
-export interface ParserFixture {
+export interface DeclarativeFixture {
   capability: string;
   params?: unknown;
-  responses: Record<string, ParserFixtureResponse>;
+  responses: Record<string, DeclarativeFixtureResponse>;
   expected: unknown;
 }
 
@@ -34,20 +34,20 @@ function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
 }
 
-export async function replayParserFixture(
+export async function replayDeclarativeFixture(
   metaUrl: string,
   adapterDir: string,
   fixtureName = "fixtures/default.json",
 ): Promise<unknown> {
   const repoRoot = resolveRepoRoot(metaUrl);
-  const fixture = readJson<ParserFixture>(join(adapterDir, fixtureName));
+  const fixture = readJson<DeclarativeFixture>(join(adapterDir, fixtureName));
   const manifest = readJson<AdapterManifest>(join(adapterDir, "manifest.json"));
   const capability = manifest.capabilities.find((item) => item.id === fixture.capability);
 
   assert.ok(capability, `fixture capability 未在 manifest 中声明：${fixture.capability}`);
 
   const source = readFileSync(join(adapterDir, "index.js"), "utf8");
-  const { data } = await runAdapter({
+  const { data } = await runDeclarativeAdapter({
     source,
     capability: fixture.capability,
     params: fixture.params ?? {},

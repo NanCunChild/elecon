@@ -1,8 +1,8 @@
 # ADR-010：iOS / App Store 分发合规（2.5.2 / DPLA 3.3.2）
 
-- **状态**：已接受（Accepted）。**本文是分发策略与合规立场的结论**（回应 [#4](https://github.com/NanCunChild/elecon/issues/4) 的交付："给出可上架的形态或必要的架构调整"）。其中依赖 ADR-002（签名/侧载闸门，草案）、ADR-009（fetch 模式，草案）的条款，随这两份 ADR 的接受状态生效；涉及法律/授权的判断（VPN entitlement、GPL）须经 Apple 开发者支持 / 法务确认——**本文是工程合规判断，不是法律意见**。
+- **状态**：已接受（Accepted）。**本文是分发策略与合规立场的结论**（回应 [#4](https://github.com/NanCunChild/elecon/issues/4) 的交付："给出可上架的形态或必要的架构调整"）。其中依赖 ADR-002（签名/侧载闸门，草案）、ADR-009（imperative requestGraph，草案）的条款，随这两份 ADR 的接受状态生效；涉及法律/授权的判断（VPN entitlement、GPL）须经 Apple 开发者支持 / 法务确认——**本文是工程合规判断，不是法律意见**。
 - **日期**：2026-06-12
-- **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§2.3 固定能力契约、§3.3 凭证边界、§5.1 放弃图灵完备 UI DSL、§5.2 传输底座/许可证风险）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（§3 风险4：iOS 执行下载代码）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（fetch 模式联动）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（签名/侧载闸门——支撑"非代码市场"论点；草案）
+- **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§2.3 固定能力契约、§3.3 凭证边界、§5.1 放弃图灵完备 UI DSL、§5.2 传输底座/许可证风险）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（§3 风险4：iOS 执行下载代码）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（imperative requestGraph 联动）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（签名/侧载闸门——支撑"非代码市场"论点；草案）
 - **相关 issue**：[#4](https://github.com/NanCunChild/elecon/issues/4)（本文为其结论）
 - **适用范围**：elecon 客户端在 **iOS / App Store** 上的可上架形态。覆盖三件相互纠缠的事：① 用 QuickJS 执行**下载来的** adapter JS（指南 2.5.2）；② App 内隧道 / VPN 传输底座（指南 5.4）；③ atrust 复刻的 GPLv3 与商店分发的相容性。Android / HarmonyOS 不在本文（其商店规则另评）。
 
@@ -16,7 +16,7 @@ ADR-008 §3 风险4 把"iOS 上用 QuickJS（`flutter_qjs`）执行下载来的 
 
 字面看，"下载 adapter JS 并执行"正中靶心。但 2.5.2 正文里的**教育类例外不是我们的路径**（elecon 不是教编程的 App）。真正决定能否上架的是 **Apple Developer Program License Agreement（DPLA）§3.3.2** 给解释型代码（interpreted code）的口子——这是所有"下 JS 跑"的 App 的合规依据。本文把这条口子讲清，并据此给出可上架形态。
 
-同时，issue #4 要求把 fetch 模式（ADR-009）与传输底座一并评估。实测下来，**App 内 VPN/隧道与 GPLv3 的上架风险高于 2.5.2 本身**，故一并在此定调。
+同时，issue #4 要求把 imperative requestGraph（ADR-009）与传输底座一并评估。实测下来，**App 内 VPN/隧道与 GPLv3 的上架风险高于 2.5.2 本身**，故一并在此定调。
 
 ---
 
@@ -44,7 +44,7 @@ DPLA §3.3.2 允许把解释型代码下载到 App，**只要同时满足**：
 
 为把首过审复杂度压到最低，**iOS 首版按以下形态提交**：
 
-1. **仅 parser 模式上架。** fetch 模式（ADR-009，带凭证的 `ctx.fetch`）**推迟到后续版本**——避免首版把 2.5.2 与隐私（指南 5.1.1 数据收集申报）耦合在一起。
+1. **仅 declarative requestGraph 上架。** imperative（ADR-009，带凭证的 `ctx.fetch`）**推迟到后续版本**——避免首版把 2.5.2 与隐私（指南 5.1.1 数据收集申报）耦合在一起。
 2. **bundle 内预置一组基线 adapter。** 让 App **自包含、可离线演示核心功能**；下载仅用于"更新 / 新增数据源"。审核员只测提交的 build——若功能依赖联网拉 adapter 才出现，易被判"功能依赖下载代码"。
 3. **iOS 不带 App 内隧道。** 传输默认 = **校内直连 + 引导系统 VPN**（`NEVPNManager` / on-demand），落实 ADR-000 §5.2 已写的降级路径。**不在 iOS release 编入任何 App 内私有隧道目标**（见 §2.3）。
 4. **release build 仅官方签名 adapter、物理无侧载入口**，并以**构建期断言 / 测试**强制（依赖 ADR-002 §2.5 落地；ADR-002 接受并实现前，iOS release 不得开启任何可侧载 / 未签名的 adapter 下载路径）。
@@ -71,9 +71,9 @@ issue #4 要求一并评估的两项，上架风险高于 2.5.2，单列结论�
 
 1. **"推 adapter 不发版"被严格限幅。** 仅在固定能力集内更新数据源映射才安全；**真正的新功能仍须 App 更新**（§2.1(a) 护栏）。这是为合规接受的代价——与 ADR-000 §2.4 的便利相比，边界更窄但更稳。
 2. **审核员有自由裁量权。** 即便满足 §3.3.2，仍可能遇主观拒审；缓解靠 §2.4 沟通工具包，必要时走申诉（App Review Board）。这是不可完全消除的残余风险。
-3. **依赖 ADR-002 / ADR-009 的落地状态。** (b)/(c) 论点依赖 ADR-002 的"签名 + 无侧载入口"真正实现；在此之前，iOS release 必须保证无未签名 / 可侧载的 adapter 下载路径，否则 §3.3.2(b) 立论不成立。fetch 模式（ADR-009）引入 iOS 时**须重做** 2.5.2(a) 自检（仍限既有能力集）+ 补 5.1.1 隐私申报。
+3. **依赖 ADR-002 / ADR-009 的落地状态。** (b)/(c) 论点依赖 ADR-002 的"签名 + 无侧载入口"真正实现；在此之前，iOS release 必须保证无未签名 / 可侧载的 adapter 下载路径，否则 §3.3.2(b) 立论不成立。imperative requestGraph（ADR-009）引入 iOS 时**须重做** 2.5.2(a) 自检（仍限既有能力集）+ 补 5.1.1 隐私申报。
 4. **法律 / 授权事项须外部确认。** VPN entitlement（§2.3）、GPL 授权（§2.3）非工程可独断；正式提交前找 Apple 开发者支持 / 法务确认。本文不构成法律意见。
-5. **跨平台不对称。** iOS 因本文约束最严（首版 parser-only、无隧道）；Android / HarmonyOS 可更早开 fetch / 传输底座。需接受三端能力短期不齐，并在产品文案上说明校外可用性差异（与 ADR-000 §5.2 微信绑定天花板一致）。
+5. **跨平台不对称。** iOS 因本文约束最严（首版 declarative-only、无隧道）；Android / HarmonyOS 可更早开 imperative / 传输底座。需接受三端能力短期不齐，并在产品文案上说明校外可用性差异（与 ADR-000 §5.2 微信绑定天花板一致）。
 
 ---
 
@@ -86,5 +86,5 @@ issue #4 要求一并评估的两项，上架风险高于 2.5.2，单列结论�
 - **iOS 传输默认**：校内直连 + 系统 VPN 引导（`NEVPNManager` on-demand）；iOS release **不编入** App 内私有隧道目标（§2.2.3 / §2.3）。
 - **隐私合规**：隐私政策 + App Store 隐私清单；私密数据不出端声明（§2.4）。
 - **审核沟通包**：一页合规声明 + reviewer notes + 演示账号（§2.4）。
-- **复评触发**：当 fetch 模式（ADR-009）或 App 内传输底座（[ADR-003](./adr_003_transport.md)）拟上 iOS 时，回到本文重做 §2.1 三段论自检与 §2.3 立场。
+- **复评触发**：当 imperative requestGraph（ADR-009）或 App 内传输底座（[ADR-003](./adr_003_transport.md)）拟上 iOS 时，回到本文重做 §2.1 三段论自检与 §2.3 立场。
 - 关闭 issue [#4](https://github.com/NanCunChild/elecon/issues/4)，以本 ADR 为结论。

@@ -5,7 +5,6 @@
   "schoolId": "xjtu",
   "displayName": "西安交通大学（教务处通知）",
   "trustTier": "official",
-  "mode": "fetch",
   "runtime": { "engine": "quickjs", "entry": "index.js" },
   "network": {
     "allow": [
@@ -15,6 +14,7 @@
   "capabilities": [
     {
       "id": "notice.list",
+      "requestGraph": "imperative",
       "emits": { "schema": "elecon.notice.list", "schemaVersion": "1.1" }
     }
   ]

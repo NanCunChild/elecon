@@ -1,5 +1,5 @@
 /**
- * fetch 模式运行时冒烟测试（Gate A · B6b）—— 证明 ctx.fetch 端到端跑通（fake transport 驱动）。
+ * imperative requestGraph 运行时冒烟测试（Gate A · B6b）—— 证明 ctx.fetch 端到端跑通（fake transport 驱动）。
  *
  *   adapter（async handler）→ ctx.fetch → proxyFetch（B6a）→ FakeTransport
  *     ├─ broker 注入凭证出站 / 响应脱敏交回 adapter
@@ -10,7 +10,7 @@
  *
  * 运行时触 QuickJS 引擎、不可纯 golden 化（计划 §2），用 fake transport 驱动集成。
  *
- *   运行：cd server && npm run smoke:fetch
+ *   运行：cd server && npm run smoke:imperative
  *
  * 🔒 红线 #1 凭证注入 + 出网承重路径：与被测代码一并须人工 + 安全清单复核（不得 AI 独自闭环）。
  */
@@ -20,7 +20,7 @@ import { FakeResolver, FakeTransport, resp, runMain } from "./__testutils__/smok
 import type { Transport, TransportResponse } from "./broker/fetch-proxy.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 import { CredentialStore } from "./credential/store.js";
-import { type FetchAdapterDeps, runFetchAdapter, SandboxError } from "./sandbox.js";
+import { type ImperativeAdapterDeps, runImperativeAdapter, SandboxError } from "./sandbox.js";
 import { fetchTrustPermitted, TrustedAdapterContext } from "./trusted-context.js";
 
 const NOW = 1_700_000_000_000;
@@ -48,14 +48,17 @@ async function testInjectAndHarvest(): Promise<void> {
       }
     };`;
 
-  const deps: FetchAdapterDeps = {
+  const deps: ImperativeAdapterDeps = {
     trust: TrustedAdapterContext.devSideload(),
     view,
     resolver: new FakeResolver({ session: { via: "cookie", value: "JSESSIONID=S1" } }),
     transport,
     harvest: { sink: store, schoolId: "xidian" },
   };
-  const { data } = await runFetchAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps);
+  const { data } = await runImperativeAdapter(
+    { source, capability: "notice.list", params: {}, nowMs: NOW },
+    deps,
+  );
 
   const d = data as { items: unknown; gotHeaders: Record<string, string> };
   assert.deepEqual(d.items, [{ id: 1, t: "hi" }], "产出 items 不符");
@@ -84,13 +87,16 @@ async function testEphemeralMultiStep(): Promise<void> {
         return { rows: await b.json() };
       }
     };`;
-  const deps: FetchAdapterDeps = {
+  const deps: ImperativeAdapterDeps = {
     trust: TrustedAdapterContext.devSideload(),
     view,
     resolver: new FakeResolver({}),
     transport,
   };
-  const { data } = await runFetchAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps);
+  const { data } = await runImperativeAdapter(
+    { source, capability: "notice.list", params: {}, nowMs: NOW },
+    deps,
+  );
 
   assert.deepEqual((data as { rows: unknown }).rows, [1, 2, 3], "第二步产出不符");
   assert.equal(transport.seen[1]!.headers["Cookie"], "client_id=XYZ", "ephemeral cookie 应在第二步携带");
@@ -108,13 +114,16 @@ async function testFailClosedCatchable(): Promise<void> {
         catch (e) { return { blocked: true }; }
       }
     };`;
-  const deps: FetchAdapterDeps = {
+  const deps: ImperativeAdapterDeps = {
     trust: TrustedAdapterContext.devSideload(),
     view,
     resolver: new FakeResolver({}),
     transport,
   };
-  const { data } = await runFetchAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps);
+  const { data } = await runImperativeAdapter(
+    { source, capability: "notice.list", params: {}, nowMs: NOW },
+    deps,
+  );
 
   assert.deepEqual(data, { blocked: true }, "allow 外应被拒、adapter 可 catch");
   assert.equal(transport.seen.length, 0, "fail-closed 不得发任何请求");
@@ -141,7 +150,7 @@ async function testRequestLimitNoHarvest(): Promise<void> {
         return { ok: true };
       }
     };`;
-  const deps: FetchAdapterDeps = {
+  const deps: ImperativeAdapterDeps = {
     trust: TrustedAdapterContext.devSideload(),
     view,
     resolver: new FakeResolver({ session: { via: "cookie", value: "S" } }),
@@ -149,7 +158,7 @@ async function testRequestLimitNoHarvest(): Promise<void> {
     harvest: { sink: store, schoolId: "xidian" },
   };
   await assert.rejects(
-    runFetchAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps, undefined, {
+    runImperativeAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps, undefined, {
       perRequestTimeoutMs: 10_000,
       totalNetworkMs: 30_000,
       maxRequests: 1,
@@ -188,7 +197,7 @@ async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
         catch (e) { return { caught: true }; }
       }
     };`;
-  const deps: FetchAdapterDeps = {
+  const deps: ImperativeAdapterDeps = {
     trust: TrustedAdapterContext.devSideload(),
     view,
     resolver: new FakeResolver({ session: { via: "cookie", value: "JSESSIONID=S" } }),
@@ -196,7 +205,7 @@ async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
     harvest: { sink: store, schoolId: "xidian" },
   };
   await assert.rejects(
-    runFetchAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps, undefined, {
+    runImperativeAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps, undefined, {
       perRequestTimeoutMs: 1,
       totalNetworkMs: 30_000,
       maxRequests: 20,
@@ -233,7 +242,7 @@ async function testTrustGate(): Promise<void> {
   ];
   for (const [kind, forged] of forgeries) {
     await assert.rejects(
-      runFetchAdapter(
+      runImperativeAdapter(
         { source, capability: "notice.list", params: {}, nowMs: NOW },
         { trust: forged, view, resolver: new FakeResolver({}), transport },
       ),
@@ -273,7 +282,7 @@ async function main(): Promise<void> {
   await testRequestLimitNoHarvest();
   await testPerRequestTimeoutNotSwallowable();
   await testTrustGate();
-  console.log("全部通过。fetch 模式运行时端到端跑通。");
+  console.log("全部通过。imperative requestGraph 运行时端到端跑通。");
 }
 
 runMain(main);

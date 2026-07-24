@@ -4,7 +4,7 @@
   "title": "Capability Manifest Schema",
   "description": "adapter 对核心的声明契约。tools/ 校验器据此验证 manifest 合法性。",
   "type": "object",
-  "required": ["manifestVersion", "adapterId", "adapterVersion", "schoolId", "displayName", "trustTier", "mode", "runtime", "network", "capabilities"],
+  "required": ["manifestVersion", "adapterId", "adapterVersion", "schoolId", "displayName", "trustTier", "runtime", "network", "capabilities"],
   "properties": {
     "manifestVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
     "adapterId": { "type": "string", "pattern": "^school-\\S+$" },
@@ -15,10 +15,6 @@
       "type": "string",
       "description": "official | sideload（community 档已于 ADR-002 2026-06-14 修订移除）",
       "enum": ["official", "sideload"]
-    },
-    "mode": {
-      "type": "string",
-      "enum": ["fetch", "parser"]
     },
     "runtime": {
       "type": "object",
@@ -118,7 +114,7 @@
     },
     "credentials": {
       "type": "object",
-      "description": "凭证引用声明（ADR-013）。key=ref（对应 ADR-012 CredentialEntry.ref），值声明注入作用域与方式。仅含引用名+作用域+注入方式，绝不含凭证值（红线 #1）。可选；缺省即无凭证注入（fetch 全 passthrough / parser 无 credential 请求）。",
+      "description": "凭证引用声明（ADR-013）。key=ref（对应 ADR-012 CredentialEntry.ref），值声明注入作用域与方式。仅含引用名+作用域+注入方式，绝不含凭证值（红线 #1）。可选；缺省即无凭证注入（imperative 全 passthrough / declarative 无 credential 请求）。",
       "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
       "additionalProperties": {
         "type": "object",
@@ -148,7 +144,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "emits"],
+        "required": ["id", "emits", "requestGraph"],
         "properties": {
           "id": {
             "type": "string",
@@ -162,6 +158,11 @@
               "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" }
             }
           },
+          "requestGraph": {
+            "type": "string",
+            "enum": ["declarative", "imperative"],
+            "description": "取数请求图声明性（ADR-022）。declarative=manifest requests[] 静态声明、核心代取、adapter 纯解析同步；imperative=adapter 代码 ctx.fetch 自取异步。信任门：release 下 sideload 的每个 capability 须 declarative。**required、无 default**（缺字段=校验失败，避免隐式命令式提权）。"
+          },
           "params": {
             "type": "object",
             "properties": {
@@ -171,7 +172,7 @@
           },
           "requests": {
             "type": "array",
-            "description": "仅 parser 模式使用，声明核心代取的请求配方",
+            "description": "仅 declarative requestGraph 使用，声明核心代取的请求配方；imperative capability 不得声明",
             "items": {
               "type": "object",
               "required": ["key", "method", "url"],
@@ -181,6 +182,173 @@
                 "url": { "type": "string" },
                 "credential": { "type": "string" }
               }
+            }
+          },
+          "bind": {
+            "type": "array",
+            "description": "声明式跨请求数据流·抽取段（ADR-023 §2.2）。从**响应**取值绑为不透明句柄；adapter 全程只持有变量名，永不见字节（红线 #1）。抽取源恒为响应头/响应体，**不含请求**——broker 自拼的请求头（含它注入的凭证）不可被引用。仅 declarative capability 可声明（validator D1）。bind 产出的句柄类型恒为 text（validator D9 类型推导起点）。可选；缺省即无数据流。",
+            "items": {
+              "type": "object",
+              "required": ["var", "from", "source", "extract"],
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,31}$",
+                  "description": "句柄变量名；在本 capability 的 bind ∪ compute 内唯一（validator D3）。仅小写字母/数字/下划线，≤32 字符。"
+                },
+                "from": {
+                  "type": "string",
+                  "description": "取值来源请求，须等于本 capability 某 requests[].key（validator D2）。"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": ["header", "body", "regex"],
+                  "description": "抽取器（ADR-023 §5 决策 1 封闭词表）。header=响应头（输入上限 4 KB）；body=响应体 JSONPath（上限 8 MB，对齐 DEFAULT_MAX_BODY_BYTES）；regex=响应体正则（上限 8 KB + 回溯步数预算）。css-select 首批不放行（延后，非否决）。"
+                },
+                "extract": {
+                  "type": "object",
+                  "description": "抽取参数。键集合须与 source 严格对应（header→name / body→jsonpath / regex→pattern[+group]），多余或缺失即拒（validator D4）。匹配数量恒为 1：单次抽取只产出一个标量，不支持数组句柄。匹配失败=整条 capability fail-closed（决策 6）。",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+                      "description": "source=header 时的响应头名（大小写不敏感匹配）。"
+                    },
+                    "jsonpath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "source=body 时的 JSONPath 表达式；须选中恰好一个标量。"
+                    },
+                    "pattern": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "source=regex 时的正则模式串。受语法白名单约束：禁嵌套量词、禁 lookbehind、禁反向引用（validator D5）；运行期另受回溯步数预算，超预算 fail-closed（非超时）。"
+                    },
+                    "group": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 32,
+                      "description": "source=regex 时取第几个捕获组；0=整体匹配。缺省=0。须 ≤ pattern 的捕获组数（validator D5）。"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "compute": {
+            "type": "array",
+            "description": "声明式跨请求数据流·计算段（ADR-023 §2.4）。**封闭 op 词表**，由 broker 原生代码执行——无任意脚本、无新运行时依赖。允许嵌套/引用前置输出，复杂度受 validator D11 静态限额（节点 ≤64、深度 ≤16、每 op 参数 ≤8）。禁 random/uuid（否则 ADR-001 §8 双跑 golden 失效）；now 放行，因由 broker 喂入定值。仅 declarative capability 可声明（validator D1）。可选。",
+            "items": {
+              "type": "object",
+              "required": ["var", "op", "args"],
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,31}$",
+                  "description": "输出句柄变量名；在本 capability 的 bind ∪ compute 内唯一（validator D3）。"
+                },
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "concat",
+                    "substring",
+                    "base64",
+                    "hex",
+                    "urlencode",
+                    "hmac-sha256",
+                    "hkdf",
+                    "now"
+                  ],
+                  "description": "封闭算子（ADR-023 §5 决策 2 首批词表）。逐 op 的元数/参数/类型签名与跨端语义见 docs/reference/declarative_dataflow_ops.md，由 validator D8/D9 静态强制。"
+                },
+                "args": {
+                  "type": "array",
+                  "maxItems": 8,
+                  "description": "位置参数，个数由 op 签名钉死（validator D8）。每项须**恰有** ref 或 text 之一（validator D6）。🔒 hmac-sha256 的 key（args[0]）与 hkdf 的 ikm（args[0]）必须是 ref，字面量一律拒（validator D10）——manifest 是已签名分发的产物，字面量密钥等于公开。",
+                  "items": {
+                    "type": "object",
+                    "description": "单个参数：引用一个已定义句柄（ref），或一个内联文本字面量（text）。二者恰择其一。",
+                    "properties": {
+                      "ref": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]{0,31}$",
+                        "description": "引用同 capability 内已定义的 bind/compute 变量名；引用须闭合且不成环（validator D7）。"
+                      },
+                      "text": {
+                        "type": "string",
+                        "maxLength": 4096,
+                        "description": "内联文本字面量（类型恒为 text）。不得用于承载密钥（validator D10）。"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "params": {
+                  "type": "object",
+                  "description": "op 的标量参数（非句柄）。键集合须与 op 签名完全一致，缺失或多余即拒（validator D8）。",
+                  "properties": {
+                    "start": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "substring：起始下标（UTF-16 码元，含）。越界=fail-closed，不钳制——JS 钳制/Dart 抛异常的分歧由此消除。"
+                    },
+                    "length": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "description": "substring：截取长度（UTF-16 码元）；hkdf：输出字节数（1–64）。"
+                    },
+                    "variant": {
+                      "type": "string",
+                      "enum": ["standard", "url", "component", "form"],
+                      "description": "base64：standard=RFC 4648 §4 带 = 填充 / url=RFC 4648 §5 base64url 无填充。urlencode：component=RFC 3986 保留字全编、空格→%20 / form=application/x-www-form-urlencoded、空格→+。"
+                    },
+                    "case": {
+                      "type": "string",
+                      "enum": ["lower", "upper"],
+                      "description": "hex：输出字母大小写。"
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": ["epoch-seconds", "epoch-millis", "iso8601"],
+                      "description": "now：时间戳格式。取值来自 broker 喂入的 AdapterRunInput.nowMs 定值，不读真实时钟——双跑 golden 可复现。"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "inject": {
+            "type": "array",
+            "description": "声明式跨请求数据流·注入段（ADR-023 §2.2 / §2.5 承重墙）。把句柄值注入下游请求的**静态汇聚点**——目标请求、位置、字段名全部静态声明死，**绝不依值选择注入到哪**，故「依值选汇聚点」这条侧信道在语法上不可表达。注入执行复用既有凭证注入 seam；句柄缺失=整条 capability fail-closed，不提供「缺失即省略注入」（决策 6）。仅 declarative capability 可声明（validator D1）。可选。",
+            "items": {
+              "type": "object",
+              "required": ["var", "into", "at", "name"],
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,31}$",
+                  "description": "待注入的句柄变量名；须已由 bind/compute 定义，且类型为 text（bytes 须先经 base64/hex 转换，validator D9）。"
+                },
+                "into": {
+                  "type": "string",
+                  "description": "注入目标请求，须等于本 capability 某 requests[].key（validator D12）。注入使该请求依赖 var 的全部上游请求；请求依赖图须无环（validator D15）。"
+                },
+                "at": {
+                  "type": "string",
+                  "enum": ["url", "header"],
+                  "description": "注入位置。url=追加 query 参数（值按 RFC 3986 组件编码）；header=设置请求头。body 首批不放行——requests[] 尚无 body 声明面，无可合流的基底。"
+                },
+                "name": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+                  "description": "注入字段名：at=url 时为 query 参数名，at=header 时为请求头名。🔒 at=header 时不得为凭证头（Cookie / Authorization / Proxy-Authorization 等，validator D16）——凭证只由 broker 按 credentials 声明注入，adapter 不得经数据流伪造或覆盖（红线 #1）。"
+                }
+              },
+              "additionalProperties": false
             }
           }
         }

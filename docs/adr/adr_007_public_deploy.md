@@ -14,7 +14,7 @@
 | 无状态——可退化为静态托管 + 极小无状态服务 | ADR-000 §2.1 |
 | adapter 执行用 QuickJS-wasm，不用 Node `vm` | ADR-005 |
 | 公开数据缓存的时效由 TTL 控制 | ADR-000 §2.4 |
-| 不参与 fetch 模式凭证注入 | ADR-009（第 9 条） |
+| 不参与 imperative 凭证注入 | ADR-009（第 9 条） |
 
 ---
 

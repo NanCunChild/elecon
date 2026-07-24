@@ -17,7 +17,7 @@ import {
   skipSmoke,
 } from "./__testutils__/smoke-utils.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
-import { runFetchAdapter } from "./sandbox.js";
+import { runImperativeAdapter } from "./sandbox.js";
 import { TrustedAdapterContext } from "./trusted-context.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     resp({ status: 200, headers: { "content-type": "text/html" }, body: fixture.responses.page.body }),
   ]);
   const view: BrokerManifestView = { allow: ["https://jwc.fudan.edu.cn/*"] };
-  const { data } = await runFetchAdapter(
+  const { data } = await runImperativeAdapter(
     { source, capability: "notice.list", params: fixture.params, nowMs: 1_700_000_000_000 },
     {
       trust: TrustedAdapterContext.devSideload(),

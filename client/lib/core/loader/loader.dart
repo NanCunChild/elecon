@@ -1,7 +1,7 @@
 /// 🔒🔒 客户端 adapter 加载编排器 —— ADR-018 §2.6 的 **fail-closed 顺序**总装（红线 #1/#4）。
 ///
 /// 本文件把片 A→D 的原语串成一条不可重排的加载链，终点是铸造 official [TrustedAdapterContext]
-/// 喂给 `runFetchAdapter`。§2.6 顺序（**任一步失败即拒、不加载**）：
+/// 喂给 `runImperativeAdapter`。§2.6 顺序（**任一步失败即拒、不加载**）：
 ///
 ///   1. 取 catalog → **验签 + sequence 不回滚**（[_resolveCatalog]：fetch/last-good/bootstrap
 ///      三源各自验签，按 `pickNewerCatalog` 取最高 sequence，成功采纳则持久化 last-good）。
@@ -128,7 +128,7 @@ class LoadResult {
       catalogIsFresh = null,
       revocationIsFresh = null;
 
-  /// official 运行时凭据（喂 `runFetchAdapter`）。
+  /// official 运行时凭据（喂 `runImperativeAdapter`）。
   final TrustedAdapterContext? trust;
 
   /// 已验签 bundle 的 envelope（上层据此取 adapter 源码 / manifest / 资源）。

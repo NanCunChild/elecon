@@ -1,15 +1,15 @@
 {
   "manifestVersion": "1.0",
-  "adapterId": "school-template-parser",
+  "adapterId": "school-template-declarative",
   "adapterVersion": "0.1.0",
   "schoolId": "0000",
-  "displayName": "模板学校（parser 模式）",
+  "displayName": "模板学校（declarative requestGraph）",
   "trustTier": "sideload",
-  "mode": "parser",
   "runtime": { "engine": "quickjs", "entry": "index.js" },
   "network": {
     "allow": [
-      "https://jw.example.edu.cn/api/*"
+      "https://jw.example.edu.cn/api/*",
+      "https://jw.example.edu.cn/challenge*"
     ]
   },
   "credentials": {
@@ -21,14 +21,31 @@
   "capabilities": [
     {
       "id": "grades.list",
+      "requestGraph": "declarative",
       "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
       "requests": [
+        {
+          "key": "chal",
+          "method": "GET",
+          "url": "https://jw.example.edu.cn/challenge"
+        },
         {
           "key": "raw",
           "method": "GET",
           "url": "https://jw.example.edu.cn/api/grades?term={term}",
           "credential": "session"
         }
+      ],
+      "bind": [
+        {
+          "var": "client_id",
+          "from": "chal",
+          "source": "regex",
+          "extract": { "pattern": "client_id=([a-z0-9]+)", "group": 1 }
+        }
+      ],
+      "inject": [
+        { "var": "client_id", "into": "raw", "at": "url", "name": "cid" }
       ]
     }
   ]

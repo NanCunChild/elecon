@@ -4,19 +4,25 @@
  * 检查项：
  *  C1 manifest 对 contract/manifest.schema.json 的合规性（ajv）
  *  C2 capability id ∈ registry.json，且 emits.schema/version 与 registry 一致（防漂移）
- *  C3 sideload 信任档**强制** parser 模式（拒绝 sideload + fetch，分发/签名路径，红线 #5）
- *  C4 网络白名单：fetch 模式须有 allow；parser 的每条 requests.url 须被 allow 覆盖
+ *  C3 sideload 信任档**强制**每个 capability requestGraph=declarative（拒绝 sideload + imperative，分发/签名路径，红线 #5；ADR-022）
+ *  C4 网络白名单：存在 imperative cap 须有 allow；declarative 的每条 requests.url 须被 allow 覆盖；declarative 无 requests → error
  *  C5 夹具：fixtures/*.json 的 expected 须通过该 capability 的 emits schema
  *  C6 凭证作用域：credentials.<name>.scope 每条须 ⊆ network.allow（ADR-013 §2.4 规则 1）
  *  C7 作用域消歧：不同凭证的 scope 前缀长度相同且重叠 → 拒绝（ADR-013 §2.4 规则 2 / ADR-009 §2.3b）
- *  C8 引用闭合：parser 的 requests.credential 须在 credentials 声明；声明未用 → warn（ADR-013 §2.4 规则 3）
+ *  C8 引用闭合：declarative 的 requests.credential 须在 credentials 声明；声明未用 → warn（ADR-013 §2.4 规则 3）
  *  C9 凭证注入方式：credentials.<name>.type ∈ {cookie, header}（防御性，schema C1 亦拦）
+ *  C12 imperative capability 不得声明 requests（与 declarative 互斥；ADR-022）
  *  L1–L4 login 声明（ADR-015）：url 须 https（L1）；url ⊆ navigationAllow（L2）；
  *    success.whenUrlMatches 每条 ⊆ navigationAllow（L3）；login 存在但 credentials 空 → warn（L4）
  *  M1–M5 SSO 静默签票声明（ADR-017）：authEndpoint 须 https 且 ⊆ navigationAllow（M1）；
  *    每个 services[*].service 与 success ⊆ navigationAllow（M2）；services 键须 ∈ credentials（M3）；
  *    母凭证 ref（scope 覆盖 authEndpoint 者）须存在且 scope 不与下游数据域重叠（M4）；
  *    services[*].via 须为本 manifest 声明的 capability 且 official（M5，红线 #1 门禁，类比 C3）
+ *  D1–D16 声明式跨请求数据流（ADR-023，见 dataflow.ts）：仅 declarative 可声明 bind/compute/inject（D1）；
+ *    bind.from/inject.into 指向已声明 request（D2/D12）；变量名唯一 + 引用闭合无环（D3/D7）；
+ *    extract 键集合与 source 对应 + regex 语法白名单（D4/D5）；封闭 op 签名 + 静态类型 bytes/text（D8/D9）；
+ *    🔒 密钥位须 ref（D10）；复杂度限额（D11）；🔒 信任门正向允许表（D13）；请求依赖无环（D15）；
+ *    🔒 凭证头 / 逐跳头不得注入（D16）
  *
  * 尚未覆盖（留给优先级 #3 客户端落地）：
  *  - 完整 golden 双跑：客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产出比对。
@@ -24,7 +30,7 @@
  *    本校验器只做"夹具 expected 合 schema"这一不依赖沙箱的部分（见 C5）。
  *
  *   运行：cd tools && npm run validate                  # 校验 adapters/ 下全部
- *         cd tools && npm run validate -- --adapter=../adapters/_template/parser
+ *         cd tools && npm run validate -- --adapter=../adapters/_template/declarative
  */
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
@@ -33,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import { allowToRegex, scopePrefix, urlCoveredByAllow } from "@elecon/broker-primitives";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+import { type BindDecl, type ComputeDecl, checkDataflow, type InjectDecl } from "./dataflow.js";
 
 // TS 侧 url-match 单源在 @elecon/broker-primitives（审阅 P2-4，原本文件内联拷贝已删）。
 // re-export 保持既有 API 面（url-match.smoke.ts 经此面验证"校验器实际使用的实现"合 golden）。
@@ -65,8 +72,14 @@ interface RegistryEntry {
 interface CapabilityDecl {
   id: string;
   emits: { schema: string; schemaVersion: string };
+  /** 取数请求图声明性（ADR-022）。required、无 default。 */
+  requestGraph: "declarative" | "imperative";
   params?: { schema: string; schemaVersion: string };
   requests?: Array<{ key: string; method: string; url: string; credential?: string }>;
+  /** 声明式跨请求数据流（ADR-023）。可选；仅 declarative capability 可声明（D1）。 */
+  bind?: BindDecl[];
+  compute?: ComputeDecl[];
+  inject?: InjectDecl[];
 }
 
 interface CredentialDecl {
@@ -102,7 +115,6 @@ interface LoginDecl {
 interface Manifest {
   adapterId: string;
   trustTier: "official" | "sideload";
-  mode: "fetch" | "parser";
   /** 运行时声明。stdlibMin=依赖的 elecon:html stdlib 最低版本（ADR-018 §2.4）。可选。 */
   runtime?: { engine?: string; entry?: string; stdlibMin?: string };
   network: { allow: string[] };
@@ -221,23 +233,29 @@ export function checkManifest(
     }
   }
 
-  // C3 sideload ⟹ parser（红线 #5）
-  if (manifest.trustTier === "sideload" && manifest.mode !== "parser") {
-    findings.push({
-      level: "error",
-      code: "C3_sideload_must_parser",
-      message: `sideload 信任档必须为 parser 模式（无网络/无凭证），当前 mode=${manifest.mode}`,
-    });
+  // C3 sideload ⟹ 每个 capability requestGraph=declarative（红线 #5；ADR-022）
+  if (manifest.trustTier === "sideload") {
+    for (const cap of manifest.capabilities ?? []) {
+      if (cap.requestGraph !== "declarative") {
+        findings.push({
+          level: "error",
+          code: "C3_sideload_must_declarative",
+          message: `sideload 的 capability '${cap.id}' 必须 requestGraph=declarative，当前=${cap.requestGraph ?? "<missing>"}`,
+        });
+      }
+    }
   }
 
   const allow = manifest.network?.allow ?? [];
+  const caps = manifest.capabilities ?? [];
+  const hasImperative = caps.some((c) => c.requestGraph === "imperative");
 
-  // C4-a fetch 模式须声明白名单
-  if (manifest.mode === "fetch" && allow.length === 0) {
+  // C4-a 存在 imperative capability 须声明白名单
+  if (hasImperative && allow.length === 0) {
     findings.push({
       level: "error",
-      code: "C4_fetch_empty_allow",
-      message: "fetch 模式 network.allow 为空：无任何域名可注入凭证，adapter 取不到数",
+      code: "C4_imperative_empty_allow",
+      message: "存在 imperative capability 时 network.allow 为空：无任何域名可请求，adapter 取不到数",
     });
   }
 
@@ -248,7 +266,7 @@ export function checkManifest(
     }
   }
 
-  for (const cap of manifest.capabilities ?? []) {
+  for (const cap of caps) {
     // C2 capability ∈ registry
     const reg = contract.registry[cap.id];
     if (!reg) {
@@ -288,14 +306,23 @@ export function checkManifest(
       });
     }
 
-    // C4-b parser 模式：每条 requests.url 须被白名单覆盖
-    if (manifest.mode === "parser") {
+    // C12 imperative 不得声明 requests（有字段即拒，含 empty 数组）
+    if (cap.requestGraph === "imperative" && cap.requests !== undefined) {
+      findings.push({
+        level: "error",
+        code: "C12_imperative_with_requests",
+        message: `imperative capability '${cap.id}' 不得声明 requests（请求由图代码 ctx.fetch 发出）`,
+      });
+    }
+
+    // C4-b declarative：每条 requests.url 须被白名单覆盖；无 requests → error
+    if (cap.requestGraph === "declarative") {
       const requests = cap.requests ?? [];
       if (requests.length === 0) {
         findings.push({
-          level: "warn",
-          code: "C4_parser_no_requests",
-          message: `parser capability '${cap.id}' 未声明 requests：核心无从代取数据`,
+          level: "error",
+          code: "C4_declarative_no_requests",
+          message: `declarative capability '${cap.id}' 未声明 requests：核心无从代取数据`,
         });
       }
       for (const req of requests) {
@@ -318,6 +345,9 @@ export function checkManifest(
 
   // M1–M5 SSO 静默签票声明检查（ADR-017）。login.ssoMint 可选；缺省即跳过。
   findings.push(...checkSsoMint(manifest));
+
+  // D1–D16 声明式跨请求数据流检查（ADR-023）。bind/compute/inject 可选；缺省即跳过。
+  findings.push(...checkDataflow(manifest));
 
   return findings;
 }
@@ -518,7 +548,7 @@ function prefixesOverlap(a: string, b: string): boolean {
 }
 
 export function checkCredentials(
-  manifest: Pick<Manifest, "credentials" | "mode" | "capabilities">,
+  manifest: Pick<Manifest, "credentials" | "capabilities">,
   allow: string[],
 ): Finding[] {
   const findings: Finding[] = [];
@@ -572,10 +602,12 @@ export function checkCredentials(
     }
   }
 
-  // C8 引用闭合：parser 的 requests.credential 须在 credentials 声明；声明未用 → warn。
-  const referenced = new Set<string>();
-  if (manifest.mode === "parser") {
-    for (const cap of manifest.capabilities ?? []) {
+  // C8 引用闭合：declarative 的 requests.credential 须在 credentials 声明；声明未用 → warn。
+  // 仅 declarative cap 集合参与：imperative 凭证按 scope 隐式使用，不告警。
+  const declarativeCaps = (manifest.capabilities ?? []).filter((c) => c.requestGraph === "declarative");
+  if (declarativeCaps.length > 0) {
+    const referenced = new Set<string>();
+    for (const cap of declarativeCaps) {
       for (const req of cap.requests ?? []) {
         if (req.credential === undefined) continue;
         referenced.add(req.credential);
@@ -588,13 +620,12 @@ export function checkCredentials(
         }
       }
     }
-    // 仅 parser 模式判定"声明未用"：fetch 模式凭证按 scope 隐式使用，不告警。
     for (const name of credNames) {
       if (!referenced.has(name)) {
         findings.push({
           level: "warn",
           code: "C8_unused_credential",
-          message: `credential '${name}' 已声明但无 request 引用（parser 模式）`,
+          message: `credential '${name}' 已声明但无 declarative request 引用`,
         });
       }
     }
@@ -659,9 +690,9 @@ function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Fin
   for (const file of readdirSync(fixturesDir)) {
     if (!file.endsWith(".json")) continue;
     const fx = readJson<{ kind?: string; capability?: string; expected?: unknown }>(join(fixturesDir, file));
-    // fetch-replay fixture 的 expected 由 FakeTransport replay runner 断言；C5
-    // 只负责 parser 的静态 expected schema 校验，避免把两种 fixture 语义混为一谈。
-    if (fx.kind === "fetch-replay") continue;
+    // imperative-replay fixture 的 expected 由 FakeTransport replay runner 断言；C5
+    // 只负责 declarative 的静态 expected schema 校验，避免把两种 fixture 语义混为一谈。
+    if (fx.kind === "imperative-replay") continue;
     if (!fx.capability || fx.expected === undefined) {
       findings.push({
         level: "warn",

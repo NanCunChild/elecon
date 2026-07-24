@@ -1,4 +1,4 @@
-/// 🔒 片 G —— `adapter_launcher.dart`：LoadResult → runFetchAdapter 接线 + source⟷凭据绑定（评审 E#2）。
+/// 🔒 片 G —— `adapter_launcher.dart`：LoadResult → runImperativeAdapter 接线 + source⟷凭据绑定（评审 E#2）。
 ///
 /// 用测试内现签的 Ed25519 bundle（带完整 manifest：runtime.entry / network.allow / credentials /
 /// capabilities）跑通编排器 `AdapterLoader` 得到真 official [LoadResult]，再喂 [planLaunch]。
@@ -71,6 +71,10 @@ Future<_Bundle> _mkBundle(
   bool includeNetwork = true,
   bool includeCredentials = true,
   List<String> capabilities = const ['notice.list'],
+  /// capability id → requestGraph；缺省全部 `imperative`。
+  Map<String, String> requestGraphs = const {},
+  /// capability id → declarative `requests[]`（可选）。
+  Map<String, List<Map<String, dynamic>>> capabilityRequests = const {},
 }) async {
   final runtime = <String, dynamic>{'stdlibMin': '1.0.0'};
   if (includeEntry) runtime['entry'] = 'index.js';
@@ -82,7 +86,10 @@ Future<_Bundle> _mkBundle(
       for (final id in capabilities)
         {
           'id': id,
+          'requestGraph': requestGraphs[id] ?? 'imperative',
           'emits': {'schema': 'elecon.notice.list', 'schemaVersion': '1.0'},
+          if (capabilityRequests[id] != null)
+            'requests': capabilityRequests[id],
         },
     ],
     'runtime': runtime,
@@ -206,7 +213,7 @@ class _EmptyAssets implements AssetSource {
   Future<Uint8List?> load(String key) async => null;
 }
 
-/// 永不被调用的 session 依赖桩（能力门在触达 runFetchAdapter 前 fail-closed）。
+/// 永不被调用的 session 依赖桩（能力门在触达 runImperativeAdapter 前 fail-closed）。
 class _StubResolver implements CredentialResolver {
   @override
   Future<ResolvedCredential?> get(String ref) async =>
@@ -309,7 +316,7 @@ void main() {
         expect(plan.view.credentials['x-session']!.type, 'cookie');
         expect(plan.view.credentials['x-session']!.role, 'sso-master');
         expect(plan.capabilities, ['notice.list']);
-        expect(plan.mode, 'fetch');
+        expect(plan.capabilityRequestGraphs['notice.list'], 'imperative');
         expect(plan.capabilityRequests['notice.list'], isEmpty);
       },
     );
@@ -319,7 +326,34 @@ void main() {
       final plan = planLaunch(await load(b));
       expect(plan.view.credentials, isEmpty);
       expect(plan.view.allow, ['https://x.edu/*']);
-      expect(plan.mode, 'fetch');
+      expect(plan.capabilityRequestGraphs['notice.list'], 'imperative');
+    });
+
+    test('混用 cap：official 可 declarative + imperative 并存', () async {
+      final b = await _mkBundle(
+        bundleSigner,
+        capabilities: const ['notice.list', 'grades.list'],
+        requestGraphs: const {
+          'notice.list': 'declarative',
+          'grades.list': 'imperative',
+        },
+        capabilityRequests: const {
+          'notice.list': [
+            {
+              'key': 'raw',
+              'method': 'GET',
+              'url': 'https://x.edu/notice',
+              'credential': 'x-session',
+            },
+          ],
+        },
+      );
+      final plan = planLaunch(await load(b));
+      expect(plan.capabilityRequestGraphs['notice.list'], 'declarative');
+      expect(plan.capabilityRequestGraphs['grades.list'], 'imperative');
+      expect(plan.capabilityRequests['notice.list'], hasLength(1));
+      expect(plan.capabilityRequests['notice.list']!.single.key, 'raw');
+      expect(plan.capabilityRequests['grades.list'], isEmpty);
     });
   });
 
@@ -404,6 +438,82 @@ void main() {
             (e) => e.message,
             'message',
             contains('network'),
+          ),
+        ),
+      );
+    });
+
+    test('capabilities 缺 requestGraph → 抛（无默认 imperative）', () async {
+      // 直接构造畸形 manifest（_mkBundle 默认会写 requestGraph）。
+      final files = <Map<String, dynamic>>[
+        {
+          'path': 'index.js',
+          'encoding': 'utf-8',
+          'content': 'export const capabilities = {};',
+        },
+        {
+          'path': 'manifest.json',
+          'encoding': 'utf-8',
+          'content': jsonEncode({
+            'schemaVersion': '1.0',
+            'adapterId': 'school-x',
+            'adapterVersion': '1.0.0',
+            'capabilities': [
+              {
+                'id': 'notice.list',
+                'emits': {
+                  'schema': 'elecon.notice.list',
+                  'schemaVersion': '1.0',
+                },
+              },
+            ],
+            'runtime': {'stdlibMin': '1.0.0', 'entry': 'index.js'},
+            'network': {
+              'allow': ['https://x.edu/*'],
+            },
+          }),
+        },
+      ];
+      final env = BundleEnvelope.fromJson({
+        'bundleFormat': kBundleFormat,
+        'files': files,
+      });
+      final digest = envelopeDigest(env);
+      final payload = serializeSignaturePayload(
+        adapterId: 'school-x',
+        adapterVersion: '1.0.0',
+        tier: kTierOfficial,
+        digest: digest,
+      );
+      final sigB64 = await bundleSigner.signB64(payload);
+      final packed = Uint8List.fromList(
+        gzip.encode(
+          utf8.encode(
+            jsonEncode({
+              'envelope': {'bundleFormat': kBundleFormat, 'files': files},
+              'signature': {
+                'adapterId': 'school-x',
+                'adapterVersion': '1.0.0',
+                'tier': kTierOfficial,
+                'digest': digest,
+                'signature': sigB64,
+                'keyId': 'k-bundle',
+                'algorithm': 'ed25519',
+              },
+            }),
+          ),
+        ),
+      );
+      final b = _Bundle(packed, digest, bundleSigner.publicKeyHex);
+      final r = await load(b);
+      expect(r.ok, isTrue, reason: r.reason);
+      expect(
+        () => planLaunch(r),
+        throwsA(
+          isA<AdapterLaunchException>().having(
+            (e) => e.message,
+            'message',
+            contains('requestGraph'),
           ),
         ),
       );

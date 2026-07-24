@@ -1,4 +1,4 @@
-/** 通用 fetch fixture 回放器：固定响应队列，禁止测试访问真实学校接口。 */
+/** 通用 imperative fixture 回放器（ADR-022）：固定响应队列，禁止测试访问真实学校接口。 */
 
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import type { BrokerManifestView } from "../broker/inject-policy.js";
-import { runFetchAdapter } from "../sandbox.js";
+import { runImperativeAdapter } from "../sandbox.js";
 import { TrustedAdapterContext } from "../trusted-context.js";
 import { FakeTransport, noResolver, resolveRepoRoot } from "./smoke-utils.js";
 
@@ -25,7 +25,7 @@ interface ResponseFixture {
   setCookieFile?: string;
 }
 
-interface FetchFixture {
+interface ImperativeFixture {
   capability: string;
   params?: unknown;
   responses: ResponseFixture[];
@@ -51,13 +51,13 @@ function jsonPath(value: unknown, path: string | undefined): unknown {
   }, value);
 }
 
-export async function replayFetchFixture(
+export async function replayImperativeFixture(
   metaUrl: string,
   adapterDir: string,
   fixtureName: string,
 ): Promise<unknown> {
   const repoRoot = resolveRepoRoot(metaUrl);
-  const fixture = readJson<FetchFixture>(join(adapterDir, fixtureName));
+  const fixture = readJson<ImperativeFixture>(join(adapterDir, fixtureName));
   const manifest = readJson<Manifest>(join(adapterDir, "manifest.json"));
   const capability = manifest.capabilities.find((item) => item.id === fixture.capability);
   assert.ok(capability, `fixture capability 未在 manifest 中声明：${fixture.capability}`);
@@ -88,7 +88,7 @@ export async function replayFetchFixture(
   const transport = new FakeTransport(responses);
   const view: BrokerManifestView = { allow: manifest.network.allow };
   const source = readFileSync(join(adapterDir, "index.js"), "utf8");
-  const { data } = await runFetchAdapter(
+  const { data } = await runImperativeAdapter(
     { source, capability: fixture.capability, params: fixture.params ?? {}, nowMs: 1_700_000_000_000 },
     { trust: TrustedAdapterContext.devSideload(), view, resolver: noResolver, transport },
   );
@@ -119,7 +119,7 @@ export async function replayFetchFixture(
   const validate = ajv.compile(schema);
   assert.ok(
     validate(data),
-    `fetch fixture 产出未通过 ${capability.emits.schema}：${JSON.stringify(validate.errors)}`,
+    `imperative fixture 产出未通过 ${capability.emits.schema}：${JSON.stringify(validate.errors)}`,
   );
   return data;
 }

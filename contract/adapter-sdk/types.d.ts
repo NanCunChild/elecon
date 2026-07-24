@@ -3,16 +3,16 @@
  *
  * 同一份 adapter 在客户端（QuickJS）与服务端（QuickJS-wasm）以相同语义被调用——
  * 两端是同一个 QuickJS 引擎，零语义漂移（见 docs/adr/adr_005_runtime.md）。
- * 模式由 manifest 的 `mode` 决定（fetch | parser）。
+ * 请求图由每 capability 的 `requestGraph` 决定（declarative | imperative；ADR-022）。
  */
 
 /// <reference lib="dom" />
-// ^ CtxFetch.fetch 复用 DOM 标准的 RequestInit / Response 类型（受限 fetch 的语义子集，
+// ^ CtxImperative.fetch 复用 DOM 标准的 RequestInit / Response 类型（受限 fetch 的语义子集，
 //   见 ADR-009 §2.1）；引入 dom lib 使本参考声明在严格 TS 下可独立编译。
 
-// ---- fetch 模式的 ctx ----
+// ---- imperative requestGraph 的 ctx ----
 
-interface CtxFetch {
+interface CtxImperative {
   /**
    * 受限 fetch（语义见 ADR-009，2026-06-13 修订）：
    * - 出口 fail-closed：URL 必须命中 manifest `network.allow`，否则直接拒绝。
@@ -53,12 +53,12 @@ interface CtxFetch {
   now(): number;
 }
 
-type FetchCapabilityHandler<Params, Result> = (
-  ctx: CtxFetch,
+type ImperativeCapabilityHandler<Params, Result> = (
+  ctx: CtxImperative,
   params: Params,
 ) => Promise<Result>;
 
-// ---- parser 模式的 ctx ----
+// ---- declarative requestGraph 的 ctx ----
 
 interface ParserResponse {
   status: number;
@@ -66,14 +66,14 @@ interface ParserResponse {
   body: string;
 }
 
-interface CtxParser {
-  /** 无 fetch —— parser 模式 adapter 无网络能力 */
+interface CtxDeclarative {
+  /** 无 fetch —— declarative requestGraph 的 adapter 无网络能力 */
   log(level: "debug" | "info" | "warn" | "error", message: string): void;
   now(): number;
 }
 
-type ParserCapabilityHandler<Params, Result> = (
-  ctx: CtxParser,
+type DeclarativeCapabilityHandler<Params, Result> = (
+  ctx: CtxDeclarative,
   params: Params,
   responses: Record<string, ParserResponse>,
 ) => Result;
@@ -103,5 +103,9 @@ interface Envelope<T> {
 
 // Capability 导出约定
 type CapabilityModule = {
-  capabilities: Record<string, FetchCapabilityHandler<unknown, unknown> | ParserCapabilityHandler<unknown, unknown>>;
+  capabilities: Record<
+    string,
+    | ImperativeCapabilityHandler<unknown, unknown>
+    | DeclarativeCapabilityHandler<unknown, unknown>
+  >;
 };
