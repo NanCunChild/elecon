@@ -1,7 +1,7 @@
 # ADR-003：传输底座抽象与 VPN 复刻接入（许可证隔离方案）
 
 - **状态**：已接受（Accepted） 本文定义传输底座（看到**全部流量**的承重路径，红线 #4/#1）。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，经人工 review（PR #23）+ 安全检查清单审阅后接受。
-- **日期**：2026-06-12（**修订 2026-06-14**：§2.3 澄清"TLS 不终止 ≠ 禁止隧道封装"——L3/SSL-VPN 嵌套加密天然兼容，仅"本地拆 TLS"触红线 #1；§2.4 协议模式探针增"是否本地终止/拦截 app TLS"一项）（**修订 2026-06-14b（review 跟进 PR #23）**：§2.2 加注 relay 优先为目标态、首版仅 client-direct（对齐 ADR-012 §2.6）；§2.2 降级链补 system-vpn 自身失败分支；§3 增第 7 条 iOS Personal VPN entitlement 可得性"待确认"开放项）
+- **日期**：2026-06-12（**修订 2026-06-14**：§2.3 澄清"TLS 不终止 ≠ 禁止隧道封装"——L3/SSL-VPN 嵌套加密天然兼容，仅"本地拆 TLS"触红线 #1；§2.4 协议模式探针增"是否本地终止/拦截 app TLS"一项）（**修订 2026-06-14b（review 跟进 PR #23）**：§2.2 加注 relay 优先为目标态、首版仅 client-direct（对齐 ADR-012 §2.6）；§2.2 降级链补 system-vpn 自身失败分支；§3 增第 7 条 iOS Personal VPN entitlement 可得性"待确认"开放项）（**修订 2026-07-24（讨论澄清，AI 起草待人工审）**：新增 §2.6 区分「包级隧道」与「应用层代理隧道」——后者用户态网络栈、不建 TUN、不进内核、不占系统唯一 VPN 槽，南向标准 SOCKS/HTTP、北向对网关仅一条标准 TLS:443（私有协议封在载荷内），**不触 iOS NetworkExtension / entitlement / 指南 5.4**；据此修订 §2.2 平台矩阵对 `app-tunnel` 的 iOS 判定。**净室与否、以及嵌入形态 FFI vs 本地回环仍为开放问题**，见 §2.6 末，须子 ADR + 人工主导）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.4 transport/adapter 区分、§5.2 VPN 复刻风险、红线 #4）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（签名 / 官方签名加载 / 吊销，草案）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（`ctx.fetch` 出网经 transport，草案）、[`adr_010_ios_appstore.md`](./adr_010_ios_appstore.md)（iOS 无隧道、GPLv3 分发不相容、指南 5.4）
 - **适用范围**：**传输底座（原生模块）**的抽象接口、信任与加载、平台可用性矩阵、atrust VPN 复刻的接入与**许可证隔离**。**不含** adapter 信任分档（ADR-002）、凭证注入/脱敏机制（ADR-009）、UI。
 
@@ -102,6 +102,30 @@ ADR-000 §3.4 把**传输底座**（原生、长生命周期、有状态、**承
 3. **取得独立/双授权**，或把 GPL transport 作为**用户自行安装的独立组件**（不随官方包分发，用户侧 sideload，类比引导安装官方 atrust 客户端）。
 
 **结论取向**：**首版只做 `direct` + `system-vpn`**（全平台、零 GPL/entitlement 风险）；`app-tunnel` 作为后续、平台门控、经三件套探针、以"进程隔离 + 平台分发矩阵"分别处理的**可选档**。
+
+### 2.6 `app-tunnel` 的两种形态：包级隧道 vs 应用层代理隧道（2026-07-24 讨论澄清，AI 起草待人工审）
+
+§2.2/§2.3 早先谈 `app-tunnel` 时，默认想象的是**包级隧道**（建 TUN / 接管 OS 路由，iOS 上即 `NEPacketTunnelProvider`），把"隧道"与"占系统 VPN 槽 + 进内核"隐性绑死了。实际存在第二种形态，两者信任档相同（都仍是 `app-tunnel`：仅官方签名、最高信任、人工主导），但**平台可用性与 iOS 合规判定截然不同**：
+
+| 子形态 | 机制 | 看到的流量 | 系统 VPN 槽 / 内核 | iOS |
+|---|---|---|---|---|
+| **A · 包级隧道** | 建 TUN 设备 / 接管 OS 路由；iOS = `NEPacketTunnelProvider`（独立扩展进程 + 内存上限） | **全 OS 流量** | 占用（系统唯一 VPN 槽）、需内核/扩展 | 触 NetworkExtension + entitlement + 指南 5.4；可 always-on 后台 |
+| **B · 应用层代理隧道** | **用户态网络栈**（gVisor 类）在**普通进程内**跑，不建 TUN、不改 OS 路由 | **仅本进程经隧道的流量** | **不占用、不进内核** | **不用 NetworkExtension、不需 entitlement、不触 5.4**；不能 always-on 后台 |
+
+**形态 B 的南北两向（关键澄清）**：
+
+- **南向（面向 elecon 本体）= 标准协议**：用户态栈对上暴露**标准 SOCKS5 / HTTP CONNECT 代理**；elecon 的 HTTP 栈指过去即可。**elecon 自用甚至无需监听端口**——可让原生库直接暴露"经隧道 dial/fetch"函数，进程内调用，连 loopback 端口都省（监听端口仅在需给其他 app 当代理 / 需进程隔离 IPC 边界时才要）。
+- **北向（面向学校网关）= 网卡上是标准 HTTPS、载荷是私有协议**：对网关只开**一条标准出站 TLS:443 连接**，私有 aTrust/EasyConnect 协议封装在该 TLS 载荷内。从 OS / 网卡 / iOS 看，就是个普通出站 HTTPS socket。参照实现 zju-connect 的**默认即形态 B**（gVisor 用户态栈 + `127.0.0.1:1080` SOCKS / `:1081` HTTP；其 TUN 模式才需 root）。
+
+**红线不变量在形态 B 下依旧成立**：代理只见目标 `host:port`（SOCKS CONNECT 层），内层 elecon→origin 的 TLS 端到端嵌套在隧道内，凭证在内层密文中——正是 §2.3「封装非终止」，红线 #1 原样守住。区别仅在：形态 B 看到的是"elecon 自身经隧道的流量"，而非形态 A 的"全 OS 流量"。
+
+**iOS 判定修订（同步 [ADR-010](./adr_010_ios_appstore.md) §2.3）**：§2.2 平台矩阵中 `app-tunnel` 一行"iOS 默认不编入"的封锁**仅适用于形态 A**。**形态 B 的 `app-tunnel` iOS 可上**——它不建 NetworkExtension，从 iOS 视角是普通出站 TLS app，不触 5.4 / entitlement / VPN 槽。唯一代价：普通 app 后台被挂起 → 无 always-on 隧道；但 elecon 的 on-demand 取数（开 app→连隧道→拉数据→拆）**不需要 always-on**，可接受。残余小风险：私有协议逆向连校网关的第三方服务合规（指南 5.2.2），备学校认可学生 VPN 使用的材料缓解。
+
+**开放问题（显式未决，须子 ADR + 人工主导，AI 不得独自闭环 · 红线 #10/#4）**：
+
+1. **是否净室重写** aTrust/EasyConnect 北向协议（产出自有许可证代码 → 彻底消除 AGPL 传染），**还是**直接接入 AGPLv3 的 zju-connect（经进程隔离 + 回环，隔离链接传染但 iOS 仍被 DPLA 挡、见 ADR-010 §2.3）。
+2. **若净室 / 自研，嵌入形态**：Rust FFI（进程内链接，自有许可证下无传染）**vs** 本地回环（独立进程 + 标准 SOCKS/HTTP，最强隔离）。注：形态 B + elecon 自用时可退化为"进程内直接 dial、无监听端口"（见上南向）。
+3. **净室的 AI 特有风险**：净队模型的权重可能已训练过公开源码（zju-connect / EasierConnect 均公开），须以"产出可逐条追溯到人工审过的规格文档 + 人工审是否复现原码表达性选择"缓解——这不是传统人类净队的风险，须在探针 / 子 ADR 中显式管住。
 
 ---
 
