@@ -179,4 +179,5 @@ QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 a
 - `adr_021`：共享具名类型（`$defs` / 一份 `Money`）codegen 支持 —— **预留**（结构改动，见 `docs/rules/schema_style.md` §58，未起草）
 - `adr_022`：抹除 fetch/parser 模式，改每 capability 的 `requestGraph`（声明式/命令式）—— **已接受**（2026-07-23；§6 开放问题已勾决：template→`{declarative,imperative}`、`requestGraph` required 无默认、`async_in_declarative` 不留旧码；触红线 #1/#5/#6；runtime/validator 人工主导，AI 不闭环）· adapter 轨 A1
 - `adr_023`：声明式跨请求数据流（假想变量 / 不透明句柄；接 ADR-017 §2.8 PR-6）—— **已接受**（2026-07-23；触红线 #1/#5/#6；数据流/污点人工主导；§5 开放问题仍待落地前勾决）· adapter 轨 A2（依赖 022）
+- `adr_025`：item 级可点性约定（App 内下钻复用领域标识 + 外跳用按用途命名的 `format:uri` 字段；重申「可点」是客户端渲染决策、非 schema 指令）—— **已接受**（2026-07-25；数据面触红线 #6 向后兼容增量，随附 `app.announcement.url` 一处；§2.7 外跳凭证隔离触红线 #1，其实现须另行人工安全复核；见 `adr_025_item_link.md`）· 契约 UI 数据面轨
 - `adr_024`：信任 profile 解绑优化等级（侧载判别器 `kReleaseMode`→自定义编译期 flag；修订 ADR-002 §2.5）—— **已接受**（2026-07-23；触红线 #4；人工主导；§5 开放问题见该文）· 构建 flag 轨（独立）
