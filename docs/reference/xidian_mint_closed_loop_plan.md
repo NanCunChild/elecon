@@ -205,9 +205,9 @@ headless 属协议模拟合规灰度；**不得默认进发版**直至合规评�
 |---|---|---|---|
 | **M0** | 校准 `schools.dart`：`ehall-session` mint 条目 + card service URL；注释去掉「域根占位」 | AI 可起草，人审 URL | 声明面 |
 | **M1** | `ensureCredential` + 能力→ref 映射 + `runCapability` 前挂钩；失败降级可见登录 | ✅ 已合 | #1 |
-| **M2** | 装配 `HeadlessSsoMinter`（真实 Transport + store resolver）；集成测（fake 链 + 可选 debug 真机） | ✅ debug 会话装配已合；真机冒烟待做 | #1 |
+| **M2** | 装配 `HeadlessSsoMinter`（真实 Transport + store resolver）；集成测（fake 链 + 可选 debug 真机） | ✅ debug 会话装配已合；真机冒烟 **runbook 已备待人工执行**（[`xidian_smoke_runbook.md`](./xidian_smoke_runbook.md)，红线 #1 人工主导） | #1 |
 | **M3** | `school-xidian` fetch：`grades.list`（夹具驱动）；manifest network/credentials | AI 解析 + 人审 fetch 边界 | #1 #5 |
-| **M4** | UI：设置页「凭证 ref 列表 / 重新登录 / 服务状态」；取数入口调 `runCapability` | AI 可做 UI | UI 不见值 |
+| **M4** | UI：设置页「凭证 ref 列表 / 重新登录」✅ + 首页**按需取数区**（成绩/课表/空教室，点击触发 `runCapability`→静默 mint/可见登录）✅（`capability_sections.dart` + 解码器/单测） | AI 可做 UI | UI 不见值 |
 | **M5** | card mint + `card.balance`（依赖 R2 裁定） | 人工 | #1 |
 | **M6** | PR-5 三级阶梯 + `forms` schema（可另开） | 人工 | #1 #6 |
 

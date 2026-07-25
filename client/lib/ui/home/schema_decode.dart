@@ -76,6 +76,291 @@ List<NoticeListItemsAttachments>? _attachments(Object? raw) {
   return out.isEmpty ? null : out;
 }
 
+// ---------------------------------------------------------------------------
+// grades.list（ehall-session；App 内成绩单）
+// ---------------------------------------------------------------------------
+
+GradesList? gradesListFromDynamic(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final term = map['term']?.toString();
+  if (term == null || term.isEmpty) return null;
+  final itemsRaw = map['items'];
+  if (itemsRaw is! List) return null;
+  final items = <GradesListItems>[];
+  for (final entry in itemsRaw) {
+    final item = _gradeItem(entry);
+    if (item != null) items.add(item);
+  }
+  return GradesList(
+    term: term,
+    academicYear: map['academicYear']?.toString(),
+    termName: map['termName']?.toString(),
+    updatedAt: map['updatedAt']?.toString(),
+    total: _asInt(map['total']),
+    hasNext: map['hasNext'] is bool ? map['hasNext'] as bool : null,
+    items: items,
+  );
+}
+
+GradesListItems? _gradeItem(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final courseId = map['courseId']?.toString();
+  final courseName = map['courseName']?.toString();
+  final credit = map['credit'];
+  final category = map['category']?.toString();
+  final status = map['status']?.toString();
+  final score = _gradeScore(map['score']);
+  if (courseId == null ||
+      courseId.isEmpty ||
+      courseName == null ||
+      courseName.isEmpty ||
+      credit is! num ||
+      category == null ||
+      category.isEmpty ||
+      status == null ||
+      status.isEmpty ||
+      score == null) {
+    return null;
+  }
+  return GradesListItems(
+    courseId: courseId,
+    courseName: courseName,
+    credit: credit,
+    creditType: map['creditType']?.toString(),
+    courseNature: map['courseNature']?.toString(),
+    courseCategory: map['courseCategory']?.toString(),
+    teacher: map['teacher']?.toString(),
+    offeringUnit: map['offeringUnit']?.toString(),
+    classNo: map['classNo']?.toString(),
+    examMethod: map['examMethod']?.toString(),
+    examAt: map['examAt']?.toString(),
+    retake: map['retake'] is bool ? map['retake'] as bool : null,
+    sourceStatus: map['sourceStatus']?.toString(),
+    rank: _asInt(map['rank']),
+    courseAverage: map['courseAverage'] is num
+        ? map['courseAverage'] as num
+        : null,
+    score: score,
+    gradePoint: map['gradePoint'] is num ? map['gradePoint'] as num : null,
+    category: category,
+    status: status,
+  );
+}
+
+GradesListItemsScore? _gradeScore(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final kind = map['kind']?.toString();
+  if (kind == null || kind.isEmpty) return null;
+  // value 契约允许 number / string / null（通过制或缺考），原样透传，不臆造。
+  return GradesListItemsScore(
+    kind: kind,
+    value: map['value'],
+    raw: map['raw']?.toString(),
+    status: map['status']?.toString(),
+    max: map['max'] is num ? map['max'] as num : null,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// schedule.week（ehall-session；单周课表）
+// ---------------------------------------------------------------------------
+
+ScheduleWeek? scheduleWeekFromDynamic(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final term = map['term']?.toString();
+  final week = _asInt(map['week']);
+  if (term == null || term.isEmpty || week == null) return null;
+  final daysRaw = map['days'];
+  final days = <ScheduleWeekDays>[];
+  if (daysRaw is List) {
+    for (final entry in daysRaw) {
+      final day = _scheduleDay(entry);
+      if (day != null) days.add(day);
+    }
+  }
+  return ScheduleWeek(
+    term: term,
+    week: week,
+    academicYear: map['academicYear']?.toString(),
+    termStartDate: map['termStartDate']?.toString(),
+    termEndDate: map['termEndDate']?.toString(),
+    updatedAt: map['updatedAt']?.toString(),
+    sourceSystem: map['sourceSystem']?.toString(),
+    days: days,
+  );
+}
+
+ScheduleWeekDays? _scheduleDay(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final dayOfWeek = _asInt(map['dayOfWeek']);
+  if (dayOfWeek == null) return null;
+  final slotsRaw = map['slots'];
+  final slots = <ScheduleWeekDaysSlots>[];
+  if (slotsRaw is List) {
+    for (final entry in slotsRaw) {
+      final slot = _scheduleSlot(entry);
+      if (slot != null) slots.add(slot);
+    }
+  }
+  return ScheduleWeekDays(dayOfWeek: dayOfWeek, slots: slots);
+}
+
+ScheduleWeekDaysSlots? _scheduleSlot(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final start = map['start']?.toString();
+  final end = map['end']?.toString();
+  final courseName = map['courseName']?.toString();
+  if (start == null ||
+      start.isEmpty ||
+      end == null ||
+      end.isEmpty ||
+      courseName == null ||
+      courseName.isEmpty) {
+    return null;
+  }
+  return ScheduleWeekDaysSlots(
+    start: start,
+    end: end,
+    courseName: courseName,
+    courseId: map['courseId']?.toString(),
+    date: map['date']?.toString(),
+    timeStart: map['timeStart']?.toString(),
+    timeEnd: map['timeEnd']?.toString(),
+    campus: map['campus']?.toString(),
+    building: map['building']?.toString(),
+    room: map['room']?.toString(),
+    courseNature: map['courseNature']?.toString(),
+    classNo: map['classNo']?.toString(),
+    teacher: map['teacher']?.toString(),
+    location: map['location']?.toString(),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// classroom.buildings / classroom.available（ehall-session；空教室）
+// ---------------------------------------------------------------------------
+
+ClassroomBuildings? classroomBuildingsFromDynamic(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final itemsRaw = map['items'];
+  final items = <ClassroomBuildingsItems>[];
+  if (itemsRaw is List) {
+    for (final entry in itemsRaw) {
+      final m = _asStringKeyedMap(entry);
+      if (m == null) continue;
+      final building = m['building']?.toString();
+      if (building == null || building.isEmpty) continue;
+      items.add(
+        ClassroomBuildingsItems(
+          building: building,
+          buildingId: m['buildingId']?.toString(),
+          campus: m['campus']?.toString(),
+          roomCount: _asInt(m['roomCount']),
+        ),
+      );
+    }
+  }
+  return ClassroomBuildings(
+    campus: map['campus']?.toString(),
+    term: map['term']?.toString(),
+    items: items,
+  );
+}
+
+ClassroomAvailable? classroomAvailableFromDynamic(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final itemsRaw = map['items'];
+  final items = <ClassroomAvailableItems>[];
+  if (itemsRaw is List) {
+    for (final entry in itemsRaw) {
+      final item = _classroomItem(entry);
+      if (item != null) items.add(item);
+    }
+  }
+  return ClassroomAvailable(
+    date: map['date']?.toString(),
+    term: map['term']?.toString(),
+    week: _asInt(map['week']),
+    weekday: _asInt(map['weekday']),
+    start: map['start']?.toString(),
+    end: map['end']?.toString(),
+    timeZone: map['timeZone']?.toString(),
+    sourceSystem: map['sourceSystem']?.toString(),
+    updatedAt: map['updatedAt']?.toString(),
+    items: items,
+  );
+}
+
+ClassroomAvailableItems? _classroomItem(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final building = map['building']?.toString();
+  final room = map['room']?.toString();
+  if (building == null || building.isEmpty || room == null || room.isEmpty) {
+    return null;
+  }
+  final sectionsRaw = map['sections'];
+  List<ClassroomAvailableItemsSections>? sections;
+  if (sectionsRaw is List) {
+    final out = <ClassroomAvailableItemsSections>[];
+    for (final entry in sectionsRaw) {
+      final m = _asStringKeyedMap(entry);
+      if (m == null) continue;
+      final index = _asInt(m['index']);
+      final occupied = m['occupied'];
+      if (index == null || occupied is! bool) continue;
+      out.add(
+        ClassroomAvailableItemsSections(
+          index: index,
+          occupied: occupied,
+          label: m['label']?.toString(),
+          timeStart: m['timeStart']?.toString(),
+          timeEnd: m['timeEnd']?.toString(),
+        ),
+      );
+    }
+    sections = out.isEmpty ? null : out;
+  }
+  return ClassroomAvailableItems(
+    campus: map['campus']?.toString(),
+    building: building,
+    buildingId: map['buildingId']?.toString(),
+    room: room,
+    roomId: map['roomId']?.toString(),
+    floor: map['floor']?.toString(),
+    capacity: _asInt(map['capacity']),
+    equipment: _asStringList(map['equipment']),
+    occupied: map['occupied'] is bool ? map['occupied'] as bool : null,
+    status: map['status']?.toString(),
+    sections: sections,
+  );
+}
+
+int? _asInt(Object? raw) {
+  if (raw is int) return raw;
+  if (raw is num) return raw.toInt();
+  if (raw is String) return int.tryParse(raw);
+  return null;
+}
+
+List<String>? _asStringList(Object? raw) {
+  if (raw is! List) return null;
+  final out = <String>[];
+  for (final entry in raw) {
+    final s = entry?.toString();
+    if (s != null && s.isNotEmpty) out.add(s);
+  }
+  return out.isEmpty ? null : out;
+}
+
 Map<String, dynamic>? _asStringKeyedMap(Object? raw) {
   if (raw is Map<String, dynamic>) return raw;
   if (raw is Map) {

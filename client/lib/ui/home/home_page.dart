@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../../session/session_scope.dart';
 import '../theme/liquid_glass.dart';
 import 'campus_snapshot_loader.dart';
+import 'capability_sections.dart';
 import 'demo_data.dart';
 import 'models.dart';
 
@@ -41,6 +42,10 @@ class _EleconHomePageState extends State<EleconHomePage> {
     }
   }
 
+  /// 是否装配按需取数区：仅真数据模式（无注入、无 demo）——否则无 [SessionScope]。
+  bool get _liveSections =>
+      widget.loadSnapshot == null && !(kDebugMode && kForceDemoHomeSnapshot);
+
   Future<CampusSnapshot> _load() {
     if (widget.loadSnapshot != null) return widget.loadSnapshot!();
     if (kDebugMode && kForceDemoHomeSnapshot) {
@@ -65,7 +70,9 @@ class _EleconHomePageState extends State<EleconHomePage> {
             }
             if (state.hasError) {
               return _ErrorState(
-                  error: state.error.toString(), onRetry: _reload);
+                error: state.error.toString(),
+                onRetry: _reload,
+              );
             }
             final data = state.data;
             if (data == null || data.isEmpty) {
@@ -75,16 +82,16 @@ class _EleconHomePageState extends State<EleconHomePage> {
               onRefresh: () async => _reload(),
               child: CustomScrollView(
                 slivers: [
-                    SliverAppBar.large(
-                      title: const Text('elecon'),
-                      actions: [
-                        IconButton(
-                          tooltip: '刷新',
-                          onPressed: _reload,
-                          icon: const Icon(Icons.refresh),
-                        ),
-                      ],
-                    ),
+                  SliverAppBar.large(
+                    title: const Text('elecon'),
+                    actions: [
+                      IconButton(
+                        tooltip: '刷新',
+                        onPressed: _reload,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(
                       16,
@@ -101,6 +108,14 @@ class _EleconHomePageState extends State<EleconHomePage> {
                         if (data.notices != null) NoticeCard(data.notices!),
                         for (final section in data.genericSections)
                           GenericSectionCard(section),
+                        // 按需取数区（需 ehall-session；点击触发静默 mint / 可见登录）。
+                        // 仅真数据模式装配——注入 loadSnapshot（测试）或 demo 快照时不挂，
+                        // 避免无 SessionScope 语境崩溃。
+                        if (_liveSections) ...const [
+                          GradesSection(),
+                          ScheduleSection(),
+                          ClassroomSection(),
+                        ],
                       ],
                     ),
                   ),
@@ -159,14 +174,17 @@ class ScheduleCard extends StatelessWidget {
             for (final slot in day.slots)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading:
-                    CircleAvatar(child: Text('周${_weekText(day.dayOfWeek)}')),
+                leading: CircleAvatar(
+                  child: Text('周${_weekText(day.dayOfWeek)}'),
+                ),
                 title: Text(slot.courseName),
-                subtitle: Text([
-                  '${slot.start}-${slot.end}',
-                  if (slot.location != null) slot.location!,
-                  if (slot.teacher != null) slot.teacher!,
-                ].join(' · ')),
+                subtitle: Text(
+                  [
+                    '${slot.start}-${slot.end}',
+                    if (slot.location != null) slot.location!,
+                    if (slot.teacher != null) slot.teacher!,
+                  ].join(' · '),
+                ),
               ),
         ],
       ),
@@ -181,14 +199,15 @@ class GradesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final gpaItems =
-        data.items.where((item) => item.gradePoint != null).toList();
+    final gpaItems = data.items
+        .where((item) => item.gradePoint != null)
+        .toList();
     final gpa = gpaItems.isEmpty
         ? null
         : gpaItems
-                .map((item) => item.gradePoint! * item.credit)
-                .reduce((a, b) => a + b) /
-            gpaItems.map((item) => item.credit).reduce((a, b) => a + b);
+                  .map((item) => item.gradePoint! * item.credit)
+                  .reduce((a, b) => a + b) /
+              gpaItems.map((item) => item.credit).reduce((a, b) => a + b);
     return _SectionCard(
       title: '成绩',
       subtitle:
@@ -199,8 +218,9 @@ class GradesCard extends StatelessWidget {
             ListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(item.courseName),
-              subtitle:
-                  Text('${_categoryText(item.category)} · ${item.credit} 学分'),
+              subtitle: Text(
+                '${_categoryText(item.category)} · ${item.credit} 学分',
+              ),
               trailing: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -241,14 +261,16 @@ class NoticeCard extends StatelessWidget {
             ListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(item.title),
-              subtitle: Text([
-                item.source,
-                _noticeCategoryText(item.category),
-                // 契约 publishedAt 为 RFC3339 字符串；经视图扩展转 DateTime 展示。
-                if (item.publishedAtDateTime != null)
-                  _formatDate(item.publishedAtDateTime!),
-                if (item.summary != null) item.summary!,
-              ].join(' · ')),
+              subtitle: Text(
+                [
+                  item.source,
+                  _noticeCategoryText(item.category),
+                  // 契约 publishedAt 为 RFC3339 字符串；经视图扩展转 DateTime 展示。
+                  if (item.publishedAtDateTime != null)
+                    _formatDate(item.publishedAtDateTime!),
+                  if (item.summary != null) item.summary!,
+                ].join(' · '),
+              ),
               trailing: const Icon(Icons.chevron_right),
               // App 内下钻：由通知标识 + 本详情视图闸门，不依赖外链（ADR-025 §2.6）。
               onTap: () => Navigator.of(context).push(
@@ -289,8 +311,7 @@ class CourseDetailPage extends StatelessWidget {
       if (item.gradePoint != null)
         _DetailRow(label: '绩点', value: '${item.gradePoint}'),
       _DetailRow(label: '状态', value: _statusText(item.status)),
-      if (item.teacher != null)
-        _DetailRow(label: '任课教师', value: item.teacher!),
+      if (item.teacher != null) _DetailRow(label: '任课教师', value: item.teacher!),
       if (item.offeringUnit != null)
         _DetailRow(label: '开课单位', value: item.offeringUnit!),
       if (item.classNo != null) _DetailRow(label: '教学班', value: item.classNo!),
@@ -329,7 +350,8 @@ class NoticeDetailPage extends StatelessWidget {
       if (item.publishedAtDateTime != null)
         _formatDate(item.publishedAtDateTime!),
     ].join(' · ');
-    final attachments = item.attachments ?? const <NoticeListItemsAttachments>[];
+    final attachments =
+        item.attachments ?? const <NoticeListItemsAttachments>[];
     final hasContent = item.content != null && item.content!.isNotEmpty;
     return Scaffold(
       appBar: AppBar(title: const Text('通知详情')),
@@ -340,8 +362,9 @@ class NoticeDetailPage extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             meta,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const Divider(height: 24),
           if (item.summary != null && item.summary!.isNotEmpty) ...[
@@ -390,14 +413,13 @@ class _DetailRow extends StatelessWidget {
             width: 96,
             child: Text(
               label,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Text(value, style: theme.textTheme.bodyMedium),
-          ),
+          Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
         ],
       ),
     );
@@ -472,7 +494,8 @@ class _GenericTableView extends StatelessWidget {
               cells: [
                 for (var i = 0; i < table.columns.length; i++)
                   DataCell(
-                      Text(_formatGenericValue(row[i], table.columns[i].role))),
+                    Text(_formatGenericValue(row[i], table.columns[i].role)),
+                  ),
               ],
             ),
         ],
@@ -482,8 +505,11 @@ class _GenericTableView extends StatelessWidget {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard(
-      {required this.title, required this.subtitle, required this.child});
+  const _SectionCard({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
 
   final String title;
   final String subtitle;
@@ -503,8 +529,8 @@ class _SectionCard extends StatelessWidget {
           Text(
             subtitle,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 8),
           child,
@@ -546,8 +572,11 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline,
-                size: 40, color: Theme.of(context).colorScheme.error),
+            Icon(
+              Icons.error_outline,
+              size: 40,
+              color: Theme.of(context).colorScheme.error,
+            ),
             const SizedBox(height: 12),
             const Text('加载失败'),
             const SizedBox(height: 8),
@@ -587,20 +616,25 @@ TextStyle? _roleTextStyle(BuildContext context, GenericRole role) {
   final theme = Theme.of(context);
   final colorScheme = theme.colorScheme;
   return switch (role) {
-    GenericRole.identifier =>
-      theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-    GenericRole.status =>
-      theme.textTheme.bodyMedium?.copyWith(color: colorScheme.primary),
-    GenericRole.deadline =>
-      theme.textTheme.bodyMedium?.copyWith(color: colorScheme.error),
-    GenericRole.amount =>
-      theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-    GenericRole.quantity =>
-      theme.textTheme.bodyMedium?.copyWith(color: colorScheme.secondary),
+    GenericRole.identifier => theme.textTheme.bodyMedium?.copyWith(
+      fontWeight: FontWeight.w700,
+    ),
+    GenericRole.status => theme.textTheme.bodyMedium?.copyWith(
+      color: colorScheme.primary,
+    ),
+    GenericRole.deadline => theme.textTheme.bodyMedium?.copyWith(
+      color: colorScheme.error,
+    ),
+    GenericRole.amount => theme.textTheme.bodyMedium?.copyWith(
+      fontWeight: FontWeight.w700,
+    ),
+    GenericRole.quantity => theme.textTheme.bodyMedium?.copyWith(
+      color: colorScheme.secondary,
+    ),
     GenericRole.link => theme.textTheme.bodyMedium?.copyWith(
-        color: colorScheme.primary,
-        decoration: TextDecoration.underline,
-      ),
+      color: colorScheme.primary,
+      decoration: TextDecoration.underline,
+    ),
     _ => theme.textTheme.bodyMedium,
   };
 }
@@ -626,31 +660,31 @@ String _formatDateTime(DateTime date) =>
 String _two(int value) => value.toString().padLeft(2, '0');
 
 String _weekText(int day) => switch (day) {
-      1 => '一',
-      2 => '二',
-      3 => '三',
-      4 => '四',
-      5 => '五',
-      6 => '六',
-      7 => '日',
-      _ => '?',
-    };
+  1 => '一',
+  2 => '二',
+  3 => '三',
+  4 => '四',
+  5 => '五',
+  6 => '六',
+  7 => '日',
+  _ => '?',
+};
 
 String _categoryText(String category) => switch (category) {
-      'required' => '必修',
-      'elective' => '选修',
-      _ => '未知类别',
-    };
+  'required' => '必修',
+  'elective' => '选修',
+  _ => '未知类别',
+};
 
 String _statusText(String status) => switch (status) {
-      'final' => '已确认',
-      'provisional' => '暂定',
-      _ => '未知',
-    };
+  'final' => '已确认',
+  'provisional' => '暂定',
+  _ => '未知',
+};
 
 String _noticeCategoryText(String category) => switch (category) {
-      'academic' => '教学',
-      'admin' => '行政',
-      'event' => '活动',
-      _ => '其他',
-    };
+  'academic' => '教学',
+  'admin' => '行政',
+  'event' => '活动',
+  _ => '其他',
+};

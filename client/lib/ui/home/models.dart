@@ -13,6 +13,8 @@ import 'package:elecon_contract/grades_list.dart';
 import 'package:elecon_contract/notice_list.dart';
 import 'package:elecon_contract/schedule_week.dart' show ScheduleWeek;
 
+export 'package:elecon_contract/classroom_available.dart';
+export 'package:elecon_contract/classroom_buildings.dart';
 export 'package:elecon_contract/grades_list.dart';
 export 'package:elecon_contract/notice_list.dart';
 export 'package:elecon_contract/schedule_week.dart';
@@ -70,8 +72,11 @@ class GenericSection {
 }
 
 class GenericField {
-  const GenericField(
-      {required this.label, required this.role, required this.value});
+  const GenericField({
+    required this.label,
+    required this.role,
+    required this.value,
+  });
 
   final String label;
   final GenericRole role;
