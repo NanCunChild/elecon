@@ -6,11 +6,11 @@
   "type": "object",
   "required": ["manifestVersion", "adapterId", "adapterVersion", "schoolId", "displayName", "trustTier", "runtime", "network", "capabilities"],
   "properties": {
-    "manifestVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
-    "adapterId": { "type": "string", "pattern": "^school-\\S+$" },
-    "adapterVersion": { "type": "string" },
+    "manifestVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$", "description": "manifest 契约版本，格式为 MAJOR.MINOR。" },
+    "adapterId": { "type": "string", "pattern": "^school-\\S+$", "description": "adapter 标识，须以 school- 开头。" },
+    "adapterVersion": { "type": "string", "description": "adapter 代码版本标识。" },
     "schoolId": { "type": "string" },
-    "displayName": { "type": "string" },
+    "displayName": { "type": "string", "description": "manifest 的显示名称。" },
     "trustTier": {
       "type": "string",
       "description": "official | sideload（community 档已于 ADR-002 2026-06-14 修订移除）",
@@ -18,9 +18,10 @@
     },
     "runtime": {
       "type": "object",
+      "description": "adapter 的执行运行时配置。",
       "required": ["engine", "entry"],
       "properties": {
-        "engine": { "const": "quickjs" },
+        "engine": { "const": "quickjs", "description": "adapter 执行引擎；当前固定为 quickjs。" },
         "entry": { "type": "string" },
         "stdlibMin": {
           "type": "string",
@@ -31,10 +32,12 @@
     },
     "network": {
       "type": "object",
+      "description": "核心 broker 代表该 adapter 执行请求时的网络范围；不授予 adapter 直接网络能力。",
       "required": ["allow"],
       "properties": {
         "allow": {
           "type": "array",
+          "description": "核心 broker 的出站 URL 模式白名单；白名单外请求一律拒绝，命中白名单不表示自动注入凭证。",
           "items": { "type": "string", "format": "uri-template" }
         }
       }
@@ -142,6 +145,7 @@
     },
     "capabilities": {
       "type": "array",
+      "description": "adapter 提供的 capability 声明列表。",
       "items": {
         "type": "object",
         "required": ["id", "emits", "requestGraph"],
@@ -152,10 +156,11 @@
           },
           "emits": {
             "type": "object",
+            "description": "capability 输出数据的 schema 绑定。",
             "required": ["schema", "schemaVersion"],
             "properties": {
-              "schema": { "type": "string" },
-              "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" }
+              "schema": { "type": "string", "description": "输出数据的 schema 标识。" },
+              "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$", "description": "输出 schema 版本，格式为 MAJOR.MINOR。" }
             }
           },
           "requestGraph": {
@@ -165,9 +170,10 @@
           },
           "params": {
             "type": "object",
+            "description": "可选的入参 schema 绑定；缺省仅表示 manifest 不绑定入参 schema，不表示调用时无参数。",
             "properties": {
-              "schema": { "type": "string" },
-              "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$" }
+              "schema": { "type": "string", "description": "入参 schema 标识。" },
+              "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$", "description": "入参 schema 版本，格式为 MAJOR.MINOR。" }
             }
           },
           "requests": {
@@ -177,10 +183,10 @@
               "type": "object",
               "required": ["key", "method", "url"],
               "properties": {
-                "key": { "type": "string" },
-                "method": { "type": "string", "enum": ["GET", "POST"] },
-                "url": { "type": "string" },
-                "credential": { "type": "string" }
+                "key": { "type": "string", "description": "请求标识，在本 capability 内唯一；宿主以此键向 declarative handler 提供脱敏响应。" },
+                "method": { "type": "string", "enum": ["GET", "POST"], "description": "请求使用的 HTTP 方法。" },
+                "url": { "type": "string", "description": "由核心代取的请求 URL 模板。" },
+                "credential": { "type": "string", "description": "可选的顶层 credentials 引用名；最终 URL 须匹配该引用的 scope。缺省时请求不得命中任何凭证注入规则，否则 fail-closed。" }
               }
             }
           },

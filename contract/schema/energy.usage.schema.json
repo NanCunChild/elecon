@@ -1,4 +1,26 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.energy.usage", "title": "能源用量", "type": "object",
-  "properties": { "items": { "type": "array", "items": { "type": "object", "properties": { "campus": { "type": "string" }, "dormitory": { "type": "string" }, "room": { "type": "string" }, "type": { "type": "string", "enum": ["water", "electricity", "unknown"] }, "reading": { "type": "number" }, "usage": { "type": "number" }, "unit": { "type": "string" }, "from": { "type": "string", "format": "date-time" }, "to": { "type": "string", "format": "date-time" } } } } }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.energy.usage",
+  "title": "能源用量",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "水电用量记录列表；可选，缺失表示学校不提供。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "campus": { "type": "string", "description": "用量记录所属校区；可选，缺失表示学校不提供。" },
+          "dormitory": { "type": "string", "description": "用量记录所属宿舍楼；可选，缺失表示学校不提供。" },
+          "room": { "type": "string", "description": "用量记录所属房间；可选，缺失表示学校不提供。" },
+          "type": { "type": "string", "enum": ["water", "electricity", "unknown"], "description": "能源类型：water=水，electricity=电，unknown=未知；可选，缺失表示学校不提供。" },
+          "reading": { "type": "number", "description": "计量表读数，单位由同级 unit 指定；可选，缺失表示学校不提供。" },
+          "usage": { "type": "number", "description": "统计时段内的用量，单位由同级 unit 指定；可选，缺失表示学校不提供。" },
+          "unit": { "type": "string", "description": "读数和用量的计量单位；可选，缺失表示学校不提供。" },
+          "from": { "type": "string", "format": "date-time", "description": "用量统计时段的起始时刻，RFC3339/UTC；可选，缺失表示学校不提供。" },
+          "to": { "type": "string", "format": "date-time", "description": "用量统计时段的结束时刻，RFC3339/UTC；可选，缺失表示学校不提供。" }
+        }
+      }
+    }
+  }
 }

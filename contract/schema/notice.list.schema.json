@@ -5,39 +5,41 @@
   "type": "object",
   "required": ["items"],
   "properties": {
-    "page": { "type": "integer", "minimum": 1 },
-    "size": { "type": "integer", "minimum": 1 },
-    "cursor": { "type": "string" },
-    "total": { "type": "integer", "minimum": 0 },
-    "hasNext": { "type": "boolean" },
-    "updatedAt": { "type": "string", "format": "date-time" },
-    "sourceSystem": { "type": "string" },
+    "page": { "type": "integer", "minimum": 1, "description": "当前页码，从 1 起；省略表示源站不提供页码分页信息。" },
+    "size": { "type": "integer", "minimum": 1, "description": "当前分页的每页条数；省略表示源站不提供。" },
+    "cursor": { "type": "string", "description": "用于继续分页的游标；省略表示源站不提供游标分页信息。" },
+    "total": { "type": "integer", "minimum": 0, "description": "符合条件的通知总数；省略表示源站不提供。" },
+    "hasNext": { "type": "boolean", "description": "是否还有下一页；省略表示源站不提供。" },
+    "updatedAt": { "type": "string", "format": "date-time", "description": "通知列表最后更新时间，RFC3339/UTC；省略表示源站不提供。" },
+    "sourceSystem": { "type": "string", "description": "通知来源系统名称；省略表示源站不提供。" },
     "items": {
       "type": "array",
+      "description": "通知条目列表。",
       "items": {
         "type": "object",
         "required": ["id", "title", "category", "source"],
         "properties": {
-          "id": { "type": "string" },
-          "title": { "type": "string" },
-          "summary": { "type": "string" },
-          "content": { "type": "string" },
-          "author": { "type": "string" },
-          "department": { "type": "string" },
-          "audience": { "type": "array", "items": { "type": "string" } },
-          "tags": { "type": "array", "items": { "type": "string" } },
-          "pinned": { "type": "boolean" },
-          "importance": { "type": "string", "enum": ["normal", "important", "urgent", "unknown"] },
-          "validFrom": { "type": "string", "format": "date-time" },
-          "validUntil": { "type": "string", "format": "date-time" },
-          "status": { "type": "string", "enum": ["draft", "published", "withdrawn", "expired", "unknown"] },
+          "id": { "type": "string", "description": "通知的校内作用域标识。" },
+          "title": { "type": "string", "description": "通知标题。" },
+          "summary": { "type": "string", "description": "通知摘要；省略表示源站不提供。" },
+          "content": { "type": "string", "description": "通知正文；省略表示列表接口不提供正文。" },
+          "author": { "type": "string", "description": "通知作者；省略表示源站不提供。" },
+          "department": { "type": "string", "description": "通知发布部门；省略表示源站不提供。" },
+          "audience": { "type": "array", "description": "通知面向的受众列表；省略表示源站不提供。", "items": { "type": "string" } },
+          "tags": { "type": "array", "description": "通知标签列表；省略表示源站不提供。", "items": { "type": "string" } },
+          "pinned": { "type": "boolean", "description": "通知是否置顶；省略表示源站不提供。" },
+          "importance": { "type": "string", "enum": ["normal", "important", "urgent", "unknown"], "description": "通知重要程度：普通、重要、紧急或未知；省略表示源站不提供。" },
+          "validFrom": { "type": "string", "format": "date-time", "description": "通知生效时刻，RFC3339/UTC；省略表示源站不提供。" },
+          "validUntil": { "type": "string", "format": "date-time", "description": "通知失效时刻，RFC3339/UTC；省略表示源站不提供。" },
+          "status": { "type": "string", "enum": ["draft", "published", "withdrawn", "expired", "unknown"], "description": "通知状态：草稿、已发布、已撤回、已过期或未知；省略表示源站不提供。" },
           "attachments": {
             "type": "array",
+            "description": "通知附件列表；省略表示源站不提供。",
             "items": { "type": "object", "required": ["name", "url"], "properties": {
-              "name": { "type": "string" }, "url": { "type": "string", "format": "uri" }, "sizeBytes": { "type": "integer", "minimum": 0 }, "mimeType": { "type": "string" }
+              "name": { "type": "string", "description": "附件名称。" }, "url": { "type": "string", "format": "uri", "description": "附件资源 URI。" }, "sizeBytes": { "type": "integer", "minimum": 0, "description": "附件大小，单位为字节；省略表示源站不提供。" }, "mimeType": { "type": "string", "description": "附件的 MIME 类型；省略表示源站不提供。" }
             } }
           },
-          "url": { "type": "string", "format": "uri" },
+          "url": { "type": "string", "format": "uri", "description": "通知详情页 URI；省略表示源站不提供。" },
           "publishedAt": {
             "type": "string",
             "format": "date-time",
@@ -45,9 +47,10 @@
           },
           "category": {
             "type": "string",
-            "enum": ["academic", "admin", "event", "unknown"]
+            "enum": ["academic", "admin", "event", "unknown"],
+            "description": "通知分类：教学学术、行政、活动或未知。"
           },
-          "source": { "type": "string" }
+          "source": { "type": "string", "description": "通知来源名称，如教务处。" }
         }
       }
     }

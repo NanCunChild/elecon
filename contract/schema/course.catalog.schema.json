@@ -1,4 +1,28 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.course.catalog", "title": "课程目录", "type": "object",
-  "properties": { "items": { "type": "array", "items": { "type": "object", "properties": { "courseId": { "type": "string" }, "name": { "type": "string" }, "teacher": { "type": "string" }, "capacity": { "type": "integer", "minimum": 0 }, "enrolled": { "type": "integer", "minimum": 0 }, "prerequisites": { "type": "array", "items": { "type": "string" } }, "term": { "type": "string" } } } } }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.course.catalog",
+  "title": "课程目录",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "课程目录条目列表；缺失表示来源未提供课程目录。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "courseId": { "type": "string", "description": "校内作用域的课程标识；缺失表示来源未提供。" },
+          "name": { "type": "string", "description": "课程名称；缺失表示来源未提供。" },
+          "teacher": { "type": "string", "description": "授课教师；缺失表示来源未提供。" },
+          "capacity": { "type": "integer", "minimum": 0, "description": "课程容量，单位为人数；缺失表示来源未提供。" },
+          "enrolled": { "type": "integer", "minimum": 0, "description": "已选课人数；缺失表示来源未提供。" },
+          "prerequisites": {
+            "type": "array",
+            "description": "先修课程列表；缺失表示来源未提供。",
+            "items": { "type": "string" }
+          },
+          "term": { "type": "string", "description": "开课学期标识，如 2025-2026-2；缺失表示来源未提供。" }
+        }
+      }
+    }
+  }
 }

@@ -5,31 +5,33 @@
   "type": "object",
   "required": ["cardNumber", "balance"],
   "properties": {
-    "cardNumber": { "type": "string" },
-    "cardNumberMasked": { "type": "string" },
-    "cardType": { "type": "string" },
-    "accountType": { "type": "string" },
-    "campus": { "type": "string" },
-    "wallet": { "type": "string" },
-    "status": { "type": "string", "enum": ["active", "frozen", "lost", "cancelled", "unknown"] },
+    "cardNumber": { "type": "string", "description": "校内作用域的一卡通卡号。" },
+    "cardNumberMasked": { "type": "string", "description": "脱敏后的一卡通卡号；可选，缺失表示学校不提供。" },
+    "cardType": { "type": "string", "description": "一卡通卡片类型；可选，缺失表示学校不提供。" },
+    "accountType": { "type": "string", "description": "一卡通账户类型；可选，缺失表示学校不提供。" },
+    "campus": { "type": "string", "description": "一卡通所属校区；可选，缺失表示学校不提供。" },
+    "wallet": { "type": "string", "description": "余额所属钱包；可选，缺失表示学校不提供。" },
+    "status": { "type": "string", "enum": ["active", "frozen", "lost", "cancelled", "unknown"], "description": "一卡通状态：active=正常，frozen=冻结，lost=挂失，cancelled=注销，unknown=未知；可选，缺失表示学校不提供。" },
     "balanceUpdatedAt": { "type": "string", "format": "date-time" },
     "snapshotAt": { "type": "string", "format": "date-time" },
     "errorStatus": { "type": "string", "enum": ["failed", "pending", "unknown"] },
     "balance": {
       "type": "object",
+      "description": "一卡通当前余额，使用整数最小货币单位和三字母货币码表示。",
       "required": ["amountMinor", "currency"],
       "properties": {
         "amountMinor": { "type": "integer", "description": "最小货币单位，如分" },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 三字母大写货币码，如 CNY。" }
       }
     },
     "lastTransaction": {
       "type": "object",
+      "description": "最近一笔一卡通交易摘要；可选，缺失表示学校不提供。",
       "properties": {
-        "amountMinor": { "type": "integer" },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "amountMinor": { "type": "integer", "description": "该笔交易金额的最小货币单位整数（如人民币分）；不用浮点。" },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "该笔交易的 ISO 4217 三字母大写货币码，如 CNY。" },
         "time": { "type": "string", "format": "date-time" },
-        "merchant": { "type": "string" }
+        "merchant": { "type": "string", "description": "该笔交易的商户名称；可选，缺失表示学校不提供。" }
       }
     }
   }

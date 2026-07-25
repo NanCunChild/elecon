@@ -4,9 +4,21 @@
   "title": "个人资料",
   "type": "object",
   "properties": {
-    "name": { "type": "string" }, "studentIdMasked": { "type": "string" },
-    "department": { "type": "string" }, "major": { "type": "string" },
-    "grade": { "type": "string" }, "identityType": { "type": "string", "enum": ["undergraduate", "graduate", "faculty", "staff", "other", "unknown"] },
-    "campus": { "type": "string" }, "updatedAt": { "type": "string", "format": "date-time" }
+    "name": { "type": "string", "description": "当前用户姓名；缺失表示来源未提供。" },
+    "studentIdMasked": { "type": "string", "description": "脱敏后的学号；缺失表示来源未提供。" },
+    "department": { "type": "string", "description": "当前用户所属院系；缺失表示来源未提供。" },
+    "major": { "type": "string", "description": "当前用户所学专业；缺失表示来源未提供。" },
+    "grade": { "type": "string", "description": "当前用户所在年级；缺失表示来源未提供。" },
+    "identityType": {
+      "type": "string",
+      "enum": ["undergraduate", "graduate", "faculty", "staff", "other", "unknown"],
+      "description": "校内身份类型：undergraduate=本科生，graduate=研究生，faculty=教师，staff=职工，other=其他，unknown=无法识别；缺失表示来源未提供。"
+    },
+    "campus": { "type": "string", "description": "当前用户所属校区；缺失表示来源未提供。" },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "个人资料在来源系统中的更新时间，格式为 RFC3339/UTC；缺失表示来源未提供。"
+    }
   }
 }

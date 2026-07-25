@@ -1,1 +1,23 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"elecon.invoice.list","title":"发票列表","type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"invoiceNo":{"type":"string"},"amountMinor":{"type":"integer"},"currency":{"type":"string","pattern":"^[A-Z]{3}$"},"issuedAt":{"type":"string","format":"date-time"},"status":{"type":"string","enum":["issued","voided","processing","unknown"]},"downloadUrl":{"type":"string","format":"uri"}}}}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.invoice.list",
+  "title": "发票列表",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "发票记录列表；可选，缺失表示学校不提供。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "invoiceNo": { "type": "string", "description": "发票号码；可选，缺失表示学校不提供。" },
+          "amountMinor": { "type": "integer", "description": "发票金额的最小货币单位整数（如人民币分）；不用浮点。" },
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "发票金额的 ISO 4217 三字母大写货币码，如 CNY。" },
+          "issuedAt": { "type": "string", "format": "date-time", "description": "发票开具时刻，RFC3339/UTC；可选，缺失表示学校不提供。" },
+          "status": { "type": "string", "enum": ["issued", "voided", "processing", "unknown"], "description": "发票状态：issued=已开具，voided=已作废，processing=处理中，unknown=未知；可选，缺失表示学校不提供。" },
+          "downloadUrl": { "type": "string", "format": "uri", "description": "发票下载 URI；可选，缺失表示学校不提供。" }
+        }
+      }
+    }
+  }
+}

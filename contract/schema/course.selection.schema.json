@@ -1,4 +1,26 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.course.selection", "title": "选课", "type": "object",
-  "properties": { "items": { "type": "array", "items": { "type": "object", "properties": { "courseId": { "type": "string" }, "name": { "type": "string" }, "selected": { "type": "boolean" }, "status": { "type": "string", "enum": ["available", "selected", "dropped", "conflict", "full", "unknown"] }, "reason": { "type": "string" } } } } }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.course.selection",
+  "title": "选课",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "选课条目列表；缺失表示来源未提供选课信息。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "courseId": { "type": "string", "description": "校内作用域的课程标识；缺失表示来源未提供。" },
+          "name": { "type": "string", "description": "课程名称；缺失表示来源未提供。" },
+          "selected": { "type": "boolean", "description": "是否已选中该课程；缺失表示来源未提供。" },
+          "status": {
+            "type": "string",
+            "enum": ["available", "selected", "dropped", "conflict", "full", "unknown"],
+            "description": "选课状态：可选、已选、已退、冲突、已满或未知；缺失表示来源未提供。"
+          },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
 }

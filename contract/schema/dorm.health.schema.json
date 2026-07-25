@@ -1,1 +1,22 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"elecon.dorm.health","title":"宿舍健康","type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"metric":{"type":"string"},"value":{"type":"number"},"unit":{"type":"string"},"measuredAt":{"type":"string","format":"date-time"},"status":{"type":"string","enum":["normal","abnormal","unknown"]}}}}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.dorm.health",
+  "title": "宿舍健康",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "宿舍健康指标列表；可选，缺失表示学校不提供。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "metric": { "type": "string", "description": "健康指标名称；可选，缺失表示学校不提供。" },
+          "value": { "type": "number", "description": "指标测量值，单位由同级 unit 指定；可选，缺失表示学校不提供。" },
+          "unit": { "type": "string", "description": "指标测量值的单位；可选，缺失表示学校不提供。" },
+          "measuredAt": { "type": "string", "format": "date-time", "description": "指标测量时刻，RFC3339/UTC；可选，缺失表示学校不提供。" },
+          "status": { "type": "string", "enum": ["normal", "abnormal", "unknown"], "description": "指标状态：normal=正常，abnormal=异常，unknown=未知；可选，缺失表示学校不提供。" }
+        }
+      }
+    }
+  }
+}

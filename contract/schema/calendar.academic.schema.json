@@ -1,4 +1,33 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.calendar.academic", "title": "校历", "type": "object",
-  "properties": { "term": { "type": "string" }, "startDate": { "type": "string", "format": "date" }, "endDate": { "type": "string", "format": "date" }, "currentWeek": { "type": "integer", "minimum": 1 }, "holidays": { "type": "array", "items": { "type": "object", "required": ["date", "name"], "properties": { "date": { "type": "string", "format": "date" }, "name": { "type": "string" }, "isTeachingDay": { "type": "boolean" } } } } }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.calendar.academic",
+  "title": "校历",
+  "type": "object",
+  "properties": {
+    "term": { "type": "string", "description": "校历所属学期标识；缺失表示来源未提供学期。" },
+    "startDate": {
+      "type": "string",
+      "format": "date",
+      "description": "学期开始日，格式为 YYYY-MM-DD；缺失表示来源未提供。"
+    },
+    "endDate": {
+      "type": "string",
+      "format": "date",
+      "description": "学期结束日，格式为 YYYY-MM-DD；缺失表示来源未提供。"
+    },
+    "currentWeek": { "type": "integer", "minimum": 1, "description": "当前教学周序号，从 1 开始；缺失表示来源未提供或无法确定。" },
+    "holidays": {
+      "type": "array",
+      "description": "校历中的节假日条目列表；缺失表示来源未提供。",
+      "items": {
+        "type": "object",
+        "required": ["date", "name"],
+        "properties": {
+          "date": { "type": "string", "format": "date", "description": "条目对应的日历日，格式为 YYYY-MM-DD。" },
+          "name": { "type": "string", "description": "节假日名称。" },
+          "isTeachingDay": { "type": "boolean", "description": "该日是否按教学日安排；缺失表示来源未提供此判断。" }
+        }
+      }
+    }
+  }
 }

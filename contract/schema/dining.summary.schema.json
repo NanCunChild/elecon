@@ -1,1 +1,22 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"elecon.dining.summary","title":"餐饮汇总","type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"merchant":{"type":"string"},"amountMinor":{"type":"integer"},"currency":{"type":"string","pattern":"^[A-Z]{3}$"},"period":{"type":"string"},"open":{"type":"boolean"}}}}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.dining.summary",
+  "title": "餐饮汇总",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "餐饮汇总条目；可选，缺失表示学校不提供。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "merchant": { "type": "string", "description": "餐饮商户名称；可选，缺失表示学校不提供。" },
+          "amountMinor": { "type": "integer", "description": "该汇总条目金额的最小货币单位整数（如人民币分）；不用浮点。" },
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "金额的 ISO 4217 三字母大写货币码，如 CNY。" },
+          "period": { "type": "string", "description": "汇总周期；字符串格式未由当前契约限定。可选，缺失表示学校不提供。" },
+          "open": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

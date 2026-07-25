@@ -17,24 +17,27 @@
     },
     "source": {
       "type": "object",
+      "description": "数据来源元数据，包括学校、adapter 及数据来路。",
       "required": ["schoolId", "adapterId", "adapterVersion", "origin"],
       "properties": {
-        "schoolId": { "type": "string" },
-        "adapterId": { "type": "string" },
-        "adapterVersion": { "type": "string" },
+        "schoolId": { "type": "string", "description": "数据所属学校的标识。" },
+        "adapterId": { "type": "string", "description": "产出数据的 adapter 标识。" },
+        "adapterVersion": { "type": "string", "description": "产出数据的 adapter 代码版本。" },
         "origin": {
           "type": "string",
-          "enum": ["client-direct", "campus-relay", "public-cache"]
+          "enum": ["client-direct", "campus-relay", "public-cache"],
+          "description": "数据来路：客户端直连、校内授权中继或公网公开数据缓存。"
         }
       }
     },
     "freshness": {
       "type": "object",
+      "description": "数据新鲜度元数据，与 adapter 代码版本无关。",
       "required": ["fetchedAt", "ttlSeconds", "stale"],
       "properties": {
-        "fetchedAt": { "type": "string", "format": "date-time" },
-        "ttlSeconds": { "type": "integer", "minimum": 0 },
-        "stale": { "type": "boolean" }
+        "fetchedAt": { "type": "string", "format": "date-time", "description": "数据获取时刻，RFC3339/UTC。" },
+        "ttlSeconds": { "type": "integer", "minimum": 0, "description": "数据有效期，单位为秒。" },
+        "stale": { "type": "boolean", "description": "数据当前是否已过有效期。" }
       }
     },
     "data": {

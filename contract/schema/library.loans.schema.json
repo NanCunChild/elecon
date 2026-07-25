@@ -7,6 +7,7 @@
   "properties": {
     "items": {
       "type": "array",
+      "description": "当前借阅记录列表。",
       "items": {
         "type": "object",
         "required": ["bookId", "title", "borrowedAt", "dueAt"],
@@ -15,9 +16,9 @@
             "type": "string",
             "description": "馆藏条码/记录 id；无独立 id 时可用条码。禁止空串。"
           },
-          "title": { "type": "string" },
-          "author": { "type": "string" },
-          "callNumber": { "type": "string" },
+          "title": { "type": "string", "description": "书名。" },
+          "author": { "type": "string", "description": "作者；省略表示源站不提供。" },
+          "callNumber": { "type": "string", "description": "馆藏索书号；省略表示源站不提供。" },
           "location": { "type": "string", "description": "馆藏位置/架位描述" },
           "branch": { "type": "string", "description": "分馆/校区馆" },
           "borrowedAt": {
@@ -30,22 +31,23 @@
             "format": "date-time",
             "description": "应还时刻 RFC3339/UTC。源站仅有日历日时，adapter 归一为该日 23:59:59Z 或次日 00:00:00Z（同校内一致即可，须在 adapter 注释固定）。"
           },
-          "renewCount": { "type": "integer", "minimum": 0 },
-          "renewalMax": { "type": "integer", "minimum": 0 },
-          "renewable": { "type": "boolean" },
-          "overdue": { "type": "boolean" },
+          "renewCount": { "type": "integer", "minimum": 0, "description": "已续借次数；省略表示源站不提供。" },
+          "renewalMax": { "type": "integer", "minimum": 0, "description": "允许续借的最大次数；省略表示源站不提供。" },
+          "renewable": { "type": "boolean", "description": "当前是否允许续借；省略表示源站不提供。" },
+          "overdue": { "type": "boolean", "description": "当前是否逾期；省略表示源站不提供。" },
           "overdueFee": {
             "type": "object",
+            "description": "逾期费用；省略表示源站不提供。",
             "required": ["amountMinor", "currency"],
             "properties": {
-              "amountMinor": { "type": "integer", "minimum": 0 },
-              "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+              "amountMinor": { "type": "integer", "minimum": 0, "description": "逾期费用的最小货币单位整数值，如人民币分；不用浮点。" },
+              "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "逾期费用的 ISO 4217 三位大写货币码，如 CNY。" }
             }
           },
-          "reserved": { "type": "boolean" },
-          "pickupDeadline": { "type": "string", "format": "date-time" },
-          "renewalDeadline": { "type": "string", "format": "date-time" },
-          "returnConfirmed": { "type": "boolean" }
+          "reserved": { "type": "boolean", "description": "该馆藏当前是否处于预约状态；省略表示源站不提供。" },
+          "pickupDeadline": { "type": "string", "format": "date-time", "description": "预约取书截止时刻，RFC3339/UTC；省略表示源站不提供。" },
+          "renewalDeadline": { "type": "string", "format": "date-time", "description": "续借办理截止时刻，RFC3339/UTC；省略表示源站不提供。" },
+          "returnConfirmed": { "type": "boolean", "description": "归还是否已被图书馆系统确认；省略表示源站不提供。" }
         }
       }
     }

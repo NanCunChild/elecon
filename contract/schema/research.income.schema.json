@@ -1,1 +1,22 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"elecon.research.income","title":"科研收入","type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"month":{"type":"string"},"amountMinor":{"type":"integer"},"currency":{"type":"string","pattern":"^[A-Z]{3}$"},"status":{"type":"string","enum":["pending","paid","failed","unknown"]},"source":{"type":"string"}}}}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.research.income",
+  "title": "科研收入",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "科研收入记录列表；可选，缺失表示学校不提供。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "month": { "type": "string", "description": "收入归属月份；字符串格式未由当前契约限定。可选，缺失表示学校不提供。" },
+          "amountMinor": { "type": "integer", "description": "科研收入金额的最小货币单位整数（如人民币分）；不用浮点。" },
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "收入金额的 ISO 4217 三字母大写货币码，如 CNY。" },
+          "status": { "type": "string", "enum": ["pending", "paid", "failed", "unknown"], "description": "收入状态：pending=待处理，paid=已支付，failed=失败，unknown=未知；可选，缺失表示学校不提供。" },
+          "source": { "type": "string", "description": "科研收入来源；可选，缺失表示学校不提供。" }
+        }
+      }
+    }
+  }
+}

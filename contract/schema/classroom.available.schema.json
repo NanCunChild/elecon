@@ -7,25 +7,31 @@
   "properties": {
     "date": {
       "type": "string",
-      "format": "date"
+      "format": "date",
+      "description": "实际采用的查询日历日，格式为 YYYY-MM-DD；未使用日历日轴时省略。"
     },
     "term": {
-      "type": "string"
+      "type": "string",
+      "description": "实际采用的学期标识；未使用或来源未提供时省略。"
     },
     "week": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "实际采用的教学周序号，从 1 开始；未使用教学周轴时省略。"
     },
     "weekday": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 7
+      "maximum": 7,
+      "description": "实际采用的星期序号，1=周一至 7=周日；未使用时省略。"
     },
     "start": {
-      "type": "string"
+      "type": "string",
+      "description": "实际采用的墙钟窗口起点，推荐格式 HH:mm；未使用墙钟窗口时省略。"
     },
     "end": {
-      "type": "string"
+      "type": "string",
+      "description": "实际采用的墙钟窗口终点，推荐格式 HH:mm；未使用墙钟窗口时省略。"
     },
     "timeZone": {
       "type": "string",
@@ -33,27 +39,33 @@
     },
     "sectionStart": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "实际采用的节次窗口起点（含），从 1 开始；未使用节次窗口时省略。"
     },
     "sectionEnd": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "实际采用的节次窗口终点（含），从 1 开始；未使用节次窗口时省略。"
     },
     "sourceSystem": {
-      "type": "string"
+      "type": "string",
+      "description": "空教室数据的来源系统名称或标识；缺失表示来源未提供。"
     },
     "updatedAt": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "description": "空教室数据在来源系统中的更新时间，格式为 RFC3339/UTC；缺失表示来源未提供。"
     },
     "items": {
       "type": "array",
+      "description": "符合查询条件的教室列表；无匹配教室时可为空数组。",
       "items": {
         "type": "object",
         "required": ["building", "room"],
         "properties": {
           "campus": {
-            "type": "string"
+            "type": "string",
+            "description": "教室所属校区；缺失表示来源未提供。"
           },
           "building": {
             "type": "string",
@@ -61,7 +73,8 @@
             "description": "教学楼展示名；禁止空串；未知填 \"-\""
           },
           "buildingId": {
-            "type": "string"
+            "type": "string",
+            "description": "教学楼在校内系统中的标识或代码；缺失表示来源未提供。"
           },
           "room": {
             "type": "string",
@@ -69,7 +82,8 @@
             "description": "教室展示名；禁止空串；未知填 \"-\""
           },
           "roomId": {
-            "type": "string"
+            "type": "string",
+            "description": "教室在校内系统中的标识；缺失表示来源未提供。"
           },
           "floor": {
             "type": "string",
@@ -77,10 +91,12 @@
           },
           "capacity": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "教室容纳人数，单位为人；缺失表示来源未提供。"
           },
           "equipment": {
             "type": "array",
+            "description": "教室设备名称列表；缺失表示来源未提供设备信息。",
             "items": {
               "type": "string"
             }
@@ -105,10 +121,12 @@
                 "index": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 24
+                  "maximum": 24,
+                  "description": "节次序号，从 1 开始，最大为 24。"
                 },
                 "occupied": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "该节次是否被占用。"
                 },
                 "label": {
                   "type": "string",

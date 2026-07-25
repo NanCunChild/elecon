@@ -1,1 +1,27 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"elecon.campus.network","title":"校园网络","type":"object","properties":{"accountStatus":{"type":"string","enum":["active","disabled","unknown"]},"usageBytes":{"type":"integer","minimum":0},"online":{"type":"boolean"},"devices":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"online":{"type":"boolean"}}}}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.campus.network",
+  "title": "校园网络",
+  "type": "object",
+  "properties": {
+    "accountStatus": {
+      "type": "string",
+      "enum": ["active", "disabled", "unknown"],
+      "description": "校园网账号状态：active=已启用，disabled=已停用，unknown=无法识别；缺失表示来源未提供。"
+    },
+    "usageBytes": { "type": "integer", "minimum": 0, "description": "校园网流量用量，单位为字节；缺失表示来源未提供。" },
+    "online": { "type": "boolean" },
+    "devices": {
+      "type": "array",
+      "description": "校园网账号关联的设备列表；缺失表示来源未提供设备信息。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "设备在校园网系统中的标识；缺失表示来源未提供。" },
+          "name": { "type": "string", "description": "设备名称；缺失表示来源未提供。" },
+          "online": { "type": "boolean", "description": "该设备当前是否在线；缺失表示来源未提供在线状态。" }
+        }
+      }
+    }
+  }
+}

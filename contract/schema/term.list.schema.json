@@ -1,4 +1,33 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.term.list", "title": "学期列表", "type": "object",
-  "properties": { "currentTerm": { "type": "string" }, "items": { "type": "array", "items": { "type": "object", "required": ["id", "name"], "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "academicYear": { "type": "string" }, "startDate": { "type": "string", "format": "date" }, "endDate": { "type": "string", "format": "date" }, "teachingWeeks": { "type": "integer", "minimum": 0 } } } } }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.term.list",
+  "title": "学期列表",
+  "type": "object",
+  "properties": {
+    "currentTerm": { "type": "string", "description": "当前学期标识；缺失表示来源未提供或无法确定。" },
+    "items": {
+      "type": "array",
+      "description": "学期条目列表；缺失表示来源未提供学期列表。",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "description": "学期在校内系统中的标识。" },
+          "name": { "type": "string", "description": "学期展示名称。" },
+          "academicYear": { "type": "string", "description": "学期所属学年；缺失表示来源未提供。" },
+          "startDate": {
+            "type": "string",
+            "format": "date",
+            "description": "学期开始日，格式为 YYYY-MM-DD；缺失表示来源未提供。"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date",
+            "description": "学期结束日，格式为 YYYY-MM-DD；缺失表示来源未提供。"
+          },
+          "teachingWeeks": { "type": "integer", "minimum": 0, "description": "学期教学周总数，单位为周；缺失表示来源未提供。" }
+        }
+      }
+    }
+  }
 }

@@ -9,61 +9,74 @@
       "type": "string",
       "description": "学期标识，如 2025-2026-2"
     },
-    "academicYear": { "type": "string" },
-    "termName": { "type": "string" },
-    "updatedAt": { "type": "string", "format": "date-time" },
-    "page": { "type": "integer", "minimum": 1 },
-    "size": { "type": "integer", "minimum": 1 },
-    "cursor": { "type": "string" },
-    "total": { "type": "integer", "minimum": 0 },
-    "hasNext": { "type": "boolean" },
+    "academicYear": { "type": "string", "description": "成绩所属学年；缺失表示来源未提供。" },
+    "termName": { "type": "string", "description": "学期的可读名称；缺失表示来源未提供。" },
+    "updatedAt": { "type": "string", "format": "date-time", "description": "成绩数据更新时间，RFC3339/UTC；缺失表示来源未提供。" },
+    "page": { "type": "integer", "minimum": 1, "description": "当前页码，从 1 开始；缺失表示未采用页码分页或来源未提供。" },
+    "size": { "type": "integer", "minimum": 1, "description": "每页条目数；缺失表示未采用页码分页或来源未提供。" },
+    "cursor": { "type": "string", "description": "分页游标；缺失表示未采用游标分页或来源未提供。" },
+    "total": { "type": "integer", "minimum": 0, "description": "符合查询条件的成绩条目总数；缺失表示来源未提供。" },
+    "hasNext": { "type": "boolean", "description": "是否还有下一页成绩；缺失表示来源未提供。" },
     "items": {
       "type": "array",
+      "description": "成绩条目列表。",
       "items": {
         "type": "object",
         "required": ["courseId", "courseName", "credit", "score", "category", "status"],
         "properties": {
-          "courseId": { "type": "string" },
-          "courseName": { "type": "string" },
-          "credit": { "type": "number", "minimum": 0 },
-          "creditType": { "type": "string" },
-          "courseNature": { "type": "string" },
-          "courseCategory": { "type": "string" },
-          "courseGroup": { "type": "string" },
-          "language": { "type": "string" },
-          "teacher": { "type": "string" },
-          "offeringUnit": { "type": "string" },
-          "classNo": { "type": "string" },
-          "sectionNo": { "type": "string" },
-          "examMethod": { "type": "string" },
-          "examAt": { "type": "string", "format": "date-time" },
-          "retake": { "type": "boolean" },
-          "sourceStatus": { "type": "string", "enum": ["normal", "retake", "makeup", "deferred", "exempt", "改分", "withdrawn", "unknown"] },
-          "rank": { "type": "integer", "minimum": 1 },
+          "courseId": { "type": "string", "description": "校内作用域的课程标识。" },
+          "courseName": { "type": "string", "description": "课程名称。" },
+          "credit": { "type": "number", "minimum": 0, "description": "课程学分数。" },
+          "creditType": { "type": "string", "description": "学分类型；缺失表示来源未提供。" },
+          "courseNature": { "type": "string", "description": "学校定义的课程性质；缺失表示来源未提供。" },
+          "courseCategory": { "type": "string", "description": "学校定义的课程类别；缺失表示来源未提供。" },
+          "courseGroup": { "type": "string", "description": "课程所属课程组；缺失表示来源未提供。" },
+          "language": { "type": "string", "description": "课程教学语言；缺失表示来源未提供。" },
+          "teacher": { "type": "string", "description": "任课教师；缺失表示来源未提供。" },
+          "offeringUnit": { "type": "string", "description": "课程开课单位；缺失表示来源未提供。" },
+          "classNo": { "type": "string", "description": "教学班号；缺失表示来源未提供。" },
+          "sectionNo": { "type": "string", "description": "课程课序号；缺失表示来源未提供。" },
+          "examMethod": { "type": "string", "description": "课程考核方式；缺失表示来源未提供。" },
+          "examAt": { "type": "string", "format": "date-time", "description": "课程考试时刻，RFC3339/UTC；缺失表示来源未提供。" },
+          "retake": { "type": "boolean", "description": "该成绩是否来自重修；缺失表示来源未提供。" },
+          "sourceStatus": {
+            "type": "string",
+            "enum": ["normal", "retake", "makeup", "deferred", "exempt", "改分", "withdrawn", "unknown"],
+            "description": "学校来源中的成绩来源或状态：正常、重修、补考、缓考、免修、改分、退课或未知；缺失表示来源未提供。"
+          },
+          "rank": { "type": "integer", "minimum": 1, "description": "该课程成绩排名，从 1 开始；缺失表示来源未提供。" },
           "gradeDistribution": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
-          "courseAverage": { "type": "number" },
+          "courseAverage": { "type": "number", "description": "该课程的平均成绩；缺失表示来源未提供。" },
           "score": {
             "type": "object",
+            "description": "课程的归一化成绩值及其记分类型。",
             "required": ["kind", "value"],
             "properties": {
               "kind": {
                 "type": "string",
-                "enum": ["numeric", "letter", "passfail", "unknown"]
+                "enum": ["numeric", "letter", "passfail", "unknown"],
+                "description": "成绩记分类型：数值、字母等级、通过/不通过或未知。"
               },
-              "value": {},
-              "raw": { "type": "string" },
-              "status": { "type": "string", "enum": ["known", "unknown", "absent", "notReleased", "exempt"] },
-              "max": { "type": "number" }
+              "value": { "description": "按 kind 解释的归一化成绩值。" },
+              "raw": { "type": "string", "description": "学校来源返回的原始成绩文本；缺失表示来源未提供。" },
+              "status": {
+                "type": "string",
+                "enum": ["known", "unknown", "absent", "notReleased", "exempt"],
+                "description": "成绩值状态：已知、未知、缺考、未发布或免修；缺失表示来源未提供。"
+              },
+              "max": { "type": "number", "description": "数值成绩的满分值；缺失表示来源未提供。" }
             }
           },
-          "gradePoint": { "type": "number" },
+          "gradePoint": { "type": "number", "description": "学校来源直接提供的课程绩点；计分尺度由来源学校定义，缺失表示来源未提供。" },
           "category": {
             "type": "string",
-            "enum": ["required", "elective", "unknown"]
+            "enum": ["required", "elective", "unknown"],
+            "description": "跨校归一化课程类别：必修、选修或未知。"
           },
           "status": {
             "type": "string",
-            "enum": ["final", "provisional", "unknown"]
+            "enum": ["final", "provisional", "unknown"],
+            "description": "成绩发布状态：最终、暂定或未知。"
           }
         }
       }

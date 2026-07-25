@@ -1,4 +1,33 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "elecon.exam.list", "title": "考试列表", "type": "object",
-  "properties": { "term": { "type": "string" }, "items": { "type": "array", "items": { "type": "object", "required": ["courseName"], "properties": { "courseId": { "type": "string" }, "courseName": { "type": "string" }, "examAt": { "type": "string", "format": "date-time" }, "campus": { "type": "string" }, "building": { "type": "string" }, "room": { "type": "string" }, "seat": { "type": "string" }, "examType": { "type": "string" }, "status": { "type": "string", "enum": ["scheduled", "changed", "cancelled", "completed", "unknown"] }, "changeReason": { "type": "string" } } } } }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.exam.list",
+  "title": "考试列表",
+  "type": "object",
+  "properties": {
+    "term": { "type": "string", "description": "学期标识，如 2025-2026-2；缺失表示来源未提供。" },
+    "items": {
+      "type": "array",
+      "description": "考试安排条目列表；缺失表示来源未提供考试安排。",
+      "items": {
+        "type": "object",
+        "required": ["courseName"],
+        "properties": {
+          "courseId": { "type": "string", "description": "校内作用域的课程标识；缺失表示来源未提供。" },
+          "courseName": { "type": "string", "description": "考试对应的课程名称。" },
+          "examAt": { "type": "string", "format": "date-time", "description": "考试开始时刻，RFC3339/UTC；缺失表示来源未提供。" },
+          "campus": { "type": "string", "description": "考试所在校区；缺失表示来源未提供。" },
+          "building": { "type": "string", "description": "考试所在楼栋；缺失表示来源未提供。" },
+          "room": { "type": "string", "description": "考试所在教室；缺失表示来源未提供。" },
+          "seat": { "type": "string", "description": "考试座位号；缺失表示来源未提供。" },
+          "examType": { "type": "string", "description": "考试类型；缺失表示来源未提供。" },
+          "status": {
+            "type": "string",
+            "enum": ["scheduled", "changed", "cancelled", "completed", "unknown"],
+            "description": "考试状态：已安排、已变更、已取消、已完成或未知；缺失表示来源未提供。"
+          },
+          "changeReason": { "type": "string", "description": "考试安排变更原因；缺失表示来源未提供。" }
+        }
+      }
+    }
+  }
 }

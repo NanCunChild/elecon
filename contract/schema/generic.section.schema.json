@@ -26,17 +26,19 @@
       "properties": {
         "columns": {
           "type": "array",
+          "description": "表格列定义，顺序与每行的数据值一致。",
           "items": {
             "type": "object",
             "required": ["label", "role"],
             "properties": {
-              "label": { "type": "string" },
-              "role": { "$ref": "#/$defs/role" }
+              "label": { "type": "string", "description": "表格列标题，纯文本。" },
+              "role": { "$ref": "#/$defs/role", "description": "该列的语义角色提示；本体据此决定渲染。" }
             }
           }
         },
         "rows": {
           "type": "array",
+          "description": "表格数据行；每行各值按 columns 的顺序排列。",
           "items": {
             "type": "array",
             "items": { "$ref": "#/$defs/value" }
@@ -77,7 +79,7 @@
       "required": ["amountMinor", "currency"],
       "properties": {
         "amountMinor": { "type": "integer", "description": "最小货币单位，如分" },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 三位大写货币码，如 CNY。" }
       }
     },
     "field": {
@@ -85,8 +87,8 @@
       "required": ["label", "role", "value"],
       "properties": {
         "label": { "type": "string", "description": "字段标签，纯文本" },
-        "role": { "$ref": "#/$defs/role" },
-        "value": { "$ref": "#/$defs/value" }
+        "role": { "$ref": "#/$defs/role", "description": "字段的语义角色提示；本体据此决定渲染。" },
+        "value": { "$ref": "#/$defs/value", "description": "字段的归一化原始值；格式由 role 约定。" }
       }
     }
   }
