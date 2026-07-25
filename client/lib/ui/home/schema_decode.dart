@@ -43,6 +43,11 @@ NoticeListItems? _noticeItem(Object? raw) {
     category: category,
     source: source,
     summary: map['summary']?.toString(),
+    // 正文/作者/部门供 App 内详情下钻展示（ADR-025 §2.2）；均为 schema 既有字段，
+    // 非臆造（红线 #6）。缺失即 null。
+    content: map['content']?.toString(),
+    author: map['author']?.toString(),
+    department: map['department']?.toString(),
     url: map['url']?.toString(),
     publishedAt: map['publishedAt']?.toString(),
     attachments: attachments,

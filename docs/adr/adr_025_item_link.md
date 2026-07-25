@@ -98,7 +98,9 @@ generic 兜底域走 `role:"link"`（ADR-001 §3.6 / ADR-004 §2.3），**本文
 
 客户端侧（不入 contract/，属 ADR-004 落地，本文只记账）：
 
-- 通知列表卡片：行 `onTap` → 以 `notice.id` 拉 `notice.detail`（App 内下钻，§2.6）；**仅当** item 给出 `url` 时才渲染「在网页打开」外跳入口。
-- 成绩列表卡片：行 `onTap` → 以 `courseId` 进单课详情（App 内，无外链）。
-- 外链渲染统一「外部链接」语义样式（主题 token，ADR-004 §2.4）；**不预取校验**（§2.7），点击失败弹**通用**提示（不回显 URL/报错）。
-- 🔒 外跳走**无凭证上下文**（系统浏览器或不注入凭证的隔离 webview，§2.7）——须人工安全复核签收。
+- ✅ **已落地（切片 1：App 内下钻，纯 UI 无红线）**：
+  - 通知列表卡片：行 `onTap` → `NoticeDetailPage`（渲染快照内 title/meta/summary/`content`/附件名；`content` 补入 `schema_decode`）。
+  - 成绩列表卡片：行 `onTap` → `CourseDetailPage`（渲染单课快照字段）。
+  - 本切片**只渲染快照已有数据**，不新拉 `notice.detail`、不涉外链；附件/「在网页打开」暂不可点。widget 测试覆盖两条下钻导航；`flutter analyze` 净、`flutter test` 绿。
+- ⏳ **待落地（切片 2：App 内下钻的网络增强）**：以 `notice.id` 拉 `notice.detail` capability 补全正文（数据层接线，非红线）。
+- 🔒 **待落地（切片 3：外跳，触红线 #1，须人工安全复核）**：仅当 item 给出 `url` 时渲染「在网页打开」；外链渲染「外部链接」样式；**不预取校验**（§2.7），失败弹**通用**提示（不回显 URL/报错）；外跳走**无凭证上下文**（系统浏览器或不注入凭证的隔离 webview）。机制待选（`url_launcher` 系统浏览器 vs 隔离 webview）。

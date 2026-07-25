@@ -61,6 +61,77 @@ void main() {
     expect(find.text('通用信息'), findsOneWidget);
   });
 
+  testWidgets('tapping a grades row drills into course detail (ADR-025)',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true),
+        home: EleconHomePage(
+          loadSnapshot: () async => CampusSnapshot(
+            schoolName: '测试大学',
+            updatedAt: DateTime.utc(2026, 7, 6, 8, 30),
+            grades: const GradesList(
+              term: '2025-2026-1',
+              items: [
+                GradesListItems(
+                  courseId: 'TEST-101',
+                  courseName: '测试课程',
+                  credit: 2,
+                  score: GradesListItemsScore(kind: 'numeric', value: 95),
+                  category: 'required',
+                  status: 'final',
+                  teacher: '张老师',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('测试课程'));
+    await tester.pumpAndSettle();
+
+    // 详情页专有内容：课程号与任课教师（App 内下钻，无网络、无外链）。
+    expect(find.text('课程号'), findsOneWidget);
+    expect(find.text('TEST-101'), findsOneWidget);
+    expect(find.text('张老师'), findsOneWidget);
+  });
+
+  testWidgets('tapping a notice row drills into notice detail (ADR-025)',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true),
+        home: EleconHomePage(
+          loadSnapshot: () async => CampusSnapshot(
+            schoolName: '测试大学',
+            updatedAt: DateTime.utc(2026, 7, 6, 8, 30),
+            notices: const NoticeList(
+              items: [
+                NoticeListItems(
+                  id: 'test-1',
+                  title: '测试通知',
+                  category: 'admin',
+                  source: '测试部门',
+                  content: '这是通知正文',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('测试通知'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('通知详情'), findsOneWidget);
+    expect(find.text('这是通知正文'), findsOneWidget);
+  });
+
   testWidgets('home page renders error state', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

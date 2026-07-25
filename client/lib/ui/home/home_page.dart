@@ -212,6 +212,12 @@ class GradesCard extends StatelessWidget {
                   Text(_statusText(item.status)),
                 ],
               ),
+              // App 内下钻：由课程标识 + 本详情视图闸门，不依赖外链（ADR-025 §2.6）。
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => CourseDetailPage(item: item, term: data.term),
+                ),
+              ),
             ),
         ],
       ),
@@ -243,7 +249,155 @@ class NoticeCard extends StatelessWidget {
                   _formatDate(item.publishedAtDateTime!),
                 if (item.summary != null) item.summary!,
               ].join(' · ')),
+              trailing: const Icon(Icons.chevron_right),
+              // App 内下钻：由通知标识 + 本详情视图闸门，不依赖外链（ADR-025 §2.6）。
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => NoticeDetailPage(item: item),
+                ),
+              ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 成绩单课详情（App 内下钻，ADR-025 §2.2/§2.6）。
+///
+/// 仅渲染快照中已有的课程数据，**不发起任何网络请求、不涉外链**（外跳属 §2.7，
+/// 触红线 #1，另行落地）。字段一律 schema 既有，缺失即不展示（红线 #6，不臆造）。
+class CourseDetailPage extends StatelessWidget {
+  const CourseDetailPage({required this.item, required this.term, super.key});
+
+  final GradesListItems item;
+  final String term;
+
+  @override
+  Widget build(BuildContext context) {
+    final examAt = item.examAt == null ? null : DateTime.tryParse(item.examAt!);
+    final rows = <Widget>[
+      _DetailRow(label: '课程名称', value: item.courseName),
+      _DetailRow(label: '课程号', value: item.courseId),
+      _DetailRow(label: '学期', value: term),
+      _DetailRow(label: '学分', value: '${item.credit}'),
+      _DetailRow(label: '类别', value: _categoryText(item.category)),
+      _DetailRow(
+        label: '成绩',
+        value: item.scoreText.isEmpty ? '未发布' : item.scoreText,
+      ),
+      if (item.gradePoint != null)
+        _DetailRow(label: '绩点', value: '${item.gradePoint}'),
+      _DetailRow(label: '状态', value: _statusText(item.status)),
+      if (item.teacher != null)
+        _DetailRow(label: '任课教师', value: item.teacher!),
+      if (item.offeringUnit != null)
+        _DetailRow(label: '开课单位', value: item.offeringUnit!),
+      if (item.classNo != null) _DetailRow(label: '教学班', value: item.classNo!),
+      if (item.examMethod != null)
+        _DetailRow(label: '考核方式', value: item.examMethod!),
+      if (examAt != null)
+        _DetailRow(label: '考试时间', value: _formatDateTime(examAt)),
+      if (item.rank != null) _DetailRow(label: '课程排名', value: '${item.rank}'),
+      if (item.courseAverage != null)
+        _DetailRow(label: '课程平均分', value: '${item.courseAverage}'),
+    ];
+    return Scaffold(
+      appBar: AppBar(title: Text(item.courseName)),
+      body: ListView(padding: const EdgeInsets.all(16), children: rows),
+    );
+  }
+}
+
+/// 通知正文详情（App 内下钻，ADR-025 §2.2/§2.6）。
+///
+/// 仅渲染快照数据；正文按纯文本展示（不解析 HTML，属 ADR-011 范畴）。附件与「在网页
+/// 打开」属外跳（§2.7，触红线 #1），本轮不接线、不可点。
+class NoticeDetailPage extends StatelessWidget {
+  const NoticeDetailPage({required this.item, super.key});
+
+  final NoticeListItems item;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final meta = <String>[
+      item.source,
+      _noticeCategoryText(item.category),
+      if (item.author != null) item.author!,
+      if (item.department != null) item.department!,
+      if (item.publishedAtDateTime != null)
+        _formatDate(item.publishedAtDateTime!),
+    ].join(' · ');
+    final attachments = item.attachments ?? const <NoticeListItemsAttachments>[];
+    final hasContent = item.content != null && item.content!.isNotEmpty;
+    return Scaffold(
+      appBar: AppBar(title: const Text('通知详情')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(item.title, style: theme.textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(
+            meta,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const Divider(height: 24),
+          if (item.summary != null && item.summary!.isNotEmpty) ...[
+            Text(item.summary!, style: theme.textTheme.titleMedium),
+            const SizedBox(height: 12),
+          ],
+          Text(
+            hasContent ? item.content! : '（本条通知未提供正文）',
+            style: theme.textTheme.bodyMedium,
+          ),
+          if (attachments.isNotEmpty) ...[
+            const Divider(height: 24),
+            Text('附件', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            for (final a in attachments)
+              // 附件打开需外跳（§2.7 凭证隔离，触红线 #1），本轮未接线故禁用点击。
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                enabled: false,
+                leading: const Icon(Icons.attach_file),
+                title: Text(a.name),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 详情页的「标签 + 值」明细行。
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(value, style: theme.textTheme.bodyMedium),
+          ),
         ],
       ),
     );
