@@ -8,5 +8,6 @@ export interface GpaSummary {
   rank?: number;
   rankTotal?: number;
   window?: string;
+  /** 汇总数据更新时间，RFC3339/UTC；缺失表示来源未提供。 */
   updatedAt?: string;
 }
