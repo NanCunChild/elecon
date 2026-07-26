@@ -1,0 +1,3 @@
+[submodule "vendor/elecon-adapters"]
+	path = vendor/elecon-adapters
+	url = https://github.com/ncc-devlab/elecon-adapters.git
