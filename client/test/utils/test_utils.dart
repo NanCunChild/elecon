@@ -32,7 +32,8 @@ String repoPath(String relPath) => '${repoRoot()}/$relPath';
 
 /// 解析兄弟仓 elecon-adapters 中某学校 adapter 目录（ADR-018 分离仓）。
 ///
-/// 优先级：env `ELECON_ADAPTERS_REPO` → 子模块 `vendor/elecon-adapters` → 并排检出
+/// 优先级（ADR-018 §2.11.1，按需拉取取代子模块）：env `ELECON_ADAPTERS_REPO`
+/// → 按需拉取缓存 `.adapters-cache/elecon-adapters`（scripts/fetch-adapters.sh 默认落点） → 并排检出
 /// `../elecon-adapters`。缺仓（CI 未拉子模块 / 本地无并排检出）返回 null，调用方 **skip-if-absent**，
 /// 与服务端 `smoke-utils.adapterDirIfPresent` 一致。核心仓自有的 `_stdlib`/`_canary`/`_template`/
 /// `school-helloworld` 仍用 [repoPath]（不经本函数）。
@@ -41,7 +42,7 @@ String? schoolAdapterDir(String adapterId, {bool? requireAdapters}) {
   final envRepo = Platform.environment['ELECON_ADAPTERS_REPO'];
   final candidates = <String>[
     if (envRepo != null && envRepo.isNotEmpty) '$envRepo/adapters/$adapterId',
-    '$root/vendor/elecon-adapters/adapters/$adapterId',
+    '$root/.adapters-cache/elecon-adapters/adapters/$adapterId',
     '${Directory(root).parent.path}/elecon-adapters/adapters/$adapterId',
   ];
   for (final dir in candidates) {
@@ -50,7 +51,7 @@ String? schoolAdapterDir(String adapterId, {bool? requireAdapters}) {
   if (requireAdapters ??
       (Platform.environment['ELECON_REQUIRE_ADAPTERS'] == '1')) {
     throw FileSystemException(
-      "缺必需 adapter '$adapterId'：请检出 vendor/elecon-adapters submodule 或设置 ELECON_ADAPTERS_REPO",
+      "缺必需 adapter '$adapterId'：请运行 bash scripts/fetch-adapters.sh 或设置 ELECON_ADAPTERS_REPO",
     );
   }
   return null;

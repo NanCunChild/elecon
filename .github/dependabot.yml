@@ -1,6 +1,10 @@
 version: 2
 updates:
-  - package-ecosystem: "gitsubmodule"
+  # elecon-adapters 曾以 git 子模块消费，由 dependabot gitsubmodule 跟踪更新。
+  # 2026-07-26（ADR-018 §2.11.1）改为按需拉取 + adapters.pin 文本 pin，子模块已移除；
+  # 文本 pin 无法由 dependabot 自动跟踪，bump 由维护者手动改 adapters.pin。
+  # 保留 dependabot 跟踪 CI 使用的 GitHub Actions 版本（钉版本纪律，仍有用）。
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"

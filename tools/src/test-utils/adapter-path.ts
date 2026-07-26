@@ -4,9 +4,12 @@ import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export function requireAdapterDir(repoRoot: string, adapterId: string): string {
+  // 解析优先级（ADR-018 §2.11.1，按需拉取取代子模块）：ELECON_ADAPTERS_REPO(env)
+  // → 按需拉取缓存 .adapters-cache/elecon-adapters（scripts/fetch-adapters.sh 默认落点）
+  // → 并排检出 ../elecon-adapters。
   const candidates = [
     ...(process.env.ELECON_ADAPTERS_REPO ? [process.env.ELECON_ADAPTERS_REPO] : []),
-    join(repoRoot, "vendor/elecon-adapters"),
+    join(repoRoot, ".adapters-cache/elecon-adapters"),
     resolve(repoRoot, "../elecon-adapters"),
   ];
   for (const root of candidates) {
@@ -18,6 +21,6 @@ export function requireAdapterDir(repoRoot: string, adapterId: string): string {
     }
   }
   throw new Error(
-    `缺必需 adapter '${adapterId}'：请检出 vendor/elecon-adapters submodule 或设置 ELECON_ADAPTERS_REPO`,
+    `缺必需 adapter '${adapterId}'：请运行 bash scripts/fetch-adapters.sh 或设置 ELECON_ADAPTERS_REPO`,
   );
 }

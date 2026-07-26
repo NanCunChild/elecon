@@ -83,14 +83,15 @@ export const noResolver: CredentialResolver = {
 // ---------------------------------------------------------------------------
 
 /**
- * 公开 adapter 兄弟仓根。解析优先级：`ELECON_ADAPTERS_REPO`（可覆盖）→ 子模块
- * `vendor/elecon-adapters`（core CI 拉子模块后即在此）→ 并排检出 `../elecon-adapters`（本地/兄弟仓 CI）。
+ * 公开 adapter 兄弟仓根。解析优先级（ADR-018 §2.11.1，按需拉取取代子模块）：
+ * `ELECON_ADAPTERS_REPO`（可覆盖，CI 由 fetch-adapters.sh 导出）→ 按需拉取缓存
+ * `.adapters-cache/elecon-adapters`（scripts/fetch-adapters.sh 默认落点）→ 并排检出 `../elecon-adapters`。
  * 返回首个存在 `adapters/` 的候选；均无则返回并排检出路径（由 [adapterDirIfPresent] skip-if-absent 承接）。
  */
 export function adaptersRepoRoot(repoRoot: string): string {
   const env = process.env.ELECON_ADAPTERS_REPO;
   const sibling = `${repoRoot}../elecon-adapters`;
-  const candidates = [...(env ? [env] : []), `${repoRoot}vendor/elecon-adapters`, sibling].map((p) =>
+  const candidates = [...(env ? [env] : []), `${repoRoot}.adapters-cache/elecon-adapters`, sibling].map((p) =>
     p.replace(/\/$/, ""),
   );
   for (const base of candidates) {
@@ -122,7 +123,7 @@ export function adapterDirIfPresent(
   }
   if (requireAdapters) {
     throw new Error(
-      `缺必需 adapter '${adapterId}'：请检出 vendor/elecon-adapters submodule 或设置 ELECON_ADAPTERS_REPO`,
+      `缺必需 adapter '${adapterId}'：请运行 bash scripts/fetch-adapters.sh 或设置 ELECON_ADAPTERS_REPO`,
     );
   }
   return null;
