@@ -22,21 +22,27 @@ import addFormats from "ajv-formats";
 // 替代裸 `as { items: ... }` cast。类型声明零运行时，不参与 emit。
 import type { NoticeList } from "../../../contract/generated/ts/notice.list.js";
 import {
+  adapterDirIfPresent,
   FakeTransport,
   noResolver,
   readText,
   resolveRepoRoot,
   runMain,
+  skipSmoke,
 } from "./__testutils__/smoke-utils.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 import { runImperativeAdapter } from "./sandbox.js";
 import { TrustedAdapterContext } from "./trusted-context.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
-const xjtDir = `${repoRoot}adapters/school-xjt`;
-const fixDir = `${xjtDir}/fixtures/dean.xjtu.edu.cn`;
 
 async function main(): Promise<void> {
+  const xjtDir = adapterDirIfPresent(repoRoot, "school-xjt");
+  if (!xjtDir) {
+    skipSmoke("缺 elecon-adapters 中的 school-xjt");
+    return;
+  }
+  const fixDir = `${xjtDir}/fixtures/dean.xjtu.edu.cn`;
   const source = readText(`${xjtDir}/index.js`);
   const challengeHtml = readText(`${fixDir}/challenge.html`);
   const noticeHtml = readText(`${fixDir}/notice.html`);

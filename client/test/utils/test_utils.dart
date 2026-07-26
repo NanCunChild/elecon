@@ -30,6 +30,32 @@ String repoRoot() {
 /// 解析相对仓库根的路径。
 String repoPath(String relPath) => '${repoRoot()}/$relPath';
 
+/// 解析兄弟仓 elecon-adapters 中某学校 adapter 目录（ADR-018 分离仓）。
+///
+/// 优先级：env `ELECON_ADAPTERS_REPO` → 子模块 `vendor/elecon-adapters` → 并排检出
+/// `../elecon-adapters`。缺仓（CI 未拉子模块 / 本地无并排检出）返回 null，调用方 **skip-if-absent**，
+/// 与服务端 `smoke-utils.adapterDirIfPresent` 一致。核心仓自有的 `_stdlib`/`_canary`/`_template`/
+/// `school-helloworld` 仍用 [repoPath]（不经本函数）。
+String? schoolAdapterDir(String adapterId, {bool? requireAdapters}) {
+  final root = repoRoot();
+  final envRepo = Platform.environment['ELECON_ADAPTERS_REPO'];
+  final candidates = <String>[
+    if (envRepo != null && envRepo.isNotEmpty) '$envRepo/adapters/$adapterId',
+    '$root/vendor/elecon-adapters/adapters/$adapterId',
+    '${Directory(root).parent.path}/elecon-adapters/adapters/$adapterId',
+  ];
+  for (final dir in candidates) {
+    if (File('$dir/index.js').existsSync()) return dir;
+  }
+  if (requireAdapters ??
+      (Platform.environment['ELECON_REQUIRE_ADAPTERS'] == '1')) {
+    throw FileSystemException(
+      "缺必需 adapter '$adapterId'：请检出 vendor/elecon-adapters submodule 或设置 ELECON_ADAPTERS_REPO",
+    );
+  }
+  return null;
+}
+
 /// 读取并解码 `contract/golden/broker/` 下的 golden JSON 文件。
 Map<String, dynamic> readGolden(String fileName) {
   final path = repoPath('contract/golden/broker/$fileName');
@@ -37,7 +63,10 @@ Map<String, dynamic> readGolden(String fileName) {
 }
 
 /// 读取并解码 `contract/golden/broker/` 下的 golden JSON 文件为一组 golden 用例列表。
-List<Map<String, dynamic>> readGoldenCases(String fileName, [String key = 'cases']) {
+List<Map<String, dynamic>> readGoldenCases(
+  String fileName, [
+  String key = 'cases',
+]) {
   final golden = readGolden(fileName);
   return (golden[key] as List).cast<Map<String, dynamic>>();
 }
@@ -61,8 +90,10 @@ class FakeTransport implements Transport {
   final List<TransportResponse> _queue;
   final List<TransportRequest> seen = [];
   @override
-  Future<TransportResponse> fetch(TransportRequest req,
-      {TransportCancelToken? cancelToken}) async {
+  Future<TransportResponse> fetch(
+    TransportRequest req, {
+    TransportCancelToken? cancelToken,
+  }) async {
     seen.add(req);
     if (_queue.isEmpty) throw StateError('FakeTransport queue exhausted');
     return _queue.removeAt(0);
@@ -92,12 +123,12 @@ BrokerManifestView viewFromJson(Map<String, dynamic> v) {
 }
 
 JarCookie cookieFromJson(Map<String, dynamic> c) => JarCookie(
-      name: c['name'] as String,
-      value: c['value'] as String,
-      domain: c['domain'] as String,
-      path: c['path'] as String,
-      source: c['source'] as String,
-    );
+  name: c['name'] as String,
+  value: c['value'] as String,
+  domain: c['domain'] as String,
+  path: c['path'] as String,
+  source: c['source'] as String,
+);
 
 Map<String, String> headersFromJson(Object? json) =>
     (json as Map).map((k, v) => MapEntry(k as String, v as String));

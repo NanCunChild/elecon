@@ -14,16 +14,23 @@ import { strict as assert } from "node:assert";
 import { sign as edSign, generateKeyPairSync } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { computeBundleDigest, type SignatureFile, serializePayload } from "../signer/index.js";
+import { requireAdapterDir } from "../test-utils/adapter-path.js";
 import { buildEnvelope, envelopeDigest } from "./envelope.js";
 import { packBundle, unpackBundle, verifyBundleIntegrity, verifyBundleSignature } from "./package.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
-const dir = `${repoRoot}adapters/school-xidian`;
+const dir = requireAdapterDir(repoRoot, "school-xidian");
 
 // ① envelope digest 与 signer 目录式 digest 逐字节一致（零漂移不变量）
 const env = buildEnvelope(dir);
 const dDir = computeBundleDigest(dir);
 const dEnv = envelopeDigest(env);
+const manifestFile = env.files.find((file) => file.path === "manifest.json");
+assert.ok(manifestFile, "envelope 应含 manifest.json");
+const manifestIdentity = JSON.parse(manifestFile.content) as {
+  adapterId: string;
+  adapterVersion: string;
+};
 assert.equal(dEnv, dDir, `envelope digest 应等于 signer 目录 digest：${dEnv} vs ${dDir}`);
 assert.ok(
   env.files.some((f) => f.path === "manifest.json") && env.files.some((f) => f.path === "index.js"),
@@ -38,14 +45,14 @@ console.log("  ✓ envelopeDigest === computeBundleDigest（零漂移）");
 // 构造一个 detached 签名（dev ed25519 keypair,仅测试用）
 const { publicKey, privateKey } = generateKeyPairSync("ed25519");
 const payload = serializePayload({
-  adapterId: "school-xidian",
-  adapterVersion: "0.1.0",
+  adapterId: manifestIdentity.adapterId,
+  adapterVersion: manifestIdentity.adapterVersion,
   tier: "official",
   digest: dEnv,
 });
 const signature: SignatureFile = {
-  adapterId: "school-xidian",
-  adapterVersion: "0.1.0",
+  adapterId: manifestIdentity.adapterId,
+  adapterVersion: manifestIdentity.adapterVersion,
   tier: "official",
   digest: dEnv,
   signature: edSign(null, payload, privateKey).toString("base64"),

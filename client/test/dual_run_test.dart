@@ -34,6 +34,14 @@ void main() {
   group('dual-run（declarative, 客户端 QuickJS）', () {
     final parserDir = repoPath('adapters/_template/declarative');
 
+    // XIDIAN 真实 adapter 属兄弟仓 elecon-adapters（ADR-018）；子模块/并排检出均无则 skip。
+    final xidianDir = schoolAdapterDir('school-xidian');
+    final xidianSkip =
+        skip ??
+        (xidianDir == null
+            ? '缺 elecon-adapters（子模块 vendor/ 或并排检出均无）；ADR-018 分离仓测试'
+            : null);
+
     // 不在此硬检查 FLUTTER_QJS_NEXT_LIBRARY：库定位交给 flutter_qjs_next 加载器
     // （env 或回退产物路径，见文件头注释）。真找不到时它会在首次 evaluate 抛带指引的错，
     // 与 host_fn/fetch 等 qjs 测试行为一致。
@@ -58,7 +66,6 @@ void main() {
     // 产出必须等于 golden——服务端侧由 sandbox.smoke.ts 的 testXidianNoticeList 证，
     // 两端同引擎 + 同 bundle ⟹ 零漂移（ADR-011 §2.1/§2.3）。
     test('XIDIAN notice.list：elecon:html 解析产出与 golden 一致', () async {
-      final xidianDir = repoPath('adapters/school-xidian');
       final stdlibDir = repoPath('adapters/_stdlib');
       final source = File('$xidianDir/index.js').readAsStringSync();
       final htmlStdlib = File('$stdlibDir/html.bundle.js').readAsStringSync();
@@ -75,11 +82,10 @@ void main() {
       );
 
       expect(data, equals(fixture['expected']));
-    });
+    }, skip: xidianSkip);
 
     // fail-closed：未注入 elecon:html 时，import 它的 adapter 必须失败（不静默放过）。
     test('elecon:html 未注入：import 该模块的 adapter 被拒', () async {
-      final xidianDir = repoPath('adapters/school-xidian');
       final source = File('$xidianDir/index.js').readAsStringSync();
       final fixture = readJson('$xidianDir/fixtures/notice.list.json');
 
@@ -93,7 +99,7 @@ void main() {
         ),
         throwsA(isA<AdapterRunException>()),
       );
-    });
+    }, skip: xidianSkip);
 
     // 引擎地板漂移哨兵（客户端半边）。详见 ADR-008 §3。
     test('engine-floor canary：地板内建产出与 golden 一致', () async {
@@ -112,8 +118,7 @@ void main() {
       expect(data, equals(fixture['expected']));
     });
 
-    test('bad_export：未导出 capabilities 对象 → badExport（与服务端词表对齐）',
-        () async {
+    test('bad_export：未导出 capabilities 对象 → badExport（与服务端词表对齐）', () async {
       const source = 'export const notCapabilities = {};';
 
       await expectLater(
@@ -200,7 +205,8 @@ void main() {
       // 归类靠 _mapEngineError 的 "out of memory" 子串匹配（最佳努力）。
       // 引擎升级改 OOM 文案会静默降级为 adapterThrew——本例即变红（审阅 P1-3）。
       // timeoutMs 给宽，确保先撞内存墙而非 interrupt。
-      const source = 'export const capabilities = { hog: () => { '
+      const source =
+          'export const capabilities = { hog: () => { '
           'const a = []; for (;;) a.push(new Array(65536).fill(1)); } };';
 
       await expectLater(
