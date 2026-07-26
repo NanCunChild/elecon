@@ -69,9 +69,10 @@ mirrorDir("contract", "contract");
 mirrorDir("adapters/_stdlib", "adapters/_stdlib", skip);
 // 3) 脚手架模板（贡献者复制起点）
 mirrorDir("adapters/_template", "adapters/_template", skip);
-// 4) 闸门逻辑：只镜像 validator + scanner（signer/codegen 不发布）
+// 4) 闸门逻辑：只镜像 validator + scanner + adapter-policy（signer/codegen 不发布）
 mirrorDir("tools/src/validator", "tools/src/validator", skip);
 mirrorDir("tools/src/scanner", "tools/src/scanner", skip);
+mirrorDir("tools/src/adapter-policy", "tools/src/adapter-policy", skip);
 // 5) broker-primitives：只发 dist + 精简 package.json（去掉 prepare/build，避免 file: 安装时跑 tsc）
 mirrorDir("packages/broker-primitives/dist", "packages/broker-primitives/dist");
 const bp = JSON.parse(readFileSync(join(coreRoot, "packages/broker-primitives/package.json"), "utf8"));
@@ -90,6 +91,20 @@ console.log("  ✓ packages/broker-primitives（dist + 精简 package.json）");
 
 // 6) MIRROR.md：pin 记录 + 勿改声明
 const sha = execSync("git rev-parse HEAD", { cwd: coreRoot }).toString().trim();
+const mirroredSources = [
+  "contract",
+  "adapters/_stdlib",
+  "adapters/_template",
+  "tools/src/validator",
+  "tools/src/scanner",
+  "tools/src/adapter-policy",
+  "packages/broker-primitives",
+];
+const dirty =
+  execSync(`git status --porcelain -- ${mirroredSources.join(" ")}`, { cwd: coreRoot })
+    .toString()
+    .trim() !== "";
+const sourceRevision = dirty ? `${sha}-dirty` : sha;
 const stdlibVer = JSON.parse(readFileSync(join(coreRoot, "adapters/_stdlib/package.json"), "utf8")).version;
 writeFileSync(
   join(vendor, "MIRROR.md"),
@@ -103,14 +118,14 @@ writeFileSync(
 | \`contract/\` | core \`contract/\` | manifest / capability / schema 契约（validator 据此校验） |
 | \`adapters/_stdlib/\` | core \`adapters/_stdlib/\` | \`elecon:html\` stdlib（bundle + 版本，供 stdlibMin 校验）;版本 = ${stdlibVer} |
 | \`adapters/_template/\` | core \`adapters/_template/\` | 贡献脚手架 |
-| \`tools/src/{validator,scanner}/\` | core \`tools/src/\` | CI 静态闸门（§2.10）;**不含 signer** |
+| \`tools/src/{validator,scanner,adapter-policy}/\` | core \`tools/src/\` | CI 静态闸门（§2.10）;**不含 signer** |
 | \`packages/broker-primitives/\` | core \`packages/broker-primitives/dist\` | validator 依赖的 url-match 原语 |
 
-- 源提交（core）：\`${sha}\`
+- 源版本（core）：\`${sourceRevision}\`
 - stdlib 版本：${stdlibVer}
 
 > 若核心 tool 依赖（ajv / ajv-formats / tsx）版本变化，需同步更新公开仓根 \`package.json\`。
 `,
 );
-console.log(`  ✓ vendor/MIRROR.md（core@${sha.slice(0, 8)}, stdlib ${stdlibVer}）`);
+console.log(`  ✓ vendor/MIRROR.md（core@${sha.slice(0, 8)}${dirty ? "-dirty" : ""}, stdlib ${stdlibVer}）`);
 console.log("镜像完成。");

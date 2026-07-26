@@ -9,13 +9,13 @@
  */
 
 import { strict as assert } from "node:assert";
-import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireAdapterDir } from "../test-utils/adapter-path.js";
 import { canonicalizeContent, computeBundleDigest, serializePayload } from "./index.js";
 import { compareSemver, isRevoked, pickNewer, type RevocationList, signRevocation } from "./revocation.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
-const xidian = join(repoRoot, "adapters", "school-xidian");
+const xidian = requireAdapterDir(repoRoot, "school-xidian");
 
 // ---- digest 确定性 ----
 

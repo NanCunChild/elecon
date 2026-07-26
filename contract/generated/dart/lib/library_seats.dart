@@ -8,6 +8,7 @@ class LibrarySeats {
     this.items,
   });
 
+  /// 图书馆座位列表；省略表示源站不提供座位数据。
   final List<LibrarySeatsItems>? items;
 }
 
@@ -21,10 +22,16 @@ class LibrarySeatsItems {
     this.availableUntil,
   });
 
+  /// 座位所在图书馆；省略表示源站不提供。
   final String? library;
+  /// 座位所在楼层；省略表示源站不提供。
   final String? floor;
+  /// 座位的校内作用域标识；省略表示源站不提供。
   final String? seatId;
+  /// 座位状态：可用、已占用、已预约或未知；省略表示源站不提供。
   final String? status;
+  /// 座位可用时段的开始时刻，RFC3339/UTC；省略表示源站不提供。
   final String? availableFrom;
+  /// 座位可用时段的结束时刻，RFC3339/UTC；省略表示源站不提供。
   final String? availableUntil;
 }

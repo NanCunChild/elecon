@@ -31,6 +31,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # 按需拉取公开仓 elecon-adapters 的 adapters/（ADR-018 §2.11.1，取代 git 子模块）。
+      # 脚本按 adapters.pin 钉死的 ref 浅克隆，并把 ELECON_ADAPTERS_REPO 写入 $GITHUB_ENV。
+      - name: Fetch pinned elecon-adapters
+        run: bash scripts/fetch-adapters.sh
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -39,6 +43,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck -w server
       - run: npm run smoke:all -w server
+        env:
+          ELECON_REQUIRE_ADAPTERS: "1"
 
   # 工具链：全量 smoke（目录发现，含 validator/urlmatch/scanner/codegen/signer——此前手工
   # 列举漏跑了后三个）+ 对 adapters/ 全量静态校验 + codegen 漂移闸门。
@@ -46,6 +52,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # 按需拉取 elecon-adapters（ADR-018 §2.11.1）；validate 对其 adapters/ 做全量静态校验。
+      - name: Fetch pinned elecon-adapters
+        run: bash scripts/fetch-adapters.sh
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -92,6 +101,10 @@ jobs:
         working-directory: client
     steps:
       - uses: actions/checkout@v5
+      # 按需拉取 elecon-adapters（ADR-018 §2.11.1）；flutter test 双跑用其 school-* fixtures。
+      - name: Fetch pinned elecon-adapters
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/fetch-adapters.sh
       - name: Install native build deps
         run: sudo apt-get update && sudo apt-get install -y ninja-build cmake pkg-config libgtk-3-dev
       - uses: subosito/flutter-action@v2
@@ -104,6 +117,8 @@ jobs:
         run: bash tool/build_qjs_test_lib.sh
       - run: flutter analyze
       - run: flutter test
+        env:
+          ELECON_REQUIRE_ADAPTERS: "1"
       # 快门：main Manifest 必须含 INTERNET（曾只写在 debug/profile → release 无法登录）
       - name: Release static gate (Android INTERNET)
         run: bash tool/check_release_gate.sh --static-only

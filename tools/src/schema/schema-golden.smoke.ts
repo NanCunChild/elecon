@@ -11,8 +11,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+import { requireAdapterDir } from "../test-utils/adapter-path.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const xidianDir = requireAdapterDir(repoRoot, "school-xidian");
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
@@ -35,8 +37,7 @@ function requiredField(schemaName: string): string {
 const cases: Array<{ schema: string; valid: unknown }> = [
   {
     schema: "notice.list",
-    valid: readJson<{ expected: unknown }>(`${repoRoot}adapters/school-xidian/fixtures/notice.list.json`)
-      .expected,
+    valid: readJson<{ expected: unknown }>(join(xidianDir, "fixtures/notice.list.json")).expected,
   },
   {
     schema: "grades.list",

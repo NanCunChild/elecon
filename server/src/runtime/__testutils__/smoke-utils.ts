@@ -82,10 +82,26 @@ export const noResolver: CredentialResolver = {
 // 兄弟仓 elecon-adapters（ADR-018 adapter 分离）
 // ---------------------------------------------------------------------------
 
-/** 公开 adapter 兄弟仓根（`ELECON_ADAPTERS_REPO` 可覆盖）；默认与本仓同级。 */
+/**
+ * 公开 adapter 兄弟仓根。解析优先级（ADR-018 §2.11.1，按需拉取取代子模块）：
+ * `ELECON_ADAPTERS_REPO`（可覆盖，CI 由 fetch-adapters.sh 导出）→ 按需拉取缓存
+ * `.adapters-cache/elecon-adapters`（scripts/fetch-adapters.sh 默认落点）→ 并排检出 `../elecon-adapters`。
+ * 返回首个存在 `adapters/` 的候选；均无则返回并排检出路径（由 [adapterDirIfPresent] skip-if-absent 承接）。
+ */
 export function adaptersRepoRoot(repoRoot: string): string {
-  const base = process.env.ELECON_ADAPTERS_REPO ?? `${repoRoot}../elecon-adapters/`;
-  return base.replace(/\/$/, "");
+  const env = process.env.ELECON_ADAPTERS_REPO;
+  const sibling = `${repoRoot}../elecon-adapters`;
+  const candidates = [...(env ? [env] : []), `${repoRoot}.adapters-cache/elecon-adapters`, sibling].map((p) =>
+    p.replace(/\/$/, ""),
+  );
+  for (const base of candidates) {
+    try {
+      if (statSync(`${base}/adapters`).isDirectory()) return base;
+    } catch {
+      /* 下一个候选 */
+    }
+  }
+  return sibling.replace(/\/$/, "");
 }
 
 /**
@@ -94,12 +110,21 @@ export function adaptersRepoRoot(repoRoot: string): string {
  * 供依赖公开 adapter 源的 smoke「缺仓即跳过」：adapter 已按 ADR-018 迁至独立仓，
  * 本仓 CI 不检出兄弟仓 → 缺失即跳过而非 ENOENT 硬失败（本地 / adapters 仓 CI 仍完整跑）。
  */
-export function adapterDirIfPresent(repoRoot: string, adapterId: string): string | null {
+export function adapterDirIfPresent(
+  repoRoot: string,
+  adapterId: string,
+  requireAdapters = process.env.ELECON_REQUIRE_ADAPTERS === "1",
+): string | null {
   const dir = `${adaptersRepoRoot(repoRoot)}/adapters/${adapterId}`;
   try {
     if (statSync(`${dir}/index.js`).isFile()) return dir;
   } catch {
     /* 缺兄弟仓或缺该 adapter */
+  }
+  if (requireAdapters) {
+    throw new Error(
+      `缺必需 adapter '${adapterId}'：请运行 bash scripts/fetch-adapters.sh 或设置 ELECON_ADAPTERS_REPO`,
+    );
   }
   return null;
 }
