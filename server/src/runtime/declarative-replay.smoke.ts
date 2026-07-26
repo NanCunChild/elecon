@@ -1,7 +1,7 @@
 /** 通用 declarative fixture 回放 smoke：验证不同 adapter 共用同一回放路径（ADR-022）。 */
 
 import { replayDeclarativeFixture } from "./__testutils__/declarative-replay.js";
-import { resolveRepoRoot, runMain } from "./__testutils__/smoke-utils.js";
+import { adapterDirIfPresent, resolveRepoRoot, runMain, skipSmoke } from "./__testutils__/smoke-utils.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 
@@ -13,11 +13,12 @@ async function main(): Promise<void> {
   );
   console.log("  ✓ template declarative fixture：golden + schema");
 
-  await replayDeclarativeFixture(
-    import.meta.url,
-    `${repoRoot}adapters/school-xidian`,
-    "fixtures/notice.list.json",
-  );
+  const xidianDir = adapterDirIfPresent(repoRoot, "school-xidian");
+  if (!xidianDir) {
+    skipSmoke("缺 elecon-adapters 中的 school-xidian declarative fixture");
+    return;
+  }
+  await replayDeclarativeFixture(import.meta.url, xidianDir, "fixtures/notice.list.json");
   console.log("  ✓ school-xidian declarative fixture：golden + schema");
 
   console.log("declarative replay smoke 全部通过 ✅");

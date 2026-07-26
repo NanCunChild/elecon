@@ -27,6 +27,7 @@
     "smoke:dataflow": "tsx src/validator/dataflow.smoke.ts",
     "smoke:urlmatch": "tsx src/validator/url-match.smoke.ts",
     "smoke:scanner": "tsx src/scanner/scanner.smoke.ts",
+    "smoke:adapter-policy": "tsx src/adapter-policy/adapter-policy.smoke.ts",
     "smoke:codegen": "tsx src/codegen/codegen.smoke.ts",
     "smoke:signer": "tsx src/signer/signer.smoke.ts",
     "smoke:all": "node ../scripts/run-smokes.mjs src",
@@ -43,6 +44,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.28.1",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }

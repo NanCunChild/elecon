@@ -20,6 +20,10 @@ client/ohos/oh_modules/
 # npm workspace 共享包构建产物（prepare 时由 tsc 生成）
 packages/*/dist/
 
+# 按需拉取的 elecon-adapters 缓存（ADR-018 §2.11.1，取代 git 子模块）。
+# 由 scripts/fetch-adapters.sh 按 adapters.pin 克隆，不入库。
+.adapters-cache/
+
 # YubiKey PIV 签名 ceremony 的本机产物（ADR-002 §2.3、docs/reference/signing_ceremony.md）。
 # 公钥不敏感，但**无需入库**：它随时可从令牌重新读出（`pkcs11.ts pubkey`，无需 PIN），
 # 而信任锚的权威副本是 App 内预埋的 pin——散落的 .pem 只会和作废密钥混淆（2026-07-16 即发生过）。

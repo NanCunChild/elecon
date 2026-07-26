@@ -213,13 +213,30 @@ elecon-adapters/（public,另一组织）
 
 | 期 | 目标 | 含 | 消费方式 |
 |---|---|---|---|
-| **MVP（先做）** | 公开 A 成为 adapter 创作/校验之家 | A 脚手架 + 搬 xidian/xjt + `_template` + CONTRIBUTING;核心→A **镜像** pin 的 contract/stdlib/validator(§2.8);CI §2.10 静态子集(schema + 编译 + import 白名单 + **PII/凭证等价物扫描** + digest) | **核心构建期从 A 拉 adapter**(沿用现 vendored,跑现有 sandbox smoke)——**先不上签名远程分发** |
+| **MVP（先做）** | 公开 A 成为 adapter 创作/校验之家 | A 脚手架 + 搬 xidian/xjt + `_template` + CONTRIBUTING;核心→A **镜像** pin 的 contract/stdlib/validator(§2.8);CI §2.10 静态子集(schema + 编译 + import 白名单 + **PII/凭证等价物扫描** + digest) | **核心构建期从 A 拉 adapter**(§2.11.1 按需拉取,跑现有 sandbox smoke)——**先不上签名远程分发** |
 | **Phase 2** | 签名远程分发 | YubiKey 签名(§2.3)+ bundle 格式(§2.9)+ catalog(§2.5)+ 客户端加载器(§2.6)+ 公网端点 D | 客户端验签→查吊销→远程加载 + 预置基线 |
 | **Phase 3** | 开发者测试层 + 采纳自动化 | 测试 harness CLI(复用零漂移沙箱)+ 夹具/golden 约定 + **imperative 夹具录制/脱敏工具** + 沙箱 B 自动化 + npm 包发布 | — |
 
 - **MVP 本质**:"分离"立即成立(公开创作面 + 静态 CI + 核心构建期消费),不阻塞于重机器。
 - **不可推迟的安全底线随 MVP 走**(§2.10 注):凭证等价物/PII 扫描门。
 - Phase 2/3 各自可再拆小 PR(见 §4);顺序上 **契约先行**(`stdlibMin` + catalog schema)。
+
+### 2.11.1 核心侧消费机制：按需拉取，取代 git 子模块（2026-07-26 增补，经人工 owner 批准）
+
+MVP 落地时，核心构建期消费公开仓 A 的 `adapters/school-*` 一度实现为 **git 子模块**（`vendor/elecon-adapters`，pin 固定 SHA）。实践暴露两处不优雅，改为**按需浅拉取（on-demand shallow fetch）**：
+
+- **自我镜像回灌**：A 仓同时含 `adapters/school-*`（A 的源真相）**与** `vendor/`（§2.8 core→A 单向镜像进来的 contract/stdlib 快照）。子模块是**整仓**单位，核心把 A 整个拉进 `vendor/elecon-adapters/` 时，`.../vendor/contract/` 成了核心自身 `contract/` 的**陈旧回灌副本**——核心工作区里出现两份 contract，纯死重量 + 误编辑风险。这是一个**内容环**（core 的受治理产物出去、又随子模块回来），虽非构建期死锁（镜像单向 + 子模块 pin 手动 bump，无自激），但不必要。
+- **粒度过粗**：核心只需 A 的 `adapters/`，子模块却强制拖入 `vendor/`、`package-lock.json`、A 的 CI 配置等全部内容；git 子模块设计上无法只挂子目录。
+
+**决策**：核心**不再以 git 子模块跟踪 A**，改为在需要 adapter 的 CI job / 本地开发中**按需 `git clone --depth 1` A 到一个 gitignored 路径**，并经既有解析接缝消费——消费侧代码零改动：
+
+- 解析优先级已就位（`server/src/runtime/__testutils__/smoke-utils.ts`、`client/test/utils/test_utils.dart`）：`ELECON_ADAPTERS_REPO`(env) → 并排检出 `../elecon-adapters` → **skip-if-absent**（`ELECON_REQUIRE_ADAPTERS=1` 时缺仓即 fail）。按需拉取只需把 clone 落点导出为 `ELECON_ADAPTERS_REPO`。
+- **钉版本从 gitlink 改为显式文本 pin**（`adapters.pin`，记 tag/commit SHA）：比子模块 gitlink SHA 更可读、diff 更清楚，bump = 改一行。
+- 从核心 git 图移除子模块指针 + 回灌的自身副本；内容环随之消失（核心只再单向消费 A 的 `adapters/`）。
+
+**未来迁移预留（`elecon-contract-mirror`）**：core→A 的镜像目标（§2.8 line 172 的 A `vendor/`）后续迁往**独立的 `elecon-contract-mirror` 仓 / npm 包**（部分基础设施已预留其位）。届时 A 只放社区 adapter、其 CI 消费独立的 contract mirror，A 里不再有 core 的镜像内容——**内容环从源头彻底断开**，每个仓单向流动。这与 §2.11 Phase 3「npm 包」演进同向（§2.8「后续:npm 包」），是其分发侧的具体落点。
+
+> **不变量不变**：消费方向仍严格单向 core←A（只取 `adapters/`）；镜像方向仍单向 core→A（§2.8/§3.9）；A 永不回写 core 的 contract/stdlib/validator。本次只换**核心侧的取件机制**（子模块 → 按需拉取 + 文本 pin），四信任域、镜像 job、签名分发均不变。
 
 ---
 
@@ -233,7 +250,7 @@ elecon-adapters/（public,另一组织）
 6. **契约新增（红线 #6）。** 本 ADR 引入 `runtime.stdlibMin`（manifest schema）+ `contract/catalog.schema.json`,均向后兼容（纯新增）。实现须同步 `tools/` validator + 双端 golden。
 7. **审查沙箱 B 跑未签名 imperative adapter + 注入。** 是 ADR-002 §2.5 dev-sideload-imperative 的服务端类比,**仅测试账号**;B 不是 release 二进制，故可跑,但须与 D、C 分域,且测试账号绝不用真实学生凭证（红线 #1/#8）。
 8. **App Store 依赖 ADR-002/010 落地状态。** 硬件签就位前 iOS release 不得开启任何远程/未签名 adapter 加载路径,否则 §3.3.2(b) 立论不成立（ADR-010 §7）。
-9. **跨组织/私有-公开供应链（§2.8）。** 私有核心构建期消费公开仓 A 的社区 adapter——由分级审查 + 签名门兜(§2.2)。核心→A 的**镜像发布 job** 是新面:须单向、只读、pin 版本;绝不反向(A 不得回写 contract/stdlib/validator)。受信任组件(contract/stdlib/闸门)源真相留私有核心(§2.8 所有权),社区 PR 触不到。残余:MVP 镜像为手工/CI 快照,版本漂移靠 pin + 发布纪律,npm 化后收敛(§2.11 Phase 3)。
+9. **跨组织/私有-公开供应链（§2.8）。** 私有核心构建期消费公开仓 A 的社区 adapter——由分级审查 + 签名门兜(§2.2)。核心→A 的**镜像发布 job** 是新面:须单向、只读、pin 版本;绝不反向(A 不得回写 contract/stdlib/validator)。受信任组件(contract/stdlib/闸门)源真相留私有核心(§2.8 所有权),社区 PR 触不到。残余:MVP 镜像为手工/CI 快照,版本漂移靠 pin + 发布纪律,npm 化后收敛(§2.11 Phase 3)。**核心侧消费机制** 2026-07-26 由 git 子模块改为按需拉取(§2.11.1):消除子模块把 A 的镜像 `vendor/` 回灌进核心导致的自身 contract 陈旧副本(内容环),取件仍单向 core←A、只取 `adapters/`;镜像方向与信任域不变。
 
 ---
 

@@ -30,7 +30,9 @@ class GenericSectionFields {
 
   /// 字段标签，纯文本
   final String label;
+  /// 字段的语义角色提示；本体据此决定渲染。
   final String role;
+  /// 字段的归一化原始值；格式由 role 约定。
   final Object value;
 }
 
@@ -40,7 +42,9 @@ class GenericSectionTable {
     required this.rows,
   });
 
+  /// 表格列定义，顺序与每行的数据值一致。
   final List<GenericSectionTableColumns> columns;
+  /// 表格数据行；每行各值按 columns 的顺序排列。
   final List<List<Object>> rows;
 }
 
@@ -50,6 +54,8 @@ class GenericSectionTableColumns {
     required this.role,
   });
 
+  /// 表格列标题，纯文本。
   final String label;
+  /// 该列的语义角色提示；本体据此决定渲染。
   final String role;
 }

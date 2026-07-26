@@ -19,17 +19,26 @@ class CardBalance {
     this.lastTransaction,
   });
 
+  /// 校内作用域的一卡通卡号。
   final String cardNumber;
+  /// 脱敏后的一卡通卡号；可选，缺失表示学校不提供。
   final String? cardNumberMasked;
+  /// 一卡通卡片类型；可选，缺失表示学校不提供。
   final String? cardType;
+  /// 一卡通账户类型；可选，缺失表示学校不提供。
   final String? accountType;
+  /// 一卡通所属校区；可选，缺失表示学校不提供。
   final String? campus;
+  /// 余额所属钱包；可选，缺失表示学校不提供。
   final String? wallet;
+  /// 一卡通状态：active=正常，frozen=冻结，lost=挂失，cancelled=注销，unknown=未知；可选，缺失表示学校不提供。
   final String? status;
   final String? balanceUpdatedAt;
   final String? snapshotAt;
   final String? errorStatus;
+  /// 一卡通当前余额，使用整数最小货币单位和三字母货币码表示。
   final CardBalanceBalance balance;
+  /// 最近一笔一卡通交易摘要；可选，缺失表示学校不提供。
   final CardBalanceLastTransaction? lastTransaction;
 }
 
@@ -41,6 +50,7 @@ class CardBalanceBalance {
 
   /// 最小货币单位，如分
   final int amountMinor;
+  /// ISO 4217 三字母大写货币码，如 CNY。
   final String currency;
 }
 
@@ -52,8 +62,11 @@ class CardBalanceLastTransaction {
     this.merchant,
   });
 
+  /// 该笔交易金额的最小货币单位整数（如人民币分）；不用浮点。
   final int? amountMinor;
+  /// 该笔交易的 ISO 4217 三字母大写货币码，如 CNY。
   final String? currency;
   final String? time;
+  /// 该笔交易的商户名称；可选，缺失表示学校不提供。
   final String? merchant;
 }

@@ -20,5 +20,6 @@ class GpaSummary {
   final int? rank;
   final int? rankTotal;
   final String? window;
+  /// 汇总数据更新时间，RFC3339/UTC；缺失表示来源未提供。
   final String? updatedAt;
 }

@@ -15,7 +15,7 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import { resolveRepoRoot, runMain } from "./__testutils__/smoke-utils.js";
+import { adapterDirIfPresent, resolveRepoRoot, runMain } from "./__testutils__/smoke-utils.js";
 import { runDeclarativeAdapter, SandboxError } from "./sandbox.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
@@ -122,7 +122,12 @@ async function testMemoryBites(): Promise<void> {
 }
 
 async function testXidianNoticeList(): Promise<void> {
-  const xidianDir = `${repoRoot}adapters/school-xidian`;
+  // XIDIAN 属兄弟仓 elecon-adapters（ADR-018）；子模块/并排检出均无则跳过本子测试（不硬失败）。
+  const xidianDir = adapterDirIfPresent(repoRoot, "school-xidian");
+  if (!xidianDir) {
+    console.log("  ⊘ 跳过 XIDIAN notice.list：缺 elecon-adapters（子模块 vendor/ 或并排检出）");
+    return;
+  }
   const source = readFileSync(`${xidianDir}/index.js`, "utf8");
   const fixture = readJson<Fixture>(`${xidianDir}/fixtures/notice.list.json`);
   const noticeSchema = readJson(`${repoRoot}contract/schema/notice.list.schema.json`);

@@ -1,0 +1,8 @@
+# elecon-adapters 消费 pin（ADR-018 §2.11.1）
+#
+# 核心构建期从公开仓 ncc-devlab/elecon-adapters 按需拉取 adapters/ 时钉死的 ref。
+# 取代原 git 子模块 gitlink：显式、可读、diff 清楚，bump = 改下面这一行。
+# 拉取由 scripts/fetch-adapters.sh 执行（CI 与本地共用）。
+#
+# 格式：非注释、非空的第一行 = 一个 commit SHA 或 tag。
+5791f47e7e07b6722a9017ce6e22f1c03ced89b8
