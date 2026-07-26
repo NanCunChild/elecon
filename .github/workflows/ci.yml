@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -35,7 +35,7 @@ jobs:
       # 脚本按 adapters.pin 钉死的 ref 浅克隆，并把 ELECON_ADAPTERS_REPO 写入 $GITHUB_ENV。
       - name: Fetch pinned elecon-adapters
         run: bash scripts/fetch-adapters.sh
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -55,7 +55,7 @@ jobs:
       # 按需拉取 elecon-adapters（ADR-018 §2.11.1）；validate 对其 adapters/ 做全量静态校验。
       - name: Fetch pinned elecon-adapters
         run: bash scripts/fetch-adapters.sh
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -82,7 +82,7 @@ jobs:
         working-directory: adapters/_stdlib
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
