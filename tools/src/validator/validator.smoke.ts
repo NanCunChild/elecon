@@ -19,6 +19,7 @@ const manifestValidate = ajv.compile({ type: "object" });
 
 const registry = {
   "grades.list": { emits: { schema: "elecon.grades.list", schemaVersion: "1.0" } },
+  "notice.list": { emits: { schema: "elecon.notice.list", schemaVersion: "1.1" } },
 };
 
 const contract = { manifestValidate, registry };
@@ -260,6 +261,152 @@ function codes(findings: { code: string }[]): string[] {
   assert.equal(unused[0]!.level, "warn", "C8_unused_credential 应为 warn 而非 error");
   assert.equal(findings.filter((f) => f.level === "error").length, 0, "声明未用不应产生 error");
   console.log("  ✓ declarative 声明未用的 credential 仅告警不报错（C8 warn）");
+}
+
+// 10b) mixed manifest 中 credential 可由 imperative 按 scope 隐式使用，不得产生 unused 误报
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: ["https://public.h/*", "https://ehall.h/*"] },
+      credentials: { session: { scope: ["https://ehall.h/*"], type: "cookie" } },
+      capabilities: [
+        {
+          id: "notice.list",
+          requestGraph: "declarative",
+          emits: { schema: "elecon.notice.list", schemaVersion: "1.1" },
+          requests: [{ key: "raw", method: "GET", url: "https://public.h/notices" }],
+        },
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    contract,
+  );
+  assert.ok(
+    !codes(findings).includes("C8_unused_credential"),
+    "mixed manifest 不应误报 imperative 凭证未使用",
+  );
+  assert.equal(
+    findings.filter((f) => f.level === "error").length,
+    0,
+    `合法 mixed manifest 不应产生 error：${JSON.stringify(findings)}`,
+  );
+  console.log("  ✓ mixed manifest 的 imperative 凭证不产生 C8 unused 误报");
+}
+
+// 10c) query credential 必须声明合法 queryParam（ADR-020 Q1）
+{
+  for (const queryParam of [undefined, "", "open&id"]) {
+    const findings = checkManifest(
+      {
+        adapterId: "school-x",
+        trustTier: "official",
+        network: { allow: ["https://card.h/*"] },
+        credentials: {
+          session: {
+            scope: ["https://card.h/*"],
+            type: "query",
+            ...(queryParam === undefined ? {} : { queryParam }),
+          },
+        },
+        capabilities: [
+          {
+            id: "grades.list",
+            requestGraph: "imperative",
+            emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+          },
+        ],
+      },
+      contract,
+    );
+    assert.ok(
+      codes(findings).includes("Q1_query_param_required"),
+      `非法 queryParam 应触发 Q1：${queryParam}`,
+    );
+  }
+  console.log("  ✓ query credential 缺失或非法 queryParam 被拒（Q1）");
+}
+
+// 10d) 非 query credential 禁止携带 queryParam（ADR-020 Q2）
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: ["https://card.h/*"] },
+      credentials: {
+        session: { scope: ["https://card.h/*"], type: "cookie", queryParam: "openid" },
+      },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("Q2_query_param_forbidden"), "cookie/header 携带 queryParam 应触发 Q2");
+  console.log("  ✓ 非 query credential 携带 queryParam 被拒（Q2）");
+}
+
+// 10e) 同 origin + queryParam 不得绑定到两个 ref（ADR-020 Q3）
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: ["https://card.h/*"] },
+      credentials: {
+        first: { scope: ["https://card.h/a/*"], type: "query", queryParam: "openid" },
+        second: { scope: ["https://card.h/b/*"], type: "query", queryParam: "openid" },
+      },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("Q3_ambiguous_query_param"), "同 origin 同 queryParam 应触发 Q3");
+  console.log("  ✓ 同 origin 同 queryParam 的多 ref 歧义被拒（Q3）");
+}
+
+// 10f) 合法 query credential 通过 Q1–Q3
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: ["https://card.h/*"] },
+      credentials: {
+        session: { scope: ["https://card.h/*"], type: "query", queryParam: "openid" },
+      },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    contract,
+  );
+  assert.equal(
+    findings.filter((f) => f.level === "error").length,
+    0,
+    `合法 query credential 不应报错：${JSON.stringify(findings)}`,
+  );
+  console.log("  ✓ 合法 query credential 通过（Q1–Q3）");
 }
 
 // 11) 合法 login（url ⊆ navAllow、success ⊆ navAllow、有 credentials）→ 无 error
