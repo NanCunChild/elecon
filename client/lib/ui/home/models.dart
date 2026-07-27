@@ -29,6 +29,7 @@ class CampusSnapshot {
     this.schedule,
     this.notices,
     this.genericSections = const [],
+    this.supportedCapabilities = const <String>{},
   });
 
   final String schoolName;
@@ -37,6 +38,10 @@ class CampusSnapshot {
   final ScheduleWeek? schedule;
   final NoticeList? notices;
   final List<GenericSection> genericSections;
+  final Set<String> supportedCapabilities;
+
+  bool supportsAll(Iterable<String> capabilities) =>
+      capabilities.every(supportedCapabilities.contains);
 
   bool get isEmpty =>
       grades == null &&

@@ -190,6 +190,14 @@ void main() {
       expect(cardBalanceFromDynamic({'cardNumber': 'x'}), isNull);
     });
 
+    test('余额拒绝非整数最小货币单位而非静默截断', () {
+      final out = cardBalanceFromDynamic({
+        'cardNumber': '00000042',
+        'balance': {'amountMinor': 1234.9, 'currency': 'CNY'},
+      });
+      expect(out, isNull);
+    });
+
     test('交易列表过滤缺失必填字段的条目', () {
       final out = cardTransactionsFromDynamic({
         'cardNumber': '00000042',

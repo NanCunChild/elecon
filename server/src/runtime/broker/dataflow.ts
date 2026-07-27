@@ -18,11 +18,16 @@
  * 🔒 红线 #1（凭证派生值 / 句柄不进 adapter）+ 承重路径：AI 起草，须人工 + 安全清单复核，
  *    不得 AI 独自闭环（AGENTS.md §1 / ADR-023 §5）。
  *
- * regex 回溯步数预算：MVP **延后**（owner 2026-07-24）——本轮靠 D5 语法白名单 + 8KB 输入上限
- * 兜底，不做逐步计数。残余风险（灾难性回溯）见 docs/reference/declarative_dataflow_ops.md §3。
+ * regex 使用 ADR-023 严格安全子集及确定性 matcher，不调用原生 RegExp。AI 起草，须人工安全复核。
  */
 
 import { createHmac, hkdfSync } from "node:crypto";
+import {
+  type LinearRegexPattern,
+  LinearRegexSyntaxError,
+  matchLinearRegex,
+  parseLinearRegex,
+} from "@elecon/broker-primitives";
 
 // ---- 限额（docs/reference/declarative_dataflow_ops.md §4；两端必须一致）----
 
@@ -178,21 +183,21 @@ function extractRegex(bind: BindDecl, response: RawResponse): HandleValue {
       `bind '${bind.var}'：regex 输入超过 ${MAX_REGEX_INPUT_BYTES} 字节`,
     );
   }
-  let re: RegExp;
+  let pattern: LinearRegexPattern;
   try {
-    re = new RegExp(bind.extract.pattern ?? "");
+    pattern = parseLinearRegex(bind.extract.pattern ?? "");
   } catch (err) {
     throw new DataflowError(
       "extract_bad_pattern",
-      `bind '${bind.var}'：模式串非法（${(err as Error).message}）`,
+      `bind '${bind.var}'：模式串非法（${err instanceof LinearRegexSyntaxError ? err.message : "fail-closed"}）`,
     );
   }
-  const m = re.exec(response.body);
+  const m = matchLinearRegex(pattern, response.body);
   if (m === null) {
     throw new DataflowError("extract_not_found", `bind '${bind.var}'：regex 未匹配`);
   }
   const group = bind.extract.group ?? 0;
-  const captured = m[group];
+  const captured = m.groups[group];
   if (captured === undefined) {
     throw new DataflowError("extract_not_found", `bind '${bind.var}'：regex group ${group} 未参与匹配`);
   }

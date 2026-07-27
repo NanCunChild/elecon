@@ -111,12 +111,25 @@ class _EleconHomePageState extends State<EleconHomePage> {
                         // 按需取数区（需 ehall-session；点击触发静默 mint / 可见登录）。
                         // 仅真数据模式装配——注入 loadSnapshot（测试）或 demo 快照时不挂，
                         // 避免无 SessionScope 语境崩溃。
-                        if (_liveSections) ...const [
-                          CardSection(),
-                          GradesSection(),
-                          ScheduleSection(),
-                          ClassroomSection(),
-                        ],
+                        if (_liveSections &&
+                            data.supportsAll(const ['card.balance']))
+                          CardSection(
+                            transactionsEnabled: data.supportsAll(const [
+                              'card.transactions',
+                            ]),
+                          ),
+                        if (_liveSections &&
+                            data.supportsAll(const ['grades.list']))
+                          const GradesSection(),
+                        if (_liveSections &&
+                            data.supportsAll(const ['schedule.week']))
+                          const ScheduleSection(),
+                        if (_liveSections &&
+                            data.supportsAll(const [
+                              'classroom.buildings',
+                              'classroom.available',
+                            ]))
+                          const ClassroomSection(),
                       ],
                     ),
                   ),

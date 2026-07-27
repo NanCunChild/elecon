@@ -130,24 +130,32 @@ function wrap(cap: Partial<DataflowCapability>, trustTier = "sideload") {
   console.log("  ✓ extract 键集合与 source 不符被拒（D4）");
 }
 
-// ============ D5：regex 语法白名单 ============
+// ============ D5：regex 严格线性子集 ============
 {
-  // 嵌套量词
-  assert.ok(checkRegexSyntax("(a+)+$").reason !== null, "(a+)+ 应被拒（嵌套量词）");
-  assert.ok(checkRegexSyntax("(?:ab*)*").reason !== null, "(?:ab*)* 应被拒（嵌套量词）");
-  assert.ok(checkRegexSyntax("((a{2})){3}").reason !== null, "((a{2})){3} 应被拒（嵌套量词外传）");
-  // lookbehind
-  assert.ok(checkRegexSyntax("(?<=x)y").reason !== null, "lookbehind 应被拒");
-  // 反向引用
-  assert.ok(checkRegexSyntax("(a)\\1").reason !== null, "反向引用应被拒");
-  // 命名组
-  assert.ok(checkRegexSyntax("(?<n>a)").reason !== null, "命名组应被拒");
-  // 合法
-  const ok = checkRegexSyntax("client_id=(\\w+)&");
-  assert.equal(ok.reason, null, `合法模式不应被拒，实得 ${ok.reason}`);
-  assert.equal(ok.groupCount, 1, "捕获组计数应为 1");
-  // lookahead 放行
-  assert.equal(checkRegexSyntax("foo(?=bar)").reason, null, "lookahead 应放行");
+  const accepted = [
+    "client_id=([a-z0-9]+)",
+    "[0-9]{4}",
+    "zzz([0-9]+)",
+    "id=(\\w+)",
+    "session_key=(\\w+)",
+    "client_id:'(\\w+)'",
+    "seed=(\\w+)",
+    "seed=(.+)$",
+    "token=(\\w+)",
+    "v=(\\w+)",
+  ];
+  for (const pattern of accepted) {
+    assert.equal(checkRegexSyntax(pattern).reason, null, `当前仓库模式应被接受：${pattern}`);
+  }
+  assert.equal(checkRegexSyntax("client_id=([a-z0-9]+)").groupCount, 1, "捕获组计数应为 1");
+
+  const rejected = ["(a|aa)+$", "a*a*b", "(?=x)x", "(?<=x)y", "(a)\\1", "(\\w)+", "(\\w+)'", "a+?", "a+b"];
+  for (const pattern of rejected) {
+    assert.ok(checkRegexSyntax(pattern).reason !== null, `危险/超子集模式应被拒：${pattern}`);
+  }
+  assert.ok(checkRegexSyntax("a".repeat(257)).reason !== null, "pattern UTF-16 长度上限应为 256");
+  assert.ok(checkRegexSyntax("(a)".repeat(33)).reason !== null, "捕获组上限应为 32");
+  assert.ok(checkRegexSyntax("a{65}").reason !== null, "精确量词上限应为 64");
   // group 越界（模式只有 1 组，取 group 2）
   const f = checkDataflow(
     wrap({ bind: [{ var: "x", from: "A", source: "regex", extract: { pattern: "(a)", group: 2 } }] }),
@@ -158,7 +166,7 @@ function wrap(cap: Partial<DataflowCapability>, trustTier = "sideload") {
     wrap({ bind: [{ var: "x", from: "A", source: "regex", extract: { pattern: "(a+)+" } }] }),
   );
   assert.ok(errorsOf(f2).includes("D5_regex_syntax_rejected"), "非法 regex 应触发 D5");
-  console.log("  ✓ regex 语法白名单（嵌套量词/lookbehind/反向引用/命名组/group 越界）（D5）");
+  console.log("  ✓ regex 严格线性子集（现有模式/对抗模式/lookaround/group 量词/lazy/group 越界）（D5）");
 }
 
 // ============ D6：arg 形状（须恰有 ref 或 text 之一）============

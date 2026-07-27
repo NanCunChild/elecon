@@ -26,6 +26,7 @@ Future<CampusSnapshot> loadCampusSnapshot(SessionController session) async {
     schoolName: school.displayName,
     updatedAt: DateTime.now().toUtc(),
     notices: notices,
+    supportedCapabilities: run.supportedCapabilities,
   );
 }
 

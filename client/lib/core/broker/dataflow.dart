@@ -17,13 +17,14 @@
 /// 🔒 红线 #1（凭证派生值 / 句柄不进 adapter）+ 承重路径：AI 起草，须人工 + 安全清单
 ///    复核，不得 AI 独自闭环（AGENTS.md §1 / ADR-023 §5）。
 ///
-/// regex 回溯步数预算：MVP **延后**（owner 2026-07-24）——靠 D5 语法白名单 + 8KB 输入
-/// 上限兜底，不做逐步计数。残余风险见 docs/reference/declarative_dataflow_ops.md §3。
+/// regex 使用 ADR-023 严格安全子集及确定性 matcher，不调用原生 RegExp。AI 起草，须人工安全复核。
 library;
 
 import 'dart:convert';
 
 import 'package:cryptography/dart.dart' show DartSha256;
+
+import 'linear_regex.dart';
 
 // ---- 限额（docs/reference/declarative_dataflow_ops.md §4；两端必须一致）----
 
@@ -266,16 +267,17 @@ HandleValue _extractRegex(BindDecl bind, RawResponse response) {
       "bind '${bind.varName}'：regex 输入超过 $maxRegexInputBytes 字节",
     );
   }
-  final RegExp re;
+  final LinearRegexPattern pattern;
   try {
-    re = RegExp(bind.extract['pattern'] as String? ?? '');
+    pattern = parseLinearRegex(bind.extract['pattern'] as String? ?? '');
   } catch (e) {
+    final reason = e is LinearRegexSyntaxException ? e.message : 'fail-closed';
     throw DataflowException(
       'extract_bad_pattern',
-      "bind '${bind.varName}'：模式串非法（$e）",
+      "bind '${bind.varName}'：模式串非法（$reason）",
     );
   }
-  final m = re.firstMatch(response.body);
+  final m = matchLinearRegex(pattern, response.body);
   if (m == null) {
     throw DataflowException(
       'extract_not_found',

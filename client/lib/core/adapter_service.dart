@@ -25,6 +25,7 @@ import 'adapter_runtime.dart'
         AdapterLaunchException,
         AdapterRunException,
         HarvestTarget,
+        planLaunch,
         runLoadedAdapter;
 import 'broker/cookie_jar.dart' show CookieJar;
 import 'broker/fetch_proxy.dart' show Transport;
@@ -60,18 +61,24 @@ enum CapabilityFailureKind {
 }
 
 class CapabilityRun {
-  const CapabilityRun.ok(this.data)
-    : failureKind = null,
-      reason = null,
-      runReason = null;
+  const CapabilityRun.ok(
+    this.data, {
+    this.supportedCapabilities = const <String>{},
+  }) : failureKind = null,
+       reason = null,
+       runReason = null;
   const CapabilityRun.failed(
     CapabilityFailureKind this.failureKind,
     this.reason, {
     this.runReason,
-  }) : data = null;
+  }) : data = null,
+       supportedCapabilities = const <String>{};
 
   /// 归一化产出（JSON 往返的 Dart 结构）；仅 [ok] 时非 null。
   final Object? data;
+
+  /// 本次执行所用已验签 bundle manifest 的权威能力集；失败时为空。
+  final Set<String> supportedCapabilities;
 
   final CapabilityFailureKind? failureKind;
 
@@ -150,6 +157,9 @@ class AdapterService {
       return CapabilityRun.failed(CapabilityFailureKind.load, load.reason);
     }
     try {
+      final supportedCapabilities = Set<String>.unmodifiable(
+        planLaunch(load).capabilities,
+      );
       final data = await runLoadedAdapter(
         result: load,
         capability: capability,
@@ -162,7 +172,10 @@ class AdapterService {
         nowMs: nowMs ?? DateTime.now().millisecondsSinceEpoch,
         onLog: onLog,
       );
-      return CapabilityRun.ok(data);
+      return CapabilityRun.ok(
+        data,
+        supportedCapabilities: supportedCapabilities,
+      );
     } on AdapterLaunchException catch (e) {
       return CapabilityRun.failed(CapabilityFailureKind.launch, e.message);
     } on AdapterRunException catch (e) {

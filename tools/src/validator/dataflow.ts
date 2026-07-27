@@ -28,6 +28,7 @@
  *  D16 🔒 at=header 的注入名不得为凭证头 / 逐跳头（红线 #1）
  */
 
+import { LinearRegexSyntaxError, parseLinearRegex } from "@elecon/broker-primitives";
 import type { Finding } from "./index.js";
 
 // ---- 声明面类型（对应 contract/manifest.schema.json）----
@@ -226,132 +227,19 @@ export interface RegexSyntaxResult {
 }
 
 /**
- * 🔒 regex 语法白名单（ADR-023 §5 决策 1）。
+ * 🔒 regex 严格线性子集（ADR-023 §5 决策 1）。
  *
- * **输入大小挡不住灾难性回溯**——`(a+)+$` 在 8 KB 输入上即可挂死，而模式串正由
- * adapter 作者提供。故静态侧禁掉可导致指数回溯的构造（嵌套量词、反向引用），
- * 运行期另有回溯步数预算兜底（两道闸门，缺一不可）。
- *
- * 首批禁用：
- *  - **嵌套量词**：对「内部已含量词的分组」再加量词（`(a+)+` / `(?:a*)*` / `(a{2}){3}`）
- *  - **lookbehind** `(?<=` `(?<!`：Dart/JS 引擎支持度与语义差异大，且回溯行为难界定
- *  - **命名捕获组** `(?<name>`：首批收窄语法面；group 恒按编号引用
- *  - **反向引用** `\1` `\k<n>`：强制指数回溯，无例外
- * lookahead `(?=` `(?!` 放行（ADR 未禁，且由步数预算兜底）。
+ * validator 与 runtime 共用 `@elecon/broker-primitives` parser，保证任何获准 pattern
+ * 都可由确定性 matcher 执行，绝不回落到原生 RegExp。AI 起草，须人工安全复核。
  */
 export function checkRegexSyntax(pattern: string): RegexSyntaxResult {
-  let groupCount = 0;
-  let inClass = false;
-  /** 分组栈：每项记录「该组内部是否出现过量词」。 */
-  const stack: Array<{ hasQuantifier: boolean }> = [];
-  /** 刚闭合的分组（供「`)` 后紧跟量词」检测）；null 表示上一个 token 不是 `)`。 */
-  let justClosed: { hasQuantifier: boolean } | null = null;
-
-  const markQuantifier = (): void => {
-    for (const g of stack) g.hasQuantifier = true;
-  };
-
-  for (let i = 0; i < pattern.length; i++) {
-    const c = pattern[i]!;
-
-    if (c === "\\") {
-      const next = pattern[i + 1];
-      if (next === undefined) return { reason: "模式串以孤立反斜杠结尾", groupCount: 0 };
-      if (!inClass && /[1-9]/.test(next)) {
-        return { reason: `禁反向引用 \\${next}（强制指数回溯）`, groupCount: 0 };
-      }
-      if (!inClass && next === "k") {
-        return { reason: "禁命名反向引用 \\k<…>（强制指数回溯）", groupCount: 0 };
-      }
-      i++; // 跳过被转义字符
-      justClosed = null;
-      continue;
-    }
-
-    if (inClass) {
-      if (c === "]") inClass = false;
-      justClosed = null;
-      continue;
-    }
-
-    if (c === "[") {
-      inClass = true;
-      justClosed = null;
-      continue;
-    }
-
-    if (c === "(") {
-      if (pattern.startsWith("(?<=", i) || pattern.startsWith("(?<!", i)) {
-        return { reason: "禁 lookbehind（(?<= / (?<!）", groupCount: 0 };
-      }
-      if (pattern.startsWith("(?<", i)) {
-        return { reason: "禁命名捕获组（(?<name>）；group 请按编号引用", groupCount: 0 };
-      }
-      const isCapturing = pattern[i + 1] !== "?";
-      if (isCapturing) groupCount++;
-      stack.push({ hasQuantifier: false });
-      justClosed = null;
-      continue;
-    }
-
-    if (c === ")") {
-      const popped = stack.pop();
-      if (popped === undefined) return { reason: "括号不配对（多余的 `)`）", groupCount: 0 };
-      // 组内量词向外传播：外层组也算「内部含量词」，使 `((a+))+ ` 一并被拦。
-      if (popped.hasQuantifier) markQuantifier();
-      justClosed = popped;
-      continue;
-    }
-
-    // 量词：* + ? 与 {n} / {n,} / {n,m}
-    const quantifier = matchQuantifier(pattern, i);
-    if (quantifier !== null) {
-      if (justClosed?.hasQuantifier) {
-        return {
-          reason: `禁嵌套量词（对已含量词的分组再加量词，如 (a+)+）：位置 ${i}`,
-          groupCount: 0,
-        };
-      }
-      markQuantifier();
-      if (justClosed !== null) justClosed.hasQuantifier = true;
-      i = quantifier.end - 1;
-      justClosed = null;
-      continue;
-    }
-
-    justClosed = null;
-  }
-
-  if (inClass) return { reason: "字符类未闭合（缺 `]`）", groupCount: 0 };
-  if (stack.length > 0) return { reason: "括号不配对（缺 `)`）", groupCount: 0 };
-
-  // 兜底：交给引擎判一次真实语法合法性（Dart RegExp 同为 ECMA-262 兼容）。
   try {
-    new RegExp(pattern);
+    const parsed = parseLinearRegex(pattern);
+    return { reason: null, groupCount: parsed.groupCount };
   } catch (err) {
-    return { reason: `模式串非法：${(err as Error).message}`, groupCount: 0 };
+    const reason = err instanceof LinearRegexSyntaxError ? err.message : "linear regex parser failed closed";
+    return { reason, groupCount: 0 };
   }
-
-  return { reason: null, groupCount };
-}
-
-/** 若 [pattern] 在下标 [i] 处是量词，返回其结束下标（不含）；否则 null。 */
-function matchQuantifier(pattern: string, i: number): { end: number } | null {
-  const c = pattern[i]!;
-  if (c === "*" || c === "+" || c === "?") {
-    // 惰性/占有修饰 `*?` 只是同一量词的变体，一并吞掉。
-    const next = pattern[i + 1];
-    return { end: next === "?" ? i + 2 : i + 1 };
-  }
-  if (c === "{") {
-    const close = pattern.indexOf("}", i);
-    if (close === -1) return null; // 字面量 `{`
-    const inner = pattern.slice(i + 1, close);
-    if (!/^\d+(,\d*)?$/.test(inner)) return null; // 字面量 `{`
-    const next = pattern[close + 1];
-    return { end: next === "?" ? close + 2 : close + 1 };
-  }
-  return null;
 }
 
 // ---- 主校验 ----

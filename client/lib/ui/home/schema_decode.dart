@@ -469,7 +469,9 @@ int? _asNonNegativeInt(Object? raw) {
 
 int? _asInt(Object? raw) {
   if (raw is int) return raw;
-  if (raw is num) return raw.toInt();
+  if (raw is num && raw.isFinite && raw == raw.truncateToDouble()) {
+    return raw.toInt();
+  }
   if (raw is String) return int.tryParse(raw);
   return null;
 }

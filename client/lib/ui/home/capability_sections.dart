@@ -489,7 +489,9 @@ String _roomStatusText(String status) => switch (status) {
 // ===========================================================================
 
 class CardSection extends StatefulWidget {
-  const CardSection({super.key});
+  const CardSection({super.key, this.transactionsEnabled = true});
+
+  final bool transactionsEnabled;
 
   @override
   State<CardSection> createState() => _CardSectionState();
@@ -537,7 +539,7 @@ class _CardSectionState extends State<CardSection> {
     if (_phase != _Phase.loaded || data == null) {
       return _PromptCard(
         title: '一卡通',
-        subtitle: '仅在你点击后查询余额和交易记录',
+        subtitle: widget.transactionsEnabled ? '仅在你点击后查询余额和交易记录' : '仅在你点击后查询余额',
         child: _PhaseBody(
           phase: _phase,
           error: _error,
@@ -572,15 +574,16 @@ class _CardSectionState extends State<CardSection> {
                     ],
                   ),
                 ),
-                FilledButton.tonalIcon(
-                  onPressed: () => Navigator.of(context).push<void>(
-                    MaterialPageRoute(
-                      builder: (_) => const CardTransactionsPage(),
+                if (widget.transactionsEnabled)
+                  FilledButton.tonalIcon(
+                    onPressed: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => const CardTransactionsPage(),
+                      ),
                     ),
+                    icon: const Icon(Icons.receipt_long_outlined),
+                    label: const Text('交易明细'),
                   ),
-                  icon: const Icon(Icons.receipt_long_outlined),
-                  label: const Text('交易明细'),
-                ),
               ],
             )
           : Row(

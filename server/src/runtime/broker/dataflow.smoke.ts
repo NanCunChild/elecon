@@ -131,6 +131,81 @@ for (const c of golden.extract) {
 }
 console.log(`  ✓ extract: ${golden.extract.length} 例`);
 
+// ---- regex 严格线性子集（ADR-023；不得调用原生 RegExp）----
+{
+  const cases: Array<{ pattern: string; body: string; group?: number; expected: string }> = [
+    { pattern: "client_id=([a-z0-9]+)", body: "x client_id=ab12_", group: 1, expected: "ab12" },
+    { pattern: "[0-9]{4}", body: "year=2026", expected: "2026" },
+    { pattern: "zzz([0-9]+)", body: "--zzz42!", group: 1, expected: "42" },
+    { pattern: "id=(\\w+)", body: "id=user_7", group: 1, expected: "user_7" },
+    { pattern: "session_key=(\\w+)", body: "session_key=K_9", group: 1, expected: "K_9" },
+    { pattern: "client_id:'(\\w+)'", body: "client_id:'abc_1'", group: 1, expected: "abc_1" },
+    { pattern: "seed=(\\w+)", body: "seed=a9", group: 1, expected: "a9" },
+    { pattern: "seed=(.+)$", body: "prefix seed=a b", group: 1, expected: "a b" },
+    { pattern: "token=(\\w+)", body: "token=T0", group: 1, expected: "T0" },
+    { pattern: "v=(\\w+)", body: "v=x_1", group: 1, expected: "x_1" },
+    { pattern: "^id=(\\w+)$", body: "id=root", group: 1, expected: "root" },
+    { pattern: "(.)", body: "😀", group: 1, expected: "😀" },
+  ];
+  for (const c of cases) {
+    const value = extractHandle(
+      {
+        var: "x",
+        from: "A",
+        source: "regex",
+        extract: { pattern: c.pattern, ...(c.group === undefined ? {} : { group: c.group }) },
+      },
+      { status: 200, headers: {}, body: c.body },
+    );
+    assert.deepStrictEqual(fromHandle(value), { type: "text", text: c.expected }, c.pattern);
+    passed++;
+  }
+  assert.deepStrictEqual(
+    fromHandle(
+      extractHandle(
+        { var: "x", from: "A", source: "regex", extract: { pattern: "seed=(.+)$", group: 1 } },
+        { status: 200, headers: {}, body: "header\nseed=value\n" },
+      ),
+    ),
+    { type: "text", text: "value" },
+    "unanchored end-anchored dot scans only the final line",
+  );
+  passed++;
+  for (const pattern of [
+    "(a|aa)+$",
+    "a*a*b",
+    "(?=a)a",
+    "(a)+",
+    "a+?",
+    "a+b",
+    "\\bword",
+    "[\\q]",
+    "\\s(.+)$",
+  ]) {
+    assertError(
+      () =>
+        extractHandle(
+          { var: "x", from: "A", source: "regex", extract: { pattern } },
+          { status: 200, headers: {}, body: "a".repeat(4096) + "b" },
+        ),
+      "extract_bad_pattern",
+      `regex ${pattern}`,
+    );
+    passed++;
+  }
+  assertError(
+    () =>
+      extractHandle(
+        { var: "x", from: "A", source: "regex", extract: { pattern: "(a)", group: 2 } },
+        { status: 200, headers: {}, body: "a" },
+      ),
+    "extract_not_found",
+    "regex group 越界保持既有行为",
+  );
+  passed++;
+  console.log("  ✓ regex: 现有模式、捕获、锚点、安全拒绝与 group 越界");
+}
+
 // ---- inject ----
 for (const c of golden.inject) {
   const env = new Map<string, HandleValue>(Object.entries(c.env).map(([k, v]) => [k, toHandle(v)]));

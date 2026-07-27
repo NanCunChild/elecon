@@ -129,6 +129,7 @@ Future<SignedCatalog> _mkCatalog(
   _Signer s, {
   required String digest,
   required String adapterId,
+  List<String> capabilities = const ['notice.list'],
 }) async {
   final json = jsonEncode({
     'catalogVersion': '1.0',
@@ -142,7 +143,7 @@ Future<SignedCatalog> _mkCatalog(
         'digest': digest,
         'url': 'https://dist.example.edu/$adapterId.json.gz',
         'stdlibMin': '1.0.0',
-        'capabilities': ['notice.list'],
+        'capabilities': capabilities,
       },
     ],
   });
@@ -293,6 +294,7 @@ void main() {
       );
       expect(r.ok, isTrue, reason: r.reason);
       expect((r.data as Map)['items'], [1, 2, 3]);
+      expect(r.supportedCapabilities, {'notice.list'});
       expect(logs, ['info:HelloWorld']);
     });
 
@@ -323,6 +325,28 @@ void main() {
       );
       expect(r.ok, isFalse);
       expect(r.failureKind, CapabilityFailureKind.load);
+      expect(r.supportedCapabilities, isEmpty);
+    });
+
+    test('UI 能力元数据取 bundle manifest 权威集合而非 catalog 展示集合', () async {
+      final b = await _mkBundle(bundleSigner, adapterId: 'school-x');
+      final svc = await serviceFor(
+        b,
+        adapterId: 'school-x',
+        catalogOverride: await _mkCatalog(
+          catSigner,
+          digest: b.digest,
+          adapterId: 'school-x',
+          capabilities: const ['grades.list'],
+        ),
+      );
+      final r = await svc.run(
+        adapterId: 'school-x',
+        capability: 'notice.list',
+        resolver: _ThrowingResolver(),
+      );
+      expect(r.ok, isTrue, reason: r.reason);
+      expect(r.supportedCapabilities, {'notice.list'});
     });
 
     test('能力越权（请求未声明能力）→ failed(launch)', () async {
@@ -354,6 +378,7 @@ void main() {
       );
       expect(r.ok, isTrue, reason: r.reason);
       expect((r.data as Map)['items'], [1, 2, 3]);
+      expect(r.supportedCapabilities, {'notice.list'});
       expect(logs, ['info:HelloWorld']);
     });
 
