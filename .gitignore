@@ -7,6 +7,9 @@ node_modules/
 __pycache__/
 *.pyc
 
+# 真实学校接口本机采样原件：可能含学生隐私/凭证等价物，永不入库（红线 #1/#8）。
+.private-probes/
+
 # OHOS 构建环境：含机器相关绝对路径，仅 .example 入库（见 tools/ohos/README.md）
 tools/ohos/env.sh
 .envrc
