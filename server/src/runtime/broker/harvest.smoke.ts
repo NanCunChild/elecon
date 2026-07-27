@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { resolveRepoRoot, runMain } from "../__testutils__/smoke-utils.js";
 import { CredentialStore } from "../credential/store.js";
 import type { JarCookie } from "./cookie-jar.js";
-import { decideHarvest, type HarvestPlan, harvestInto } from "./harvest.js";
+import { decideHarvest, decideQueryHarvest, type HarvestPlan, harvestInto } from "./harvest.js";
 import type { BrokerManifestView } from "./inject-policy.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
@@ -87,6 +87,38 @@ async function integrationTests(): Promise<number> {
   const noCred: BrokerManifestView = { allow: ["https://ids.xjtu.edu.cn/*"], credentials: {} };
   harvestInto(decideHarvest(cookies, noCred), noCred, emptyStore, { schoolId: "xjt", now: () => clock });
   assert.equal(emptyStore.list().length, 0, "无声明 ref → 不收割");
+  checks++;
+
+  // query credential：仅 scope 内、恰好一个非空参数可收割；fragment/重复参数拒绝。
+  const queryView: BrokerManifestView = {
+    allow: ["https://card.xidian.edu.cn/*"],
+    credentials: {
+      card: {
+        scope: ["https://card.xidian.edu.cn/*"],
+        type: "query",
+        queryParam: "openid",
+      },
+    },
+  };
+  assert.deepStrictEqual(
+    decideQueryHarvest("https://card.xidian.edu.cn/home?openid=opaque%2Bvalue", queryView),
+    [{ ref: "card", value: "opaque+value" }],
+  );
+  assert.deepStrictEqual(decideQueryHarvest("https://card.xidian.edu.cn/home#openid=opaque", queryView), []);
+  assert.deepStrictEqual(
+    decideQueryHarvest("https://card.xidian.edu.cn/home?openid=first&openid=second", queryView),
+    [],
+  );
+  assert.deepStrictEqual(decideQueryHarvest("https://outside.edu.cn/home?openid=opaque", queryView), []);
+  harvestInto(
+    decideQueryHarvest("https://card.xidian.edu.cn/home?openid=opaque", queryView),
+    queryView,
+    store,
+    { schoolId: "xidian", now: () => clock },
+  );
+  const card = await store.get("card");
+  assert.equal(card?.via, "query");
+  assert.equal(card?.value, "opaque");
   checks++;
 
   return checks;

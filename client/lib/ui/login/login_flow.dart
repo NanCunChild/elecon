@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../catalog/schools.dart';
 import '../../core/debug/perf_trace.dart';
+import '../../core/login/webview_login.dart' show isLoginNavigationAllowed;
 import '../../session/session_controller.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import 'webview_login_page.dart';
@@ -17,12 +18,22 @@ import 'webview_login_page.dart';
 Future<WebViewLoginResult?> runSchoolLogin(
   BuildContext context,
   SessionController session,
-  SchoolDescriptor school,
-) async {
+  SchoolDescriptor school, {
+  String? initialUrl,
+  String? requiredRef,
+}) async {
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
     return const WebViewLoginResult(
       status: WebViewLoginStatus.error,
       error: 'Linux 桌面端暂不支持 WebView 登录；flutter_inappwebview 没有 Linux 平台实现。',
+    );
+  }
+
+  if (initialUrl != null &&
+      !isLoginNavigationAllowed(initialUrl, school.login)) {
+    return const WebViewLoginResult(
+      status: WebViewLoginStatus.error,
+      error: '登录入口不在学校声明的导航白名单内。',
     );
   }
 
@@ -52,6 +63,8 @@ Future<WebViewLoginResult?> runSchoolLogin(
         builder: (_) => WebViewLoginPage(
           login: school.login,
           store: session.store,
+          initialUrl: initialUrl,
+          requiredRef: requiredRef,
           debugLog: session.debugLog,
           tlsProceedHosts: school.tlsProceedHosts,
           performanceTrace: trace,

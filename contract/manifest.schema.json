@@ -131,8 +131,14 @@
           },
           "type": {
             "type": "string",
-            "description": "注入方式：cookie=附加 Cookie 头；header=附加 Authorization 头。",
-            "enum": ["cookie", "header"]
+            "description": "注入方式：cookie=附加 Cookie 头；header=附加 Authorization 头；query=由 Broker 写入 URL query（ADR-020 §2.2）。",
+            "enum": ["cookie", "header", "query"]
+          },
+          "queryParam": {
+            "type": "string",
+            "description": "type=query 时由 Broker 注入/收割的 query 参数名（ADR-020 §2.2）；组合约束由 validator Q1–Q3 强制。",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.-]+$"
           },
           "role": {
             "type": "string",

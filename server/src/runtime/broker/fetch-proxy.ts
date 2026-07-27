@@ -27,6 +27,7 @@
 
 import { assembleRequest, type ProcessedResponse, processResponse, type RequestInit } from "./assemble.js";
 import type { CookieJar } from "./cookie-jar.js";
+import { harvestQueryUrl, type QueryHarvestTarget } from "./harvest.js";
 import type { HeaderMap } from "./header-sanitize.js";
 import { type BrokerManifestView, decideInjection } from "./inject-policy.js";
 import type { CredentialResolver } from "./ports.js";
@@ -78,6 +79,8 @@ export interface FetchProxyDeps {
   maxHops?: number;
   /** 单次 ctx.fetch 的取消信号；运行时在超时/fatal 时主动中止上游。 */
   signal?: AbortSignal;
+  /** 每个通过 allow 校验、确定跟随的重定向目标由核心收割 query credential（ADR-020 §2.3）。 */
+  queryHarvest?: QueryHarvestTarget;
 }
 
 export interface FetchProxyOutcome extends ProcessedResponse {
@@ -117,7 +120,7 @@ export async function proxyFetch(
     const reqInit: RequestInit = { method };
     if (headers !== undefined) reqInit.headers = headers;
     if (body !== undefined) reqInit.body = body;
-    const assembled = assembleRequest({ init: reqInit, decision, resolved, jarCookies });
+    const assembled = assembleRequest({ url: currentUrl, init: reqInit, decision, resolved, jarCookies });
     // 拼装层也可 fail-closed：inject 但 resolver 未命中 → reject(credential_unavailable)。
     // 任一 reject 都转受控错误（绝不发请求、绝不附凭证）。
     if (assembled.kind === "reject") {
@@ -126,7 +129,7 @@ export async function proxyFetch(
 
     // ④ 出网（seam）+ ⑤ 吃 Set-Cookie。
     const treq: TransportRequest = {
-      url: currentUrl,
+      url: assembled.url ?? currentUrl,
       method: assembled.method,
       headers: assembled.headers,
     };
@@ -147,6 +150,10 @@ export async function proxyFetch(
     if (rd.kind === "deliver" || rd.kind === "stop") {
       // ⑦ 脱敏后交回 adapter（含 stop：越界/超跳时交付当前响应，其 Location 由脱敏剥除）。
       return { ...processResponse(resp), requestCount };
+    }
+
+    if (deps.queryHarvest !== undefined) {
+      harvestQueryUrl(rd.nextUrl, deps.queryHarvest);
     }
 
     // 续跳：307/308 保留方法+ body，余者转 GET 且弃 body；重定向跳不回灌 adapter 头。

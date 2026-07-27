@@ -198,6 +198,14 @@ Future<dynamic> runLoadedAdapter({
         resolver: resolver,
         transport: transport,
         jar: jar,
+        queryHarvest: harvest == null
+            ? null
+            : QueryHarvestTarget(
+                view: plan.view,
+                put: harvest.put,
+                schoolId: harvest.schoolId,
+                now: () => nowMs,
+              ),
         maxRequests: fetchLimits.maxRequests,
         nowMs: nowMs,
         binds: dataflow.binds,
@@ -514,6 +522,7 @@ BrokerManifestView _viewFromManifest(Map<String, dynamic> manifest) {
   }
 
   final credentials = <String, CredentialDecl>{};
+  final queryBindings = <String, String>{};
   final credRaw = manifest['credentials'];
   if (credRaw != null) {
     if (credRaw is! Map) {
@@ -548,10 +557,38 @@ BrokerManifestView _viewFromManifest(Map<String, dynamic> manifest) {
         scope.add(s);
       }
       final type = v['type'];
-      if (type != 'cookie' && type != 'header') {
+      if (type != 'cookie' && type != 'header' && type != 'query') {
         throw AdapterLaunchException(
-          'credentials.$key.type 非 cookie/header（fail-closed）',
+          'credentials.$key.type 非 cookie/header/query（fail-closed）',
         );
+      }
+      final queryParam = v['queryParam'];
+      final queryParamValid =
+          queryParam is String &&
+          RegExp(r'^[A-Za-z0-9_.-]+$').hasMatch(queryParam);
+      if ((type == 'query' && !queryParamValid) ||
+          (type != 'query' && queryParam != null)) {
+        throw AdapterLaunchException(
+          'credentials.$key.queryParam 与 type 不一致（fail-closed）',
+        );
+      }
+      if (type == 'query') {
+        for (final pattern in scope) {
+          final uri = Uri.tryParse(pattern);
+          if (uri == null || !uri.hasAuthority) {
+            throw AdapterLaunchException(
+              'credentials.$key.scope 非法（fail-closed）',
+            );
+          }
+          final binding = '${uri.origin}\u0000$queryParam';
+          final existing = queryBindings[binding];
+          if (existing != null && existing != key) {
+            throw AdapterLaunchException(
+              'credentials.$existing 与 $key 的 queryParam 绑定歧义（fail-closed）',
+            );
+          }
+          queryBindings[binding] = key;
+        }
       }
       final role = v['role'];
       if (role != null && role is! String) {
@@ -560,6 +597,7 @@ BrokerManifestView _viewFromManifest(Map<String, dynamic> manifest) {
       credentials[key] = CredentialDecl(
         scope: scope,
         type: type,
+        queryParam: queryParam as String?,
         role: role as String?,
       );
     });

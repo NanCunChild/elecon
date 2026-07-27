@@ -30,6 +30,7 @@ import '../core/credential/secure_store.dart';
 import '../core/credential/secure_store_factory.dart';
 import '../core/credential/software_secure_store.dart';
 import '../core/credential/store.dart';
+import '../core/credential/types.dart';
 import '../core/login/ensure_credential.dart';
 import '../core/login/sso_mint.dart';
 import '../core/login/sso_mint_headless.dart';
@@ -309,12 +310,24 @@ class SessionController extends ChangeNotifier {
         '学校 ${school.id} 尚未接入 adapter',
       );
     }
-    final required = school.capabilityCredentials[capability] ?? const <String>[];
+    final required =
+        school.capabilityCredentials[capability] ?? const <String>[];
     if (required.isNotEmpty) {
       final ensured = await ensureCredentials(
         schoolId: school.id,
         refs: required,
-        hasActive: (sid, ref) => _store.hasActive(schoolId: sid, ref: ref),
+        hasActive: (sid, ref) {
+          if (!_store.hasActive(schoolId: sid, ref: ref)) return false;
+          final expected = school.login.brokerView.credentials[ref];
+          if (expected == null) return false;
+          return _store.list().any(
+            (entry) =>
+                entry.schoolId == sid &&
+                entry.ref == ref &&
+                entry.status == CredentialStatus.active &&
+                entry.type == expected.type,
+          );
+        },
         hasSsoMaster: _store.hasActiveSsoMaster,
         login: school.login,
         minter: _ssoMinter,

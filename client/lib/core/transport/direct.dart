@@ -87,7 +87,7 @@ class DirectTransport implements Transport {
       // 仅无参 URL + 状态码；不记 header/body（红线 #1）。
       DevLog.instance.network(
         method: req.method,
-        url: req.url,
+        url: req.logUrl ?? req.url,
         statusCode: response.statusCode,
         ok: true,
       );
@@ -102,7 +102,7 @@ class DirectTransport implements Transport {
     } catch (e) {
       DevLog.instance.network(
         method: req.method,
-        url: req.url,
+        url: req.logUrl ?? req.url,
         ok: false,
         error: e.runtimeType.toString(),
       );

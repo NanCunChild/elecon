@@ -113,6 +113,17 @@
       "expected": { "kind": "reject", "reason": "credential_unavailable" }
     },
     {
+      "name": "inject_resolved_type_mismatch_fail_closed",
+      "input": {
+        "url": "https://card.h.edu.cn/account",
+        "init": { "method": "GET", "headers": {} },
+        "decision": { "kind": "inject", "ref": "card-session", "via": "query", "queryParam": "openid" },
+        "resolved": { "via": "cookie", "value": "openid=legacy" },
+        "jarCookies": []
+      },
+      "expected": { "kind": "reject", "reason": "credential_type_mismatch" }
+    },
+    {
       "name": "method_defaults_to_get_and_uppercases",
       "input": {
         "init": { "method": "post", "headers": {}, "body": "x" },
@@ -131,6 +142,22 @@
         "jarCookies": []
       },
       "expected": { "kind": "ok", "method": "GET", "headers": {} }
+    },
+    {
+      "name": "inject_query_overrides_duplicates_and_preserves_other_query",
+      "input": {
+        "url": "https://card.h.edu.cn/account?keep=1&openid=forged&openid=duplicate#fragment",
+        "init": { "method": "GET", "headers": { "Cookie": "forged=1", "Authorization": "forged" } },
+        "decision": { "kind": "inject", "ref": "card-session", "via": "query", "queryParam": "openid" },
+        "resolved": { "via": "query", "value": "opaque+student/id" },
+        "jarCookies": []
+      },
+      "expected": {
+        "kind": "ok",
+        "method": "GET",
+        "headers": {},
+        "url": "https://card.h.edu.cn/account?keep=1&openid=opaque%2Bstudent%2Fid#fragment"
+      }
     }
   ],
   "process": [

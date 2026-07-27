@@ -36,7 +36,7 @@ class CredentialEntry {
   final String ref;
   final String schoolId;
 
-  /// 注入方式（cookie|header）。**防御性副本**——注入权威以已验签 manifest 为准（§2.4）。
+  /// 注入方式（cookie|header|query）。**防御性副本**——注入权威以已验签 manifest 为准（ADR-012 §2.4 / ADR-020）。
   final String type;
 
   /// URL 前缀。**防御性副本 + 一致性基准**——非注入依据（§2.4）。

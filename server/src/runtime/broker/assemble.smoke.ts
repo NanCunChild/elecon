@@ -119,6 +119,41 @@ async function driverTests(): Promise<number> {
     checks++;
   }
 
+  // 2b. query credential：覆盖 adapter 伪值、保留其他参数，且不写 Cookie/Authorization。
+  {
+    const credentialValue = "opaque+student/id";
+    const view: BrokerManifestView = {
+      allow: ["https://card.h.edu.cn/*"],
+      credentials: {
+        session: {
+          scope: ["https://card.h.edu.cn/*"],
+          type: "query",
+          queryParam: "openid",
+        },
+      },
+    };
+    const transport = new FakeTransport([resp({ status: 200, body: "{}" })]);
+    await proxyFetch(
+      "https://card.h.edu.cn/account?keep=1&openid=attacker&openid=duplicate#fragment",
+      { headers: { Cookie: "attacker=1", Authorization: "Bearer attacker" } },
+      {
+        view,
+        resolver: new FakeResolver({ session: { via: "query", value: credentialValue } }),
+        jar: new CookieJar(),
+        transport,
+      },
+    );
+    const sent = transport.seen[0]!;
+    assert.equal(
+      sent.url,
+      "https://card.h.edu.cn/account?keep=1&openid=opaque%2Bstudent%2Fid#fragment",
+      "query credential 应覆盖全部同名伪值并正确编码",
+    );
+    assert.equal(sent.headers.Cookie, undefined, "query credential 不得写入 Cookie");
+    assert.equal(sent.headers.Authorization, undefined, "query credential 不得写入 Authorization");
+    checks++;
+  }
+
   // 3. 重定向链：hop1 302 → hop2 200（均在 allow）；逐跳捕获 Set-Cookie；中间 Location 不外泄；requestCount=2。
   {
     const view: BrokerManifestView = { allow: ["https://h.edu.cn/*"] };
@@ -172,6 +207,46 @@ async function driverTests(): Promise<number> {
     assert.equal(out.status, 302);
     assert.equal(out.requestCount, 1, "越界跳不发出");
     assert.equal(out.headers["Location"], undefined, "越界 Location 不得外泄");
+    checks++;
+  }
+
+  // 4b. 核心只收割已通过 allow、确定跟随的 query credential 重定向目标。
+  {
+    const injectView: BrokerManifestView = {
+      allow: ["https://ids.h.edu.cn/*", "https://card.h.edu.cn/*"],
+    };
+    const harvestView: BrokerManifestView = {
+      allow: injectView.allow,
+      credentials: {
+        card: {
+          scope: ["https://card.h.edu.cn/*"],
+          type: "query",
+          queryParam: "openid",
+        },
+      },
+    };
+    const entries: Array<{ ref: string; value: string }> = [];
+    const transport = new FakeTransport([
+      resp({ status: 302, location: "https://card.h.edu.cn/home?openid=opaque" }),
+      resp({ status: 200, body: "ok" }),
+    ]);
+    await proxyFetch(
+      "https://ids.h.edu.cn/login",
+      {},
+      {
+        view: injectView,
+        resolver: new FakeResolver({}),
+        jar: new CookieJar(),
+        transport,
+        queryHarvest: {
+          view: harvestView,
+          sink: { put: (entry) => entries.push({ ref: entry.ref, value: entry.value }) },
+          schoolId: "school",
+          now: () => 1,
+        },
+      },
+    );
+    assert.deepStrictEqual(entries, [{ ref: "card", value: "opaque" }]);
     checks++;
   }
 

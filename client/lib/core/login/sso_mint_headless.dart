@@ -125,6 +125,12 @@ class HeadlessSsoMinter implements SsoMinter {
           transport: transport,
           maxHops: maxHops,
           onRedirectSettled: (u) => finalUrl = u,
+          queryHarvest: QueryHarvestTarget(
+            view: brokerView,
+            put: putCredential,
+            schoolId: schoolId,
+            now: now,
+          ),
         ),
       );
     } on BrokerFetchRejected catch (e) {

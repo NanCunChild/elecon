@@ -52,45 +52,44 @@ void main() {
     );
   });
 
-  test('WebView cookies are harvested only through declared credential refs',
-      () async {
-    final store = CredentialStore(
-      store: InMemorySecureStore(releaseMode: false),
-      now: () => 1000,
-    );
+  test(
+    'WebView cookies are harvested only through declared credential refs',
+    () async {
+      final store = CredentialStore(
+        store: InMemorySecureStore(releaseMode: false),
+        now: () => 1000,
+      );
 
-    final result = harvestWebViewCookies(
-      login: login,
-      cookies: const [
-        WebViewCookie(
-          name: 'JSESSIONID',
-          value: 'ROTATED',
-          domain: 'ehall.xidian.edu.cn',
-          path: '/',
-        ),
-        WebViewCookie(
-          name: 'CASTGC',
-          value: 'NOT-HARVESTED',
-          domain: 'ids.xidian.edu.cn',
-          path: '/',
-        ),
-      ],
-      put: store.put,
-      now: () => 1000,
-    );
+      final result = harvestWebViewCookies(
+        login: login,
+        cookies: const [
+          WebViewCookie(
+            name: 'JSESSIONID',
+            value: 'ROTATED',
+            domain: 'ehall.xidian.edu.cn',
+            path: '/',
+          ),
+          WebViewCookie(
+            name: 'CASTGC',
+            value: 'NOT-HARVESTED',
+            domain: 'ids.xidian.edu.cn',
+            path: '/',
+          ),
+        ],
+        put: store.put,
+        now: () => 1000,
+      );
 
-    expect(result.entries.map((e) => e.ref), ['ehall-session']);
-    final resolved = await store.get('ehall-session');
-    expect(resolved?.value, 'JSESSIONID=ROTATED');
-    expect(await store.get('ids-cas'), isNull);
-  });
+      expect(result.entries.map((e) => e.ref), ['ehall-session']);
+      final resolved = await store.get('ehall-session');
+      expect(resolved?.value, 'JSESSIONID=ROTATED');
+      expect(await store.get('ids-cas'), isNull);
+    },
+  );
 
   test('planWebViewHarvest 干跑：只判定不写入（页面轮询依据）', () {
     // session cookie 未落定 → 计划为空（轮询继续等）。
-    expect(
-      planWebViewHarvest(login: login, cookies: const []),
-      isEmpty,
-    );
+    expect(planWebViewHarvest(login: login, cookies: const []), isEmpty);
     // 落定后 → 计划出现声明 ref；干跑本身不接触任何 store。
     final plan = planWebViewHarvest(
       login: login,
@@ -104,5 +103,49 @@ void main() {
       ],
     );
     expect(plan.map((e) => e.ref), ['ehall-session']);
+  });
+
+  test('WebView success URL 可在无 cookie 时收割 query credential', () async {
+    const cardLogin = LoginManifestView(
+      schoolId: 'xidian',
+      url: 'https://ids.xidian.edu.cn/authserver/login',
+      navigationAllow: [
+        'https://ids.xidian.edu.cn/*',
+        'https://v8scan.xidian.edu.cn/*',
+      ],
+      successUrlMatches: ['https://v8scan.xidian.edu.cn/myaccount/*'],
+      brokerView: BrokerManifestView(
+        allow: ['https://v8scan.xidian.edu.cn/*'],
+        credentials: {
+          'card-session': CredentialDecl(
+            scope: ['https://v8scan.xidian.edu.cn/*'],
+            type: 'query',
+            queryParam: 'openid',
+          ),
+        },
+      ),
+    );
+    final store = CredentialStore(
+      store: InMemorySecureStore(releaseMode: false),
+      now: () => 1000,
+    );
+    final result = harvestWebViewCookies(
+      login: cardLogin,
+      cookies: const [],
+      currentUrl:
+          'https://v8scan.xidian.edu.cn/myaccount/home?openid=opaque%2Bvalue',
+      put: store.put,
+      now: () => 1000,
+    );
+    expect(result.entries.map((e) => e.ref), ['card-session']);
+    expect((await store.get('card-session'))?.value, 'opaque+value');
+    expect(
+      planWebViewHarvest(
+        login: cardLogin,
+        cookies: const [],
+        currentUrl: 'https://v8scan.xidian.edu.cn/myaccount/home#openid=opaque',
+      ),
+      isEmpty,
+    );
   });
 }

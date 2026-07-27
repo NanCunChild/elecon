@@ -353,6 +353,16 @@ function buildImperativeCtx(
             transport: deps.transport,
             maxHops: fetchLimits.maxHopsPerRequest,
             signal: controller.signal,
+            ...(deps.harvest
+              ? {
+                  queryHarvest: {
+                    view: deps.view,
+                    sink: deps.harvest.sink,
+                    schoolId: deps.harvest.schoolId,
+                    now: () => state.nowMs,
+                  },
+                }
+              : {}),
           }),
           fetchLimits.perRequestTimeoutMs,
           () => {

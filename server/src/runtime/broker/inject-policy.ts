@@ -14,12 +14,14 @@
 
 import { scopeMatches, scopePrefix, urlCoveredByAllow } from "@elecon/broker-primitives";
 
-export type CredentialVia = "cookie" | "header";
+export type CredentialVia = "cookie" | "header" | "query";
 
 /** manifest `credentials.<ref>` 的注入相关声明（ADR-013）。**不含凭证值**（红线 #1）。 */
 export interface CredentialDecl {
   scope: string[];
   type: CredentialVia;
+  /** type=query 时的参数名；参数名来自已验签 manifest，凭证值仍只在 Broker 内（ADR-020 §2.2）。 */
+  queryParam?: string;
 }
 
 /** Broker 决策所需的 manifest 视图（仅注入相关字段；绝不含凭证值）。 */
@@ -28,12 +30,12 @@ export interface BrokerManifestView {
   credentials?: Record<string, CredentialDecl>;
 }
 
-export type RejectReason = "outside_allow" | "ambiguous_scope";
+export type RejectReason = "outside_allow" | "ambiguous_scope" | "invalid_credential_decl";
 
 export type InjectionDecision =
   | { kind: "reject"; reason: RejectReason }
   | { kind: "passthrough" }
-  | { kind: "inject"; ref: string; via: CredentialVia };
+  | { kind: "inject"; ref: string; via: CredentialVia; queryParam?: string };
 
 /**
  * 决定对某出站 url 的凭证注入策略。
@@ -52,8 +54,16 @@ export function decideInjection(url: string, view: BrokerManifestView): Injectio
   }
 
   // ② 收集命中的 ref（每 ref 取其命中 scope 的最长前缀长度）
-  const hits: Array<{ ref: string; via: CredentialVia; prefixLen: number }> = [];
+  const hits: Array<{ ref: string; via: CredentialVia; queryParam: string | undefined; prefixLen: number }> =
+    [];
   for (const [ref, decl] of Object.entries(view.credentials ?? {})) {
+    const validQueryParam = decl.queryParam !== undefined && /^[A-Za-z0-9_.-]+$/.test(decl.queryParam);
+    if (
+      (decl.type === "query" && !validQueryParam) ||
+      (decl.type !== "query" && decl.queryParam !== undefined)
+    ) {
+      return { kind: "reject", reason: "invalid_credential_decl" };
+    }
     let bestLen = -1;
     for (const pattern of decl.scope) {
       if (scopeMatches(url, pattern)) {
@@ -61,7 +71,7 @@ export function decideInjection(url: string, view: BrokerManifestView): Injectio
       }
     }
     if (bestLen >= 0) {
-      hits.push({ ref, via: decl.type, prefixLen: bestLen });
+      hits.push({ ref, via: decl.type, queryParam: decl.queryParam, prefixLen: bestLen });
     }
   }
   if (hits.length === 0) {
@@ -80,5 +90,7 @@ export function decideInjection(url: string, view: BrokerManifestView): Injectio
     return { kind: "reject", reason: "ambiguous_scope" };
   }
 
-  return { kind: "inject", ref: best.ref, via: best.via };
+  return best.queryParam === undefined
+    ? { kind: "inject", ref: best.ref, via: best.via }
+    : { kind: "inject", ref: best.ref, via: best.via, queryParam: best.queryParam };
 }

@@ -26,7 +26,7 @@ void main() {
   // successUrlMatches 覆盖各子服务登录成功落地页（带/不带 CAS ticket）。
   // credentials 声明各子服务 session ref：
   //   - ehall-session：一网通办 session（cookie，scope=ehall.xidian.edu.cn/*）
-  //   - card-session：一卡通 openid cookie（cookie，scope=v8scan.xidian.edu.cn/*）
+  //   - card-session：一卡通 openid query（query，scope=v8scan.xidian.edu.cn/*）
   //   - library-session：图书馆 shuwo cookie（cookie，scope=hyytsgxzs.xidian.edu.cn/*）
 
   final xidianLogin = LoginManifestView(
@@ -59,7 +59,8 @@ void main() {
         ),
         'card-session': const CredentialDecl(
           scope: ['https://v8scan.xidian.edu.cn/*'],
-          type: 'cookie',
+          type: 'query',
+          queryParam: 'openid',
         ),
         'library-session': const CredentialDecl(
           scope: ['https://hyytsgxzs.xidian.edu.cn/*'],
@@ -71,8 +72,8 @@ void main() {
 
   // ── 模拟 CAS 登录完成后 WebView cookie jar 状态 ──
   //
-  // 典型状态：ids 下发了 CASTGC（CAS TGT），ehall / v8scan / hyytsgxzs
-  // 各自下发了子域 session cookie。本 fixture 未声明 ids-cas，因此 CASTGC 不收割；
+  // 典型状态：ids 下发了 CASTGC（CAS TGT），ehall / hyytsgxzs 下发子域 session cookie，
+  // v8scan 把 openid 放在成功 URL query。本 fixture 未声明 ids-cas，因此 CASTGC 不收割；
   // ADR-017 新路径声明为 sso-master 时可入核心，但不得进 UI/log/adapter/下游数据域。
   //
   // [domain] 模拟 WebView 上报的 cookie 域（flutter_inappwebview Cookie 格式）。
@@ -102,13 +103,6 @@ void main() {
       name: 'route',
       value: 'e03b8cb4c86e90e0a5db8cd1376c0ea5',
       domain: 'ehall.xidian.edu.cn',
-      path: '/',
-    ),
-    // v8scan.xidian.edu.cn —— 一卡通 openid cookie
-    WebViewCookie(
-      name: 'openid',
-      value: 'oxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      domain: 'v8scan.xidian.edu.cn',
       path: '/',
     ),
     // hyytsgxzs.xidian.edu.cn —— 图书馆会话
@@ -259,10 +253,7 @@ void main() {
 
     test('B4: E-Hall 非成功路径不被检测', () {
       expect(
-        isLoginSuccessUrl(
-          'https://ehall.xidian.edu.cn/portal',
-          xidianLogin,
-        ),
+        isLoginSuccessUrl('https://ehall.xidian.edu.cn/portal', xidianLogin),
         isFalse,
       );
     });
@@ -337,8 +328,9 @@ void main() {
       expect(refs, isNot(contains('cas-tgt')));
 
       final all = store.list();
-      final casCookies = all
-          .where((e) => e.value.contains('CASTGC') || e.value.contains('TGT-'));
+      final casCookies = all.where(
+        (e) => e.value.contains('CASTGC') || e.value.contains('TGT-'),
+      );
       expect(casCookies, isEmpty);
     });
 
@@ -351,8 +343,8 @@ void main() {
       );
 
       final idsSession = store.list().where(
-            (e) => e.value.contains('ids-aaaa'),
-          );
+        (e) => e.value.contains('ids-aaaa'),
+      );
       expect(idsSession, isEmpty);
     });
 
@@ -391,18 +383,20 @@ void main() {
 
     // ── C5: 一卡通 openid 被收割 ──
 
-    test('C5: v8scan openid cookie 被收割到 card-session ref', () async {
+    test('C5: v8scan success URL 的 openid 被收割到 card-session ref', () async {
       harvestWebViewCookies(
         login: xidianLogin,
         cookies: webViewCookiesAfterCas,
+        currentUrl:
+            'https://v8scan.xidian.edu.cn/myaccount/openMyAccount?openid=opaque-card-session',
         put: store.put,
         now: () => 1718208000000,
       );
 
       final resolved = await store.get('card-session');
       expect(resolved, isNotNull);
-      expect(resolved!.via, 'cookie');
-      expect(resolved.value, contains('openid=oxxxxxxxxxxxxxxxxxxxxxxxxxx'));
+      expect(resolved!.via, 'query');
+      expect(resolved.value, 'opaque-card-session');
     });
 
     // ── C6: 图书馆 SESSION 被收割 ──
@@ -432,8 +426,8 @@ void main() {
       );
 
       final unharvested = store.list().where(
-            (e) => e.value.contains('energy-dddd'),
-          );
+        (e) => e.value.contains('energy-dddd'),
+      );
       expect(unharvested, isEmpty);
     });
 
@@ -443,14 +437,18 @@ void main() {
       final result = harvestWebViewCookies(
         login: xidianLogin,
         cookies: webViewCookiesAfterCas,
+        currentUrl:
+            'https://v8scan.xidian.edu.cn/myaccount/openMyAccount?openid=opaque-card-session',
         put: store.put,
         now: () => 1718208000000,
       );
 
       expect(result.harvested, isTrue);
       final refs = result.entries.map((e) => e.ref).toSet();
-      expect(refs,
-          containsAll(['ehall-session', 'card-session', 'library-session']));
+      expect(
+        refs,
+        containsAll(['ehall-session', 'card-session', 'library-session']),
+      );
       expect(refs.length, 3);
     });
   });
@@ -487,9 +485,17 @@ void main() {
         login: xidianLogin,
         cookies: const [
           WebViewCookie(
-              name: '', value: 'x', domain: 'ehall.xidian.edu.cn', path: '/'),
+            name: '',
+            value: 'x',
+            domain: 'ehall.xidian.edu.cn',
+            path: '/',
+          ),
           WebViewCookie(
-              name: 'ok', value: 'y', domain: 'ehall.xidian.edu.cn', path: '/'),
+            name: 'ok',
+            value: 'y',
+            domain: 'ehall.xidian.edu.cn',
+            path: '/',
+          ),
         ],
         put: store.put,
         now: () => 1718208000000,
@@ -594,7 +600,7 @@ void main() {
         url: 'https://ids.xidian.edu.cn/authserver/login',
         navigationAllow: [
           'https://ids.xidian.edu.cn/*',
-          'https://api.xidian.edu.cn/*'
+          'https://api.xidian.edu.cn/*',
         ],
         successUrlMatches: ['https://api.xidian.edu.cn/*'],
         brokerView: BrokerManifestView(

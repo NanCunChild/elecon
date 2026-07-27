@@ -29,81 +29,85 @@ const _cardService = 'https://v8scan.xidian.edu.cn/sso/login';
 const _cardSuccess = 'https://v8scan.xidian.edu.cn/myaccount/home';
 
 BrokerManifestView _brokerView() => const BrokerManifestView(
-      allow: [
-        'https://ids.xidian.edu.cn/*',
-        'https://v8scan.xidian.edu.cn/*',
-      ],
-      credentials: {
-        'ids-cas': CredentialDecl(
-          scope: ['https://ids.xidian.edu.cn/*'],
-          type: 'cookie',
-          role: 'sso-master',
-        ),
-        'card-session': CredentialDecl(
-          scope: ['https://v8scan.xidian.edu.cn/*'],
-          type: 'cookie',
-        ),
-      },
-    );
+  allow: ['https://ids.xidian.edu.cn/*', 'https://v8scan.xidian.edu.cn/*'],
+  credentials: {
+    'ids-cas': CredentialDecl(
+      scope: ['https://ids.xidian.edu.cn/*'],
+      type: 'cookie',
+      role: 'sso-master',
+    ),
+    'card-session': CredentialDecl(
+      scope: ['https://v8scan.xidian.edu.cn/*'],
+      type: 'query',
+      queryParam: 'openid',
+    ),
+  },
+);
 
 LoginManifestView _login() => LoginManifestView(
-      schoolId: 'xidian',
-      url: _idsAuth,
-      navigationAllow: const [
-        'https://ids.xidian.edu.cn/*',
-        'https://v8scan.xidian.edu.cn/*',
-      ],
-      successUrlMatches: const ['https://ehall.xidian.edu.cn/*'],
-      brokerView: _brokerView(),
-      ssoMint: const SsoMintDecl(
-        authEndpoint: '$_idsAuth?service={service}',
-        services: {
-          'card-session': SsoMintServiceDecl(
-            service: _cardService,
-            success: ['https://v8scan.xidian.edu.cn/myaccount/*'],
-          ),
-        },
+  schoolId: 'xidian',
+  url: _idsAuth,
+  navigationAllow: const [
+    'https://ids.xidian.edu.cn/*',
+    'https://v8scan.xidian.edu.cn/*',
+  ],
+  successUrlMatches: const ['https://ehall.xidian.edu.cn/*'],
+  brokerView: _brokerView(),
+  ssoMint: const SsoMintDecl(
+    authEndpoint: '$_idsAuth?service={service}',
+    services: {
+      'card-session': SsoMintServiceDecl(
+        service: _cardService,
+        success: ['https://v8scan.xidian.edu.cn/myaccount/*'],
       ),
-    );
+    },
+  ),
+);
 
 HeadlessSsoMinter _minter(
   FakeTransport transport, {
   required List<CredentialEntry> harvested,
   Map<String, ResolvedCredential>? creds,
-}) =>
-    HeadlessSsoMinter(
-      login: _login(),
-      brokerView: _brokerView(),
-      resolver: FakeResolver(
-        creds ??
-            {'ids-cas': const ResolvedCredential(via: 'cookie', value: 'CASTGC=TGC-1')},
-      ),
-      transport: transport,
-      putCredential: harvested.add,
-      schoolId: 'xidian',
-      now: () => 1000,
-    );
+}) => HeadlessSsoMinter(
+  login: _login(),
+  brokerView: _brokerView(),
+  resolver: FakeResolver(
+    creds ??
+        {
+          'ids-cas': const ResolvedCredential(
+            via: 'cookie',
+            value: 'CASTGC=TGC-1',
+          ),
+        },
+  ),
+  transport: transport,
+  putCredential: harvested.add,
+  schoolId: 'xidian',
+  now: () => 1000,
+);
 
 void main() {
   group('HeadlessSsoMinter.mint（fake transport，ADR-017 §2.2 路线 b）', () {
-    test('印发成功：母凭证只注入 CAS 端点、下游 passthrough、新 session 入库', () async {
+    test('印发成功：母凭证只注入 CAS 端点、下游 passthrough、openid 入库', () async {
       final transport = FakeTransport([
         // hop1：CAS 端点，注入母凭证 → 302 到 ?ticket=ST
         const TransportResponse(
           status: 302,
           location: 'https://v8scan.xidian.edu.cn/sso/login?ticket=ST-abc',
         ),
-        // hop2：下游服务校验 ST → Set-Cookie 下游 session → 302 到成功页
+        // hop2：下游服务校验 ST → 302 到带 openid 的成功页
         const TransportResponse(
           status: 302,
-          location: _cardSuccess,
-          setCookie: ['V8SESSION=sess-xyz; Path=/'],
+          location: '$_cardSuccess?openid=opaque-card-session',
         ),
         // hop3：成功页 200
         const TransportResponse(status: 200, body: 'ok'),
       ]);
       final harvested = <CredentialEntry>[];
-      final outcome = await _minter(transport, harvested: harvested).mint('card-session');
+      final outcome = await _minter(
+        transport,
+        harvested: harvested,
+      ).mint('card-session');
 
       expect(outcome, MintOutcome.success);
 
@@ -112,13 +116,20 @@ void main() {
       expect(transport.seen[0].headers['Cookie'], 'CASTGC=TGC-1');
       // ② 红线 #1 / §2.4：母凭证**绝不**外泄到下游目标域（hop2/hop3 无 CASTGC）。
       expect(transport.seen[1].url, contains('v8scan.xidian.edu.cn'));
-      expect(transport.seen[1].headers['Cookie'] ?? '', isNot(contains('CASTGC')));
-      expect(transport.seen[2].headers['Cookie'] ?? '', isNot(contains('CASTGC')));
+      expect(
+        transport.seen[1].headers['Cookie'] ?? '',
+        isNot(contains('CASTGC')),
+      );
+      expect(
+        transport.seen[2].headers['Cookie'] ?? '',
+        isNot(contains('CASTGC')),
+      );
 
       // ③ 印发→存储：仅目标 session 入库，敏感度 standard；母凭证未被误收。
       expect(harvested, hasLength(1));
       expect(harvested.single.ref, 'card-session');
-      expect(harvested.single.value, 'V8SESSION=sess-xyz');
+      expect(harvested.single.type, 'query');
+      expect(harvested.single.value, 'opaque-card-session');
       expect(harvested.single.sensitivity, CredentialSensitivity.standard);
       expect(harvested.single.schoolId, 'xidian');
     });
@@ -133,7 +144,10 @@ void main() {
         const TransportResponse(status: 200, body: 'login form'),
       ]);
       final harvested = <CredentialEntry>[];
-      final outcome = await _minter(transport, harvested: harvested).mint('card-session');
+      final outcome = await _minter(
+        transport,
+        harvested: harvested,
+      ).mint('card-session');
 
       expect(outcome, MintOutcome.tgcExpired);
       expect(harvested, isEmpty);
@@ -182,9 +196,12 @@ void main() {
       final minter = HeadlessSsoMinter(
         login: login,
         brokerView: _brokerView(),
-        resolver: FakeResolver(
-          {'ids-cas': const ResolvedCredential(via: 'cookie', value: 'CASTGC=TGC-1')},
-        ),
+        resolver: FakeResolver({
+          'ids-cas': const ResolvedCredential(
+            via: 'cookie',
+            value: 'CASTGC=TGC-1',
+          ),
+        }),
         transport: FakeTransport([]),
         putCredential: (_) {},
         schoolId: 'xidian',

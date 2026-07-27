@@ -40,6 +40,8 @@ export interface RequestInit {
 }
 
 export interface AssembleRequestInput {
+  /** 仅 query credential 注入需要；旧 cookie/header 纯函数向量可缺省。 */
+  url?: string;
   init: RequestInit;
   /** B1 decideInjection(url, view) 的结果。 */
   decision: InjectionDecision;
@@ -59,12 +61,16 @@ export interface AssembleRequestInput {
  * - `credential_unavailable`：B1 判 inject 但 resolver 未命中（凭证缺失/过期/吊销）。
  *   非 B1 产物，由本层引入——见 assembleRequest 文档。
  */
-export type AssembleRejectReason = RejectReason | "credential_unavailable";
+export type AssembleRejectReason =
+  | RejectReason
+  | "credential_unavailable"
+  | "credential_type_mismatch"
+  | "invalid_url";
 
 export type AssembleResult =
   /** url 不在 allow（B1 reject）/ 声明要的凭证取不到 → fail-closed，凭证一律不附，驱动层转受控错误。 */
   | { kind: "reject"; reason: AssembleRejectReason }
-  | { kind: "ok"; method: string; headers: HeaderMap; body?: string };
+  | { kind: "ok"; method: string; headers: HeaderMap; body?: string; url?: string };
 
 /** 解析序列化 cookie 串（`A=1; B=2`）为有序对。空段/无 `=` 段跳过。 */
 function parseCookieString(s: string): CookiePair[] {
@@ -105,6 +111,9 @@ export function assembleRequest(input: AssembleRequestInput): AssembleResult {
   if (decision.kind === "inject" && resolved === null) {
     return { kind: "reject", reason: "credential_unavailable" };
   }
+  if (decision.kind === "inject" && resolved !== null && resolved.via !== decision.via) {
+    return { kind: "reject", reason: "credential_type_mismatch" };
+  }
 
   // ① 净化 adapter 自设头：无条件剥 Cookie/Authorization/Proxy-Authorization，其余 allowlist。
   const headers: HeaderMap = sanitizeRequestHeaders(init.headers ?? {});
@@ -116,6 +125,14 @@ export function assembleRequest(input: AssembleRequestInput): AssembleResult {
       : [];
   if (decision.kind === "inject" && decision.via === "header" && resolved !== null) {
     headers["Authorization"] = resolved.value;
+  }
+
+  let url = input.url;
+  if (decision.kind === "inject" && decision.via === "query" && resolved !== null) {
+    if (url === undefined || decision.queryParam === undefined) {
+      return { kind: "reject", reason: "invalid_url" };
+    }
+    url = injectQueryParam(url, decision.queryParam, resolved.value);
   }
 
   // ③ Cookie 合流：broker 注入名优先，其后补 jar（origin>ephemeral 已由 selectCookies 落实）。
@@ -136,9 +153,32 @@ export function assembleRequest(input: AssembleRequestInput): AssembleResult {
   }
 
   const method = (init.method ?? "GET").toUpperCase();
-  return init.body === undefined
-    ? { kind: "ok", method, headers }
-    : { kind: "ok", method, headers, body: init.body };
+  const result: Extract<AssembleResult, { kind: "ok" }> = { kind: "ok", method, headers };
+  if (init.body !== undefined) result.body = init.body;
+  if (url !== undefined) result.url = url;
+  return result;
+}
+
+/** 覆盖全部同名参数后追加唯一凭证参数；仅 query 注入分支调用，不改写普通 URL。 */
+function injectQueryParam(url: string, name: string, value: string): string {
+  const hashAt = url.indexOf("#");
+  const fragment = hashAt >= 0 ? url.slice(hashAt) : "";
+  const withoutFragment = hashAt >= 0 ? url.slice(0, hashAt) : url;
+  const queryAt = withoutFragment.indexOf("?");
+  const base = queryAt >= 0 ? withoutFragment.slice(0, queryAt) : withoutFragment;
+  const rawQuery = queryAt >= 0 ? withoutFragment.slice(queryAt + 1) : "";
+  const kept = rawQuery === "" ? [] : rawQuery.split("&").filter((part) => queryKey(part) !== name);
+  kept.push(`${encodeURIComponent(name)}=${encodeURIComponent(value)}`);
+  return `${base}?${kept.join("&")}${fragment}`;
+}
+
+function queryKey(part: string): string | null {
+  const raw = part.split("=", 1)[0] ?? "";
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, " "));
+  } catch {
+    return null;
+  }
 }
 
 export interface RawResponse {

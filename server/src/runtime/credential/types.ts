@@ -8,7 +8,7 @@
  * 核心（ADR-012 §2.1/§2.6：首版 client-direct，设备 OS 安全存储为权威存储）。后续 Dart 对齐。
  */
 
-export type CredentialVia = "cookie" | "header";
+export type CredentialVia = "cookie" | "header" | "query";
 
 export type CredentialStatus = "active" | "expired" | "revoked";
 

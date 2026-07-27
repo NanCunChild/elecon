@@ -32,10 +32,7 @@ void main() {
             .toList();
         final view = viewFromJson(input['view'] as Map<String, dynamic>);
         final plan = decideHarvest(cookies, view);
-        expect(
-          plan.map((e) => e.toJson()).toList(),
-          equals(c['expected']),
-        );
+        expect(plan.map((e) => e.toJson()).toList(), equals(c['expected']));
       });
     }
   });
@@ -52,24 +49,31 @@ void main() {
     );
     final cookies = [
       const JarCookie(
-          name: 'JSESSIONID',
-          value: 'S1',
-          domain: 'ids.xjtu.edu.cn',
-          path: '/',
-          source: 'origin'),
+        name: 'JSESSIONID',
+        value: 'S1',
+        domain: 'ids.xjtu.edu.cn',
+        path: '/',
+        source: 'origin',
+      ),
       const JarCookie(
-          name: 'CASTGC',
-          value: 'C1',
-          domain: 'ids.xjtu.edu.cn',
-          path: '/',
-          source: 'origin'),
+        name: 'CASTGC',
+        value: 'C1',
+        domain: 'ids.xjtu.edu.cn',
+        path: '/',
+        source: 'origin',
+      ),
     ];
 
     test('收割 → 入库 → get 取到序列化值（B6 注入即用此值）', () async {
       var clock = 5000;
       final store = CredentialStore(now: () => clock);
-      harvestInto(decideHarvest(cookies, view), view, store.put,
-          schoolId: 'xjt', now: () => clock);
+      harvestInto(
+        decideHarvest(cookies, view),
+        view,
+        store.put,
+        schoolId: 'xjt',
+        now: () => clock,
+      );
 
       final resolved = await store.get('sess');
       expect(resolved, isNotNull);
@@ -85,30 +89,97 @@ void main() {
     test('会话轮换：同 ref 再收割覆盖旧值', () async {
       var clock = 5000;
       final store = CredentialStore(now: () => clock);
-      harvestInto(decideHarvest(cookies, view), view, store.put,
-          schoolId: 'xjt', now: () => clock);
+      harvestInto(
+        decideHarvest(cookies, view),
+        view,
+        store.put,
+        schoolId: 'xjt',
+        now: () => clock,
+      );
       clock = 6000;
       final rotated = [
         const JarCookie(
-            name: 'JSESSIONID',
-            value: 'S2',
-            domain: 'ids.xjtu.edu.cn',
-            path: '/',
-            source: 'origin'),
+          name: 'JSESSIONID',
+          value: 'S2',
+          domain: 'ids.xjtu.edu.cn',
+          path: '/',
+          source: 'origin',
+        ),
       ];
-      harvestInto(decideHarvest(rotated, view), view, store.put,
-          schoolId: 'xjt', now: () => clock);
+      harvestInto(
+        decideHarvest(rotated, view),
+        view,
+        store.put,
+        schoolId: 'xjt',
+        now: () => clock,
+      );
       final after = await store.get('sess');
       expect(after?.value, 'JSESSIONID=S2');
     });
 
     test('无声明 ref → 空计划不写库', () {
       final store = CredentialStore(now: () => 5000);
-      const noCred =
-          BrokerManifestView(allow: ['https://ids.xjtu.edu.cn/*'], credentials: {});
-      harvestInto(decideHarvest(cookies, noCred), noCred, store.put,
-          schoolId: 'xjt', now: () => 5000);
+      const noCred = BrokerManifestView(
+        allow: ['https://ids.xjtu.edu.cn/*'],
+        credentials: {},
+      );
+      harvestInto(
+        decideHarvest(cookies, noCred),
+        noCred,
+        store.put,
+        schoolId: 'xjt',
+        now: () => 5000,
+      );
       expect(store.list(), isEmpty);
     });
+  });
+
+  test('query credential 仅收割 scope 内唯一非空参数', () async {
+    const view = BrokerManifestView(
+      allow: ['https://card.xidian.edu.cn/*'],
+      credentials: {
+        'card': CredentialDecl(
+          scope: ['https://card.xidian.edu.cn/*'],
+          type: 'query',
+          queryParam: 'openid',
+        ),
+      },
+    );
+    expect(
+      decideQueryHarvest(
+        'https://card.xidian.edu.cn/home?openid=opaque%2Bvalue',
+        view,
+      ).map((e) => e.toJson()),
+      [
+        {'ref': 'card', 'value': 'opaque+value'},
+      ],
+    );
+    expect(
+      decideQueryHarvest('https://card.xidian.edu.cn/home#openid=opaque', view),
+      isEmpty,
+    );
+    expect(
+      decideQueryHarvest(
+        'https://card.xidian.edu.cn/home?openid=first&openid=second',
+        view,
+      ),
+      isEmpty,
+    );
+    expect(
+      decideQueryHarvest('https://outside.edu.cn/home?openid=opaque', view),
+      isEmpty,
+    );
+
+    final store = CredentialStore(now: () => 6000);
+    harvestInto(
+      decideQueryHarvest('https://card.xidian.edu.cn/home?openid=opaque', view),
+      view,
+      store.put,
+      schoolId: 'xidian',
+      now: () => 6000,
+    );
+    final card = await store.get('card');
+    expect(card?.via, 'query');
+    expect(card?.value, 'opaque');
   });
 }
