@@ -56,11 +56,21 @@ Future<_Outcome<T>> _runDecoded<T>(
 /// 引导当前会话学校的可见登录；成功返回 true。凭证收割在核心（红线 #1）。
 Future<bool> _promptVisibleLogin(
   BuildContext context,
-  SessionController session,
-) async {
+  SessionController session, {
+  String? targetRef,
+}) async {
   final school = session.selectedSchool;
   if (school == null) return false;
-  final result = await runSchoolLogin(context, session, school);
+  final serviceUrl = targetRef == null
+      ? null
+      : school.login.ssoMint?.services[targetRef]?.service;
+  final result = await runSchoolLogin(
+    context,
+    session,
+    school,
+    initialUrl: serviceUrl,
+    requiredRef: targetRef,
+  );
   return result?.status == WebViewLoginStatus.success;
 }
 
@@ -473,6 +483,308 @@ String _roomStatusText(String status) => switch (status) {
   'partial' => '部分占用',
   _ => status,
 };
+
+// ===========================================================================
+// 一卡通（用户按需；余额 → 交易明细）
+// ===========================================================================
+
+class CardSection extends StatefulWidget {
+  const CardSection({super.key});
+
+  @override
+  State<CardSection> createState() => _CardSectionState();
+}
+
+class _CardSectionState extends State<CardSection> {
+  _Phase _phase = _Phase.idle;
+  CardBalance? _data;
+  String? _error;
+
+  Future<void> _load() async {
+    setState(() => _phase = _Phase.loading);
+    final outcome = await _runDecoded<CardBalance>(
+      SessionScope.of(context),
+      'card.balance',
+      decode: cardBalanceFromDynamic,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (outcome.needLogin) {
+        _phase = _Phase.needLogin;
+      } else if (outcome.error != null) {
+        _phase = _Phase.error;
+        _error = outcome.error;
+      } else {
+        _phase = _Phase.loaded;
+        _data = outcome.data;
+      }
+    });
+  }
+
+  Future<void> _login() async {
+    final ok = await _promptVisibleLogin(
+      context,
+      SessionScope.of(context),
+      targetRef: 'card-session',
+    );
+    if (!mounted) return;
+    if (ok) await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = _data;
+    if (_phase != _Phase.loaded || data == null) {
+      return _PromptCard(
+        title: '一卡通',
+        subtitle: '仅在你点击后查询余额和交易记录',
+        child: _PhaseBody(
+          phase: _phase,
+          error: _error,
+          idleLabel: '查看余额',
+          onLoad: _load,
+          onLogin: _login,
+        ),
+      );
+    }
+
+    return _SectionShell(
+      title: '一卡通',
+      // 即使 adapter 错把完整卡号填进 cardNumberMasked，UI 也只从权威 cardNumber 派生末四位。
+      subtitle: _maskCardNumber(data.cardNumber),
+      child: data.errorStatus == null
+          ? Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _money(data.balance.amountMinor, data.balance.currency),
+                        style: Theme.of(context).textTheme.headlineMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      if (data.status != null)
+                        Text(
+                          _cardStatusText(data.status!),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                    ],
+                  ),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => const CardTransactionsPage(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.receipt_long_outlined),
+                  label: const Text('交易明细'),
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: Text(_balanceErrorText(data.errorStatus!))),
+                OutlinedButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('重新查询'),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class CardTransactionsPage extends StatefulWidget {
+  const CardTransactionsPage({super.key});
+
+  @override
+  State<CardTransactionsPage> createState() => _CardTransactionsPageState();
+}
+
+class _CardTransactionsPageState extends State<CardTransactionsPage> {
+  _Phase _phase = _Phase.loading;
+  CardTransactions? _data;
+  String? _error;
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_started) {
+      _started = true;
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    final outcome = await _runDecoded<CardTransactions>(
+      SessionScope.of(context),
+      'card.transactions',
+      params: const {'page': 1, 'size': 20},
+      decode: cardTransactionsFromDynamic,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (outcome.needLogin) {
+        _phase = _Phase.needLogin;
+      } else if (outcome.error != null) {
+        _phase = _Phase.error;
+        _error = outcome.error;
+      } else {
+        _phase = _Phase.loaded;
+        _data = outcome.data;
+      }
+    });
+  }
+
+  Future<void> _login() async {
+    final ok = await _promptVisibleLogin(
+      context,
+      SessionScope.of(context),
+      targetRef: 'card-session',
+    );
+    if (!mounted) return;
+    if (ok) {
+      setState(() => _phase = _Phase.loading);
+      await _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('一卡通交易明细')),
+      body: switch (_phase) {
+        _Phase.loading => const Center(child: CircularProgressIndicator()),
+        _Phase.needLogin => Center(
+          child: FilledButton.icon(
+            onPressed: _login,
+            icon: const Icon(Icons.login),
+            label: const Text('登录并查看'),
+          ),
+        ),
+        _Phase.error => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_error ?? '加载失败', textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() => _phase = _Phase.loading);
+                    _load();
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('重试'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        _Phase.idle || _Phase.loaded => _transactionsBody(context),
+      },
+    );
+  }
+
+  Widget _transactionsBody(BuildContext context) {
+    final data = _data;
+    if (data == null || data.items.isEmpty) {
+      return const Center(child: Text('暂无交易记录'));
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: data.items.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final item = data.items[index];
+        final sign = _directionSign(item.direction);
+        final color = sign == '+'
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.onSurface;
+        return ListTile(
+          leading: Icon(
+            sign == '+'
+                ? Icons.south_west
+                : sign == '-'
+                ? Icons.north_east
+                : Icons.swap_horiz,
+            color: color,
+          ),
+          title: Text(item.merchant ?? item.type ?? '一卡通交易'),
+          subtitle: Text(
+            [
+              _formatTimestamp(item.time),
+              if (item.location != null) item.location!,
+              if (item.status != null) _transactionStatusText(item.status!),
+            ].join(' · '),
+          ),
+          trailing: Text(
+            '$sign${_money(item.amountMinor, item.currency)}',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+String _directionSign(String direction) => switch (direction) {
+  'credit' || 'refund' || 'reversal' || 'subsidy' => '+',
+  'debit' => '-',
+  _ => '',
+};
+
+String _money(int amountMinor, String currency) {
+  final sign = amountMinor < 0 ? '-' : '';
+  final absolute = amountMinor.abs();
+  final major = absolute ~/ 100;
+  final minor = (absolute % 100).toString().padLeft(2, '0');
+  final symbol = currency == 'CNY' ? '¥' : '$currency ';
+  return '$sign$symbol$major.$minor';
+}
+
+String _maskCardNumber(String cardNumber) {
+  if (cardNumber.length <= 4) return '••••';
+  return '•••• ${cardNumber.substring(cardNumber.length - 4)}';
+}
+
+String _cardStatusText(String status) => switch (status) {
+  'active' => '状态正常',
+  'frozen' => '已冻结',
+  'lost' => '已挂失',
+  'cancelled' => '已注销',
+  _ => '状态未知',
+};
+
+String _balanceErrorText(String status) => switch (status) {
+  'failed' => '余额查询失败，当前数值可能不是最新结果。',
+  'pending' => '余额仍在处理中，请稍后重试。',
+  _ => '余额状态未知，请重新查询。',
+};
+
+String _transactionStatusText(String status) => switch (status) {
+  'final' => '已完成',
+  'pending' => '处理中',
+  'failed' => '失败',
+  'cancelled' => '已取消',
+  _ => '状态未知',
+};
+
+String _formatTimestamp(String value) {
+  final date = DateTime.tryParse(value)?.toLocal();
+  if (date == null) return value;
+  return '${_formatDate(date)} '
+      '${date.hour.toString().padLeft(2, '0')}:'
+      '${date.minute.toString().padLeft(2, '0')}';
+}
 
 // ===========================================================================
 // 共用外壳

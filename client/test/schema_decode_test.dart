@@ -175,4 +175,62 @@ void main() {
       expect(out!.items, isEmpty);
     });
   });
+
+  group('card schema decode', () {
+    test('余额保持整数最小货币单位并解出脱敏卡号', () {
+      final out = cardBalanceFromDynamic({
+        'cardNumber': '00000042',
+        'cardNumberMasked': '****0042',
+        'balance': {'amountMinor': 1234, 'currency': 'CNY'},
+        'status': 'active',
+      });
+      expect(out, isNotNull);
+      expect(out!.balance.amountMinor, 1234);
+      expect(out.cardNumberMasked, '****0042');
+      expect(cardBalanceFromDynamic({'cardNumber': 'x'}), isNull);
+    });
+
+    test('交易列表过滤缺失必填字段的条目', () {
+      final out = cardTransactionsFromDynamic({
+        'cardNumber': '00000042',
+        'page': 1,
+        'items': [
+          {
+            'time': '2026-07-26T08:00:00Z',
+            'amountMinor': 850,
+            'currency': 'CNY',
+            'direction': 'debit',
+            'merchant': '校内商户',
+          },
+          {'time': '2026-07-26T09:00:00Z'},
+        ],
+      });
+      expect(out, isNotNull);
+      expect(out!.items, hasLength(1));
+      expect(out.items.single.amountMinor, 850);
+      expect(out.items.single.direction, 'debit');
+    });
+
+    test('负交易金额、非法币种或方向不进入 UI', () {
+      final out = cardTransactionsFromDynamic({
+        'cardNumber': '00000042',
+        'items': [
+          {
+            'time': '2026-07-26T08:00:00Z',
+            'amountMinor': -1,
+            'currency': 'CNY',
+            'direction': 'debit',
+          },
+          {
+            'time': '2026-07-26T08:00:00Z',
+            'amountMinor': 1,
+            'currency': 'yuan',
+            'direction': 'mystery',
+          },
+        ],
+      });
+      expect(out, isNotNull);
+      expect(out!.items, isEmpty);
+    });
+  });
 }
