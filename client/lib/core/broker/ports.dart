@@ -10,7 +10,7 @@ library;
 class ResolvedCredential {
   const ResolvedCredential({required this.via, required this.value});
 
-  final String via; // cookie | header
+  final String via; // cookie | header | query
   final String value;
 }
 

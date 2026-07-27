@@ -17,6 +17,7 @@ import '../credential/types.dart';
 import 'cookie_jar.dart';
 import 'cookie_match.dart';
 import 'inject_policy.dart';
+import 'url_match.dart';
 
 /// 收割计划项：一个凭证 ref 及其序列化后的 cookie 值。
 class HarvestEntry {
@@ -28,6 +29,21 @@ class HarvestEntry {
   final String value;
 
   Map<String, Object?> toJson() => {'ref': ref, 'value': value};
+}
+
+/// URL query 收割目标；注入 view 与收割 view 可分离（ADR-020 §2.3，SSO mint 必需）。
+class QueryHarvestTarget {
+  const QueryHarvestTarget({
+    required this.view,
+    required this.put,
+    required this.schoolId,
+    required this.now,
+  });
+
+  final BrokerManifestView view;
+  final void Function(CredentialEntry entry) put;
+  final String schoolId;
+  final int Function() now;
 }
 
 /// 某 scope 模板的代表性 URL（scheme 不影响 domain/path 匹配，取 https）。
@@ -54,8 +70,7 @@ List<HarvestEntry> decideHarvest(
 ) {
   // 纵深防御（栅栏 3）：只收 origin 区。正常输入是 jar.harvestView()（已仅 origin），
   // 但本函数不信任上游——即便误传入 ephemeral cookie，也在此丢弃，绝不入库。
-  final harvestable =
-      originCookies.where((c) => c.source == 'origin').toList();
+  final harvestable = originCookies.where((c) => c.source == 'origin').toList();
 
   final plan = <HarvestEntry>[];
   view.credentials.forEach((ref, decl) {
@@ -63,8 +78,11 @@ List<HarvestEntry> decideHarvest(
 
     final reprUrls = decl.scope.map(scopeReprUrl).whereType<String>().toList();
     final matched = harvestable
-        .where((c) => reprUrls.any(
-            (u) => matchCookieForSend((domain: c.domain, path: c.path), u)))
+        .where(
+          (c) => reprUrls.any(
+            (u) => matchCookieForSend((domain: c.domain, path: c.path), u),
+          ),
+        )
         .toList();
     if (matched.isEmpty) return;
 
@@ -73,6 +91,35 @@ List<HarvestEntry> decideHarvest(
 
   plan.sort((a, b) => a.ref.compareTo(b.ref));
   return plan;
+}
+
+/// 从核心已接受的 URL 收割 query credential（ADR-020 §2.3）。
+/// 重复同名参数拒绝收割，避免两端首/末值差异；fragment 不参与 [Uri.queryParametersAll]。
+List<HarvestEntry> decideQueryHarvest(String url, BrokerManifestView view) {
+  final parsed = Uri.tryParse(url);
+  if (parsed == null || !parsed.hasAuthority) return const [];
+
+  final plan = <HarvestEntry>[];
+  view.credentials.forEach((ref, decl) {
+    if (decl.type != 'query' || decl.queryParam == null) return;
+    if (!decl.scope.any((scope) => scopeMatches(url, scope))) return;
+    final values = parsed.queryParametersAll[decl.queryParam];
+    if (values == null || values.length != 1 || values.single.isEmpty) return;
+    plan.add(HarvestEntry(ref: ref, value: values.single));
+  });
+  plan.sort((a, b) => a.ref.compareTo(b.ref));
+  return plan;
+}
+
+/// 收割一个核心已接受的 URL；不保存完整 URL，只把裸凭证值写入核心 store。
+void harvestQueryUrl(String url, QueryHarvestTarget target) {
+  harvestInto(
+    decideQueryHarvest(url, target.view),
+    target.view,
+    target.put,
+    schoolId: target.schoolId,
+    now: target.now,
+  );
 }
 
 /// 把收割计划写入凭证库（薄桥接）。type/scope 以 manifest 为准、store 防御性副本
@@ -87,19 +134,21 @@ void harvestInto(
   for (final e in plan) {
     final decl = view.credentials[e.ref];
     if (decl == null) continue; // 计划只来自 decideHarvest，理论上恒有；防御性跳过
-    put(CredentialEntry(
-      ref: e.ref,
-      schoolId: schoolId,
-      type: decl.type,
-      scope: List.of(decl.scope), // 防御性副本
-      value: e.value,
-      acquiredAt: now(),
-      expiresAt: null,
-      status: CredentialStatus.active,
-      // 敏感度按 manifest role 标注（ADR-017 / ADR-012 §2.8），驱动保护策略与 UI。
-      sensitivity: decl.role == 'sso-master'
-          ? CredentialSensitivity.master
-          : CredentialSensitivity.standard,
-    ));
+    put(
+      CredentialEntry(
+        ref: e.ref,
+        schoolId: schoolId,
+        type: decl.type,
+        scope: List.of(decl.scope), // 防御性副本
+        value: e.value,
+        acquiredAt: now(),
+        expiresAt: null,
+        status: CredentialStatus.active,
+        // 敏感度按 manifest role 标注（ADR-017 / ADR-012 §2.8），驱动保护策略与 UI。
+        sensitivity: decl.role == 'sso-master'
+            ? CredentialSensitivity.master
+            : CredentialSensitivity.standard,
+      ),
+    );
   }
 }

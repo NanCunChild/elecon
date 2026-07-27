@@ -13,12 +13,20 @@ import 'url_match.dart';
 
 /// manifest `credentials.<ref>` 的注入相关声明（ADR-013）。**不含凭证值**（红线 #1）。
 class CredentialDecl {
-  const CredentialDecl({required this.scope, required this.type, this.role});
+  const CredentialDecl({
+    required this.scope,
+    required this.type,
+    this.queryParam,
+    this.role,
+  });
 
   final List<String> scope;
 
-  /// 注入方式：`cookie` | `header`。
+  /// 注入方式：`cookie` | `header` | `query`。
   final String type;
+
+  /// `type=query` 时由 Broker 注入/收割的参数名（ADR-020 §2.2）。
+  final String? queryParam;
 
   /// 凭证角色（ADR-017）。`sso-master`=CAS 母凭证；缺省=普通下游。
   /// **不影响注入决策**（[decideInjection] 忽略之），只驱动收割时的敏感度标注（ADR-012 §2.8）。
@@ -61,13 +69,18 @@ class PassthroughDecision extends InjectionDecision {
 
 /// 注入指定 ref 的凭证（`via` ∈ {`cookie`, `header`}）。
 class InjectDecision extends InjectionDecision {
-  const InjectDecision({required this.ref, required this.via});
+  const InjectDecision({required this.ref, required this.via, this.queryParam});
 
   final String ref;
   final String via;
+  final String? queryParam;
 
   @override
-  Map<String, Object?> toJson() => {'kind': 'inject', 'ref': ref, 'via': via};
+  Map<String, Object?> toJson() {
+    final result = <String, Object?>{'kind': 'inject', 'ref': ref, 'via': via};
+    if (queryParam != null) result['queryParam'] = queryParam;
+    return result;
+  }
 }
 
 /// 决定对某出站 url 的凭证注入策略。
@@ -85,7 +98,19 @@ InjectionDecision decideInjection(String url, BrokerManifestView view) {
   }
 
   // ② 收集命中的 ref（每 ref 取其命中 scope 的最长前缀长度）
-  final hits = <({String ref, String via, int prefixLen})>[];
+  final invalidDecl = view.credentials.values.any((decl) {
+    final valid =
+        decl.queryParam != null &&
+        RegExp(r'^[A-Za-z0-9_.-]+$').hasMatch(decl.queryParam!);
+    return (decl.type == 'query' && !valid) ||
+        (decl.type != 'query' && decl.queryParam != null);
+  });
+  if (invalidDecl) {
+    return const RejectDecision('invalid_credential_decl');
+  }
+
+  final hits =
+      <({String ref, String via, String? queryParam, int prefixLen})>[];
   view.credentials.forEach((ref, decl) {
     var bestLen = -1;
     for (final pattern in decl.scope) {
@@ -95,7 +120,12 @@ InjectionDecision decideInjection(String url, BrokerManifestView view) {
       }
     }
     if (bestLen >= 0) {
-      hits.add((ref: ref, via: decl.type, prefixLen: bestLen));
+      hits.add((
+        ref: ref,
+        via: decl.type,
+        queryParam: decl.queryParam,
+        prefixLen: bestLen,
+      ));
     }
   });
   if (hits.isEmpty) {
@@ -109,11 +139,16 @@ InjectionDecision decideInjection(String url, BrokerManifestView view) {
   }
 
   // ④ 纵深防御：等长且不同 ref → 歧义 → fail-closed
-  final ambiguous =
-      hits.any((h) => h.prefixLen == best.prefixLen && h.ref != best.ref);
+  final ambiguous = hits.any(
+    (h) => h.prefixLen == best.prefixLen && h.ref != best.ref,
+  );
   if (ambiguous) {
     return const RejectDecision('ambiguous_scope');
   }
 
-  return InjectDecision(ref: best.ref, via: best.via);
+  return InjectDecision(
+    ref: best.ref,
+    via: best.via,
+    queryParam: best.queryParam,
+  );
 }

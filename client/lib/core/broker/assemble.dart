@@ -33,11 +33,15 @@ class RequestInit {
 
 class AssembleRequestInput {
   const AssembleRequestInput({
+    this.url,
     required this.init,
     required this.decision,
     required this.resolved,
     required this.jarCookies,
   });
+
+  /// 仅 query credential 注入需要；旧 cookie/header golden 可缺省。
+  final String? url;
 
   final RequestInit init;
 
@@ -69,16 +73,27 @@ class RejectResult extends AssembleResult {
 }
 
 class OkResult extends AssembleResult {
-  const OkResult({required this.method, required this.headers, this.body});
+  const OkResult({
+    required this.method,
+    required this.headers,
+    this.body,
+    this.url,
+  });
 
   final String method;
   final Map<String, String> headers;
   final String? body;
+  final String? url;
 
   @override
   Map<String, Object?> toJson() {
-    final m = <String, Object?>{'kind': 'ok', 'method': method, 'headers': headers};
+    final m = <String, Object?>{
+      'kind': 'ok',
+      'method': method,
+      'headers': headers,
+    };
     if (body != null) m['body'] = body;
+    if (url != null) m['url'] = url;
     return m;
   }
 }
@@ -91,7 +106,9 @@ List<CookiePair> _parseCookieString(String s) {
     if (part.isEmpty) continue;
     final eq = part.indexOf('=');
     if (eq <= 0) continue;
-    out.add(CookiePair(part.substring(0, eq).trim(), part.substring(eq + 1).trim()));
+    out.add(
+      CookiePair(part.substring(0, eq).trim(), part.substring(eq + 1).trim()),
+    );
   }
   return out;
 }
@@ -113,6 +130,11 @@ AssembleResult assembleRequest(AssembleRequestInput input) {
   if (decision is InjectDecision && input.resolved == null) {
     return const RejectResult('credential_unavailable');
   }
+  if (decision is InjectDecision &&
+      input.resolved != null &&
+      input.resolved!.via != decision.via) {
+    return const RejectResult('credential_type_mismatch');
+  }
 
   // ① 净化 adapter 自设头。
   final headers = sanitizeRequestHeaders(input.init.headers ?? const {});
@@ -130,6 +152,16 @@ AssembleResult assembleRequest(AssembleRequestInput input) {
     headers['Authorization'] = input.resolved!.value;
   }
 
+  var url = input.url;
+  if (decision is InjectDecision &&
+      decision.via == 'query' &&
+      input.resolved != null) {
+    if (url == null || decision.queryParam == null) {
+      return const RejectResult('invalid_url');
+    }
+    url = _injectQueryParam(url, decision.queryParam!, input.resolved!.value);
+  }
+
   // ③ Cookie 合流：broker 注入名优先，其后补 jar。
   final seen = <String>{};
   final cookiePairs = <CookiePair>[];
@@ -140,11 +172,61 @@ AssembleResult assembleRequest(AssembleRequestInput input) {
     if (seen.add(p.name)) cookiePairs.add(p);
   }
   if (cookiePairs.isNotEmpty) {
-    headers['Cookie'] = cookiePairs.map((p) => '${p.name}=${p.value}').join('; ');
+    headers['Cookie'] = cookiePairs
+        .map((p) => '${p.name}=${p.value}')
+        .join('; ');
   }
 
   final method = (input.init.method ?? 'GET').toUpperCase();
-  return OkResult(method: method, headers: headers, body: input.init.body);
+  return OkResult(
+    method: method,
+    headers: headers,
+    body: input.init.body,
+    url: url,
+  );
+}
+
+/// 覆盖全部同名参数后追加唯一凭证参数；仅 query 注入分支调用，不改写普通 URL。
+String _injectQueryParam(String url, String name, String value) {
+  final hashAt = url.indexOf('#');
+  final fragment = hashAt >= 0 ? url.substring(hashAt) : '';
+  final withoutFragment = hashAt >= 0 ? url.substring(0, hashAt) : url;
+  final queryAt = withoutFragment.indexOf('?');
+  final base = queryAt >= 0
+      ? withoutFragment.substring(0, queryAt)
+      : withoutFragment;
+  final rawQuery = queryAt >= 0 ? withoutFragment.substring(queryAt + 1) : '';
+  final kept = rawQuery.isEmpty
+      ? <String>[]
+      : rawQuery.split('&').where((part) => _queryKey(part) != name).toList();
+  kept.add('${Uri.encodeComponent(name)}=${Uri.encodeComponent(value)}');
+  return '$base?${kept.join('&')}$fragment';
+}
+
+String? _queryKey(String part) {
+  final equalsAt = part.indexOf('=');
+  final raw = equalsAt >= 0 ? part.substring(0, equalsAt) : part;
+  try {
+    return Uri.decodeQueryComponent(raw);
+  } on FormatException {
+    return null;
+  }
+}
+
+/// 从 URL 中删除全部指定 query 参数；供核心日志/诊断剥离凭证等价物（ADR-020 §2.5）。
+String stripQueryParam(String url, String name) {
+  final hashAt = url.indexOf('#');
+  final fragment = hashAt >= 0 ? url.substring(hashAt) : '';
+  final withoutFragment = hashAt >= 0 ? url.substring(0, hashAt) : url;
+  final queryAt = withoutFragment.indexOf('?');
+  if (queryAt < 0) return url;
+  final base = withoutFragment.substring(0, queryAt);
+  final kept = withoutFragment
+      .substring(queryAt + 1)
+      .split('&')
+      .where((part) => part.isNotEmpty && _queryKey(part) != name)
+      .toList();
+  return kept.isEmpty ? '$base$fragment' : '$base?${kept.join('&')}$fragment';
 }
 
 class RawResponse {
@@ -156,7 +238,11 @@ class RawResponse {
 }
 
 class ProcessedResponse {
-  const ProcessedResponse({required this.status, required this.headers, this.body});
+  const ProcessedResponse({
+    required this.status,
+    required this.headers,
+    this.body,
+  });
 
   final int status;
   final Map<String, String> headers;

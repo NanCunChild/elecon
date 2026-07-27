@@ -21,6 +21,7 @@
  * 🔒 红线 #1 承重路径（凭证入核心库）：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环。
  */
 
+import { scopeMatches } from "@elecon/broker-primitives";
 import type { CredentialEntry } from "../credential/types.js";
 import { compareCookiePathName, type JarCookie, matchCookieForSend } from "./cookie-jar.js";
 import { parseTemplateHostPath } from "./cookie-match.js";
@@ -44,6 +45,12 @@ export interface HarvestSink {
 export interface HarvestContext {
   schoolId: string;
   now: () => number;
+}
+
+/** URL query 收割目标；注入 view 与收割 view 可分离（ADR-020 §2.3，SSO mint 必需）。 */
+export interface QueryHarvestTarget extends HarvestContext {
+  view: BrokerManifestView;
+  sink: HarvestSink;
 }
 
 /** 某 scope 模板的代表性 URL（scheme 不影响 domain/path 匹配，取 https）。 */
@@ -93,6 +100,34 @@ export function decideHarvest(originCookies: JarCookie[], view: BrokerManifestVi
   }
 
   return plan.sort((a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0));
+}
+
+/**
+ * 从核心已接受的 URL 收割 query credential（ADR-020 §2.3）。
+ * 重复同名参数拒绝收割，避免两端首/末值差异；fragment 由 URL API 天然忽略。
+ */
+export function decideQueryHarvest(url: string, view: BrokerManifestView): HarvestPlan {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return [];
+  }
+
+  const plan: HarvestPlan = [];
+  for (const [ref, decl] of Object.entries(view.credentials ?? {})) {
+    if (decl.type !== "query" || decl.queryParam === undefined) continue;
+    if (!decl.scope.some((scope) => scopeMatches(url, scope))) continue;
+    const values = parsed.searchParams.getAll(decl.queryParam);
+    if (values.length !== 1 || values[0] === "") continue;
+    plan.push({ ref, value: values[0]! });
+  }
+  return plan.sort((a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0));
+}
+
+/** 收割一个核心已接受的 URL；不保存完整 URL，只把裸凭证值写入核心 store。 */
+export function harvestQueryUrl(url: string, target: QueryHarvestTarget): void {
+  harvestInto(decideQueryHarvest(url, target.view), target.view, target.sink, target);
 }
 
 /**

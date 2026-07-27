@@ -20,6 +20,7 @@ import 'broker/fetch_proxy.dart'
         proxyFetch;
 import 'broker/inject_policy.dart'
     show BrokerManifestView, InjectDecision, InjectionDecision, decideInjection;
+import 'broker/harvest.dart' show QueryHarvestTarget;
 import 'broker/ports.dart' show CredentialResolver;
 
 export 'broker/dataflow.dart'
@@ -85,6 +86,7 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
   required CredentialResolver resolver,
   required Transport transport,
   CookieJar? jar,
+  QueryHarvestTarget? queryHarvest,
   int maxRequests = 20,
   int nowMs = 0,
   List<df.BindDecl> binds = const [],
@@ -225,6 +227,7 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
             resolver: resolver,
             jar: effectiveJar,
             transport: transport,
+            queryHarvest: queryHarvest,
             brokerInjectHeaders: headerInjects.isEmpty ? null : headerInjects,
             onRawResponse: (status, headers, body) {
               rawForExtract = df.RawResponse(

@@ -22,7 +22,11 @@ InjectionDecision _decisionFromJson(Map<String, dynamic> j) {
     case 'passthrough':
       return const PassthroughDecision();
     case 'inject':
-      return InjectDecision(ref: j['ref'] as String, via: j['via'] as String);
+      return InjectDecision(
+        ref: j['ref'] as String,
+        via: j['via'] as String,
+        queryParam: j['queryParam'] as String?,
+      );
     default:
       throw StateError('未知 decision.kind: ${j['kind']}');
   }
@@ -32,7 +36,9 @@ AssembleRequestInput _assembleInputFromJson(Map<String, dynamic> j) {
   final initJson = j['init'] as Map<String, dynamic>;
   final init = RequestInit(
     method: initJson['method'] as String?,
-    headers: initJson['headers'] == null ? null : headersFromJson(initJson['headers']),
+    headers: initJson['headers'] == null
+        ? null
+        : headersFromJson(initJson['headers']),
     body: initJson['body'] as String?,
   );
   final resolvedJson = j['resolved'] as Map<String, dynamic>?;
@@ -43,9 +49,12 @@ AssembleRequestInput _assembleInputFromJson(Map<String, dynamic> j) {
           value: resolvedJson['value'] as String,
         );
   final jarCookies = (j['jarCookies'] as List)
-      .map((e) => CookiePair((e as Map)['name'] as String, e['value'] as String))
+      .map(
+        (e) => CookiePair((e as Map)['name'] as String, e['value'] as String),
+      )
       .toList();
   return AssembleRequestInput(
+    url: j['url'] as String?,
     init: init,
     decision: _decisionFromJson(j['decision'] as Map<String, dynamic>),
     resolved: resolved,
@@ -54,14 +63,15 @@ AssembleRequestInput _assembleInputFromJson(Map<String, dynamic> j) {
 }
 
 RawResponse _rawFromJson(Map<String, dynamic> j) => RawResponse(
-      status: j['status'] as int,
-      headers: headersFromJson(j['headers']),
-      body: j['body'] as String?,
-    );
+  status: j['status'] as int,
+  headers: headersFromJson(j['headers']),
+  body: j['body'] as String?,
+);
 
 void main() {
   final golden = readGolden('assemble.json');
-  final assembleCases = (golden['assemble'] as List).cast<Map<String, dynamic>>();
+  final assembleCases = (golden['assemble'] as List)
+      .cast<Map<String, dynamic>>();
   final processCases = (golden['process'] as List).cast<Map<String, dynamic>>();
 
   group('B6a assemble（Dart，与 TS 双跑同一 golden）', () {
@@ -72,14 +82,18 @@ void main() {
 
     for (final c in assembleCases) {
       test('assemble · ${c['name']}', () {
-        final input = _assembleInputFromJson(c['input'] as Map<String, dynamic>);
+        final input = _assembleInputFromJson(
+          c['input'] as Map<String, dynamic>,
+        );
         expect(assembleRequest(input).toJson(), equals(c['expected']));
       });
     }
 
     for (final c in processCases) {
       test('process · ${c['name']}', () {
-        final actual = processResponse(_rawFromJson(c['input'] as Map<String, dynamic>));
+        final actual = processResponse(
+          _rawFromJson(c['input'] as Map<String, dynamic>),
+        );
         expect(actual.toJson(), equals(c['expected']));
       });
     }

@@ -53,6 +53,37 @@
       "expected": { "kind": "inject", "ref": "ehall-token", "via": "header" }
     },
     {
+      "name": "inject_query_with_manifest_param",
+      "url": "https://card.h.edu.cn/account",
+      "view": {
+        "allow": ["https://card.h.edu.cn/*"],
+        "credentials": {
+          "card-session": {
+            "scope": ["https://card.h.edu.cn/*"],
+            "type": "query",
+            "queryParam": "openid"
+          }
+        }
+      },
+      "expected": {
+        "kind": "inject",
+        "ref": "card-session",
+        "via": "query",
+        "queryParam": "openid"
+      }
+    },
+    {
+      "name": "reject_query_without_param_defense_in_depth",
+      "url": "https://card.h.edu.cn/account",
+      "view": {
+        "allow": ["https://card.h.edu.cn/*"],
+        "credentials": {
+          "card-session": { "scope": ["https://card.h.edu.cn/*"], "type": "query" }
+        }
+      },
+      "expected": { "kind": "reject", "reason": "invalid_credential_decl" }
+    },
+    {
       "name": "longest_prefix_wins_specific_over_general",
       "url": "https://h.edu.cn/api/grades/list",
       "view": {

@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/credential/store.dart';
+import '../../core/broker/assemble.dart' show stripQueryParam;
 import '../../core/debug/dev_log.dart';
 import '../../core/debug/perf_trace.dart';
 import '../../core/login/webview_login.dart';
@@ -39,6 +40,8 @@ class WebViewLoginPage extends StatefulWidget {
     super.key,
     required this.login,
     required this.store,
+    this.initialUrl,
+    this.requiredRef,
     this.performanceTrace,
     this.tlsProceedHosts = const {},
     this.debugLog = false,
@@ -46,6 +49,10 @@ class WebViewLoginPage extends StatefulWidget {
 
   final LoginManifestView login;
   final CredentialStore store;
+  final String? initialUrl;
+
+  /// 定向登录必须实际收割到的目标 ref；缺省只要求任一声明凭证（通用登录）。
+  final String? requiredRef;
   final PerfTrace? performanceTrace;
 
   /// TLS 证书异常放行白名单（host 精确匹配）；仅 debug build 可用。
@@ -88,6 +95,7 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
     // 全局环缓冲仅 debug（release 不收 webview 类）；消息须已打码。
     if (kDebugMode) DevLog.instance.webview(message);
     if (!widget.debugLog) return;
+    if (!mounted) return;
     final ts = DateTime.now().toIso8601String().substring(11, 23);
     if (kDebugMode) debugPrint('[webview-login] $message');
     setState(() {
@@ -99,8 +107,15 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
   String _maskCookie(dynamic value) =>
       maskCookieValue(value, redact: DevLog.instance.redact);
 
-  String _urlForLog(String raw) =>
-      formatUrlForLog(raw, redact: DevLog.instance.redact);
+  String _urlForLog(String raw) {
+    var safe = raw;
+    for (final decl in widget.login.brokerView.credentials.values) {
+      if (decl.type == 'query' && decl.queryParam != null) {
+        safe = stripQueryParam(safe, decl.queryParam!);
+      }
+    }
+    return formatUrlForLog(safe, redact: DevLog.instance.redact);
+  }
 
   bool _urlAllowed(String url) => isLoginNavigationAllowed(url, widget.login);
 
@@ -157,9 +172,11 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       while (true) {
         round += 1;
         webViewCookies = await _collectWebViewCookies(url);
+        if (!mounted) return;
         final refs = planWebViewHarvest(
           login: widget.login,
           cookies: webViewCookies,
+          currentUrl: url.toString(),
         ).map((e) => e.ref).toSet();
         _addLog(
           '轮询#$round：cookie=${webViewCookies.length} 条 | '
@@ -172,6 +189,7 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
           break;
         }
         await Future<void>.delayed(_harvestPollInterval);
+        if (!mounted) return;
       }
 
       for (final c in webViewCookies) {
@@ -181,8 +199,13 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       }
       _addLog('有效 cookie（已过滤空名/域）：${webViewCookies.length} 条');
 
-      if (webViewCookies.isEmpty) {
-        _addLog('⚠ 无有效 cookie，收割跳过');
+      final finalPlan = planWebViewHarvest(
+        login: widget.login,
+        cookies: webViewCookies,
+        currentUrl: url.toString(),
+      );
+      if (finalPlan.isEmpty) {
+        _addLog('⚠ 当前 URL/cookie 无可收割凭证，收割跳过');
         _hasHarvested = false;
         return;
       }
@@ -190,9 +213,18 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       final result = harvestWebViewCookies(
         login: widget.login,
         cookies: webViewCookies,
+        currentUrl: url.toString(),
         put: widget.store.put,
         now: () => DateTime.now().millisecondsSinceEpoch,
       );
+
+      final requiredRef = widget.requiredRef;
+      if (requiredRef != null &&
+          !result.entries.any((entry) => entry.ref == requiredRef)) {
+        _addLog('⚠ 定向登录未收割到目标 ref=$requiredRef，继续等待');
+        _hasHarvested = false;
+        return;
+      }
 
       _addLog('收割完成：ref=[${result.entries.map((e) => e.ref).join(", ")}]');
       _addLog(
@@ -312,9 +344,18 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
   }
 
   Widget _buildWebView() {
+    final initialUrl = widget.initialUrl ?? widget.login.url;
+    if (!_urlAllowed(initialUrl)) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text('登录入口不在导航白名单内：${_urlForLog(initialUrl)}'),
+        ),
+      );
+    }
     return InAppWebView(
       key: const ValueKey('webview_login'),
-      initialUrlRequest: URLRequest(url: WebUri(widget.login.url)),
+      initialUrlRequest: URLRequest(url: WebUri(initialUrl)),
       initialSettings: InAppWebViewSettings(
         incognito: true,
         javaScriptEnabled: true,
@@ -341,9 +382,7 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
         setState(() => _isLoading = false);
         final urlStr = url?.toString() ?? '';
         final isSuccess = url != null && _isSuccessUrl(urlStr);
-        _addLog(
-          'LoadStop ← ${_urlForLog(urlStr)}${isSuccess ? " ★匹配" : ""}',
-        );
+        _addLog('LoadStop ← ${_urlForLog(urlStr)}${isSuccess ? " ★匹配" : ""}');
         widget.performanceTrace?.mark(
           isSuccess ? 'webview_success_load_stop' : 'webview_load_stop',
         );

@@ -18,6 +18,7 @@ library;
 
 import 'assemble.dart';
 import 'cookie_jar.dart';
+import 'harvest.dart';
 import 'inject_policy.dart';
 import 'ports.dart';
 import 'redirect.dart';
@@ -29,12 +30,16 @@ class TransportRequest {
     required this.method,
     required this.headers,
     this.body,
+    this.logUrl,
   });
 
   final String url;
   final String method;
   final Map<String, String> headers;
   final String? body;
+
+  /// 核心预先剥除 query credential 的日志专用 URL；不得用于实际出网。
+  final String? logUrl;
 }
 
 class TransportResponse {
@@ -125,6 +130,7 @@ class FetchProxyDeps {
     this.maxHops,
     this.cancelToken,
     this.onRedirectSettled,
+    this.queryHarvest,
     this.tryReserveRequest,
     this.onRawResponse,
     this.brokerInjectHeaders,
@@ -146,6 +152,9 @@ class FetchProxyDeps {
   /// URL 外泄（红线 #1「中间跳转对 adapter 不可见」不变——本回调不回传中间跳，只回终点）。
   /// 供 SSO 静默换票（ADR-017 §2.2）判定是否抵达目标服务成功页。缺省 null=普通 ctx.fetch 不回传。
   final void Function(String finalUrl)? onRedirectSettled;
+
+  /// 每个通过 allow 校验、确定跟随的重定向目标由核心收割 query credential（ADR-020 §2.3）。
+  final QueryHarvestTarget? queryHarvest;
 
   /// Host-owned atomic reservation for one transport request.
   final bool Function()? tryReserveRequest;
@@ -237,6 +246,7 @@ Future<FetchProxyOutcome> proxyFetch(
     final jarCookies = deps.jar.selectForSend(currentUrl);
     final assembled = assembleRequest(
       AssembleRequestInput(
+        url: currentUrl,
         init: RequestInit(method: method, headers: headers, body: body),
         decision: decision,
         resolved: resolved,
@@ -271,11 +281,17 @@ Future<FetchProxyOutcome> proxyFetch(
       throw const FetchRequestLimitExceeded();
     }
     final resp = await deps.transport.fetch(
+      // query credential 即使来自独立 harvest view（SSO passthrough）也必须从日志 URL 剥离。
       TransportRequest(
-        url: currentUrl,
+        url: ok.url ?? currentUrl,
         method: ok.method,
         headers: outHeaders,
         body: ok.body,
+        logUrl: _credentialSafeLogUrl(
+          ok.url ?? currentUrl,
+          decision,
+          deps.queryHarvest?.view,
+        ),
       ),
       cancelToken: deps.cancelToken,
     );
@@ -317,6 +333,10 @@ Future<FetchProxyOutcome> proxyFetch(
 
     // 续跳：307/308 保留方法+body，余者转 GET 且弃 body；重定向跳不回灌 adapter 头。
     final follow = rd as FollowDecision;
+    final queryHarvest = deps.queryHarvest;
+    if (queryHarvest != null) {
+      harvestQueryUrl(follow.nextUrl, queryHarvest);
+    }
     currentUrl = follow.nextUrl;
     if (follow.method == 'get') {
       method = 'GET';
@@ -325,4 +345,25 @@ Future<FetchProxyOutcome> proxyFetch(
     headers = null;
     hops++;
   }
+}
+
+String? _credentialSafeLogUrl(
+  String url,
+  InjectionDecision decision,
+  BrokerManifestView? harvestView,
+) {
+  var safe = url;
+  var changed = false;
+  if (decision is InjectDecision && decision.via == 'query') {
+    safe = stripQueryParam(safe, decision.queryParam!);
+    changed = true;
+  }
+  for (final decl
+      in harvestView?.credentials.values ?? const <CredentialDecl>[]) {
+    if (decl.type != 'query' || decl.queryParam == null) continue;
+    final stripped = stripQueryParam(safe, decl.queryParam!);
+    changed = changed || stripped != safe;
+    safe = stripped;
+  }
+  return changed ? safe : null;
 }

@@ -112,6 +112,7 @@ class _EleconHomePageState extends State<EleconHomePage> {
                         // 仅真数据模式装配——注入 loadSnapshot（测试）或 demo 快照时不挂，
                         // 避免无 SessionScope 语境崩溃。
                         if (_liveSections) ...const [
+                          CardSection(),
                           GradesSection(),
                           ScheduleSection(),
                           ClassroomSection(),

@@ -33,7 +33,8 @@ import 'broker/fetch_proxy.dart'
         TransportBodyLimitException,
         TransportCancelToken,
         proxyFetch;
-import 'broker/harvest.dart' show decideHarvest, harvestInto;
+import 'broker/harvest.dart'
+    show QueryHarvestTarget, decideHarvest, harvestInto;
 import 'broker/inject_policy.dart' show BrokerManifestView, CredentialDecl;
 import 'broker/ports.dart' show CredentialResolver;
 import 'credential/types.dart' show CredentialEntry;
@@ -448,6 +449,14 @@ Future<dynamic> _runImperativeAdapter({
       transport: deps.transport,
       maxHops: deps.maxHops,
       cancelToken: cancelToken,
+      queryHarvest: harvest == null
+          ? null
+          : QueryHarvestTarget(
+              view: view,
+              put: harvest.put,
+              schoolId: harvest.schoolId,
+              now: () => nowMs,
+            ),
       tryReserveRequest: () {
         if (remainingRequests <= 0) {
           fatal = const AdapterRunException(

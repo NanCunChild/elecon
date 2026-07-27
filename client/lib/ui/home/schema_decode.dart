@@ -344,6 +344,129 @@ ClassroomAvailableItems? _classroomItem(Object? raw) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// card.balance / card.transactions（card-session；用户按需触发）
+// ---------------------------------------------------------------------------
+
+CardBalance? cardBalanceFromDynamic(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final cardNumber = map['cardNumber']?.toString();
+  final balanceMap = _asStringKeyedMap(map['balance']);
+  final amountMinor = _asInt(balanceMap?['amountMinor']);
+  final currency = balanceMap?['currency']?.toString();
+  if (cardNumber == null ||
+      cardNumber.isEmpty ||
+      amountMinor == null ||
+      currency == null ||
+      !_currencyPattern.hasMatch(currency)) {
+    return null;
+  }
+  final lastMap = _asStringKeyedMap(map['lastTransaction']);
+  return CardBalance(
+    cardNumber: cardNumber,
+    cardNumberMasked: map['cardNumberMasked']?.toString(),
+    cardType: map['cardType']?.toString(),
+    accountType: map['accountType']?.toString(),
+    campus: map['campus']?.toString(),
+    wallet: map['wallet']?.toString(),
+    status: map['status']?.toString(),
+    balanceUpdatedAt: map['balanceUpdatedAt']?.toString(),
+    snapshotAt: map['snapshotAt']?.toString(),
+    errorStatus: map['errorStatus']?.toString(),
+    balance: CardBalanceBalance(amountMinor: amountMinor, currency: currency),
+    lastTransaction: lastMap == null
+        ? null
+        : CardBalanceLastTransaction(
+            amountMinor: _asInt(lastMap['amountMinor']),
+            currency: lastMap['currency']?.toString(),
+            time: lastMap['time']?.toString(),
+            merchant: lastMap['merchant']?.toString(),
+          ),
+  );
+}
+
+CardTransactions? cardTransactionsFromDynamic(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final cardNumber = map['cardNumber']?.toString();
+  final itemsRaw = map['items'];
+  if (cardNumber == null || cardNumber.isEmpty || itemsRaw is! List) {
+    return null;
+  }
+  final items = <CardTransactionsItems>[];
+  for (final rawItem in itemsRaw) {
+    final item = _cardTransactionItem(rawItem);
+    if (item != null) items.add(item);
+  }
+  return CardTransactions(
+    cardNumber: cardNumber,
+    cardNumberMasked: map['cardNumberMasked']?.toString(),
+    cardType: map['cardType']?.toString(),
+    accountType: map['accountType']?.toString(),
+    campus: map['campus']?.toString(),
+    wallet: map['wallet']?.toString(),
+    page: _asInt(map['page']),
+    size: _asInt(map['size']),
+    cursor: map['cursor']?.toString(),
+    total: _asInt(map['total']),
+    hasNext: map['hasNext'] is bool ? map['hasNext'] as bool : null,
+    windowStart: map['windowStart']?.toString(),
+    windowEnd: map['windowEnd']?.toString(),
+    snapshotAt: map['snapshotAt']?.toString(),
+    items: items,
+  );
+}
+
+CardTransactionsItems? _cardTransactionItem(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final time = map['time']?.toString();
+  final amountMinor = _asNonNegativeInt(map['amountMinor']);
+  final currency = map['currency']?.toString();
+  final direction = map['direction']?.toString();
+  if (time == null ||
+      time.isEmpty ||
+      DateTime.tryParse(time) == null ||
+      amountMinor == null ||
+      currency == null ||
+      !_currencyPattern.hasMatch(currency) ||
+      direction == null ||
+      !_cardDirections.contains(direction)) {
+    return null;
+  }
+  return CardTransactionsItems(
+    time: time,
+    transactionId: map['transactionId']?.toString(),
+    postedAt: map['postedAt']?.toString(),
+    amountMinor: amountMinor,
+    currency: currency,
+    direction: direction,
+    merchant: map['merchant']?.toString(),
+    location: map['location']?.toString(),
+    status: map['status']?.toString(),
+    balanceAfterMinor: _asInt(map['balanceAfterMinor']),
+    type: map['type']?.toString(),
+  );
+}
+
+final RegExp _currencyPattern = RegExp(r'^[A-Z]{3}$');
+const Set<String> _cardDirections = {
+  'debit',
+  'credit',
+  'refund',
+  'reversal',
+  'freeze',
+  'transfer',
+  'subsidy',
+  'unknown',
+};
+
+int? _asNonNegativeInt(Object? raw) {
+  final value = raw is int ? raw : (raw is String ? int.tryParse(raw) : null);
+  return value != null && value >= 0 ? value : null;
+}
+
 int? _asInt(Object? raw) {
   if (raw is int) return raw;
   if (raw is num) return raw.toInt();

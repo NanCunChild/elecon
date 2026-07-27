@@ -110,13 +110,15 @@ bool isLoginSuccessUrl(String url, LoginManifestView view) =>
 List<JarCookie> webViewCookiesToHarvestCookies(List<WebViewCookie> cookies) {
   return cookies
       .where((c) => c.name.isNotEmpty && c.domain.isNotEmpty)
-      .map((c) => JarCookie(
-            name: c.name,
-            value: c.value,
-            domain: c.domain.toLowerCase().replaceFirst(RegExp(r'^\.'), ''),
-            path: c.path.isEmpty ? '/' : c.path,
-            source: 'origin',
-          ))
+      .map(
+        (c) => JarCookie(
+          name: c.name,
+          value: c.value,
+          domain: c.domain.toLowerCase().replaceFirst(RegExp(r'^\.'), ''),
+          path: c.path.isEmpty ? '/' : c.path,
+          source: 'origin',
+        ),
+      )
       .toList();
 }
 
@@ -128,22 +130,31 @@ List<JarCookie> webViewCookiesToHarvestCookies(List<WebViewCookie> cookies) {
 List<HarvestEntry> planWebViewHarvest({
   required LoginManifestView login,
   required List<WebViewCookie> cookies,
-}) =>
-    decideHarvest(webViewCookiesToHarvestCookies(cookies), login.brokerView);
+  String? currentUrl,
+}) {
+  final plan = decideHarvest(
+    webViewCookiesToHarvestCookies(cookies),
+    login.brokerView,
+  );
+  if (currentUrl != null) {
+    plan.addAll(decideQueryHarvest(currentUrl, login.brokerView));
+    plan.sort((a, b) => a.ref.compareTo(b.ref));
+  }
+  return plan;
+}
 
 WebViewHarvestResult harvestWebViewCookies({
   required LoginManifestView login,
   required List<WebViewCookie> cookies,
+  String? currentUrl,
   required void Function(CredentialEntry entry) put,
   required int Function() now,
 }) {
-  final plan = planWebViewHarvest(login: login, cookies: cookies);
-  harvestInto(
-    plan,
-    login.brokerView,
-    put,
-    schoolId: login.schoolId,
-    now: now,
+  final plan = planWebViewHarvest(
+    login: login,
+    cookies: cookies,
+    currentUrl: currentUrl,
   );
+  harvestInto(plan, login.brokerView, put, schoolId: login.schoolId, now: now);
   return WebViewHarvestResult(entries: plan);
 }
