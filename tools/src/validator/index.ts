@@ -84,7 +84,9 @@ interface CapabilityDecl {
 
 interface CredentialDecl {
   scope: string[];
-  type: "cookie" | "header";
+  type: "cookie" | "header" | "query";
+  /** URL query 注入参数名（ADR-020 §2.2）；仅 type=query 时存在。 */
+  queryParam?: string;
   /** 凭证角色（ADR-017）。sso-master=CAS 母凭证。可选；缺省=普通下游凭证。 */
   role?: "sso-master";
 }
@@ -535,7 +537,7 @@ export function checkSsoMint(
   return findings;
 }
 
-// ---- C6–C8：credentials 声明（ADR-013 §2.4）----
+// ---- C6–C9 / Q1–Q3：credentials 声明（ADR-013 §2.4 / ADR-020 §2.2）----
 
 /**
  * 两个 scope 前缀是否重叠（其一是另一的字符串前缀，含相等）。
@@ -554,6 +556,7 @@ export function checkCredentials(
   const findings: Finding[] = [];
   const creds = manifest.credentials ?? {};
   const credNames = Object.keys(creds);
+  const queryBindings = new Map<string, string>();
 
   // 收集所有 scope 条目（带所属凭证名），供 C6/C7 使用
   const scopes: Array<{ name: string; pattern: string }> = [];
@@ -562,11 +565,27 @@ export function checkCredentials(
     if (!decl) continue;
 
     // C9（防御性，schema C1 亦拦）：type 合法
-    if (decl.type !== "cookie" && decl.type !== "header") {
+    if (decl.type !== "cookie" && decl.type !== "header" && decl.type !== "query") {
       findings.push({
         level: "error",
         code: "C9_bad_credential_type",
-        message: `credential '${name}' 的 type 非法：${String(decl.type)}（须为 cookie | header）`,
+        message: `credential '${name}' 的 type 非法：${String(decl.type)}（须为 cookie | header | query）`,
+      });
+    }
+
+    const queryParamValid = typeof decl.queryParam === "string" && /^[A-Za-z0-9_.-]+$/.test(decl.queryParam);
+    if (decl.type === "query" && !queryParamValid) {
+      findings.push({
+        level: "error",
+        code: "Q1_query_param_required",
+        message: `credential '${name}' 的 type=query 时必须声明合法 queryParam`,
+      });
+    }
+    if (decl.type !== "query" && decl.queryParam !== undefined) {
+      findings.push({
+        level: "error",
+        code: "Q2_query_param_forbidden",
+        message: `credential '${name}' 仅 type=query 时可声明 queryParam`,
       });
     }
 
@@ -579,6 +598,25 @@ export function checkCredentials(
           code: "C6_scope_outside_allow",
           message: `credential '${name}' 的 scope 越出 network.allow：${pattern}（不能注入一个连出口都不允许的 URL）`,
         });
+      }
+
+      if (decl.type === "query" && queryParamValid) {
+        try {
+          const origin = new URL(pattern).origin.toLowerCase();
+          const binding = `${origin}\u0000${decl.queryParam}`;
+          const existing = queryBindings.get(binding);
+          if (existing !== undefined && existing !== name) {
+            findings.push({
+              level: "error",
+              code: "Q3_ambiguous_query_param",
+              message: `credential '${existing}' 与 '${name}' 在 ${origin} 复用 queryParam '${decl.queryParam}'，收割/注入歧义`,
+            });
+          } else {
+            queryBindings.set(binding, name);
+          }
+        } catch {
+          // 非法 URI 由 manifest schema/C6 报告；Q3 不重复制造噪声。
+        }
       }
     }
   }
@@ -603,23 +641,25 @@ export function checkCredentials(
   }
 
   // C8 引用闭合：declarative 的 requests.credential 须在 credentials 声明；声明未用 → warn。
-  // 仅 declarative cap 集合参与：imperative 凭证按 scope 隐式使用，不告警。
+  // imperative 凭证按 scope 隐式使用；只要存在 imperative capability，就无法静态断言
+  // 任一顶层 credential 未使用，因此 mixed manifest 也不得产生 unused 误报。
   const declarativeCaps = (manifest.capabilities ?? []).filter((c) => c.requestGraph === "declarative");
-  if (declarativeCaps.length > 0) {
-    const referenced = new Set<string>();
-    for (const cap of declarativeCaps) {
-      for (const req of cap.requests ?? []) {
-        if (req.credential === undefined) continue;
-        referenced.add(req.credential);
-        if (!(req.credential in creds)) {
-          findings.push({
-            level: "error",
-            code: "C8_undeclared_credential_ref",
-            message: `capability '${cap.id}' 的 request '${req.key}' 引用未声明的 credential '${req.credential}'`,
-          });
-        }
+  const imperativeCaps = (manifest.capabilities ?? []).filter((c) => c.requestGraph === "imperative");
+  const referenced = new Set<string>();
+  for (const cap of declarativeCaps) {
+    for (const req of cap.requests ?? []) {
+      if (req.credential === undefined) continue;
+      referenced.add(req.credential);
+      if (!(req.credential in creds)) {
+        findings.push({
+          level: "error",
+          code: "C8_undeclared_credential_ref",
+          message: `capability '${cap.id}' 的 request '${req.key}' 引用未声明的 credential '${req.credential}'`,
+        });
       }
     }
+  }
+  if (declarativeCaps.length > 0 && imperativeCaps.length === 0) {
     for (const name of credNames) {
       if (!referenced.has(name)) {
         findings.push({

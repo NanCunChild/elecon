@@ -74,6 +74,10 @@ function codes(findings: { code: string }[]): string[] {
 
   const openid = scanLine('"openid": "oOabcd1234efGH5678ijKL"');
   assert.ok(codes(openid).includes("P5_session_credential"), "openid 应命中 P5（凭证等价物）");
+  const openidUrl = scanLine(
+    "Location: https://v8scan.xidian.edu.cn/myaccount/home?openid=oOabcd1234efGH5678ijKL",
+  );
+  assert.ok(codes(openidUrl).includes("P5_session_credential"), "URL query openid 应命中 P5");
 
   const saml = scanLine("SAMLResponse=PHNhbWxwOlJlc3BvbnNlIHhtbG5zOnNhbWxw");
   assert.ok(codes(saml).includes("P5_session_credential"), "SAMLResponse 应命中 P5（凭证等价物）");
