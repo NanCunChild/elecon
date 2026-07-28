@@ -122,5 +122,64 @@
       },
       "expected": [{ "ref": "sess", "value": "JSESSIONID=HOST; JSESSIONID=PARENT" }]
     }
+  ],
+  "_docQuery": "Broker query 凭证收割决策 golden 向量（decideQueryHarvest，ADR-020 §2.3 判据 q）。与上 cases 同为语言无关唯一事实源：TS（server harvest.smoke.ts）与 Dart（client broker_harvest_test.dart）照同一向量双跑。规格：取 manifest 中所有 type:query ref；URL 命中该 ref scope（前缀语义）且 query 恰含一个非空 queryParam 值 → 收割（URL 解码后的裸值，覆盖同 ref 旧值）；fragment 不参与；重复同名参数拒收（避免两端首/末值差异）；未声明键不收（q4：不误收追踪/CSRF 参数）。改动须人工 + 安全清单复核（红线 #1）。",
+  "queryCases": [
+    {
+      "name": "query_harvest_url_decodes_percent",
+      "input": {
+        "url": "https://card.xidian.edu.cn/home?openid=opaque%2Bvalue",
+        "view": { "allow": ["https://card.xidian.edu.cn/*"], "credentials": { "card": { "scope": ["https://card.xidian.edu.cn/*"], "type": "query", "queryParam": "openid" } } }
+      },
+      "expected": [{ "ref": "card", "value": "opaque+value" }]
+    },
+    {
+      "name": "query_harvest_keeps_single_among_tracking_params",
+      "input": {
+        "url": "https://card.xidian.edu.cn/home?openid=opaque&trk=1&utm_source=x",
+        "view": { "allow": ["https://card.xidian.edu.cn/*"], "credentials": { "card": { "scope": ["https://card.xidian.edu.cn/*"], "type": "query", "queryParam": "openid" } } }
+      },
+      "expected": [{ "ref": "card", "value": "opaque" }]
+    },
+    {
+      "name": "query_harvest_ignores_fragment",
+      "input": {
+        "url": "https://card.xidian.edu.cn/home#openid=opaque",
+        "view": { "allow": ["https://card.xidian.edu.cn/*"], "credentials": { "card": { "scope": ["https://card.xidian.edu.cn/*"], "type": "query", "queryParam": "openid" } } }
+      },
+      "expected": []
+    },
+    {
+      "name": "query_harvest_rejects_duplicate_param",
+      "input": {
+        "url": "https://card.xidian.edu.cn/home?openid=first&openid=second",
+        "view": { "allow": ["https://card.xidian.edu.cn/*"], "credentials": { "card": { "scope": ["https://card.xidian.edu.cn/*"], "type": "query", "queryParam": "openid" } } }
+      },
+      "expected": []
+    },
+    {
+      "name": "query_harvest_rejects_empty_value",
+      "input": {
+        "url": "https://card.xidian.edu.cn/home?openid=",
+        "view": { "allow": ["https://card.xidian.edu.cn/*"], "credentials": { "card": { "scope": ["https://card.xidian.edu.cn/*"], "type": "query", "queryParam": "openid" } } }
+      },
+      "expected": []
+    },
+    {
+      "name": "query_harvest_ignores_absent_param",
+      "input": {
+        "url": "https://card.xidian.edu.cn/home?ref=home",
+        "view": { "allow": ["https://card.xidian.edu.cn/*"], "credentials": { "card": { "scope": ["https://card.xidian.edu.cn/*"], "type": "query", "queryParam": "openid" } } }
+      },
+      "expected": []
+    },
+    {
+      "name": "query_harvest_drops_out_of_scope",
+      "input": {
+        "url": "https://outside.edu.cn/home?openid=opaque",
+        "view": { "allow": ["https://card.xidian.edu.cn/*"], "credentials": { "card": { "scope": ["https://card.xidian.edu.cn/*"], "type": "query", "queryParam": "openid" } } }
+      },
+      "expected": []
+    }
   ]
 }

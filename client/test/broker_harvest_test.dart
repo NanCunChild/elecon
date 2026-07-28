@@ -19,6 +19,7 @@ import 'utils/test_utils.dart';
 
 void main() {
   final cases = readGoldenCases('harvest.json');
+  final queryCases = readGoldenCases('harvest.json', 'queryCases');
 
   group('B5 harvest 决策（Dart，与 TS 双跑同一 golden）', () {
     test('golden 非空', () => expect(cases, isNotEmpty));
@@ -32,6 +33,19 @@ void main() {
             .toList();
         final view = viewFromJson(input['view'] as Map<String, dynamic>);
         final plan = decideHarvest(cookies, view);
+        expect(plan.map((e) => e.toJson()).toList(), equals(c['expected']));
+      });
+    }
+  });
+
+  group('query 收割决策（Dart，与 TS 双跑同一 golden · ADR-020 §2.3）', () {
+    test('golden 非空', () => expect(queryCases, isNotEmpty));
+
+    for (final c in queryCases) {
+      test(c['name'] as String, () {
+        final input = c['input'] as Map<String, dynamic>;
+        final view = viewFromJson(input['view'] as Map<String, dynamic>);
+        final plan = decideQueryHarvest(input['url'] as String, view);
         expect(plan.map((e) => e.toJson()).toList(), equals(c['expected']));
       });
     }
@@ -134,7 +148,7 @@ void main() {
     });
   });
 
-  test('query credential 仅收割 scope 内唯一非空参数', () async {
+  test('query 收割 → 入库 → get 序列化值（决策由 golden 覆盖，此处验集成）', () async {
     const view = BrokerManifestView(
       allow: ['https://card.xidian.edu.cn/*'],
       credentials: {
@@ -145,31 +159,6 @@ void main() {
         ),
       },
     );
-    expect(
-      decideQueryHarvest(
-        'https://card.xidian.edu.cn/home?openid=opaque%2Bvalue',
-        view,
-      ).map((e) => e.toJson()),
-      [
-        {'ref': 'card', 'value': 'opaque+value'},
-      ],
-    );
-    expect(
-      decideQueryHarvest('https://card.xidian.edu.cn/home#openid=opaque', view),
-      isEmpty,
-    );
-    expect(
-      decideQueryHarvest(
-        'https://card.xidian.edu.cn/home?openid=first&openid=second',
-        view,
-      ),
-      isEmpty,
-    );
-    expect(
-      decideQueryHarvest('https://outside.edu.cn/home?openid=opaque', view),
-      isEmpty,
-    );
-
     final store = CredentialStore(now: () => 6000);
     harvestInto(
       decideQueryHarvest('https://card.xidian.edu.cn/home?openid=opaque', view),

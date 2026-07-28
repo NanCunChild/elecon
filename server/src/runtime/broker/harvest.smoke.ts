@@ -27,8 +27,17 @@ interface GoldenCase {
   expected: HarvestPlan;
 }
 
+interface QueryGoldenCase {
+  name: string;
+  input: { url: string; view: BrokerManifestView };
+  expected: HarvestPlan;
+}
+
 function goldenTests(): number {
-  const golden = JSON.parse(readFileSync(goldenPath, "utf8")) as { cases: GoldenCase[] };
+  const golden = JSON.parse(readFileSync(goldenPath, "utf8")) as {
+    cases: GoldenCase[];
+    queryCases: QueryGoldenCase[];
+  };
   assert.ok(golden.cases.length > 0, "golden 向量为空");
   for (const c of golden.cases) {
     const actual = decideHarvest(c.input.originCookies, c.input.view);
@@ -38,7 +47,19 @@ function goldenTests(): number {
       `case '${c.name}'\n  期望 ${JSON.stringify(c.expected)}\n  实得 ${JSON.stringify(actual)}`,
     );
   }
-  return golden.cases.length;
+
+  // query 收割（ADR-020 §2.3）：同一 golden 文件的 queryCases 驱动 decideQueryHarvest，
+  // 与 Dart 端逐字节双跑（此前两端各写手写断言，会漂移）。
+  assert.ok(golden.queryCases.length > 0, "query golden 向量为空");
+  for (const c of golden.queryCases) {
+    const actual = decideQueryHarvest(c.input.url, c.input.view);
+    assert.deepStrictEqual(
+      actual,
+      c.expected,
+      `query case '${c.name}'\n  期望 ${JSON.stringify(c.expected)}\n  实得 ${JSON.stringify(actual)}`,
+    );
+  }
+  return golden.cases.length + golden.queryCases.length;
 }
 
 async function integrationTests(): Promise<number> {
@@ -89,7 +110,7 @@ async function integrationTests(): Promise<number> {
   assert.equal(emptyStore.list().length, 0, "无声明 ref → 不收割");
   checks++;
 
-  // query credential：仅 scope 内、恰好一个非空参数可收割；fragment/重复参数拒绝。
+  // query credential 决策已由 golden queryCases 双跑覆盖；此处只验收割 → 入库 → get 序列化。
   const queryView: BrokerManifestView = {
     allow: ["https://card.xidian.edu.cn/*"],
     credentials: {
@@ -100,16 +121,6 @@ async function integrationTests(): Promise<number> {
       },
     },
   };
-  assert.deepStrictEqual(
-    decideQueryHarvest("https://card.xidian.edu.cn/home?openid=opaque%2Bvalue", queryView),
-    [{ ref: "card", value: "opaque+value" }],
-  );
-  assert.deepStrictEqual(decideQueryHarvest("https://card.xidian.edu.cn/home#openid=opaque", queryView), []);
-  assert.deepStrictEqual(
-    decideQueryHarvest("https://card.xidian.edu.cn/home?openid=first&openid=second", queryView),
-    [],
-  );
-  assert.deepStrictEqual(decideQueryHarvest("https://outside.edu.cn/home?openid=opaque", queryView), []);
   harvestInto(
     decideQueryHarvest("https://card.xidian.edu.cn/home?openid=opaque", queryView),
     queryView,

@@ -41,12 +41,15 @@
 ## 仓库结构
 
 ```
-contract/   跨端共享契约：标准 schema + capability manifest + adapter SDK（最重要的一层）
-adapters/   各学校 adapter（QuickJS 脚本）
+contract/   跨端共享契约：标准 schema + capability manifest + adapter SDK + golden 向量（最重要的一层）
+adapters/   仅核心自带 adapter：_stdlib（vendored 解析器）/ _template / _canary / school-helloworld。
+            真实学校 adapter 已迁出到独立公开仓 elecon-adapters，构建期按 adapters.pin 钉死的 ref
+            拉取（scripts/fetch-adapters.sh，ADR-018 §2.11.1，取代旧 git 子模块）。
+adapters_tests/  各校抓包探针与脱敏夹具（红线 #8：不含真实学生数据/凭证）。
 client/     Flutter 客户端（iOS / Android / HarmonyOS / 桌面）
-server/     Node/TS 服务端：public（公网哑服务）+ campus（校内授权中继），adapter 用 QuickJS-wasm 执行
-tools/      Node/TS 工具链：签名 / 吊销 / adapter 校验 / 契约一致性检查
-docs/       ADR 与工程结构说明
+server/     Node/TS 服务端：public（公网哑服务）+ campus（校内授权中继，当前 501 stub），adapter 用 QuickJS-wasm 执行
+tools/      Node/TS 工具链：签名（PKCS#11 / YubiKey）/ 吊销 / adapter 校验 / 契约一致性 / codegen
+docs/       ADR、规则细则（docs/rules/）与工程结构说明
 ```
 
 ---
@@ -75,8 +78,9 @@ npm run smoke:broker        # Broker B1 注入策略 smoke（12 例 golden）
 npm run smoke:header        # B2 头净化 smoke（12 例）
 npm run smoke:redirect      # B3 重定向 smoke（14 例 + driver 4）
 npm run smoke:cookie        # B4 cookie jar smoke（22 例 + 有态 6）
-npm run smoke:harvest       # B5 收割桥接 smoke（8 例 + 集成 4）
+npm run smoke:harvest       # B5 收割桥接 smoke（golden 18 例：cookie 11 + query 7 + 集成 5）
 npm run smoke:credential    # 凭证存储 smoke
+npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新增即跑）
 ```
 
 > adapter 在服务端用 **QuickJS-wasm**（`quickjs-emscripten`）执行，与客户端是同一个引擎；**不使用** Node 的 `vm` 模块（`vm` 不是安全边界）。运行时选型见 [`docs/adr/adr_005_runtime.md`](docs/adr/adr_005_runtime.md)。
@@ -85,7 +89,9 @@ npm run smoke:credential    # 凭证存储 smoke
 
 ## 贡献一个学校 adapter
 
-1. 复制 `adapters/_template/` 为 `adapters/school-<你的学校id>/`。
+> 真实学校 adapter 现落在独立公开仓 **elecon-adapters**（本仓按 `adapters.pin` 拉取，见[「仓库结构」](#仓库结构)）。下列以模板 `adapters/_template/` 为例说明形态，实际提交面向 elecon-adapters。
+
+1. 复制 `adapters/_template/` 为 `school-<你的学校id>/`。
 2. 在 `manifest.json` 声明能力与**域名白名单**（核心据此注入凭证，越界请求不带凭证）。
 3. 在 `index.js` 实现归一化：把该校接口返回的数据转成 `contract/schema/` 定义的标准结构。**adapter 越薄越好——只做归一化，不持凭证、不做编排。**
 4. 在 `fixtures/` 放抓包样本，写归一化回归测试。
@@ -108,13 +114,15 @@ npm run smoke:credential    # 凭证存储 smoke
 
 ## 路线状态
 
-架构决策已接受至 ADR-022。当前处于 **imperative requestGraph 运行时已跑通、登录/分发链路补齐阶段**：
+架构决策已接受至 **ADR-025**（ADR-026 响应 masker 延后）。当前处于**基础设施型 Alpha / 0.1**：承重链路已成形，产品能力面仍薄。最新盘点见 [`docs/planning/2026_07_capability_roadmap.md`](docs/planning/2026_07_capability_roadmap.md)。
 
-- **已落地**：Broker 核心零件 B1–B6 两端（TS + Dart）镜像实现；凭证存储原型；`setEphemeralCookie` 契约面；首个真实 imperative adapter（school-xjt `notice.list`）夹具回放端到端跑通；ADR-022 抹除 adapter 级 `mode`，改 per-capability `requestGraph`。
-- **进行中**：录制/回放夹具机制（B7）；WebView 登录收割探针（XIDIAN 凭证路径前置）；OHOS 平台 scaffold 与 debug-only WebView probe。
-- **待补齐**：真实 OS keystore 凭证存储、官方签名/吊销工具、public adapter 分发、campus relay、产品 UI 数据闭环。
+- **已落地**：Broker 核心零件 B1–B6 两端（TS + Dart）镜像实现，照 `contract/golden/` 向量逐字节双跑；声明式跨请求数据流（ADR-023，含回显剥离）；真实 OS keystore 凭证存储（硬件 keystore + 软件回退）；官方签名分发 / 吊销 / bootstrap 与签名工具链（PKCS#11 / YubiKey）；WebView 登录 + SSO 换票收割；ADR-020 URL query 凭证（一卡通 `openid`）端到端；adapter 按需拉取（`adapters.pin`，取代子模块）。Xidian 公开通知（`notice.list`）已产品闭环。
+- **进行中**：一卡通 OpenID 真机验收；capability 级 `credentialRefs` 最小权限 ADR；图书馆 body 凭证注入 ADR；课表 / 成绩 / 考试 / 空教室已有 adapter + 夹具，缺产品 UI 与真机验收。
+- **待补齐**：campus relay（当前 501 stub）；iOS 正式签名 / App Store 合规（首版 declarative-only）；OHOS 与多校正式目录；备用签名密钥；首页数据闭环（目前仍主要消费 `notice.list`）。
 
-细分决策与取舍见 `docs/adr/` 索引；实现计划见 `docs/reference/`。
+> 状态提示：主仓旧 Xidian adapter、已签名 bootstrap、外部仓开发态三者版本不同，发布流程中需分别对待（见 roadmap §1）。
+
+细分决策与取舍见 `docs/adr/` 索引；规则细则见 `docs/rules/`；实现计划见 `docs/reference/` 与 `docs/planning/`。
 
 ---
 

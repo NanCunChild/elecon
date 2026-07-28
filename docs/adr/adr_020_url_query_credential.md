@@ -196,11 +196,13 @@ XIDIAN 一卡通（`adapters_tests/XIDIAN/card/balance.py`）：
 
 - [x] 本 ADR 状态 → Accepted（2026-07-22 人工评审 + §5 O1–O5 勾决）
 - [x] ADR-000 索引 + 闭环计划 R2 引用
-- [ ] 契约：manifest schema + 校验器 Q1–Q3 + smoke
-- [ ] Broker：query harvest + assemble 注入 + golden（Dart/TS 双跑）
-- [ ] 日志 / 扫描：openid 等 pattern
-- [ ] XIDIAN：`card-session` 改 `type: query` + `queryParam: openid`；M5 card 闭环
-- [ ] 回归：无 query 声明的学校行为逐字节不变
+- [x] 契约：manifest schema + 校验器 Q1–Q3 + smoke（PR #100/#103 已合入）
+- [x] 日志 / 扫描：openid 等 pattern（scanner 已含）
+- [~] Broker：query harvest + assemble 注入 + golden（Dart/TS 双跑）
+      —— assemble/inject query 已由 golden（`inject-policy.json` 3 例）+ Dart `fetch_proxy` 集成测试覆盖；
+      **query harvest 的 golden 双跑（`harvest.json` `queryCases` 7 例，两端替换原手写断言）为 2026-07-27 新增草案，待人工 + 安全清单复核**（红线 #1，不得 AI 独自闭环）。
+- [ ] XIDIAN：`card-session` 改 `type: query` + `queryParam: openid`；M5 card 闭环（adapter 在 elecon-adapters 仓；真机验收未做）
+- [~] 回归：无 query 声明的学校行为逐字节不变（cookie golden 11 例不变即证；真机全量回归待一卡通验收时做）
 
 ---
 
@@ -210,3 +212,4 @@ XIDIAN 一卡通（`adapters_tests/XIDIAN/card/balance.py`）：
 |---|---|---|
 | 2026-07-22 | 草案 | 起草：为 R2（card openid 落 URL）新增 `credentials.type: query` + `queryParam`；核心在登录/mint/重定向链收割 query；出站由 Broker 注入 query；adapter 永不持 openid。明确 **不**覆盖 library body token。 |
 | 2026-07-22 | 已接受 | 经人工评审批准；§5 O1–O5 按建议默认勾决。实现（schema/校验器/harvest/inject/XIDIAN card）仍按红线 #1/#6 须人工主导 + 安全清单，不得 AI 独自闭环。 |
+| 2026-07-27 | 实现（待复核） | query harvest 由两端手写断言收敛为共享 golden 双跑：`harvest.json` 增 `queryCases`（7 例，新增空值 / 缺参 / 与追踪参数共存边界），`harvest.smoke.ts` 与 `broker_harvest_test.dart` 改 golden 驱动，两端各 golden 18 + 集成全绿。**属红线 #1 凭证路径，AI 起草，待人工 + 安全清单 + ≥1 人工审，未闭环。** |
