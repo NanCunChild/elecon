@@ -7,9 +7,15 @@
 /// 首次持久化前 [ensurePersistentStore] 按硬件可用性 + 用户知情同意裁定 H/S/M。
 /// 落盘目录经**可注入的** [blobStoreProvider] 提供；provider 为 null 时退化为内存档 M。
 ///
-/// **L1 headless mint**（ADR-017）：[kDebugMode] 下按选校自动装配 [HeadlessSsoMinter]
-/// （`DirectTransport` + 本会话 [store]）；release 不装配（合规灰度，§4.9）。构造注入或
-/// [ssoMinter] setter 优先，跳过自动装配。
+/// **L1 headless mint**（ADR-017）：按选校自动装配 [HeadlessSsoMinter]
+/// （`DirectTransport` + 本会话 [store]）；构造注入或 [ssoMinter] setter 优先，跳过自动装配。
+///
+/// 🔒🔒 **红线 #1 母凭证换票入 release（本仓所有者显式授权，ADR-017 §4.9 合规审待补）。**
+/// 原策略：headless mint 仅 [kDebugMode] 装配、release 关闭（合规灰度）。现按所有者要求
+/// 解除 build 门禁，让 release 也能用母票（CASTGC）静默换取下游 session——这是修复
+/// 「已登录仍提示需要登录」的核心兜底路径。**但此改动尚未过 ADR-017 §4.9 合规评估
+/// （headless 属协议模拟）与人工安全审**：合并前须由人主导补审，AI 不得独自闭环
+/// （AGENTS.md §1）。
 ///
 /// 🔒 store / minter 生命周期属核心凭证路径（红线 #1）。
 library;
@@ -241,11 +247,15 @@ class SessionController extends ChangeNotifier {
     _wireSsoMinterFor(_school);
   }
 
-  /// debug 下按选校装配 [HeadlessSsoMinter]（mint 闭环 M1）；release / 无 ssoMint / 已注入 → null。
+  /// 按选校装配 [HeadlessSsoMinter]（mint 闭环 M1）；无选校 / 无 ssoMint / 已注入 → null。
+  ///
+  /// 🔒🔒 红线 #1：原先此处 `!kDebugMode` 门禁把母票换票限制在 debug；现按所有者授权
+  /// 解除，release 也装配（见类级文档 §4.9 合规审待补）。母凭证注入边界仍由声明面兜底
+  /// （`ids-cas` scope 仅 CAS 域、校验器 M4 拦重叠），非本装配放宽。
   void _wireSsoMinterFor(SchoolDescriptor? school) {
     if (_ssoMinterInjected) return;
     _disposeAutoMint();
-    if (school == null || !kDebugMode) return;
+    if (school == null) return;
     final login = school.login;
     if (login.ssoMint == null) return;
     final transport = DirectTransport();
@@ -313,26 +323,50 @@ class SessionController extends ChangeNotifier {
     final required =
         school.capabilityCredentials[capability] ?? const <String>[];
     if (required.isNotEmpty) {
+      // 闸门用的 active 判定（store.hasActive + 类型匹配）。抽成具名闭包，让诊断日志
+      // 与 ensure 用**同一**判据，避免日志与实际闸门口径不一致。
+      bool gateHasActive(String sid, String ref) {
+        if (!_store.hasActive(schoolId: sid, ref: ref)) return false;
+        final expected = school.login.brokerView.credentials[ref];
+        if (expected == null) return false;
+        return _store.list().any(
+          (entry) =>
+              entry.schoolId == sid &&
+              entry.ref == ref &&
+              entry.status == CredentialStatus.active &&
+              entry.type == expected.type,
+        );
+      }
+
+      // 🔒 诊断打点（runtime 类，release 丢弃，红线 #1）：只记 ref 名 / 布尔态 / 装配位，
+      // 绝不记凭证值。用于回答「已登录仍提示需要登录」到底缺哪一环。
+      final preState = required
+          .map((ref) => '$ref=${gateHasActive(school.id, ref) ? "active" : "missing"}')
+          .join(", ");
+      DevLog.instance.runtime(
+        'ensure[$capability] 入场：需 [$preState] | '
+        '母票(sso-master)=${_store.hasActiveSsoMaster(school.id) ? "有" : "无"} | '
+        'minter=${_ssoMinter != null ? "已装配" : "未装配"}',
+      );
+
       final ensured = await ensureCredentials(
         schoolId: school.id,
         refs: required,
-        hasActive: (sid, ref) {
-          if (!_store.hasActive(schoolId: sid, ref: ref)) return false;
-          final expected = school.login.brokerView.credentials[ref];
-          if (expected == null) return false;
-          return _store.list().any(
-            (entry) =>
-                entry.schoolId == sid &&
-                entry.ref == ref &&
-                entry.status == CredentialStatus.active &&
-                entry.type == expected.type,
-          );
-        },
+        hasActive: gateHasActive,
         hasSsoMaster: _store.hasActiveSsoMaster,
         login: school.login,
         minter: _ssoMinter,
         onVisibleLogin: _onVisibleLogin,
       );
+
+      final postState = required
+          .map((ref) => '$ref=${gateHasActive(school.id, ref) ? "active" : "missing"}')
+          .join(", ");
+      DevLog.instance.runtime(
+        'ensure[$capability] 结果：${ensured.status.name}'
+        '${ensured.reason != null ? "（${ensured.reason}）" : ""} | 收场态 [$postState]',
+      );
+
       if (!ensured.isReady) {
         return CapabilityRun.failed(
           CapabilityFailureKind.auth,

@@ -64,6 +64,10 @@ const _xidian = SchoolDescriptor(
     'grades.list': ['ehall-session'],
     'schedule.week': ['ehall-session'],
     'exam.list': ['ehall-session'],
+    // 空教室楼栋列表同样打 ehall jwapp（jxlcx.do），与 classroom.available 同需
+    // ehall-session；此前漏配→跳过闸门直接跑 adapter，缺凭证时暴露成误导性的
+    // 「fetch 失败」而非清晰的登录提示。补齐以与 available 一致。
+    'classroom.buildings': ['ehall-session'],
     'classroom.available': ['ehall-session'],
     'card.balance': ['card-session'],
     'card.transactions': ['card-session'],
@@ -72,8 +76,13 @@ const _xidian = SchoolDescriptor(
   },
   login: LoginManifestView(
     schoolId: 'xidian',
+    // ⚠ service 必须指向 ehall 侧「吃 ticket、建会话」的端点 `ehall/login?service=...`，
+    // 而非静态 SPA `/new/index.html`——后者不消费 ST，导致 ehall 从不 set session、
+    // 收割永远拿不到 ehall-session（2026-07 真机实测：登录后 ehall 域 0 cookie）。
+    // 这里与下方 ssoMint.services['ehall-session'].service 保持一致（等价 Uri.encodeComponent）：
+    //   ids/authserver/login?service=ENC(ehall/login?service=ehall/new/index.html)
     url:
-        'https://ids.xidian.edu.cn/authserver/login?service=https://ehall.xidian.edu.cn/new/index.html',
+        'https://ids.xidian.edu.cn/authserver/login?service=https%3A%2F%2Fehall.xidian.edu.cn%2Flogin%3Fservice%3Dhttps%3A%2F%2Fehall.xidian.edu.cn%2Fnew%2Findex.html',
     navigationAllow: [
       'https://ids.xidian.edu.cn/*',
       'https://ehall.xidian.edu.cn/*',

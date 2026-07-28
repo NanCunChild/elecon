@@ -1,4 +1,8 @@
-/// L1 headless mint 会话接线（mint 闭环 M1）：debug 按选校装配 / release 不装。
+/// L1 headless mint 会话接线（mint 闭环 M1）：按选校自动装配（构造注入 / setter 优先）。
+///
+/// 注：原 `!kDebugMode` build 门禁已按所有者授权解除（母票换票入 release，ADR-017 §4.9
+/// 合规审待补，见 SessionController 类级 🔒 文档）；本套仍在 debug 下跑，只覆盖装配与
+/// 选校联动，不覆盖 release 专属路径（kDebugMode 为 const，无法在测试内翻转）。
 ///
 /// 🔒 红线 #1 承重路径：仅断言 minter 是否装配与选校联动，不触凭证值。
 ///

@@ -65,12 +65,19 @@ class WebViewCookie {
     required this.value,
     required this.domain,
     required this.path,
+    this.isHttpOnly,
+    this.isSecure,
   });
 
   final String name;
   final String value;
   final String domain;
   final String path;
+
+  /// 平台 cookie 属性（仅诊断用；null=平台未上报）。收割/注入逻辑不依赖它们——
+  /// 用于排查「CAS 母票 / 下游 session 常为 HttpOnly，是否被 WebView 桥丢弃导致收割不到」。
+  final bool? isHttpOnly;
+  final bool? isSecure;
 }
 
 class WebViewHarvestResult {

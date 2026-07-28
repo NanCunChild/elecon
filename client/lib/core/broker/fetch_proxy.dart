@@ -332,6 +332,7 @@ Future<FetchProxyOutcome> proxyFetch(
     }
 
     // 续跳：307/308 保留方法+body，余者转 GET 且弃 body；重定向跳不回灌 adapter 头。
+    // nextUrl 已由 decideRedirect 剥离 URL 重写会话参数（`;jsessionid=`，ADR-027）。
     final follow = rd as FollowDecision;
     final queryHarvest = deps.queryHarvest;
     if (queryHarvest != null) {

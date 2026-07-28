@@ -21,6 +21,15 @@ import 'url_match.dart';
 /// 自动跟随的重定向状态码（300/304/305/306 不在内）。
 const Set<int> _redirectStatuses = {301, 302, 303, 307, 308};
 
+/// URL 重写的会话矩阵参数 `;jsessionid=…`（ADR-027）。跟随前剥离：
+///   1. **红线 #1**：会话令牌在 URL 里 = 数据外泄面（Referer/日志/历史泄漏）；
+///   2. **正确性**：带 `;jsessionid=` 跟随会命中 Tomcat URL-rewrite 分支、不下发 cookie
+///      会话，导致后续 clean-URL 请求丢会话（ehall jwapp 403）。剥离后落到干净 URL
+///      触发 `Set-Cookie`，会话回归 CookieJar（核心持有，adapter 全程不见）。
+/// 只匹配矩阵参数形态（分号前缀），不动查询串 `?jsessionid=`。
+final RegExp _urlRewrittenSessionParam =
+    RegExp(r';jsessionid=[^/?#;]*', caseSensitive: false);
+
 /// 默认最大跳数（ADR-009 §2.5）。
 const int defaultMaxRedirects = 5;
 
@@ -110,7 +119,8 @@ RedirectDecision decideRedirect(RedirectInput input) {
     if (resolved.scheme.isEmpty || resolved.host.isEmpty) {
       return const StopDecision('unresolvable_location');
     }
-    nextUrl = resolved.toString();
+    // ADR-027：剥离 URL 重写会话参数（在 allow 校验前，使校验作用于干净 URL）。
+    nextUrl = resolved.toString().replaceAll(_urlRewrittenSessionParam, '');
   } catch (_) {
     return const StopDecision('unresolvable_location');
   }

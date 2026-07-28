@@ -42,6 +42,24 @@
       "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/api/x", "method": "preserve" }
     },
     {
+      "name": "follow_strip_url_rewritten_jsessionid",
+      "_doc": "ADR-027：跟随前剥离 URL 重写会话参数 `;jsessionid=`（Tomcat 会话陷阱 + 令牌入 URL 数据外泄面，红线 #1）。落到干净 URL 触发 cookie 会话。",
+      "input": { "status": 302, "location": "https://h.edu.cn/jwapp/sys/x/*default/index.do;jsessionid=tE6oZ_JD!-501548037", "currentUrl": "https://h.edu.cn/appShow", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/jwapp/sys/x/*default/index.do", "method": "get" }
+    },
+    {
+      "name": "follow_strip_jsessionid_preserves_query",
+      "_doc": "ADR-027：仅剥 `;jsessionid=` 矩阵参数，查询串原样保留。",
+      "input": { "status": 302, "location": "https://h.edu.cn/app/index.do;jsessionid=ABC123?foo=bar", "currentUrl": "https://h.edu.cn/appShow", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/app/index.do?foo=bar", "method": "get" }
+    },
+    {
+      "name": "follow_query_param_named_jsessionid_not_stripped",
+      "_doc": "ADR-027：只剥矩阵参数 `;jsessionid=`；查询参数 `?jsessionid=` 语义不同，不动（防过度剥离）。",
+      "input": { "status": 302, "location": "https://h.edu.cn/app/x?jsessionid=keepme", "currentUrl": "https://h.edu.cn/appShow", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
+      "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/app/x?jsessionid=keepme", "method": "get" }
+    },
+    {
       "name": "follow_relative_location_resolved",
       "input": { "status": 302, "location": "/login", "currentUrl": "https://h.edu.cn/a/b", "allow": ["https://h.edu.cn/*"], "hopsSoFar": 0, "maxHops": 5 },
       "expected": { "kind": "follow", "nextUrl": "https://h.edu.cn/login", "method": "get" }

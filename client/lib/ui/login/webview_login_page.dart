@@ -150,6 +150,8 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
             value: _safeString(c.value),
             domain: c.domain!,
             path: c.path ?? '/',
+            isHttpOnly: c.isHttpOnly,
+            isSecure: c.isSecure,
           ),
         )
         .toList();
@@ -193,11 +195,21 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
       }
 
       for (final c in webViewCookies) {
+        final flags = [
+          if (c.isHttpOnly == true) 'HttpOnly',
+          if (c.isSecure == true) 'Secure',
+        ].join(',');
         _addLog(
-          '  ${c.name} | domain=${c.domain} | path=${c.path} | value=${_maskCookie(c.value)}',
+          '  ${c.name} | domain=${c.domain} | path=${c.path} | '
+          '${flags.isEmpty ? "-" : flags} | value=${_maskCookie(c.value)}',
         );
       }
-      _addLog('有效 cookie（已过滤空名/域）：${webViewCookies.length} 条');
+      final httpOnlyCount = webViewCookies.where((c) => c.isHttpOnly == true).length;
+      _addLog(
+        '有效 cookie（已过滤空名/域）：${webViewCookies.length} 条'
+        '（HttpOnly=$httpOnlyCount；注：CAS TGC/下游 session 多为 HttpOnly，'
+        '若此处恒为 0 且收割不到 session，即 WebView 桥丢了 HttpOnly cookie）',
+      );
 
       final finalPlan = planWebViewHarvest(
         login: widget.login,
