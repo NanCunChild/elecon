@@ -211,8 +211,8 @@ function wrap(cap: Partial<DataflowCapability>, trustTier = "sideload") {
 
 // ============ D8：op 元数 / params 键集合 / 取值域 ============
 {
-  // 未知 op
-  const unknownOp = checkDataflow(wrap({ compute: [{ var: "c", op: "sha1", args: [{ text: "x" }] }] }));
+  // 未知 op（blake3 不在封闭词表内）
+  const unknownOp = checkDataflow(wrap({ compute: [{ var: "c", op: "blake3", args: [{ text: "x" }] }] }));
   assert.ok(errorsOf(unknownOp).includes("D8_unknown_op"), "未知 op 应触发 D8");
   // 元数不符（concat 至少 2）
   const arity = checkDataflow(wrap({ compute: [{ var: "c", op: "concat", args: [{ text: "x" }] }] }));
@@ -288,7 +288,76 @@ function wrap(cap: Partial<DataflowCapability>, trustTier = "sideload") {
     }),
   );
   assert.ok(errorsOf(litIkm).includes("D10_literal_key_forbidden"), "hkdf 字面量 ikm 应触发 D10");
-  console.log("  ✓ 🔒 字面量密钥被拒（D10）");
+  // 🔒 ADR-028：aes-cbc 的 key（args[0]）同属密钥位，字面量应被拒。
+  const litAesKey = checkDataflow(
+    wrap({
+      bind: [{ var: "msg", from: "A", source: "body", extract: { jsonpath: "$.p" } }],
+      compute: [
+        {
+          var: "ct",
+          op: "aes-cbc",
+          args: [{ text: "0123456789abcdef" }, { ref: "msg" }, { text: "xidianscriptsxdu" }],
+          params: { padding: "pkcs7" },
+        },
+      ],
+    }),
+  );
+  assert.ok(errorsOf(litAesKey).includes("D10_literal_key_forbidden"), "aes-cbc 字面量 key 应触发 D10");
+  console.log("  ✓ 🔒 字面量密钥被拒（D10，含 aes-cbc key）");
+}
+
+// ============ ADR-028 加密算子：正例 + 安全负例 ============
+{
+  // 正例：动态盐做 key、固定 IV、pkcs7；密文 bytes → base64 → 注入。覆盖西电密码/水电形态。
+  const ok = checkDataflow(
+    wrap({
+      bind: [
+        { var: "salt", from: "A", source: "regex", extract: { pattern: "pwdEncryptSalt=(\\w+)", group: 1 } },
+        { var: "pwd", from: "B", source: "body", extract: { jsonpath: "$.p" } },
+      ],
+      compute: [
+        {
+          var: "ct",
+          op: "aes-cbc",
+          args: [{ ref: "salt" }, { ref: "pwd" }, { text: "xidianscriptsxdu" }],
+          params: { padding: "pkcs7" },
+        },
+        { var: "enc", op: "base64", args: [{ ref: "ct" }], params: { variant: "standard" } },
+        // 裸摘要签名基串：md5(concat(...)) → hex。
+        { var: "digest", op: "md5", args: [{ ref: "enc" }] },
+        { var: "sign", op: "hex", args: [{ ref: "digest" }], params: { case: "lower" } },
+      ],
+      inject: [
+        { var: "enc", into: "C", at: "url", name: "password" },
+        { var: "sign", into: "C", at: "url", name: "sign" },
+      ],
+    }),
+  );
+  assert.equal(errorsOf(ok).length, 0, `合法加密数据流应无 error，实得 ${JSON.stringify(errorsOf(ok))}`);
+
+  // 负例：aes-cbc 缺必填 padding → D8_missing_param。
+  const noPad = checkDataflow(
+    wrap({
+      bind: [{ var: "pwd", from: "A", source: "body", extract: { jsonpath: "$.p" } }],
+      compute: [
+        { var: "k", op: "sha256", args: [{ ref: "pwd" }] },
+        { var: "ct", op: "aes-cbc", args: [{ ref: "k" }, { ref: "pwd" }, { text: "0123456789abcdef" }] },
+      ],
+    }),
+  );
+  assert.ok(errorsOf(noPad).includes("D8_missing_param"), "aes-cbc 缺 padding 应触发 D8");
+
+  // 负例：直接注入 bytes 摘要（未过 base64/hex）→ D9 类型不匹配。
+  const injBytes = checkDataflow(
+    wrap({
+      bind: [{ var: "m", from: "A", source: "body", extract: { jsonpath: "$.m" } }],
+      compute: [{ var: "d", op: "sha1", args: [{ ref: "m" }] }],
+      inject: [{ var: "d", into: "C", at: "url", name: "d" }],
+    }),
+  );
+  assert.ok(errorsOf(injBytes).includes("D9_type_mismatch"), "注入 sha1 的 bytes 应触发 D9");
+
+  console.log("  ✓ ADR-028 加密算子：正例通过 + 缺 padding/注入 bytes 被拒");
 }
 
 // ============ D11：复杂度限额 ============

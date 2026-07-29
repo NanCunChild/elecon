@@ -796,6 +796,52 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ sideload 声明 ssoMint via 被拒（M5，红线 #5/#1 门禁）");
 }
 
+// 22) forms 非空封闭词表（M6）；visible 兜底不得进入 manifest（M7）
+{
+  const manifestBase = {
+    adapterId: "school-x",
+    trustTier: "official" as const,
+    network: { allow: ["https://ids.h.edu.cn/*", "https://card.h.edu.cn/*"] },
+    login: {
+      url: "https://ids.h.edu.cn/authserver/login",
+      navigationAllow: ["https://ids.h.edu.cn/*", "https://card.h.edu.cn/*"],
+      success: { whenUrlMatches: ["https://card.h.edu.cn/ok*"] },
+      ssoMint: {
+        authEndpoint: "https://ids.h.edu.cn/authserver/login?service={service}",
+        services: {
+          "card-session": {
+            service: "https://card.h.edu.cn/sso",
+            success: ["https://card.h.edu.cn/ok*"],
+            forms: [] as Array<"hidden-webview" | "headless">,
+          },
+        },
+      },
+    },
+    credentials: {
+      "ids-cas": { scope: ["https://ids.h.edu.cn/*"], type: "cookie" as const, role: "sso-master" as const },
+      "card-session": { scope: ["https://card.h.edu.cn/*"], type: "cookie" as const },
+    },
+    capabilities: [
+      {
+        id: "grades.list",
+        requestGraph: "imperative" as const,
+        emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+      },
+    ],
+  };
+  const empty = checkManifest(manifestBase, contract);
+  assert.ok(codes(empty).includes("M6_invalid_mint_forms"), "空 forms 应触发 M6");
+
+  manifestBase.login.ssoMint.services["card-session"].forms = ["visible" as "headless"];
+  const visible = checkManifest(manifestBase, contract);
+  assert.ok(codes(visible).includes("M6_invalid_mint_forms"), "visible 不在封闭词表，应触发 M6");
+  assert.ok(
+    codes(visible).includes("M7_visible_fallback_is_mandatory"),
+    "visible 兜底不得由 manifest 配置，应触发 M7",
+  );
+  console.log("  ✓ mint forms 封闭词表与可见登录恒定兜底（M6/M7）");
+}
+
 // C10) runtime.stdlibMin 高于当前 stdlib → error；≤ 当前 → 无 C10；版本未知 → warn（ADR-018 §2.4）
 {
   const base = {

@@ -11,7 +11,6 @@ import 'dart:io' show gzip;
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart' show Ed25519, KeyPair;
-import 'package:elecon/catalog/schools.dart';
 import 'package:elecon/core/adapter_service.dart';
 import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/broker/ports.dart';
@@ -28,6 +27,8 @@ import 'package:elecon/core/loader/trust_anchors.dart';
 import 'package:elecon/core/loader/verify.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/school_fixture.dart';
 
 String _hex(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
@@ -370,7 +371,7 @@ void main() {
       final session = SessionController(
         adapterServiceProvider: () async => svc,
       );
-      session.selectSchool(defaultSchool);
+      session.selectSchool(testSchool());
       final logs = <String>[];
       final r = await session.runCapability(
         'notice.list',
@@ -394,7 +395,7 @@ void main() {
 
     test('无 adapterServiceProvider（未装配）→ failed(load)', () async {
       final session = SessionController();
-      session.selectSchool(defaultSchool);
+      session.selectSchool(testSchool());
       final r = await session.runCapability('notice.list');
       expect(r.ok, isFalse);
       expect(r.failureKind, CapabilityFailureKind.load);
@@ -405,7 +406,7 @@ void main() {
       final session = SessionController(
         adapterServiceProvider: () async => throw StateError('provider 不应被调用'),
       );
-      session.selectSchool(defaultSchool);
+      session.selectSchool(testSchool());
       final r = await session.runCapability('grades.list');
       expect(r.ok, isFalse);
       expect(r.failureKind, CapabilityFailureKind.auth);

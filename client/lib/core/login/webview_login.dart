@@ -42,11 +42,29 @@ class SsoMintDecl {
   final Map<String, SsoMintServiceDecl> services;
 }
 
+/// 静默 mint 执行形态（ADR-017 §2.7）。可见登录不属于本枚举，由核心恒定兜底。
+enum SsoMintForm {
+  hiddenWebView('hidden-webview'),
+  headless('headless');
+
+  const SsoMintForm(this.wireName);
+
+  final String wireName;
+
+  static SsoMintForm? tryParse(Object? value) {
+    for (final form in values) {
+      if (form.wireName == value) return form;
+    }
+    return null;
+  }
+}
+
 class SsoMintServiceDecl {
   const SsoMintServiceDecl({
     required this.service,
     required this.success,
     this.via,
+    this.forms,
   });
 
   /// 目标服务 URL（填入 authEndpoint 的 `{service}`）。
@@ -57,6 +75,9 @@ class SsoMintServiceDecl {
 
   /// 非简单 GET-redirect 时指向承载 mint 请求构造的 adapter 能力 id（缺省=内置）。
   final String? via;
+
+  /// 允许的静默形态及偏好顺序。null=客户端默认少模拟优先；非空=manifest 显式顺序。
+  final List<SsoMintForm>? forms;
 }
 
 class WebViewCookie {

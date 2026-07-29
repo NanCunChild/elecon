@@ -9,7 +9,7 @@
 ///
 /// 纯函数分解（与 TS 同名同序）：
 ///   ① extractHandle  抽取：响应 → 不透明句柄（text）。脱敏**前**求值。
-///   ② evalOp         计算：封闭 op 原生执行。含 hmac/hkdf（bytes）。
+///   ② evalOp         计算：封闭 op 原生执行。含 hmac/hkdf/摘要（bytes，ADR-028）。
 ///   ③ resolveInjections / applyInjections  注入：句柄 → 下游请求静态汇聚点。
 ///   ④ stripEchoes    脱敏：剥响应里回显的注入值（🔒 MVP 必做，堵回读）。
 ///   ⑤ planRequestOrder  拓扑：无依赖并发、有依赖等上游。
@@ -21,8 +21,19 @@
 library;
 
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart' as crypto show md5, sha1, sha256;
 import 'package:cryptography/dart.dart' show DartSha256;
+import 'package:pointycastle/export.dart' as pc
+    show
+        AESEngine,
+        CBCBlockCipher,
+        KeyParameter,
+        PKCS7Padding,
+        PaddedBlockCipherImpl,
+        PaddedBlockCipherParameters,
+        ParametersWithIV;
 
 import 'linear_regex.dart';
 
@@ -474,6 +485,15 @@ HandleValue evalOp(
       return _capBytes('hkdf', out);
     case 'now':
       return _capText('now', formatNow(nowMs, p['format'] as String));
+    // ---- ADR-028 加密算子（确定性）----
+    case 'md5':
+      return _capBytes('md5', crypto.md5.convert(_toBytes(args[0])).bytes);
+    case 'sha1':
+      return _capBytes('sha1', crypto.sha1.convert(_toBytes(args[0])).bytes);
+    case 'sha256':
+      return _capBytes('sha256', crypto.sha256.convert(_toBytes(args[0])).bytes);
+    case 'aes-cbc':
+      return _aesCbc(args, (p['padding'] as String?) ?? '');
     default:
       throw DataflowException('op_unknown', "未知 op '$op'");
   }
@@ -487,6 +507,66 @@ HandleValue _capBytes(String opName, List<int> bytes) {
     );
   }
   return BytesHandle(bytes);
+}
+
+/// AES-CBC 加密（ADR-028），与 `server/.../dataflow.ts` `evalAesCbc` **逐字节对称**。
+///
+/// 🔒 语义逐端钉死（ops.md §2）：
+///  - **key 为原始字节，绝不走 passphrase KDF**；长度 16/24/32 → AES-128/192/256，否则 fail-closed。
+///  - iv 须恰 16 字节。
+///  - padding=pkcs7（PKCS7Padding，块整数倍时补整块 0x10×16，对齐 Node setAutoPadding(true)）
+///    / none（长度须为块整数倍，裸 CBC 逐块）。
+/// 标准算法 + 标准 PKCS7 → 与 node:crypto 共享 NIST 向量，双跑 golden 逐字节一致。
+HandleValue _aesCbc(List<HandleValue> args, String padding) {
+  final key = Uint8List.fromList(_toBytes(args[0]));
+  final message = Uint8List.fromList(_toBytes(args[1]));
+  final iv = Uint8List.fromList(_toBytes(args[2]));
+
+  if (key.length != 16 && key.length != 24 && key.length != 32) {
+    throw DataflowException(
+      'aes_bad_key_length',
+      "aes-cbc：key 长度 ${key.length} 非法（须 16/24/32 字节）",
+    );
+  }
+  if (iv.length != 16) {
+    throw DataflowException(
+      'aes_bad_iv_length',
+      "aes-cbc：iv 长度 ${iv.length} 非法（须恰 16 字节）",
+    );
+  }
+
+  final Uint8List out;
+  switch (padding) {
+    case 'pkcs7':
+      final cipher = pc.PaddedBlockCipherImpl(
+        pc.PKCS7Padding(),
+        pc.CBCBlockCipher(pc.AESEngine()),
+      )..init(
+        true,
+        pc.PaddedBlockCipherParameters<pc.ParametersWithIV<pc.KeyParameter>,
+            Null>(
+          pc.ParametersWithIV<pc.KeyParameter>(pc.KeyParameter(key), iv),
+          null,
+        ),
+      );
+      out = cipher.process(message);
+    case 'none':
+      if (message.length % 16 != 0) {
+        throw DataflowException(
+          'aes_bad_block',
+          "aes-cbc padding=none：明文长度 ${message.length} 非 16 整数倍",
+        );
+      }
+      final cipher = pc.CBCBlockCipher(pc.AESEngine())
+        ..init(true, pc.ParametersWithIV<pc.KeyParameter>(pc.KeyParameter(key), iv));
+      out = Uint8List(message.length);
+      for (var off = 0; off < message.length; off += 16) {
+        cipher.processBlock(message, off, out, off);
+      }
+    default:
+      throw DataflowException('aes_bad_padding', "aes-cbc：未知 padding '$padding'");
+  }
+  return _capBytes('aes-cbc', out);
 }
 
 String _hex(List<int> bytes) {

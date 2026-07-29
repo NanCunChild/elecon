@@ -20,6 +20,7 @@ class MintPlan {
     required this.loadUrl,
     required this.navigationAllow,
     required this.successMatches,
+    required this.forms,
     this.via,
   });
 
@@ -30,6 +31,9 @@ class MintPlan {
 
   final List<String> navigationAllow;
   final List<String> successMatches;
+
+  /// manifest 允许的静默执行形态；顺序即偏好。缺省已展开为客户端默认顺序。
+  final List<SsoMintForm> forms;
 
   /// null=内置 GET-redirect；非 null=交 adapter mint 能力构造请求（ADR-017 §2.2）。
   final String? via;
@@ -51,9 +55,33 @@ MintPlan? buildMintPlan(LoginManifestView login, String targetRef) {
     loadUrl: loadUrl,
     navigationAllow: login.navigationAllow,
     successMatches: svc.success,
+    forms: svc.forms ?? defaultMintForms,
     via: svc.via,
   );
 }
+
+/// 客户端默认“少模拟优先”（ADR-017 §2.7）：隐藏浏览器先于 HTTP 协议模拟。
+const List<SsoMintForm> defaultMintForms = [
+  SsoMintForm.hiddenWebView,
+  SsoMintForm.headless,
+];
+
+/// 平台实际可提供的静默 mint 能力。由宿主上报，纯规划层不判断操作系统。
+class MintPlatformCapabilities {
+  const MintPlatformCapabilities(this.supportedForms);
+
+  final Set<SsoMintForm> supportedForms;
+}
+
+/// manifest 白名单与平台能力求交，保留 manifest/默认偏好顺序。
+/// 可见登录不在结果中；静默级耗尽后由 [ensureCredential] 恒定兜底（M7）。
+List<SsoMintForm> effectiveMintForms(
+  MintPlan plan,
+  MintPlatformCapabilities platform,
+) => [
+  for (final form in plan.forms)
+    if (platform.supportedForms.contains(form)) form,
+];
 
 /// 静默换票结果。非 [success] 一律降级到可见 WebView 登录（ADR-017 §2.2 步 4 / §2.6）。
 enum MintOutcome {
@@ -90,4 +118,40 @@ MintOutcome classifyMintResult({
 /// 调用方降级可见 WebView 登录。adapter 全程拿不到母凭证值 / ST（红线 #1 等价物条款）。
 abstract interface class SsoMinter {
   Future<MintOutcome> mint(String targetRef);
+}
+
+/// 按 ADR-017 §2.7 执行静默降级阶梯；全部静默级失败后，调用方进入可见登录。
+class FallbackSsoMinter implements SsoMinter {
+  FallbackSsoMinter({
+    required this.login,
+    required this.platform,
+    required this.executors,
+  });
+
+  final LoginManifestView login;
+  final MintPlatformCapabilities platform;
+  final Map<SsoMintForm, SsoMinter> executors;
+
+  @override
+  Future<MintOutcome> mint(String targetRef) async {
+    final plan = buildMintPlan(login, targetRef);
+    if (plan == null) {
+      throw ArgumentError.value(targetRef, 'targetRef', '目标没有 ssoMint 声明');
+    }
+
+    var last = MintOutcome.tgcExpired;
+    for (final form in effectiveMintForms(plan, platform)) {
+      final executor = executors[form];
+      if (executor == null) continue;
+      try {
+        final outcome = await executor.mint(targetRef);
+        if (outcome == MintOutcome.success) return outcome;
+        last = outcome;
+      } catch (_) {
+        // 单级不可用或协议漂移不得中断阶梯；异常详情不得进入 UI（红线 #1）。
+        last = MintOutcome.blockedOutsideNav;
+      }
+    }
+    return last;
+  }
 }

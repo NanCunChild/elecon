@@ -19,7 +19,7 @@
  *  D7  引用闭合 + 无环：ref 只能指向**声明序在前**的变量
  *  D8  op 元数与 params 键集合须与签名精确一致
  *  D9  静态类型检查：bytes/text 逐位置匹配；inject 的 var 须为 text
- *  D10 🔒 hmac-sha256 的 key / hkdf 的 ikm 必须是 ref，字面量密钥一律拒
+ *  D10 🔒 hmac-sha256 的 key / hkdf 的 ikm / aes-cbc 的 key 必须是 ref，字面量密钥一律拒
  *  D11 静态复杂度限额：节点 ≤64、引用深度 ≤16、每 op args ≤8
  *  D12 inject 目标 request 已声明、var 已定义、同一汇聚点不重复
  *  D13 🔒 信任门：正向 tier 允许表（防扩散，ADR-023 §2.6——不得写成「非 official 即放行」）
@@ -202,6 +202,21 @@ export const OP_SIGNATURES: Readonly<Record<string, OpSignature>> = {
     refOnly: [],
     params: { format: { kind: "enum", values: ["epoch-seconds", "epoch-millis", "iso8601"] } },
     result: "text",
+  },
+  // ---- ADR-028 加密算子（确定性；随机化加密永久排除，见 ops.md §5）----
+  // 裸摘要：单个 message（text|bytes），无 params，bytes 产出（配 base64/hex 转文本）。
+  md5: { minArgs: 1, maxArgs: 1, accepts: [ANY], refOnly: [], params: {}, result: "bytes" },
+  sha1: { minArgs: 1, maxArgs: 1, accepts: [ANY], refOnly: [], params: {}, result: "bytes" },
+  sha256: { minArgs: 1, maxArgs: 1, accepts: [ANY], refOnly: [], params: {}, result: "bytes" },
+  // 确定性 AES-CBC：[0]=key(🔒 ref)、[1]=message、[2]=iv（字面量或 ref）。变体按 key 长度
+  // 16/24/32 推断、IV 须 16 字节、key 为原始字节——均运行期 fail-closed，见 ops.md §2。
+  "aes-cbc": {
+    minArgs: 3,
+    maxArgs: 3,
+    accepts: [ANY, ANY, ANY],
+    refOnly: [0], // 🔒 key
+    params: { padding: { kind: "enum", values: ["pkcs7", "none"] } },
+    result: "bytes",
   },
 };
 

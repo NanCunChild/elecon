@@ -1,309 +1,90 @@
-/// 核心托管 WebView 登录页面（ADR-012 §2.2 / ADR-016）。
+/// 核心托管 WebView 的可见宿主（ADR-012 §2.2 / ADR-016）。
 ///
-/// 加载学校真实登录页，从 cookie jar 收割 session 写入 CredentialStore。
-/// 凭证值只在核心收割路径流转，绝不接触 UI/adapter（红线 #1）。
-///
-/// 使用方式：
-/// ```dart
-/// final result = await Navigator.of(context).push<WebViewLoginResult>(
-///   MaterialPageRoute(builder: (_) => WebViewLoginPage(login: view, store: store)),
-/// );
-/// ```
-///
-/// 调试模式：debug build 设置 [debugLog] 为 true 可查看完整日志面板并复制到剪贴板；
-/// release 默认关闭日志，即使外部强行开启也禁用复制。WebView 始终存活，日志面板展开/收起不重建 WebView。
-///
+/// Widget 只挂载浏览器并展示核心提供的无秘密状态；原始 URL、cookie、callback ticket 与
+/// 收割写入全部由 [InAppWebViewAuthBridge] 处理，UI 不接触凭证值（红线 #1）。
 library;
 
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-import '../../core/credential/store.dart';
-import '../../core/broker/assemble.dart' show stripQueryParam;
-import '../../core/debug/dev_log.dart';
 import '../../core/debug/perf_trace.dart';
-import '../../core/login/webview_login.dart';
+import '../../core/login/inappwebview_auth_bridge.dart';
+import '../../core/login/webview_auth_session.dart';
 
-enum WebViewLoginStatus { success, cancelled, error }
-
-class WebViewLoginResult {
-  const WebViewLoginResult({required this.status, this.error});
-
-  final WebViewLoginStatus status;
-  final String? error;
-}
+export '../../core/login/webview_auth_session.dart'
+    show WebViewLoginResult, WebViewLoginStatus;
 
 class WebViewLoginPage extends StatefulWidget {
   const WebViewLoginPage({
     super.key,
-    required this.login,
-    required this.store,
-    this.initialUrl,
-    this.requiredRef,
+    required this.bridge,
     this.performanceTrace,
-    this.tlsProceedHosts = const {},
-    this.debugLog = false,
   });
 
-  final LoginManifestView login;
-  final CredentialStore store;
-  final String? initialUrl;
-
-  /// 定向登录必须实际收割到的目标 ref；缺省只要求任一声明凭证（通用登录）。
-  final String? requiredRef;
+  final InAppWebViewAuthBridge bridge;
   final PerfTrace? performanceTrace;
-
-  /// TLS 证书异常放行白名单（host 精确匹配）；仅 debug build 可用。
-  final Set<String> tlsProceedHosts;
-
-  /// 开启后页面底部可展开实时日志面板；release 默认关闭，且禁用复制。
-  final bool debugLog;
 
   @override
   State<WebViewLoginPage> createState() => _WebViewLoginPageState();
 }
 
-class _LogEntry {
-  _LogEntry(this.timestamp, this.message);
-  final String timestamp;
-  final String message;
-}
-
-/// 收割轮询节奏（审阅 P2-5）：成功 URL 命中后 session cookie 落定时机不定，
-/// 此前用固定 600ms 延迟赌它落定（慢且有竞态）。改为按 [_harvestPollInterval]
-/// 干跑收割计划，非空且连续两轮 ref 集不变即收割；[_harvestPollDeadline] 到时
-/// 以最后一轮为准（可能为空 → 跳过并允许下次 LoadStop 重试，与旧语义一致）。
-const Duration _harvestPollInterval = Duration(milliseconds: 150);
-const Duration _harvestPollDeadline = Duration(seconds: 3);
-
 class _WebViewLoginPageState extends State<WebViewLoginPage> {
-  InAppWebViewController? _controller;
-  bool _isLoading = true;
-  bool _hasHarvested = false;
-  String? _errorMessage;
-  final List<_LogEntry> _log = <_LogEntry>[];
-  bool _showLog = false;
+  bool _returned = false;
 
-  void _pop(WebViewLoginResult result) {
-    if (!mounted) return;
+  @override
+  void initState() {
+    super.initState();
+    widget.bridge.state.addListener(_stateChanged);
+    unawaited(_awaitCompletion());
+  }
+
+  Future<void> _awaitCompletion() async {
+    final result = await widget.bridge.completion;
+    if (!mounted || _returned) return;
+    _returned = true;
     Navigator.of(context).pop(result);
   }
 
-  void _addLog(String message) {
-    // 全局环缓冲仅 debug（release 不收 webview 类）；消息须已打码。
-    if (kDebugMode) DevLog.instance.webview(message);
-    if (!widget.debugLog) return;
-    if (!mounted) return;
-    final ts = DateTime.now().toIso8601String().substring(11, 23);
-    if (kDebugMode) debugPrint('[webview-login] $message');
-    setState(() {
-      _log.insert(0, _LogEntry(ts, message));
-      if (_log.length > 500) _log.removeLast();
-    });
+  void _stateChanged() {
+    if (mounted) setState(() {});
   }
 
-  String _maskCookie(dynamic value) =>
-      maskCookieValue(value, redact: DevLog.instance.redact);
-
-  String _urlForLog(String raw) {
-    var safe = raw;
-    for (final decl in widget.login.brokerView.credentials.values) {
-      if (decl.type == 'query' && decl.queryParam != null) {
-        safe = stripQueryParam(safe, decl.queryParam!);
-      }
-    }
-    return formatUrlForLog(safe, redact: DevLog.instance.redact);
-  }
-
-  bool _urlAllowed(String url) => isLoginNavigationAllowed(url, widget.login);
-
-  bool _isSuccessUrl(String url) => isLoginSuccessUrl(url, widget.login);
-
-  static String _safeString(dynamic v) => v is String ? v : '';
-
-  /// 汇集全部收割来源域的 cookie 并归一为核心输入形（过滤空名/域）。
-  ///
-  /// 跨声明域收割（ADR-017 母凭证）：成功 URL 的 host + brokerView 各 scope 域，
-  /// 逐一 getCookies 再按 name|domain|path 去重合并——否则会漏掉 ids 子域的 CASTGC。
-  Future<List<WebViewCookie>> _collectWebViewCookies(WebUri url) async {
-    final cookieManager = CookieManager.instance();
-    final origins = <WebUri>{
-      url,
-      ...harvestCookieOrigins(widget.login).map(WebUri.new),
-    };
-    final rawCookies = <Cookie>[];
-    final seen = <String>{};
-    for (final origin in origins) {
-      final cs = await cookieManager.getCookies(url: origin);
-      for (final c in cs) {
-        final key = '${c.name}|${c.domain}|${c.path}';
-        if (seen.add(key)) rawCookies.add(c);
-      }
-    }
-    return rawCookies
-        .where((c) => c.name.isNotEmpty && (c.domain?.isNotEmpty == true))
-        .map(
-          (c) => WebViewCookie(
-            name: c.name,
-            value: _safeString(c.value),
-            domain: c.domain!,
-            path: c.path ?? '/',
-            isHttpOnly: c.isHttpOnly,
-            isSecure: c.isSecure,
-          ),
-        )
-        .toList();
-  }
-
-  Future<void> _harvestCookies(WebUri url) async {
-    if (_hasHarvested) return;
-    _hasHarvested = true;
-    widget.performanceTrace?.mark('harvest_start');
-    _addLog('── 收割开始 ──');
-    _addLog('target: ${url.host}${url.path}');
-
-    try {
-      // 有界轮询替代固定 600ms 延迟（审阅 P2-5）：干跑收割计划（不写 store），
-      // 非空且连续两轮 ref 集不变（落定）即收割；到时以最后一轮为准。
-      final deadline = DateTime.now().add(_harvestPollDeadline);
-      var webViewCookies = <WebViewCookie>[];
-      Set<String>? prevRefs;
-      var round = 0;
-      while (true) {
-        round += 1;
-        webViewCookies = await _collectWebViewCookies(url);
-        if (!mounted) return;
-        final refs = planWebViewHarvest(
-          login: widget.login,
-          cookies: webViewCookies,
-          currentUrl: url.toString(),
-        ).map((e) => e.ref).toSet();
-        _addLog(
-          '轮询#$round：cookie=${webViewCookies.length} 条 | '
-          '可收割 ref=[${(refs.toList()..sort()).join(", ")}]',
-        );
-        if (refs.isNotEmpty && setEquals(refs, prevRefs)) break;
-        prevRefs = refs;
-        if (DateTime.now().isAfter(deadline)) {
-          _addLog('轮询到时（${_harvestPollDeadline.inMilliseconds}ms），以最后一轮为准');
-          break;
-        }
-        await Future<void>.delayed(_harvestPollInterval);
-        if (!mounted) return;
-      }
-
-      for (final c in webViewCookies) {
-        final flags = [
-          if (c.isHttpOnly == true) 'HttpOnly',
-          if (c.isSecure == true) 'Secure',
-        ].join(',');
-        _addLog(
-          '  ${c.name} | domain=${c.domain} | path=${c.path} | '
-          '${flags.isEmpty ? "-" : flags} | value=${_maskCookie(c.value)}',
-        );
-      }
-      final httpOnlyCount = webViewCookies.where((c) => c.isHttpOnly == true).length;
-      _addLog(
-        '有效 cookie（已过滤空名/域）：${webViewCookies.length} 条'
-        '（HttpOnly=$httpOnlyCount；注：CAS TGC/下游 session 多为 HttpOnly，'
-        '若此处恒为 0 且收割不到 session，即 WebView 桥丢了 HttpOnly cookie）',
-      );
-
-      final finalPlan = planWebViewHarvest(
-        login: widget.login,
-        cookies: webViewCookies,
-        currentUrl: url.toString(),
-      );
-      if (finalPlan.isEmpty) {
-        _addLog('⚠ 当前 URL/cookie 无可收割凭证，收割跳过');
-        _hasHarvested = false;
-        return;
-      }
-
-      final result = harvestWebViewCookies(
-        login: widget.login,
-        cookies: webViewCookies,
-        currentUrl: url.toString(),
-        put: widget.store.put,
-        now: () => DateTime.now().millisecondsSinceEpoch,
-      );
-
-      final requiredRef = widget.requiredRef;
-      if (requiredRef != null &&
-          !result.entries.any((entry) => entry.ref == requiredRef)) {
-        _addLog('⚠ 定向登录未收割到目标 ref=$requiredRef，继续等待');
-        _hasHarvested = false;
-        return;
-      }
-
-      _addLog('收割完成：ref=[${result.entries.map((e) => e.ref).join(", ")}]');
-      _addLog(
-        'harvested=${result.harvested} | entries=${result.entries.length}',
-      );
-
-      widget.performanceTrace?.mark('harvest_complete');
-      _pop(const WebViewLoginResult(status: WebViewLoginStatus.success));
-    } catch (e, st) {
-      _addLog('收割异常：$e');
-      if (kDebugMode && widget.debugLog) debugPrintStack(stackTrace: st);
-      _pop(
-        WebViewLoginResult(
-          status: WebViewLoginStatus.error,
-          error: e.toString(),
-        ),
-      );
-    }
-  }
-
-  String _logAsText() {
-    final buf = StringBuffer();
-    for (final e in _log.reversed) {
-      buf.writeln('${e.timestamp} ${e.message}');
-    }
-    return buf.toString();
-  }
-
-  Future<void> _copyLogs() async {
-    if (!kDebugMode) return;
-    await Clipboard.setData(ClipboardData(text: _logAsText()));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('日志已复制到剪贴板'),
-          duration: Duration(seconds: 1),
-        ),
-      );
-    }
+  Future<void> _cancel() async {
+    if (_returned) return;
+    await widget.bridge.stop();
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
+    widget.bridge.state.removeListener(_stateChanged);
+    widget.bridge.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final authState = widget.bridge.state.value;
+    final failed =
+        authState.phase == WebViewAuthPhase.blocked ||
+        authState.phase == WebViewAuthPhase.error;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _pop(const WebViewLoginResult(status: WebViewLoginStatus.cancelled));
+        if (!didPop) unawaited(_cancel());
       },
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.close),
             tooltip: '取消登录',
-            onPressed: () => _pop(
-              const WebViewLoginResult(status: WebViewLoginStatus.cancelled),
-            ),
+            onPressed: _cancel,
           ),
           title: const Text('校园登录'),
           actions: [
-            if (_isLoading)
+            if (authState.phase == WebViewAuthPhase.loading ||
+                authState.phase == WebViewAuthPhase.harvesting)
               const Padding(
                 padding: EdgeInsets.all(16),
                 child: SizedBox(
@@ -312,247 +93,58 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ),
-            if (widget.debugLog) ...[
-              IconButton(
-                icon: Icon(
-                  _showLog ? Icons.bug_report : Icons.bug_report_outlined,
-                ),
-                tooltip: '日志',
-                onPressed: () => setState(() => _showLog = !_showLog),
-              ),
-            ],
           ],
         ),
-        body: _errorMessage != null
-            ? _ErrorView(error: _errorMessage!)
-            : _buildBody(),
-      ),
-    );
-  }
-
-  Widget _buildBody() {
-    return Column(
-      children: [
-        Expanded(child: _buildWebView()),
-        if (widget.debugLog)
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
-            alignment: Alignment.bottomCenter,
-            child: _showLog
-                ? SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.4,
-                    child: Column(
-                      children: [
-                        const Divider(height: 1),
-                        Expanded(child: _buildLogPanel()),
-                      ],
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildWebView() {
-    final initialUrl = widget.initialUrl ?? widget.login.url;
-    if (!_urlAllowed(initialUrl)) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text('登录入口不在导航白名单内：${_urlForLog(initialUrl)}'),
-        ),
-      );
-    }
-    return InAppWebView(
-      key: const ValueKey('webview_login'),
-      initialUrlRequest: URLRequest(url: WebUri(initialUrl)),
-      initialSettings: InAppWebViewSettings(
-        incognito: true,
-        javaScriptEnabled: true,
-        isInspectable: kDebugMode,
-      ),
-      onWebViewCreated: (c) {
-        _controller = c;
-        widget.performanceTrace?.mark('webview_created');
-        _addLog('WebView created | incognito=true');
-      },
-      onLoadStart: (c, url) {
-        final urlStr = url?.toString() ?? '';
-        _addLog('LoadStart ← ${_urlForLog(urlStr)}');
-        if (url != null && !_urlAllowed(urlStr)) {
-          c.stopLoading();
-          _addLog('拦截（不在 allowlist）');
-          setState(() {
-            _isLoading = false;
-            _errorMessage = '导航被拦截：${_urlForLog(urlStr)} 不在登录域白名单内。';
-          });
-        }
-      },
-      onLoadStop: (c, url) async {
-        setState(() => _isLoading = false);
-        final urlStr = url?.toString() ?? '';
-        final isSuccess = url != null && _isSuccessUrl(urlStr);
-        _addLog('LoadStop ← ${_urlForLog(urlStr)}${isSuccess ? " ★匹配" : ""}');
-        widget.performanceTrace?.mark(
-          isSuccess ? 'webview_success_load_stop' : 'webview_load_stop',
-        );
-        if (isSuccess) {
-          await _harvestCookies(url);
-        }
-      },
-      shouldOverrideUrlLoading: (c, action) async {
-        final requestedUrl = action.request.url?.toString() ?? '';
-        final isMain = action.isForMainFrame;
-        _addLog(
-          'NavIntent → ${_urlForLog(requestedUrl)}${isMain ? " (main)" : ""}',
-        );
-        if (!_urlAllowed(requestedUrl)) {
-          _addLog('拦截（allowlist）');
-          return NavigationActionPolicy.CANCEL;
-        }
-        return NavigationActionPolicy.ALLOW;
-      },
-      onReceivedError: (c, req, err) {
-        _addLog(
-          'WebViewError | type=${err.type} | url=${_urlForLog(req.url.toString())}',
-        );
-        setState(() {
-          _isLoading = false;
-          _errorMessage = '登录页面加载失败（${err.type}）。';
-        });
-      },
-      onReceivedServerTrustAuthRequest: (c, challenge) async {
-        final String host = challenge.protectionSpace.host;
-        final bool allowed =
-            kDebugMode && widget.tlsProceedHosts.contains(host);
-        _addLog('TLS ← $host → ${allowed ? "PROCEED" : "CANCEL"}');
-        return ServerTrustAuthResponse(
-          action: allowed
-              ? ServerTrustAuthResponseAction.PROCEED
-              : ServerTrustAuthResponseAction.CANCEL,
-        );
-      },
-    );
-  }
-
-  Widget _buildLogPanel() {
-    return Container(
-      color: const Color(0xFF0E1116),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Row(
-              children: [
-                const Text(
-                  '日志（cookie 值已打码）',
-                  style: TextStyle(color: Colors.white60, fontSize: 12),
+        body: failed
+            ? _ErrorView(message: authState.message ?? '登录失败')
+            : InAppWebView(
+                key: const ValueKey('webview_login'),
+                initialUrlRequest: URLRequest(
+                  url: WebUri(widget.bridge.initialUrl),
                 ),
-                const Spacer(),
-                Text(
-                  '${_log.length} 条',
-                  style: const TextStyle(color: Colors.white38, fontSize: 11),
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: Icon(
-                    Icons.copy,
-                    color: kDebugMode ? Colors.white38 : Colors.white12,
-                    size: 16,
-                  ),
-                  tooltip: kDebugMode ? '复制全部日志' : 'release 禁用复制日志',
-                  onPressed: kDebugMode ? _copyLogs : null,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 24,
-                    minHeight: 24,
-                  ),
-                ),
-                const SizedBox(width: 2),
-                GestureDetector(
-                  onTap: () => setState(_log.clear),
-                  child: const Icon(
-                    Icons.delete_sweep,
-                    color: Colors.white38,
-                    size: 16,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1, color: Colors.white12),
-          Expanded(
-            child: ListView.builder(
-              reverse: true,
-              itemCount: _log.length,
-              itemBuilder: (_, i) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                child: SelectableText.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '${_log[i].timestamp} ',
-                        style: const TextStyle(
-                          color: Colors.white38,
-                          fontFamily: 'monospace',
-                          fontSize: 11,
-                        ),
-                      ),
-                      TextSpan(
-                        text: _log[i].message,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontFamily: 'monospace',
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                initialSettings: widget.bridge.settings,
+                onWebViewCreated: (controller) {
+                  widget.bridge.onWebViewCreated(controller);
+                  widget.performanceTrace?.mark('webview_created');
+                },
+                onLoadStart: widget.bridge.onLoadStart,
+                onLoadStop: (controller, url) async {
+                  widget.performanceTrace?.mark('webview_load_stop');
+                  await widget.bridge.onLoadStop(controller, url);
+                },
+                onUpdateVisitedHistory: widget.bridge.onUpdateVisitedHistory,
+                shouldOverrideUrlLoading:
+                    widget.bridge.shouldOverrideUrlLoading,
+                onReceivedError: widget.bridge.onReceivedError,
+                onReceivedServerTrustAuthRequest:
+                    widget.bridge.onReceivedServerTrustAuthRequest,
               ),
-            ),
-          ),
-        ],
       ),
     );
   }
 }
 
 class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.error});
+  const _ErrorView({required this.message});
 
-  final String error;
+  final String message;
 
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 40,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 12),
-            const Text('登录页面加载失败'),
-            const SizedBox(height: 8),
-            Text(error, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(
-                const WebViewLoginResult(status: WebViewLoginStatus.cancelled),
-              ),
-              child: const Text('返回'),
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 48,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          const SizedBox(height: 16),
+          Text(message, textAlign: TextAlign.center),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }

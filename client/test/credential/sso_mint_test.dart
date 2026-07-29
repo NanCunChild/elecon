@@ -18,7 +18,8 @@ const _login = LoginManifestView(
   successUrlMatches: ['https://ehall.xidian.edu.cn/new/index.html*'],
   brokerView: BrokerManifestView(allow: [], credentials: {}),
   ssoMint: SsoMintDecl(
-    authEndpoint: 'https://ids.xidian.edu.cn/authserver/login?service={service}',
+    authEndpoint:
+        'https://ids.xidian.edu.cn/authserver/login?service={service}',
     services: {
       'card-session': SsoMintServiceDecl(
         service: 'https://v8scan.xidian.edu.cn/sso/login',
@@ -58,8 +59,9 @@ void main() {
     test('抵达成功页 → success', () {
       expect(
         classifyMintResult(
-            finalUrl: 'https://v8scan.xidian.edu.cn/myaccount/openMyAccount',
-            plan: plan),
+          finalUrl: 'https://v8scan.xidian.edu.cn/myaccount/openMyAccount',
+          plan: plan,
+        ),
         MintOutcome.success,
       );
     });
@@ -67,17 +69,71 @@ void main() {
     test('弹回登录页（navAllow 内、非成功页）→ tgcExpired', () {
       expect(
         classifyMintResult(
-            finalUrl: 'https://ids.xidian.edu.cn/authserver/login', plan: plan),
+          finalUrl: 'https://ids.xidian.edu.cn/authserver/login',
+          plan: plan,
+        ),
         MintOutcome.tgcExpired,
       );
     });
 
     test('越出 navAllow → blockedOutsideNav', () {
       expect(
-        classifyMintResult(
-            finalUrl: 'https://evil.example.com/', plan: plan),
+        classifyMintResult(finalUrl: 'https://evil.example.com/', plan: plan),
         MintOutcome.blockedOutsideNav,
       );
     });
   });
+
+  group('ADR-017 §2.7 mint forms', () {
+    test('缺省按 hidden-webview → headless，并与平台能力求交', () {
+      final plan = buildMintPlan(_login, 'card-session')!;
+      expect(plan.forms, defaultMintForms);
+      expect(
+        effectiveMintForms(
+          plan,
+          const MintPlatformCapabilities({SsoMintForm.headless}),
+        ),
+        [SsoMintForm.headless],
+      );
+    });
+
+    test('组合执行器先 hidden，失败后 headless 成功', () async {
+      final calls = <String>[];
+      final minter = FallbackSsoMinter(
+        login: _login,
+        platform: const MintPlatformCapabilities({
+          SsoMintForm.hiddenWebView,
+          SsoMintForm.headless,
+        }),
+        executors: {
+          SsoMintForm.hiddenWebView: _RecordingMinter(
+            'hidden',
+            MintOutcome.tgcExpired,
+            calls,
+          ),
+          SsoMintForm.headless: _RecordingMinter(
+            'headless',
+            MintOutcome.success,
+            calls,
+          ),
+        },
+      );
+      expect(await minter.mint('card-session'), MintOutcome.success);
+      expect(calls, ['hidden', 'headless']);
+    });
+  });
+}
+
+class _RecordingMinter implements SsoMinter {
+  _RecordingMinter(this.name, this.outcome, this.calls);
+
+  final String name;
+  final MintOutcome outcome;
+  final List<String> calls;
+
+  @override
+  Future<MintOutcome> mint(String targetRef) async {
+    calls.add(name);
+    return outcome;
+  }
 }

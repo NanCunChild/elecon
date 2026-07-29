@@ -104,6 +104,16 @@
                   "via": {
                     "type": "string",
                     "description": "非简单 GET-redirect 时，指向承载 mint 请求构造的 adapter 能力 id（须为本 manifest 声明的 capability 且 official，校验器 M5）。缺省=核心内置 GET-redirect。"
+                  },
+                  "forms": {
+                    "type": "array",
+                    "description": "允许的静默 mint 形态及偏好顺序（ADR-017 §2.7）。缺省时由客户端按少模拟优先选择 hidden-webview、headless；可见登录恒为核心兜底，不在此数组中。",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "enum": ["hidden-webview", "headless"]
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -271,14 +281,18 @@
                     "urlencode",
                     "hmac-sha256",
                     "hkdf",
-                    "now"
+                    "now",
+                    "md5",
+                    "sha1",
+                    "sha256",
+                    "aes-cbc"
                   ],
-                  "description": "封闭算子（ADR-023 §5 决策 2 首批词表）。逐 op 的元数/参数/类型签名与跨端语义见 docs/reference/declarative_dataflow_ops.md，由 validator D8/D9 静态强制。"
+                  "description": "封闭算子（ADR-023 §5 决策 2 首批词表 + ADR-028 加密算子）。逐 op 的元数/参数/类型签名与跨端语义见 docs/reference/declarative_dataflow_ops.md，由 validator D8/D9 静态强制。md5/sha1/sha256=裸摘要（bytes 产出）；aes-cbc=确定性块加密（固定/句柄 IV，禁随机——ADR-028 §2.4）。"
                 },
                 "args": {
                   "type": "array",
                   "maxItems": 8,
-                  "description": "位置参数，个数由 op 签名钉死（validator D8）。每项须**恰有** ref 或 text 之一（validator D6）。🔒 hmac-sha256 的 key（args[0]）与 hkdf 的 ikm（args[0]）必须是 ref，字面量一律拒（validator D10）——manifest 是已签名分发的产物，字面量密钥等于公开。",
+                  "description": "位置参数，个数由 op 签名钉死（validator D8）。每项须**恰有** ref 或 text 之一（validator D6）。🔒 hmac-sha256 的 key（args[0]）、hkdf 的 ikm（args[0]）、aes-cbc 的 key（args[0]）必须是 ref，字面量一律拒（validator D10）——manifest 是已签名分发的产物，字面量密钥等于公开。aes-cbc 的 iv（args[2]）非机密，允许字面量或 ref。",
                   "items": {
                     "type": "object",
                     "description": "单个参数：引用一个已定义句柄（ref），或一个内联文本字面量（text）。二者恰择其一。",
@@ -325,6 +339,11 @@
                       "type": "string",
                       "enum": ["epoch-seconds", "epoch-millis", "iso8601"],
                       "description": "now：时间戳格式。取值来自 broker 喂入的 AdapterRunInput.nowMs 定值，不读真实时钟——双跑 golden 可复现。"
+                    },
+                    "padding": {
+                      "type": "string",
+                      "enum": ["pkcs7", "none"],
+                      "description": "aes-cbc：填充方式。pkcs7=标准 PKCS#7（消息为块整数倍时补整块）；none=消息长度须为 16 的整数倍，否则 fail-closed。必填无默认——默认值会在两端漂移（ADR-028 §2.2）。变体（AES-128/192/256）按 key 字节长度 16/24/32 推断，非法长度 fail-closed；IV 须恰 16 字节；key 为原始字节而非 passphrase。"
                     }
                   },
                   "additionalProperties": false

@@ -19,6 +19,7 @@ library;
 
 import 'dart:io' show Directory;
 
+import '../catalog/schools.dart' show SchoolDescriptor;
 import 'adapter_runtime.dart'
     show
         AdapterFailureReason,
@@ -32,6 +33,7 @@ import 'broker/fetch_proxy.dart' show Transport;
 import 'broker/ports.dart' show CredentialResolver;
 import 'credential/blob_store.dart' show FileBlobStore;
 import 'loader/bootstrap.dart' show BootstrapBaseline, FlutterAssetSource;
+import 'loader/bundle.dart' show readEnvelopeManifestJson;
 import 'loader/bundle_cache.dart' show BundleCache;
 import 'loader/distribution_http.dart'
     show HttpByteFetcher, HttpDistributionSource, IoHttpByteFetcher;
@@ -129,6 +131,19 @@ class AdapterService {
 
   final AdapterLoader _loader;
   final Transport _transport;
+
+  /// 从完整验签后的 bundle manifest 读取学校认证声明。任何加载/解析失败均 fail-closed。
+  Future<SchoolDescriptor?> describeSchool(String adapterId) async {
+    final load = await _loader.loadAdapter(adapterId);
+    if (!load.ok || load.envelope == null) return null;
+    try {
+      final manifest = readEnvelopeManifestJson(load.envelope!);
+      final descriptor = SchoolDescriptor.fromVerifiedManifest(manifest);
+      return descriptor.adapterId == adapterId ? descriptor : null;
+    } on FormatException {
+      return null;
+    }
+  }
 
   /// 加载 [adapterId] 并执行 [capability]。全程 fail-closed 并归一化为 [CapabilityRun]，绝不上抛。
   ///

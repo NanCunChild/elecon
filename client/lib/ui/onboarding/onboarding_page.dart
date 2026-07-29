@@ -18,25 +18,30 @@ class OnboardingPage extends StatefulWidget {
 }
 
 class _OnboardingPageState extends State<OnboardingPage> {
-  SchoolDescriptor _selected = defaultSchool;
+  SchoolDescriptor? _selected;
   bool _busy = false;
 
   Future<void> _continue() async {
     final session = SessionScope.of(context);
+    final selected = _selected;
+    if (selected == null) return;
     setState(() => _busy = true);
-    final result = await runSchoolLogin(context, session, _selected);
+    final result = await runSchoolLogin(context, session, selected);
     if (!mounted) return;
     setState(() => _busy = false);
 
     // 无论成功/取消，都完成选校进入主壳（未登录态由设置页呈现）。
-    session.selectSchool(_selected);
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(loginResultMessage(result, session))));
+    session.selectSchool(selected);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(loginResultMessage(result, session))),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final schools = SessionScope.of(context).availableSchools;
+    _selected ??= schools.firstOrNull;
 
     return Scaffold(
       body: SafeArea(
@@ -47,12 +52,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
               padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
               shrinkWrap: true,
               children: [
-                Icon(Icons.school_rounded,
-                    size: 56, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.school_rounded,
+                  size: 56,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(height: 20),
-                Text('欢迎使用 elecon',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineMedium),
+                Text(
+                  '欢迎使用 elecon',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.headlineMedium,
+                ),
                 const SizedBox(height: 8),
                 Text(
                   '校园信息聚合平台\n选择你的学校，登录后即可聚合成绩、课表、通知等信息',
@@ -62,15 +72,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   ),
                 ),
                 const SizedBox(height: 32),
-                Text('选择学校',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                    )),
+                Text(
+                  '选择学校',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                for (final school in builtinSchools)
+                for (final school in schools)
                   _SchoolTile(
                     school: school,
-                    selected: _selected.id == school.id,
+                    selected: _selected?.id == school.id,
                     onTap: school.available && !_busy
                         ? () => setState(() => _selected = school)
                         : null,
@@ -79,7 +91,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 _ComingSoonTile(),
                 const SizedBox(height: 28),
                 FilledButton.icon(
-                  onPressed: _busy ? null : _continue,
+                  onPressed: _busy || _selected == null ? null : _continue,
                   icon: _busy
                       ? const SizedBox(
                           width: 18,
@@ -137,22 +149,28 @@ class _SchoolTile extends StatelessWidget {
                 backgroundColor: selected
                     ? theme.colorScheme.primary
                     : theme.colorScheme.surfaceContainerHighest,
-                child: Icon(Icons.account_balance,
-                    color: selected
-                        ? theme.colorScheme.onPrimary
-                        : theme.colorScheme.onSurfaceVariant),
+                child: Icon(
+                  Icons.account_balance,
+                  color: selected
+                      ? theme.colorScheme.onPrimary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(school.displayName,
-                        style: theme.textTheme.titleMedium),
-                    Text(school.subtitle,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        )),
+                    Text(
+                      school.displayName,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    Text(
+                      school.subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -180,13 +198,14 @@ class _ComingSoonTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
-          Icon(Icons.more_horiz,
-              size: 18, color: theme.colorScheme.outline),
+          Icon(Icons.more_horiz, size: 18, color: theme.colorScheme.outline),
           const SizedBox(width: 8),
-          Text('更多学校陆续接入中',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.outline,
-              )),
+          Text(
+            '更多学校陆续接入中',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
+          ),
         ],
       ),
     );

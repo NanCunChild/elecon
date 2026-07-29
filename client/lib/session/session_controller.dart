@@ -7,8 +7,8 @@
 /// 首次持久化前 [ensurePersistentStore] 按硬件可用性 + 用户知情同意裁定 H/S/M。
 /// 落盘目录经**可注入的** [blobStoreProvider] 提供；provider 为 null 时退化为内存档 M。
 ///
-/// **L1 headless mint**（ADR-017）：按选校自动装配 [HeadlessSsoMinter]
-/// （`DirectTransport` + 本会话 [store]）；构造注入或 [ssoMinter] setter 优先，跳过自动装配。
+/// **静默 mint 阶梯**（ADR-017 §2.7）：按选校装配隐藏 WebView 与 HTTP headless 执行器，
+/// 经 manifest forms 与平台能力求交；静默级耗尽后仍由可见登录兜底。
 ///
 /// 🔒🔒 **红线 #1 母凭证换票入 release（本仓所有者显式授权，ADR-017 §4.9 合规审待补）。**
 /// 原策略：headless mint 仅 [kDebugMode] 装配、release 关闭（合规灰度）。现按所有者要求
@@ -38,8 +38,11 @@ import '../core/credential/software_secure_store.dart';
 import '../core/credential/store.dart';
 import '../core/credential/types.dart';
 import '../core/login/ensure_credential.dart';
+import '../core/login/inappwebview_auth_bridge.dart';
 import '../core/login/sso_mint.dart';
 import '../core/login/sso_mint_headless.dart';
+import '../core/login/sso_mint_hidden_webview.dart';
+import '../core/login/webview_login.dart';
 import '../core/transport/direct.dart';
 
 const String _sessionMetaBlob = 'session.json';
@@ -50,6 +53,7 @@ class SessionController extends ChangeNotifier {
     HardwareKeyStore hardware = const UnavailableHardwareKeyStore(),
     Future<BlobStore?> Function()? blobStoreProvider,
     Future<AdapterService?> Function()? adapterServiceProvider,
+    List<SchoolDescriptor> initialSchools = const [],
     SsoMinter? ssoMinter,
     Future<bool> Function(VisibleLoginRequest request)? onVisibleLogin,
   }) : _store =
@@ -58,6 +62,7 @@ class SessionController extends ChangeNotifier {
        _hardware = hardware,
        _blobStoreProvider = blobStoreProvider,
        _adapterServiceProvider = adapterServiceProvider,
+       _availableSchools = List.unmodifiable(initialSchools),
        _ssoMinter = ssoMinter,
        _ssoMinterInjected = ssoMinter != null,
        _onVisibleLogin = onVisibleLogin,
@@ -77,7 +82,7 @@ class SessionController extends ChangeNotifier {
   /// 构造注入或 [ssoMinter] setter 提供的 minter：不自动装配 / 不随选校重建。
   bool _ssoMinterInjected;
 
-  /// 自动装配 [HeadlessSsoMinter] 时持有的 transport（需 [dispose] 释放连接池）。
+  /// 自动装配 HTTP headless 级时持有的 transport（需 [dispose] 释放连接池）。
   DirectTransport? _mintTransport;
 
   /// 可见登录回调（UI 注入）；null = ensure 返回 needVisibleLogin，由调用方引导登录。
@@ -86,6 +91,20 @@ class SessionController extends ChangeNotifier {
   /// 当前静默签票执行器（测试 / 诊断只读）。
   @visibleForTesting
   SsoMinter? get ssoMinter => _ssoMinter;
+
+  /// 创建可信 WebView 认证桥。UI 只持有桥及无秘密状态，不获得 store/cookie 能力（红线 #1）。
+  InAppWebViewAuthBridge createWebViewAuthBridge({
+    required LoginManifestView login,
+    String? initialUrl,
+    String? requiredRef,
+    Set<String> tlsProceedHosts = const {},
+  }) => InAppWebViewAuthBridge(
+    login: login,
+    putCredential: _store.put,
+    initialUrl: initialUrl,
+    requiredRef: requiredRef,
+    tlsProceedHosts: tlsProceedHosts,
+  );
 
   /// 测试注入或覆盖 minter；此后不再自动装配 headless。
   set ssoMinter(SsoMinter? minter) {
@@ -102,6 +121,7 @@ class SessionController extends ChangeNotifier {
   bool _storeResolved;
 
   SchoolDescriptor? _school;
+  List<SchoolDescriptor> _availableSchools;
   bool _debugLog = kDebugMode;
 
   /// H 档启动解不开时置位；UI 提示后 [acknowledgeHardwareUnlockFailure] 清除。
@@ -111,6 +131,7 @@ class SessionController extends ChangeNotifier {
   CredentialStore get store => _store;
 
   SchoolDescriptor? get selectedSchool => _school;
+  List<SchoolDescriptor> get availableSchools => _availableSchools;
   bool get isConfigured => _school != null;
   bool get debugLog => _debugLog;
   bool get isLoggedIn => store.list().isNotEmpty;
@@ -132,8 +153,7 @@ class SessionController extends ChangeNotifier {
     if (_bootstrapped) return;
     _bootstrapped = true;
     final blobs = await _resolveBlobs();
-    if (blobs == null) return;
-    if (await HardwareSecureStore.hasPersisted(blobs)) {
+    if (blobs != null && await HardwareSecureStore.hasPersisted(blobs)) {
       if (!await _hardware.isAvailable()) {
         await _failHardwareUnlock(blobs);
       } else {
@@ -144,13 +164,27 @@ class SessionController extends ChangeNotifier {
           await _failHardwareUnlock(blobs);
         }
       }
-    } else if (await SoftwareSecureStore.hasPersisted(blobs)) {
+    } else if (blobs != null && await SoftwareSecureStore.hasPersisted(blobs)) {
       _replaceStore(await SoftwareSecureStore.open(blobs));
       _storeResolved = true;
     }
-    _school = await _loadSelectedSchool(blobs);
+    if (_availableSchools.isEmpty) {
+      _availableSchools = await _loadAvailableSchools();
+    }
+    _school = blobs == null ? null : await _loadSelectedSchool(blobs);
     _wireSsoMinterFor(_school);
     notifyListeners();
+  }
+
+  Future<List<SchoolDescriptor>> _loadAvailableSchools() async {
+    final service = await _resolveAdapterService();
+    if (service == null) return const [];
+    final schools = <SchoolDescriptor>[];
+    for (final adapterId in schoolAdapterIds) {
+      final school = await service.describeSchool(adapterId);
+      if (school != null) schools.add(school);
+    }
+    return List.unmodifiable(schools);
   }
 
   Future<void> _failHardwareUnlock(BlobStore blobs) async {
@@ -212,7 +246,7 @@ class SessionController extends ChangeNotifier {
       final json = jsonDecode(utf8.decode(raw)) as Map<String, dynamic>;
       final id = json['selectedSchoolId'];
       if (id is! String) return null;
-      for (final school in builtinSchools) {
+      for (final school in _availableSchools) {
         if (school.id == id) return school;
       }
     } catch (_) {
@@ -247,7 +281,7 @@ class SessionController extends ChangeNotifier {
     _wireSsoMinterFor(_school);
   }
 
-  /// 按选校装配 [HeadlessSsoMinter]（mint 闭环 M1）；无选校 / 无 ssoMint / 已注入 → null。
+  /// 按选校装配 ADR-017 §2.7 静默阶梯；无选校 / 无 ssoMint / 已注入 → null。
   ///
   /// 🔒🔒 红线 #1：原先此处 `!kDebugMode` 门禁把母票换票限制在 debug；现按所有者授权
   /// 解除，release 也装配（见类级文档 §4.9 合规审待补）。母凭证注入边界仍由声明面兜底
@@ -260,13 +294,32 @@ class SessionController extends ChangeNotifier {
     if (login.ssoMint == null) return;
     final transport = DirectTransport();
     _mintTransport = transport;
-    _ssoMinter = HeadlessSsoMinter(
+    final headless = HeadlessSsoMinter(
       login: login,
       brokerView: login.brokerView,
       resolver: _store,
       transport: transport,
       putCredential: _store.put,
       schoolId: school.id,
+    );
+    final hidden = HiddenWebViewSsoMinter(
+      login: login,
+      resolver: _store,
+      putCredential: _store.put,
+    );
+    final supported = <SsoMintForm>{SsoMintForm.headless};
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      supported.add(SsoMintForm.hiddenWebView);
+    }
+    _ssoMinter = FallbackSsoMinter(
+      login: login,
+      platform: MintPlatformCapabilities(supported),
+      executors: {
+        SsoMintForm.hiddenWebView: hidden,
+        SsoMintForm.headless: headless,
+      },
     );
   }
 
@@ -314,12 +367,6 @@ class SessionController extends ChangeNotifier {
       return const CapabilityRun.failed(CapabilityFailureKind.load, '未选校');
     }
     final adapterId = school.adapterId;
-    if (adapterId == null) {
-      return CapabilityRun.failed(
-        CapabilityFailureKind.load,
-        '学校 ${school.id} 尚未接入 adapter',
-      );
-    }
     final required =
         school.capabilityCredentials[capability] ?? const <String>[];
     if (required.isNotEmpty) {
@@ -341,7 +388,10 @@ class SessionController extends ChangeNotifier {
       // 🔒 诊断打点（runtime 类，release 丢弃，红线 #1）：只记 ref 名 / 布尔态 / 装配位，
       // 绝不记凭证值。用于回答「已登录仍提示需要登录」到底缺哪一环。
       final preState = required
-          .map((ref) => '$ref=${gateHasActive(school.id, ref) ? "active" : "missing"}')
+          .map(
+            (ref) =>
+                '$ref=${gateHasActive(school.id, ref) ? "active" : "missing"}',
+          )
           .join(", ");
       DevLog.instance.runtime(
         'ensure[$capability] 入场：需 [$preState] | '
@@ -360,7 +410,10 @@ class SessionController extends ChangeNotifier {
       );
 
       final postState = required
-          .map((ref) => '$ref=${gateHasActive(school.id, ref) ? "active" : "missing"}')
+          .map(
+            (ref) =>
+                '$ref=${gateHasActive(school.id, ref) ? "active" : "missing"}',
+          )
           .join(", ");
       DevLog.instance.runtime(
         'ensure[$capability] 结果：${ensured.status.name}'

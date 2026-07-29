@@ -10,7 +10,7 @@
  *
  * 纯函数分解（每件都有 golden 向量，见 contract/golden/broker/dataflow.json）：
  *   ① extractHandle(bind, response)      抽取：响应 → 不透明句柄（text）。脱敏**前**求值。
- *   ② evalOp(op, args, params, nowMs)     计算：封闭 op 原生执行。含 hmac/hkdf（bytes）。
+ *   ② evalOp(op, args, params, nowMs)     计算：封闭 op 原生执行。含 hmac/hkdf/摘要/aes-cbc（bytes，ADR-028）。
  *   ③ applyInjections(req, injects, env)  注入：句柄 → 下游请求静态汇聚点（url/header）。
  *   ④ stripEchoes(response, injected)     脱敏：剥掉响应里回显的注入值（🔒 MVP 必做，堵回读）。
  *   ⑤ planRequestOrder(requests, injects) 拓扑：无依赖请求并发、有依赖等上游（返回分层）。
@@ -21,7 +21,7 @@
  * regex 使用 ADR-023 严格安全子集及确定性 matcher，不调用原生 RegExp。AI 起草，须人工安全复核。
  */
 
-import { createHmac, hkdfSync } from "node:crypto";
+import { createCipheriv, createHash, createHmac, hkdfSync } from "node:crypto";
 import {
   type LinearRegexPattern,
   LinearRegexSyntaxError,
@@ -364,6 +364,17 @@ export function evalOp(
     case "now": {
       return capText("now", formatNow(nowMs, p.format as string));
     }
+    // ---- ADR-028 加密算子（确定性）----
+    case "md5":
+    case "sha1":
+    case "sha256": {
+      // 标准单向摘要，输出定长原始字节。message 为 text 时按 UTF-8。
+      const digest = createHash(op).update(toBytes(args[0]!)).digest();
+      return capBytes(op, new Uint8Array(digest));
+    }
+    case "aes-cbc": {
+      return evalAesCbc(args, (p.padding as string) ?? "");
+    }
     default:
       throw new DataflowError("op_unknown", `未知 op '${op}'`);
   }
@@ -375,6 +386,55 @@ function capBytes(opName: string, bytes: Uint8Array): HandleValue {
     throw new DataflowError("handle_too_large", `${opName} 输出超过单句柄上限 ${MAX_HANDLE_BYTES} 字节`);
   }
   return { type: "bytes", bytes };
+}
+
+/**
+ * AES-CBC 加密（ADR-028）。确定性：相同 key+iv+message+padding → 唯一密文。
+ *
+ * 🔒 语义逐端钉死（ops.md §2），Dart 端须逐字节复现：
+ *  - **key 为原始字节，绝不走 passphrase KDF**；长度 16/24/32 → AES-128/192/256，否则 fail-closed。
+ *  - iv 须恰 16 字节。
+ *  - padding=pkcs7（Node setAutoPadding(true)，块整数倍时补整块 0x10×16）/ none（长度须为块整数倍）。
+ */
+function evalAesCbc(args: HandleValue[], padding: string): HandleValue {
+  const key = toBytes(args[0]!);
+  const message = toBytes(args[1]!);
+  const iv = toBytes(args[2]!);
+
+  const variant =
+    key.length === 16
+      ? "aes-128-cbc"
+      : key.length === 24
+        ? "aes-192-cbc"
+        : key.length === 32
+          ? "aes-256-cbc"
+          : undefined;
+  if (variant === undefined) {
+    throw new DataflowError("aes_bad_key_length", `aes-cbc：key 长度 ${key.length} 非法（须 16/24/32 字节）`);
+  }
+  if (iv.length !== 16) {
+    throw new DataflowError("aes_bad_iv_length", `aes-cbc：iv 长度 ${iv.length} 非法（须恰 16 字节）`);
+  }
+
+  let autoPad: boolean;
+  if (padding === "pkcs7") {
+    autoPad = true;
+  } else if (padding === "none") {
+    if (message.length % 16 !== 0) {
+      throw new DataflowError(
+        "aes_bad_block",
+        `aes-cbc padding=none：明文长度 ${message.length} 非 16 整数倍`,
+      );
+    }
+    autoPad = false;
+  } else {
+    throw new DataflowError("aes_bad_padding", `aes-cbc：未知 padding '${padding}'`);
+  }
+
+  const cipher = createCipheriv(variant, key, iv);
+  cipher.setAutoPadding(autoPad);
+  const out = Buffer.concat([cipher.update(message), cipher.final()]);
+  return capBytes("aes-cbc", new Uint8Array(out));
 }
 
 /** RFC 3986 unreserved 之外一律 %XX（大写）；空格 component=%20 / form=+。UTF-8 逐字节。 */

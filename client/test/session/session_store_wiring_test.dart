@@ -10,11 +10,12 @@ import 'package:elecon/core/credential/blob_store.dart';
 import 'package:elecon/core/credential/hardware_keystore.dart';
 import 'package:elecon/core/credential/hardware_secure_store.dart';
 import 'package:elecon/core/credential/types.dart';
-import 'package:elecon/catalog/schools.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../credential/hardware_secure_store_test.dart' show FakeHardwareKeyStore;
+import '../credential/hardware_secure_store_test.dart'
+    show FakeHardwareKeyStore;
+import '../support/school_fixture.dart';
 
 CredentialEntry _entry(String ref, {String schoolId = 'xidian'}) =>
     CredentialEntry(
@@ -38,7 +39,10 @@ void main() {
     await c1.flush();
 
     // 新控制器 bootstrap：静默续用已持久化的 S 档。
-    final c2 = SessionController(blobStoreProvider: () async => blobs);
+    final c2 = SessionController(
+      blobStoreProvider: () async => blobs,
+      initialSchools: [testSchool()],
+    );
     await c2.bootstrap();
     expect(c2.isLoggedIn, isTrue);
     expect(c2.credentialRefs, ['ehall-session']);
@@ -49,13 +53,16 @@ void main() {
 
     final c1 = SessionController(blobStoreProvider: () async => blobs);
     await c1.ensurePersistentStore(confirmSoftwareFallback: () async => true);
-    c1.selectSchool(defaultSchool);
+    c1.selectSchool(testSchool());
     c1.store.put(_entry('ehall-session'));
     await c1.flush();
 
-    final c2 = SessionController(blobStoreProvider: () async => blobs);
+    final c2 = SessionController(
+      blobStoreProvider: () async => blobs,
+      initialSchools: [testSchool()],
+    );
     await c2.bootstrap();
-    expect(c2.selectedSchool?.id, defaultSchool.id);
+    expect(c2.selectedSchool?.id, testSchool().id);
     expect(c2.isConfigured, isTrue);
     expect(c2.isLoggedIn, isTrue);
     expect(c2.credentialRefs, ['ehall-session']);
@@ -93,9 +100,8 @@ void main() {
       blobStoreProvider: () async => blobs,
     );
     await c1.ensurePersistentStore(
-      confirmSoftwareFallback: () => Future<bool>.error(
-        TestFailure('H 可用时不应询问 S 档'),
-      ),
+      confirmSoftwareFallback: () =>
+          Future<bool>.error(TestFailure('H 可用时不应询问 S 档')),
     );
     c1.store.put(_entry('ehall-session'));
     await c1.flush();
@@ -123,18 +129,19 @@ void main() {
     await c1.ensurePersistentStore(
       confirmSoftwareFallback: () => Future<bool>.error(TestFailure('no S')),
     );
-    c1.selectSchool(defaultSchool);
+    c1.selectSchool(testSchool());
     c1.store.put(_entry('ehall-session'));
     await c1.flush();
 
     final c2 = SessionController(
       hardware: _BrokenHardwareKeyStore(),
       blobStoreProvider: () async => blobs,
+      initialSchools: [testSchool()],
     );
     await c2.bootstrap();
     expect(c2.hardwareUnlockFailed, isTrue);
     expect(c2.isLoggedIn, isFalse);
-    expect(c2.selectedSchool?.id, defaultSchool.id);
+    expect(c2.selectedSchool?.id, testSchool().id);
     expect(await HardwareSecureStore.hasPersisted(blobs), isFalse);
 
     c2.acknowledgeHardwareUnlockFailure();
@@ -166,16 +173,17 @@ void main() {
 
   test('logout 仅抹除当前学校凭证，不波及他校（schoolId 过滤）', () async {
     final c = SessionController();
-    c.selectSchool(defaultSchool); // xidian
+    c.selectSchool(testSchool());
     c.store.put(_entry('ehall-session'));
     c.store.put(_entry('other-session', schoolId: 'other-school'));
 
     c.logout();
 
     final remaining = c.store.list();
-    expect(remaining.map((e) => e.ref), ['other-session'],
-        reason: '登出 = 抹除当前学校全部凭证（ADR-012 §2.5），他校凭证保留');
-    expect(remaining.every((e) => e.schoolId != defaultSchool.id), isTrue);
+    expect(remaining.map((e) => e.ref), [
+      'other-session',
+    ], reason: '登出 = 抹除当前学校全部凭证（ADR-012 §2.5），他校凭证保留');
+    expect(remaining.every((e) => e.schoolId != testSchool().id), isTrue);
   });
 
   test('logout 未选校时防御性抹除全部；reset 一律抹除全部', () async {
@@ -186,7 +194,7 @@ void main() {
     expect(c1.store.list(), isEmpty);
 
     final c2 = SessionController();
-    c2.selectSchool(defaultSchool);
+    c2.selectSchool(testSchool());
     c2.store.put(_entry('a'));
     c2.store.put(_entry('b', schoolId: 'other-school'));
     c2.reset(); // 彻底重置跨校抹除

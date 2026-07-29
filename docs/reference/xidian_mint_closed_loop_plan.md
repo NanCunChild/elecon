@@ -1,6 +1,6 @@
 # XIDIAN 全闭环 + SSO mint 签票 —— 设计与落地计划
 
-- **状态**：**已批准 · 实施中（M0–M2）**（2026-07-20）。降级阶梯 L1 headless → L2 hidden WebView → L3 visible（§4.4）。触红线 #1 的路径须人工主导 + 安全清单，AI 不得独自闭环（AGENTS.md §1 + ADR-017 §4.9）。
+- **状态**：**已批准 · 实施中**（2026-07-20）。默认降级阶梯 hidden WebView → headless → visible（§4.4，ADR-017 §2.7“少模拟优先”）；`forms` 可在签名 manifest 内收窄或调整两个静默级。触红线 #1 的路径须人工主导 + 安全清单，AI 不得独自闭环（AGENTS.md §1 + ADR-017 §4.9）。
 - **依赖**：ADR-017（母凭证 + 静默签票）、ADR-016（WebView 登录）、ADR-009（Broker 注入）、ADR-012（凭证库）、Track B fetch 运行时（B4–B6）。
 - **目标**：**一次可见登录**收割 `CASTGC`，之后按需静默换取 ehall / 一卡通 / 图书馆 session，再经 official fetch adapter 取数，UI 只看到能力结果（不见凭证）。
 
@@ -146,17 +146,16 @@ ensureCredential(ref):
 
 | 级 | 策略 | 说明 |
 |---|---|---|
-| **L1 headless** | `HeadlessSsoMinter` + Broker 注入母票 | 协议模拟；须合规清单（ADR-017 §4.2）；v1 可限 debug/灰度 |
-| **L2 hidden WebView** | 隐藏/离屏 WebView 驱动同一 `MintPlan` | 少模拟优先；平台能力门禁（Android/iOS 先；OHOS 另开） |
-| **L3 visible WebView** | 用户可见登录（安全底） | 母票失效 / 无 master / 无 ssoMint / L1+L2 皆失败 |
+| **L1 hidden WebView** | 隐藏/离屏 WebView 驱动同一 `MintPlan` | 默认主路径；平台能力门禁（Android/iOS 先；OHOS 另开） |
+| **L2 headless** | `HeadlessSsoMinter` + Broker 注入母票 | 已验证站点的协议模拟优化；须合规清单（ADR-017 §4.2） |
+| **L3 visible WebView** | 用户可见登录（安全底） | 无 master / 无 ssoMint / 两个静默级皆失败 |
 
-**执行顺序**：`ensureCredential` 对可 mint 的 ref：`has?` → **L1** →（失败且非 tgc 必见）**L2**（若平台可用）→ **L3**。  
-`tgcExpired` / 无 `sso-master`：**直接 L3**（不猜原因）。
+**执行顺序**：`ensureCredential` 对可 mint 的 ref：`has?` → `(平台能力 ∩ manifest forms)` 中的静默级 → **L3**。缺省顺序为 **L1 → L2 → L3**；任一静默级非成功均继续下一静默级，不在低级猜测失败原因。无 `sso-master` 则直接 L3。
 
 | 切片 | 范围 |
 |---|---|
-| **M1–M2（当前）** | L1 + L3；L2 seam 预留（`SsoMinter` 可插拔 / `HiddenWebViewSsoMinter` 后续） |
-| **M6 / PR-5** | L2 实现 + `forms` + `expiredWhenUrlMatches` |
+| **M1–M2** | HTTP headless + visible 基础闭环 |
+| **M6 / PR-5（代码已起草）** | hidden WebView + `forms` + 平台能力交集；Android/iOS profile/cookie 隔离仍须真机与人工安全复核 |
 
 headless 属协议模拟合规灰度；**不得默认进发版**直至合规评估通过（ADR-017 §4.9）。
 

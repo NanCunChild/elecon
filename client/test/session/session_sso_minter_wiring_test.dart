@@ -9,12 +9,12 @@
 ///   运行：cd client && fvm flutter test test/session/session_sso_minter_wiring_test.dart
 library;
 
-import 'package:elecon/catalog/schools.dart';
 import 'package:elecon/core/login/sso_mint.dart';
-import 'package:elecon/core/login/sso_mint_headless.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../support/school_fixture.dart';
 
 class _StubMinter implements SsoMinter {
   @override
@@ -27,15 +27,15 @@ void main() {
     final c = SessionController();
     addTearDown(c.dispose);
     expect(c.ssoMinter, isNull);
-    c.selectSchool(defaultSchool);
-    expect(c.ssoMinter, isA<HeadlessSsoMinter>());
+    c.selectSchool(testSchool());
+    expect(c.ssoMinter, isA<FallbackSsoMinter>());
   });
 
   test('reset 清除自动装配的 minter', () {
     final c = SessionController();
     addTearDown(c.dispose);
-    c.selectSchool(defaultSchool);
-    expect(c.ssoMinter, isA<HeadlessSsoMinter>());
+    c.selectSchool(testSchool());
+    expect(c.ssoMinter, isA<FallbackSsoMinter>());
     c.reset();
     expect(c.ssoMinter, isNull);
   });
@@ -44,20 +44,20 @@ void main() {
     final stub = _StubMinter();
     final c = SessionController(ssoMinter: stub);
     addTearDown(c.dispose);
-    c.selectSchool(defaultSchool);
+    c.selectSchool(testSchool());
     expect(identical(c.ssoMinter, stub), isTrue);
   });
 
   test('ssoMinter setter 注入后不再自动装配', () {
     final c = SessionController();
     addTearDown(c.dispose);
-    c.selectSchool(defaultSchool);
-    expect(c.ssoMinter, isA<HeadlessSsoMinter>());
+    c.selectSchool(testSchool());
+    expect(c.ssoMinter, isA<FallbackSsoMinter>());
     final stub = _StubMinter();
     c.ssoMinter = stub;
     expect(identical(c.ssoMinter, stub), isTrue);
     c.reset();
-    c.selectSchool(defaultSchool);
+    c.selectSchool(testSchool());
     expect(identical(c.ssoMinter, stub), isTrue);
   });
 }

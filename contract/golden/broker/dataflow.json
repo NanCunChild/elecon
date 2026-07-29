@@ -128,6 +128,90 @@
       "args": [],
       "params": { "format": "iso8601" },
       "expected": { "type": "text", "text": "2023-11-14T22:13:20.000Z" }
+    },
+    {
+      "name": "md5_abc",
+      "op": "md5",
+      "args": [{ "type": "text", "text": "abc" }],
+      "expected": { "type": "bytes", "hex": "900150983cd24fb0d6963f7d28e17f72" }
+    },
+    {
+      "name": "sha1_abc",
+      "op": "sha1",
+      "args": [{ "type": "text", "text": "abc" }],
+      "expected": { "type": "bytes", "hex": "a9993e364706816aba3e25717850c26c9cd0d89d" }
+    },
+    {
+      "name": "sha256_abc",
+      "op": "sha256",
+      "args": [{ "type": "text", "text": "abc" }],
+      "expected": { "type": "bytes", "hex": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" }
+    },
+    {
+      "name": "aes_cbc_128_pkcs7_xidian_form",
+      "op": "aes-cbc",
+      "args": [
+        { "type": "text", "text": "1234567812345678" },
+        { "type": "text", "text": "hello world" },
+        { "type": "text", "text": "1234567812345678" }
+      ],
+      "params": { "padding": "pkcs7" },
+      "expected": { "type": "bytes", "hex": "6b64a9337ee7bd562d067547a275fceb" }
+    },
+    {
+      "name": "aes_cbc_128_none_full_block",
+      "op": "aes-cbc",
+      "args": [
+        { "type": "text", "text": "1234567812345678" },
+        { "type": "text", "text": "0123456789abcdef" },
+        { "type": "text", "text": "1234567812345678" }
+      ],
+      "params": { "padding": "none" },
+      "expected": { "type": "bytes", "hex": "8f849aa4f1d984db667f87170d96a4c3" }
+    },
+    {
+      "name": "aes_cbc_256_pkcs7",
+      "op": "aes-cbc",
+      "args": [
+        { "type": "text", "text": "0123456789abcdef0123456789abcdef" },
+        { "type": "text", "text": "hi" },
+        { "type": "text", "text": "abcdef9876543210" }
+      ],
+      "params": { "padding": "pkcs7" },
+      "expected": { "type": "bytes", "hex": "bda215fbcf5e279ceb69c95e4aba1649" }
+    },
+    {
+      "name": "aes_cbc_bad_iv_length_fail_closed",
+      "op": "aes-cbc",
+      "args": [
+        { "type": "text", "text": "1234567812345678" },
+        { "type": "text", "text": "hello world" },
+        { "type": "text", "text": "short" }
+      ],
+      "params": { "padding": "pkcs7" },
+      "error": "aes_bad_iv_length"
+    },
+    {
+      "name": "aes_cbc_bad_key_length_fail_closed",
+      "op": "aes-cbc",
+      "args": [
+        { "type": "text", "text": "12345" },
+        { "type": "text", "text": "hello world" },
+        { "type": "text", "text": "1234567812345678" }
+      ],
+      "params": { "padding": "pkcs7" },
+      "error": "aes_bad_key_length"
+    },
+    {
+      "name": "aes_cbc_none_non_block_fail_closed",
+      "op": "aes-cbc",
+      "args": [
+        { "type": "text", "text": "1234567812345678" },
+        { "type": "text", "text": "abc" },
+        { "type": "text", "text": "1234567812345678" }
+      ],
+      "params": { "padding": "none" },
+      "error": "aes_bad_block"
     }
   ],
   "extract": [

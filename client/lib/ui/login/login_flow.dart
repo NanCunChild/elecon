@@ -58,17 +58,16 @@ Future<WebViewLoginResult?> runSchoolLogin(
     if (!context.mounted) return null;
 
     trace.mark('route_push_start');
+    final bridge = session.createWebViewAuthBridge(
+      login: school.login,
+      initialUrl: initialUrl,
+      requiredRef: requiredRef,
+      tlsProceedHosts: school.tlsProceedHosts,
+    );
     final result = await Navigator.of(context).push<WebViewLoginResult>(
       MaterialPageRoute(
-        builder: (_) => WebViewLoginPage(
-          login: school.login,
-          store: session.store,
-          initialUrl: initialUrl,
-          requiredRef: requiredRef,
-          debugLog: session.debugLog,
-          tlsProceedHosts: school.tlsProceedHosts,
-          performanceTrace: trace,
-        ),
+        builder: (_) =>
+            WebViewLoginPage(bridge: bridge, performanceTrace: trace),
       ),
     );
     trace.mark(

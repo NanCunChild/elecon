@@ -97,6 +97,8 @@ interface SsoMintService {
   success: string[];
   /** 非简单 GET-redirect 时指向承载 mint 请求构造的 adapter 能力 id（M5）。 */
   via?: string;
+  /** 允许的静默 mint 形态及偏好顺序（ADR-017 §2.7）。 */
+  forms?: Array<"hidden-webview" | "headless">;
 }
 
 /** CAS SSO 静默签票声明（ADR-017 §2.5）。可选。 */
@@ -345,7 +347,7 @@ export function checkManifest(
   // L1–L4 WebView 登录声明检查（ADR-015）。login 可选；缺省即跳过。
   findings.push(...checkLogin(manifest));
 
-  // M1–M5 SSO 静默签票声明检查（ADR-017）。login.ssoMint 可选；缺省即跳过。
+  // M1–M7 SSO 静默签票声明检查（ADR-017）。login.ssoMint 可选；缺省即跳过。
   findings.push(...checkSsoMint(manifest));
 
   // D1–D16 声明式跨请求数据流检查（ADR-023）。bind/compute/inject 可选；缺省即跳过。
@@ -413,7 +415,7 @@ export function checkLogin(manifest: Pick<Manifest, "login" | "credentials">): F
   return findings;
 }
 
-// ---- M1–M5：SSO 静默签票声明（ADR-017 §2.5）----
+// ---- M1–M7：SSO 静默签票声明（ADR-017 §2.5 / §2.7）----
 
 /**
  * 校验 login.ssoMint（CAS 母凭证静默换票声明）。ssoMint 可选；缺省跳过。
@@ -448,7 +450,7 @@ export function checkSsoMint(
     });
   }
 
-  // M2/M3/M5 逐服务
+  // M2/M3/M5/M6/M7 逐服务
   for (const [ref, svc] of Object.entries(mint.services ?? {})) {
     // M2 service ⊆ navigationAllow
     if (svc.service && !urlCoveredByAllow(svc.service, navAllow)) {
@@ -490,6 +492,35 @@ export function checkSsoMint(
           level: "error",
           code: "M5_via_undeclared_capability",
           message: `ssoMint.services['${ref}'].via 引用未在本 manifest 声明的 capability '${svc.via}'`,
+        });
+      }
+    }
+
+    // M6 forms 仅允许两个静默级且非空；数组顺序即学校显式偏好。
+    // schema 已做第一层约束，这里保留独立 finding 供作者期诊断与纵深防御。
+    if (svc.forms !== undefined) {
+      const forms = Array.isArray(svc.forms) ? (svc.forms as unknown[]) : [];
+      const allowed = new Set(["hidden-webview", "headless"]);
+      const invalid =
+        !Array.isArray(svc.forms) ||
+        forms.length === 0 ||
+        forms.some((form) => typeof form !== "string" || !allowed.has(form)) ||
+        new Set(forms).size !== forms.length;
+      if (invalid) {
+        findings.push({
+          level: "error",
+          code: "M6_invalid_mint_forms",
+          message: `ssoMint.services['${ref}'].forms 须为非空且不重复的 hidden-webview/headless 数组`,
+        });
+      }
+
+      // M7 是结构性不变量：visible 不属于 forms，运行时在静默级耗尽后恒定兜底。
+      // 对显式写入 visible 的错误单列 finding，避免维护者误以为可由 manifest 关闭兜底。
+      if (forms.includes("visible") || forms.includes("visible-webview")) {
+        findings.push({
+          level: "error",
+          code: "M7_visible_fallback_is_mandatory",
+          message: `ssoMint.services['${ref}'].forms 不得配置可见登录；可见登录由核心恒定兜底（ADR-017 §2.7）`,
         });
       }
     }

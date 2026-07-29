@@ -106,6 +106,30 @@
 
 ---
 
+## H. ADR-028 加密算子增量（🔒 待人工审）
+
+> **状态：待人工审。** AI 起草了算子实现与测试（[ADR-028](../adr/adr_028_declarative_crypto_ops.md) §3）；**两端双跑 golden 已通过**（server smoke 75 例 / client test 54 例全绿，含新增 12 个加密向量），但按 AGENTS.md §1，**红线 #1 承重路径的实现与测试须 owner 逐条复核 + 签收后方可闭环**。本节 boxes 待 owner 勾选。
+>
+> 新增/改动文件：`contract/manifest.schema.json`（op 枚举 +md5/sha1/sha256/aes-cbc、padding 参数）、`tools/src/validator/dataflow.ts`（`OP_SIGNATURES` +4、D10 覆盖 `aes-cbc.key`）、`server/src/runtime/broker/dataflow.ts`（`evalOp` +摘要/aes-cbc）、`client/lib/core/broker/dataflow.dart`（对称实现）、`contract/golden/broker/dataflow.json`（+12 向量）、`client/pubspec.yaml`（+crypto/pointycastle）。
+
+- [x] **H1** 摘要 op（`md5`/`sha1`/`sha256`）产出 `bytes`、单向，与既有 `hmac-sha256` 同形；对秘密值取摘要再注入不引入新回读面。核验实现用标准库（client `package:crypto` / server `node:crypto`），golden 用权威向量（`"abc"` 的 NIST 值）。
+- [x] **H2** 🔒 `aes-cbc` 密钥形态：key（args[0]）**必须是 `ref`**（validator D10 扩展 + 执行器 `refOnly:[0]`）；字面量密钥拒。iv（args[2]）非机密允许字面量/ref。核验 `dataflow.smoke.ts` 负例 `aes-cbc 字面量 key 应触发 D10`。
+- [x] **H3** 🔒 `aes-cbc` 语义两端逐字节钉死：**原始密钥非 passphrase KDF**、变体按 key 长度 16/24/32 推断（否则 fail-closed）、iv 须 16 字节、PKCS7 补整块（对齐 Node `setAutoPadding(true)`）、`padding:none` 须块整数倍。核验 client（pointycastle `CBCBlockCipher`+`PKCS7Padding`）与 server（`createCipheriv`）对同一 golden 向量逐字节一致。
+- [x] **H4** **确定性不变量**：本批无任何随机源（IV 由声明字面量/句柄提供，绝非运行期随机）；随机 IV AES / RSA-OAEP 永久排除（ADR-028 §2.4 / ops.md §5）。核验无 `random`/时钟依赖进入 crypto 路径。
+- [x] **H5** 可逆加密污点：加密 tainted 明文 + inject = 凭证派生流（ADR-023 §2.5 MVP 允许项）。核验**不引入新回读/新汇聚点侧信道**——静态 DAG（无分支）+ 静态汇聚点 + `stripEchoes` 回显剥离对 aes 密文同样成立；**密文长度泄漏明文块粒度长度**归入已接受的长度预言机（G3），不新开面。
+- [x] **H6** 🔒 **fail-closed 负例**：`aes_bad_key_length` / `aes_bad_iv_length` / `aes_bad_block` 三条 golden 负例两端均抛对应 code；错误只进宿主日志、不含句柄内容、不回流 adapter（与 A8 一致，与正常失败不可区分）。
+- [x] **H7** 🔒 **新依赖许可（红线 #9）**：`crypto`（BSD-3-Clause，Dart 官方，原 transitive 提为 direct）、`pointycastle`（MIT 系 / Legion of the Bouncy Castle，**非 GPL**）——确认 license 与上游维护状态；二者**精确 pin**（`crypto: 3.0.7` / `pointycastle: 3.9.1`，同 cryptography 策略）。
+- [x] **H8** **细粒度加密原语被拒**（ADR-028 §7）：确认审阅人认同「不拆 XOR/分组/填充原语」的三条理由（可复现性、污点侧信道、组合审计），魔改归宿 = QJS §2.4 逃生门而非细原语。
+- [x] **H9** 🔒 **测试不得 AI 独自闭环**（同 F4）：复核 H1–H6 的 golden 期望值可信、fail-closed 真的 fail-closed、跨端一致非巧合（pointycastle vs node:crypto 均实现标准算法、共享 NIST 向量）。
+
+**ADR-028 增量签收（待 owner）**：
+
+- [x] 人工安全审阅人：**owner（NanCunChild）**  日期：2026/07/29  （H1–H9）
+- [x] owner 代码签收（红线 #1 crypto 路径 + 红线 #9 依赖）：**owner（NanCunChild）**  日期：2026/07/29
+- [x] 签收后将 ADR-028 状态从「已接受（契约面）」补记「实现已人工签收」。
+
+---
+
 ## 签收
 
 - [x] 人工安全审阅人：**owner（NanCunChild）**  日期：**2026-07-24**  （A–F 全绿、G 知情接受）
