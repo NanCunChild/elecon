@@ -183,7 +183,11 @@ export function matchLinearRegex(pattern: LinearRegexPattern, input: string): Li
       let count = 0;
       const limit = atom.max ?? Number.POSITIVE_INFINITY;
       let width: number;
-      while (count < limit && pos < matchEnd && (width = atomMatchWidth(atom, input, pos)) > 0) {
+      while (count < limit && pos < matchEnd) {
+        width = atomMatchWidth(atom, input, pos);
+        if (width <= 0) {
+          break;
+        }
         pos += width;
         count++;
       }
@@ -344,9 +348,10 @@ function atomMatchWidth(atom: Atom, input: string, pos: number): number {
   const set = atom.set!;
   if (set.kind === "digit") return code >= 48 && code <= 57 ? 1 : 0;
   if (set.kind === "word")
-    return (
-      (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || code === 95 || (code >= 97 && code <= 122)
-    )
+    return (code >= 48 && code <= 57) ||
+      (code >= 65 && code <= 90) ||
+      code === 95 ||
+      (code >= 97 && code <= 122)
       ? 1
       : 0;
   if (set.kind === "space") return code === 32 || (code >= 9 && code <= 13) ? 1 : 0;
@@ -362,7 +367,8 @@ function assertWellFormedUtf16(value: string): void {
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
     if (isHighSurrogate(code)) {
-      if (i + 1 >= value.length || !isLowSurrogate(value.charCodeAt(i + 1))) fail("pattern contains an unpaired surrogate");
+      if (i + 1 >= value.length || !isLowSurrogate(value.charCodeAt(i + 1)))
+        fail("pattern contains an unpaired surrogate");
       i++;
     } else if (isLowSurrogate(code)) {
       fail("pattern contains an unpaired surrogate");
