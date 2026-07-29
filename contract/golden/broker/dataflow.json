@@ -252,6 +252,27 @@
       "expected": { "type": "text", "text": "42" }
     },
     {
+      "_note": "大整数跨端一致性：n=2^53-1 是 JS 安全整数上界，两端逐字节一致（无漂移）。",
+      "name": "body_jsonpath_number_safe_max",
+      "bind": { "var": "n", "from": "B", "source": "body", "extract": { "jsonpath": "$.n" } },
+      "response": { "status": 200, "headers": {}, "body": "{\"n\":9007199254740991}" },
+      "expected": { "type": "text", "text": "9007199254740991" }
+    },
+    {
+      "_note": "负向安全下界 -(2^53-1) 同样一致。",
+      "name": "body_jsonpath_number_safe_min_negative",
+      "bind": { "var": "n", "from": "B", "source": "body", "extract": { "jsonpath": "$.n" } },
+      "response": { "status": 200, "headers": {}, "body": "{\"n\":-9007199254740991}" },
+      "expected": { "type": "text", "text": "-9007199254740991" }
+    },
+    {
+      "_note": "n=2^53+1：JS JSON.parse 已舍入丢精（→2^53），Dart 保 64 位精度→静默漂移。两端对称 fail-closed，杜绝不一致。",
+      "name": "body_jsonpath_number_unsafe_fail_closed",
+      "bind": { "var": "n", "from": "B", "source": "body", "extract": { "jsonpath": "$.n" } },
+      "response": { "status": 200, "headers": {}, "body": "{\"n\":9007199254740993}" },
+      "error": "extract_number_unsafe"
+    },
+    {
       "name": "body_jsonpath_missing_fail_closed",
       "bind": { "var": "x", "from": "B", "source": "body", "extract": { "jsonpath": "$.nope" } },
       "response": { "status": 200, "headers": {}, "body": "{\"a\":1}" },

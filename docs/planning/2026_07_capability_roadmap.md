@@ -1,6 +1,6 @@
 # 能力接入路线图（2026-07-27 快照）
 
-> 本文是一次只读评估的规划快照，用于统一「一卡通 OpenID / 图书馆 / 物联网空调 / validator C8」几条线的推进顺序与前置条件。
+> 本文源自一次只读评估；2026-07-29 已按最新实现更新状态，用于统一「一卡通 OpenID / 图书馆 / 物联网空调 / validator C8」几条线的推进顺序与前置条件。
 > 它**不是** ADR，不裁定架构；涉及契约或核心的每一步仍以对应 ADR 为准。文中判断以评估当日代码为准，实现推进时请重新核对。
 
 ## 1. 总体判断
@@ -15,18 +15,18 @@
 
 需要留意的状态漂移：
 
-- `README.md` 仍称只到 ADR-022，并把 OS keystore、签名分发列为待办，已过时。
+- `README.md` 已更新到当前基础设施状态；后续以本路线图和各 ADR 的状态字段为准。
 - 核心已改为通过 `adapters.pin` 按 commit 拉取独立 `elecon-adapters` 仓库，不再使用子模块。
-- 主仓旧 Xidian adapter 是 0.1.0，bootstrap 是已签名 0.3.0，外部仓开发态是 0.3.1；三种状态需在文档与发布流程中明确区分。
+- bootstrap 仍是已签名 Xidian 0.3.0，`dist-full` 是 0.3.1，外部仓开发态已进入 0.4.0；待人工打包发版后统一。
 
 ## 2. 当前能力盘点
 
 | 能力 | 现在能否开始接入 | 现在能否称为可用 |
 |---|---|---|
-| 西电一卡通 OpenID | 可以 | 不可以，ADR 已有但实现未完全落地 |
+| 西电一卡通 OpenID | 已进入 adapter + fake transport smoke | 真机字段校准和正式签名发布前不宣称可用 |
 | 图书馆只读借阅 | 可以 | 不可以，Xidian 认证与 body 注入未闭环 |
 | 完整图书馆（含写操作） | 可规划 | 不可以，需新增 mutation 契约与 ADR |
-| 物联网空调控制 | 可规划与探针 | 不可直接上线，需新的副作用能力模型 |
+| 物联网空调控制 | 探针已定位；ADR-029/030 已提议 | 不可直接上线，需凭证注入和副作用能力模型 |
 | 更智能的 imperative 凭证引用 | 可以 | 需拆成 validator bugfix + 独立 ADR 两步 |
 
 ## 3. 一卡通 OpenID（ADR-020）
@@ -64,7 +64,7 @@
 
 专项 ADR 至少应规定：只能由明确用户操作触发，禁后台刷新/自动执行；每次关键操作显示确认；不自动重试，超时显示「状态未知」而非假定失败；禁跨 origin 重定向（MVP 最好完全禁控制请求重定向）；精确 HTTPS origin/path 白名单；设备 token / 签名密钥 / 用户身份参数全部视为凭证；核心生成幂等键或明确学校接口自身幂等语义；MVP 先 official-only，不向 release 第三方 adapter 开放物理副作用；Android 先行，iOS 待 imperative 合规复评或优先建设 declarative action graph。
 
-**结论**：可以添加，架构能够承载；但不能只写一个 imperative adapter 直接上线，必须先补 mutation/actuator 契约与核心用户确认闸门。
+**结论**：架构能够承载；ADR-030 已起草为 Proposed，但在人工接受并补齐 contract/核心闸门前，不能只写一个 imperative adapter 直接上线。现有探针要求 `x-access-token`，命名 header 预留见 ADR-029。
 
 ## 6. Xidian C8（validator mixed-mode 误报）
 

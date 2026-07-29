@@ -11,8 +11,10 @@
 ///
 /// **asset 源可注入**（[AssetSource]）：生产 = [FlutterAssetSource]（rootBundle）；测试 = 假源。
 ///
-/// 当前已随测试版打包 HelloWorld 的真实签名 catalog、revocation 和 bundle；新增/替换基线时
-/// 必须重新走官方签名和发布台账流程，不得用未签名或本地测试锚替代。
+/// 当前随包基线派生自 `dist-full`（catalog sequence 3，2026-07-28）：真实签名 catalog +
+/// revocation + 五校 bundle（fudan / helloworld / thu / xidian 0.3.1 / xjt）。由
+/// `tools/src/release/bootstrap.ts`（`npm run bootstrap:sync -- --dist=dist-full`）纯字节派生，
+/// 不签名、不改 dist。新增/替换基线时必须重新走官方签名和发布台账流程，不得用未签名或本地测试锚替代。
 ///
 /// 🔒 改动须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
 library;

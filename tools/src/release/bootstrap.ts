@@ -96,7 +96,7 @@ function arg(name: string): string | undefined {
 }
 
 function main(): void {
-  const distDir = arg("dist") ?? join(repoRoot, "dist-helloworld");
+  const distDir = arg("dist") ?? join(repoRoot, "dist-full");
   const assetsDir = arg("assets") ?? join(repoRoot, "client/assets/bootstrap");
   const check = process.argv.includes("--check");
   try {

@@ -23,8 +23,7 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart' as crypto show md5, sha1, sha256;
-import 'package:cryptography/dart.dart' show DartSha256;
+import 'package:crypto/crypto.dart' as crypto show Hmac, md5, sha1, sha256;
 import 'package:pointycastle/export.dart' as pc
     show
         AESEngine,
@@ -312,11 +311,34 @@ HandleValue _extractRegex(BindDecl bind, RawResponse response) {
   return _capText(bind.varName, captured);
 }
 
+/// JS Number.MAX_SAFE_INTEGER = 2^53 − 1。超此范围的整数 JS `JSON.parse` 已舍入丢精，
+/// Dart `jsonDecode` 保 64 位——两端会静默漂移，故对超范围整数值一律 fail-closed（下文）。
+const int _maxSafeInteger = 9007199254740991;
+
 /// 把标量 JSON 值转 text 句柄；对象 / 数组 / null 视为失败（无数组句柄）。
 HandleValue _scalarToText(String varName, Object? value) {
   if (value is String) return _capText(varName, value);
-  if (value is int) return _capText(varName, value.toString());
+  if (value is int) {
+    // 🔒 大整数跨端一致性：超安全整数范围一律 fail-closed（与 server `Number.isSafeInteger`
+    // 对称）。JS 端此类整数在 JSON.parse 时已丢精，物理上无法与 Dart 的精确值一致；能通过
+    // 本闸门者（|n| ≤ 2^53−1）两端逐字节相同。
+    if (value > _maxSafeInteger || value < -_maxSafeInteger) {
+      throw DataflowException(
+        'extract_number_unsafe',
+        "bind '$varName'：整数 $value 超出安全范围（|n|>2^53-1），跨端不可靠",
+      );
+    }
+    return _capText(varName, value.toString());
+  }
   if (value is double && value.isFinite) {
+    // 溢出 int64 后被 jsonDecode 解析为 double 的整值，同受安全范围约束（与 JS 整值判定对称）。
+    if (value == value.roundToDouble() &&
+        (value > _maxSafeInteger || value < -_maxSafeInteger)) {
+      throw DataflowException(
+        'extract_number_unsafe',
+        "bind '$varName'：整数 $value 超出安全范围（|n|>2^53-1），跨端不可靠",
+      );
+    }
     return _capText(varName, _numToText(value));
   }
   if (value is bool) return _capText(varName, value ? 'true' : 'false');
@@ -663,25 +685,18 @@ Map<String, HandleValue> evalComputeGraph(
   return env;
 }
 
-// ---- HMAC-SHA256 / HKDF-SHA256（手写，钉两端字节一致；建于 DartSha256.hashSync）----
+// ---- HMAC-SHA256 / HKDF-SHA256（HMAC 交回标准库 package:crypto，不再手写分块）----
+//
+// 🔒 此前 _hmacSha256 手写 ipad/opad/分块，是安全清单 D2 点名「最需盯的手写密码学」。
+// package:crypto 提供标准 RFC 2104 Hmac（同步 convert），与 server `node:crypto.createHmac`
+// 同为标准实现、共享 RFC 向量，双跑逐字节一致。HKDF 无契合的同步标准库实现
+// （cryptography 的 Hkdf 为异步，本执行器全同步），故仅保留 RFC 5869 的 extract+expand
+// 组合逻辑于本地，其**每一步底层 HMAC 均走标准库**——把密码学原语的信任面收回库内，
+// 本地只余平凡组合。
 
-const _sha = DartSha256();
-const int _sha256BlockBytes = 64;
-
-List<int> _sha256(List<int> data) => _sha.hashSync(data).bytes;
-
-/// 标准 HMAC-SHA256（RFC 2104）。
-List<int> _hmacSha256(List<int> key, List<int> message) {
-  var k = key.length > _sha256BlockBytes ? _sha256(key) : key;
-  final block = List<int>.filled(_sha256BlockBytes, 0);
-  for (var i = 0; i < k.length; i++) {
-    block[i] = k[i];
-  }
-  final ipad = List<int>.generate(_sha256BlockBytes, (i) => block[i] ^ 0x36);
-  final opad = List<int>.generate(_sha256BlockBytes, (i) => block[i] ^ 0x5c);
-  final inner = _sha256([...ipad, ...message]);
-  return _sha256([...opad, ...inner]);
-}
+/// 标准 HMAC-SHA256（RFC 2104），交给 package:crypto 的 Hmac（同步）。
+List<int> _hmacSha256(List<int> key, List<int> message) =>
+    crypto.Hmac(crypto.sha256, key).convert(message).bytes;
 
 /// HKDF-SHA256（RFC 5869）。salt 空 → 全零 HashLen salt；length ≤ 255×32。
 List<int> _hkdfSha256({

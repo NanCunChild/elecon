@@ -70,7 +70,12 @@ class SchoolDescriptor {
     final loginJson = _map(manifest, 'login');
     final success = _map(loginJson, 'success');
     final ssoMint = _parseSsoMint(loginJson['ssoMint']);
-    final policy = _coreCapabilityPolicy[schoolId] ?? const {};
+    final declaredCapabilities = _declaredCapabilityIds(manifest);
+    final schoolPolicy = _coreCapabilityPolicy[schoolId] ?? const {};
+    final policy = <String, List<String>>{
+      for (final entry in schoolPolicy.entries)
+        if (declaredCapabilities.contains(entry.key)) entry.key: entry.value,
+    };
     for (final refs in policy.values) {
       for (final ref in refs) {
         if (!credentials.containsKey(ref)) {
@@ -95,6 +100,16 @@ class SchoolDescriptor {
       capabilityCredentials: policy,
     );
   }
+}
+
+Set<String> _declaredCapabilityIds(Map<String, dynamic> manifest) {
+  final raw = manifest['capabilities'];
+  if (raw is! List) return const {};
+  return {
+    for (final item in raw)
+      if (item is Map<String, dynamic> && item['id'] is String)
+        item['id'] as String,
+  };
 }
 
 SsoMintDecl? _parseSsoMint(Object? raw) {

@@ -32,6 +32,7 @@
     "smoke:xidian-grades": "tsx src/runtime/adapters-xidian.grades.imperative.smoke.ts",
     "smoke:xidian-exams": "tsx src/runtime/adapters-xidian.exams.imperative.smoke.ts",
     "smoke:xidian-classroom": "tsx src/runtime/adapters-xidian.classroom.imperative.smoke.ts",
+    "smoke:xidian-card": "tsx src/runtime/adapters-xidian.card.imperative.smoke.ts",
     "smoke:fudan-notice": "tsx src/runtime/adapters-fudan.notice.imperative.smoke.ts",
     "smoke:public": "tsx src/public/public.smoke.ts",
     "smoke:all": "node ../scripts/run-smokes.mjs src"

@@ -133,11 +133,12 @@ AES-CBC **加密**（只加密，无解密）。输出 `bytes` 密文（16 的�
 | source | 输入 | 输入上限 | 失败条件（均 fail-closed） |
 |---|---|---|---|
 | `header` | 脱敏**前**的响应头 | 4 KB | 头不存在 / 出现多次 |
-| `body` | 响应体 | 8 MB（对齐 `DEFAULT_MAX_BODY_BYTES`） | 非 JSON / JSONPath 选中 0 个或 >1 个 / 选中值非标量 |
+| `body` | 响应体 | 8 MB（对齐 `DEFAULT_MAX_BODY_BYTES`） | 非 JSON / JSONPath 选中 0 个或 >1 个 / 选中值非标量 / **整数超安全范围**（`extract_number_unsafe`） |
 | `regex` | 响应体 | 8 KB（**超出即失败，不静默截断**） | 不匹配 / 指定 group 未参与匹配 / 超回溯步数预算 |
 
 - 头名大小写不敏感匹配；值取原始串，不做 trim。
 - JSONPath 选中的标量：字符串取原值；数字/布尔按 JSON 规范序列化为文本；`null` 视为失败。
+- 🔒 **大整数跨端一致性**：数字为**整数值且 `|n| > 2^53−1`（JS `Number.MAX_SAFE_INTEGER`）时一律 fail-closed（`extract_number_unsafe`）**。因 JS `JSON.parse` 在执行器读到值**之前**就已把超范围整数舍入进 double（精度不可恢复），而 Dart `jsonDecode` 保 64 位精度——若放行则两端静默漂移。故只放行 `|n| ≤ 2^53−1` 的整数（两端逐字节一致）；非整值浮点保持既有序列化（`String(number)` ↔ `_numToText`）。此规则于两端 `scalarToText`/`_scalarToText` 对称实现，golden `body_jsonpath_number_safe_max` / `..._safe_min_negative` / `..._unsafe_fail_closed` 钉死。
 - 🔒 抽取在**脱敏前**执行、且**只在 broker 内部**——句柄从不进入 adapter。这正是本 ADR 比命令式更安全之处（命令式下 adapter 必须读 body 才拿得到中间 token）。
 - 🔒 `regex` 输入超 8 KB **不截断而是失败**：截断会让行为随响应大小静默改变，属数据依赖的隐式分支。
 

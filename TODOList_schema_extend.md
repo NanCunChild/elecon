@@ -20,13 +20,15 @@
 
 - [ ] 字段级「不支持 / 未返回 / 空 / 脱敏」四态若要在 envelope 统一表达，开小 ADR 后再改 schema（避免静默改语义）
 - [ ] 增量同步（课表变更、成绩更新、通知撤回）的版本/游标约定——有真实校需再立
-- [ ] `login.ssoMint.services[*].forms` + 校验器 M6/M7（ADR-017 PR-5）
+- [x] `login.ssoMint.services[*].forms` + 校验器 M6/M7（ADR-017 PR-5）
 - [ ] 声明式过期/升级判据（`expiredWhenUrlMatches` 等，ADR-017 rev-2 §2.9）
 
 ### 宿主 / 运行时（非 schema 正文）
 
 - [ ] WebVPN、多跳统一认证、验证码、会话过期的**宿主侧**能力面（adapter 不存凭证）
 - [ ] XIDIAN mint 全闭环：见 [`docs/reference/xidian_mint_closed_loop_plan.md`](docs/reference/xidian_mint_closed_loop_plan.md)
+- [ ] 命名 Header / 固定 body 凭证注入：评审 ADR-029 后再实现
+- [ ] 空调物理控制：评审 ADR-030 并完成核心 action 门禁后再接正式 adapter
 
 ### 文档
 

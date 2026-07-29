@@ -207,7 +207,19 @@ function extractRegex(bind: BindDecl, response: RawResponse): HandleValue {
 /** 把标量 JSON 值转 text 句柄；对象 / 数组 / null 视为失败（无数组句柄）。 */
 function scalarToText(varName: string, value: unknown): HandleValue {
   if (typeof value === "string") return capText(varName, value);
-  if (typeof value === "number" && Number.isFinite(value)) return capText(varName, String(value));
+  if (typeof value === "number" && Number.isFinite(value)) {
+    // 🔒 大整数跨端一致性：JSON.parse 已把 >2^53 的整数舍入进 double（精度不可恢复），
+    // Dart `jsonDecode` 保 64 位精度——二者会静默漂移。对超安全整数范围的**整数值**一律
+    // fail-closed（与 client `_maxSafeInteger` 对称），确保能通过者两端逐字节一致。非整值
+    // 浮点保持既有序列化（`String(number)` ↔ `_numToText`）。
+    if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+      throw new DataflowError(
+        "extract_number_unsafe",
+        `bind '${varName}'：整数 ${value} 超出安全范围（|n|>2^53-1），跨端不可靠`,
+      );
+    }
+    return capText(varName, String(value));
+  }
   if (typeof value === "boolean") return capText(varName, value ? "true" : "false");
   throw new DataflowError(
     "extract_not_scalar",

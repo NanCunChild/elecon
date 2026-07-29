@@ -6,6 +6,7 @@ E-Hall 会话管理 — 登录 + useApp (打开具体业务应用)
 依赖: ids/login.py
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -93,9 +94,8 @@ class EhallSession:
             raise EhallAppException(f"useApp 失败, 状态码: {resp.status_code}")
 
         location = resp.headers["Location"]
-        # 去除 jsessionid
-        import re
-        location = re.sub(r";jsessionid=[^?]*\?", "?", location)
+        # 与 ADR-027 Broker 语义一致：仅剥路径矩阵参数，保留 query/fragment。
+        location = re.sub(r";jsessionid=[^/?#;]*", "", location, flags=re.IGNORECASE)
 
         # 访问应用入口以初始化 session
         self.session.get(location, headers=EHALL_REFERER_HEADERS)

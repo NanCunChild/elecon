@@ -72,8 +72,10 @@
 
 - [x] **D1** `contract/golden/broker/dataflow.json` 由 **server smoke 与 client test 各自独立跑**，产出 == expected。核验 golden 覆盖跨端陷阱：`substring` 越界、`urlencode` component/form（`%20` vs `+`）、`base64url` 去填充、`hmac`/`hkdf`（RFC 向量）、`now` 三格式、UTF-8 多字节。
 - [x] **D2** 🔒 **crypto 手写实现审查**：client `_hmacSha256`/`_hkdfSha256`（建于 `DartSha256.hashSync`）vs server `node:crypto`。核验 HMAC 分块/ipad/opad、HKDF extract+expand（空 salt→全零、counter 字节序、L≤255×32）逐字节正确——**这是最需盯的手写密码学**。
+  - ⚠️ **2026-07-29 变更（待 owner 复核，见附录 I）**：client 侧手写 HMAC 已改为 `package:crypto` 的标准 `Hmac`（不再手写 ipad/opad/分块），HKDF 仅保留 RFC 5869 extract+expand 组合、底层 HMAC 走标准库。手写密码学面缩小；双跑 golden（含既有 `hmac`/`hkdf` RFC 向量）全绿。**此项签收态回退为待复核。**
 - [x] **D3** `now` 两端均从 `nowMs` 定值喂入，不读真实时钟；`iso8601` 两端均 `.sssZ` 三位毫秒。
 - [x] **D4** JSONPath 子集两端 tokenizer 同构（`$`/`.key`/`['key']`/`[n]`；不支持 `*`/`..`/`?()`）；数字→文本序列化两端一致（`_numToText` vs `String(number)`）。
+  - ⚠️ **2026-07-29 变更（待 owner 复核，见附录 I）**：新增**大整数 fail-closed**——整数值 `|n|>2^53−1` 两端对称抛 `extract_number_unsafe`（JS `JSON.parse` 已丢精、无法与 Dart 64 位一致）。golden `body_jsonpath_number_safe_max`/`_safe_min_negative`/`_unsafe_fail_closed` 钉死。
 - [x] **D5** 拓扑分层 `planRequestOrder` 两端同序（层内保持声明序，确定性）。
 
 ---
@@ -135,3 +137,15 @@
 - [x] 人工安全审阅人：**owner（NanCunChild）**  日期：**2026-07-24**  （A–F 全绿、G 知情接受）
 - [x] owner 代码签收（§4/§5 触红线 #1 取数路径）：**owner（NanCunChild）**  日期：**2026-07-24**
 - [x] 签收后在 `declarative_dataflow_migration.md` §7 末条打勾，方可称 ADR-023「已落地」。
+
+---
+
+## 附录 I：2026-07-29 变更集（🔒 待 owner 复核，AI 不得独自闭环）
+
+> 两项改动均触红线 #1（凭证派生值 / broker 抽取路径），按 AGENTS.md §1 须 owner 逐条复核后方可闭环。**两端双跑 golden 全绿**（server smoke 78 例 / client test 57 例），但签收待 owner。
+
+**改动文件**：`client/lib/core/broker/dataflow.dart`、`server/src/runtime/broker/dataflow.ts`、`contract/golden/broker/dataflow.json`、`docs/reference/declarative_dataflow_ops.md`。
+
+- [ ] **I1（密码学归库，D2 增补）**：client `_hmacSha256` 手写 ipad/opad/分块 → 改用 `package:crypto` 标准 `Hmac`；HKDF 仅留 RFC 5869 组合、底层 HMAC 走标准库；移除 `DartSha256`（`cryptography` 仍为其他模块依赖，未从 pubspec 删）。核验：标准库 `Hmac` 与 `node:crypto.createHmac` 均 RFC 2104、共享向量；既有 `hmac_sha256_rfc_ish`/`hkdf_rfc5869_a1` golden 仍逐字节一致。
+- [ ] **I2（大整数 fail-closed，D4 增补）**：两端 `scalarToText`/`_scalarToText` 对整数值 `|n|>2^53−1` 抛 `extract_number_unsafe`；Dart 侧对溢出 int64 后成 double 的整值同样护栏。**这是契约收窄**（此前放行、现拒绝），核验 owner 认同「超范围整数不可跨端一致 → fail-closed」优于静默漂移，且现网无 adapter 依赖抽取超 2^53 整数。
+- [ ] owner 复核签收：____________  日期：__________
