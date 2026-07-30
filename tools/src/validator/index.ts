@@ -40,11 +40,7 @@ import { allowToRegex, scopePrefix, urlCoveredByAllow } from "@elecon/broker-pri
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { type BindDecl, type ComputeDecl, checkDataflow, type InjectDecl } from "./dataflow.js";
-import {
-  checkResponseMasker,
-  MAX_MASKER_FILE_BYTES,
-  type ResponseMaskerPolicy,
-} from "./response-masker.js";
+import { checkResponseMasker, MAX_MASKER_FILE_BYTES, type ResponseMaskerPolicy } from "./response-masker.js";
 
 // TS 侧 url-match 单源在 @elecon/broker-primitives（审阅 P2-4，原本文件内联拷贝已删）。
 // re-export 保持既有 API 面（url-match.smoke.ts 经此面验证"校验器实际使用的实现"合 golden）。

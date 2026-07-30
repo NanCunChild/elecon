@@ -184,7 +184,10 @@ export function checkResponseMasker(
     if (rule.match.requestKey !== undefined) {
       if (capability.requestGraph !== "declarative") {
         findings.push(
-          error("RM6_request_key_imperative", `Masker rule '${rule.id}' 的 imperative capability 不得声明 requestKey`),
+          error(
+            "RM6_request_key_imperative",
+            `Masker rule '${rule.id}' 的 imperative capability 不得声明 requestKey`,
+          ),
         );
       } else {
         // requestKey 绑定逻辑请求；method/urlScope 匹配 redirect 后的最终响应，不能与初始
@@ -192,9 +195,7 @@ export function checkResponseMasker(
         const requests = Array.isArray(capability.requests) ? capability.requests : [];
         const request = requests.find(
           (candidate) =>
-            typeof candidate === "object" &&
-            candidate !== null &&
-            candidate.key === rule.match.requestKey,
+            typeof candidate === "object" && candidate !== null && candidate.key === rule.match.requestKey,
         );
         if (!request) {
           findings.push(
@@ -239,7 +240,10 @@ export function checkResponseMasker(
       );
       if (!bind) {
         findings.push(
-          error("RM10_unknown_handle_ref", `Masker rule '${rule.id}' 引用了不存在的 bind.var '${destination.ref}'`),
+          error(
+            "RM10_unknown_handle_ref",
+            `Masker rule '${rule.id}' 引用了不存在的 bind.var '${destination.ref}'`,
+          ),
         );
       } else {
         if (bind.from !== rule.match.requestKey) {
@@ -252,7 +256,10 @@ export function checkResponseMasker(
         }
         if (bind.source === "regex") {
           findings.push(
-            error("RM12_handle_regex_deferred", `Masker rule '${rule.id}' 的 regex handle 投影不在 V1 契约内`),
+            error(
+              "RM12_handle_regex_deferred",
+              `Masker rule '${rule.id}' 的 regex handle 投影不在 V1 契约内`,
+            ),
           );
         }
         const expectedProject = bind.source === "header" ? "delete" : "replace";
@@ -269,7 +276,10 @@ export function checkResponseMasker(
       const expectedProject = rule.capture.source === "header" ? "delete" : "replace";
       if (rule.project !== expectedProject) {
         findings.push(
-          error("RM13_project_source_mismatch", `Masker rule '${rule.id}' 的 project 与 capture source 不匹配`),
+          error(
+            "RM13_project_source_mismatch",
+            `Masker rule '${rule.id}' 的 project 与 capture source 不匹配`,
+          ),
         );
       }
       if (rule.capture.source === "json" && !validJsonPath(rule.capture.path ?? "")) {

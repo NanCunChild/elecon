@@ -1,0 +1,574 @@
+{
+  "_doc": "响应凭证收割与投影引擎 golden 向量（ADR-026 §2.8 / 工程说明 §6）。语言无关唯一事实源：TS（server broker/response-masker.smoke.ts）与 Dart（client broker_response_masker_test.dart）照同一向量双跑，钉死两端逐字节一致（ADR-001 §8）。JSON 投影按位剪接，body 命中标量替换为固定 sentinel __ELECON_MASKED__。改动此文件须人工 + 安全清单复核（红线 #1）。",
+  "sentinel": "__ELECON_MASKED__",
+  "captureHeader": [
+    {
+      "name": "header_single",
+      "headerName": "X-Auth",
+      "response": {
+        "status": 200,
+        "headers": {
+          "X-Auth": "tok-123",
+          "Content-Type": "text/plain"
+        },
+        "body": ""
+      },
+      "expected": "tok-123"
+    },
+    {
+      "name": "header_case_insensitive",
+      "headerName": "x-auth",
+      "response": {
+        "status": 200,
+        "headers": {
+          "X-AUTH": "tok-xyz"
+        },
+        "body": ""
+      },
+      "expected": "tok-xyz"
+    },
+    {
+      "name": "header_missing_fail_closed",
+      "headerName": "X-None",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": ""
+      },
+      "error": "capture_not_found"
+    },
+    {
+      "name": "header_ambiguous_case_fail_closed",
+      "headerName": "x-auth",
+      "response": {
+        "status": 200,
+        "headers": {
+          "X-Auth": "a",
+          "x-auth": "b"
+        },
+        "body": ""
+      },
+      "error": "capture_ambiguous"
+    }
+  ],
+  "captureJson": [
+    {
+      "name": "json_top_level",
+      "path": "$.token",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"token\":\"abc123\"}"
+      },
+      "expected": "abc123"
+    },
+    {
+      "name": "json_nested",
+      "path": "$.data.accessToken",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"data\":{\"accessToken\":\"SECRET-1\"},\"user\":\"alice\"}"
+      },
+      "expected": "SECRET-1"
+    },
+    {
+      "name": "json_array_index",
+      "path": "$.items[1]",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"items\":[\"a\",\"b\",\"c\"]}"
+      },
+      "expected": "b"
+    },
+    {
+      "name": "json_array_of_objects",
+      "path": "$.list[0].id",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"list\":[{\"id\":\"x1\"},{\"id\":\"x2\"}]}"
+      },
+      "expected": "x1"
+    },
+    {
+      "name": "json_bracket_key",
+      "path": "$['weird.key']",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"weird.key\":\"v\"}"
+      },
+      "expected": "v"
+    },
+    {
+      "name": "json_escaped_unicode_value",
+      "path": "$.t",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"t\":\"a\\u0041b\"}"
+      },
+      "expected": "aAb"
+    },
+    {
+      "name": "json_number_scalar",
+      "path": "$.n",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"n\":12345}"
+      },
+      "expected": "12345"
+    },
+    {
+      "name": "json_bool_scalar",
+      "path": "$.flag",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"flag\":true}"
+      },
+      "expected": "true"
+    },
+    {
+      "name": "json_whitespace_tolerant",
+      "path": "$.a",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{ \"a\" : \"spaced\" , \"b\": 1 }"
+      },
+      "expected": "spaced"
+    },
+    {
+      "name": "json_missing_key_fail_closed",
+      "path": "$.nope",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"token\":\"x\"}"
+      },
+      "error": "capture_not_found"
+    },
+    {
+      "name": "json_nonscalar_object_fail_closed",
+      "path": "$.data",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"data\":{\"k\":\"v\"}}"
+      },
+      "error": "capture_not_scalar"
+    },
+    {
+      "name": "json_null_fail_closed",
+      "path": "$.z",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"z\":null}"
+      },
+      "error": "capture_not_scalar"
+    },
+    {
+      "name": "json_not_json_body_fail_closed",
+      "path": "$.x",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "not json at all"
+      },
+      "error": "capture_not_json"
+    },
+    {
+      "name": "json_bad_path_fail_closed",
+      "path": "$..",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"a\":1}"
+      },
+      "error": "capture_bad_jsonpath"
+    },
+    {
+      "name": "json_index_out_of_range_fail_closed",
+      "path": "$.items[5]",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"items\":[\"a\"]}"
+      },
+      "error": "capture_not_found"
+    }
+  ],
+  "project": [
+    {
+      "name": "delete_header_body_unchanged_no_entity_strip",
+      "rules": [
+        {
+          "id": "h1",
+          "capture": {
+            "source": "header",
+            "name": "X-Auth",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "delete"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "X-Auth": "tok",
+          "Content-Type": "text/plain",
+          "Content-Length": "9"
+        },
+        "body": "some body"
+      },
+      "expected": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "text/plain",
+          "Content-Length": "9"
+        },
+        "body": "some body"
+      }
+    },
+    {
+      "name": "replace_json_string_strips_entity_meta",
+      "rules": [
+        {
+          "id": "j1",
+          "capture": {
+            "source": "json",
+            "path": "$.token",
+            "destination": {
+              "kind": "credential",
+              "ref": "sess"
+            }
+          },
+          "project": "replace"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json",
+          "Content-Length": "20",
+          "ETag": "\"abc\""
+        },
+        "body": "{\"token\":\"SECRET\"}"
+      },
+      "expected": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"token\":\"__ELECON_MASKED__\"}"
+      }
+    },
+    {
+      "name": "replace_json_number_to_string_sentinel",
+      "rules": [
+        {
+          "id": "j1",
+          "capture": {
+            "source": "json",
+            "path": "$.n",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "replace"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"n\":12345}"
+      },
+      "expected": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"n\":\"__ELECON_MASKED__\"}"
+      }
+    },
+    {
+      "name": "replace_multiple_json_spans",
+      "rules": [
+        {
+          "id": "ja",
+          "capture": {
+            "source": "json",
+            "path": "$.a",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "replace"
+        },
+        {
+          "id": "jb",
+          "capture": {
+            "source": "json",
+            "path": "$.b",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "replace"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json",
+          "Content-Length": "27"
+        },
+        "body": "{\"a\":\"AA\",\"b\":\"BB\",\"c\":\"CC\"}"
+      },
+      "expected": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"a\":\"__ELECON_MASKED__\",\"b\":\"__ELECON_MASKED__\",\"c\":\"CC\"}"
+      }
+    },
+    {
+      "name": "mixed_header_delete_and_json_replace",
+      "rules": [
+        {
+          "id": "h1",
+          "capture": {
+            "source": "header",
+            "name": "X-Auth",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "delete"
+        },
+        {
+          "id": "j1",
+          "capture": {
+            "source": "json",
+            "path": "$.token",
+            "destination": {
+              "kind": "credential",
+              "ref": "sess"
+            }
+          },
+          "project": "replace"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "X-Auth": "tok",
+          "Content-Type": "application/json",
+          "ETag": "v1"
+        },
+        "body": "{\"token\":\"S\"}"
+      },
+      "expected": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"token\":\"__ELECON_MASKED__\"}"
+      }
+    },
+    {
+      "name": "idempotent_on_already_masked",
+      "rules": [
+        {
+          "id": "j1",
+          "capture": {
+            "source": "json",
+            "path": "$.token",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "replace"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"token\":\"__ELECON_MASKED__\"}"
+      },
+      "expected": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"token\":\"__ELECON_MASKED__\"}"
+      }
+    },
+    {
+      "name": "whitespace_preserved_around_span",
+      "rules": [
+        {
+          "id": "j1",
+          "capture": {
+            "source": "json",
+            "path": "$.a",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "replace"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{ \"a\": \"X\", \"b\": 2 }"
+      },
+      "expected": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{ \"a\": \"__ELECON_MASKED__\", \"b\": 2 }"
+      }
+    }
+  ],
+  "transaction": [
+    {
+      "name": "credential_capture_and_header_redact",
+      "rules": [
+        {
+          "id": "cred",
+          "capture": {
+            "source": "json",
+            "path": "$.data.token",
+            "destination": {
+              "kind": "credential",
+              "ref": "sess"
+            }
+          },
+          "project": "replace"
+        },
+        {
+          "id": "red",
+          "capture": {
+            "source": "header",
+            "name": "X-Trace",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "delete"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "X-Trace": "trace-1",
+          "Content-Type": "application/json",
+          "Content-Length": "31"
+        },
+        "body": "{\"data\":{\"token\":\"TK\"},\"u\":\"a\"}"
+      },
+      "expected": {
+        "captured": [
+          {
+            "ruleId": "cred",
+            "ref": "sess",
+            "value": "TK"
+          }
+        ],
+        "projected": {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"data\":{\"token\":\"__ELECON_MASKED__\"},\"u\":\"a\"}"
+        }
+      }
+    },
+    {
+      "name": "fail_closed_missing_selector_nothing_delivered",
+      "rules": [
+        {
+          "id": "j",
+          "capture": {
+            "source": "json",
+            "path": "$.token",
+            "destination": {
+              "kind": "credential",
+              "ref": "s"
+            }
+          },
+          "project": "replace"
+        },
+        {
+          "id": "h",
+          "capture": {
+            "source": "header",
+            "name": "X-None",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "delete"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"token\":\"X\"}"
+      },
+      "error": "capture_not_found"
+    },
+    {
+      "name": "redact_only_no_captured_credential",
+      "rules": [
+        {
+          "id": "r",
+          "capture": {
+            "source": "json",
+            "path": "$.token",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "replace"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"token\":\"X\"}"
+      },
+      "expected": {
+        "captured": [],
+        "projected": {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"token\":\"__ELECON_MASKED__\"}"
+        }
+      }
+    }
+  ]
+}

@@ -7,12 +7,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+import { loadContract, validateAdapterDir } from "./index.js";
 import {
   checkResponseMasker,
   type ResponseMaskerManifest,
   type ResponseMaskerPolicy,
 } from "./response-masker.js";
-import { loadContract, validateAdapterDir } from "./index.js";
 
 interface GoldenCase {
   name: string;
@@ -37,7 +37,9 @@ const validate = ajv.compile(schema);
 
 for (const testCase of golden.cases) {
   const actual = [
-    ...new Set(checkResponseMasker(testCase.policy, golden.manifest, validate).map((finding) => finding.code)),
+    ...new Set(
+      checkResponseMasker(testCase.policy, golden.manifest, validate).map((finding) => finding.code),
+    ),
   ].sort();
   const expected = [...testCase.expectedCodes].sort();
   assert.deepEqual(actual, expected, testCase.name);
