@@ -40,6 +40,11 @@ import { allowToRegex, scopePrefix, urlCoveredByAllow } from "@elecon/broker-pri
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { type BindDecl, type ComputeDecl, checkDataflow, type InjectDecl } from "./dataflow.js";
+import {
+  checkResponseMasker,
+  MAX_MASKER_FILE_BYTES,
+  type ResponseMaskerPolicy,
+} from "./response-masker.js";
 
 // TS 侧 url-match 单源在 @elecon/broker-primitives（审阅 P2-4，原本文件内联拷贝已删）。
 // re-export 保持既有 API 面（url-match.smoke.ts 经此面验证"校验器实际使用的实现"合 golden）。
@@ -131,6 +136,7 @@ interface Manifest {
 
 interface Contract {
   manifestValidate: ValidateFunction;
+  responseMaskerValidate: ValidateFunction;
   registry: Record<string, RegistryEntry>;
   /** 按 schema $id 取域 schema 的校验函数；未落盘的返回 undefined。 */
   schemaFor: (id: string) => ValidateFunction | undefined;
@@ -165,6 +171,10 @@ export function loadContract(): Contract {
 
   const manifestSchema = readJson<Record<string, unknown>>(join(contractDir, "manifest.schema.json"));
   const manifestValidate = ajv.compile(manifestSchema);
+  const responseMaskerSchema = readJson<Record<string, unknown>>(
+    join(contractDir, "response-masker.schema.json"),
+  );
+  const responseMaskerValidate = ajv.compile(responseMaskerSchema);
 
   const registryRaw = readJson<{ capabilities: Record<string, RegistryEntry> }>(
     join(contractDir, "capability", "registry.json"),
@@ -192,6 +202,7 @@ export function loadContract(): Contract {
 
   return {
     manifestValidate,
+    responseMaskerValidate,
     registry: registryRaw.capabilities,
     schemaFor: (id) => ajv.getSchema(id) as ValidateFunction | undefined,
     stdlibVersion,
@@ -822,10 +833,73 @@ export function validateAdapterDir(dir: string, contract: Contract): Finding[] {
       },
     ];
   }
+  const maskerFindings = checkResponseMaskerFiles(dir, manifest, contract.responseMaskerValidate);
   return [
     ...checkManifest(manifest, contract),
+    ...maskerFindings,
     ...checkBundleSize(dir),
     ...checkFixtures(dir, manifest, contract),
+  ];
+}
+
+/**
+ * `masker.json` 必须位于 adapter 根目录且唯一。当前尚无旧 host 可理解的拒载字段，
+ * 因此即使策略本身有效也阻断发布；host gate 落地后再移除 RM0（ADR-026 §2.7）。
+ */
+function checkResponseMaskerFiles(
+  dir: string,
+  manifest: Manifest,
+  schemaValidate: ValidateFunction,
+): Finding[] {
+  const found: string[] = [];
+  const walk = (current: string): void => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name === ".git") continue;
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) {
+        walk(path);
+      } else if (entry.isFile() && entry.name === "masker.json") {
+        found.push(path);
+      }
+    }
+  };
+  walk(dir);
+
+  if (found.length === 0) return [];
+  const rootPolicyPath = join(dir, "masker.json");
+  if (found.length !== 1 || found[0] !== rootPolicyPath) {
+    return [
+      {
+        level: "error",
+        code: "RM0_policy_location",
+        message: "masker.json 必须且只能存在于 adapter 根目录",
+      },
+    ];
+  }
+  if (statSync(rootPolicyPath).size > MAX_MASKER_FILE_BYTES) {
+    return [
+      {
+        level: "error",
+        code: "RM0_policy_too_large",
+        message: `masker.json 超过 ${MAX_MASKER_FILE_BYTES} 字节上限`,
+      },
+    ];
+  }
+
+  let policy: ResponseMaskerPolicy;
+  try {
+    policy = readJson<ResponseMaskerPolicy>(rootPolicyPath);
+  } catch {
+    return [{ level: "error", code: "RM0_policy_unparseable", message: "masker.json 解析失败" }];
+  }
+
+  return [
+    ...checkResponseMasker(policy, manifest, schemaValidate),
+    {
+      level: "error",
+      code: "RM0_host_gate_unavailable",
+      message: "当前 host 尚无可供旧客户端识别的 Response Masker 最低版本门，禁止发布 masker bundle",
+    },
   ];
 }
 

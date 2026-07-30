@@ -1,0 +1,339 @@
+{
+  "manifest": {
+    "trustTier": "official",
+    "network": { "allow": ["https://login.example.edu/*", "https://api.example.edu/*"] },
+    "credentials": {
+      "school-session": { "scope": ["https://api.example.edu/*"], "type": "header" }
+    },
+    "capabilities": [
+      {
+        "id": "grades.list",
+        "requestGraph": "declarative",
+        "requests": [
+          { "key": "session", "method": "POST", "url": "https://login.example.edu/session" },
+          { "key": "grades", "method": "GET", "url": "https://api.example.edu/grades" }
+        ],
+        "bind": [
+          {
+            "var": "request_nonce",
+            "from": "session",
+            "source": "body",
+            "extract": { "jsonpath": "$.data.nonce" }
+          },
+          {
+            "var": "response_proof",
+            "from": "session",
+            "source": "header",
+            "extract": { "name": "X-Response-Proof" }
+          },
+          {
+            "var": "legacy_code",
+            "from": "session",
+            "source": "regex",
+            "extract": { "pattern": "code=([a-z]+)", "group": 1 }
+          }
+        ]
+      },
+      {
+        "id": "notice.list",
+        "requestGraph": "imperative"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "credential-json",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "session-token",
+            "match": {
+              "capability": "grades.list",
+              "requestKey": "session",
+              "method": "POST",
+              "urlScope": "https://login.example.edu/session"
+            },
+            "capture": {
+              "source": "json",
+              "path": "$.data.accessToken",
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "credential", "ref": "school-session" }
+            },
+            "project": "replace"
+          }
+        ]
+      },
+      "expectedCodes": []
+    },
+    {
+      "name": "redact-header",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "remove-proof",
+            "match": {
+              "capability": "notice.list",
+              "method": "GET",
+              "urlScope": "https://api.example.edu/notices"
+            },
+            "capture": {
+              "source": "header",
+              "name": "X-Response-Proof",
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "redact" }
+            },
+            "project": "delete"
+          }
+        ]
+      },
+      "expectedCodes": []
+    },
+    {
+      "name": "handle-reuses-bind",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "request-nonce",
+            "match": {
+              "capability": "grades.list",
+              "requestKey": "session",
+              "method": "POST",
+              "urlScope": "https://login.example.edu/session"
+            },
+            "capture": {
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "handle", "ref": "request_nonce" }
+            },
+            "project": "replace"
+          }
+        ]
+      },
+      "expectedCodes": []
+    },
+    {
+      "name": "request-key-with-redirect-final-context",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "redirect-proof",
+            "match": {
+              "capability": "grades.list",
+              "requestKey": "session",
+              "method": "GET",
+              "urlScope": "https://api.example.edu/session/final"
+            },
+            "capture": {
+              "source": "header",
+              "name": "X-Redirect-Proof",
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "redact" }
+            },
+            "project": "delete"
+          }
+        ]
+      },
+      "expectedCodes": []
+    },
+    {
+      "name": "optional-is-closed",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "optional-token",
+            "match": {
+              "capability": "notice.list",
+              "method": "GET",
+              "urlScope": "https://api.example.edu/notices"
+            },
+            "capture": {
+              "source": "json",
+              "path": "$.token",
+              "required": false,
+              "exactly": 1,
+              "destination": { "kind": "redact" }
+            },
+            "project": "replace"
+          }
+        ]
+      },
+      "expectedCodes": ["RM1_policy_schema"]
+    },
+    {
+      "name": "unknown-credential",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "unknown-credential",
+            "match": {
+              "capability": "grades.list",
+              "requestKey": "session",
+              "method": "POST",
+              "urlScope": "https://login.example.edu/session"
+            },
+            "capture": {
+              "source": "json",
+              "path": "$.token",
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "credential", "ref": "missing-session" }
+            },
+            "project": "replace"
+          }
+        ]
+      },
+      "expectedCodes": ["RM8_unknown_credential_ref"]
+    },
+    {
+      "name": "scope-outside-network",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "evil-source",
+            "match": {
+              "capability": "notice.list",
+              "method": "GET",
+              "urlScope": "https://evil.example/token"
+            },
+            "capture": {
+              "source": "header",
+              "name": "X-Token",
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "redact" }
+            },
+            "project": "delete"
+          }
+        ]
+      },
+      "expectedCodes": ["RM5_source_outside_allow"]
+    },
+    {
+      "name": "bad-jsonpath",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "wildcard-path",
+            "match": {
+              "capability": "notice.list",
+              "method": "GET",
+              "urlScope": "https://api.example.edu/notices"
+            },
+            "capture": {
+              "source": "json",
+              "path": "$.items[*].token",
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "redact" }
+            },
+            "project": "replace"
+          }
+        ]
+      },
+      "expectedCodes": ["RM14_bad_jsonpath"]
+    },
+    {
+      "name": "direct-capture-must-not-duplicate-bind",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "duplicate-nonce",
+            "match": {
+              "capability": "grades.list",
+              "requestKey": "session",
+              "method": "POST",
+              "urlScope": "https://login.example.edu/session"
+            },
+            "capture": {
+              "source": "json",
+              "path": "$.data.nonce",
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "redact" }
+            },
+            "project": "replace"
+          }
+        ]
+      },
+      "expectedCodes": ["RM16_selector_duplicates_bind"]
+    },
+    {
+      "name": "regex-handle-deferred",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "legacy-code",
+            "match": {
+              "capability": "grades.list",
+              "requestKey": "session",
+              "method": "POST",
+              "urlScope": "https://login.example.edu/session"
+            },
+            "capture": {
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "handle", "ref": "legacy_code" }
+            },
+            "project": "replace"
+          }
+        ]
+      },
+      "expectedCodes": ["RM12_handle_regex_deferred"]
+    },
+    {
+      "name": "persistent-rules-overlap",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "token-wide",
+            "match": {
+              "capability": "grades.list",
+              "method": "POST",
+              "urlScope": "https://login.example.edu/*"
+            },
+            "capture": {
+              "source": "json",
+              "path": "$.token",
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "credential", "ref": "school-session" }
+            },
+            "project": "replace"
+          },
+          {
+            "id": "token-narrow",
+            "match": {
+              "capability": "grades.list",
+              "requestKey": "session",
+              "method": "POST",
+              "urlScope": "https://login.example.edu/session"
+            },
+            "capture": {
+              "source": "header",
+              "name": "X-Token",
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "credential", "ref": "school-session" }
+            },
+            "project": "delete"
+          }
+        ]
+      },
+      "expectedCodes": ["RM15_multiple_persistent_targets"]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # Response Masker 重构与迁移计划
 
-> **状态：随 ADR-026 提议，暂不实施。** 本文展开 Broker 响应凭证收割与投影层的候选工程方案。ADR-026 经 owner 人工安全评审并接受前，不授权修改 Broker、契约、签名 bundle 或正式 adapter。
+> **状态：ADR-026 已接受，分阶段实施。** 本文展开 Broker 响应凭证收割与投影层的工程方案。核心、凭证、契约与签名路径的每个实施阶段仍须按慢车道完成人工安全复核。
 
 ## 1. 目标
 
@@ -70,9 +70,9 @@ review/
 
 `masker.json` 已可被现有 signer 的 `.json` include 规则纳入 digest；新增工作是 schema、唯一文件名、验签后加载、host/version gate、validator、policy diff 和 runtime 执行，而不是扩展 digest 文件后缀。
 
-ADR-026 接受时须同步修订 ADR-018 的 bundle 内容说明，把 `masker.json` 列为可选签名运行时文件；旧 host 必须通过版本门拒绝依赖该文件的新 bundle，不能验完 digest 后忽略未知策略继续加载。
+ADR-026 已要求同步修订 ADR-018 的 bundle 内容说明，把 `masker.json` 列为可选签名运行时文件；旧 host 必须通过版本门拒绝依赖该文件的新 bundle，不能验完 digest 后忽略未知策略继续加载。版本门落地前，validator 以 `RM0_host_gate_unavailable` 阻断任何 masker bundle 发布。
 
-候选规则草图：
+V1 规则示例（规范以 [`contract/response-masker.schema.json`](../../contract/response-masker.schema.json) 与组合 validator 为准）：
 
 ```json
 {
@@ -101,7 +101,7 @@ ADR-026 接受时须同步修订 ADR-018 的 bundle 内容说明，把 `masker.j
 }
 ```
 
-该草图不是已接受契约。最终 schema 须封闭以下维度：
+V1 schema 与组合 validator 封闭以下维度：
 
 - `match`：capability、method、final URL scope，可选 declarative request key；
 - `capture`：header、受限 JSONPath、受限 regex capture；

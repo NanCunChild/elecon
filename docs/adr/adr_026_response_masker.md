@@ -1,15 +1,15 @@
 # ADR-026：Broker 响应凭证收割与投影（Response Masker）
 
-- **状态**：提议（Proposed，未授权实现）。本文将原 Deferred 议题重构为候选正式方案；须经 owner 人工安全评审并接受后，方可修改 Broker、契约、签名 bundle 或正式 adapter。
+- **状态**：已接受（2026-07-30）。本文将原 Deferred 议题重构为正式方案；Broker、契约、签名 bundle 与正式 adapter 的各阶段实现仍须人工安全复核。
 - **日期**：2026-07-27；2026-07-30 重写职责与迁移方向
 - **适用范围**：Broker 从学校响应中提取非标准凭证敏感值、在核心内建立受控引用，并向 declarative / imperative adapter 交付投影响应。
 - **触及红线**：#1、#5、#6、#10。凭证收割、存储、句柄、注入、响应投影和签名发布均属人工主导的承重路径，AI 不得独自闭环。
 - **依赖**：[`ADR-000`](./adr_000_abstract.md)（可信核心与凭证边界）、[`ADR-009`](./adr_009_fetch_credential.md)（响应脱敏）、[`ADR-012`](./adr_012_credential_store.md)（凭证存储）、[`ADR-018`](./adr_018_adapter_distribution.md)（签名 bundle 与发布门）、[`ADR-023`](./adr_023_declarative_dataflow.md)（不透明句柄）、[`ADR-029`](./adr_029_named_and_body_credentials.md)（命名 header / body 注入）。
 - **工程说明**：[`docs/reference/response_masker_plan.md`](../reference/response_masker_plan.md)。
 
-若本文被接受，将显式修订 ADR-009 §2 第 5 条的 body 透传边界：普通业务 body 仍可在投影后交给 adapter；经 official 审核分类的 credential-equivalent 不再属于可接受透传风险，必须由本文机制收割或删除。未知、漏报字段仍属于 §2.6/§5.2 的供应链残余风险。
+本文接受后，显式修订 ADR-009 §2 第 5 条的 body 透传边界：普通业务 body 仍可在投影后交给 adapter；经 official 审核分类的 credential-equivalent 不再属于可接受透传风险，必须由本文机制收割或删除。未知、漏报字段仍属于 §2.6/§5.2 的供应链残余风险。
 
-本文接受时还将显式修订 ADR-018 的 bundle 内容说明：`masker.json` 成为可选但受 host/version gate 约束的签名运行时文件；现有 signer 已覆盖 `.json`，但加载、校验和发布治理仍须按本文补齐。
+本文同时修订 ADR-018 的 bundle 内容说明：`masker.json` 成为可选但受 host/version gate 约束的签名运行时文件；现有 signer 已覆盖 `.json`，但加载、校验和发布治理仍须按本文补齐。
 
 ## 1. 背景
 
@@ -226,7 +226,7 @@ ADR-023 当前“中间值从不进 adapter”的叙述与源响应交付实现�
 
 所有 schema 新增保持向后兼容，但旧客户端遇到声明 Masker 要求的新 bundle 时必须经 host/version gate 拒载，不能忽略 `masker.json` 后继续运行。
 
-## 7. 接受前必须勾决
+## 7. 实施阶段必须落实
 
 1. `masker.json` schema 与 bundle 最低 host/version gate。
 2. `credential` capture 的覆盖、过期、撤销、来源和原子提交语义。
@@ -239,4 +239,4 @@ ADR-023 当前“中间值从不进 adapter”的叙述与源响应交付实现�
 
 ## 8. 决策结果
 
-**Proposed：等待 owner 人工安全评审。** 本文已确定候选精神和职责：Response Masker 是 Broker 的响应凭证收割与投影层，不是 fail-open 的附加字符串过滤器。ADR 被正式接受前，不授权修改 Broker、`contract/`、签名 bundle 或正式 adapter；接受后按 §4 的大重构迁移，不保留 adapter 自行读取已分类凭证的长期兼容路径。
+**Accepted（2026-07-30）。** Response Masker 是 Broker 的响应凭证收割与投影层，不是 fail-open 的附加字符串过滤器。实现按 §4 的大重构迁移，并在各阶段落实 §7 的工程与治理要求；不保留 adapter 自行读取已分类凭证的长期兼容路径。

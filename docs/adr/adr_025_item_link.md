@@ -1,6 +1,6 @@
 # ADR-025：item 级可点性约定——详情下钻标识与外链字段
 
-- **状态**：已接受（Accepted）2026-07-25，经人工复核后接受。数据面（`contract/schema/` item 链接字段）属红线 #6 流程内的**向后兼容增量**（早期阶段豁免见 [`docs/rules/schema_style.md`](../rules/schema_style.md)）；§2.7「外跳凭证隔离」触**红线 #1**（凭证永不离开核心）——该 UI 承重约束的**实现**须另行人工安全复核，AI 不得独自闭环（AGENTS §1）。半可信 adapter 不得驱动渲染的边界不变（ADR-004 §2.1）。
+- **状态**：已接受 2026-07-25，经人工复核后接受。数据面（`contract/schema/` item 链接字段）属红线 #6 流程内的**向后兼容增量**（早期阶段豁免见 [`docs/rules/schema_style.md`](../rules/schema_style.md)）；§2.7「外跳凭证隔离」触**红线 #1**（凭证永不离开核心）——该 UI 承重约束的**实现**须另行人工安全复核，AI 不得独自闭环（AGENTS §1）。半可信 adapter 不得驱动渲染的边界不变（ADR-004 §2.1）。
 - **日期**：2026-07-25（草案）
 - **依赖**：[`adr_001_contract.md`](./adr_001_contract.md)（§3.4 缺失语义 / §3.6 generic `role` 枚举含 `link` / §7 契约治理）、[`adr_004_ui_sdui.md`](./adr_004_ui_sdui.md)（§2.1 无 Widget 描述协议、§2.2 typed 详情视图、§2.3 `role:link → 可点击 + 外跳`）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（半可信 adapter 不得驱动渲染）
 - **适用范围**：typed 域 item「可点」时数据面如何承载——① App 内下钻详情所需的稳定标识；② 外跳 webview/网页所需的链接字段。**不含**：具体 Flutter 组件、点击后的导航实现（属客户端 UI）、generic 兜底域（其 `role:link` 已由 ADR-001 §3.6 / ADR-004 §2.3 覆盖，本文不改）。

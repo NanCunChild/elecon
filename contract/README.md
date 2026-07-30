@@ -9,6 +9,7 @@
 schema/          JSON Schema 定义（Draft 2020-12），所有数据域的唯一事实来源
 capability/      capability id 注册表（registry.json）
 manifest.schema.json   manifest 自身的 JSON Schema（供 tools/ 校验）
+response-masker.schema.json   Broker 响应凭证收割与投影策略（ADR-026）
 adapter-sdk/     adapter 开发者参考（ctx 类型声明）
 ```
 

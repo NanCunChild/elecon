@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.response-masker",
+  "title": "Response Masker Policy Schema",
+  "description": "Broker 响应凭证收割与投影策略（ADR-026）。策略只声明分类和静态目标，不包含任何凭证值。",
+  "type": "object",
+  "required": ["schemaVersion", "rules"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "description": "Response Masker 策略契约版本。"
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ruleId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "match": {
+      "type": "object",
+      "required": ["capability", "method", "urlScope"],
+      "properties": {
+        "capability": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "requestKey": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "method": { "type": "string", "enum": ["GET", "POST"] },
+        "urlScope": {
+          "type": "string",
+          "format": "uri-template",
+          "maxLength": 2048,
+          "description": "最终响应 URL 的 acquisition scope；须为 manifest network.allow 的子集。"
+        }
+      },
+      "additionalProperties": false
+    },
+    "destinationCredential": {
+      "type": "object",
+      "required": ["kind", "ref"],
+      "properties": {
+        "kind": { "const": "credential" },
+        "ref": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 }
+      },
+      "additionalProperties": false
+    },
+    "destinationHandle": {
+      "type": "object",
+      "required": ["kind", "ref"],
+      "properties": {
+        "kind": { "const": "handle" },
+        "ref": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" }
+      },
+      "additionalProperties": false
+    },
+    "destinationRedact": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "redact" }
+      },
+      "additionalProperties": false
+    },
+    "headerCapture": {
+      "type": "object",
+      "required": ["source", "name", "required", "exactly", "destination"],
+      "properties": {
+        "source": { "const": "header" },
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "required": { "const": true },
+        "exactly": { "const": 1 },
+        "destination": {
+          "oneOf": [
+            { "$ref": "#/$defs/destinationCredential" },
+            { "$ref": "#/$defs/destinationRedact" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "jsonCapture": {
+      "type": "object",
+      "required": ["source", "path", "required", "exactly", "destination"],
+      "properties": {
+        "source": { "const": "json" },
+        "path": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "required": { "const": true },
+        "exactly": { "const": 1 },
+        "destination": {
+          "oneOf": [
+            { "$ref": "#/$defs/destinationCredential" },
+            { "$ref": "#/$defs/destinationRedact" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "handleCapture": {
+      "type": "object",
+      "description": "敏感 handle 只引用既有 bind.var；selector 以 manifest bind 为唯一真相（ADR-026 §3）。",
+      "required": ["required", "exactly", "destination"],
+      "properties": {
+        "required": { "const": true },
+        "exactly": { "const": 1 },
+        "destination": { "$ref": "#/$defs/destinationHandle" }
+      },
+      "additionalProperties": false
+    },
+    "rule": {
+      "type": "object",
+      "required": ["id", "match", "capture", "project"],
+      "properties": {
+        "id": { "$ref": "#/$defs/ruleId" },
+        "match": { "$ref": "#/$defs/match" },
+        "capture": {
+          "oneOf": [
+            { "$ref": "#/$defs/headerCapture" },
+            { "$ref": "#/$defs/jsonCapture" },
+            { "$ref": "#/$defs/handleCapture" }
+          ]
+        },
+        "project": {
+          "type": "string",
+          "enum": ["delete", "replace"],
+          "description": "header 投影删除整个头；JSON 投影写入核心固定 sentinel。"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
