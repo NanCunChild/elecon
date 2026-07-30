@@ -1,0 +1,153 @@
+{
+  "@@locale": "zh",
+  "@@x-notes": "文案单源（模板语言）。新增显示字段一律先加键再用 l10n.<key> 引用，不在 widget 里写字面量；改键须同步 app_en.arb，否则 gen_l10n 会把缺口写进 l10n_untranslated.json。",
+
+  "appName": "elecon",
+  "@appName": {
+    "description": "应用名。品牌名，各语言均不翻译"
+  },
+  "appTagline": "校园信息聚合平台",
+  "@appTagline": {
+    "description": "应用副标题/一句话定位"
+  },
+
+  "commonCancel": "取消",
+  "commonRetry": "重试",
+  "commonCopyLink": "复制链接",
+  "commonLinkCopied": "链接已复制到剪贴板",
+  "commonListSeparator": "、",
+  "@commonListSeparator": {
+    "description": "行内枚举的分隔符（中文用顿号，英文用逗号+空格）"
+  },
+  "commonCopiedToClipboard": "已复制到剪贴板",
+
+  "navHome": "首页",
+  "navSettings": "设置",
+
+  "settingsTitle": "设置",
+  "settingsSectionAccount": "账户",
+  "settingsSectionDebug": "调试",
+  "settingsSectionAbout": "关于",
+  "settingsNoSchool": "未选择学校",
+  "settingsNoSchoolSubtitle": "返回开始面板选择学校",
+  "settingsLoggedIn": "已登录",
+  "settingsLoggedOut": "未登录",
+  "settingsCredentialSummary": "已收割 {count} 条凭证：{refs}",
+  "@settingsCredentialSummary": {
+    "description": "登录态下的凭证摘要。refs 只是凭证引用名（红线 #1：不含凭证值）",
+    "placeholders": {
+      "count": { "type": "int" },
+      "refs": { "type": "String" }
+    }
+  },
+  "settingsLoginPrompt": "登录后聚合校园信息",
+  "settingsActionLogin": "登录",
+  "settingsActionLogout": "退出",
+  "settingsRelogin": "重新登录",
+  "settingsReloginSubtitle": "会话过期时刷新凭证",
+  "settingsSwitchSchool": "切换学校",
+  "settingsLogoutDialogTitle": "退出登录",
+  "settingsLogoutDialogBody": "将立即抹除本机保存的全部凭证，需要重新登录。",
+  "settingsLogoutDone": "已退出登录，凭证已抹除",
+  "settingsSwitchSchoolDialogTitle": "切换学校",
+  "settingsSwitchSchoolDialogBody": "将抹除当前凭证并返回学校选择面板。",
+  "settingsSwitchSchoolConfirm": "切换",
+  "settingsDevLogTitle": "运行时日志",
+  "settingsDevLogSubtitleDebug": "唯一观测 sink：network/runtime/webview/adapter；默认脱敏",
+  "settingsDevLogSubtitleRelease": "仅网络：无参 URL 与状态码（无 body/凭证）",
+  "settingsHelloWorldTitle": "HelloWorld adapter 通路测试",
+  "settingsHelloWorldSubtitle": "远端分发、验签、执行、日志和测试卡片",
+  "settingsWebViewLogTitle": "WebView 日志面板",
+  "settingsWebViewLogSubtitle": "登录时显示带时间戳的收割日志（cookie 已打码）",
+  "settingsAboutTile": "关于 elecon",
+  "settingsPrivacyTile": "隐私政策",
+  "settingsPrivacySubtitle": "我们如何处理你的数据",
+
+  "aboutTitle": "关于",
+  "aboutIconSemanticLabel": "应用图标（占位）",
+  "@aboutIconSemanticLabel": {
+    "description": "关于页顶部图标占位的无障碍朗读文本；正式图标落地后改为「应用图标」"
+  },
+  "aboutVersion": "版本 {version}",
+  "@aboutVersion": {
+    "description": "关于页图标下方的版本副标题",
+    "placeholders": {
+      "version": { "type": "String", "example": "0.1.0-dev" }
+    }
+  },
+  "aboutQuote": "Any problem in computer science can be solved with another level of indirection",
+  "@aboutQuote": {
+    "description": "本轮大版本箴言，居中展示。原文为英文格言，中文语境下保留原文不译"
+  },
+  "aboutQuoteSource": "软件工程基本定理",
+  "@aboutQuoteSource": {
+    "description": "箴言出处标签（不署个人名：该表述通常以「软件工程基本定理」流传）"
+  },
+  "aboutSectionLegal": "条款",
+  "aboutPrivacyTile": "隐私政策",
+  "aboutOpenSourceLicenses": "开源许可",
+  "aboutOpenSourceLicensesSubtitle": "本应用使用的第三方组件与许可证",
+
+  "privacyTitle": "隐私政策",
+  "privacyPlaceholderNotice": "当前指向占位地址，正式条款发布后此页内容随之更新。",
+  "privacyLoadFailedTitle": "无法加载隐私政策",
+  "privacyLoadFailedBody": "请检查网络后重试，或复制链接到浏览器打开：{url}",
+  "@privacyLoadFailedBody": {
+    "description": "隐私政策页加载失败时的说明",
+    "placeholders": {
+      "url": { "type": "String", "example": "https://elecon.xidian.one/privacy" }
+    }
+  },
+
+  "appearanceSection": "外观",
+  "appearanceSeedTitle": "主题色",
+  "appearanceSeedSubtitle": "影响主色与界面强调色",
+  "appearanceSeedBlue": "校园蓝",
+  "appearanceSeedIndigo": "靛蓝",
+  "appearanceSeedTeal": "青绿",
+  "appearanceSeedGreen": "叶绿",
+  "appearanceSeedAmber": "琥珀",
+  "appearanceSeedOrange": "橙",
+  "appearanceSeedRose": "玫红",
+  "appearanceSeedViolet": "紫",
+  "appearanceThemeModeTitle": "深色模式",
+  "appearanceThemeModeSystem": "系统",
+  "appearanceThemeModeLight": "浅色",
+  "appearanceThemeModeDark": "深色",
+  "appearanceThemeModeSystemDetail": "跟随系统",
+  "appearanceThemeModeLightDetail": "始终浅色",
+  "appearanceThemeModeDarkDetail": "始终深色",
+  "appearanceLanguageTitle": "语言",
+  "appearanceLanguageSystem": "跟随系统",
+  "@appearanceLanguageSystem": {
+    "description": "语言选项：跟随系统语言（各语言均写本语言的说法）"
+  },
+  "appearanceLanguageZh": "简体中文",
+  "@appearanceLanguageZh": {
+    "description": "语言名按母语书写，各 arb 保持一致（endonym）"
+  },
+  "appearanceLanguageEn": "English",
+  "@appearanceLanguageEn": {
+    "description": "语言名按母语书写，各 arb 保持一致（endonym）"
+  },
+  "accessibilitySection": "无障碍",
+  "accessibilityHighContrastTitle": "高对比模式",
+  "accessibilityHighContrastSubtitle": "提高文字与控件对比度，覆盖全部主题外观",
+  "experimentalSection": "实验性",
+  "experimentalLiquidGlassTitle": "液态玻璃",
+  "experimentalLiquidGlassSubtitle": "底栏与卡片使用 iOS 26 风格 shader 液态玻璃，可能影响性能",
+  "experimentalLiquidGlassDisabledByContrast": "高对比模式下已自动关闭（半透明会降低对比度）",
+
+  "devLogTitle": "运行时日志",
+  "devLogClear": "清空",
+  "devLogCopyVisible": "复制可见条目",
+  "devLogFilterAll": "全部",
+  "devLogFilterNetworkOnly": "仅网络",
+  "devLogFilterNetworkRelease": "网络请求",
+  "devLogRedactOn": "已脱敏",
+  "devLogRedactOff": "未脱敏",
+  "devLogHintRedacted": "默认脱敏：URL 无参、cookie 仅长度。关闭「已脱敏」后新条目可保留 query（仍无 body）。",
+  "devLogHintUnredacted": "脱敏已关：新条目可含 query / cookie 原文；仅存本机环缓冲，勿外传。",
+  "devLogHintRelease": "正式版仅显示无参数 URL 与成功状态，不含请求/响应内容。",
+  "devLogEmpty": "暂无日志"
+}

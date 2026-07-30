@@ -1,0 +1,14 @@
+# Flutter 官方 gen_l10n 配置（ADR-004 框内：UI 文案单源，组件不内嵌字面量）。
+#
+# 模板语言取 zh：项目主受众为国内在校学生，zh 文案是权威原文，en 为译文。
+# 生成物落在 lib/l10n/gen/（.gitignore 已排除）——由 `flutter pub get` /
+# `flutter gen-l10n` 按 arb 重新生成，不入库以免生成代码 churn。
+arb-dir: lib/l10n
+template-arb-file: app_zh.arb
+output-dir: lib/l10n/gen
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+# 用 Locale('zh') 兜底，UI 侧 AppLocalizations.of(context) 永不为 null。
+nullable-getter: false
+# arb 缺键时 CI 报错而不是静默回落到模板语言（红线：显示字段必须全覆盖）。
+untranslated-messages-file: l10n_untranslated.json

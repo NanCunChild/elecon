@@ -8,6 +8,13 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Elecon</string>
+	<!-- i18n：iOS 只把 bundle 声明过的语言算进系统首选语言协商，缺声明时中文用户
+	     也会被报成 en。清单须与 lib/l10n/*.arb 同步。 -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

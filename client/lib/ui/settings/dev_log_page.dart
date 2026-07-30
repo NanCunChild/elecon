@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/debug/dev_log.dart';
+import '../../l10n/gen/app_localizations.dart';
 
 class DevLogPage extends StatefulWidget {
   const DevLogPage({super.key, this.log});
@@ -44,33 +45,35 @@ class _DevLogPageState extends State<DevLogPage> {
       );
 
   Future<void> _copyAll() async {
+    final l10n = AppLocalizations.of(context);
     final lines = _visible
         .map((e) => '${e.timeLabel} [${e.category.name}] ${e.message}')
         .join('\n');
     await Clipboard.setData(ClipboardData(text: lines));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已复制到剪贴板')),
+      SnackBar(content: Text(l10n.commonCopiedToClipboard)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final entries = _visible;
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('运行时日志'),
+        title: Text(l10n.devLogTitle),
         actions: [
           if (kDebugMode)
             IconButton(
-              tooltip: '清空',
+              tooltip: l10n.devLogClear,
               onPressed: entries.isEmpty ? null : _log.clear,
               icon: const Icon(Icons.delete_outline),
             ),
           IconButton(
-            tooltip: '复制可见条目',
+            tooltip: l10n.devLogCopyVisible,
             onPressed: entries.isEmpty ? null : _copyAll,
             icon: const Icon(Icons.copy_outlined),
           ),
@@ -88,12 +91,16 @@ class _DevLogPageState extends State<DevLogPage> {
                 children: [
                   if (kDebugMode)
                     FilterChip(
-                      label: const Text('全部'),
+                      label: Text(l10n.devLogFilterAll),
                       selected: !_networkOnly,
                       onSelected: (_) => setState(() => _networkOnly = false),
                     ),
                   FilterChip(
-                    label: Text(kDebugMode ? '仅网络' : '网络请求'),
+                    label: Text(
+                      kDebugMode
+                          ? l10n.devLogFilterNetworkOnly
+                          : l10n.devLogFilterNetworkRelease,
+                    ),
                     selected: _networkOnly,
                     onSelected: kDebugMode
                         ? (_) => setState(() => _networkOnly = true)
@@ -101,7 +108,11 @@ class _DevLogPageState extends State<DevLogPage> {
                   ),
                   if (kDebugMode)
                     FilterChip(
-                      label: Text(_log.redact ? '已脱敏' : '未脱敏'),
+                      label: Text(
+                        _log.redact
+                            ? l10n.devLogRedactOn
+                            : l10n.devLogRedactOff,
+                      ),
                       selected: _log.redact,
                       onSelected: (v) {
                         _log.setRedact(v);
@@ -117,9 +128,9 @@ class _DevLogPageState extends State<DevLogPage> {
             child: Text(
               kDebugMode
                   ? (_log.redact
-                      ? '默认脱敏：URL 无参、cookie 仅长度。关闭「已脱敏」后新条目可保留 query（仍无 body）。'
-                      : '脱敏已关：新条目可含 query / cookie 原文；仅存本机环缓冲，勿外传。')
-                  : '正式版仅显示无参数 URL 与成功状态，不含请求/响应内容。',
+                      ? l10n.devLogHintRedacted
+                      : l10n.devLogHintUnredacted)
+                  : l10n.devLogHintRelease,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -130,7 +141,7 @@ class _DevLogPageState extends State<DevLogPage> {
             child: entries.isEmpty
                 ? Center(
                     child: Text(
-                      '暂无日志',
+                      l10n.devLogEmpty,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                             color: scheme.outline,
                           ),

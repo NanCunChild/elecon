@@ -11,6 +11,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # i18n（ADR-004 框内，UI 文案单源）：Material/Cupertino 内建组件的本地化代理
+  # （日期选择器、文本选择菜单等），随 Flutter SDK 版本走，无独立 pin。
+  # 🔒 红线 #9：BSD-3-Clause（Flutter SDK 自带，无新增第三方来源）。
+  flutter_localizations:
+    sdk: flutter
+  # gen_l10n 产物（lib/l10n/gen/）import 的运行时：占位符插值与复数/性别选择。
+  # 版本由 flutter_localizations 约束，此处不精确 pin，避免 SDK 升级时死锁。
+  # 🔒 红线 #9：BSD-3-Clause（Dart 官方 i18n 包），不参与凭证/adapter 路径。
+  intl: any
   # ADR-008/014：客户端 QuickJS 运行时。固定 pub.dev 版本，避免 Git 依赖漂移。
   # 保留 IsolateQjs/host-fn 通道；升级时跑 host_fn/dual_run/fetch 测试。
   # 1.1.1：修复部分（请求体/句柄）泄露问题（2026-07-20 人工授权升级）。
@@ -48,6 +57,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # 按 l10n.yaml 从 lib/l10n/*.arb 生成 AppLocalizations（pub get / build 时自动跑）。
+  generate: true
 
   assets:
     - assets/

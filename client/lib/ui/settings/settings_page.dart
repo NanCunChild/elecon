@@ -1,16 +1,22 @@
 /// 设置页——随会话状态更新：当前学校、登录状态、凭证、调试选项。
+///
+/// 显示文案一律取 [AppLocalizations]（`lib/l10n/*.arb`），不在此写字面量。
 library;
 
 import 'package:flutter/material.dart';
 
 import 'package:flutter/foundation.dart';
 
+import '../../app_info.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
 import '../debug/helloworld_test_page.dart';
 import '../theme/liquid_glass.dart';
+import 'about_page.dart';
 import 'appearance_section.dart';
 import 'dev_log_page.dart';
+import 'privacy_policy_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -27,20 +33,21 @@ class SettingsPage extends StatelessWidget {
   }
 
   Future<void> _logout(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
     final session = SessionScope.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('退出登录'),
-        content: const Text('将立即抹除本机保存的全部凭证，需要重新登录。'),
+        title: Text(l10n.settingsLogoutDialogTitle),
+        content: Text(l10n.settingsLogoutDialogBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('退出'),
+            child: Text(l10n.settingsActionLogout),
           ),
         ],
       ),
@@ -50,24 +57,25 @@ class SettingsPage extends StatelessWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('已退出登录，凭证已抹除')));
+    ).showSnackBar(SnackBar(content: Text(l10n.settingsLogoutDone)));
   }
 
   Future<void> _switchSchool(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
     final session = SessionScope.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('切换学校'),
-        content: const Text('将抹除当前凭证并返回学校选择面板。'),
+        title: Text(l10n.settingsSwitchSchoolDialogTitle),
+        content: Text(l10n.settingsSwitchSchoolDialogBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('切换'),
+            child: Text(l10n.settingsSwitchSchoolConfirm),
           ),
         ],
       ),
@@ -76,15 +84,20 @@ class SettingsPage extends StatelessWidget {
     session.reset();
   }
 
+  void _open(BuildContext context, Widget page) {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+  }
+
   @override
   Widget build(BuildContext context) {
     // 监听会话变化，状态更新时本页重建。
+    final l10n = AppLocalizations.of(context);
     final session = SessionScope.of(context);
     final school = session.selectedSchool;
     final loggedIn = session.isLoggedIn;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
+      appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
         padding: EdgeInsets.fromLTRB(
           16,
@@ -93,14 +106,16 @@ class SettingsPage extends StatelessWidget {
           liquidGlassEnabled(context) ? 100 : 24,
         ),
         children: [
-          _SectionTitle(title: '账户'),
+          _SectionTitle(title: l10n.settingsSectionAccount),
           LiquidGlassSurface(
             child: Column(
               children: [
                 ListTile(
                   leading: const Icon(Icons.school),
-                  title: Text(school?.displayName ?? '未选择学校'),
-                  subtitle: Text(school?.subtitle ?? '返回开始面板选择学校'),
+                  title: Text(school?.displayName ?? l10n.settingsNoSchool),
+                  subtitle: Text(
+                    school?.subtitle ?? l10n.settingsNoSchoolSubtitle,
+                  ),
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -110,35 +125,42 @@ class SettingsPage extends StatelessWidget {
                         ? Theme.of(context).colorScheme.primary
                         : Theme.of(context).colorScheme.outline,
                   ),
-                  title: Text(loggedIn ? '已登录' : '未登录'),
+                  title: Text(
+                    loggedIn ? l10n.settingsLoggedIn : l10n.settingsLoggedOut,
+                  ),
                   subtitle: Text(
                     loggedIn
-                        ? '已收割 ${session.credentialCount} 条凭证：${session.credentialRefs.join("、")}'
-                        : '登录后聚合校园信息',
+                        ? l10n.settingsCredentialSummary(
+                            session.credentialCount,
+                            session.credentialRefs.join(
+                              l10n.commonListSeparator,
+                            ),
+                          )
+                        : l10n.settingsLoginPrompt,
                   ),
                   trailing: loggedIn
                       ? TextButton(
                           onPressed: () => _logout(context),
-                          child: const Text('退出'),
+                          child: Text(l10n.settingsActionLogout),
                         )
                       : FilledButton.tonal(
                           onPressed: () => _login(context),
-                          child: const Text('登录'),
+                          child: Text(l10n.settingsActionLogin),
                         ),
                 ),
                 if (loggedIn) ...[
                   const Divider(height: 1),
                   ListTile(
                     leading: const Icon(Icons.refresh),
-                    title: const Text('重新登录'),
-                    subtitle: const Text('会话过期时刷新凭证'),
+                    title: Text(l10n.settingsRelogin),
+                    subtitle: Text(l10n.settingsReloginSubtitle),
                     onTap: () => _login(context),
                   ),
                 ],
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.swap_horiz),
-                  title: const Text('切换学校'),
+                  title: Text(l10n.settingsSwitchSchool),
                   onTap: () => _switchSchool(context),
                 ),
               ],
@@ -147,47 +169,35 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 16),
           const AppearanceSection(),
           const SizedBox(height: 16),
-          _SectionTitle(title: '调试'),
+          _SectionTitle(title: l10n.settingsSectionDebug),
           LiquidGlassSurface(
             child: Column(
               children: [
                 ListTile(
                   leading: const Icon(Icons.receipt_long_outlined),
-                  title: const Text('运行时日志'),
+                  title: Text(l10n.settingsDevLogTitle),
                   subtitle: Text(
                     kDebugMode
-                        ? '唯一观测 sink：network/runtime/webview/adapter；默认脱敏'
-                        : '仅网络：无参 URL 与状态码（无 body/凭证）',
+                        ? l10n.settingsDevLogSubtitleDebug
+                        : l10n.settingsDevLogSubtitleRelease,
                   ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const DevLogPage(),
-                      ),
-                    );
-                  },
+                  onTap: () => _open(context, const DevLogPage()),
                 ),
                 if (kDebugMode) ...[
                   const Divider(height: 1),
                   ListTile(
                     leading: const Icon(Icons.route_outlined),
-                    title: const Text('HelloWorld adapter 通路测试'),
-                    subtitle: const Text('远端分发、验签、执行、日志和测试卡片'),
+                    title: Text(l10n.settingsHelloWorldTitle),
+                    subtitle: Text(l10n.settingsHelloWorldSubtitle),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const HelloWorldTestPage(),
-                        ),
-                      );
-                    },
+                    onTap: () => _open(context, const HelloWorldTestPage()),
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
                     secondary: const Icon(Icons.bug_report_outlined),
-                    title: const Text('WebView 日志面板'),
-                    subtitle: const Text('登录时显示带时间戳的收割日志（cookie 已打码）'),
+                    title: Text(l10n.settingsWebViewLogTitle),
+                    subtitle: Text(l10n.settingsWebViewLogSubtitle),
                     value: session.debugLog,
                     onChanged: session.setDebugLog,
                   ),
@@ -196,20 +206,24 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          _SectionTitle(title: '关于'),
+          _SectionTitle(title: l10n.settingsSectionAbout),
           LiquidGlassSurface(
             child: Column(
               children: [
-                const ListTile(
-                  leading: Icon(Icons.info_outline),
-                  title: Text('elecon'),
-                  subtitle: Text('校园信息聚合平台'),
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: Text(l10n.settingsAboutTile),
+                  subtitle: Text(l10n.aboutVersion(kAppVersion)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _open(context, const AboutPage()),
                 ),
                 const Divider(height: 1),
-                const ListTile(
-                  leading: Icon(Icons.code),
-                  title: Text('版本'),
-                  subtitle: Text('0.1.0-dev'),
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: Text(l10n.settingsPrivacyTile),
+                  subtitle: Text(l10n.settingsPrivacySubtitle),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _open(context, const PrivacyPolicyPage()),
                 ),
               ],
             ),

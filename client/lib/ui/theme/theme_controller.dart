@@ -21,6 +21,7 @@ class ThemeController extends ChangeNotifier {
   bool get effectiveLiquidGlass => _prefs.effectiveLiquidGlass;
   Color get seedColor => _prefs.seedColor;
   String get seedId => _prefs.seedId;
+  String? get localeTag => _prefs.localeTag;
 
   Future<void> load() async {
     _prefs = await _store.load();
@@ -46,4 +47,8 @@ class ThemeController extends ChangeNotifier {
 
   Future<void> setLiquidGlass(bool enabled) =>
       _commit(_prefs.copyWith(liquidGlass: enabled));
+
+  /// [tag] 传 `null` 即改回跟随系统语言。
+  Future<void> setLocaleTag(String? tag) =>
+      _commit(_prefs.copyWith(localeTag: tag));
 }

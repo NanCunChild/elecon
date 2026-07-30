@@ -8,8 +8,10 @@ import 'core/adapter_service.dart';
 import 'core/credential/blob_store.dart';
 import 'core/credential/hardware_keystore_channel.dart';
 import 'core/debug/perf_trace.dart';
+import 'l10n/gen/app_localizations.dart';
 import 'session/session_controller.dart';
 import 'session/session_scope.dart';
+import 'ui/i18n/locale_options.dart';
 import 'ui/onboarding/onboarding_page.dart';
 import 'ui/security/hardware_unlock_failed_dialog.dart';
 import 'ui/shell/main_shell.dart';
@@ -91,8 +93,16 @@ class _EleconAppState extends State<EleconApp> {
               builder: (context, _) {
                 final p = _theme.prefs;
                 return MaterialApp(
-                  title: 'elecon',
+                  // 任务切换器标题也走 l10n（文案单源）。
+                  onGenerateTitle: (context) =>
+                      AppLocalizations.of(context).appName,
                   debugShowCheckedModeBanner: false,
+                  // 语言：偏好为空（默认）时传 null → 由系统语言在
+                  // supportedLocales 中协商，未命中则回落模板语言 zh。
+                  locale: resolveAppLocale(p.localeTag),
+                  localizationsDelegates:
+                      AppLocalizations.localizationsDelegates,
+                  supportedLocales: AppLocalizations.supportedLocales,
                   themeMode: p.themeMode,
                   theme: AppTheme.light(p),
                   darkTheme: AppTheme.dark(p),

@@ -163,5 +163,22 @@ void main() {
       await reloaded.load();
       expect(reloaded.prefs, ctrl.prefs);
     });
+
+    test('locale tag persists and can go back to system', () async {
+      final store = ThemeStore(supportDirProvider: () => tempDir);
+      final ctrl = ThemeController(store: store);
+      await ctrl.load();
+      expect(ctrl.localeTag, isNull, reason: '默认跟随系统');
+
+      await ctrl.setLocaleTag('en');
+      final reloaded = ThemeController(store: store);
+      await reloaded.load();
+      expect(reloaded.localeTag, 'en');
+
+      await ctrl.setLocaleTag(null);
+      final backToSystem = ThemeController(store: store);
+      await backToSystem.load();
+      expect(backToSystem.localeTag, isNull);
+    });
   });
 }

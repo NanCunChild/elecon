@@ -8,6 +8,12 @@ build/
 # FVM
 .fvm/
 
+# gen_l10n 产物：由 `flutter pub get` / `flutter gen-l10n` 从 lib/l10n/*.arb 生成
+# （权威源是 arb）。生成代码不入库，避免与 arb 双份维护 + diff churn。
+lib/l10n/gen/
+# gen_l10n 的缺译报告（arb 齐全时为空对象），本机产物
+l10n_untranslated.json
+
 # 原生 FFI 测试库：由 tool/build_qjs_test_lib.sh 本地构建，勿提交二进制
 test/build/
 

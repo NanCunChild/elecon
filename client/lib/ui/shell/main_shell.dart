@@ -7,6 +7,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
+import '../../l10n/gen/app_localizations.dart';
 import '../home/home_page.dart';
 import '../settings/settings_page.dart';
 import '../theme/app_theme.dart';
@@ -22,21 +23,23 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
-  static const _tabs = <_ShellTab>[
-    _ShellTab(
-      label: '首页',
-      icon: Icons.home_outlined,
-      selectedIcon: Icons.home,
-    ),
-    _ShellTab(
-      label: '设置',
-      icon: Icons.settings_outlined,
-      selectedIcon: Icons.settings,
-    ),
-  ];
+  /// 标签文案随语言变，故在 build 里按当前 l10n 组装（图标是常量）。
+  static List<_ShellTab> _tabsOf(AppLocalizations l10n) => <_ShellTab>[
+        _ShellTab(
+          label: l10n.navHome,
+          icon: Icons.home_outlined,
+          selectedIcon: Icons.home,
+        ),
+        _ShellTab(
+          label: l10n.navSettings,
+          icon: Icons.settings_outlined,
+          selectedIcon: Icons.settings,
+        ),
+      ];
 
   @override
   Widget build(BuildContext context) {
+    final tabs = _tabsOf(AppLocalizations.of(context));
     final glass = liquidGlassEnabled(context);
     final scheme = Theme.of(context).colorScheme;
 
@@ -52,13 +55,13 @@ class _MainShellState extends State<MainShell> {
       ),
       bottomNavigationBar: glass
           ? _GlassShellBar(
-              tabs: _tabs,
+              tabs: tabs,
               selectedIndex: _index,
               onSelected: (i) => setState(() => _index = i),
               scheme: scheme,
             )
           : _MaterialShellBar(
-              tabs: _tabs,
+              tabs: tabs,
               selectedIndex: _index,
               onSelected: (i) => setState(() => _index = i),
             ),

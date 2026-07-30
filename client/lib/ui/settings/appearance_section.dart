@@ -1,8 +1,13 @@
-/// 设置页「外观」与「无障碍」区块。
+/// 设置页「外观」「无障碍」「实验性」区块（含语言选择）。
+///
+/// 显示文案一律取 [AppLocalizations]（`lib/l10n/*.arb`），不在此写字面量：
+/// 主题色名按 [SeedPalette.id] → l10n 键映射，语言名走 `ui/i18n/locale_options.dart`。
 library;
 
 import 'package:flutter/material.dart';
 
+import '../../l10n/gen/app_localizations.dart';
+import '../i18n/locale_options.dart';
 import '../theme/liquid_glass.dart';
 import '../theme/theme_prefs.dart';
 import '../theme/theme_scope.dart';
@@ -12,6 +17,7 @@ class AppearanceSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final themeCtrl = ThemeScope.of(context);
     final prefs = themeCtrl.prefs;
     final scheme = Theme.of(context).colorScheme;
@@ -19,15 +25,15 @@ class AppearanceSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _SectionTitle(title: '外观'),
+        _SectionTitle(title: l10n.appearanceSection),
         LiquidGlassSurface(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const ListTile(
-                leading: Icon(Icons.palette_outlined),
-                title: Text('主题色'),
-                subtitle: Text('影响主色与界面强调色'),
+              ListTile(
+                leading: const Icon(Icons.palette_outlined),
+                title: Text(l10n.appearanceSeedTitle),
+                subtitle: Text(l10n.appearanceSeedSubtitle),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -38,6 +44,7 @@ class AppearanceSection extends StatelessWidget {
                     for (final p in SeedPalette.presets)
                       _SeedSwatch(
                         palette: p,
+                        label: seedPaletteLabel(l10n, p.id),
                         selected: prefs.seedId == p.id,
                         onTap: () => themeCtrl.setSeedId(p.id),
                       ),
@@ -47,27 +54,27 @@ class AppearanceSection extends StatelessWidget {
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.brightness_6_outlined),
-                title: const Text('深色模式'),
-                subtitle: Text(_themeModeLabel(prefs.themeMode)),
+                title: Text(l10n.appearanceThemeModeTitle),
+                subtitle: Text(_themeModeLabel(l10n, prefs.themeMode)),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: SegmentedButton<ThemeMode>(
-                  segments: const [
+                  segments: [
                     ButtonSegment(
                       value: ThemeMode.system,
-                      label: Text('系统'),
-                      icon: Icon(Icons.brightness_auto, size: 18),
+                      label: Text(l10n.appearanceThemeModeSystem),
+                      icon: const Icon(Icons.brightness_auto, size: 18),
                     ),
                     ButtonSegment(
                       value: ThemeMode.light,
-                      label: Text('浅色'),
-                      icon: Icon(Icons.light_mode_outlined, size: 18),
+                      label: Text(l10n.appearanceThemeModeLight),
+                      icon: const Icon(Icons.light_mode_outlined, size: 18),
                     ),
                     ButtonSegment(
                       value: ThemeMode.dark,
-                      label: Text('深色'),
-                      icon: Icon(Icons.dark_mode_outlined, size: 18),
+                      label: Text(l10n.appearanceThemeModeDark),
+                      icon: const Icon(Icons.dark_mode_outlined, size: 18),
                     ),
                   ],
                   selected: {prefs.themeMode},
@@ -77,36 +84,58 @@ class AppearanceSection extends StatelessWidget {
                   },
                 ),
               ),
+              const Divider(height: 1),
+              // 语言：选项 = arb 文件集 + 跟随系统（见 locale_options.dart）。
+              ListTile(
+                leading: const Icon(Icons.translate_outlined),
+                title: Text(l10n.appearanceLanguageTitle),
+                subtitle: Text(appLocaleLabel(l10n, prefs.localeTag)),
+                trailing: DropdownButton<String?>(
+                  value: resolveAppLocale(prefs.localeTag) == null
+                      // 未知/已失效的标签在 UI 上回落到「跟随系统」。
+                      ? kSystemLocaleTag
+                      : prefs.localeTag,
+                  underline: const SizedBox.shrink(),
+                  items: [
+                    for (final tag in appLocaleTags())
+                      DropdownMenuItem<String?>(
+                        value: tag,
+                        child: Text(appLocaleLabel(l10n, tag)),
+                      ),
+                  ],
+                  onChanged: themeCtrl.setLocaleTag,
+                ),
+              ),
             ],
           ),
         ),
         const SizedBox(height: 16),
-        const _SectionTitle(title: '无障碍'),
+        _SectionTitle(title: l10n.accessibilitySection),
         LiquidGlassSurface(
           child: SwitchListTile(
             secondary: Icon(
               Icons.contrast,
               color: prefs.highContrast ? scheme.primary : null,
             ),
-            title: const Text('高对比模式'),
-            subtitle: const Text('提高文字与控件对比度，覆盖全部主题外观'),
+            title: Text(l10n.accessibilityHighContrastTitle),
+            subtitle: Text(l10n.accessibilityHighContrastSubtitle),
             value: prefs.highContrast,
             onChanged: themeCtrl.setHighContrast,
           ),
         ),
         const SizedBox(height: 16),
-        const _SectionTitle(title: '实验性'),
+        _SectionTitle(title: l10n.experimentalSection),
         LiquidGlassSurface(
           child: SwitchListTile(
             secondary: Icon(
               Icons.water_drop_outlined,
               color: prefs.effectiveLiquidGlass ? scheme.primary : null,
             ),
-            title: const Text('液态玻璃'),
+            title: Text(l10n.experimentalLiquidGlassTitle),
             subtitle: Text(
               prefs.highContrast
-                  ? '高对比模式下已自动关闭（半透明会降低对比度）'
-                  : '底栏与卡片使用 iOS 26 风格 shader 液态玻璃，可能影响性能',
+                  ? l10n.experimentalLiquidGlassDisabledByContrast
+                  : l10n.experimentalLiquidGlassSubtitle,
             ),
             value: prefs.liquidGlass,
             onChanged: prefs.highContrast ? null : themeCtrl.setLiquidGlass,
@@ -116,21 +145,38 @@ class AppearanceSection extends StatelessWidget {
     );
   }
 
-  static String _themeModeLabel(ThemeMode mode) => switch (mode) {
-        ThemeMode.system => '跟随系统',
-        ThemeMode.light => '始终浅色',
-        ThemeMode.dark => '始终深色',
+  static String _themeModeLabel(AppLocalizations l10n, ThemeMode mode) =>
+      switch (mode) {
+        ThemeMode.system => l10n.appearanceThemeModeSystemDetail,
+        ThemeMode.light => l10n.appearanceThemeModeLightDetail,
+        ThemeMode.dark => l10n.appearanceThemeModeDarkDetail,
       };
 }
+
+/// [SeedPalette.id] → 显示名。新增预设色 = 加 id + 在两份 arb 补键 + 补一条 case
+///（漏了会退化为 id 本身，由 `test/appearance_l10n_test.dart` 抓）。
+String seedPaletteLabel(AppLocalizations l10n, String id) => switch (id) {
+      'blue' => l10n.appearanceSeedBlue,
+      'indigo' => l10n.appearanceSeedIndigo,
+      'teal' => l10n.appearanceSeedTeal,
+      'green' => l10n.appearanceSeedGreen,
+      'amber' => l10n.appearanceSeedAmber,
+      'orange' => l10n.appearanceSeedOrange,
+      'rose' => l10n.appearanceSeedRose,
+      'violet' => l10n.appearanceSeedViolet,
+      _ => id,
+    };
 
 class _SeedSwatch extends StatelessWidget {
   const _SeedSwatch({
     required this.palette,
+    required this.label,
     required this.selected,
     required this.onTap,
   });
 
   final SeedPalette palette;
+  final String label;
   final bool selected;
   final VoidCallback onTap;
 
@@ -138,41 +184,47 @@ class _SeedSwatch extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Tooltip(
-      message: palette.label,
+      message: label,
       child: InkWell(
         onTap: onTap,
         customBorder: const CircleBorder(),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: palette.seed,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: selected ? scheme.onSurface : scheme.outlineVariant,
-              width: selected ? 3 : 1.5,
+        child: Semantics(
+          label: label,
+          selected: selected,
+          button: true,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: palette.seed,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected ? scheme.onSurface : scheme.outlineVariant,
+                width: selected ? 3 : 1.5,
+              ),
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: palette.seed.withValues(alpha: 0.45),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
             ),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: palette.seed.withValues(alpha: 0.45),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
+            child: selected
+                ? Icon(
+                    Icons.check,
+                    size: 20,
+                    color:
+                        ThemeData.estimateBrightnessForColor(palette.seed) ==
+                                Brightness.dark
+                            ? Colors.white
+                            : Colors.black,
+                  )
                 : null,
           ),
-          child: selected
-              ? Icon(
-                  Icons.check,
-                  size: 20,
-                  color: ThemeData.estimateBrightnessForColor(palette.seed) ==
-                          Brightness.dark
-                      ? Colors.white
-                      : Colors.black,
-                )
-              : null,
         ),
       ),
     );
