@@ -57,4 +57,29 @@ SchoolDescriptor testSchool() => SchoolDescriptor.fromVerifiedManifest({
       'type': 'cookie',
     },
   },
+  // 与签名 manifest 同形：capabilityCredentials 只对**已声明**的 capability 生效
+  // （schools.dart 的 `_declaredCapabilityIds` 交集，71075d0 起）。凭 fixture 的
+  // ehall-session 凭证驱动核心 capability policy 的凭证闸门。
+  'capabilities': [
+    {
+      'id': 'notice.list',
+      'requestGraph': 'declarative',
+      'emits': {'schema': 'elecon.notice.list', 'schemaVersion': '1.0'},
+    },
+    {
+      'id': 'grades.list',
+      'requestGraph': 'imperative',
+      'emits': {'schema': 'elecon.grades.list', 'schemaVersion': '1.0'},
+    },
+    {
+      'id': 'schedule.week',
+      'requestGraph': 'imperative',
+      'emits': {'schema': 'elecon.schedule.week', 'schemaVersion': '1.0'},
+    },
+    {
+      'id': 'exam.list',
+      'requestGraph': 'imperative',
+      'emits': {'schema': 'elecon.exam.list', 'schemaVersion': '1.0'},
+    },
+  ],
 });

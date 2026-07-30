@@ -10,14 +10,14 @@
 
 | 层 | 已有 | 缺口 |
 |---|---|---|
-| 契约 | `credentials.role: sso-master`、`login.ssoMint` schema；校验器 M1–M5 | `forms` / M6–M7（PR-5）；声明式过期判据（rev-2 §2.9）未进 schema |
-| 内置目录 | `client/lib/catalog/schools.dart`：`ids-cas` + 四下游 ref；`ssoMint` 已含 **ehall + card**（service URL 校准自探针） | **library 未进 mint 白名单**（borrow 逆向/body token 待另案）；energy/xxcapp 未声明；**card 依赖 ADR-020（R2）落地后才可闭环** |
+| 契约 | `credentials.role: sso-master`、`login.ssoMint.forms` schema；校验器 M1–M7 | 声明式过期判据（rev-2 §2.9）未进 schema；body/header 凭证扩展见 Proposed ADR-029 |
+| 内置目录 | 认证事实已迁到验签 manifest；外部 XIDIAN manifest 已声明 **ehall + card** mint | **library 未进 mint 白名单**；energy/xxcapp 仍受 ADR-029 阻塞；card 待真机字段校准与签名发布 |
 | 登录 | 可见 WebView 收割（判据 b）→ `CredentialStore` | 登录后无「服务就绪」编排；无 mint 触发点 |
 | mint 纯逻辑 | `buildMintPlan` / `classifyMintResult` / `SsoMinter` 接口 | — |
-| mint 执行 | `HeadlessSsoMinter` + 单测（fake Transport） | **Session debug 已装配**（M2）；隐藏 WebView minter 未做；`via` adapter mint 未做 |
+| mint 执行 | `HeadlessSsoMinter`、隐藏 WebView minter + fake Transport 测试；Session debug 已装配 | `via` adapter mint 未做；红线 #1 真机签收仍待人工执行 |
 | 降级阶梯 | ADR-017 §2.7 已定「少模拟优先」 | PR-5 编排器未实现 |
-| adapter | `school-xidian` = **parser** 教务通知 only | 无 ehall/card/library **fetch** 能力；无 catalog 签名包发布闭环 |
-| 逆向夹具 | `adapters_tests/XIDIAN/*`（ids/ehall/card/…） | 精确 CAS `service=` 未回填 manifest |
+| adapter | 外部 `school-xidian` 已含 E-Hall、空教室和 card imperative 能力 | card 真机字段校准；library/energy 未接；无最新版 catalog 签名包发布闭环 |
+| 逆向夹具 | `adapters_tests/XIDIAN/*`（ids/ehall/card/energy/aircon/…） | card 脱敏原响应、energy 校园网句柄链和 aircon token 获取方式待补 |
 
 **结论**：签票**内核草案在**，全闭环缺三块——**(A) 精确声明校准 (B) 会话侧 ensure+mint 编排 (C) XIDIAN fetch adapter + 取数 UI 路径**。
 

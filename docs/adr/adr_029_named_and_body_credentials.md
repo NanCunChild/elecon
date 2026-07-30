@@ -38,7 +38,7 @@ XIDIAN 空调可预留：
 }
 ```
 
-manifest 只声明引用，不包含 token 值。凭证如何取得必须另有核心登录、导入或 mint 流程。
+manifest 只声明引用，不包含 token 值。若 token 来自学校响应中的非标准 header/body 字段，须由 ADR-026 的 Broker 响应凭证收割与投影层写入该 ref；WebView 登录、人工导入或 mint 等其他来源仍走各自核心流程。
 
 ### 2.2 固定 Body 模板与句柄注入
 
@@ -68,7 +68,7 @@ manifest。动态表具列表若要求依值循环，需另行决定“受限 de
 
 ## 4. 未决事项
 
-1. `x-access-token` 的可信取得方式：WebView 收割、扫码绑定还是人工导入。
+1. `x-access-token` 的上游来源流程：WebView、扫码绑定还是其他学校流程；一旦值出现在网络响应中，按 ADR-026 收割，不由 adapter 读取。
 2. 用户标识是否建模为 credential，还是登录身份句柄的独立类型。
 3. 动态表具循环的最小非图灵完备表达。
 4. body 注入与 actuator 请求的组合门禁；物理副作用另见 ADR-030。

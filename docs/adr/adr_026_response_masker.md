@@ -1,135 +1,242 @@
-# ADR-026：校本响应凭证 Masker
+# ADR-026：Broker 响应凭证收割与投影（Response Masker）
 
-- **状态**：延后（Deferred）。本议题将在未来一段时间内保持暂缓；本文只记录问题边界、候选方向和恢复条件，**不构成已接受决策，不授权修改 Broker、契约或签名 bundle**。
-- **日期**：2026-07-27
-- **适用范围**：Broker 向 declarative / imperative adapter 交付响应前，对人工确认的校本特殊凭证载体执行定向掩码。
-- **依赖**：[`ADR-000`](./adr_000_abstract.md)（可信核心与凭证边界）、[`ADR-009`](./adr_009_fetch_credential.md)（响应脱敏与 body 已接受风险）、[`ADR-018`](./adr_018_adapter_distribution.md)（签名 bundle）、[`ADR-023`](./adr_023_declarative_dataflow.md)（不透明句柄与回显剥离）。
+- **状态**：提议（Proposed，未授权实现）。本文将原 Deferred 议题重构为候选正式方案；须经 owner 人工安全评审并接受后，方可修改 Broker、契约、签名 bundle 或正式 adapter。
+- **日期**：2026-07-27；2026-07-30 重写职责与迁移方向
+- **适用范围**：Broker 从学校响应中提取非标准凭证敏感值、在核心内建立受控引用，并向 declarative / imperative adapter 交付投影响应。
+- **触及红线**：#1、#5、#6、#10。凭证收割、存储、句柄、注入、响应投影和签名发布均属人工主导的承重路径，AI 不得独自闭环。
+- **依赖**：[`ADR-000`](./adr_000_abstract.md)（可信核心与凭证边界）、[`ADR-009`](./adr_009_fetch_credential.md)（响应脱敏）、[`ADR-012`](./adr_012_credential_store.md)（凭证存储）、[`ADR-018`](./adr_018_adapter_distribution.md)（签名 bundle 与发布门）、[`ADR-023`](./adr_023_declarative_dataflow.md)（不透明句柄）、[`ADR-029`](./adr_029_named_and_body_credentials.md)（命名 header / body 注入）。
 - **工程说明**：[`docs/reference/response_masker_plan.md`](../reference/response_masker_plan.md)。
+
+若本文被接受，将显式修订 ADR-009 §2 第 5 条的 body 透传边界：普通业务 body 仍可在投影后交给 adapter；经 official 审核分类的 credential-equivalent 不再属于可接受透传风险，必须由本文机制收割或删除。未知、漏报字段仍属于 §2.6/§5.2 的供应链残余风险。
+
+本文接受时还将显式修订 ADR-018 的 bundle 内容说明：`masker.json` 成为可选但受 host/version gate 约束的签名运行时文件；现有 signer 已覆盖 `.json`，但加载、校验和发布治理仍须按本文补齐。
 
 ## 1. 背景
 
-现有 Broker 对结构化 HTTP 凭证载体采用强制隔离：`Set-Cookie` 进入核心 CookieJar，响应头按 allowlist 交付，重定向由核心逐跳处理，声明过的 query credential 由核心收割。ADR-009 同时明确接受 response body 原样透传的残余风险，因为 JSON、HTML、脚本和二进制中不存在完备的通用凭证识别算法。
+学校协议并不总把会话材料放在标准 `Set-Cookie`、`Authorization` 或 OAuth 回调中。真实接口可能把可鉴权、重放或延续会话的值放在：
 
-人工审核真实学校接口时，可能获得比通用 Broker 更具体的知识：某个 URL 的 `ETag`、JSON 字段、HTML 属性或文本片段具有鉴权、重放或会话延续效果。若该知识只留在 reviewer 经验、fixture 或测试说明中，运行时仍会把相同字段交给 adapter。
+- `ETag`、自定义响应头；
+- JSON 固定字段；
+- HTML 属性、脚本变量或文本片段；
+- URL、Base64、hex 或校本编码结构。
 
-本议题讨论是否把这些人工确认结论固化成一个可配置 Response Masker，在 Broker 向 adapter 交付响应前定向替换已知凭证等价物，作为特殊学校场景的最后一道纵深防御。
+现有 imperative adapter 可以从完整 body 中用正则或 JSON 解析自行取得这些值，再拼入后续请求。这虽然能适配混乱协议，却让 adapter 同时承担了凭证识别、取值、生命周期、注入和业务归一化，扩大了凭证可见面，也使 declarative 迁移无法完成。
 
-## 2. 暂定方向（未接受）
+仅在 adapter 交付前替换字符串也不够。若 adapter 的后续请求仍依赖该值，单纯 Masker 会破坏流程，迫使 adapter 绕过它重新取值。因此本 ADR 不再把 Masker 定义为可有可无的后置过滤器，而把它定义为一个完整的 **Broker 响应凭证收割与投影层**：核心先取得并托管值，再删除 adapter 响应中的原值，后续由 Broker 受控注入。
 
-以下是恢复讨论时的当前基线，不是已生效架构：
+## 2. 决策
 
-1. **人工审核是分类信任锚。** 不尝试用词表、熵、字段名或正则自动证明某值是凭证；fixture 仅提供发现与复核证据。
-2. **规则放在独立 `masker.json`。** 文件随对应 adapter bundle 一起进入 digest 和 official 签名，不塞进 capability manifest。
-3. **Masker 由可信核心执行。** adapter 不能读取 Masker 前的交付响应，也不能在运行时关闭规则。
-4. **两种 requestGraph 共用一层。** declarative 和 imperative 必须通过同一个 Broker delivery firewall，不能分别实现可绕过的旁路。
-5. **先核心使用、后交付。** Cookie/redirect/query 收割、核心 bind 等动作在 Masker 前完成；adapter 只能看到 Masker 后的响应。
-6. **多格式、封闭能力面。** 候选 selector 包括 header 名、受限 JSONPath、HTML selector 和安全正则 capture；不开放任意代码或任意 replacement。
-7. **固定替换。** body 命中值替换为核心定义的固定 sentinel；header 目标直接删除。
-8. **失败记录并继续。** selector 缺失、解析失败或匹配异常不阻断 capability，只产生不含敏感值的安全事件。
-9. **规则取并集。** 多条匹配规则只能增加掩码，不存在覆盖或取消。
-10. **配置与代码原子签名。** catalog 指向完整 bundle digest；历史规则删除和旧泄漏版本回退须有显式治理。
+### 2.1 定位：功能边界优先，安全收益随之成立
 
-## 3. 候选数据流
+Response Masker 承担三项不可拆分的职责：
+
+1. **Capture（收割）**：按 official 人工审核确认的签名策略，从原始响应中提取凭证敏感值。
+2. **Commit（托管）**：把值写入 Credential Store、建立 request-local opaque handle，或在确认无需后续使用时直接丢弃。
+3. **Project（投影）**：从交给 adapter 的响应中删除或替换原值，并清理失效的实体元数据。
+
+其首要必要性是功能分层：adapter 负责学校业务数据归一化，核心负责凭证生命周期和后续注入。adapter 不再需要从未过滤 body 中正则提取凭证。减少凭证暴露是该分层带来的直接安全收益，而不是唯一立项理由。
+
+目标态下，除 `Set-Cookie`、redirect/query harvest 等已有通用结构化收割器外，**所有经人工分类、来自网络响应并供后续认证或请求使用的非标准凭证敏感值都必须进入本层**；正式 adapter 不保留自行取值的平行路径。
+
+### 2.2 人工签名是分类信任锚，不是原值可见许可
+
+系统不尝试用字段名、熵、词表或通用正则自动证明某值是凭证。字段分类来自 official adapter 的社区规范审查、fixture 证据、人工安全复核和离线签名门。
+
+official 签名表示维护者认可该 adapter 代码与响应策略的组合，不表示 adapter 代码应获得核心持有的全部原值。Broker 仍按最小权限执行签名策略：核心读取值，adapter 只看到完成投影后的业务响应。
+
+### 2.3 三类处理目标
+
+每条 capture 规则必须静态声明唯一目标，不得由 adapter 在运行时决定：
+
+| 目标 | 核心形态 | 生命周期 | 典型用途 |
+|---|---|---|---|
+| `credential` | Credential Store 中的具名 credential ref | 跨执行，遵循更新、失效、撤销策略 | session/token 刷新后供后续 capability 注入 |
+| `handle` | Broker opaque handle | 单次 capability 执行 | ADR-023 跨请求提取、计算与注入 |
+| `redact` | 不保存 | 当前响应 | 只需阻止交付的敏感回显或一次性材料 |
+
+`credential` 的名称、类型和 scope 必须来自已签名 manifest 的既有声明；Masker 规则不能动态创建凭证名、扩大 scope 或自行决定持久化位置。`handle` 只能流向静态声明的注入汇聚点，adapter 不得解引用。
+
+首期持久 `credential` capture **仅允许 client-direct**，沿用 ADR-012 §2.6 的 canonical store 边界。TS Broker 仍需实现同语义 Capture / Project 以保证双端确定性，也可持有 execution-local handle，但 public 不处理私密响应，campus-relay 在其凭证零落盘与回传方案另行接受前不得持久化 capture 值。
+
+凭证的取得端点不要求与后续 injection scope 相同。已验签 `masker.json` 中“固定 source URL scope -> 既有 credential ref”的绑定本身就是 acquisition 授权：source scope 必须是 manifest `network.allow` 的子集，destination ref 必须已存在；它只能更新该 ref，不能改变该 ref 的 injection scope。若未来需要多个独立 policy pack，再另行拆出 acquisition scope 契约，不在首期 manifest 重复声明。
+
+### 2.4 统一且不可绕过的响应事务
+
+declarative 和 imperative 必须经过同一个 Broker delivery firewall：
 
 ```text
-adapter request declaration / ctx.fetch
+adapter request declaration / ctx.fetch / action entry
   -> Broker 注入决策与 Transport
-  -> Cookie / redirect / query 等核心处理
-  -> declarative bind 脱敏前抽取
-  -> 通用响应头 allowlist
-  -> Response Masker（按已验签 adapter 身份 + capability + final URL）
-  -> dataflow 回显剥离（适用时）
+  -> Cookie / redirect / query 等结构化核心处理
+  -> Response Credential Policy 匹配
+  -> Capture：从原始响应提取值
+  -> Validate：类型、数量、大小、scope、目标与生命周期
+  -> Project：删除/替换 adapter-visible 响应中的原值
+  -> Commit：原子提交 credential / opaque handle
+  -> dataflow 回显剥离
   -> adapter
 ```
 
-Masker 不应进入 Transport 层，因为核心仍需在掩码前读取 `Set-Cookie`、redirect、bind 和其他受控值；也不应只放在 adapter runtime 桥接层，否则 declarative 与 imperative 容易产生语义漂移或旁路。
+Capture、Validate、Project 和 Commit 是一个交付事务。任何必需步骤失败，响应不得进入 adapter；不得出现“凭证已经写入但投影失败仍交付原 body”或“投影成功但句柄缺失后继续发未认证请求”的半完成状态。
 
-## 4. 为什么不只用词表
+首期每个响应事务最多更新 **一个持久 credential ref**；所有 handle 先在 execution-local staging generation 中完成预算校验，不直接修改活动表。实现先准备投影响应与 staged handles，再执行一次安全存储原子替换，成功后以不可失败的内存 swap 激活 handles。安全存储写入后若进程崩溃，允许出现“新 credential 已保存但本次响应未交付”的安全侧偏差；不得出现原响应泄漏或部分持久凭证集合。若未来单响应必须原子更新多个持久 ref，须先为 Credential Store 增加 generation/CAS 与崩溃恢复设计，不能放宽本文语义。
 
-词表和 token pattern 无法提供完备保证：
+日志不得包含原值、命中片段、原始 body、带敏感 query 的 URL 或可推导凭证长度的信息。
 
-- 学校可使用任意字段名和随机值；
-- 凭证可能被 URL、Base64、hex、HTML entity 或自定义算法编码；
-- 普通业务 ID 与随机 token 在内容上不可判别；
-- 值可能分片、拼接或嵌入脚本；
-- 允许响应头也可能被服务端复用为凭证载体。
+### 2.5 失败语义：功能与安全共同 fail-closed
 
-pattern scanner 仍可用于 fixture、最终 envelope 和日志的审计，但只能告警，不能成为红线 #1 的唯一安全边界。
+当 adapter 的功能依赖被收割值时，学校字段变化本来就会使旧 adapter 不可用。继续交付原响应不会恢复正确功能，只会让敏感值重新进入 adapter。因此：
 
-## 5. 为什么不只依靠 adapter 自报
+- 必需 selector 未命中、解析失败、数量异常：整条 capability fail-closed；
+- 类型、大小、scope 或目标校验失败：fail-closed；
+- 投影、Credential Store 或 opaque handle 提交失败：fail-closed；
+- Masker 内部异常：fail-closed；
+- 响应格式变化：等待 adapter 代码与响应策略在同一签名 bundle 中原子更新。
 
-adapter 声明适合描述它需要的 capability，不适合独自裁定什么是秘密。恶意或有缺陷的 adapter 可以同时漏掉字段识别与掩码声明。
+规则可以显式声明只用于 `redact` 的可选目标，但“可选”不得用于认证是否存在、是否注入或是否发送请求等会形成凭证预言机的路径。可选规则的缺失语义须在契约接受前逐类列举，默认仍为必需。
 
-当前候选方案仍选择让 `masker.json` 随 adapter 签名，理由是：
+### 2.6 对不配合 adapter 的边界
 
-- 规则与 adapter 解析行为需要原子兼容；
-- 学校接口变化时可以随 adapter 热更新，不要求 App 发版；
-- official 签名门已经是人工审核结论进入 release 的信任边界；
-- 签名覆盖后，运行时 adapter 不能单独删除或篡改规则。
+本层能强制保护的是 **已登记响应策略命中的值**：adapter 无法读取 Masker 前的响应，无法关闭规则，也无法把已收割值从核心读回。
 
-该选择不消除同源遗漏风险。它只把信任锚明确放在 official 人工审核与签名门，而不是 adapter 作者自律。若未来需要抵御“已签名 bundle 仍遗漏规则”，应重新评估独立签名 policy pack 或核心内置策略；本 Deferred ADR 不预先接受该扩面。
+本层不能从任意 body 中完备判断所有秘密。若 official adapter 作者故意不登记某个非标准凭证字段，坚持把它伪装成普通业务字段并从投影响应中自行正则提取，Broker 无法仅靠通用运行时识别其语义；这不是 selector 技术可以解决的问题。
 
-## 6. 已知代价与残余风险
+该威胁由 official 供应链治理承接：
 
-### 6.1 “记录并继续”不是强保证
+- 社区规范禁止 adapter 自行提取、保存、日志记录或注入凭证敏感值；
+- scanner 检测 token/session/cookie、认证 header、跨请求值传递和高风险正则等候选模式，只作审查触发器，不作自动分类证明；
+- 人工审查原始协议证据、脱敏 fixture、代码、响应策略和后续注入闭环；
+- 离线签名者只签署完成闭环检查的 bundle；
+- 发现绕过后拒签或吊销，不以 Masker 的存在替代人工责任。
 
-选择 availability-first 的失败行为后，接口格式漂移、parser 失败或 selector 漏配可能让原值继续进入 adapter。因此 Masker 只能称为 best-effort 防线，不能宣称关闭 ADR-009 的 body 风险。
+换言之，签名门负责“分类是否诚实、完整”，Broker 负责“已签分类是否被不可绕过地执行”。两者共同组成边界，任何一方都不能替代另一方。
 
-若未来希望 Masker 承担红线 #1 的强保证，必须重新评审并至少选择一种更强语义：关键规则 fail-closed、解析失败丢弃 body，或禁止未投影的认证响应进入 adapter。
+### 2.7 配置与 adapter 原子发布
 
-### 6.2 可能破坏 adapter 流程
+响应策略放在独立 `masker.json`，与 `manifest.json`、adapter 代码一起进入 bundle digest 和 official 签名。选择独立文件是为了保持 capability manifest 聚焦能力声明，同时允许策略随学校接口热更新。
 
-某些 imperative adapter 当前必须读取 body token 才能完成后续请求。Masker 若先隐藏该值，会直接破坏功能。启用规则前应将这类值迁移为 ADR-023 的核心内不透明句柄与静态注入；无法迁移时须由人工评审决定是否接受 adapter 可见的残余风险。
+发布门必须验证：
 
-### 6.3 多格式实现成本
+- 每个 active credential observation 均闭合到 capture 规则、核心目标和投影测试；
+- adapter 是否仍包含自行提取或传递同一敏感值的逻辑；
+- 与上一 official 版本相比，规则删除、scope 放宽和目标生命周期变化均有显式人工复核；
+- request URL、`network.allow`、credential scope、bind selector 或认证流程变化会触发响应策略复审；
+- catalog 原子指向完整 bundle digest；
+- 已确认泄漏或不兼容的旧版本通过 revocation / `minVersion` 禁止回退。
 
-JSON、HTML 和文本规则须在 Dart / TS 两端保持 selector、Unicode offset、序列化和失败语义一致。HTML 解析器复用、正则 span、实体头清理和 body 字节稳定性均需 probe 后才能确定，不能仅凭文档假设。
+签名保证代码与策略不可被分开篡改；validator、policy diff 和人工签署清单保证“应有规则不能无声消失”。
 
-### 6.4 签名与版本治理扩大
+### 2.8 封闭 selector 与动作
 
-`masker.json` 进入 bundle 将修改 bundle 文件集合、schema、validator、catalog 兼容和发布检查，触碰红线 #6 与签名承重路径。旧签名版本可能不含新发现规则，须结合 revocation / `minVersion` 防回退。
+策略只允许封闭、可跨端确定执行的 selector 和动作，不开放任意代码或自定义 replacement：
 
-### 6.5 人工审核无法证明无遗漏
+- header：大小写不敏感的固定头名，投影时删除整个头；
+- JSON：受限 JSONPath，只命中标量；
+- text/script：受限线性安全正则和固定 capture group；
+- HTML：待真实案例和 Dart/TS probe 证明可控后再加入，不作为首期前置能力。
 
-fixture 只能覆盖已观察路径，测试只能证明 synthetic canary 在给定样本中被掩码。它们不能证明学校所有端点、所有响应分支和未来格式都安全。
+body 命中值使用核心固定 sentinel，建议为 `__ELECON_MASKED__`。body 改写后删除不再可信的 `Content-Length`、`Content-Encoding`、`ETag` 等实体元数据；具体字节、charset 和编码语义由共享 golden 钉死。
 
-## 7. 暂缓理由
+### 2.9 空调操作示例
 
-本议题当前不进入实现，原因是：
+聚好联空调可作为命名 header credential 的小型闭环：
 
-1. 尚无经过脱敏、可重复验证的真实学校 ETag/body credential 试点，无法校准规则表达力。
-2. 尚未证明多格式 Masker 在 Dart / TS 间可低成本保持确定性。
-3. “记录并继续”保可用性但无法升级安全不变量，收益与复杂度需要真实案例验证。
-4. `masker.json` 将同时扩张契约、签名 bundle 和 Broker 交付 seam，不应在缺少需求证据时提前建设。
-5. ADR-023 的 opaque handle 和源 body 可见性仍有边界需要先行复核，Masker 不应掩盖该基础问题。
+```text
+假设登录/绑定响应中的非标准 token
+  -> Masker capture 到 manifest 已声明的 aircon-session
+  -> Credential Store 按 gxkt.juhaolian.cn scope 托管
+  -> token 从交付响应删除
+  -> adapter 只解析设备和状态业务字段
+  -> climate.status 经只读 capability；climate.command 经专用 action 入口
+  -> Broker 注入 x-access-token
+```
 
-## 8. 恢复条件
+若 ADR-029 被接受，对应 manifest credential 可声明为：
 
-同时满足以下条件后，方可把本 ADR 从 Deferred 恢复为 Proposed 并进入人工评审：
+```json
+"aircon-session": {
+  "scope": ["https://gxkt.juhaolian.cn/*"],
+  "type": "header",
+  "headerName": "x-access-token"
+}
+```
 
-1. 至少一个真实学校案例证明 allowlisted header 或 body 固定字段具有学生凭证等价效果。
-2. 案例 fixture 已彻底脱敏，只保留 synthetic canary，且不含真实学生数据。
-3. 已说明该值是否被 adapter 后续流程使用，以及能否迁移为核心不透明句柄。
-4. 完成 JSON、HTML、安全正则在 Dart / TS 的 selector 与序列化 probe。
-5. 明确 parser 失败、selector 缺失、多次命中和 body 修改后实体头的最终语义。
-6. 明确 `masker.json` 的 schema、bundle digest、版本回退和规则删除治理。
-7. 准备 Broker delivery firewall 的不可绕过设计与 declarative / imperative 端到端测试计划。
-8. 由人工作出是否继续采用“记录并继续”的风险接受结论。
+Masker 规则只能把已匹配值提交到 `aircon-session`，不能在规则中重定义 header 名或扩大 scope。若 ADR-030 被接受，`climate.command` 仍受其中的用户手势、单次 mutation、禁重试和结果核验约束；Masker 不授予物理副作用能力。该流程只是候选小例子，不声称当前已验证聚好联实际从某个固定响应字段返回 token。
 
-## 9. 若恢复后的预期落地范围
+## 3. 与 ADR-023 的关系
 
-若本 ADR 未来被接受，预计至少涉及：
+ADR-023 负责 declarative capability 内 request-local 的提取、计算和静态注入；本 ADR 负责 declarative / imperative 共用的响应凭证分类、核心托管和 adapter-visible projection。
+
+两者复用 selector、句柄类型、资源限额和注入 seam，但不合并为同一个 ADR：
+
+- 需要跨请求但不持久化的普通值继续由 ADR-023 `bind` 提取。若该 bind 被人工分类为 credential-sensitive，`masker.json` 只引用既有 `bind[].var` 并增加投影义务；Broker 在 Capture 阶段执行该 bind **一次**，同时产出 staged handle 和投影响应，不复制 selector、不重复计量；
+- 需要跨执行保存的值进入 Credential Store，不属于 ADR-023；
+- imperative 响应同样必须投影，不属于 ADR-023 适用范围；
+- ADR-023 产生敏感 bind 的源响应也必须投影，不能只剥离下游注入回显。
+
+ADR-023 当前“中间值从不进 adapter”的叙述与源响应交付实现之间存在缺口。本 ADR 实施前必须由人工修订并测试该基础路径，不能把它留作隐含假设。
+
+## 4. 大重构与迁移决策
+
+本 ADR 采用一次明确的能力迁移，不长期保留“adapter 自行取凭证”和“核心收割”两套正式路径：
+
+1. 盘点所有 adapter、探针和 fixture 中从 header/body/URL 正则或 JSON 提取 token、session、code、openid、client id 等跨请求材料的逻辑。
+2. 人工分类：普通业务数据、持久 credential、request-local handle、仅需 redact 的敏感值。
+3. 为后三类建立 observation、`masker.json` 规则、核心目标和 raw-to-delivered replay。
+4. 把后续请求改为 Broker credential injection 或 ADR-023 opaque handle injection。
+5. 删除 adapter 对原值的读取、保存、正则匹配、日志和手工请求拼装。
+6. 双端 Broker、validator、签名发布门和 scanner 全部就绪后，再迁移正式 adapter。
+7. 全量迁移和人工签收完成后，发布门拒绝新增已知的 adapter-side credential extraction 模式；真实协议例外必须重新开安全评审，不得以兼容旧代码为由永久旁路。
+
+迁移是大重构，但应按可审的小 PR 落地：先契约和纯函数，再统一 delivery firewall，再 Credential Store / handle 接线，再逐 adapter 迁移，最后启用发布闸门。任何阶段都不得由 AI 独自完成凭证路径安全签收。
+
+## 5. 安全保证与残余风险
+
+### 5.1 接受后的保证
+
+- 已签名策略命中的凭证值只存在于可信核心；
+- adapter 不能读取 Masker 前响应、关闭规则或解引用核心 handle；
+- 必需字段漂移不会降级为原 body 交付，而会令 capability 失败；
+- adapter、策略与版本治理原子发布；
+- 后续注入继续受 credential scope、静态汇聚点和 action policy 约束。
+
+### 5.2 明示残余风险
+
+- 人工审核、fixture 和 observation 可能同时漏掉一个实际凭证字段；
+- 恶意或有缺陷的 official adapter 可能把未登记秘密伪装成业务字段自行解析；
+- 学校可能新增尚未被人工分类的凭证载体；
+- selector 或跨端实现缺陷可能导致 capability 拒绝服务；
+- 签署者可能错误批准不完整策略。
+
+前两类不能靠通用 Masker 完备消除，由社区规范、scanner、人工审查、签名责任和吊销治理缓解。本文不把 official 签名描述为数学证明，也不以无法完备识别未知秘密为由放弃对已知秘密的强制隔离。
+
+## 6. 契约与实现范围
+
+接受后预计至少涉及：
 
 - `contract/response-masker.schema.json` 与共享 golden；
-- `tools/` validator、scanner / fixture 审核闭环；
-- adapter bundle include、digest、签名和加载器；
-- Dart / TS 对称 Masker；
-- Broker 统一 delivery firewall；
+- `masker.json` 的 capture target、selector、cardinality 和资源限额；
+- tools validator、policy diff、scanner 与 fixture observation 闭环；
+- adapter bundle include、digest、验签后加载和旧版本吊销；
+- Dart / TS 对称 Capture / Project 纯函数；
+- Broker 统一且不可绕过的 delivery firewall；
+- Credential Store 事务提交与 ADR-023 opaque handle 接线；
 - raw Transport -> Broker -> adapter replay；
-- 发布安全清单与旧版本回退治理。
+- adapter 全量迁移与发布安全清单。
 
-这些实现触碰凭证、Broker、契约和签名承重路径，必须人工主导、至少一名人工审阅并附安全检查清单；AI 不得独自闭环。
+所有 schema 新增保持向后兼容，但旧客户端遇到声明 Masker 要求的新 bundle 时必须经 host/version gate 拒载，不能忽略 `masker.json` 后继续运行。
 
-## 10. 决策结果
+## 7. 接受前必须勾决
 
-**Deferred：不实现。** 保留问题、候选方向和工程说明，等待真实案例与跨端 probe。ADR 状态改变前，任何 PR 不得引用本文为修改 Broker、`contract/` 或签名 bundle 的授权依据。
+1. `masker.json` schema 与 bundle 最低 host/version gate。
+2. `credential` capture 的覆盖、过期、撤销、来源和原子提交语义。
+3. `handle` 与 ADR-023 bind 的统一或映射方式，及源响应投影修订。
+4. selector 缺失、多次命中、非法 body、字符编码和实体头清理语义。
+5. 可选 `redact` 规则是否首期存在；若存在，允许的封闭场景。
+6. policy diff、规则删除 waiver、release ledger 和旧版本吊销流程。
+7. adapter-side credential extraction scanner 的告警规则与人工处置标准。
+8. 首批迁移清单及至少一个脱敏真实案例；空调可以作为命名 header 注入的小例子，但不得使用真实 token、IMEI 或学生数据。
+
+## 8. 决策结果
+
+**Proposed：等待 owner 人工安全评审。** 本文已确定候选精神和职责：Response Masker 是 Broker 的响应凭证收割与投影层，不是 fail-open 的附加字符串过滤器。ADR 被正式接受前，不授权修改 Broker、`contract/`、签名 bundle 或正式 adapter；接受后按 §4 的大重构迁移，不保留 adapter 自行读取已分类凭证的长期兼容路径。
