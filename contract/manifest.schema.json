@@ -141,7 +141,7 @@
           },
           "type": {
             "type": "string",
-            "description": "注入方式：cookie=附加 Cookie 头；header=附加 Authorization 头；query=由 Broker 写入 URL query（ADR-020 §2.2）。",
+            "description": "注入方式：cookie=附加 Cookie 头；header=附加命名头（缺省 Authorization，可由 headerName 指定，ADR-029 §2.1）；query=由 Broker 写入 URL query（ADR-020 §2.2）。",
             "enum": ["cookie", "header", "query"]
           },
           "queryParam": {
@@ -149,6 +149,12 @@
             "description": "type=query 时由 Broker 注入/收割的 query 参数名（ADR-020 §2.2）；组合约束由 validator Q1–Q3 强制。",
             "minLength": 1,
             "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "headerName": {
+            "type": "string",
+            "description": "type=header 时 Broker 注入的头名（ADR-029 §2.1）。缺省 Authorization。须为静态签名字面量；🔒 禁凭证头（Cookie/Set-Cookie）、Host、Content-Length、Connection、代理认证头及 hop-by-hop 头——凭证只由 broker 按声明注入，adapter 自设同名头先被剥除（validator CH1–CH3，红线 #1）。",
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
           },
           "role": {
             "type": "string",

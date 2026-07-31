@@ -1,6 +1,8 @@
 # Response Masker 重构与迁移计划
 
 > **状态：ADR-026 已接受，分阶段实施。** 本文展开 Broker 响应凭证收割与投影层的工程方案。核心、凭证、契约与签名路径的每个实施阶段仍须按慢车道完成人工安全复核。
+>
+> **B1 拍板（2026-07-31）**：手写 JSON 定位 + 剪接、重复键 fail-closed、DEV 结构诊断 —— 见 [`response_masker_json_locator.md`](./response_masker_json_locator.md)。签收对照 [`response_masker_signoff_checklist.md`](./response_masker_signoff_checklist.md)。
 
 ## 1. 目标
 
@@ -338,6 +340,8 @@ CI / release tooling 必须检查：
 - review 材料不进入发布包。
 
 ## 12. 人工签收要求
+
+> 逐项签收清单、已拍板实施决议（A1–A6）与后续阶段收尾见 [`response_masker_signoff_checklist.md`](./response_masker_signoff_checklist.md)。
 
 ADR-026 触碰凭证、Broker、契约和签名承重路径。实现和测试必须人工主导，并至少包含：
 

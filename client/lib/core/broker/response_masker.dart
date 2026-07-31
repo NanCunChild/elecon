@@ -17,6 +17,11 @@
 /// JSON 投影用**按位剪接**而非「解析→改树→重序列化」：只替换命中标量的源码区间，其余字节原样
 /// 保留。JS 与 Dart 字符串同为 UTF-16 码元索引，故区间下标两端一致，剪接结果逐字节相同；
 /// 重序列化会在数字 / 浮点 / 转义上漂移，剪接从根上回避（§2.8「具体字节由共享 golden 钉死」）。
+///
+/// 明文边界（A3）：body 须为传输层解码后的 UTF-8 明文；本引擎**绝不猜测编码**，非法 / 非 UTF-8
+///   由传输层→Broker 边界 fail-closed。
+/// 收割值语义（A5）：capture **不做数值语义**——数字 / 布尔按源码区间取文本、字符串仅反转义，
+///   凭证原值逐字节保真。
 library;
 
 import 'dart:convert';
@@ -347,28 +352,38 @@ _JsonSpan _navigate(String s, int at, List<Object> tokens, int depth) {
     if (i < s.length && s[i] == '}') {
       throw const MaskerException('capture_not_found', '键不存在');
     }
+    // 扫完**整个**对象层再决定：路径导航所经此层出现任一同名键 ≥2 次即 fail-closed
+    // （capture_duplicate_key，无 first/last、不消歧；责任在学校侧畸形载荷，
+    // json_locator §2）。命中键记录其值起点后仍继续扫描，以覆盖「命中在前、重复在后」。
+    final seen = <String>{};
+    var matchAt = -1;
     while (true) {
       if (i >= s.length || s[i] != '"') {
         throw const MaskerException('capture_not_json', '对象键非字符串');
       }
       final keyEnd = _scanString(s, i);
       final key = _parseJsonStringToken(s.substring(i, keyEnd));
+      if (!seen.add(key)) {
+        throw const MaskerException('capture_duplicate_key', 'JSON 对象重复键');
+      }
       i = _skipWs(s, keyEnd);
       if (i >= s.length || s[i] != ':') {
         throw const MaskerException('capture_not_json', "对象键后缺 ':'");
       }
       i = _skipWs(s, i + 1);
-      if (key == tok) return _navigate(s, i, tokens, depth + 1);
+      if (key == tok) matchAt = i;
       i = _skipWs(s, _scanValue(s, i));
       if (i < s.length && s[i] == ',') {
         i = _skipWs(s, i + 1);
         continue;
       }
-      if (i < s.length && s[i] == '}') {
-        throw const MaskerException('capture_not_found', '键不存在');
-      }
+      if (i < s.length && s[i] == '}') break;
       throw const MaskerException('capture_not_json', '对象格式错误');
     }
+    if (matchAt == -1) {
+      throw const MaskerException('capture_not_found', '键不存在');
+    }
+    return _navigate(s, matchAt, tokens, depth + 1);
   }
   if (i >= s.length || s[i] != '[') {
     throw const MaskerException('capture_not_found', '路径期望数组');

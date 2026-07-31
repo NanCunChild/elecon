@@ -5,7 +5,8 @@
 - **适用范围**：Broker 从学校响应中提取非标准凭证敏感值、在核心内建立受控引用，并向 declarative / imperative adapter 交付投影响应。
 - **触及红线**：#1、#5、#6、#10。凭证收割、存储、句柄、注入、响应投影和签名发布均属人工主导的承重路径，AI 不得独自闭环。
 - **依赖**：[`ADR-000`](./adr_000_abstract.md)（可信核心与凭证边界）、[`ADR-009`](./adr_009_fetch_credential.md)（响应脱敏）、[`ADR-012`](./adr_012_credential_store.md)（凭证存储）、[`ADR-018`](./adr_018_adapter_distribution.md)（签名 bundle 与发布门）、[`ADR-023`](./adr_023_declarative_dataflow.md)（不透明句柄）、[`ADR-029`](./adr_029_named_and_body_credentials.md)（命名 header / body 注入）。
-- **工程说明**：[`docs/reference/response_masker_plan.md`](../reference/response_masker_plan.md)。
+- **工程说明**：[`docs/reference/response_masker_plan.md`](../reference/response_masker_plan.md)。  
+- **JSON 定位 / 重复键 / DEV 诊断决议**：[`docs/reference/response_masker_json_locator.md`](../reference/response_masker_json_locator.md)（B1 拍板，2026-07-31）。
 
 本文接受后，显式修订 ADR-009 §2 第 5 条的 body 透传边界：普通业务 body 仍可在投影后交给 adapter；经 official 审核分类的 credential-equivalent 不再属于可接受透传风险，必须由本文机制收割或删除。未知、漏报字段仍属于 §2.6/§5.2 的供应链残余风险。
 
@@ -56,6 +57,8 @@ official 签名表示维护者认可该 adapter 代码与响应策略的组合�
 
 `credential` 的名称、类型和 scope 必须来自已签名 manifest 的既有声明；Masker 规则不能动态创建凭证名、扩大 scope 或自行决定持久化位置。`handle` 只能流向静态声明的注入汇聚点，adapter 不得解引用。
 
+**规范推荐（A1，2026-07-31）：`redact` 语义为「仅投影、不托管、不注入」——命中值既不写 Credential Store 也不建 handle。若某敏感值后续不需要参与认证或请求，adapter 作者应优先用 `redact` 而非 `handle`，以最小化核心对该值的留存与接触面。预期 `redact` 用例应少于 `handle`；本推荐须落入 adapter 贡献规范。**
+
 首期持久 `credential` capture **仅允许 client-direct**，沿用 ADR-012 §2.6 的 canonical store 边界。TS Broker 仍需实现同语义 Capture / Project 以保证双端确定性，也可持有 execution-local handle，但 public 不处理私密响应，campus-relay 在其凭证零落盘与回传方案另行接受前不得持久化 capture 值。
 
 凭证的取得端点不要求与后续 injection scope 相同。已验签 `masker.json` 中“固定 source URL scope -> 既有 credential ref”的绑定本身就是 acquisition 授权：source scope 必须是 manifest `network.allow` 的子集，destination ref 必须已存在；它只能更新该 ref，不能改变该 ref 的 injection scope。若未来需要多个独立 policy pack，再另行拆出 acquisition scope 契约，不在首期 manifest 重复声明。
@@ -83,11 +86,14 @@ Capture、Validate、Project 和 Commit 是一个交付事务。任何必需步�
 
 日志不得包含原值、命中片段、原始 body、带敏感 query 的 URL 或可推导凭证长度的信息。
 
+**开发者溯源诊断（2026-07-31）**：允许在宿主诊断中输出**结构定位**（错误码、规则 id、JSONPath / header **名**、重复键的 key **名**），但永不输出材料原值。该详细诊断**预备挂在 [ADR-024](./adr_024_build_profile_trust.md) 的 DEV 信任 profile** 上（编译期 flag，与优化等级解绑），**不**绑定传统 `kDebugMode`。DEPLOY 仅保留稳定错误码级摘要。字段白名单与接线节奏见 [`response_masker_json_locator.md`](../reference/response_masker_json_locator.md) §3。
+
 ### 2.5 失败语义：功能与安全共同 fail-closed
 
 当 adapter 的功能依赖被收割值时，学校字段变化本来就会使旧 adapter 不可用。继续交付原响应不会恢复正确功能，只会让敏感值重新进入 adapter。因此：
 
 - 必需 selector 未命中、解析失败、数量异常：整条 capability fail-closed；
+- **JSON 对象内重复键**（路径导航层级上同名键出现 ≥2 次）：fail-closed（建议码 `capture_duplicate_key`）；**不**提供 first/last 选择器，**不**重命名消歧——畸形载荷责任在学校侧，见 [`response_masker_json_locator.md`](../reference/response_masker_json_locator.md) §2；
 - 类型、大小、scope 或目标校验失败：fail-closed；
 - 投影、Credential Store 或 opaque handle 提交失败：fail-closed；
 - Masker 内部异常：fail-closed；
@@ -136,6 +142,13 @@ Capture、Validate、Project 和 Commit 是一个交付事务。任何必需步�
 - HTML：待真实案例和 Dart/TS probe 证明可控后再加入，不作为首期前置能力。
 
 body 命中值使用核心固定 sentinel，建议为 `__ELECON_MASKED__`。body 改写后删除不再可信的 `Content-Length`、`Content-Encoding`、`ETag` 等实体元数据；具体字节、charset 和编码语义由共享 golden 钉死。
+
+**实施决议（2026-07-31 owner 拍板，随纯引擎阶段落实）：**
+
+- **A2 实体头清理触发条件**：只剥「因 body 改写而失真」的实体头（`Content-Length` / `Content-Encoding` / `ETag`），保留 `Content-Type`；**仅 header 删除、body 未改写时不 strip 任何实体头**。
+- **A3 明文边界（写入本 ADR 与 Transport 接口）**：Masker **只在传输层解码之后的 UTF-8 明文 body 上运行，绝不猜测编码**。`Content-Encoding` 解压与字符集解码属传输层职责；**非法 / 非 UTF-8 body 在传输层→Broker 边界 fail-closed 拒交付**，不得把原始字节交给 Masker 或 adapter。
+- **A4 sentinel 定值**：固定为 `__ELECON_MASKED__`（不再是「建议」）。
+- **B1 JSON 定位（详文）**：body 投影用手写源码定位 + 按位剪接，**不**改树重序列化；跨端漂移靠共享 golden 限制。**重复键 fail-closed**；开发者结构诊断挂 ADR-024 **DEV** profile。完整决议见 [`response_masker_json_locator.md`](../reference/response_masker_json_locator.md)。
 
 ### 2.9 空调操作示例
 

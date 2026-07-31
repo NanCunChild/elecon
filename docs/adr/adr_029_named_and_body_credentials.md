@@ -1,6 +1,6 @@
 # ADR-029：命名 Header 与受限 Body 凭证注入
 
-- **状态**：提议（Proposed，未授权实现）
+- **状态**：已接受 （2026-07-31）
 - **日期**：2026-07-29
 - **适用范围**：Broker 凭证声明、响应派生句柄、固定请求 body 汇聚点
 - **触及红线**：#1、#6、#10
@@ -66,11 +66,19 @@ manifest。动态表具列表若要求依值循环，需另行决定“受限 de
 - Dart/TS Broker 必须共享 golden，逐字验证编码、覆盖、脱敏和失败语义；
 - 未识别 `headerName`/body 注入的新客户端必须由 host/version gate 拒载相关 capability，不能静默降级。
 
+### 3.1 落地状态（2026-07-31）
+
+- **§2.1 命名 header 契约 + validator：已落地**。manifest schema `credentials.<ref>.headerName`（可选、静态 token pattern `^[A-Za-z][A-Za-z0-9-]*$`）；validator `CH1`（仅 type=header 可声明）/ `CH2`（token 合法性）/ `CH3`（denylist：Cookie/Set-Cookie/Host/Content-Length/Connection/代理认证/hop-by-hop；Authorization 作缺省不入 denylist）。smoke 覆盖 CH1/CH3 负例 + `x-access-token` 正例，全绿。旧 manifest 无 headerName 语义不变（缺省 Authorization）。
+- **待接线（单独人审 PR，🔒 红线 #1）**：Broker 侧命名头注入（adapter 自设同名头先剥除、broker 最后注入、响应回显 / 日志按头名脱敏）与双端 golden。
+- **§2.2 固定 body 模板注入：契约未落**，随水电链推进（§4 item 3/4 处置）；本轮只落 §2.1 header。
+
 ## 4. 未决事项
 
-1. `x-access-token` 的上游来源流程：WebView、扫码绑定还是其他学校流程；一旦值出现在网络响应中，按 ADR-026 收割，不由 adapter 读取。
-2. 用户标识是否建模为 credential，还是登录身份句柄的独立类型。
-3. 动态表具循环的最小非图灵完备表达。
-4. body 注入与 actuator 请求的组合门禁；物理副作用另见 ADR-030。
+> **授权门已解除（2026-07-31 owner 评审）**：下列四项经人工评审，**§4 对 contract / Broker / 正式 adapter manifest 的授权 hold 整体解除**，ADR-029 进入分片落地（先契约 + validator，再 Broker 注入接线，后者单独人审 PR）。各项处置记录如下，仍受各自红线与后续 ADR 约束：
 
-在上述事项经人工评审前，本 ADR 不授权修改 contract、Broker 或正式 adapter manifest。
+1. `x-access-token` 的上游来源流程：WebView、扫码绑定还是其他学校流程 —— **处置**：一旦值出现在网络响应中，按 ADR-026 收割写入 credential ref，不由 adapter 读取；WebView / 人工导入 / mint 等其他来源走各自核心流程。不阻塞 §2.1 `headerName` 契约。
+2. 用户标识是否建模为 credential，还是登录身份句柄的独立类型 —— **处置**：不在本 ADR 首期强定；水电链落地时按 §2.3 建模为核心句柄（非 imperative 可解引用），需要跨执行保存再另评 credential 化。
+3. 动态表具循环的最小非图灵完备表达 —— **处置**：暂不开放 imperative 句柄解引用；「受限 declarative map」vs「核心 action plan」的取舍随水电链实现另行拍板，不阻塞 header / 固定 body 注入契约。
+4. body 注入与 actuator 请求的组合门禁 —— **处置**：物理副作用门禁以 ADR-030 为准；body 注入契约（§2.2）先落，与 actuator 组合的门禁在 ADR-030 接线时校验，不放宽 §2.2 的静态形状 / 大小 / 覆盖约束。
+
+固定 AES key 是否属公开协议常量（§2.3）仍须逐案人工确认，未确认前不写入 manifest——此为**逐案数据门**，非 §4 的整体授权门，已随上文解除。

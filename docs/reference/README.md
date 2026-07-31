@@ -7,7 +7,10 @@
 - [WebView 登录收割 + XIDIAN 取数可行性](./webview_login_fetch_feasibility.md)（ADR-012/015/016，🔒 人工主导）
 - [XIDIAN 全闭环 + SSO mint 签票](./xidian_mint_closed_loop_plan.md)（ADR-017，🔒 接线/执行人工主导）
 - [ADR-023 声明式跨请求数据流落地清单](./declarative_dataflow_migration.md)（准备阶段；§5 开放问题勾决后落地，🔒 人工主导）
-- [Response Masker 重构与迁移计划](./response_masker_plan.md)（ADR-026 提议；Broker 响应凭证收割与投影，未接受前不实施）
+- [Response Masker 重构与迁移计划](./response_masker_plan.md)（ADR-026；Broker 响应凭证收割与投影）
+- [Response Masker · JSON 定位 / 重复键 / DEV 诊断](./response_masker_json_locator.md)（B1 拍板：手写剪接 + 重复键 fail-closed + ADR-024 DEV 诊断）
+- [Response Masker 签收清单](./response_masker_signoff_checklist.md)
+- [ADR-024 落地计划 —— 信任 profile 解绑优化等级](./adr_024_landing.md)（四问已勾决；slice 0 基座已落，判别器翻转 + 护栏捆绑待人工主导，🔒 红线 #4）
 - [跨端日志策略](./cross_end_logging.md)（DevLog 唯一 sink、默认脱敏、campus 不落凭证）
 - [离线 YubiKey 签名密钥 Ceremony](./signing_ceremony.md)（密钥生成 / PIN / 公钥预埋；**不得由 AI 执行**）
 - [Adapter 发布 runbook](./adapter_release.md)（每次发版：unsigned → digest 比对 → `release:package` → 端点 D）

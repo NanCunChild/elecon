@@ -41,7 +41,7 @@ if (kSideloadEnabled) { /* 侧载加载 + dev 凭证注入分支 */ }       // d
 | **DEPLOY** | ✔ | **编译期剔除** | 无 | 终端用户 / 商店提交 |
 | **DEV**（含侧载） | ✔ | 编入（未签名 adapter 可跑、含 dev 凭证注入，警告见 ADR-002 §2.5 + 每 `adapterId` 首次确认） | **仍 debug-only（§2.4）** | 仅开发者，**不可分发** |
 
-> profile 清单未终定（是否再设一个无侧载的 `UX` 开发用 profile，见 §5）。
+> profile 清单**已终定（2026-07-31 owner）：仅 DEPLOY + DEV，不设第三个 `UX` profile**（§5.1）。
 
 ### 2.3 判别器换位的四条护栏（`kReleaseMode` 白送、现须自证）
 
@@ -83,9 +83,22 @@ if (kSideloadEnabled) { /* 侧载加载 + dev 凭证注入分支 */ }       // d
 
 ---
 
-## 5. 开放问题（待评审勾决）
+## 5. 开放问题——已勾决（2026-07-31 owner）
 
-1. **profile 清单终定**：是否需要第三个 profile（如无侧载、供 UI 开发者的 `UX`）？「UX」具体指什么用途？
-2. **flag 命名**：`ELECON_TRUST_PROFILE`（值枚举）vs 布尔 `ELECON_SIDELOAD`？倾向前者（可扩多 profile）。
-3. **gate 断言的检测手段**：产物符号 grep vs 构建元数据标记 vs 二者并用。
-4. **水印形态**：全屏角标 / 顶部条 / 启动页 —— UI 细节，不入契约。
+四项开放问题全部拍板，进入落地。落地拆分与签收见 [`docs/reference/adr_024_landing.md`](../reference/adr_024_landing.md)。
+
+### 5.1 profile 清单终定 → **仅 DEPLOY + DEV**
+
+不设第三个（无侧载、供 UI 开发者的）`UX` profile。UI/UX 开发者用 DEPLOY 即可拿优化，无需独立信任档；多一个 profile 只会扩大 gate/水印/applicationId 的组合面而无对应收益。§2.2 矩阵即最终形态。
+
+### 5.2 flag 命名 → **`ELECON_TRUST_PROFILE`（值枚举）**
+
+采值枚举而非布尔 `ELECON_SIDELOAD`：`String.fromEnvironment('ELECON_TRUST_PROFILE')`，`'dev-sideload'` ⟹ DEV，**其余一切（缺省 `''`、拼错、未识别）⟹ DEPLOY**（§2.3 护栏 1 fail-closed 默认）。虽当前只两档，值枚举保留将来扩档余地且判别语义显式。
+
+### 5.3 gate 断言检测手段 → **二者并用（符号 grep + 构建元数据标记）**
+
+`tool/check_release_gate.sh` 同时校验：**（a）产物符号**——侧载入口符号已被 tree-shake 剥离（对 DEPLOY 产物 grep 侧载符号，命中即失败）；**（b）构建元数据标记**——构建注入的 profile 标记必须为 DEPLOY。两者互补：符号 grep 直接验「代码确实不在产物里」（结构性、最强），元数据标记验「构建参数确按 DEPLOY 走」（防符号 grep 因混淆/重命名漏网）。任一不满足即拒绝分发。
+
+### 5.4 水印形态 → **启动页警告**
+
+DEV 产物在**启动页**呈现不可关闭的警告（"DEV-SIDELOAD · 不可分发"），非全屏常驻角标 / 顶部条。启动页警告在每次冷启动强制可见、不侵占运行时布局；叠加 §2.3 护栏 3 的独立 applicationId 后缀构成结构性防误发。UI 细节，不入契约。

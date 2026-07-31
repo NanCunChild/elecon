@@ -409,6 +409,94 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ 合法 query credential 通过（Q1–Q3）");
 }
 
+// 10g) 命名 header 凭证：headerName 仅 type=header 可声明（ADR-029 §2.1 / CH1）
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: ["https://gxkt.h/*"] },
+      credentials: {
+        session: { scope: ["https://gxkt.h/*"], type: "cookie", headerName: "x-access-token" },
+      },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("CH1_header_name_forbidden"), "非 header 携带 headerName 应触发 CH1");
+  console.log("  ✓ 非 header credential 携带 headerName 被拒（CH1）");
+}
+
+// 10h) headerName 属禁止头（Cookie / hop-by-hop / Host 等）→ CH3（ADR-029 §2.1 denylist）
+for (const bad of [
+  "Cookie",
+  "set-cookie",
+  "Host",
+  "Content-Length",
+  "Connection",
+  "Transfer-Encoding",
+  "Proxy-Authorization",
+]) {
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: ["https://gxkt.h/*"] },
+      credentials: {
+        session: { scope: ["https://gxkt.h/*"], type: "header", headerName: bad },
+      },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("CH3_header_name_denylisted"), `禁止头 '${bad}' 应触发 CH3`);
+}
+console.log("  ✓ 禁止头名（Cookie/Host/hop-by-hop/代理认证）作 headerName 被拒（CH3）");
+
+// 10i) 合法命名 header 凭证（x-access-token，聚好联空调）→ 无 error（ADR-029 §2.1）
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: ["https://gxkt.juhaolian.cn/*"] },
+      credentials: {
+        "aircon-session": {
+          scope: ["https://gxkt.juhaolian.cn/*"],
+          type: "header",
+          headerName: "x-access-token",
+        },
+      },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    contract,
+  );
+  assert.equal(
+    findings.filter((f) => f.level === "error").length,
+    0,
+    `合法命名 header 凭证不应报错：${JSON.stringify(findings)}`,
+  );
+  console.log("  ✓ 合法命名 header 凭证 x-access-token 通过（ADR-029 §2.1）");
+}
+
 // 11) 合法 login（url ⊆ navAllow、success ⊆ navAllow、有 credentials）→ 无 error
 {
   const findings = checkManifest(

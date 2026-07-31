@@ -48,6 +48,11 @@ export interface TransportResponse {
   setCookie: string[];
   /** 响应 `Location` 头（重定向用）；无则 null。绝不外泄给 adapter（脱敏剥除）。 */
   location: string | null;
+  /**
+   * 传输层**解码后的明文 body**（UTF-8）。Response Masker（ADR-026）只在此明文上运行，
+   * **绝不猜测编码**：`Content-Encoding` 解压与字符集解码是传输层职责，非法 / 非 UTF-8 body
+   * 必须在此边界 fail-closed 拒交付，不得把原始字节交给 Masker 或 adapter（ADR-026 §2.8 / A3）。
+   */
   body?: string;
 }
 

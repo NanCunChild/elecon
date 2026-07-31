@@ -88,9 +88,32 @@ interface CredentialDecl {
   type: "cookie" | "header" | "query";
   /** URL query 注入参数名（ADR-020 §2.2）；仅 type=query 时存在。 */
   queryParam?: string;
+  /** 命名注入头名（ADR-029 §2.1）；仅 type=header 时存在，缺省 = Authorization。静态字面量，禁凭证 / hop-by-hop / 实体控制头。 */
+  headerName?: string;
   /** 凭证角色（ADR-017）。sso-master=CAS 母凭证。可选；缺省=普通下游凭证。 */
   role?: "sso-master";
 }
+
+/**
+ * ADR-029 §2.1 命名 header 凭证 denylist（小写）：这些头**不得**作 headerName 注入。
+ * 凭证头（Cookie/Set-Cookie）由 broker 的 cookie 通道专管；Host/Content-Length 是实体 / 路由
+ * 控制头；Connection 及 hop-by-hop（RFC 7230 §6.1）跨代理语义敏感；代理认证头独立。
+ * Authorization **不在**denylist——它是 headerName 缺省值，允许显式声明。
+ */
+const FORBIDDEN_HEADER_NAMES = new Set<string>([
+  "cookie",
+  "set-cookie",
+  "host",
+  "content-length",
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
 
 /** ssoMint 单个下游服务（ADR-017 §2.5）。 */
 interface SsoMintService {
@@ -625,6 +648,31 @@ export function checkCredentials(
         code: "Q2_query_param_forbidden",
         message: `credential '${name}' 仅 type=query 时可声明 queryParam`,
       });
+    }
+
+    // CH1–CH3 命名 header 凭证（ADR-029 §2.1）：headerName 仅 type=header 时可声明；
+    // 须为静态合法 header token；且不得为凭证 / hop-by-hop / 实体控制头（denylist）。
+    // 凭证只由 broker 按声明注入，headerName 缺省 Authorization。
+    if (decl.headerName !== undefined) {
+      if (decl.type !== "header") {
+        findings.push({
+          level: "error",
+          code: "CH1_header_name_forbidden",
+          message: `credential '${name}' 仅 type=header 时可声明 headerName`,
+        });
+      } else if (!/^[A-Za-z][A-Za-z0-9-]*$/.test(decl.headerName)) {
+        findings.push({
+          level: "error",
+          code: "CH2_header_name_malformed",
+          message: `credential '${name}' 的 headerName 非法：'${decl.headerName}'（须为静态合法 header token：字母起始，字母 / 数字 / '-'）`,
+        });
+      } else if (FORBIDDEN_HEADER_NAMES.has(decl.headerName.toLowerCase())) {
+        findings.push({
+          level: "error",
+          code: "CH3_header_name_denylisted",
+          message: `credential '${name}' 的 headerName '${decl.headerName}' 属禁止头（Cookie/Set-Cookie/Host/Content-Length/Connection/代理认证/hop-by-hop，ADR-029 §2.1）`,
+        });
+      }
     }
 
     for (const pattern of decl.scope ?? []) {

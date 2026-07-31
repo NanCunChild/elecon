@@ -18,6 +18,11 @@
  * JSON 投影用**按位剪接**而非「解析→改树→重序列化」：只替换命中标量的源码区间，其余字节原样
  * 保留。重序列化会在数字 / 浮点 / 转义上引入 JS↔Dart 漂移（dataflow 对超安全整数 fail-closed
  * 即此因），剪接从根上回避（§2.8「具体字节由共享 golden 钉死」）。
+ *
+ * 明文边界（A3）：body 须为传输层解码后的 UTF-8 明文；本引擎**绝不猜测编码**，非法 / 非 UTF-8
+ *   由传输层→Broker 边界 fail-closed（见 fetch-proxy `TransportResponse.body`）。
+ * 收割值语义（A5）：capture **不做数值语义**——数字 / 布尔按源码区间取文本、字符串仅反转义，
+ *   凭证原值逐字节保真。
  */
 
 // ---- 常量（两端必须一致）----
@@ -274,22 +279,31 @@ function navigate(s: string, at: number, tokens: Array<string | number>, depth: 
     if (s[i] !== "{") throw new MaskerError("capture_not_found", "路径期望对象");
     i = skipWs(s, i + 1);
     if (s[i] === "}") throw new MaskerError("capture_not_found", "键不存在");
+    // 扫完**整个**对象层再决定：路径导航所经此层出现任一同名键 ≥2 次即 fail-closed
+    // （capture_duplicate_key，无 first/last、不消歧；责任在学校侧畸形载荷，
+    // json_locator §2）。命中键记录其值起点后仍继续扫描，以覆盖「命中在前、重复在后」。
+    const seen = new Set<string>();
+    let matchAt = -1;
     for (;;) {
       if (s[i] !== '"') throw new MaskerError("capture_not_json", "对象键非字符串");
       const keyEnd = scanString(s, i);
       const key = parseJsonStringToken(s.slice(i, keyEnd));
+      if (seen.has(key)) throw new MaskerError("capture_duplicate_key", "JSON 对象重复键");
+      seen.add(key);
       i = skipWs(s, keyEnd);
       if (s[i] !== ":") throw new MaskerError("capture_not_json", "对象键后缺 ':'");
       i = skipWs(s, i + 1);
-      if (key === tok) return navigate(s, i, tokens, depth + 1);
+      if (key === tok) matchAt = i;
       i = skipWs(s, scanValue(s, i));
       if (s[i] === ",") {
         i = skipWs(s, i + 1);
         continue;
       }
-      if (s[i] === "}") throw new MaskerError("capture_not_found", "键不存在");
+      if (s[i] === "}") break;
       throw new MaskerError("capture_not_json", "对象格式错误");
     }
+    if (matchAt === -1) throw new MaskerError("capture_not_found", "键不存在");
+    return navigate(s, matchAt, tokens, depth + 1);
   }
   if (s[i] !== "[") throw new MaskerError("capture_not_found", "路径期望数组");
   i = skipWs(s, i + 1);

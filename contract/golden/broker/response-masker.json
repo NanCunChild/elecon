@@ -201,6 +201,46 @@
         "body": "{\"items\":[\"a\"]}"
       },
       "error": "capture_not_found"
+    },
+    {
+      "name": "json_duplicate_target_key_fail_closed",
+      "path": "$.a",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"a\":1,\"a\":2}"
+      },
+      "error": "capture_duplicate_key"
+    },
+    {
+      "name": "json_duplicate_sibling_key_fail_closed",
+      "path": "$.a",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"a\":1,\"b\":2,\"b\":3}"
+      },
+      "error": "capture_duplicate_key"
+    },
+    {
+      "name": "json_duplicate_nested_navigated_fail_closed",
+      "path": "$.outer.t",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"outer\":{\"t\":\"x\",\"t\":\"y\"}}"
+      },
+      "error": "capture_duplicate_key"
+    },
+    {
+      "name": "json_unnavigated_sibling_duplicate_ignored",
+      "path": "$.a",
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": "{\"a\":\"keep\",\"junk\":{\"d\":1,\"d\":2}}"
+      },
+      "expected": "keep"
     }
   ],
   "project": [
@@ -569,6 +609,31 @@
           "body": "{\"token\":\"__ELECON_MASKED__\"}"
         }
       }
+    },
+    {
+      "name": "fail_closed_duplicate_key_nothing_delivered",
+      "rules": [
+        {
+          "id": "j",
+          "capture": {
+            "source": "json",
+            "path": "$.token",
+            "destination": {
+              "kind": "credential",
+              "ref": "s"
+            }
+          },
+          "project": "replace"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"token\":\"X\",\"token\":\"Y\"}"
+      },
+      "error": "capture_duplicate_key"
     }
   ]
 }
