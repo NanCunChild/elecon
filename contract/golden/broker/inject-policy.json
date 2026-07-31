@@ -53,6 +53,41 @@
       "expected": { "kind": "inject", "ref": "ehall-token", "via": "header" }
     },
     {
+      "name": "inject_named_header_carries_header_name",
+      "url": "https://gxkt.juhaolian.cn/api/status",
+      "view": {
+        "allow": ["https://gxkt.juhaolian.cn/*"],
+        "credentials": {
+          "aircon-session": {
+            "scope": ["https://gxkt.juhaolian.cn/*"],
+            "type": "header",
+            "headerName": "x-access-token"
+          }
+        }
+      },
+      "expected": {
+        "kind": "inject",
+        "ref": "aircon-session",
+        "via": "header",
+        "headerName": "x-access-token"
+      }
+    },
+    {
+      "name": "header_name_on_non_header_type_fail_closed",
+      "url": "https://card.h.edu.cn/account",
+      "view": {
+        "allow": ["https://card.h.edu.cn/*"],
+        "credentials": {
+          "bad": {
+            "scope": ["https://card.h.edu.cn/*"],
+            "type": "cookie",
+            "headerName": "x-access-token"
+          }
+        }
+      },
+      "expected": { "kind": "reject", "reason": "invalid_credential_decl" }
+    },
+    {
       "name": "inject_query_with_manifest_param",
       "url": "https://card.h.edu.cn/account",
       "view": {

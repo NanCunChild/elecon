@@ -92,6 +92,39 @@
       "expected": { "kind": "ok", "method": "GET", "headers": { "Authorization": "Bearer real-token" } }
     },
     {
+      "name": "inject_named_header_sets_x_access_token_not_authorization",
+      "_doc": "ADR-029 §2.1：headerName 指定注入头名（x-access-token），值写到该头而非 Authorization；adapter 自设 Content-Type（allowlist 内）保留。",
+      "input": {
+        "init": { "method": "GET", "headers": { "Content-Type": "application/json" } },
+        "decision": { "kind": "inject", "ref": "aircon-session", "via": "header", "headerName": "x-access-token" },
+        "resolved": { "via": "header", "value": "tok-real" },
+        "jarCookies": []
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Content-Type": "application/json", "x-access-token": "tok-real" } }
+    },
+    {
+      "name": "inject_named_header_adapter_self_set_same_name_does_not_survive",
+      "_doc": "ADR-029 §2.1：adapter 自设同名凭证头（x-access-token）先被剥除——自定义头本就被请求 allowlist 丢弃，broker 最后注入其值，adapter 伪造值不残留（红线 #1）。",
+      "input": {
+        "init": { "method": "GET", "headers": { "x-access-token": "FORGED", "Content-Type": "application/json" } },
+        "decision": { "kind": "inject", "ref": "aircon-session", "via": "header", "headerName": "x-access-token" },
+        "resolved": { "via": "header", "value": "tok-real" },
+        "jarCookies": []
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Content-Type": "application/json", "x-access-token": "tok-real" } }
+    },
+    {
+      "name": "inject_named_header_overrides_allowlisted_same_name_case_insensitive",
+      "_doc": "纵深防御：即便 headerName 恰落在请求 allowlist 内（此处 Content-Type，大小写不敏感），注入前也按名剥除 adapter 值再写 broker 值，adapter 值不残留、不产生同名双键。",
+      "input": {
+        "init": { "method": "GET", "headers": { "content-type": "adapter/junk" } },
+        "decision": { "kind": "inject", "ref": "weird", "via": "header", "headerName": "Content-Type" },
+        "resolved": { "via": "header", "value": "broker-wins" },
+        "jarCookies": []
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Content-Type": "broker-wins" } }
+    },
+    {
       "name": "inject_cookie_merges_above_jar_origin_and_ephemeral",
       "input": {
         "init": { "method": "POST", "headers": { "Content-Type": "application/json" }, "body": "{\"q\":1}" },
@@ -191,6 +224,12 @@
       "name": "header_name_case_insensitive_match",
       "input": { "status": 200, "headers": { "content-type": "text/plain", "SET-COOKIE": "leak=2" } },
       "expected": { "status": 200, "headers": { "content-type": "text/plain" } }
+    },
+    {
+      "name": "strips_named_credential_header_echo",
+      "_doc": "ADR-029 §2.1：命名凭证头（x-access-token）在响应回显时脱敏——非响应 allowlist 头一律丢弃，adapter 永不见凭证回显（红线 #1）。",
+      "input": { "status": 200, "headers": { "Content-Type": "application/json", "x-access-token": "tok-real" } },
+      "expected": { "status": 200, "headers": { "Content-Type": "application/json" } }
     }
   ]
 }

@@ -115,6 +115,7 @@ BrokerManifestView viewFromJson(Map<String, dynamic> v) {
         scope: (d['scope'] as List).cast<String>(),
         type: d['type'] as String,
         queryParam: d['queryParam'] as String?,
+        headerName: d['headerName'] as String?,
         role: d['role'] as String?,
       );
     });

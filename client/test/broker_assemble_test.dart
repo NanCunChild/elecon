@@ -26,6 +26,7 @@ InjectionDecision _decisionFromJson(Map<String, dynamic> j) {
         ref: j['ref'] as String,
         via: j['via'] as String,
         queryParam: j['queryParam'] as String?,
+        headerName: j['headerName'] as String?,
       );
     default:
       throw StateError('未知 decision.kind: ${j['kind']}');
