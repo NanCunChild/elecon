@@ -22,6 +22,8 @@ export interface CredentialDecl {
   type: CredentialVia;
   /** type=query 时的参数名；参数名来自已验签 manifest，凭证值仍只在 Broker 内（ADR-020 §2.2）。 */
   queryParam?: string;
+  /** type=header 时的注入头名（ADR-029 §2.1）；缺省 Authorization。静态已验签字面量，禁凭证 / hop-by-hop 头（validator CH1–CH3）。 */
+  headerName?: string;
 }
 
 /** Broker 决策所需的 manifest 视图（仅注入相关字段；绝不含凭证值）。 */
@@ -35,7 +37,7 @@ export type RejectReason = "outside_allow" | "ambiguous_scope" | "invalid_creden
 export type InjectionDecision =
   | { kind: "reject"; reason: RejectReason }
   | { kind: "passthrough" }
-  | { kind: "inject"; ref: string; via: CredentialVia; queryParam?: string };
+  | { kind: "inject"; ref: string; via: CredentialVia; queryParam?: string; headerName?: string };
 
 /**
  * 决定对某出站 url 的凭证注入策略。
@@ -54,14 +56,23 @@ export function decideInjection(url: string, view: BrokerManifestView): Injectio
   }
 
   // ② 收集命中的 ref（每 ref 取其命中 scope 的最长前缀长度）
-  const hits: Array<{ ref: string; via: CredentialVia; queryParam: string | undefined; prefixLen: number }> =
-    [];
+  const hits: Array<{
+    ref: string;
+    via: CredentialVia;
+    queryParam: string | undefined;
+    headerName: string | undefined;
+    prefixLen: number;
+  }> = [];
   for (const [ref, decl] of Object.entries(view.credentials ?? {})) {
     const validQueryParam = decl.queryParam !== undefined && /^[A-Za-z0-9_.-]+$/.test(decl.queryParam);
     if (
       (decl.type === "query" && !validQueryParam) ||
       (decl.type !== "query" && decl.queryParam !== undefined)
     ) {
+      return { kind: "reject", reason: "invalid_credential_decl" };
+    }
+    // headerName 仅 type=header 合法（纵深防御，validator CH1 亦拦）——Broker 不信任上游已校验。
+    if (decl.type !== "header" && decl.headerName !== undefined) {
       return { kind: "reject", reason: "invalid_credential_decl" };
     }
     let bestLen = -1;
@@ -71,7 +82,13 @@ export function decideInjection(url: string, view: BrokerManifestView): Injectio
       }
     }
     if (bestLen >= 0) {
-      hits.push({ ref, via: decl.type, queryParam: decl.queryParam, prefixLen: bestLen });
+      hits.push({
+        ref,
+        via: decl.type,
+        queryParam: decl.queryParam,
+        headerName: decl.headerName,
+        prefixLen: bestLen,
+      });
     }
   }
   if (hits.length === 0) {
@@ -90,7 +107,12 @@ export function decideInjection(url: string, view: BrokerManifestView): Injectio
     return { kind: "reject", reason: "ambiguous_scope" };
   }
 
-  return best.queryParam === undefined
-    ? { kind: "inject", ref: best.ref, via: best.via }
-    : { kind: "inject", ref: best.ref, via: best.via, queryParam: best.queryParam };
+  const decision: Extract<InjectionDecision, { kind: "inject" }> = {
+    kind: "inject",
+    ref: best.ref,
+    via: best.via,
+  };
+  if (best.queryParam !== undefined) decision.queryParam = best.queryParam;
+  if (best.headerName !== undefined) decision.headerName = best.headerName;
+  return decision;
 }

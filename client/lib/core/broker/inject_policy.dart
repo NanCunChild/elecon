@@ -17,6 +17,7 @@ class CredentialDecl {
     required this.scope,
     required this.type,
     this.queryParam,
+    this.headerName,
     this.role,
   });
 
@@ -27,6 +28,9 @@ class CredentialDecl {
 
   /// `type=query` 时由 Broker 注入/收割的参数名（ADR-020 §2.2）。
   final String? queryParam;
+
+  /// `type=header` 时的注入头名（ADR-029 §2.1）；缺省 Authorization。静态已验签字面量，禁凭证 / hop-by-hop 头（validator CH1–CH3）。
+  final String? headerName;
 
   /// 凭证角色（ADR-017）。`sso-master`=CAS 母凭证；缺省=普通下游。
   /// **不影响注入决策**（[decideInjection] 忽略之），只驱动收割时的敏感度标注（ADR-012 §2.8）。
@@ -69,16 +73,25 @@ class PassthroughDecision extends InjectionDecision {
 
 /// 注入指定 ref 的凭证（`via` ∈ {`cookie`, `header`}）。
 class InjectDecision extends InjectionDecision {
-  const InjectDecision({required this.ref, required this.via, this.queryParam});
+  const InjectDecision({
+    required this.ref,
+    required this.via,
+    this.queryParam,
+    this.headerName,
+  });
 
   final String ref;
   final String via;
   final String? queryParam;
 
+  /// `via=header` 时的注入头名（ADR-029 §2.1）；缺省时拼装层用 Authorization。
+  final String? headerName;
+
   @override
   Map<String, Object?> toJson() {
     final result = <String, Object?>{'kind': 'inject', 'ref': ref, 'via': via};
     if (queryParam != null) result['queryParam'] = queryParam;
+    if (headerName != null) result['headerName'] = headerName;
     return result;
   }
 }
@@ -102,15 +115,27 @@ InjectionDecision decideInjection(String url, BrokerManifestView view) {
     final valid =
         decl.queryParam != null &&
         RegExp(r'^[A-Za-z0-9_.-]+$').hasMatch(decl.queryParam!);
+    // headerName 仅 type=header 合法（纵深防御，validator CH1 亦拦）——Broker 不信任上游已校验。
+    final headerNameMisplaced =
+        decl.type != 'header' && decl.headerName != null;
     return (decl.type == 'query' && !valid) ||
-        (decl.type != 'query' && decl.queryParam != null);
+        (decl.type != 'query' && decl.queryParam != null) ||
+        headerNameMisplaced;
   });
   if (invalidDecl) {
     return const RejectDecision('invalid_credential_decl');
   }
 
   final hits =
-      <({String ref, String via, String? queryParam, int prefixLen})>[];
+      <
+        ({
+          String ref,
+          String via,
+          String? queryParam,
+          String? headerName,
+          int prefixLen,
+        })
+      >[];
   view.credentials.forEach((ref, decl) {
     var bestLen = -1;
     for (final pattern in decl.scope) {
@@ -124,6 +149,7 @@ InjectionDecision decideInjection(String url, BrokerManifestView view) {
         ref: ref,
         via: decl.type,
         queryParam: decl.queryParam,
+        headerName: decl.headerName,
         prefixLen: bestLen,
       ));
     }
@@ -150,5 +176,6 @@ InjectionDecision decideInjection(String url, BrokerManifestView view) {
     ref: best.ref,
     via: best.via,
     queryParam: best.queryParam,
+    headerName: best.headerName,
   );
 }
