@@ -149,7 +149,13 @@ AssembleResult assembleRequest(AssembleRequestInput input) {
   if (decision is InjectDecision &&
       decision.via == 'header' &&
       input.resolved != null) {
-    headers['Authorization'] = input.resolved!.value;
+    // ADR-029 §2.1 命名 header：缺省 Authorization，可由已验签 headerName 指定。
+    // 先按名（大小写不敏感）剥除 adapter 自设同名头，再由 broker 注入其值——即便该头名
+    // 落在请求 allowlist 内（如 content-type）也不让 adapter 值残留（纵深防御）。
+    final headerName = decision.headerName ?? 'Authorization';
+    final wanted = headerName.toLowerCase();
+    headers.removeWhere((key, _) => key.toLowerCase() == wanted);
+    headers[headerName] = input.resolved!.value;
   }
 
   var url = input.url;

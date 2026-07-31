@@ -124,7 +124,16 @@ export function assembleRequest(input: AssembleRequestInput): AssembleResult {
       ? parseCookieString(resolved.value)
       : [];
   if (decision.kind === "inject" && decision.via === "header" && resolved !== null) {
-    headers["Authorization"] = resolved.value;
+    // ADR-029 §2.1 命名 header：缺省 Authorization，可由已验签 headerName 指定。
+    // 先按名（大小写不敏感）剥除 adapter 自设同名头，再由 broker 注入其值——即便该头名
+    // 落在请求 allowlist 内（如 content-type）也不让 adapter 值残留（§① sanitize 已剥
+    // 掉非 allowlist 头 + Authorization，此处补齐「命名头恰在 allowlist」的纵深防御）。
+    const headerName = decision.headerName ?? "Authorization";
+    const wanted = headerName.toLowerCase();
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === wanted) delete headers[key];
+    }
+    headers[headerName] = resolved.value;
   }
 
   let url = input.url;
