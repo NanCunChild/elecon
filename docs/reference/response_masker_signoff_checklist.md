@@ -54,7 +54,7 @@
 > adapters 在 `ncc-devlab`、合并后自动镜像；客户端按需拉取（`adapters.pin` + `fetch-adapters.sh`）；per-capability 门 `check-adapters.mjs` 仍 DRAFT。
 
 - [ ] **D1 bundle 内新增 `masker.json`**（schema v1，adapter 根，进 digest + 官方签名）；确保按需拉取/镜像链路一并带上。
-- [ ] **D2 manifest 声明 credential ref**：`credential` 目标引用的 ref 须在 manifest 已声明（validator RM8），形态依赖 **ADR-029**。**ADR-029 已接受（2026-07-31）**，§2.1 命名 header 契约 + validator（CH1–CH3）**已落地**，`headerName` 可用（缺省 Authorization）；credential 目标形态解锁。**待做**：Broker 命名头注入接线（单独人审 PR）+ 双端 golden；`aircon-session` 等 ref 声明随首例（D7）落。
+- [ ] **D2 manifest 声明 credential ref**：`credential` 目标引用的 ref 须在 manifest 已声明（validator RM8），形态依赖 **ADR-029**。**ADR-029 已接受（2026-07-31）**，§2.1 命名 header **契约 + validator（CH1–CH3）+ Broker 注入（inject-policy/assemble 两端 + 双端 golden）全部已落地**，`headerName` 可用（缺省 Authorization），注入 / adapter 同名头剥除 / 响应回显脱敏均双跑绿（🔒 待人工逐行审）。credential 目标形态解锁。**待做**：Masker Commit → Credential Store 写入该 ref（C2）与 masker→注入闭环；`aircon-session` 等 ref 声明随首例（D7）落。
 - [ ] **D3 审查材料 `review/`**（`fixtures/raw`、`fixtures/delivered`、`security-observations.json`）放仓库但**不进发布 bundle**；CI 校验不被打包。
 - [ ] **D4 迁移盘点（§9.1）**：逐个扫 adapter/probe 对 header/body/URL 的正则/JSONPath/切片提取 `token/session/code/openid/client_id`、cookie value 来源（`setEphemeralCookie`）、跨请求值流；逐项人工分类，不按变量名批改。
 - [ ] **D5 迁移改写**：命中值改走 Broker credential 注入或 ADR-023 handle；删除 adapter 自行读取/保存/正则/日志/手工拼请求。
