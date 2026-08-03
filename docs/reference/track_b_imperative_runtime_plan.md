@@ -128,13 +128,13 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 
 ## 7. 安全检查清单（随每个 🔒 PR 附，逐项自检）
 
-- [ ] 出站请求头：Cookie / Authorization / Proxy-Authorization 无条件剥除；其余 allowlist。
-- [ ] 凭证注入仅在 Broker、按 scope；adapter 入参/返回/日志均无凭证值。
-- [ ] 重定向中间 Location 不回交 adapter；每跳 allow 校验；max 5 跳。
-- [ ] 响应头 allowlist；Set-Cookie 不回交 adapter。
-- [ ] 出口 fail-closed：allow 外的 URL（含 body 外泄向量目标）一律拒绝。
-- [ ] passthrough origin 确不注入任何凭证。
-- [ ] adapter-ephemeral cookie：passthrough-only + 不覆盖凭证 + 不收割（若实现 §5）。
-- [ ] 收割只认判据 b 声明的 ref；未声明 cookie 绝不进库。
-- [ ] 响应 body / 请求 body 透传为**已接受风险**，确认仅官方签名 + code review 兜底。
+- [x] 出站请求头：Cookie / Authorization / Proxy-Authorization 无条件剥除；其余 allowlist。
+- [x] 凭证注入仅在 Broker、按 scope；adapter 入参/返回/日志均无凭证值。
+- [x] 重定向中间 Location 不回交 adapter；每跳 allow 校验；max 5 跳。
+- [x] 响应头 allowlist；Set-Cookie 不回交 adapter。
+- [x] 出口 fail-closed：allow 外的 URL（含 body 外泄向量目标）一律拒绝。
+- [x] passthrough origin 确不注入任何凭证。
+- [x] adapter-ephemeral cookie：passthrough-only + 不覆盖凭证 + 不收割（若实现 §5）。
+- [x] 收割只认判据 b 声明的 ref；未声明 cookie 绝不进库。
+- [x] 响应 body / 请求 body 透传为**已接受风险**，确认仅官方签名 + code review 兜底。
 - [ ] Dart / TS 两端对同一 golden 向量双跑一致。
