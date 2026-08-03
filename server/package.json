@@ -19,6 +19,8 @@
     "smoke:broker": "tsx src/runtime/broker/inject-policy.smoke.ts",
     "smoke:dataflow": "tsx src/runtime/broker/dataflow.smoke.ts",
     "smoke:masker": "tsx src/runtime/broker/response-masker.smoke.ts",
+    "smoke:masker-commit": "tsx src/runtime/broker/masker-commit.smoke.ts",
+    "smoke:delivery-firewall": "tsx src/runtime/broker/delivery-firewall.smoke.ts",
     "smoke:urlmatch": "tsx src/runtime/broker/url-match.smoke.ts",
     "smoke:credential": "tsx src/runtime/credential/store.smoke.ts",
     "smoke:header": "tsx src/runtime/broker/header-sanitize.smoke.ts",
