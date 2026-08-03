@@ -152,7 +152,7 @@
           },
           "headerName": {
             "type": "string",
-            "description": "type=header 时 Broker 注入的头名（ADR-029 §2.1）。缺省 Authorization。须为静态签名字面量；🔒 禁凭证头（Cookie/Set-Cookie）、Host、Content-Length、Connection、代理认证头及 hop-by-hop 头——凭证只由 broker 按声明注入，adapter 自设同名头先被剥除（validator CH1–CH3，红线 #1）。",
+            "description": "type=header 时 Broker 注入的头名（ADR-029 §2.1）。缺省 Authorization。须为静态签名字面量；🔒 禁凭证头（Cookie/Set-Cookie）、Host、Content-Length、Connection、代理认证头、hop-by-hop 头，并禁落在响应头 allowlist 上（Content-Type/Content-Encoding/Date/Cache-Control/ETag/Last-Modified——同名会使回显无法被 sanitizeResponseHeaders 剥离）——凭证只由 broker 按声明注入，adapter 自设同名头先被剥除（validator CH1–CH3，红线 #1）。",
             "minLength": 1,
             "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
           },

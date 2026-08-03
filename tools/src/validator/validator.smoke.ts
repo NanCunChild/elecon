@@ -433,7 +433,9 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ 非 header credential 携带 headerName 被拒（CH1）");
 }
 
-// 10h) headerName 属禁止头（Cookie / hop-by-hop / Host 等）→ CH3（ADR-029 §2.1 denylist）
+// 10h) headerName 属禁止头 → CH3（ADR-029 §2.1 denylist）。
+// 含两类：① 凭证 / Host / hop-by-hop / 代理认证；② 响应 allowlist 名（同名会使回显无法剥离，
+// 破红线 #1，见 primitives RESPONSE_HEADER_ALLOWLIST）。
 for (const bad of [
   "Cookie",
   "set-cookie",
@@ -442,6 +444,13 @@ for (const bad of [
   "Connection",
   "Transfer-Encoding",
   "Proxy-Authorization",
+  // ② 响应 allowlist 名（回显剥离结构保证）：
+  "ETag",
+  "Content-Type",
+  "Cache-Control",
+  "Date",
+  "Last-Modified",
+  "Content-Encoding",
 ]) {
   const findings = checkManifest(
     {

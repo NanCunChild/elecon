@@ -25,6 +25,7 @@
 - 缺省仍为 `Authorization`，保持现有 manifest 兼容；
 - 名称必须是静态、已签名 manifest 字面量；
 - 禁止 `Cookie`、`Set-Cookie`、`Host`、`Content-Length`、`Connection`、代理认证头及 hop-by-hop header；
+- **且禁止落在响应头 allowlist 上**（`Content-Type`/`Content-Encoding`/`Date`/`Cache-Control`/`ETag`/`Last-Modified` 等，ADR-009 §2.5）：命名凭证头若与响应 allowlist 同名，上游一旦把该值回显在同名响应头上，`sanitizeResponseHeaders` 会当合法头保留 → 凭证直达 adapter（破红线 #1）。禁其重叠使「回显必被丢弃」成为**结构保证**而非巧合；
 - adapter 自设同名 header 先被剥除，Broker 最后注入；
 - 响应回显和日志必须按凭证值及目标 header 名脱敏。
 
@@ -68,11 +69,11 @@ manifest。动态表具列表若要求依值循环，需另行决定“受限 de
 
 ### 3.1 落地状态（2026-07-31）
 
-- **§2.1 命名 header 契约 + validator：已落地**。manifest schema `credentials.<ref>.headerName`（可选、静态 token pattern `^[A-Za-z][A-Za-z0-9-]*$`）；validator `CH1`（仅 type=header 可声明）/ `CH2`（token 合法性）/ `CH3`（denylist：Cookie/Set-Cookie/Host/Content-Length/Connection/代理认证/hop-by-hop；Authorization 作缺省不入 denylist）。smoke 覆盖 CH1/CH3 负例 + `x-access-token` 正例，全绿。旧 manifest 无 headerName 语义不变（缺省 Authorization）。
-- **§2.1 Broker 命名头注入：已落地（🔒 红线 #1，AI 起草待人工逐行审）**。
+- **§2.1 命名 header 契约 + validator：已落地**。manifest schema `credentials.<ref>.headerName`（可选、静态 token pattern `^[A-Za-z][A-Za-z0-9-]*$`）；validator `CH1`（仅 type=header 可声明）/ `CH2`（token 合法性）/ `CH3`（denylist：Cookie/Set-Cookie/Host/Content-Length/Connection/代理认证/hop-by-hop，**并含响应头 allowlist 全部名** Content-Type/Content-Encoding/Date/Cache-Control/ETag/Last-Modified——见下「回显剥离」；Authorization 作缺省不入 denylist）。denylist 与运行时 `RESPONSE_HEADER_ALLOWLIST` **同源于 `@elecon/broker-primitives`**，防两表漂移。smoke 覆盖 CH1/CH3 负例（含响应 allowlist 名）+ `x-access-token` 正例，全绿。旧 manifest 无 headerName 语义不变（缺省 Authorization）。
+- **§2.1 Broker 命名头注入：已落地（🔒 红线 #1，owner 已逐行审 + 签收 2026-08-03）**。含 CH3 扩展（headerName 禁落响应 allowlist，回显剥离成结构保证；见下）。
   - `inject-policy`（两端）：`InjectionDecision.inject` 携带 `headerName`；`decideInjection` 从 decl 透传，且**运行期纵深防御**——`headerName` 出现在非 header 声明上 → `reject(invalid_credential_decl)`（不信任 validator CH1 已拦）。
   - `assemble`（两端）：注入头名 = `decision.headerName ?? "Authorization"`；注入前按名（**大小写不敏感**）剥除 adapter 自设同名头，再写 broker 值——即便头名恰落在请求 allowlist 内也不残留 adapter 值 / 不产生同名双键。自定义头（如 `x-access-token`）本就被请求 allowlist 丢弃，此为叠加防御。
-  - **响应回显脱敏无需改码**：命名凭证头不在响应 allowlist（`sanitizeResponseHeaders`），回显天然被丢弃；golden `strips_named_credential_header_echo` 钉死。
+  - **响应回显脱敏是结构保证**：validator CH3 禁止命名凭证头落在响应 allowlist 上（denylist 与 `RESPONSE_HEADER_ALLOWLIST` 同源），故命名凭证头**必然**不在 `sanitizeResponseHeaders` 保留集内，回显必被丢弃——非「所选名恰好不在 allowlist」的巧合。golden `strips_named_credential_header_echo` 钉死。
   - 双端 golden：inject-policy（命名头透传 + 错配 fail-closed）、assemble（命名头注入 / adapter 同名头不残留 / allowlist 碰撞大小写剥除 / 响应回显脱敏），TS + Dart 双跑全绿。
 - **§2.2 固定 body 模板注入：契约未落**，随水电链推进（§4 item 3/4 处置）；本轮只落 §2.1 header。
 

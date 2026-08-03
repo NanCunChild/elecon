@@ -14,6 +14,8 @@
  * 🔒 红线 #1 凭证边界：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
  */
 
+import { RESPONSE_HEADER_ALLOWLIST } from "@elecon/broker-primitives";
+
 /** 规范化的头表示（host 侧把 Headers/init.headers 归一为此形再传入）。 */
 export type HeaderMap = Record<string, string>;
 
@@ -34,16 +36,12 @@ export const REQUEST_HEADER_DENYLIST: ReadonlySet<string> = new Set([
   "proxy-authorization",
 ]);
 
-/** 响应头 allowlist（ADR-009 §2.5 默认集）。其余（含 Set-Cookie）一律丢弃。 */
-export const RESPONSE_HEADER_ALLOWLIST: ReadonlySet<string> = new Set([
-  "content-type",
-  "content-length",
-  "content-encoding",
-  "date",
-  "cache-control",
-  "etag",
-  "last-modified",
-]);
+/**
+ * 响应头 allowlist（ADR-009 §2.5）——**单一数据源在 `@elecon/broker-primitives`**，此处
+ * re-export 供本模块与既有 import 使用。与校验器 CH3（ADR-029 §2.1）同源，防两表漂移（见
+ * primitives 内 `RESPONSE_HEADER_ALLOWLIST` 注释）。其余（含 Set-Cookie）一律丢弃。
+ */
+export { RESPONSE_HEADER_ALLOWLIST };
 
 /** 出站请求头净化：deny 优先剥除凭证头 → allowlist 保留 → 其余丢弃。 */
 export function sanitizeRequestHeaders(headers: HeaderMap): HeaderMap {
