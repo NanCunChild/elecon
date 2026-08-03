@@ -139,7 +139,7 @@ auth_A        auth_B
 ## 3. 落地性（挂现有 seam，非新造）
 
 - 现声明式执行体已在：`client/lib/core/declarative_host.dart` `fulfillDeclarativeRequests`（逐条 `proxyFetch` → 组装 `responses` → 交 adapter）；server 侧 `sandbox.ts` 对称。
-- 增量：① 解析 `bind`/`compute`/`inject`；② 代取从**平铺**改**依赖拓扑序**（静态 DAG，一次拓扑排序）；③ 抽取（脱敏前）→ broker 侧 phantom map；④ `compute` 原生执行；⑤ 注入**复用凭证注入 seam**；⑥ 脱敏剥注入值 + `Set-Cookie`/token。
+- 增量：① 解析 `bind`/`compute`/`inject`；② 代取从**平铺**改**依赖拓扑序**（静态 DAG，一次拓扑排序）；③ 抽取（脱敏前）→ broker 侧 phantom map；④ `compute` 原生执行；⑤ 注入**复用凭证注入 seam**；⑥ 脱敏剥*下游*注入值回显 + `Set-Cookie`/token；⑦ **credential-sensitive `bind` 的源响应经 ADR-026 delivery firewall 投影后才交付**（C0，见 §4 精确边界；⑥ 只剥下游回显，⑦ 补源响应投影）。
 - **唯一结构性改动 = 平铺 → 拓扑序**。**两端双跑一致**（ADR-001 §8 golden）。
 
 ---
@@ -149,6 +149,12 @@ auth_A        auth_B
 **收益**
 - 命令式收窄至罕见（仅动态拓扑 + 不可枚举计算，ADR-022 §2.5）；数据依赖链回归声明式、可审、可热替换。
 - **比命令式更安全**：中间值由 broker 提取，**从不进 adapter 代码**（命令式下 adapter 要读 body 才拿到中间 token）。
+
+  > 🔒 **精确边界（2026-08-03 C0 修订，闭合 ADR-026 §3 缺口）**：「从不进 adapter」严格成立于 **① broker 内部计算出的中间句柄**（`compute` 产物永不交付）与 **② 下游响应里回显的注入值**（`stripEchoes` 剥除，§2.5 必做项）。但**抽取该中间值的源响应本身**——即 `bind` 读取的那条响应——**并不因抽取而自动脱敏**：`stripEchoes` 只作用于*下游*注入回显，不投影*源*响应。若被抽取值是 credential-sensitive，源响应交回 adapter 时该值仍在原位。
+  >
+  > 故该值的「从不进 adapter」保证**不由 dataflow 执行器单独兑现**，而由 **ADR-026 delivery firewall 对源响应执行 Project** 兜底：被人工分类为 credential-sensitive 的 `bind`，其 `bind[].var` 由 `masker.json` 引用并附加投影义务；firewall 在 Capture 阶段执行该 bind **一次**，同时产出 staged handle 与**投影后的源响应**（ADR-026 §3），源响应中的原值被替换为 sentinel 后才交付。未被分类为敏感的普通 `bind`，其源响应按业务数据原样交付（本就非凭证，不在保护面）。
+  >
+  > 换言之：dataflow 负责*计算不外泄 + 下游回显剥离*；源响应的凭证投影是 **ADR-026 firewall 的职责**，二者组合才使「credential-sensitive 中间值从不进 adapter」为真。此前本行的无条件表述与实现存在缺口（ADR-026 §3 已指出），本修订予以精确化。
 
 **代价 / 已知约束**
 - 代取编排从平铺改拓扑序（两端一致，🔒）。

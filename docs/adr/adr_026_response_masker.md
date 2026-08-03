@@ -189,6 +189,8 @@ ADR-023 负责 declarative capability 内 request-local 的提取、计算和静
 
 ADR-023 当前“中间值从不进 adapter”的叙述与源响应交付实现之间存在缺口。本 ADR 实施前必须由人工修订并测试该基础路径，不能把它留作隐含假设。
 
+**C0 处置（2026-08-03）**：ADR-023 §4「从不进 adapter」已精确化——该保证严格成立于 broker 内部计算句柄与下游回显剥离；**credential-sensitive `bind` 的源响应须由本 ADR delivery firewall 投影后交付**，非 dataflow 执行器单独兑现（ADR-023 §4 精确边界 + §3 落地步骤 ⑦）。文档缺口已闭合；**「测试」部分随 C1 delivery firewall 接线落地**（firewall 交付事务须含「源响应投影后再交付」的 raw→delivered 用例），在 firewall 骨架标为 seam，接线时钉死。
+
 ## 4. 大重构与迁移决策
 
 本 ADR 采用一次明确的能力迁移，不长期保留“adapter 自行取凭证”和“核心收割”两套正式路径：
