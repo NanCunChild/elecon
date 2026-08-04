@@ -871,6 +871,7 @@ var EntityDecoder = class {
       case EntityDecoderState.NamedEntity: {
         return this.result !== 0 && (this.decodeMode !== DecodingMode.Attribute || this.result === this.treeIndex) ? this.emitNotTerminatedNamedEntity() : 0;
       }
+      // Otherwise, emit a numeric entity if we have one.
       case EntityDecoderState.NumericDecimal: {
         return this.emitNumericEntity(0, 2);
       }
@@ -1194,6 +1195,7 @@ function renderNode(node, options) {
   switch (node.type) {
     case Root:
       return render(node.children, options);
+    // @ts-expect-error We don't use `Doctype` yet
     case Doctype:
     case Directive:
       return renderDirective(node);
@@ -1958,6 +1960,7 @@ function parseSelector(subselects2, selector, selectorIndex) {
   loop: while (selectorIndex < selector.length) {
     const firstChar = selector.charCodeAt(selectorIndex);
     switch (firstChar) {
+      // Whitespace
       case 32:
       case 9:
       case 10:
@@ -1970,6 +1973,7 @@ function parseSelector(subselects2, selector, selectorIndex) {
         stripWhitespace(1);
         break;
       }
+      // Traversals
       case 62: {
         addTraversal(SelectorType.Child);
         stripWhitespace(1);
@@ -1990,6 +1994,7 @@ function parseSelector(subselects2, selector, selectorIndex) {
         stripWhitespace(1);
         break;
       }
+      // Special attribute selectors: .class, #id
       case 46: {
         addSpecialAttribute("class", AttributeAction.Element);
         break;
@@ -2851,6 +2856,7 @@ function compileGeneralSelector(next, selector, options, context, compileToken2)
     case SelectorType.Pseudo: {
       return compilePseudoSelector(next, selector, options, context, compileToken2);
     }
+    // Tags
     case SelectorType.Tag: {
       if (selector.namespace != null) {
         throw new Error("Namespaced tag names are not yet supported by css-select");
@@ -2863,6 +2869,7 @@ function compileGeneralSelector(next, selector, options, context, compileToken2)
         return adapter.getName(elem) === name && next(elem);
       };
     }
+    // Traversal
     case SelectorType.Descendant: {
       if (options.cacheResults === false || typeof WeakSet === "undefined") {
         return function descendant(elem) {
