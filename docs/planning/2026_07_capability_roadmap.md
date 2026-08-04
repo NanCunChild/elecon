@@ -26,7 +26,7 @@
 | 西电一卡通 OpenID | 已进入 adapter + fake transport smoke | 真机字段校准和正式签名发布前不宣称可用 |
 | 图书馆只读借阅 | 可以 | 不可以，Xidian 认证与 body 注入未闭环 |
 | 完整图书馆（含写操作） | 可规划 | 不可以，需新增 mutation 契约与 ADR |
-| 物联网空调控制 | 探针已定位；ADR-029/030 已提议 | 不可直接上线，需凭证注入和副作用能力模型 |
+| 物联网空调控制 | 探针已定位；ADR-029/030 已接受 | 不可直接上线，命名 Header 生产接线、Body 注入和副作用执行闸门仍未闭环 |
 | 更智能的 imperative 凭证引用 | 可以 | 需拆成 validator bugfix + 独立 ADR 两步 |
 
 ## 3. 一卡通 OpenID（ADR-020）
@@ -64,7 +64,7 @@
 
 专项 ADR 至少应规定：只能由明确用户操作触发，禁后台刷新/自动执行；每次关键操作显示确认；不自动重试，超时显示「状态未知」而非假定失败；禁跨 origin 重定向（MVP 最好完全禁控制请求重定向）；精确 HTTPS origin/path 白名单；设备 token / 签名密钥 / 用户身份参数全部视为凭证；核心生成幂等键或明确学校接口自身幂等语义；MVP 先 official-only，不向 release 第三方 adapter 开放物理副作用；Android 先行，iOS 待 imperative 合规复评或优先建设 declarative action graph。
 
-**结论**：架构能够承载；ADR-030 已起草为 Proposed，但在人工接受并补齐 contract/核心闸门前，不能只写一个 imperative adapter 直接上线。现有探针要求 `x-access-token`，命名 header 预留见 ADR-029。
+**结论**：架构能够承载；ADR-030 已于 2026-07-31 接受，但在补齐 contract/核心闸门前，不能只写一个 imperative adapter 直接上线。现有探针要求 `x-access-token`；ADR-029 已接受该命名 Header 形态，但客户端 manifest 生产接线仍待修复。
 
 ## 6. Xidian C8（validator mixed-mode 误报）
 

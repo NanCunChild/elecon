@@ -57,10 +57,10 @@
 > adapters 在 `ncc-devlab`、合并后自动镜像；客户端按需拉取（`adapters.pin` + `fetch-adapters.sh`）；per-capability 门 `check-adapters.mjs` 仍 DRAFT。
 
 - [ ] **D1 bundle 内新增 `masker.json`**（schema v1，adapter 根，进 digest + 官方签名）；确保按需拉取/镜像链路一并带上。
-- [ ] **D2 manifest 声明 credential ref**：`credential` 目标引用的 ref 须在 manifest 已声明（validator RM8），形态依赖 **ADR-029**。**ADR-029 已接受（2026-07-31）**，§2.1 命名 header **契约 + validator（CH1–CH3）+ Broker 注入（inject-policy/assemble 两端 + 双端 golden）全部已落地**，`headerName` 可用（缺省 Authorization），注入 / adapter 同名头剥除 / 响应回显脱敏均双跑绿（🔒 待人工逐行审）。credential 目标形态解锁。**进度**：Masker Commit → Credential Store 写入该 ref 的落库中段已起草（见 C2 进度：`masker-commit.ts`，smoke 含 `aircon-session`→`x-access-token` 闭环，🔒 待人工审、未接 live）；`aircon-session` 等 ref 正式声明随首例（D7）落。**仍待**：接入 live 交付路径（C1/C0）。
+- [ ] **D2 manifest 声明 credential ref**：`credential` 目标引用的 ref 须在 manifest 已声明（validator RM8），形态依赖 **ADR-029**。**ADR-029 已接受（2026-07-31）**，§2.1 命名 header 的契约、validator、Broker 纯函数/拼装和双端 golden 已落地；但客户端两个生产 manifest parser 尚未传递 `headerName`，runtime CH2–CH3 纵深校验亦待补，故当前**不得宣称端到端可用**（🔒 须人工主导修复与逐行审）。**进度**：Masker Commit → Credential Store 写入该 ref 的落库中段已起草（见 C2 进度：`masker-commit.ts`，smoke 含 `aircon-session`→`x-access-token` 闭环，🔒 待人工审、未接 live）；`aircon-session` 等 ref 正式声明随首例（D7）落。**仍待**：命名 Header 生产接线及 runtime 防御、接入 live 交付路径（C1/C0）。
 - [ ] **D3 审查材料 `review/`**（`fixtures/raw`、`fixtures/delivered`、`security-observations.json`）放仓库但**不进发布 bundle**；CI 校验不被打包。
 - [ ] **D4 迁移盘点（§9.1）**：逐个扫 adapter/probe 对 header/body/URL 的正则/JSONPath/切片提取 `token/session/code/openid/client_id`、cookie value 来源（`setEphemeralCookie`）、跨请求值流；逐项人工分类，不按变量名批改。
 - [ ] **D5 迁移改写**：命中值改走 Broker credential 注入或 ADR-023 handle；删除 adapter 自行读取/保存/正则/日志/手工拼请求。
 - [ ] **D6 `check-adapters.mjs` 扩门**：把 masker 校验与 observation→rule→replay 闭合纳入 adapters 侧 CI。
-- [ ] **D7 首例：聚好联空调**（命名 header 注入小闭环），**必须虚构 token/设备 ID**，且**受 ADR-029/030 接受约束**（均仍 Proposed）。
+- [ ] **D7 首例：聚好联空调**（命名 header 注入小闭环），**必须虚构 token/设备 ID**。ADR-029/030 均已接受；首例仍受 D2 命名 Header 生产接线、C1/C2 live firewall/store 及 actuator 执行闸门阻塞。
 - [ ] **D8 贡献规范补 A1 推荐**：明文写入 adapter 作者指南——「能 `redact` 就不 `handle`」，减少核心接触面。
