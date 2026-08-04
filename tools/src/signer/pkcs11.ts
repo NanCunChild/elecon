@@ -49,15 +49,51 @@ export const ELECON_SIGNING_SLOT = "9c";
 
 // ---- 惰性加载（pkcs11js 是 optionalDependency：只有离线签名机需要它） ----
 
+interface Pkcs11Api {
+  load(modulePath: string): void;
+  C_Initialize(): void;
+  C_Finalize(): void;
+  C_GetSlotList(tokenPresent: boolean): Buffer[];
+  C_GetTokenInfo(slot: Buffer): { label: string; serialNumber: string; model: string };
+  C_OpenSession(slot: Buffer, flags: number): Buffer;
+  C_CloseSession(session: Buffer): void;
+  C_FindObjectsInit(session: Buffer, template: unknown[]): void;
+  C_FindObjects(session: Buffer): Buffer | null;
+  C_FindObjectsFinal(session: Buffer): void;
+  C_GetAttributeValue(session: Buffer, object: Buffer, template: unknown[]): { value?: unknown }[];
+  C_Login(session: Buffer, userType: number, pin: string): void;
+  C_Logout(session: Buffer): void;
+  C_SignInit(session: Buffer, mechanism: { mechanism: number }, key: Buffer): void;
+  C_Sign(session: Buffer, data: Buffer, output: Buffer): Buffer;
+}
+
+interface Pkcs11Module {
+  PKCS11: new () => Pkcs11Api;
+  CKF_SERIAL_SESSION: number;
+  CKF_RW_SESSION: number;
+  CKU_USER: number;
+  CKA_CLASS: number;
+  CKA_LABEL: number;
+  CKA_ID: number;
+  CKA_KEY_TYPE: number;
+  CKA_EC_POINT: number;
+  CKO_CERTIFICATE: number;
+  CKO_PUBLIC_KEY: number;
+  CKO_PRIVATE_KEY: number;
+}
+
+const pkcs11ModuleName: string = "pkcs11js";
+
 /**
  * pkcs11js 是**可选依赖**——它是原生模块（node-gyp），而 CI / 普通开发机既无 YubiKey 也未必有
  * 构建工具链（且 npm 新版默认拦安装脚本）。故此处惰性导入并 fail-closed：
  * 缺它时其余 tools（validator/scanner/digest/验签）照常工作，只有硬件出签不可用。
  */
-async function loadPkcs11(): Promise<typeof import("pkcs11js")> {
+async function loadPkcs11(): Promise<Pkcs11Module> {
   try {
-    type Mod = typeof import("pkcs11js");
-    const ns = (await import("pkcs11js")) as unknown as Mod & { default?: Mod };
+    const ns = (await import(pkcs11ModuleName)) as unknown as Pkcs11Module & {
+      default?: Pkcs11Module;
+    };
     // ⚠ pkcs11js 是 **CJS**，而常量（CKF_*/CKA_*/CKO_*/CKU_*）是**动态赋值**到 module.exports 的——
     //   Node 的 cjs-module-lexer 静态分析不到，故 ESM 命名空间只暴露 3 个命名导出（PKCS11/错误类），
     //   **所有常量都是 undefined**。必须取 default（= module.exports）。
@@ -179,8 +215,8 @@ export async function listKeys(o: Pkcs11Options = {}): Promise<KeyObjectInfo[]> 
 
 // ---- 内部工具 ----
 
-type P11 = InstanceType<typeof import("pkcs11js").PKCS11>;
-type P11Mod = typeof import("pkcs11js");
+type P11 = Pkcs11Api;
+type P11Mod = Pkcs11Module;
 
 function pickSlot(m: P11, o: Pkcs11Options): Buffer {
   const slots = m.C_GetSlotList(true);

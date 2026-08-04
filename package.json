@@ -20,10 +20,6 @@
     "@biomejs/biome": "^2.5.3"
   },
   "allowScripts": {
-    "esbuild@0.28.1": true,
-    "pkcs11js@2.1.6": true
-  },
-  "dependencies": {
-    "pkcs11js": "^2.1.7"
+    "esbuild@0.28.1": true
   }
 }

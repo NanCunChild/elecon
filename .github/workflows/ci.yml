@@ -23,6 +23,8 @@ jobs:
       - run: npm ci
       - run: npx biome ci .
       - run: npm run typecheck
+      # pkcs11js 仅离线签名机需要；普通 CI 必须在省略 optional 原生模块时仍可编译 tools。
+      - run: npm ci --omit=optional && npm run typecheck -w tools
 
   # 服务端：全量 golden 冒烟（目录发现；沙箱 parser 端到端/超时/OOM/缺能力 + Broker B1–B6
   # + 凭证 + transport + fetch/xjt）。golden 向量钉死两端双跑行为；漏跑 = TS 侧可静默漂移
