@@ -44,12 +44,13 @@ async function main(): Promise<void> {
   // ① C0 源响应投影 + 闭环：源 body 里的 token 被投影为 sentinel 后才交付；同一 token 落库。
   {
     const store = new CredentialStore(undefined, ctx.now);
+    const raw = {
+      status: 200,
+      headers: { "content-type": "application/json", "set-cookie": "s=1", "content-length": "40" },
+      body: '{"token":"TOK_FICTITIOUS_abc","device":"d1"}',
+    };
     const outcome = deliverThroughFirewall({
-      raw: {
-        status: 200,
-        headers: { "content-type": "application/json", "set-cookie": "s=1", "content-length": "40" },
-        body: '{"token":"TOK_FICTITIOUS_abc","device":"d1"}',
-      },
+      raw,
       transportDecodeOk: true,
       rules: [CREDENTIAL_RULE],
       view: AIRCON_VIEW,
@@ -58,6 +59,7 @@ async function main(): Promise<void> {
     });
     // 源响应投影：交付 body 里原 token 不复存在、被 sentinel 取代，业务字段保留。
     assert.ok(!outcome.response.body!.includes("TOK_FICTITIOUS_abc"), "源 token 不得出现在交付 body");
+    assert.ok(raw.body.includes("TOK_FICTITIOUS_abc"), "firewall 不应原地改写传输层原响应对象");
     assert.ok(outcome.response.body!.includes(SENTINEL), "命中值应被投影为 sentinel");
     assert.ok(outcome.response.body!.includes('"device":"d1"'), "业务字段应保留");
     // header 脱敏：Set-Cookie 剥除、Content-Type 保留、失真实体头（Content-Length）剥除。
@@ -73,7 +75,67 @@ async function main(): Promise<void> {
     console.log("  ✓ C0 源响应投影 + 闭环：源值投影为 sentinel 后交付，同值落库（via=header）");
   }
 
-  // ② A3：传输层未解码明文 → fail-closed，绝不交付、绝不落库。
+  // ② 编码后的二进制文本仍按敏感原值处理：收割精确保真，交付边界只见 sentinel。
+  {
+    const store = new CredentialStore(undefined, ctx.now);
+    const encodedRule: MaskerRule = {
+      id: "r-encoded-material",
+      capture: {
+        source: "json",
+        path: "$.encodedMaterial",
+        destination: { kind: "credential", ref: "aircon-session" },
+      },
+      project: "replace",
+    };
+    const outcome = deliverThroughFirewall({
+      raw: {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: '{"encodedMaterial":"AP8Q","kind":"base64-fixture"}',
+      },
+      transportDecodeOk: true,
+      rules: [encodedRule],
+      view: AIRCON_VIEW,
+      sink: store,
+      ctx,
+    });
+    assert.equal(outcome.response.body, `{"encodedMaterial":"${SENTINEL}","kind":"base64-fixture"}`);
+    assert.equal((await store.get("aircon-session"))?.value, "AP8Q", "编码文本须逐字节保真落库");
+    passed++;
+    console.log("  ✓ 编码二进制文本：核心收割原值，adapter-visible 原响应仅见 sentinel");
+  }
+
+  // ③ header 源同样先 Capture/Project，再进入响应 allowlist 交付。
+  {
+    const store = new CredentialStore(undefined, ctx.now);
+    const headerRule: MaskerRule = {
+      id: "r-header-token",
+      capture: {
+        source: "header",
+        name: "x-session-secret",
+        destination: { kind: "credential", ref: "aircon-session" },
+      },
+      project: "delete",
+    };
+    const outcome = deliverThroughFirewall({
+      raw: {
+        status: 200,
+        headers: { "content-type": "text/plain", "X-Session-Secret": "HEADER_FIXTURE_SECRET" },
+        body: "business payload",
+      },
+      transportDecodeOk: true,
+      rules: [headerRule],
+      view: AIRCON_VIEW,
+      sink: store,
+      ctx,
+    });
+    assert.equal(outcome.response.headers["X-Session-Secret"], undefined, "敏感源 header 不得交付");
+    assert.equal((await store.get("aircon-session"))?.value, "HEADER_FIXTURE_SECRET");
+    passed++;
+    console.log("  ✓ header 源响应边界：敏感头删除后交付，原值仅落核心 store");
+  }
+
+  // ④ A3：传输层未解码明文 → fail-closed，绝不交付、绝不落库。
   {
     const store = new CredentialStore(undefined, ctx.now);
     assert.throws(
@@ -94,7 +156,7 @@ async function main(): Promise<void> {
     console.log("  ✓ A3：transportDecodeOk=false → body_not_plaintext fail-closed（不交付/不落库）");
   }
 
-  // ③ 交付事务 fail-closed：capture 未命中 → 抛、不半提交、不交付原响应。
+  // ⑤ 交付事务 fail-closed：capture 未命中 → 抛、不半提交、不交付原响应。
   {
     const store = new CredentialStore(undefined, ctx.now);
     const badRule: MaskerRule = {
@@ -119,7 +181,7 @@ async function main(): Promise<void> {
     console.log("  ✓ 交付事务 fail-closed：capture 未命中 → 抛错、不半提交、不交付原响应");
   }
 
-  // ④ 无策略命中：响应仍经 choke point 交付（header 脱敏生效），committedCount=0。
+  // ⑥ 无策略命中：响应仍经 choke point 交付（header 脱敏生效），committedCount=0。
   {
     const store = new CredentialStore(undefined, ctx.now);
     const outcome = deliverThroughFirewall({
@@ -142,7 +204,7 @@ async function main(): Promise<void> {
     console.log("  ✓ 无策略命中：仍经 choke point 交付（header 脱敏生效），committedCount=0");
   }
 
-  // ⑤ dataflow 回显剥离：下游注入值在交付 body 里被掩码。
+  // ⑦ dataflow 回显剥离：下游注入值在交付 body 里被掩码。
   {
     const store = new CredentialStore(undefined, ctx.now);
     const outcome = deliverThroughFirewall({

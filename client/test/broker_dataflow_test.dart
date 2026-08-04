@@ -171,6 +171,56 @@ void main() {
     }
   });
 
+  group('pipelines（bytes 编码为 text 后继续参与声明计算）', () {
+    for (final raw
+        in (golden['pipelines'] as List).cast<Map<String, dynamic>>()) {
+      test(raw['name'] as String, () {
+        final env = <String, HandleValue>{
+          for (final entry
+              in (raw['env'] as Map).cast<String, dynamic>().entries)
+            entry.key: _toHandle(
+              (entry.value as Map).cast<String, dynamic>(),
+            ),
+        };
+        final computed = evalComputeGraph(
+          env,
+          (raw['computes'] as List)
+              .cast<Map<String, dynamic>>()
+              .map(ComputeDecl.fromJson)
+              .toList(),
+          nowMs,
+        );
+        final applied = applyInjections(
+          DataflowRequestDecl.fromJson(
+            (raw['request'] as Map).cast<String, dynamic>(),
+          ),
+          resolveInjections(
+            (raw['injects'] as List)
+                .cast<Map<String, dynamic>>()
+                .map(InjectDecl.fromJson)
+                .toList(),
+            computed,
+          ),
+        );
+        final expected = (raw['expected'] as Map).cast<String, dynamic>();
+        final expectedHandles = (expected['handles'] as Map)
+            .cast<String, dynamic>();
+        for (final entry in expectedHandles.entries) {
+          expect(
+            _fromHandle(computed[entry.key]!),
+            equals((entry.value as Map).cast<String, dynamic>()),
+            reason: '${raw['name']} handle ${entry.key}',
+          );
+        }
+        expect(applied.url, expected['url']);
+        expect(
+          applied.headers,
+          equals((expected['headers'] as Map).cast<String, String>()),
+        );
+      });
+    }
+  });
+
   group('echoTargets（审阅 issue 1：url 回显目标含编码形）', () {
     for (final raw
         in (golden['echoTargets'] as List).cast<Map<String, dynamic>>()) {

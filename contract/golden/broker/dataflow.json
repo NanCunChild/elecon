@@ -333,6 +333,67 @@
       "error": "inject_missing_handle"
     }
   ],
+  "pipelines": [
+    {
+      "name": "bytes_to_base64_text_participates_in_concat_and_header_inject",
+      "env": { "blob": { "type": "bytes", "hex": "00ff10" } },
+      "computes": [
+        {
+          "var": "encoded",
+          "op": "base64",
+          "args": [{ "ref": "blob" }],
+          "params": { "variant": "standard", "pad": true }
+        },
+        {
+          "var": "headerValue",
+          "op": "concat",
+          "args": [{ "text": "blob=" }, { "ref": "encoded" }]
+        }
+      ],
+      "injects": [{ "var": "headerValue", "into": "raw", "at": "header", "name": "X-Proof" }],
+      "request": { "key": "raw", "method": "GET", "url": "https://h.edu.cn/api/data" },
+      "expected": {
+        "handles": {
+          "encoded": { "type": "text", "text": "AP8Q" },
+          "headerValue": { "type": "text", "text": "blob=AP8Q" }
+        },
+        "url": "https://h.edu.cn/api/data",
+        "headers": { "X-Proof": "blob=AP8Q" }
+      }
+    },
+    {
+      "name": "digest_bytes_to_base64url_text_participates_in_declared_compute",
+      "env": { "payload": { "type": "text", "text": "binary-fixture" } },
+      "computes": [
+        { "var": "digest", "op": "sha256", "args": [{ "ref": "payload" }] },
+        {
+          "var": "encoded",
+          "op": "base64",
+          "args": [{ "ref": "digest" }],
+          "params": { "variant": "url", "pad": false }
+        },
+        {
+          "var": "proof",
+          "op": "concat",
+          "args": [{ "text": "v1." }, { "ref": "encoded" }]
+        }
+      ],
+      "injects": [{ "var": "proof", "into": "raw", "at": "url", "name": "proof" }],
+      "request": { "key": "raw", "method": "GET", "url": "https://h.edu.cn/api/data" },
+      "expected": {
+        "handles": {
+          "digest": {
+            "type": "bytes",
+            "hex": "d386fb6e3164251f076ca47cb55306abc582fcfe3def684611c3466c2ca99c0e"
+          },
+          "encoded": { "type": "text", "text": "04b7bjFkJR8HbKR8tVMGq8WC_P4972hGEcNGbCypnA4" },
+          "proof": { "type": "text", "text": "v1.04b7bjFkJR8HbKR8tVMGq8WC_P4972hGEcNGbCypnA4" }
+        },
+        "url": "https://h.edu.cn/api/data?proof=v1.04b7bjFkJR8HbKR8tVMGq8WC_P4972hGEcNGbCypnA4",
+        "headers": {}
+      }
+    }
+  ],
   "strip": [
     {
       "name": "strip_body_and_header_echo",

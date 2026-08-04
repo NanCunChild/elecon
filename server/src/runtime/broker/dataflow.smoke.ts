@@ -68,6 +68,18 @@ interface GoldenFile {
     expected?: { url: string; headers: Record<string, string> };
     error?: string;
   }>;
+  pipelines: Array<{
+    name: string;
+    env: Record<string, GoldenHandle>;
+    computes: ComputeDecl[];
+    injects: InjectDecl[];
+    request: RequestDecl;
+    expected: {
+      handles: Record<string, GoldenHandle>;
+      url: string;
+      headers: Record<string, string>;
+    };
+  }>;
   strip: Array<{ name: string; response: RawResponse; injectedValues: string[]; expected: RawResponse }>;
   echoTargets: Array<{ name: string; effect: InjectionEffect; expected: string[] }>;
   topo: Array<{
@@ -219,6 +231,25 @@ for (const c of golden.inject) {
   passed++;
 }
 console.log(`  ✓ inject: ${golden.inject.length} 例`);
+
+// ---- pipelines（bytes → text 编码后继续参与声明式 compute / inject）----
+for (const c of golden.pipelines) {
+  const initial = new Map<string, HandleValue>(
+    Object.entries(c.env).map(([name, handle]) => [name, toHandle(handle)]),
+  );
+  const env = evalComputeGraph(initial, c.computes, golden.nowMs);
+  const applied = applyInjections(c.request, resolveInjections(c.injects, env));
+  for (const [name, expected] of Object.entries(c.expected.handles)) {
+    assert.deepStrictEqual(fromHandle(env.get(name)!), expected, `${c.name} handle ${name}`);
+  }
+  assert.deepStrictEqual(
+    { url: applied.url, headers: applied.headers ?? {} },
+    { url: c.expected.url, headers: c.expected.headers },
+    c.name,
+  );
+  passed++;
+}
+console.log(`  ✓ pipelines: ${golden.pipelines.length} 例`);
 
 // ---- strip ----
 for (const c of golden.strip) {
