@@ -433,7 +433,31 @@ function codes(findings: { code: string }[]): string[] {
   console.log("  ✓ 非 header credential 携带 headerName 被拒（CH1）");
 }
 
-// 10h) headerName 属禁止头 → CH3（ADR-029 §2.1 denylist）。
+// 10h) headerName 必须是静态合法 HTTP token → CH2（ADR-029 §2.1）。
+{
+  const findings = checkManifest(
+    {
+      adapterId: "school-x",
+      trustTier: "official",
+      network: { allow: ["https://gxkt.h/*"] },
+      credentials: {
+        session: { scope: ["https://gxkt.h/*"], type: "header", headerName: "x_access_token" },
+      },
+      capabilities: [
+        {
+          id: "grades.list",
+          requestGraph: "imperative",
+          emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+        },
+      ],
+    },
+    contract,
+  );
+  assert.ok(codes(findings).includes("CH2_header_name_malformed"), "非法 header token 应触发 CH2");
+  console.log("  ✓ 非法 header token 被拒（CH2）");
+}
+
+// 10i) headerName 属禁止头 → CH3（ADR-029 §2.1 denylist）。
 // 含两类：① 凭证 / Host / hop-by-hop / 代理认证；② 响应 allowlist 名（同名会使回显无法剥离，
 // 破红线 #1，见 primitives RESPONSE_HEADER_ALLOWLIST）。
 for (const bad of [
@@ -474,7 +498,7 @@ for (const bad of [
 }
 console.log("  ✓ 禁止头名（Cookie/Host/hop-by-hop/代理认证）作 headerName 被拒（CH3）");
 
-// 10i) 合法命名 header 凭证（x-access-token，聚好联空调）→ 无 error（ADR-029 §2.1）
+// 10j) 合法命名 header 凭证（x-access-token，聚好联空调）→ 无 error（ADR-029 §2.1）
 {
   const findings = checkManifest(
     {

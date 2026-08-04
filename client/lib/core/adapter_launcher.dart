@@ -590,6 +590,13 @@ BrokerManifestView _viewFromManifest(Map<String, dynamic> manifest) {
           queryBindings[binding] = key;
         }
       }
+      final headerName = v['headerName'];
+      if ((headerName != null && headerName is! String) ||
+          (type != 'header' && headerName != null)) {
+        throw AdapterLaunchException(
+          'credentials.$key.headerName 与 type 不一致（fail-closed）',
+        );
+      }
       final role = v['role'];
       if (role != null && role is! String) {
         throw AdapterLaunchException('credentials.$key.role 非字符串（fail-closed）');
@@ -598,6 +605,7 @@ BrokerManifestView _viewFromManifest(Map<String, dynamic> manifest) {
         scope: scope,
         type: type,
         queryParam: queryParam as String?,
+        headerName: headerName as String?,
         role: role as String?,
       );
     });

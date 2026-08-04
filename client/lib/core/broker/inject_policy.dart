@@ -9,7 +9,24 @@
 /// 🔒 安全敏感（红线 #1 凭证注入决策）：AI 起草，须人工 + 安全清单复核（AGENTS.md §1）。
 library;
 
+import 'header_sanitize.dart';
 import 'url_match.dart';
+
+/// ADR-029 §2.1 CH3 固定禁集；TS 单源见 `@elecon/broker-primitives`，双端行为由 shared golden 锁定。
+const Set<String> _forbiddenCredentialHeaderNames = {
+  'cookie',
+  'set-cookie',
+  'host',
+  'content-length',
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+};
 
 /// manifest `credentials.<ref>` 的注入相关声明（ADR-013）。**不含凭证值**（红线 #1）。
 class CredentialDecl {
@@ -115,12 +132,18 @@ InjectionDecision decideInjection(String url, BrokerManifestView view) {
     final valid =
         decl.queryParam != null &&
         RegExp(r'^[A-Za-z0-9_.-]+$').hasMatch(decl.queryParam!);
-    // headerName 仅 type=header 合法（纵深防御，validator CH1 亦拦）——Broker 不信任上游已校验。
-    final headerNameMisplaced =
-        decl.type != 'header' && decl.headerName != null;
+    final headerName = decl.headerName;
+    final normalizedHeaderName = headerName?.toLowerCase();
+    // Broker 不信任发布期 validator：运行时独立复核 ADR-029 CH1–CH3。
+    final invalidHeaderName =
+        headerName != null &&
+        (decl.type != 'header' ||
+            !RegExp(r'^[A-Za-z][A-Za-z0-9-]*$').hasMatch(headerName) ||
+            _forbiddenCredentialHeaderNames.contains(normalizedHeaderName) ||
+            responseHeaderAllowlist.contains(normalizedHeaderName));
     return (decl.type == 'query' && !valid) ||
         (decl.type != 'query' && decl.queryParam != null) ||
-        headerNameMisplaced;
+        invalidHeaderName;
   });
   if (invalidDecl) {
     return const RejectDecision('invalid_credential_decl');

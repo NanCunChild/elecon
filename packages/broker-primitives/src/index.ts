@@ -37,6 +37,27 @@ export const RESPONSE_HEADER_ALLOWLIST: ReadonlySet<string> = new Set([
   "last-modified",
 ]);
 
+/**
+ * ADR-029 §2.1 命名 credential header 固定禁集（小写）。
+ *
+ * CH3 的完整禁集是本集合与 [RESPONSE_HEADER_ALLOWLIST] 的并集。validator 与 TS Broker
+ * runtime 必须共用这份定义；Dart 侧由 inject-policy golden 镜像锁定（ADR-001 §8）。
+ */
+export const FORBIDDEN_CREDENTIAL_HEADER_NAMES: ReadonlySet<string> = new Set([
+  "cookie",
+  "set-cookie",
+  "host",
+  "content-length",
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
 /** 把 `https://h/api/*` 形态模板转成锚定正则；`*` → `.*`，其余字面转义。 */
 export function allowToRegex(pattern: string): RegExp {
   const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -88,6 +88,66 @@
       "expected": { "kind": "reject", "reason": "invalid_credential_decl" }
     },
     {
+      "name": "header_name_bad_token_fail_closed_ch2",
+      "url": "https://gxkt.juhaolian.cn/api/status",
+      "view": {
+        "allow": ["https://gxkt.juhaolian.cn/*"],
+        "credentials": {
+          "bad": {
+            "scope": ["https://gxkt.juhaolian.cn/*"],
+            "type": "header",
+            "headerName": "x_access_token"
+          }
+        }
+      },
+      "expected": { "kind": "reject", "reason": "invalid_credential_decl" }
+    },
+    {
+      "name": "header_name_credential_denylist_case_insensitive_ch3",
+      "url": "https://gxkt.juhaolian.cn/api/status",
+      "view": {
+        "allow": ["https://gxkt.juhaolian.cn/*"],
+        "credentials": {
+          "bad": {
+            "scope": ["https://gxkt.juhaolian.cn/*"],
+            "type": "header",
+            "headerName": "CoOkIe"
+          }
+        }
+      },
+      "expected": { "kind": "reject", "reason": "invalid_credential_decl" }
+    },
+    {
+      "name": "header_name_response_allowlist_case_insensitive_ch3",
+      "url": "https://gxkt.juhaolian.cn/api/status",
+      "view": {
+        "allow": ["https://gxkt.juhaolian.cn/*"],
+        "credentials": {
+          "bad": {
+            "scope": ["https://gxkt.juhaolian.cn/*"],
+            "type": "header",
+            "headerName": "Content-Type"
+          }
+        }
+      },
+      "expected": { "kind": "reject", "reason": "invalid_credential_decl" }
+    },
+    {
+      "name": "invalid_header_decl_rejected_even_when_scope_does_not_match",
+      "url": "https://public.h.edu.cn/status",
+      "view": {
+        "allow": ["https://public.h.edu.cn/*", "https://private.h.edu.cn/*"],
+        "credentials": {
+          "bad": {
+            "scope": ["https://private.h.edu.cn/*"],
+            "type": "header",
+            "headerName": "Host"
+          }
+        }
+      },
+      "expected": { "kind": "reject", "reason": "invalid_credential_decl" }
+    },
+    {
       "name": "inject_query_with_manifest_param",
       "url": "https://card.h.edu.cn/account",
       "view": {

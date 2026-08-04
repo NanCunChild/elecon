@@ -12,7 +12,13 @@
  * 🔒 安全敏感（红线 #1 凭证注入决策）：AI 起草，须人工 + 安全清单复核（AGENTS.md §1）。
  */
 
-import { scopeMatches, scopePrefix, urlCoveredByAllow } from "@elecon/broker-primitives";
+import {
+  FORBIDDEN_CREDENTIAL_HEADER_NAMES,
+  RESPONSE_HEADER_ALLOWLIST,
+  scopeMatches,
+  scopePrefix,
+  urlCoveredByAllow,
+} from "@elecon/broker-primitives";
 
 export type CredentialVia = "cookie" | "header" | "query";
 
@@ -71,9 +77,17 @@ export function decideInjection(url: string, view: BrokerManifestView): Injectio
     ) {
       return { kind: "reject", reason: "invalid_credential_decl" };
     }
-    // headerName 仅 type=header 合法（纵深防御，validator CH1 亦拦）——Broker 不信任上游已校验。
-    if (decl.type !== "header" && decl.headerName !== undefined) {
-      return { kind: "reject", reason: "invalid_credential_decl" };
+    if (decl.headerName !== undefined) {
+      const normalized = decl.headerName.toLowerCase();
+      // Broker 不信任发布期 validator：运行时独立复核 ADR-029 CH1–CH3。
+      if (
+        decl.type !== "header" ||
+        !/^[A-Za-z][A-Za-z0-9-]*$/.test(decl.headerName) ||
+        FORBIDDEN_CREDENTIAL_HEADER_NAMES.has(normalized) ||
+        RESPONSE_HEADER_ALLOWLIST.has(normalized)
+      ) {
+        return { kind: "reject", reason: "invalid_credential_decl" };
+      }
     }
     let bestLen = -1;
     for (const pattern of decl.scope) {

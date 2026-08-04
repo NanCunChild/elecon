@@ -70,9 +70,12 @@ Future<_Bundle> _mkBundle(
   bool includeEntry = true,
   bool includeNetwork = true,
   bool includeCredentials = true,
+  Map<String, dynamic>? credentials,
   List<String> capabilities = const ['notice.list'],
+
   /// capability id → requestGraph；缺省全部 `imperative`。
   Map<String, String> requestGraphs = const {},
+
   /// capability id → declarative `requests[]`（可选）。
   Map<String, List<Map<String, dynamic>>> capabilityRequests = const {},
 }) async {
@@ -98,13 +101,15 @@ Future<_Bundle> _mkBundle(
         'allow': ['https://x.edu/*'],
       },
     if (includeCredentials)
-      'credentials': {
-        'x-session': {
-          'scope': ['https://x.edu/*'],
-          'type': 'cookie',
-          'role': 'sso-master',
-        },
-      },
+      'credentials':
+          credentials ??
+          {
+            'x-session': {
+              'scope': ['https://x.edu/*'],
+              'type': 'cookie',
+              'role': 'sso-master',
+            },
+          },
   };
   final files = <Map<String, dynamic>>[
     {'path': 'index.js', 'encoding': 'utf-8', 'content': entrySource},
@@ -329,6 +334,23 @@ void main() {
       expect(plan.capabilityRequestGraphs['notice.list'], 'imperative');
     });
 
+    test('已验签 manifest 的命名 header 传入 Broker view', () async {
+      final b = await _mkBundle(
+        bundleSigner,
+        credentials: {
+          'x-session': {
+            'scope': ['https://x.edu/*'],
+            'type': 'header',
+            'headerName': 'x-access-token',
+          },
+        },
+      );
+      final plan = planLaunch(await load(b));
+      final credential = plan.view.credentials['x-session']!;
+      expect(credential.type, 'header');
+      expect(credential.headerName, 'x-access-token');
+    });
+
     test('混用 cap：official 可 declarative + imperative 并存', () async {
       final b = await _mkBundle(
         bundleSigner,
@@ -358,6 +380,23 @@ void main() {
   });
 
   group('planLaunch fail-closed', () {
+    test('headerName 非字符串时拒绝已验签 manifest', () async {
+      final b = await _mkBundle(
+        bundleSigner,
+        credentials: {
+          'x-session': {
+            'scope': ['https://x.edu/*'],
+            'type': 'header',
+            'headerName': 7,
+          },
+        },
+      );
+      await expectLater(
+        () async => planLaunch(await load(b)),
+        throwsA(isA<AdapterLaunchException>()),
+      );
+    });
+
     test('失败的 LoadResult → 抛', () {
       expect(
         () => planLaunch(const LoadResult.fail('x')),

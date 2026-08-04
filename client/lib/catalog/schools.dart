@@ -58,11 +58,19 @@ class SchoolDescriptor {
         throw FormatException("credential '${entry.key}' type 非法");
       }
       final queryParam = value['queryParam'];
+      final headerName = value['headerName'];
       final role = value['role'];
+      if ((headerName != null && headerName is! String) ||
+          (type != 'header' && headerName != null)) {
+        throw FormatException(
+          "credential '${entry.key}' headerName 与 type 不一致",
+        );
+      }
       credentials[entry.key] = CredentialDecl(
         scope: _stringList(value, 'scope'),
         type: type,
         queryParam: queryParam is String ? queryParam : null,
+        headerName: headerName is String ? headerName : null,
         role: role is String ? role : null,
       );
     }

@@ -67,7 +67,8 @@ void main() {
         },
         'library-session': {
           'scope': ['https://library.example.edu/*'],
-          'type': 'cookie',
+          'type': 'header',
+          'headerName': 'x-access-token',
         },
       },
     };
@@ -75,10 +76,44 @@ void main() {
     final school = SchoolDescriptor.fromVerifiedManifest(manifest);
     expect(school.login.url, 'https://ids.example.edu/login');
     expect(school.login.brokerView.credentials['ids-cas']?.role, 'sso-master');
+    expect(
+      school.login.brokerView.credentials['library-session']?.headerName,
+      'x-access-token',
+    );
     expect(school.login.ssoMint?.services['ehall-session']?.forms, [
       SsoMintForm.headless,
       SsoMintForm.hiddenWebView,
     ]);
+  });
+
+  test('命名 header 字段畸形时 fail-closed', () {
+    final manifest = <String, dynamic>{
+      'adapterId': 'school-test',
+      'schoolId': 'test',
+      'displayName': '测试大学',
+      'network': {
+        'allow': ['https://api.example.edu/*'],
+      },
+      'login': {
+        'url': 'https://api.example.edu/login',
+        'navigationAllow': ['https://api.example.edu/*'],
+        'success': {
+          'whenUrlMatches': ['https://api.example.edu/home*'],
+        },
+      },
+      'credentials': {
+        'session': {
+          'scope': ['https://api.example.edu/*'],
+          'type': 'header',
+          'headerName': 7,
+        },
+      },
+      'capabilities': const <dynamic>[],
+    };
+    expect(
+      () => SchoolDescriptor.fromVerifiedManifest(manifest),
+      throwsFormatException,
+    );
   });
 
   test('核心 capability policy 引用缺失凭证时 fail-closed', () {

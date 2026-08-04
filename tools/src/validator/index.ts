@@ -38,6 +38,7 @@ import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   allowToRegex,
+  FORBIDDEN_CREDENTIAL_HEADER_NAMES,
   RESPONSE_HEADER_ALLOWLIST,
   scopePrefix,
   urlCoveredByAllow,
@@ -98,31 +99,6 @@ interface CredentialDecl {
   /** 凭证角色（ADR-017）。sso-master=CAS 母凭证。可选；缺省=普通下游凭证。 */
   role?: "sso-master";
 }
-
-/**
- * ADR-029 §2.1 命名 header 凭证 denylist（小写）：这些头**不得**作 headerName 注入。
- * 凭证头（Cookie/Set-Cookie）由 broker 的 cookie 通道专管；Host/Content-Length 是实体 / 路由
- * 控制头；Connection 及 hop-by-hop（RFC 7230 §6.1）跨代理语义敏感；代理认证头独立。
- * Authorization **不在**denylist——它是 headerName 缺省值，允许显式声明。
- *
- * 🔒 CH3 的**完整禁集** = 本集 ∪ `RESPONSE_HEADER_ALLOWLIST`（见下方 CH3 分支）：命名凭证头
- * 若与响应 allowlist 同名，上游回显该值时 `sanitizeResponseHeaders` 会保留 → 凭证直达 adapter
- * （破红线 #1）。禁其重叠，使「命名头回显必被丢弃」成为结构保证（primitives 单源，防漂移）。
- */
-const FORBIDDEN_HEADER_NAMES = new Set<string>([
-  "cookie",
-  "set-cookie",
-  "host",
-  "content-length",
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-]);
 
 /** ssoMint 单个下游服务（ADR-017 §2.5）。 */
 interface SsoMintService {
@@ -676,7 +652,7 @@ export function checkCredentials(
           message: `credential '${name}' 的 headerName 非法：'${decl.headerName}'（须为静态合法 header token：字母起始，字母 / 数字 / '-'）`,
         });
       } else if (
-        FORBIDDEN_HEADER_NAMES.has(decl.headerName.toLowerCase()) ||
+        FORBIDDEN_CREDENTIAL_HEADER_NAMES.has(decl.headerName.toLowerCase()) ||
         RESPONSE_HEADER_ALLOWLIST.has(decl.headerName.toLowerCase())
       ) {
         findings.push({

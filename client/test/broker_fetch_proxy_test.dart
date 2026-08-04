@@ -125,6 +125,50 @@ void main() {
       expect(sent.headers.containsKey('Authorization'), isFalse);
     });
 
+    test('命名 header 从 policy 经 resolver 注入 transport，伪值不存活', () async {
+      const view = BrokerManifestView(
+        allow: ['https://gxkt.example.edu/*'],
+        credentials: {
+          'session': CredentialDecl(
+            scope: ['https://gxkt.example.edu/*'],
+            type: 'header',
+            headerName: 'x-access-token',
+          ),
+        },
+      );
+      final transport = FakeTransport([
+        const TransportResponse(
+          status: 200,
+          headers: {'x-access-token': 'upstream-echo'},
+          body: '{}',
+        ),
+      ]);
+      final out = await proxyFetch(
+        'https://gxkt.example.edu/api/status',
+        const RequestInit(
+          headers: {
+            'x-access-token': 'adapter-forged',
+            'Authorization': 'adapter-forged',
+          },
+        ),
+        FetchProxyDeps(
+          view: view,
+          resolver: FakeResolver({
+            'session': const ResolvedCredential(
+              via: 'header',
+              value: 'opaque-fixture-token',
+            ),
+          }),
+          jar: CookieJar(),
+          transport: transport,
+        ),
+      );
+      final sent = transport.seen.single;
+      expect(sent.headers['x-access-token'], 'opaque-fixture-token');
+      expect(sent.headers.containsKey('Authorization'), isFalse);
+      expect(out.headers.containsKey('x-access-token'), isFalse);
+    });
+
     test('重定向链：逐跳捕获 Set-Cookie；跨跳携带；中间 Location 不外泄；requestCount=2', () async {
       final view = const BrokerManifestView(allow: ['https://h.edu.cn/*']);
       final transport = FakeTransport([
