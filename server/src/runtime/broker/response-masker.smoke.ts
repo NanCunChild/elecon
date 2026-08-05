@@ -19,6 +19,7 @@ import {
   applyResponseMasker,
   captureHeader,
   captureJson,
+  MASKER_SENTINEL,
   MaskerError,
   type MaskerRawResponse,
   type MaskerRule,
@@ -52,12 +53,12 @@ interface TransactionCase {
 }
 interface GeneratedLimitCase {
   name: string;
-  kind: "header" | "body" | "captureValue" | "scanBudget";
+  kind: "header" | "body" | "captureValue" | "indexReuse";
   unit?: string;
   repeat?: number;
   entries?: number;
   rules?: number;
-  error: string;
+  error?: string;
 }
 interface GoldenFile {
   generatedLimits: GeneratedLimitCase[];
@@ -92,17 +93,22 @@ for (const c of golden.generatedLimits) {
   if (c.kind === "header") {
     const value = (c.unit ?? "").repeat(c.repeat ?? 0);
     expectError(
-      () => captureHeader("X-Limit", { status: 200, headers: { "X-Limit": value }, body: "" }),
-      c.error,
+      () =>
+        captureHeader("X-Limit", {
+          status: 200,
+          headers: { "X-Limit": value },
+          body: "",
+        }),
+      c.error!,
       c.name,
     );
   } else if (c.kind === "body") {
     const body = (c.unit ?? "").repeat(c.repeat ?? 0) + "{}";
-    expectError(() => captureJson("$", { status: 200, headers: {}, body }), c.error, c.name);
+    expectError(() => captureJson("$", { status: 200, headers: {}, body }), c.error!, c.name);
   } else if (c.kind === "captureValue") {
     const value = (c.unit ?? "").repeat(c.repeat ?? 0);
     const body = JSON.stringify({ token: value });
-    expectError(() => captureJson("$.token", { status: 200, headers: {}, body }), c.error, c.name);
+    expectError(() => captureJson("$.token", { status: 200, headers: {}, body }), c.error!, c.name);
   } else {
     const entries: string[] = [];
     for (let k = 0; k < (c.entries ?? 0); k++) entries.push(`"k${k}":"v${k}"`);
@@ -110,20 +116,25 @@ for (const c of golden.generatedLimits) {
     for (let k = 0; k < (c.rules ?? 0); k++) {
       rules.push({
         id: `r${k}`,
-        capture: { source: "json", path: `$.k${k}`, destination: { kind: "redact" } },
+        capture: {
+          source: "json",
+          path: `$.k${k}`,
+          destination: { kind: "redact" },
+        },
         project: "replace",
       });
     }
-    expectError(
-      () =>
-        applyResponseMasker(rules, {
-          status: 200,
-          headers: { "content-type": "application/json" },
-          body: `{${entries.join(",")}}`,
-        }),
-      c.error,
-      c.name,
-    );
+    const actual = applyResponseMasker(rules, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: `{${entries.join(",")}}`,
+    });
+    assert.equal(actual.captured.length, 0, `${c.name}: redact 不应托管`);
+    const projected = JSON.parse(actual.projected.body) as Record<string, string>;
+    for (let k = 0; k < (c.rules ?? 0); k++) {
+      assert.equal(projected[`k${k}`], MASKER_SENTINEL, `${c.name}: k${k} 未投影`);
+    }
+    assert.equal(projected[`k${(c.entries ?? 0) - 1}`], `v${(c.entries ?? 0) - 1}`, `${c.name}: 无关值漂移`);
   }
   passed++;
   console.log(`  ✓ generatedLimits/${c.name}`);

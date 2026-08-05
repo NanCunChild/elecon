@@ -24,11 +24,10 @@
       "error": "capture_value_too_large"
     },
     {
-      "name": "transaction_scan_budget_exceeded",
-      "kind": "scanBudget",
+      "name": "transaction_single_index_reused",
+      "kind": "indexReuse",
       "entries": 80000,
-      "rules": 12,
-      "error": "capture_budget_exceeded"
+      "rules": 64
     }
   ],
   "captureHeader": [
@@ -505,6 +504,59 @@
       }
     },
     {
+      "name": "replace_shared_prefix_and_nested_array",
+      "rules": [
+        {
+          "id": "primary",
+          "capture": {
+            "source": "json",
+            "path": "$.auth.primary",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "replace"
+        },
+        {
+          "id": "backup",
+          "capture": {
+            "source": "json",
+            "path": "$.auth.backups[1]",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "replace"
+        },
+        {
+          "id": "other",
+          "capture": {
+            "source": "json",
+            "path": "$.other.token",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "replace"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json",
+          "ETag": "v1"
+        },
+        "body": "{ \"auth\" : { \"primary\" : \"P\", \"backups\" : [\"B0\", \"B1\"] }, \"other\" : { \"token\" : \"T\", \"keep\" : 1 } }"
+      },
+      "expected": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{ \"auth\" : { \"primary\" : \"__ELECON_MASKED__\", \"backups\" : [\"B0\", \"__ELECON_MASKED__\"] }, \"other\" : { \"token\" : \"__ELECON_MASKED__\", \"keep\" : 1 } }"
+      }
+    },
+    {
       "name": "mixed_header_delete_and_json_replace",
       "rules": [
         {
@@ -817,6 +869,41 @@
         "body": "{\"token\":\"X\",\"token\":\"Y\"}"
       },
       "error": "capture_duplicate_key"
+    },
+    {
+      "name": "first_rule_error_precedes_later_branch_duplicate",
+      "rules": [
+        {
+          "id": "first",
+          "capture": {
+            "source": "json",
+            "path": "$.clean.missing",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "replace"
+        },
+        {
+          "id": "later",
+          "capture": {
+            "source": "json",
+            "path": "$.dirty.token",
+            "destination": {
+              "kind": "redact"
+            }
+          },
+          "project": "replace"
+        }
+      ],
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\"clean\":{},\"dirty\":{\"token\":\"X\",\"token\":\"Y\"}}"
+      },
+      "error": "capture_not_found"
     },
     {
       "name": "project_overlap_fail_closed",

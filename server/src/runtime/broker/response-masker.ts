@@ -52,16 +52,13 @@ export const MAX_CAPTURE_VALUE_BYTES = 64 * 1024;
  */
 export const MAX_JSON_DEPTH = 512;
 /**
- * 累计扫描预算（finding 1）：整个 [applyResponseMasker] 交付事务里所有 JSON 扫描（每条规则的
- * 深度预检 + parse + 定位导航 + Project 各路径重定位）**累计扫过的 code unit 数**上限；超出即
- * `capture_budget_exceeded` fail-closed，封住 O(body × path depth × rule count) 的 CPU 放大
- * （深度限只防栈溢出、不限累计量）。
+ * 累计扫描预算：整个 [applyResponseMasker] 交付事务的 JSON 合法性校验与稀疏索引构造
+ * **累计扫过的 code unit 数**上限；超出即 `capture_budget_exceeded` fail-closed。
  *
  * 16 MiB = 2× [MAX_BODY_INPUT_BYTES]。这是**抗 DoS 天花板**，非合法流量目标——校园凭证响应
- * 通常 KB 级、远不触及；只有病态「大 body × 深路径 × 多规则」才撞上并 fail-closed。抬高该
- * 天花板 = 方案 B（一次建索引复用，去掉 ×rules×2 乘数），暂列待做。header 源另由
- * [MAX_HEADER_INPUT_BYTES] 单独限、非放大向量，不计入此预算。两端常量与计费点必须逐一致，
- * 使「跳预算发生点」确定性、可双跑锁定（ADR-001 §8）。
+ * 通常 KB 级、远不触及。索引按规则路径前缀稀疏保留节点，body 只扫描一次，Capture / Project
+ * 查找不再产生 ×rules×2 放大；header 源另由 [MAX_HEADER_INPUT_BYTES] 单独限、非放大向量，
+ * 不计入此预算。两端常量与计费点必须逐一致（ADR-001 §8）。
  */
 export const MAX_SCAN_BUDGET = 16 * 1024 * 1024;
 
@@ -186,14 +183,9 @@ export function captureJson(
   raw: MaskerRawResponse,
   budget: ScanBudget = newScanBudget(),
 ): string {
-  assertBodyWithinLimit(raw.body);
-  assertJson(raw.body, budget);
   const tokens = tokenizeJsonPath(path);
-  if (tokens === null) {
-    throw new MaskerError("capture_bad_jsonpath", `不支持的 jsonpath 语法：'${path}'`);
-  }
-  const span = locateJsonSpan(raw.body, tokens, budget);
-  return capValue(spanScalarValue(raw.body, span.start, span.end));
+  const index = buildJsonIndex(raw.body, tokens === null ? [] : [tokens], budget);
+  return captureJsonFromIndex(path, tokens, raw.body, index);
 }
 
 function assertBodyWithinLimit(body: string): void {
@@ -208,8 +200,7 @@ function assertBodyWithinLimit(body: string): void {
  * 先做线性深度预检（B2），再交给递归的平台 parser——避免深度炸弹在 parser 内栈溢出且跨端分叉。
  */
 function assertJson(body: string, budget: ScanBudget): void {
-  // 深度预检 + 平台 parse 的线性成本（~body 长度）计入累计预算（finding 1）：per-rule 重复
-  // 校验的放大在此被计量，多规则大 body 会累加撞预算 fail-closed。
+  // 深度预检 + 平台 parse 的线性成本（~body 长度）只在索引构造前计量一次。
   charge(budget, body.length);
   assertJsonDepth(body);
   try {
@@ -299,6 +290,20 @@ interface JsonSpan {
   end: number;
 }
 
+type JsonKind = "object" | "array" | "scalar";
+
+interface JsonPathTrie {
+  children: Map<string | number, JsonPathTrie>;
+}
+
+interface JsonIndexNode extends JsonSpan {
+  kind: JsonKind;
+  /** 仅对象导航层记录源码顺序中的首个重复键；查询经过该层时才 fail-closed。 */
+  duplicateKey?: string;
+  /** 只保留规则路径可达的子节点，避免为 8 MiB body 构造完整 DOM。 */
+  children: Map<string | number, JsonIndexNode>;
+}
+
 const WS = new Set([" ", "\t", "\n", "\r"]);
 function skipWs(s: string, i: number): number {
   while (i < s.length && WS.has(s[i]!)) i++;
@@ -361,111 +366,166 @@ function scanContainer(s: string, i: number): number {
   throw new MaskerError("capture_not_json", "未闭合的 JSON 容器");
 }
 
-/**
- * 沿封闭路径定位命中标量的源码区间。假定 body 已过 [assertJson]。不支持通配 / 递归，故命中
- * 至多一个位置——「exactly:1」由「找到即唯一」自然满足（缺失 → capture_not_found）。
- */
-function locateJsonSpan(body: string, tokens: Array<string | number>, budget: ScanBudget): JsonSpan {
-  const start = skipWs(body, 0);
-  charge(budget, start);
-  return navigate(body, start, tokens, 0, budget);
+function newPathTrie(paths: Array<Array<string | number>>): JsonPathTrie {
+  const root: JsonPathTrie = { children: new Map() };
+  for (const tokens of paths) {
+    let node = root;
+    for (const token of tokens) {
+      let child = node.children.get(token);
+      if (child === undefined) {
+        child = { children: new Map() };
+        node.children.set(token, child);
+      }
+      node = child;
+    }
+  }
+  return root;
 }
 
-/**
- * 沿封闭路径定位命中标量的源码区间；把每次 helper 前进的 code unit 数计入累计预算（finding 1）。
- * 计费落在本函数的每处推进（scanString 键、scanValue 值、skipWs），故底层扫描器签名不变、
- * 无双计：一次 `scanValue` 的 delta 即其扫过的整棵子树；命中子树在父层与子层各计一次，正是要
- * 计量的 O(depth) 重扫放大。
- */
-function navigate(
-  s: string,
-  at: number,
-  tokens: Array<string | number>,
-  depth: number,
+/** 合法性校验后单次扫描 body，按全部规则路径构造稀疏源码索引。 */
+function buildJsonIndex(
+  body: string,
+  paths: Array<Array<string | number>>,
   budget: ScanBudget,
-): JsonSpan {
-  let i = skipWs(s, at);
-  charge(budget, i - at);
-  if (depth === tokens.length) {
-    const end = scanValue(s, i);
-    charge(budget, end - i);
-    return { start: i, end };
+): JsonIndexNode {
+  assertBodyWithinLimit(body);
+  assertJson(body, budget);
+  charge(budget, body.length); // 定位扫描每个 code unit 至多经过一次。
+  return scanIndexedValue(body, skipWs(body, 0), newPathTrie(paths));
+}
+
+function scanIndexedValue(s: string, at: number, trie: JsonPathTrie): JsonIndexNode {
+  const start = skipWs(s, at);
+  const first = s[start];
+  if (first === undefined) throw new MaskerError("capture_not_json", "值缺失");
+
+  // 没有规则继续向下时只求当前值区间，不为无关子树分配索引节点。
+  if (trie.children.size === 0) {
+    const kind: JsonKind = first === "{" ? "object" : first === "[" ? "array" : "scalar";
+    return { start, end: scanValue(s, start), kind, children: new Map() };
   }
-  const tok = tokens[depth]!;
-  if (typeof tok === "string") {
-    if (s[i] !== "{") throw new MaskerError("capture_not_found", "路径期望对象");
-    {
-      const ni = skipWs(s, i + 1);
-      charge(budget, ni - i);
-      i = ni;
-    }
-    if (s[i] === "}") throw new MaskerError("capture_not_found", "键不存在");
-    // 扫完**整个**对象层再决定：路径导航所经此层出现任一同名键 ≥2 次即 fail-closed
-    // （capture_duplicate_key，无 first/last、不消歧；责任在学校侧畸形载荷，
-    // json_locator §2）。命中键记录其值起点后仍继续扫描，以覆盖「命中在前、重复在后」。
+
+  if (first === "{") {
+    const node: JsonIndexNode = {
+      start,
+      end: start,
+      kind: "object",
+      children: new Map(),
+    };
     const seen = new Set<string>();
-    let matchAt = -1;
+    let i = skipWs(s, start + 1);
+    if (s[i] === "}") {
+      node.end = i + 1;
+      return node;
+    }
     for (;;) {
       if (s[i] !== '"') throw new MaskerError("capture_not_json", "对象键非字符串");
       const keyEnd = scanString(s, i);
-      charge(budget, keyEnd - i);
-      const key = parseJsonStringToken(s.slice(i, keyEnd));
-      if (seen.has(key)) throw new MaskerError("capture_duplicate_key", "JSON 对象重复键", { key });
+      const key = parseJsonKey(s, i, keyEnd);
+      if (seen.has(key) && node.duplicateKey === undefined) node.duplicateKey = key;
       seen.add(key);
-      {
-        const ni = skipWs(s, keyEnd);
-        charge(budget, ni - keyEnd);
-        i = ni;
-      }
+      i = skipWs(s, keyEnd);
       if (s[i] !== ":") throw new MaskerError("capture_not_json", "对象键后缺 ':'");
-      {
-        const ni = skipWs(s, i + 1);
-        charge(budget, ni - i);
-        i = ni;
+      i = skipWs(s, i + 1);
+      const childTrie = trie.children.get(key);
+      if (childTrie === undefined) {
+        i = scanValue(s, i);
+      } else {
+        const child = scanIndexedValue(s, i, childTrie);
+        node.children.set(key, child);
+        i = child.end;
       }
-      if (key === tok) matchAt = i;
-      {
-        const ni = skipWs(s, scanValue(s, i));
-        charge(budget, ni - i);
-        i = ni;
-      }
+      i = skipWs(s, i);
       if (s[i] === ",") {
-        const ni = skipWs(s, i + 1);
-        charge(budget, ni - i);
-        i = ni;
+        i = skipWs(s, i + 1);
         continue;
       }
-      if (s[i] === "}") break;
+      if (s[i] === "}") {
+        node.end = i + 1;
+        return node;
+      }
       throw new MaskerError("capture_not_json", "对象格式错误");
     }
-    if (matchAt === -1) throw new MaskerError("capture_not_found", "键不存在");
-    return navigate(s, matchAt, tokens, depth + 1, budget);
   }
-  if (s[i] !== "[") throw new MaskerError("capture_not_found", "路径期望数组");
-  {
-    const ni = skipWs(s, i + 1);
-    charge(budget, ni - i);
-    i = ni;
-  }
-  if (s[i] === "]") throw new MaskerError("capture_not_found", "数组下标越界");
-  let idx = 0;
-  for (;;) {
-    if (idx === tok) return navigate(s, i, tokens, depth + 1, budget);
-    {
-      const ni = skipWs(s, scanValue(s, i));
-      charge(budget, ni - i);
-      i = ni;
+
+  if (first === "[") {
+    const node: JsonIndexNode = {
+      start,
+      end: start,
+      kind: "array",
+      children: new Map(),
+    };
+    let i = skipWs(s, start + 1);
+    if (s[i] === "]") {
+      node.end = i + 1;
+      return node;
     }
-    if (s[i] === ",") {
-      const ni = skipWs(s, i + 1);
-      charge(budget, ni - i);
-      i = ni;
-      idx++;
-      continue;
+    let index = 0;
+    for (;;) {
+      const childTrie = trie.children.get(index);
+      if (childTrie === undefined) {
+        i = scanValue(s, i);
+      } else {
+        const child = scanIndexedValue(s, i, childTrie);
+        node.children.set(index, child);
+        i = child.end;
+      }
+      i = skipWs(s, i);
+      if (s[i] === ",") {
+        i = skipWs(s, i + 1);
+        index++;
+        continue;
+      }
+      if (s[i] === "]") {
+        node.end = i + 1;
+        return node;
+      }
+      throw new MaskerError("capture_not_json", "数组格式错误");
     }
-    if (s[i] === "]") throw new MaskerError("capture_not_found", "数组下标越界");
-    throw new MaskerError("capture_not_json", "数组格式错误");
   }
+
+  return {
+    start,
+    end: scanValue(s, start),
+    kind: "scalar",
+    children: new Map(),
+  };
+}
+
+/** 纯索引查询；按规则顺序执行，因此错误优先级不因批量建索引而改变。 */
+function lookupJsonSpan(index: JsonIndexNode, tokens: Array<string | number>): JsonSpan {
+  let node = index;
+  for (const token of tokens) {
+    if (typeof token === "string") {
+      if (node.kind !== "object") throw new MaskerError("capture_not_found", "路径期望对象");
+      if (node.duplicateKey !== undefined) {
+        throw new MaskerError("capture_duplicate_key", "JSON 对象重复键", {
+          key: node.duplicateKey,
+        });
+      }
+    } else if (node.kind !== "array") {
+      throw new MaskerError("capture_not_found", "路径期望数组");
+    }
+    const child = node.children.get(token);
+    if (child === undefined) {
+      throw new MaskerError("capture_not_found", typeof token === "string" ? "键不存在" : "数组下标越界");
+    }
+    node = child;
+  }
+  return { start: node.start, end: node.end };
+}
+
+function captureJsonFromIndex(
+  path: string,
+  tokens: Array<string | number> | null,
+  body: string,
+  index: JsonIndexNode,
+): string {
+  if (tokens === null) {
+    throw new MaskerError("capture_bad_jsonpath", `不支持的 jsonpath 语法：'${path}'`);
+  }
+  const span = lookupJsonSpan(index, tokens);
+  return capValue(spanScalarValue(body, span.start, span.end));
 }
 
 /** 把命中区间解释为标量文本：字符串反转义；数字 / 布尔取源码字面量；对象 / 数组 / null fail-closed。 */
@@ -487,6 +547,14 @@ function parseJsonStringToken(token: string): string {
   }
 }
 
+/** 对象键无转义时直接取源码内部文本；仅含反斜杠时调用平台 parser 做 JSON 反转义。 */
+function parseJsonKey(s: string, start: number, end: number): string {
+  const escapeAt = s.indexOf("\\", start + 1);
+  return escapeAt !== -1 && escapeAt < end - 1
+    ? parseJsonStringToken(s.slice(start, end))
+    : s.slice(start + 1, end - 1);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Project：删除命中头、按位剪接 body 命中标量为 sentinel、清理失效实体元数据。
 // ═══════════════════════════════════════════════════════════════════════════
@@ -500,6 +568,17 @@ export function projectResponse(
   rules: MaskerRule[],
   raw: MaskerRawResponse,
   budget: ScanBudget = newScanBudget(),
+): MaskerRawResponse {
+  const tokenized = tokenizeRulePaths(rules);
+  return projectResponseWithIndex(rules, raw, tokenized, undefined, budget);
+}
+
+function projectResponseWithIndex(
+  rules: MaskerRule[],
+  raw: MaskerRawResponse,
+  tokenized: Map<string, Array<string | number> | null>,
+  index: JsonIndexNode | undefined,
+  budget: ScanBudget,
 ): MaskerRawResponse {
   const deleteHeaders = new Set<string>();
   const jsonPaths: string[] = [];
@@ -519,21 +598,25 @@ export function projectResponse(
 
   let body = raw.body;
   if (jsonPaths.length > 0) {
-    assertBodyWithinLimit(raw.body);
-    assertJson(raw.body, budget);
-    body = spliceSentinels(raw.body, jsonPaths, budget);
+    index ??= buildIndexForTokenized(raw.body, tokenized, budget);
+    body = spliceSentinels(raw.body, jsonPaths, tokenized, index);
     headers = stripEntityHeaders(headers);
   }
 
   return { status: raw.status, headers, body };
 }
 
-/** 剪接：把每条 json 路径命中的标量区间替换为 sentinel。区间在**原始 body**上计算后由右向左应用。 */
-function spliceSentinels(body: string, jsonPaths: string[], budget: ScanBudget): string {
+/** 剪接：在**原始 body**上计算并排序全部区间，一次顺序拼接 sentinel，避免逐规则整包复制。 */
+function spliceSentinels(
+  body: string,
+  jsonPaths: string[],
+  tokenized: Map<string, Array<string | number> | null>,
+  index: JsonIndexNode,
+): string {
   const spans = jsonPaths.map((path) => {
-    const tokens = tokenizeJsonPath(path);
+    const tokens = tokenized.get(path) ?? null;
     if (tokens === null) throw new MaskerError("capture_bad_jsonpath", `不支持的 jsonpath 语法：'${path}'`);
-    const span = locateJsonSpan(body, tokens, budget);
+    const span = lookupJsonSpan(index, tokens);
     spanScalarValue(body, span.start, span.end); // 复核标量（非标量 fail-closed）
     return span;
   });
@@ -543,12 +626,34 @@ function spliceSentinels(body: string, jsonPaths: string[], budget: ScanBudget):
       throw new MaskerError("project_overlap", "两条 json 规则命中区间重叠");
     }
   }
-  let out = body;
-  for (let k = spans.length - 1; k >= 0; k--) {
-    const span = spans[k]!;
-    out = out.slice(0, span.start) + SENTINEL_JSON + out.slice(span.end);
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const span of spans) {
+    parts.push(body.slice(cursor, span.start), SENTINEL_JSON);
+    cursor = span.end;
+  }
+  parts.push(body.slice(cursor));
+  return parts.join("");
+}
+
+function tokenizeRulePaths(rules: MaskerRule[]): Map<string, Array<string | number> | null> {
+  const out = new Map<string, Array<string | number> | null>();
+  for (const rule of rules) {
+    if (rule.capture.source === "json") {
+      const path = rule.capture.path ?? "";
+      if (!out.has(path)) out.set(path, tokenizeJsonPath(path));
+    }
   }
   return out;
+}
+
+function buildIndexForTokenized(
+  body: string,
+  tokenized: Map<string, Array<string | number> | null>,
+  budget: ScanBudget,
+): JsonIndexNode {
+  const paths = [...tokenized.values()].filter((tokens): tokens is Array<string | number> => tokens !== null);
+  return buildJsonIndex(body, paths, budget);
 }
 
 function filterHeaders(headers: Record<string, string>, deleteLower: Set<string>): Record<string, string> {
@@ -577,19 +682,27 @@ function stripEntityHeaders(headers: Record<string, string>): Record<string, str
  * 性投影。任一 Capture 或 Project 抛错 → 整体 fail-closed，调用方不交付、不发下游请求。
  */
 export function applyResponseMasker(rules: MaskerRule[], raw: MaskerRawResponse): MaskerOutcome {
-  // 单一累计预算跨全部 Capture + Project 共享（finding 1）：任一步累计扫描超 MAX_SCAN_BUDGET
-  // → capture_budget_exceeded fail-closed，整体不交付、不半提交。
   const budget = newScanBudget();
+  const tokenized = tokenizeRulePaths(rules);
+  let index: JsonIndexNode | undefined;
   const captured: CapturedCredential[] = [];
   for (const rule of rules) {
-    const value =
-      rule.capture.source === "header"
-        ? captureHeader(rule.capture.name ?? "", raw)
-        : captureJson(rule.capture.path ?? "", raw, budget);
+    let value: string;
+    if (rule.capture.source === "header") {
+      value = captureHeader(rule.capture.name ?? "", raw);
+    } else {
+      index ??= buildIndexForTokenized(raw.body, tokenized, budget);
+      const path = rule.capture.path ?? "";
+      value = captureJsonFromIndex(path, tokenized.get(path) ?? null, raw.body, index);
+    }
     if (rule.capture.destination.kind === "credential") {
-      captured.push({ ruleId: rule.id, ref: rule.capture.destination.ref ?? "", value });
+      captured.push({
+        ruleId: rule.id,
+        ref: rule.capture.destination.ref ?? "",
+        value,
+      });
     }
   }
-  const projected = projectResponse(rules, raw, budget);
+  const projected = projectResponseWithIndex(rules, raw, tokenized, index, budget);
   return { captured, projected };
 }

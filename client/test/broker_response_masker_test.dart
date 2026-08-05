@@ -13,6 +13,8 @@
 /// 🔒 覆盖红线 #1 凭证路径；与被测代码一并须人工 + 安全清单复核（不得 AI 独自闭环）。
 library;
 
+import 'dart:convert';
+
 import 'package:elecon/core/broker/response_masker.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -63,7 +65,7 @@ void main() {
         final kind = raw['kind'] as String;
         final unit = raw['unit'] as String? ?? '';
         final repeat = raw['repeat'] as int? ?? 0;
-        final error = raw['error'] as String;
+        final error = raw['error'] as String?;
         if (kind == 'header') {
           final value = List.filled(repeat, unit).join();
           _expectError(
@@ -75,7 +77,7 @@ void main() {
                 body: '',
               ),
             ),
-            error,
+            error!,
             raw['name'] as String,
           );
         } else if (kind == 'body') {
@@ -85,7 +87,7 @@ void main() {
               r'$',
               MaskerRawResponse(status: 200, headers: const {}, body: body),
             ),
-            error,
+            error!,
             raw['name'] as String,
           );
         } else if (kind == 'captureValue') {
@@ -96,7 +98,7 @@ void main() {
               r'$.token',
               MaskerRawResponse(status: 200, headers: const {}, body: body),
             ),
-            error,
+            error!,
             raw['name'] as String,
           );
         } else {
@@ -118,18 +120,22 @@ void main() {
               ),
             );
           }
-          _expectError(
-            () => applyResponseMasker(
-              rules,
-              MaskerRawResponse(
-                status: 200,
-                headers: const {'content-type': 'application/json'},
-                body: '{${entries.join(',')}}',
-              ),
+          final actual = applyResponseMasker(
+            rules,
+            MaskerRawResponse(
+              status: 200,
+              headers: const {'content-type': 'application/json'},
+              body: '{${entries.join(',')}}',
             ),
-            error,
-            raw['name'] as String,
           );
+          expect(actual.captured, isEmpty, reason: 'redact 不应托管');
+          final projected =
+              jsonDecode(actual.projected.body) as Map<String, dynamic>;
+          for (var k = 0; k < (raw['rules'] as int? ?? 0); k++) {
+            expect(projected['k$k'], maskerSentinel, reason: 'k$k 未投影');
+          }
+          final last = (raw['entries'] as int? ?? 0) - 1;
+          expect(projected['k$last'], 'v$last', reason: '无关值漂移');
         }
       });
     }
