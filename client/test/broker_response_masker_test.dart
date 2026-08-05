@@ -24,13 +24,21 @@ MaskerRawResponse _resp(Map<String, dynamic> j) =>
 List<MaskerRule> _rules(List<dynamic> raw) =>
     raw.cast<Map<String, dynamic>>().map(MaskerRule.fromJson).toList();
 
-/// 断言 [fn] 抛出 MaskerException 且 code 匹配。
-void _expectError(void Function() fn, String code, String label) {
+/// 断言 [fn] 抛出 MaskerException 且 code 匹配；给了 expectedKey 时还校验结构化 key（B5）。
+void _expectError(
+  void Function() fn,
+  String code,
+  String label, {
+  String? expectedKey,
+}) {
   try {
     fn();
     fail('$label：期望 fail-closed（$code），但未抛错');
   } on MaskerException catch (e) {
     expect(e.code, code, reason: '$label：错误码不符');
+    if (expectedKey != null) {
+      expect(e.key, expectedKey, reason: '$label：重复键结构化 key 不符');
+    }
   }
 }
 
@@ -46,6 +54,85 @@ void main() {
 
   test('golden 非空', () {
     expect(golden['captureJson'] as List, isNotEmpty);
+  });
+
+  group('generatedLimits（共享描述符生成超限输入）', () {
+    for (final raw
+        in (golden['generatedLimits'] as List).cast<Map<String, dynamic>>()) {
+      test(raw['name'] as String, () {
+        final kind = raw['kind'] as String;
+        final unit = raw['unit'] as String? ?? '';
+        final repeat = raw['repeat'] as int? ?? 0;
+        final error = raw['error'] as String;
+        if (kind == 'header') {
+          final value = List.filled(repeat, unit).join();
+          _expectError(
+            () => captureHeader(
+              'X-Limit',
+              MaskerRawResponse(
+                status: 200,
+                headers: {'X-Limit': value},
+                body: '',
+              ),
+            ),
+            error,
+            raw['name'] as String,
+          );
+        } else if (kind == 'body') {
+          final body = '${List.filled(repeat, unit).join()}{}';
+          _expectError(
+            () => captureJson(
+              r'$',
+              MaskerRawResponse(status: 200, headers: const {}, body: body),
+            ),
+            error,
+            raw['name'] as String,
+          );
+        } else if (kind == 'captureValue') {
+          final value = List.filled(repeat, unit).join();
+          final body = '{"token":"$value"}';
+          _expectError(
+            () => captureJson(
+              r'$.token',
+              MaskerRawResponse(status: 200, headers: const {}, body: body),
+            ),
+            error,
+            raw['name'] as String,
+          );
+        } else {
+          final entries = <String>[];
+          for (var k = 0; k < (raw['entries'] as int? ?? 0); k++) {
+            entries.add('"k$k":"v$k"');
+          }
+          final rules = <MaskerRule>[];
+          for (var k = 0; k < (raw['rules'] as int? ?? 0); k++) {
+            rules.add(
+              MaskerRule(
+                id: 'r$k',
+                capture: MaskerCaptureDecl(
+                  source: 'json',
+                  path: '\$.k$k',
+                  destinationKind: 'redact',
+                ),
+                project: 'replace',
+              ),
+            );
+          }
+          _expectError(
+            () => applyResponseMasker(
+              rules,
+              MaskerRawResponse(
+                status: 200,
+                headers: const {'content-type': 'application/json'},
+                body: '{${entries.join(',')}}',
+              ),
+            ),
+            error,
+            raw['name'] as String,
+          );
+        }
+      });
+    }
   });
 
   group('captureHeader（收割 + fail-closed）', () {
@@ -82,6 +169,7 @@ void main() {
             () => captureJson(path, response),
             raw['error'] as String,
             raw['name'] as String,
+            expectedKey: raw['errorKey'] as String?,
           );
         } else {
           expect(captureJson(path, response), raw['expected']);
