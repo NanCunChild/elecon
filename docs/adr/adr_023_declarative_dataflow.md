@@ -100,7 +100,7 @@ auth_A        auth_B
 1. **污点标记**：从「带凭证请求的响应」或凭证派生的句柄 = **tainted**。
 2. **tainted 只能流向静态注入汇聚点**：`inject` 的目标 request + 位置静态声明死，**绝不依值选择注入到哪**。
 3. **禁分支 / 禁回读**：不得 `if(tainted)` 决定发不发请求；tainted 或其任何布尔函数不得进入 adapter 解析输出。
-   - 白送闸门：broker 知道注入句柄的真实字节，可像剥 `Set-Cookie` 一样**把响应里回显的注入值剥掉**再交 adapter（堵回读）。
+   - 堵回读：注入值若被响应回显，须防其回流 adapter。**（2026-08-05 owner 修订）** 机制改为 **adapter 作者声明 `redact`、经 [ADR-026](./adr_026_response_masker.md) §2.10 Masker 投影承接**——**不再**做「注入值 → 全响应 body 反射扫描剥离」的 blanket sweep（短密文误报 + 大 body 成本，与 ADR-026 B1-a 同理）；精确性与残余风险见 §2.5。
 
 **分期（owner 决策，2026-07-23）**：
 - **静态汇聚点是格式自带的**（`inject.into/at` 本就静态），**非污点系统**——故 MVP 天然无「依值选汇聚点」这条侧信道。
@@ -111,12 +111,13 @@ auth_A        auth_B
 
 - **MVP 不限制凭证派生值进入数据流。** 理由：驱动本 ADR 的真实场景（挑战页 → 取 `client_id` → 下一跳）中，挑战页响应本身往往就来自带 session 凭证的请求；一刀切禁掉会使 MVP 无真实用例，特性沦为空转。
 - **MVP 期的实际防护强于「没有污点系统」的字面印象**，因为两条约束是**格式自带、免费成立**的：① 声明面**没有分支构造**（静态 DAG），故「`if(tainted)` 决定发不发请求」在语法上不可表达；② `inject.into/at/name` 静态声明死，故「依值选汇聚点」不可表达。MVP 真正缺的只是**污点标记与传播**本身。
-- 🔒 **回显剥离是 MVP 必做项，不得延后**：broker 知道注入句柄的真实字节，须像剥 `Set-Cookie` 一样，把响应里回显的注入值剥掉再交 adapter。此项成本极低却直接堵死回读通道，是 MVP 期替代污点围栏的关键一环（落地见迁移清单 §4）。
+- 🔒 **注入值回显的处理（2026-08-05 owner 修订，推翻本项原「blanket 剥离必做」表述）**：**不再**对「注入值 → 全响应 body 反射扫描」做 blanket 剥离——短密文误报（如 4 字符 token 命中无关业务字段、破坏合法数据）+ 大 body 成本，弊大于利，与 [ADR-026](./adr_026_response_masker.md) B1-a「不做运行期全 body sweep」同理。**回显的注入 / 凭证值改由 adapter 作者显式声明 `redact` 规则、经 ADR-026 Masker 精确投影承接**（§2.10）；发布前主捕获靠 official 静态扫描候选模式 + 动态夹具 replay + 人审（同 B1-a 可靠性链）。`Set-Cookie` / token 的响应头 allowlist 剥离**不受影响**（属响应头脱敏、另路，见 §3 步 ⑥）。
 
-**已接受的残余风险（owner 明示接受，2026-07-24）**：
+**已接受的残余风险（owner 明示接受，2026-07-24；#3 于 2026-08-05 增补）**：
 
 1. **比较预言机（每次运行 1 bit）**：adapter 仍可「注入猜测值 → 观察最终产出差异」。缓解：official 人工审 + 运行由用户触发（无法高频循环）。**接受**，随污点自动围栏落地而消除。
 2. **长度预言机**：单句柄 64KB 上限触发的报错，会向 adapter 泄漏「该值是否超过 64KB」。owner 明示：**为保持 adapter 的灵活度，此代价必要且接受**。注意本风险因错误只进宿主日志（§5 决策 6）而进一步收窄——adapter 观测到的是整条 capability 失败，而非某句柄的具体长度信息。
+3. **注入值回显读回（2026-08-05 增补，随上「不做 blanket 剥离」决策）**：若某处回显的注入 / 凭证值作者**漏声明 `redact`**，该值会随响应回流 adapter（红线 #1 读回通道）。缓解 = official 可靠性链（静态扫描 + 脱敏夹具 replay + 人审）+ 静态汇聚点 / 禁分支使其无法被程序化利用（读到也难自动化套值）。owner 明示：blanket 反射剥离的误报与成本代价高于此残余风险，**接受**，与 B1-a 同一「作者责任 + 供应链治理」模型。
 
 **Threat scoping（明确出范围）**：「恶意 official 作者 + 自控某白名单校内端点、读其日志」**不属本安全模型**——明文 relay 一样能泄，归 **official = 人工审 + 签名**兜，非污点职责。污点真正的活是三件：防**好心 adapter 的意外泄漏**、堵**廉价比较预言机**（对付配合但非恶意的服务器）、**让审阅可控**。
 
@@ -139,7 +140,7 @@ auth_A        auth_B
 ## 3. 落地性（挂现有 seam，非新造）
 
 - 现声明式执行体已在：`client/lib/core/declarative_host.dart` `fulfillDeclarativeRequests`（逐条 `proxyFetch` → 组装 `responses` → 交 adapter）；server 侧 `sandbox.ts` 对称。
-- 增量：① 解析 `bind`/`compute`/`inject`；② 代取从**平铺**改**依赖拓扑序**（静态 DAG，一次拓扑排序）；③ 抽取（脱敏前）→ broker 侧 phantom map；④ `compute` 原生执行；⑤ 注入**复用凭证注入 seam**；⑥ 脱敏剥*下游*注入值回显 + `Set-Cookie`/token；⑦ **credential-sensitive `bind` 的源响应经 ADR-026 delivery firewall 投影后才交付**（C0，见 §4 精确边界；⑥ 只剥下游回显，⑦ 补源响应投影）。
+- 增量：① 解析 `bind`/`compute`/`inject`；② 代取从**平铺**改**依赖拓扑序**（静态 DAG，一次拓扑排序）；③ 抽取（脱敏前）→ broker 侧 phantom map；④ `compute` 原生执行；⑤ 注入**复用凭证注入 seam**；⑥ 脱敏剥 `Set-Cookie`/token（响应头 allowlist）；*下游*注入值回显改由 **Masker 作者 `redact` 承接**（2026-08-05 修订，不再 blanket `stripEchoes`，见 §2.5）；⑦ **credential-sensitive `bind` 的源响应经 ADR-026 delivery firewall 投影后才交付**（C0，见 §4 精确边界；⑦ 补源响应投影）。
 - **唯一结构性改动 = 平铺 → 拓扑序**。**两端双跑一致**（ADR-001 §8 golden）。
 
 ---
@@ -150,11 +151,11 @@ auth_A        auth_B
 - 命令式收窄至罕见（仅动态拓扑 + 不可枚举计算，ADR-022 §2.5）；数据依赖链回归声明式、可审、可热替换。
 - **比命令式更安全**：中间值由 broker 提取，**从不进 adapter 代码**（命令式下 adapter 要读 body 才拿到中间 token）。
 
-  > 🔒 **精确边界（2026-08-03 C0 修订，闭合 ADR-026 §3 缺口）**：「从不进 adapter」严格成立于 **① broker 内部计算出的中间句柄**（`compute` 产物永不交付）与 **② 下游响应里回显的注入值**（`stripEchoes` 剥除，§2.5 必做项）。但**抽取该中间值的源响应本身**——即 `bind` 读取的那条响应——**并不因抽取而自动脱敏**：`stripEchoes` 只作用于*下游*注入回显，不投影*源*响应。若被抽取值是 credential-sensitive，源响应交回 adapter 时该值仍在原位。
+  > 🔒 **精确边界（2026-08-03 C0 修订；② 于 2026-08-05 随回显决策更新）**：「从不进 adapter」严格成立于 **① broker 内部计算出的中间句柄**（`compute` 产物永不交付）与 **② 下游响应里回显的注入值**（**2026-08-05 修订**：由 Masker 作者 `redact` 声明式投影承接，不再 blanket `stripEchoes`；§2.5 及其残余风险 #3）。但**抽取该中间值的源响应本身**——即 `bind` 读取的那条响应——**并不因抽取而自动脱敏**：作者的下游 `redact` 只针对*下游*回显，不投影*源*响应。若被抽取值是 credential-sensitive，源响应交回 adapter 时该值仍在原位。
   >
   > 故该值的「从不进 adapter」保证**不由 dataflow 执行器单独兑现**，而由 **ADR-026 delivery firewall 对源响应执行 Project** 兜底：被人工分类为 credential-sensitive 的 `bind`，其 `bind[].var` 由 `masker.json` 引用并附加投影义务；firewall 在 Capture 阶段执行该 bind **一次**，同时产出 staged handle 与**投影后的源响应**（ADR-026 §3），源响应中的原值被替换为 sentinel 后才交付。未被分类为敏感的普通 `bind`，其源响应按业务数据原样交付（本就非凭证，不在保护面）。
   >
-  > 换言之：dataflow 负责*计算不外泄 + 下游回显剥离*；源响应的凭证投影是 **ADR-026 firewall 的职责**，二者组合才使「credential-sensitive 中间值从不进 adapter」为真。此前本行的无条件表述与实现存在缺口（ADR-026 §3 已指出），本修订予以精确化。
+  > 换言之：dataflow 负责*计算不外泄*，下游回显由 **Masker 作者 `redact`** 承接（2026-08-05），源响应的凭证投影是 **ADR-026 firewall 的职责**，三者组合才使「credential-sensitive 中间值从不进 adapter」为真。此前本行的无条件表述与实现存在缺口（ADR-026 §3 已指出），本修订予以精确化。
 
 **代价 / 已知约束**
 - 代取编排从平铺改拓扑序（两端一致，🔒）。
@@ -212,7 +213,7 @@ auth_A        auth_B
 
 ### 决策 4 · MVP 允许凭证派生值
 
-**允许**，不再进一步限定。详见 §2.5「MVP 允许凭证派生值」及其中的 🔒 回显剥离必做项与两条已接受残余风险。
+**允许**，不再进一步限定。详见 §2.5「MVP 允许凭证派生值」及其中注入值回显的处理（2026-08-05 改由 Masker 作者 `redact` 承接、不再 blanket 剥离）与三条已接受残余风险。
 
 ### 决策 5 · `devSideload` 在 DEV 下与 official 同权
 
