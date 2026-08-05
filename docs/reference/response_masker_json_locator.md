@@ -44,8 +44,38 @@ Masker **交付整段 adapter-visible body**，要求比 ADR-023 dataflow 的「
 | 下标 | 字符串 **UTF-16 code unit** 区间（JS/Dart 一致）；输入/收割**限额**用 UTF-8 字节（对齐 dataflow） |
 | 非标量 | 对象 / 数组 / `null` → `capture_not_scalar` |
 | 缺失 / 越界 | `capture_not_found` |
+| 深度（B2） | 平台 parser **前**做线性、非递归的括号计深，超 `MAX_JSON_DEPTH = 512` → `capture_too_deep`；防极深嵌套在递归 parser 内栈溢出且**两端栈深上限不同导致分叉** |
 
 区间定位用 code unit、限额用 UTF-8 字节：实现与注释必须写清，避免误当成「字节偏移剪接」。
+
+### 1.4 两类扫描器与边界（B1-b / B2 · owner 钉死 2026-08-04）
+
+引擎里有**两个独立扫描器**，职责与运行时机必须区分：
+
+1. **深度预扫描器（B2，`assertJsonDepth`）**：线性、非递归，**在平台 parser 之前**运行；只计括号（尊重字符串、`\\` 跳两位），超 `MAX_JSON_DEPTH=512` 即 `capture_too_deep`。目的是在递归 parser 之前把深度炸弹挡掉（跨端栈深分叉 + DoS）。
+2. **JSON 定位扫描器（B1，`scanString`/`navigate`/…）**：**仅在平台 parser 已判合法的 body 上运行**；不试图比 parser 更宽容；与 parser 的**任何结构分歧一律 fail-closed**，唯一**有意**分歧是重复键（parser 后键胜、扫描器 `capture_duplicate_key`，见 §2）。
+
+**错误优先级（finding 5）**：`assertJson` 内先跑深度预扫描、再跑平台 parser。故**超深且畸形**的 body → `capture_too_deep`（**优先于** `capture_not_json`）。golden `json_too_deep_before_malformed_priority` 锁定此优先级。
+
+**度量口径**：**下标 = UTF-16 code unit，限额 = UTF-8 byte**，二者不得混用。更改任一口径 **须重签 B1–B3**（golden 双跑为唯一防回归）。
+
+**深度阈值**：`MAX_JSON_DEPTH=512` 两端常量必须一致；由 golden 边界对锁定——`json_depth_512_ok`（512 层成功，兼证两端 parser 在 512 层安全）+ `json_too_deep_fail_closed`（513 层拒），防 `>512` 被误改为 `>=512`。极少数合法超深载荷不在覆盖目标内——寄希望于中转 / 合法 relay 方案。
+
+**累计扫描预算（finding 1 · 方案 A）**：`navigate` 查重复键扫完整层 + 每规则 Capture / Project 各重扫 → O(body × path depth × rule count) CPU 放大（深度限只防栈溢出、不限量）。owner 定 `MAX_SCAN_BUDGET = 16 MiB`（= 2× body 上限）：整个 `applyResponseMasker` 内**单计数器跨全部 Capture + Project 累计**扫过的 code unit，超即 `capture_budget_exceeded` fail-closed。计费点集中在 `locateJsonSpan` / `navigate` / `assertJson`（底层扫描器签名不变、无双计），两端逐一致。这是**抗 DoS 天花板**（KB 级凭证响应远不触及），非合法流量目标；抬高天花板 = **方案 B（一次建索引复用，待做）**。
+
+**数组下标安全整数（finding 2）**：下标须为安全整数（≤ 2^53−1）。超界时 JS `Number` 丢精、Dart `int.parse` 抛 → 两端漂移（TS `capture_not_found` vs Dart 逃逸非 MaskerException）。故两端 tokenizer 与 validator（`validJsonPath` / RM14）统一在越界时判为**不支持语法**（runtime `capture_bad_jsonpath`、发布期 `RM14_bad_jsonpath`）。golden `json_array_index_unsafe_fail_closed` + validator `bad-jsonpath-unsafe-index` 锁定。
+
+### 1.5 命中值在 body 别处回显：**作者责任**（B1-a · owner 拍板 2026-08-04）
+
+Masker 只掩码**声明路径命中的那一处标量**。若同一凭证密文在同一响应的**别处回显**（未被任一规则声明），引擎**不做全 body sweep**，该副本会随投影响应交付。owner 决议：**落作者责任，不以运行期全 body 扫描追求「完美」**。理由：
+
+1. **不能以完美哲学要求工程问题**：运行期全 body 子串扫描对**短密文必然误报**（`"1"` / `"true"` 命中业务数据 → 整条 capability 假失败），对大 body 有成本。
+2. **official adapter 的可靠性链可信**：命中值回显属畸形/低概率，且 official adapter 经**静态扫描 + 动态夹具 + 人工 / AI 辅助复审**;责任落作者可接受。
+3. **纵深仍在**：即便偶发回显，经审查的 adapter 也几乎无法利用该凭证（能力面受限、无凭证值直取通道）。
+
+作者纪律：**每个回显位置各写一条 `redact` 规则**。发布前主捕获 = D3 `review/` observation→replay 夹具 + D6 `check-adapters.mjs` 门。此边界须写入贡献规范（D8）。
+
+> **纯引擎已签收、补偿控制在途（finding 6）**：B1-a 的**决议**已定（不做运行期 sweep），B1 扫描器于 2026-08-05 完成人工签收；作者侧补偿控制 D3 / D6 / D8 尚未落地，仍作为 adapter 发布闭环的独立阻塞，不因纯引擎签收而视为完成。
 
 ---
 
@@ -91,6 +121,10 @@ RFC / 常见解析器对重复键为 implementation-defined（先键、后键或
 ### 3.1 决议
 
 「至少能在开发产物中溯源 Masker 失败原因」**预备在 [ADR-024](../adr/adr_024_build_profile_trust.md) 落地之后**，挂在信任 profile **`DEV`（含侧载 / `ELECON_TRUST_PROFILE` 等编译期 flag 所标定的开发 profile）** 上，**不**绑定传统 `kDebugMode` / `kReleaseMode` 优化等级。
+
+**稳定契约（B5 · owner 拍板 2026-08-04）**：对外/对宿主诊断的稳定契约是 **§3.3 结构化字段**（`code` / `ruleId` / `source` / `path`\|`headerName` / 重复键 `key`），**不是** message 文案；DEPLOY 丢弃人读 message，只留稳定 `code`。**发射实现挂 C1**——由 firewall 上层 catch 在 DEV profile 决定写哪些字段（`ruleId` / `path` 等上下文只在规则层可得）；本纯引擎只负责**携带稳定 `code`**、永不在 message 放原值。
+
+> **引擎携带 `key`（finding 3 修复 2026-08-04）**：重复 sibling 键名 `key` 只在**引擎层**可得（离开 `navigate` 即丢），故 `MaskerError` / `MaskerException` 已加**结构化 `detail.key` / `key` 字段**，在 `capture_duplicate_key` 时携带该键名（golden `errorKey` 双端校验）。这样文档承诺的「重复键 `key` 稳定字段」实现层可提供；C1 上层再补 `ruleId` / `path`。字段**只含键名**，绝不含候选值 / 原值。
 
 依据（与 ADR-024 一致）：
 
@@ -146,8 +180,12 @@ Masker 诊断在 **DEV profile** 下扩展「结构字段」时，须：
 | 项 | 阶段 | 签收点 |
 |---|---|---|
 | 手写扫描器 + 剪接 | 纯引擎（已有） | checklist **B1**；golden 双跑 |
-| 重复键 fail-closed + golden | **已落地**（纯引擎增量，2026-07-31） | checklist **B1/B6**；码 `capture_duplicate_key`；golden 4+1 例两端双跑绿；B1 逐行人审仍待 |
-| DEV 结构诊断 | **ADR-024 落地之后**接线 | checklist **B5** + C1 上层 catch 扫；DEPLOY 无详细路径泄漏 |
+| 重复键 fail-closed + golden | **已落地并签收**（纯引擎增量，2026-08-05） | checklist **B1/B6**；码 `capture_duplicate_key`；结构化 `key` + 双端 golden；owner 逐行人审完成 |
+| 扫描器边界钉死（B1-b） | **已落地**（文档 §1.4，2026-08-04） | 度量口径不得混用 / 分歧即 fail-closed；改口径重签 B1–B3 |
+| 回显作者责任（B1-a） | **决议已落**（文档 §1.5，2026-08-04；不做运行期 sweep） | 作者写 redact + D3/D6 发布前捕获；D8 补贡献规范 |
+| 深度预检（B2） | **已落地**（纯引擎增量，2026-08-04） | 码 `capture_too_deep`；`MAX_JSON_DEPTH=512`；golden `json_too_deep_fail_closed` 两端双跑绿 |
+| 漂移 / 转义 golden（B3） | **已落地**（golden 增量，2026-08-04） | 非 BMP 前置下标 parity、代理对、末尾反斜杠、转义引号；两端双跑绿 |
+| DEV 结构诊断 | **ADR-024 落地之后**接线（契约=§3.3 结构字段，B5 已定） | checklist **B5** + C1 上层 catch 扫；DEPLOY 无详细路径泄漏 |
 | 改树方案 | **不做** | 本文 §1.2 |
 
 实现 PR 须声明：遵循本文 §1–§3 与 ADR-026 §2.5/§2.8；重复键不引入选择器；诊断字段符合 §3.3 白名单。
@@ -159,3 +197,7 @@ Masker 诊断在 **DEV profile** 下扩展「结构字段」时，须：
 | 日期 | 内容 |
 |---|---|
 | 2026-07-31 | 初版：手写扫描器 + golden；重复键 fail-closed；诊断挂 ADR-024 DEV profile（非传统 debug flag）。 |
+| 2026-08-04 | owner 拍板 B 组收尾：B1-a 回显落作者责任（不做运行期 sweep，§1.5）；B1-b 扫描器边界钉死（§1.4）；B2 深度预检 `capture_too_deep`（`MAX_JSON_DEPTH=512`）落地；B3 漂移/转义 golden 落地；B5 诊断稳定契约 = §3.3 结构字段（发射挂 C1）。B4 header 大小写歧义**待 owner 讨论**（两端生产传输层均归一化 → `capture_ambiguous` 为纵深，见签收清单）。 |
+| 2026-08-04（外部评审后续） | B4 owner 定为**契约**（map 到 masker 前已归一，`capture_ambiguous` = belt-and-suspenders）。修 finding 2（数组下标安全整数 → tokenizer + validator RM14，§1.4）、finding 3（`capture_duplicate_key` 携带结构化 `key`，§3.1）、finding 4（补 `json_depth_512_ok` 锁 512/513 边界，§1.4）、finding 5（区分深度预扫描器 vs 定位扫描器 + 错误优先级，§1.4）、finding 6（B1-a 补偿控制 D3/D6/D8 未落地前不算关闭，§1.5）。**finding 1（High，CPU 放大）未解**——owner 待选「扫描预算 vs 结构索引」，B1 主签收阻塞（签收清单 §B「B1 唯一未决」）。 |
+| 2026-08-05 | finding 1 owner 选**方案 A 确定性总扫描预算**（`MAX_SCAN_BUDGET=16 MiB` 累计 code unit，跨 Capture/Project 单计数器，超即 `capture_budget_exceeded`），两端代码 + 生成式双跑测试落地（§1.4）。**方案 B（建索引复用，抬高天花板）列待做**。B1 剩承重扫描器逐行人审。 |
+| 2026-08-05（最终签收） | owner 完成 B1–B6 人工检查；B1 扫描/剪接与方案 A 预算成为当前基线。共享 golden 增 `generatedLimits`，双端生成式覆盖 header/body/capture-value/事务扫描预算四类超限，Masker 共 50 例全绿。D3/D6/D8、C1 诊断发射与方案 B 保留为独立后续项。 |
