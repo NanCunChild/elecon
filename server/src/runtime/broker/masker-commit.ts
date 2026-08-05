@@ -22,10 +22,11 @@
  * 🔒 红线 #1 承重路径（凭证派生值入核心库）：AI 起草，须人工 + 安全清单复核，不得 AI 独自
  *    闭环（AGENTS.md §1 / ADR-026 §6）。错误只进宿主日志，绝不含收割值 / 回流 adapter。
  *
- * ⚠️ **尚未接入 live 交付路径**：把本 Commit 编入真正的响应交付需要 —— ① 统一 delivery
- *    firewall 证明 declarative / imperative / actuator 三入口无旁路（checklist C1，含 A3 非
- *    UTF-8 fail-closed）；② 先修 ADR-023 源响应投影缺口（C0）。二者均须人工主导，故本件先作
- *    独立、可测的 Commit 段落地，接线点留空。
+ * **接线进度（2026-08-05，🔒 待人工签收）**：**imperative 入口已经 delivery firewall 接线**
+ *    （`deliverThroughFirewall` ⑥ 段调用本件，`proxyFetch`→sandbox `ImperativeAdapterDeps.masker`
+ *    端到端 smoke 绿）。**仍待**：① declarative / actuator 两入口无旁路接线；② 本件的真实原子性 /
+ *    generation swap / 崩溃语义（现薄桥接非真实 SecureStore）；③ ADR-023 源响应投影缺口（C0）测试
+ *    随 declarative 接线补。均须人工主导。
  */
 
 import type { CredentialEntry } from "../credential/types.js";

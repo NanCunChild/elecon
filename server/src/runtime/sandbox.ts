@@ -35,7 +35,9 @@ import {
 } from "./broker/fetch-proxy.js";
 import { decideHarvest, type HarvestSink, harvestInto } from "./broker/harvest.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
+import type { MaskerCommitContext, MaskerCommitSink } from "./broker/masker-commit.js";
 import type { CredentialResolver } from "./broker/ports.js";
+import type { MaskerRule } from "./broker/response-masker.js";
 import {
   isThenable,
   isThenableHandle,
@@ -233,6 +235,13 @@ export interface ImperativeAdapterDeps {
   resolver: CredentialResolver;
   transport: Transport;
   harvest?: { sink: HarvestSink; schoolId: string };
+  /**
+   * ⑦ Response Masker 交付策略（C1 firewall，ADR-026）。每次 `ctx.fetch` 交回 adapter 的响应
+   * 强制经 firewall；此处提供命中规则 + 落库目标。**seam（人工主导）**：`rules` 由签名
+   * `masker.json` 的 match 块按响应解析选出（本层不含匹配逻辑）、`sink`/`ctx` 接真实 Store。
+   * 缺省 = 无策略：仍经 firewall（空规则 no-op），无旁路。🔒 装配须人工、不得 AI 独自闭环。
+   */
+  masker?: { rules: readonly MaskerRule[]; sink: MaskerCommitSink; ctx: MaskerCommitContext };
 }
 
 /** imperative 执行内状态。 */
@@ -363,6 +372,7 @@ function buildImperativeCtx(
                   },
                 }
               : {}),
+            ...(deps.masker ? { masker: deps.masker } : {}),
           }),
           fetchLimits.perRequestTimeoutMs,
           () => {

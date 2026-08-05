@@ -19,6 +19,7 @@ import { strict as assert } from "node:assert";
 import { FakeResolver, FakeTransport, resp, runMain } from "./__testutils__/smoke-utils.js";
 import type { Transport, TransportResponse } from "./broker/fetch-proxy.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
+import type { MaskerRule } from "./broker/response-masker.js";
 import { CredentialStore } from "./credential/store.js";
 import { type ImperativeAdapterDeps, runImperativeAdapter, SandboxError } from "./sandbox.js";
 import { fetchTrustPermitted, TrustedAdapterContext } from "./trusted-context.js";
@@ -274,6 +275,99 @@ async function testTrustGate(): Promise<void> {
   console.log("  ✓ 信任闸门（伪造拒绝 + 生产 fail-closed + 零出网）");
 }
 
+/**
+ * 7. C1 firewall 接线：ctx.fetch 交回 adapter 的响应**强制经统一 delivery firewall**。
+ *    命中 Masker 策略时，源 body 里的凭证在交付前被投影为 sentinel，原值只落核心 store
+ *    （imperative 入口端到端；无 masker 时的透明交付已由 test 1 覆盖）。
+ */
+async function testMaskerDeliveryFirewall(): Promise<void> {
+  const view: BrokerManifestView = {
+    allow: ["https://h.edu.cn/api/*"],
+    credentials: {
+      // scope 不覆盖 fetch url → 不触发出站注入；仅作 Masker 收割落点（ADR-012 §2.4 权威）。
+      "harvested-token": {
+        scope: ["https://actuator.example/*"],
+        type: "header",
+        headerName: "x-access-token",
+      },
+    },
+  };
+  const transport = new FakeTransport([
+    resp({
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      body: '{"token":"TOK_FICTITIOUS_777","list":[1,2]}',
+    }),
+  ]);
+  const store = new CredentialStore(undefined, () => NOW);
+  const rule: MaskerRule = {
+    id: "r-harvest",
+    capture: { source: "json", path: "$.token", destination: { kind: "credential", ref: "harvested-token" } },
+    project: "replace",
+  };
+  const source = `
+    export const capabilities = {
+      'notice.list': async (ctx) => {
+        const res = await ctx.fetch('https://h.edu.cn/api/list');
+        return { body: await res.text() };
+      }
+    };`;
+  const deps: ImperativeAdapterDeps = {
+    trust: TrustedAdapterContext.devSideload(),
+    view,
+    resolver: new FakeResolver({}),
+    transport,
+    masker: { rules: [rule], sink: store, ctx: { schoolId: "xidian", now: () => NOW } },
+  };
+  const { data } = await runImperativeAdapter(
+    { source, capability: "notice.list", params: {}, nowMs: NOW },
+    deps,
+  );
+  const d = data as { body: string };
+  assert.ok(!d.body.includes("TOK_FICTITIOUS_777"), "源 token 不得交回 adapter");
+  assert.ok(d.body.includes("__ELECON_MASKED__"), "命中值应在交付前被投影为 sentinel");
+  assert.ok(d.body.includes('"list":[1,2]'), "业务字段应保留");
+  const captured = await store.get("harvested-token");
+  assert.ok(captured && captured.value === "TOK_FICTITIOUS_777", "原 token 应只落核心 store");
+  assert.equal(transport.seen[0]!.headers["x-access-token"], undefined, "收割落点非出站注入（scope 不匹配）");
+  console.log("  ✓ C1 firewall 接线：ctx.fetch 交付经 firewall，命中值投影 sentinel 后交付、原值落 store");
+}
+
+/**
+ * 8. A3 接线：传输层 `decodeOk=false`（非 UTF-8 / 非法字节）经 proxyFetch → firewall
+ *    → `body_not_plaintext` fail-closed，ctx.fetch 拒绝、绝不把非明文交回 adapter。
+ */
+async function testA3NonPlaintextFailClosed(): Promise<void> {
+  const view: BrokerManifestView = { allow: ["https://h.edu.cn/api/*"] };
+  const transport = new FakeTransport([
+    resp({
+      status: 200,
+      headers: { "content-type": "text/html; charset=gbk" },
+      body: "锟斤拷",
+      decodeOk: false,
+    }),
+  ]);
+  const source = `
+    export const capabilities = {
+      'notice.list': async (ctx) => {
+        try { await ctx.fetch('https://h.edu.cn/api/list'); return { ok: true }; }
+        catch (e) { return { ok: false, caught: true }; }
+      }
+    };`;
+  const deps: ImperativeAdapterDeps = {
+    trust: TrustedAdapterContext.devSideload(),
+    view,
+    resolver: new FakeResolver({}),
+    transport,
+  };
+  const { data } = await runImperativeAdapter(
+    { source, capability: "notice.list", params: {}, nowMs: NOW },
+    deps,
+  );
+  assert.deepEqual(data, { ok: false, caught: true }, "非明文响应应使 ctx.fetch 拒绝（adapter 可 catch）");
+  console.log("  ✓ A3 接线：decodeOk=false → firewall body_not_plaintext fail-closed，非明文不交 adapter");
+}
+
 async function main(): Promise<void> {
   console.log("fetch-runtime smoke:");
   await testInjectAndHarvest();
@@ -282,6 +376,8 @@ async function main(): Promise<void> {
   await testRequestLimitNoHarvest();
   await testPerRequestTimeoutNotSwallowable();
   await testTrustGate();
+  await testMaskerDeliveryFirewall();
+  await testA3NonPlaintextFailClosed();
   console.log("全部通过。imperative requestGraph 运行时端到端跑通。");
 }
 

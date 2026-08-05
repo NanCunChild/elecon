@@ -8,7 +8,19 @@
  *   ④ transport.fetch(req)  [seam]          —— 真实出网属 ADR-003，B6a 经 seam 注入 fake 驱动 smoke
  *   ⑤ jar.captureSetCookie(resp, url)       —— 每跳都吃 Set-Cookie（含重定向链）
  *   ⑥ B3 decideRedirect 自驱跟随            —— 每跳重做 ①–⑤；中间 Location 绝不外泄
- *   ⑦ processResponse（响应脱敏）→ 交回 adapter
+ *   ⑦ deliverThroughFirewall（C1 唯一 choke point）→ 交回 adapter
+ *
+ * **C1 交付接线（ADR-026 §2.4，checklist C1）**：交回 adapter 的**唯一**出口不再是裸
+ * `processResponse`，而是统一 delivery firewall `deliverThroughFirewall`——即便无 Masker 策略命中
+ * 也强制经此 choke point（空规则 → Masker no-op + ⑧ header 脱敏，与旧 `processResponse` 逐字节
+ * 等价），使 imperative 入口「无策略也无旁路」为**结构**保证。Masker 策略经 `deps.masker`
+ * 注入（`rules`/`sink`/`ctx` 三者同在，防「有规则无落点」）；缺省 = 无策略、透明交付。
+ * **owner 决议已处置（2026-08-05）**：① **A3 真实判定已接入**——`transportDecodeOk` 取自
+ * `resp.decodeOk ?? true`（生产 transport 按 charset + `fatal` UTF-8 解码给出，见 `transport/direct.ts`；
+ * 缺省 fake transport 按 true）；⑦ **注入凭证回显不做反射检测**（owner 拍板：短字符反射误报，交
+ * Masker `redact` 承担），故此处**不**传 `injectedValues`、维持不 strip。
+ * **仍为 seam（人工主导）**：② Policy 匹配（签名 `masker.json` §2.10 `match`→rules 的解析与
+ * sink/store 装配，本驱动只提供 `deps.masker` 注入点、不含匹配逻辑）。
  *
  * **为何自驱循环而非复用 B3 followRedirects**：followRedirects 只回元信息（status/finalUrl/hops），
  * 不带 body/响应头，且不在每跳重做注入决策 + 捕获 Set-Cookie。B6a 需「逐跳完整管线」，故复用
@@ -25,13 +37,24 @@
  * 🔒 红线 #1 凭证注入 + 出网承重路径：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
  */
 
-import { assembleRequest, type ProcessedResponse, processResponse, type RequestInit } from "./assemble.js";
+import { assembleRequest, type ProcessedResponse, type RequestInit } from "./assemble.js";
 import type { CookieJar } from "./cookie-jar.js";
+import { deliverThroughFirewall } from "./delivery-firewall.js";
 import { harvestQueryUrl, type QueryHarvestTarget } from "./harvest.js";
 import type { HeaderMap } from "./header-sanitize.js";
 import { type BrokerManifestView, decideInjection } from "./inject-policy.js";
+import type { MaskerCommitContext, MaskerCommitSink } from "./masker-commit.js";
 import type { CredentialResolver } from "./ports.js";
 import { DEFAULT_MAX_REDIRECTS, decideRedirect } from "./redirect.js";
+import type { MaskerRule } from "./response-masker.js";
+
+/**
+ * 缺省（无 Masker 策略）交付：空规则 → `applyResponseMasker` 无收割，故 sink 永不被调用；
+ * 传占位实体仅为满足 firewall 交付事务签名。**绝不**以此占位承接真实收割——真实策略必经
+ * `deps.masker` 三件套一并注入（见 {@link FetchProxyDeps.masker}）。
+ */
+const NOOP_MASKER_SINK: MaskerCommitSink = { put() {} };
+const NOOP_MASKER_CTX: MaskerCommitContext = { schoolId: "", now: () => 0 };
 
 /** 统一 transport seam（复用 B3 RedirectFetcher 思路）。真实实现属 ADR-003，另件注入。 */
 export interface TransportRequest {
@@ -54,6 +77,13 @@ export interface TransportResponse {
    * 必须在此边界 fail-closed 拒交付，不得把原始字节交给 Masker 或 adapter（ADR-026 §2.8 / A3）。
    */
   body?: string;
+  /**
+   * **A3 明文判定**（ADR-026 §2.8）：传输层是否确认 body 为合法 UTF-8 明文——`content-type`
+   * 声明（或默认）UTF-8 且字节通过 `fatal` 解码。非 UTF-8 charset / 非法字节 → `false`（**绝不
+   * 猜测转码**）。缺省（`undefined`）由消费方按 `true` 处理（向后兼容 fake transport / 既有测试）；
+   * 生产 transport 必置真值，`false` 时 firewall 以 `body_not_plaintext` fail-closed。
+   */
+  decodeOk?: boolean;
 }
 
 export interface Transport {
@@ -86,6 +116,18 @@ export interface FetchProxyDeps {
   signal?: AbortSignal;
   /** 每个通过 allow 校验、确定跟随的重定向目标由核心收割 query credential（ADR-020 §2.3）。 */
   queryHarvest?: QueryHarvestTarget;
+  /**
+   * ⑦ Response Masker 交付事务（C1 firewall）。**三件套同在**（`rules`/`sink`/`ctx`）以防
+   * 「有规则无落点」漏收割：`rules` = ② Policy 匹配结果（seam，调用方从签名 `masker.json`
+   * 解析），`sink`/`ctx` = ⑥ Commit 目标（真实 Store 原子性 = C2 seam）。**缺省 = 无策略**：
+   * 响应仍强制经 firewall（空规则 no-op + header 脱敏），与旧 `processResponse` 等价、无旁路。
+   * 🔒 红线 #1：装配此三件套（含 store 与 match 解析）须人工主导、不得 AI 独自闭环。
+   */
+  masker?: {
+    rules: readonly MaskerRule[];
+    sink: MaskerCommitSink;
+    ctx: MaskerCommitContext;
+  };
 }
 
 export interface FetchProxyOutcome extends ProcessedResponse {
@@ -153,8 +195,23 @@ export async function proxyFetch(
       maxHops,
     });
     if (rd.kind === "deliver" || rd.kind === "stop") {
-      // ⑦ 脱敏后交回 adapter（含 stop：越界/超跳时交付当前响应，其 Location 由脱敏剥除）。
-      return { ...processResponse(resp), requestCount };
+      // ⑦ 经统一 firewall choke point 交回 adapter（含 stop：越界/超跳时交付当前响应，其
+      // Location 由 header 脱敏剥除）。无 deps.masker → 空规则透明交付（等价旧 processResponse）。
+      const masker = deps.masker;
+      const delivered = deliverThroughFirewall({
+        raw:
+          resp.body === undefined
+            ? { status: resp.status, headers: resp.headers }
+            : { status: resp.status, headers: resp.headers, body: resp.body },
+        // A3：真实判定由传输层给出（`decodeOk`）；缺省（fake transport / 无信号）按 true。
+        // `false`（非 UTF-8 charset / 非法字节）→ firewall `body_not_plaintext` fail-closed。
+        transportDecodeOk: resp.decodeOk ?? true,
+        rules: masker?.rules ?? [],
+        view,
+        sink: masker?.sink ?? NOOP_MASKER_SINK,
+        ctx: masker?.ctx ?? NOOP_MASKER_CTX,
+      });
+      return { ...delivered.response, requestCount };
     }
 
     if (deps.queryHarvest !== undefined) {

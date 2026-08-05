@@ -26,11 +26,17 @@
  * 🔒 红线 #1 承重路径 + 不可绕过边界：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环
  *    （AGENTS.md §1 / ADR-026 §6）。错误只进宿主日志，绝不含原值 / 命中片段 / 回流 adapter。
  *
- * ⚠️ **骨架，尚未接入三入口**：本函数已把已落地零件（masker / commit / stripEchoes /
- *    processResponse）编成完整事务并 fail-closed，但**替换各入口现有直接交付**（如 fetch-proxy
- *    末尾的 `processResponse`）属后续接线步，须人工主导（无旁路证明 + 逐入口迁移）。以下 seam
- *    留待接线：**②** Policy 匹配（masker.json match → rules）、**①** A3 真实 UTF-8 判定（传输层
- *    职责，本层作边界断言）、**⑥** Credential Store 原子性 / generation swap（真实 SecureStore）。
+ * **接线进度（2026-08-05，🔒 待人工签收）**：**imperative 入口已接线**——`fetch-proxy.ts`
+ *    `proxyFetch` 每次 `ctx.fetch` 交回 adapter 的响应已改为强制经本 choke point（原末尾裸
+ *    `processResponse` 已移除；无策略 → 空规则透明交付，行为等价、无旁路）；sandbox
+ *    `ImperativeAdapterDeps.masker` 提供注入点，端到端 smoke 见 `sandbox.imperative.smoke.ts`。
+ *    **owner 决议已处置（2026-08-05，ADR-026 §2.10）**：**①** A3 真实判定已由传输层给出
+ *    （`transport/direct.ts` charset + `fatal` 解码 → `decodeOk`，本层 `transportDecodeOk` 入口消费）；
+ *    **⑦** 注入凭证回显**不做反射检测**（交 Masker `redact` 承担）——`injectedValues` blanket 剥离
+ *    **待退役**（与 ADR-023 §2.5 冲突，代码移除 + §2.5 改写待 owner 签收，暂保留不破坏现测试）；
+ *    **actuator** 入口收口已确认（ADR-030 已接受）。
+ *    **仍待接线**：**declarative** 宿主代取 + **actuator** 两入口；**②** Policy 匹配（§2.10
+ *    `match`→rules 解析与 store 装配，seam）、**⑥** Credential Store 原子性 / generation swap（真实 SecureStore）。
  */
 
 import { type ProcessedResponse, processResponse, type RawResponse } from "./assemble.js";
