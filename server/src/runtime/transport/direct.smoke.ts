@@ -44,6 +44,16 @@ async function main(): Promise<void> {
       res.statusCode = 200;
       res.setHeader("content-type", "text/plain");
       res.end("0123456789");
+    } else if (reqMsg.url === "/gbk") {
+      // 声明非 UTF-8 charset：A3 不猜测转码 → decodeOk=false。
+      res.statusCode = 200;
+      res.setHeader("content-type", "text/html; charset=gbk");
+      res.end("<html>ok</html>");
+    } else if (reqMsg.url === "/badutf8") {
+      // 声明（默认）UTF-8 但字节非法 UTF-8（孤立续字节 0x80 / 0xFF）→ decodeOk=false。
+      res.statusCode = 200;
+      res.setHeader("content-type", "application/json");
+      res.end(Buffer.from([0x7b, 0x22, 0x61, 0x22, 0x3a, 0x22, 0xff, 0x80, 0x22, 0x7d]));
     } else {
       res.statusCode = 404;
       res.end();
@@ -125,11 +135,32 @@ async function main(): Promise<void> {
       );
       checks++;
     }
+
+    // 6. A3：UTF-8 JSON 端点 → decodeOk=true（正常明文可交付）
+    {
+      const resp = await transport.fetch({ url: `${base}/echo`, method: "GET", headers: {} });
+      assert.equal(resp.decodeOk, true, "UTF-8 明文应 decodeOk=true");
+      checks++;
+    }
+
+    // 7. A3：声明非 UTF-8 charset（gbk）→ decodeOk=false（绝不猜测转码）
+    {
+      const resp = await transport.fetch({ url: `${base}/gbk`, method: "GET", headers: {} });
+      assert.equal(resp.decodeOk, false, "非 UTF-8 charset 应 decodeOk=false");
+      checks++;
+    }
+
+    // 8. A3：声明 UTF-8 但字节非法 → decodeOk=false（fatal 解码失败）
+    {
+      const resp = await transport.fetch({ url: `${base}/badutf8`, method: "GET", headers: {} });
+      assert.equal(resp.decodeOk, false, "非法 UTF-8 字节应 decodeOk=false");
+      checks++;
+    }
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 
-  console.log(`transport direct smoke: ${checks}/5 例通过 ✅`);
+  console.log(`transport direct smoke: ${checks}/8 例通过 ✅`);
 }
 
 runMain(main);

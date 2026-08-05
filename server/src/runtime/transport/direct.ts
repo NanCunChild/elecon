@@ -55,9 +55,11 @@ export class DirectTransport implements Transport {
       headers[name] = value;
     });
 
-    // body：undici text() 按 UTF-8。**已知限制**：非 UTF-8（如 GBK）页面会乱码，待后续按
-    // Content-Type charset 解码（多数 .do/JSON 端点为 UTF-8）。
-    const body = await readBodyLimited(resp, this.maxBodyBytes);
+    // body + A3 明文判定（ADR-026 §2.8）：按 Content-Type charset 决定是否 UTF-8，再以
+    // `fatal` 解码验字节合法性。**绝不猜测转码**非 UTF-8 编码——decodeOk=false 时由 firewall
+    // fail-closed，绝不把非明文交给 Masker/adapter（旧「非 UTF-8 乱码仍交付」的已知限制在此封堵）。
+    const bytes = await readBodyLimited(resp, this.maxBodyBytes);
+    const { body, decodeOk } = decodeBodyA3(bytes, resp.headers.get("content-type"));
 
     return {
       status: resp.status,
@@ -65,18 +67,51 @@ export class DirectTransport implements Transport {
       setCookie,
       location: resp.headers.get("location"),
       body,
+      decodeOk,
     };
   }
 }
 
-async function readBodyLimited(resp: Response, maxBytes: number): Promise<string> {
+/** 从 `Content-Type` 提取 charset（小写去引号）；无则 null。 */
+function parseCharset(contentType: string | null): string | null {
+  if (contentType === null) return null;
+  const m = /;\s*charset\s*=\s*"?([^";]+)"?/i.exec(contentType);
+  return m ? m[1]!.trim().toLowerCase() : null;
+}
+
+/**
+ * A3 明文解码判定。charset 声明（或缺省）为 UTF-8 / ASCII 系时以 `fatal` 校验字节；非 UTF-8
+ * charset 或非法字节 → `decodeOk=false`（**绝不猜测/转码**）。`body` 仍返回宽松解码值（decodeOk
+ * =false 时 firewall 会先 fail-closed，不会使用它），保证 decodeOk=true 路径与旧行为逐字节一致。
+ */
+function decodeBodyA3(bytes: Uint8Array, contentType: string | null): { body: string; decodeOk: boolean } {
+  const charset = parseCharset(contentType);
+  const isUtf8 =
+    charset === null ||
+    charset === "utf-8" ||
+    charset === "utf8" ||
+    charset === "us-ascii" ||
+    charset === "ascii";
+  if (!isUtf8) {
+    // 声明了非 UTF-8 编码：不转码，宽松解码仅供诊断，判为非明文。
+    return { body: new TextDecoder().decode(bytes), decodeOk: false };
+  }
+  try {
+    return { body: new TextDecoder("utf-8", { fatal: true }).decode(bytes), decodeOk: true };
+  } catch {
+    // 声明（或默认）UTF-8 但字节非法 → 非明文。
+    return { body: new TextDecoder().decode(bytes), decodeOk: false };
+  }
+}
+
+async function readBodyLimited(resp: Response, maxBytes: number): Promise<Uint8Array> {
   const declared = resp.headers.get("content-length");
   if (declared !== null && Number(declared) > maxBytes) {
     await resp.body?.cancel();
     throw new TransportBodyLimitExceeded(maxBytes);
   }
 
-  if (!resp.body) return "";
+  if (!resp.body) return new Uint8Array(0);
   const reader = resp.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -95,5 +130,5 @@ async function readBodyLimited(resp: Response, maxBytes: number): Promise<string
   } finally {
     reader.releaseLock();
   }
-  return new TextDecoder().decode(Buffer.concat(chunks));
+  return Buffer.concat(chunks);
 }
