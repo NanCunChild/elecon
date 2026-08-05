@@ -2,6 +2,9 @@
 
 node_modules/
 
+# graphify 本地知识图谱导出，可出现在仓库任意层级，不入库。
+graphify-out/
+
 # Python（adapters_tests 抓包/逆向实验用的本地虚拟环境与缓存，不入库）
 .venv/
 __pycache__/
