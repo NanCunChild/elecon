@@ -100,7 +100,10 @@ function validJsonPath(path: string): boolean {
       const close = path.indexOf("]", i);
       if (close === -1) return false;
       const inner = path.slice(i + 1, close).trim();
-      if (!/^\d+$/.test(inner) && !/^'[^']*'$/.test(inner) && !/^"[^"]*"$/.test(inner)) {
+      if (/^\d+$/.test(inner)) {
+        // 数组下标须为安全整数：超 2^53-1 两端 tokenizer 会漂移（发布期即拦，与 runtime 同口径）。
+        if (!Number.isSafeInteger(Number(inner))) return false;
+      } else if (!/^'[^']*'$/.test(inner) && !/^"[^"]*"$/.test(inner)) {
         return false;
       }
       i = close + 1;

@@ -41,6 +41,44 @@ export const MAX_HEADER_INPUT_BYTES = 4 * 1024;
 export const MAX_BODY_INPUT_BYTES = 8 * 1024 * 1024;
 /** 单次收割值上限（对齐 dataflow MAX_HANDLE_BYTES）。 */
 export const MAX_CAPTURE_VALUE_BYTES = 64 * 1024;
+/**
+ * JSON 嵌套深度上限（B2）。**超过即 fail-closed**（`capture_too_deep`）。
+ *
+ * 目的：`assertJson` 的平台 `JSON.parse` 是递归的，两端（V8 / Dart VM）栈深上限不同——极深
+ * 嵌套 body 可致一端 `capture_not_json`、一端栈溢出，既是低成本 DoS 也留跨端分叉窗口。故在
+ * 平台 parser 之前做一次**线性、非递归**的括号计深预检，两端同阈值 → 同点 fail-closed。
+ * 极少数合法超深载荷不在覆盖目标内（寄希望于中转 / 合法 relay 方案）。两端常量必须一致，
+ * 由 golden `json_too_deep_fail_closed` 锁定（ADR-001 §8）。
+ */
+export const MAX_JSON_DEPTH = 512;
+/**
+ * 累计扫描预算（finding 1）：整个 [applyResponseMasker] 交付事务里所有 JSON 扫描（每条规则的
+ * 深度预检 + parse + 定位导航 + Project 各路径重定位）**累计扫过的 code unit 数**上限；超出即
+ * `capture_budget_exceeded` fail-closed，封住 O(body × path depth × rule count) 的 CPU 放大
+ * （深度限只防栈溢出、不限累计量）。
+ *
+ * 16 MiB = 2× [MAX_BODY_INPUT_BYTES]。这是**抗 DoS 天花板**，非合法流量目标——校园凭证响应
+ * 通常 KB 级、远不触及；只有病态「大 body × 深路径 × 多规则」才撞上并 fail-closed。抬高该
+ * 天花板 = 方案 B（一次建索引复用，去掉 ×rules×2 乘数），暂列待做。header 源另由
+ * [MAX_HEADER_INPUT_BYTES] 单独限、非放大向量，不计入此预算。两端常量与计费点必须逐一致，
+ * 使「跳预算发生点」确定性、可双跑锁定（ADR-001 §8）。
+ */
+export const MAX_SCAN_BUDGET = 16 * 1024 * 1024;
+
+/** 累计扫描字符计数器（[applyResponseMasker] 内单实例，跨 Capture / Project 共享）。 */
+interface ScanBudget {
+  spent: number;
+}
+function newScanBudget(): ScanBudget {
+  return { spent: 0 };
+}
+/** 记账 n 个已扫 code unit；累计超预算立即 fail-closed。🔒 两端计费点必须一致。 */
+function charge(budget: ScanBudget, n: number): void {
+  budget.spent += n;
+  if (budget.spent > MAX_SCAN_BUDGET) {
+    throw new MaskerError("capture_budget_exceeded", `累计扫描字符超过预算 ${MAX_SCAN_BUDGET}`);
+  }
+}
 
 // ---- 类型 ----
 
@@ -79,11 +117,21 @@ export interface MaskerOutcome {
   projected: MaskerRawResponse;
 }
 
+/**
+ * Masker 错误的结构化定位字段（B5 §3.3 白名单里引擎层可得的部分）。**绝不含原值 / 命中片段**。
+ * 目前仅重复键场景携带 `key`（重复的 sibling 键名）——C1 上层 catch 再补 `ruleId` / `path`
+ * 等规则层上下文后按 ADR-024 DEV profile 决定发射（DEPLOY 只留稳定 `code`）。
+ */
+export interface MaskerErrorDetail {
+  key?: string;
+}
+
 /** Masker 执行期错误。整条 capability fail-closed；🔒 错误只进宿主日志，绝不回流 adapter。 */
 export class MaskerError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly detail?: MaskerErrorDetail,
   ) {
     super(message);
     this.name = "MaskerError";
@@ -133,14 +181,18 @@ export function captureHeader(name: string, raw: MaskerRawResponse): string {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** 从**脱敏前**响应体 JSON 收割一个标量值（字符串反转义；数字 / 布尔取源码字面量）。 */
-export function captureJson(path: string, raw: MaskerRawResponse): string {
+export function captureJson(
+  path: string,
+  raw: MaskerRawResponse,
+  budget: ScanBudget = newScanBudget(),
+): string {
   assertBodyWithinLimit(raw.body);
-  assertJson(raw.body);
+  assertJson(raw.body, budget);
   const tokens = tokenizeJsonPath(path);
   if (tokens === null) {
     throw new MaskerError("capture_bad_jsonpath", `不支持的 jsonpath 语法：'${path}'`);
   }
-  const span = locateJsonSpan(raw.body, tokens);
+  const span = locateJsonSpan(raw.body, tokens, budget);
   return capValue(spanScalarValue(raw.body, span.start, span.end));
 }
 
@@ -153,12 +205,56 @@ function assertBodyWithinLimit(body: string): void {
 /**
  * 全量 JSON 合法性校验（与 dataflow「先 JSON.parse 再抽取」同口径）。只用于产出 not_json
  * 信号并确保剪接器面对合法 JSON；**不**用其重序列化（回避跨端漂移）。
+ * 先做线性深度预检（B2），再交给递归的平台 parser——避免深度炸弹在 parser 内栈溢出且跨端分叉。
  */
-function assertJson(body: string): void {
+function assertJson(body: string, budget: ScanBudget): void {
+  // 深度预检 + 平台 parse 的线性成本（~body 长度）计入累计预算（finding 1）：per-rule 重复
+  // 校验的放大在此被计量，多规则大 body 会累加撞预算 fail-closed。
+  charge(budget, body.length);
+  assertJsonDepth(body);
   try {
     JSON.parse(body);
   } catch {
     throw new MaskerError("capture_not_json", "响应体非 JSON");
+  }
+}
+
+/**
+ * B2 深度预检：线性、非递归地扫括号计深，超 [MAX_JSON_DEPTH] 即 `capture_too_deep`。
+ * 字符串内的 `{` / `[` / `}` / `]` 不计（用与 [scanString] 同款 `\\ 跳两位` 转义规则跳过串）。
+ * 在**尚未确认合法**的 body 上运行也安全：只计括号，畸形结构随后仍由 JSON.parse fail-closed。
+ */
+function assertJsonDepth(body: string): void {
+  let depth = 0;
+  let i = 0;
+  const n = body.length;
+  while (i < n) {
+    const ch = body[i]!;
+    if (ch === '"') {
+      i++;
+      while (i < n) {
+        const c = body[i]!;
+        if (c === "\\") {
+          i += 2;
+          continue;
+        }
+        if (c === '"') {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    if (ch === "{" || ch === "[") {
+      depth++;
+      if (depth > MAX_JSON_DEPTH) {
+        throw new MaskerError("capture_too_deep", `JSON 嵌套深度超过 ${MAX_JSON_DEPTH}`);
+      }
+    } else if (ch === "}" || ch === "]") {
+      depth--;
+    }
+    i++;
   }
 }
 
@@ -180,7 +276,11 @@ function tokenizeJsonPath(path: string): Array<string | number> | null {
       if (close === -1) return null;
       const inner = path.slice(i + 1, close).trim();
       if (/^\d+$/.test(inner)) {
-        out.push(Number(inner));
+        const n = Number(inner);
+        // 数组下标须为**安全整数**：超 2^53-1 时 JS `Number` 丢精 / Dart `int.parse` 抛，两端
+        // 会漂移（TS→capture_not_found、Dart→逃逸非 MaskerException）。越界即视为不支持语法。
+        if (!Number.isSafeInteger(n)) return null;
+        out.push(n);
       } else if (/^'[^']*'$/.test(inner) || /^"[^"]*"$/.test(inner)) {
         out.push(inner.slice(1, -1));
       } else {
@@ -265,19 +365,40 @@ function scanContainer(s: string, i: number): number {
  * 沿封闭路径定位命中标量的源码区间。假定 body 已过 [assertJson]。不支持通配 / 递归，故命中
  * 至多一个位置——「exactly:1」由「找到即唯一」自然满足（缺失 → capture_not_found）。
  */
-function locateJsonSpan(body: string, tokens: Array<string | number>): JsonSpan {
-  return navigate(body, skipWs(body, 0), tokens, 0);
+function locateJsonSpan(body: string, tokens: Array<string | number>, budget: ScanBudget): JsonSpan {
+  const start = skipWs(body, 0);
+  charge(budget, start);
+  return navigate(body, start, tokens, 0, budget);
 }
 
-function navigate(s: string, at: number, tokens: Array<string | number>, depth: number): JsonSpan {
+/**
+ * 沿封闭路径定位命中标量的源码区间；把每次 helper 前进的 code unit 数计入累计预算（finding 1）。
+ * 计费落在本函数的每处推进（scanString 键、scanValue 值、skipWs），故底层扫描器签名不变、
+ * 无双计：一次 `scanValue` 的 delta 即其扫过的整棵子树；命中子树在父层与子层各计一次，正是要
+ * 计量的 O(depth) 重扫放大。
+ */
+function navigate(
+  s: string,
+  at: number,
+  tokens: Array<string | number>,
+  depth: number,
+  budget: ScanBudget,
+): JsonSpan {
   let i = skipWs(s, at);
+  charge(budget, i - at);
   if (depth === tokens.length) {
-    return { start: i, end: scanValue(s, i) };
+    const end = scanValue(s, i);
+    charge(budget, end - i);
+    return { start: i, end };
   }
   const tok = tokens[depth]!;
   if (typeof tok === "string") {
     if (s[i] !== "{") throw new MaskerError("capture_not_found", "路径期望对象");
-    i = skipWs(s, i + 1);
+    {
+      const ni = skipWs(s, i + 1);
+      charge(budget, ni - i);
+      i = ni;
+    }
     if (s[i] === "}") throw new MaskerError("capture_not_found", "键不存在");
     // 扫完**整个**对象层再决定：路径导航所经此层出现任一同名键 ≥2 次即 fail-closed
     // （capture_duplicate_key，无 first/last、不消歧；责任在学校侧畸形载荷，
@@ -287,33 +408,58 @@ function navigate(s: string, at: number, tokens: Array<string | number>, depth: 
     for (;;) {
       if (s[i] !== '"') throw new MaskerError("capture_not_json", "对象键非字符串");
       const keyEnd = scanString(s, i);
+      charge(budget, keyEnd - i);
       const key = parseJsonStringToken(s.slice(i, keyEnd));
-      if (seen.has(key)) throw new MaskerError("capture_duplicate_key", "JSON 对象重复键");
+      if (seen.has(key)) throw new MaskerError("capture_duplicate_key", "JSON 对象重复键", { key });
       seen.add(key);
-      i = skipWs(s, keyEnd);
+      {
+        const ni = skipWs(s, keyEnd);
+        charge(budget, ni - keyEnd);
+        i = ni;
+      }
       if (s[i] !== ":") throw new MaskerError("capture_not_json", "对象键后缺 ':'");
-      i = skipWs(s, i + 1);
+      {
+        const ni = skipWs(s, i + 1);
+        charge(budget, ni - i);
+        i = ni;
+      }
       if (key === tok) matchAt = i;
-      i = skipWs(s, scanValue(s, i));
+      {
+        const ni = skipWs(s, scanValue(s, i));
+        charge(budget, ni - i);
+        i = ni;
+      }
       if (s[i] === ",") {
-        i = skipWs(s, i + 1);
+        const ni = skipWs(s, i + 1);
+        charge(budget, ni - i);
+        i = ni;
         continue;
       }
       if (s[i] === "}") break;
       throw new MaskerError("capture_not_json", "对象格式错误");
     }
     if (matchAt === -1) throw new MaskerError("capture_not_found", "键不存在");
-    return navigate(s, matchAt, tokens, depth + 1);
+    return navigate(s, matchAt, tokens, depth + 1, budget);
   }
   if (s[i] !== "[") throw new MaskerError("capture_not_found", "路径期望数组");
-  i = skipWs(s, i + 1);
+  {
+    const ni = skipWs(s, i + 1);
+    charge(budget, ni - i);
+    i = ni;
+  }
   if (s[i] === "]") throw new MaskerError("capture_not_found", "数组下标越界");
   let idx = 0;
   for (;;) {
-    if (idx === tok) return navigate(s, i, tokens, depth + 1);
-    i = skipWs(s, scanValue(s, i));
+    if (idx === tok) return navigate(s, i, tokens, depth + 1, budget);
+    {
+      const ni = skipWs(s, scanValue(s, i));
+      charge(budget, ni - i);
+      i = ni;
+    }
     if (s[i] === ",") {
-      i = skipWs(s, i + 1);
+      const ni = skipWs(s, i + 1);
+      charge(budget, ni - i);
+      i = ni;
       idx++;
       continue;
     }
@@ -350,7 +496,11 @@ function parseJsonStringToken(token: string): string {
  * sentinel。任一命中缺失 / 越界 / 非标量一律 fail-closed（与 Capture 同口径，纵深防御）。
  * body 被改写后删除 Content-Length / Content-Encoding / ETag（失效实体元数据）。
  */
-export function projectResponse(rules: MaskerRule[], raw: MaskerRawResponse): MaskerRawResponse {
+export function projectResponse(
+  rules: MaskerRule[],
+  raw: MaskerRawResponse,
+  budget: ScanBudget = newScanBudget(),
+): MaskerRawResponse {
   const deleteHeaders = new Set<string>();
   const jsonPaths: string[] = [];
   for (const rule of rules) {
@@ -370,8 +520,8 @@ export function projectResponse(rules: MaskerRule[], raw: MaskerRawResponse): Ma
   let body = raw.body;
   if (jsonPaths.length > 0) {
     assertBodyWithinLimit(raw.body);
-    assertJson(raw.body);
-    body = spliceSentinels(raw.body, jsonPaths);
+    assertJson(raw.body, budget);
+    body = spliceSentinels(raw.body, jsonPaths, budget);
     headers = stripEntityHeaders(headers);
   }
 
@@ -379,11 +529,11 @@ export function projectResponse(rules: MaskerRule[], raw: MaskerRawResponse): Ma
 }
 
 /** 剪接：把每条 json 路径命中的标量区间替换为 sentinel。区间在**原始 body**上计算后由右向左应用。 */
-function spliceSentinels(body: string, jsonPaths: string[]): string {
+function spliceSentinels(body: string, jsonPaths: string[], budget: ScanBudget): string {
   const spans = jsonPaths.map((path) => {
     const tokens = tokenizeJsonPath(path);
     if (tokens === null) throw new MaskerError("capture_bad_jsonpath", `不支持的 jsonpath 语法：'${path}'`);
-    const span = locateJsonSpan(body, tokens);
+    const span = locateJsonSpan(body, tokens, budget);
     spanScalarValue(body, span.start, span.end); // 复核标量（非标量 fail-closed）
     return span;
   });
@@ -427,16 +577,19 @@ function stripEntityHeaders(headers: Record<string, string>): Record<string, str
  * 性投影。任一 Capture 或 Project 抛错 → 整体 fail-closed，调用方不交付、不发下游请求。
  */
 export function applyResponseMasker(rules: MaskerRule[], raw: MaskerRawResponse): MaskerOutcome {
+  // 单一累计预算跨全部 Capture + Project 共享（finding 1）：任一步累计扫描超 MAX_SCAN_BUDGET
+  // → capture_budget_exceeded fail-closed，整体不交付、不半提交。
+  const budget = newScanBudget();
   const captured: CapturedCredential[] = [];
   for (const rule of rules) {
     const value =
       rule.capture.source === "header"
         ? captureHeader(rule.capture.name ?? "", raw)
-        : captureJson(rule.capture.path ?? "", raw);
+        : captureJson(rule.capture.path ?? "", raw, budget);
     if (rule.capture.destination.kind === "credential") {
       captured.push({ ruleId: rule.id, ref: rule.capture.destination.ref ?? "", value });
     }
   }
-  const projected = projectResponse(rules, raw);
+  const projected = projectResponse(rules, raw, budget);
   return { captured, projected };
 }

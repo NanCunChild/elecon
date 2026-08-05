@@ -50,6 +50,41 @@ const int maxBodyInputBytes = 8 * 1024 * 1024;
 /// 单次收割值上限（对齐 dataflow maxHandleBytes）。
 const int maxCaptureValueBytes = 64 * 1024;
 
+/// JSON 嵌套深度上限（B2）。**超过即 fail-closed**（`capture_too_deep`）。
+///
+/// 目的：`_assertJson` 的平台 `jsonDecode` 是递归的，两端（V8 / Dart VM）栈深上限不同——极深
+/// 嵌套 body 可致一端 `capture_not_json`、一端栈溢出，既是低成本 DoS 也留跨端分叉窗口。故在
+/// 平台 parser 之前做一次**线性、非递归**的括号计深预检，两端同阈值 → 同点 fail-closed。
+/// 极少数合法超深载荷不在覆盖目标内（寄希望于中转 / 合法 relay 方案）。两端常量必须一致，
+/// 由 golden `json_too_deep_fail_closed` 锁定（ADR-001 §8）。
+const int maxJsonDepth = 512;
+
+/// 累计扫描预算（finding 1）：整个 [applyResponseMasker] 交付事务里所有 JSON 扫描（每条规则的
+/// 深度预检 + parse + 定位导航 + Project 各路径重定位）**累计扫过的 code unit 数**上限；超出即
+/// `capture_budget_exceeded` fail-closed，封住 O(body × path depth × rule count) 的 CPU 放大。
+///
+/// 16 MiB = 2× [maxBodyInputBytes]。**抗 DoS 天花板**、非合法流量目标（校园凭证响应 KB 级远不
+/// 触及）；只有病态「大 body × 深路径 × 多规则」才撞上 fail-closed。抬高该天花板 = 方案 B
+/// （一次建索引复用），暂列待做。header 源另由 [maxHeaderInputBytes] 单独限、不计入此预算。
+/// 两端常量与计费点必须逐一致，使「跳预算发生点」确定性、可双跑锁定（ADR-001 §8）。
+const int maxScanBudget = 16 * 1024 * 1024;
+
+/// 累计扫描字符计数器（[applyResponseMasker] 内单实例，跨 Capture / Project 共享）。
+class _ScanBudget {
+  int spent = 0;
+}
+
+/// 记账 n 个已扫 code unit；累计超预算立即 fail-closed。🔒 两端计费点必须一致。
+void _charge(_ScanBudget budget, int n) {
+  budget.spent += n;
+  if (budget.spent > maxScanBudget) {
+    throw MaskerException(
+      'capture_budget_exceeded',
+      '累计扫描字符超过预算 $maxScanBudget',
+    );
+  }
+}
+
 // ---- 类型 ----
 
 /// 脱敏**前**的响应（Capture 读它）。
@@ -138,10 +173,14 @@ class MaskerOutcome {
 }
 
 /// Masker 执行期错误。整条 capability fail-closed；🔒 错误只进宿主日志，绝不回流 adapter。
+///
+/// `key`（B5 §3.3 白名单里引擎层可得的结构化定位字段）：仅重复键场景携带重复的 sibling 键名，
+/// **绝不含原值 / 命中片段**。C1 上层 catch 再补 `ruleId` / `path` 后按 ADR-024 DEV profile 发射。
 class MaskerException implements Exception {
-  const MaskerException(this.code, this.message);
+  const MaskerException(this.code, this.message, {this.key});
   final String code;
   final String message;
+  final String? key;
   @override
   String toString() => 'MaskerException($code): $message';
 }
@@ -195,14 +234,19 @@ String captureHeader(String name, MaskerRawResponse raw) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 从**脱敏前**响应体 JSON 收割一个标量值（字符串反转义；数字 / 布尔取源码字面量）。
-String captureJson(String path, MaskerRawResponse raw) {
+String captureJson(String path, MaskerRawResponse raw) =>
+    _captureJson(path, raw, _ScanBudget());
+
+/// 内部实现：接受跨规则共享的累计预算（finding 1）。公开的 [captureJson] 是单预算薄包装，
+/// 避免把私有类型 `_ScanBudget` 暴露进公开 API。
+String _captureJson(String path, MaskerRawResponse raw, _ScanBudget budget) {
   _assertBodyWithinLimit(raw.body);
-  _assertJson(raw.body);
+  _assertJson(raw.body, budget);
   final tokens = _tokenizeJsonPath(path);
   if (tokens == null) {
     throw MaskerException('capture_bad_jsonpath', "不支持的 jsonpath 语法：'$path'");
   }
-  final span = _locateJsonSpan(raw.body, tokens);
+  final span = _locateJsonSpan(raw.body, tokens, budget);
   return _capValue(_spanScalarValue(raw.body, span.start, span.end));
 }
 
@@ -217,11 +261,53 @@ void _assertBodyWithinLimit(String body) {
 
 /// 全量 JSON 合法性校验（与 dataflow「先 jsonDecode 再抽取」同口径）。只用于产出 not_json
 /// 信号并确保剪接器面对合法 JSON；**不**用其重序列化（回避跨端漂移）。
-void _assertJson(String body) {
+/// 先做线性深度预检（B2），再交给递归的平台 parser——避免深度炸弹在 parser 内栈溢出且跨端分叉。
+void _assertJson(String body, _ScanBudget budget) {
+  // 深度预检 + 平台 parse 的线性成本（~body 长度）计入累计预算（finding 1）：per-rule 重复
+  // 校验的放大在此被计量，多规则大 body 会累加撞预算 fail-closed。
+  _charge(budget, body.length);
+  _assertJsonDepth(body);
   try {
     jsonDecode(body);
   } catch (_) {
     throw const MaskerException('capture_not_json', '响应体非 JSON');
+  }
+}
+
+/// B2 深度预检：线性、非递归地扫括号计深，超 [maxJsonDepth] 即 `capture_too_deep`。
+/// 字符串内的 `{` / `[` / `}` / `]` 不计（用与 [_scanString] 同款 `\\ 跳两位` 转义规则跳过串）。
+/// 在**尚未确认合法**的 body 上运行也安全：只计括号，畸形结构随后仍由 jsonDecode fail-closed。
+void _assertJsonDepth(String body) {
+  var depth = 0;
+  var i = 0;
+  final n = body.length;
+  while (i < n) {
+    final ch = body[i];
+    if (ch == '"') {
+      i++;
+      while (i < n) {
+        final c = body[i];
+        if (c == r'\') {
+          i += 2;
+          continue;
+        }
+        if (c == '"') {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    if (ch == '{' || ch == '[') {
+      depth++;
+      if (depth > maxJsonDepth) {
+        throw MaskerException('capture_too_deep', 'JSON 嵌套深度超过 $maxJsonDepth');
+      }
+    } else if (ch == '}' || ch == ']') {
+      depth--;
+    }
+    i++;
   }
 }
 
@@ -247,7 +333,14 @@ List<Object>? _tokenizeJsonPath(String path) {
       if (close == -1) return null;
       final inner = path.substring(i + 1, close).trim();
       if (RegExp(r'^\d+$').hasMatch(inner)) {
-        out.add(int.parse(inner));
+        // 数组下标须为**安全整数**：超 2^53-1 时 JS `Number` 丢精 / Dart `int.parse` 抛，两端
+        // 会漂移（TS→capture_not_found、Dart→逃逸非 MaskerException）。越界即视为不支持语法。
+        // 2^53-1，与 TS isSafeInteger 对齐
+        final n = int.tryParse(inner);
+        if (n == null || n > 9007199254740991) {
+          return null;
+        }
+        out.add(n);
       } else if (RegExp("^'[^']*'\$").hasMatch(inner) ||
           RegExp('^"[^"]*"\$').hasMatch(inner)) {
         out.add(inner.substring(1, inner.length - 1));
@@ -335,20 +428,44 @@ int _scanContainer(String s, int i) {
 
 /// 沿封闭路径定位命中标量的源码区间。假定 body 已过 [_assertJson]。不支持通配 / 递归，故命中
 /// 至多一个位置——「exactly:1」由「找到即唯一」自然满足（缺失 → capture_not_found）。
-_JsonSpan _locateJsonSpan(String body, List<Object> tokens) =>
-    _navigate(body, _skipWs(body, 0), tokens, 0);
+_JsonSpan _locateJsonSpan(
+  String body,
+  List<Object> tokens,
+  _ScanBudget budget,
+) {
+  final start = _skipWs(body, 0);
+  _charge(budget, start);
+  return _navigate(body, start, tokens, 0, budget);
+}
 
-_JsonSpan _navigate(String s, int at, List<Object> tokens, int depth) {
+/// 沿封闭路径定位命中标量的源码区间；把每次 helper 前进的 code unit 数计入累计预算（finding 1）。
+/// 计费落在本函数的每处推进（_scanString 键、_scanValue 值、_skipWs），故底层扫描器签名不变、
+/// 无双计：一次 `_scanValue` 的 delta 即其扫过的整棵子树；命中子树在父层与子层各计一次，正是要
+/// 计量的 O(depth) 重扫放大。
+_JsonSpan _navigate(
+  String s,
+  int at,
+  List<Object> tokens,
+  int depth,
+  _ScanBudget budget,
+) {
   var i = _skipWs(s, at);
+  _charge(budget, i - at);
   if (depth == tokens.length) {
-    return _JsonSpan(i, _scanValue(s, i));
+    final end = _scanValue(s, i);
+    _charge(budget, end - i);
+    return _JsonSpan(i, end);
   }
   final tok = tokens[depth];
   if (tok is String) {
     if (i >= s.length || s[i] != '{') {
       throw const MaskerException('capture_not_found', '路径期望对象');
     }
-    i = _skipWs(s, i + 1);
+    {
+      final ni = _skipWs(s, i + 1);
+      _charge(budget, ni - i);
+      i = ni;
+    }
     if (i < s.length && s[i] == '}') {
       throw const MaskerException('capture_not_found', '键不存在');
     }
@@ -362,19 +479,34 @@ _JsonSpan _navigate(String s, int at, List<Object> tokens, int depth) {
         throw const MaskerException('capture_not_json', '对象键非字符串');
       }
       final keyEnd = _scanString(s, i);
+      _charge(budget, keyEnd - i);
       final key = _parseJsonStringToken(s.substring(i, keyEnd));
       if (!seen.add(key)) {
-        throw const MaskerException('capture_duplicate_key', 'JSON 对象重复键');
+        throw MaskerException('capture_duplicate_key', 'JSON 对象重复键', key: key);
       }
-      i = _skipWs(s, keyEnd);
+      {
+        final ni = _skipWs(s, keyEnd);
+        _charge(budget, ni - keyEnd);
+        i = ni;
+      }
       if (i >= s.length || s[i] != ':') {
         throw const MaskerException('capture_not_json', "对象键后缺 ':'");
       }
-      i = _skipWs(s, i + 1);
+      {
+        final ni = _skipWs(s, i + 1);
+        _charge(budget, ni - i);
+        i = ni;
+      }
       if (key == tok) matchAt = i;
-      i = _skipWs(s, _scanValue(s, i));
+      {
+        final ni = _skipWs(s, _scanValue(s, i));
+        _charge(budget, ni - i);
+        i = ni;
+      }
       if (i < s.length && s[i] == ',') {
-        i = _skipWs(s, i + 1);
+        final ni = _skipWs(s, i + 1);
+        _charge(budget, ni - i);
+        i = ni;
         continue;
       }
       if (i < s.length && s[i] == '}') break;
@@ -383,21 +515,31 @@ _JsonSpan _navigate(String s, int at, List<Object> tokens, int depth) {
     if (matchAt == -1) {
       throw const MaskerException('capture_not_found', '键不存在');
     }
-    return _navigate(s, matchAt, tokens, depth + 1);
+    return _navigate(s, matchAt, tokens, depth + 1, budget);
   }
   if (i >= s.length || s[i] != '[') {
     throw const MaskerException('capture_not_found', '路径期望数组');
   }
-  i = _skipWs(s, i + 1);
+  {
+    final ni = _skipWs(s, i + 1);
+    _charge(budget, ni - i);
+    i = ni;
+  }
   if (i < s.length && s[i] == ']') {
     throw const MaskerException('capture_not_found', '数组下标越界');
   }
   var idx = 0;
   while (true) {
-    if (idx == tok) return _navigate(s, i, tokens, depth + 1);
-    i = _skipWs(s, _scanValue(s, i));
+    if (idx == tok) return _navigate(s, i, tokens, depth + 1, budget);
+    {
+      final ni = _skipWs(s, _scanValue(s, i));
+      _charge(budget, ni - i);
+      i = ni;
+    }
     if (i < s.length && s[i] == ',') {
-      i = _skipWs(s, i + 1);
+      final ni = _skipWs(s, i + 1);
+      _charge(budget, ni - i);
+      i = ni;
       idx++;
       continue;
     }
@@ -441,6 +583,14 @@ String _parseJsonStringToken(String token) {
 MaskerRawResponse projectResponse(
   List<MaskerRule> rules,
   MaskerRawResponse raw,
+) => _projectResponse(rules, raw, _ScanBudget());
+
+/// 内部实现：接受跨规则共享的累计预算（finding 1）。公开的 [projectResponse] 是单预算薄包装，
+/// 避免把私有类型 `_ScanBudget` 暴露进公开 API。
+MaskerRawResponse _projectResponse(
+  List<MaskerRule> rules,
+  MaskerRawResponse raw,
+  _ScanBudget budget,
 ) {
   final deleteHeaders = <String>{};
   final jsonPaths = <String>[];
@@ -465,8 +615,8 @@ MaskerRawResponse projectResponse(
   var body = raw.body;
   if (jsonPaths.isNotEmpty) {
     _assertBodyWithinLimit(raw.body);
-    _assertJson(raw.body);
-    body = _spliceSentinels(raw.body, jsonPaths);
+    _assertJson(raw.body, budget);
+    body = _spliceSentinels(raw.body, jsonPaths, budget);
     headers = _stripEntityHeaders(headers);
   }
 
@@ -474,13 +624,17 @@ MaskerRawResponse projectResponse(
 }
 
 /// 剪接：把每条 json 路径命中的标量区间替换为 sentinel。区间在**原始 body**上计算后由右向左应用。
-String _spliceSentinels(String body, List<String> jsonPaths) {
+String _spliceSentinels(
+  String body,
+  List<String> jsonPaths,
+  _ScanBudget budget,
+) {
   final spans = jsonPaths.map((path) {
     final tokens = _tokenizeJsonPath(path);
     if (tokens == null) {
       throw MaskerException('capture_bad_jsonpath', "不支持的 jsonpath 语法：'$path'");
     }
-    final span = _locateJsonSpan(body, tokens);
+    final span = _locateJsonSpan(body, tokens, budget);
     _spanScalarValue(body, span.start, span.end); // 复核标量（非标量 fail-closed）
     return span;
   }).toList()..sort((a, b) => a.start - b.start);
@@ -528,11 +682,14 @@ MaskerOutcome applyResponseMasker(
   List<MaskerRule> rules,
   MaskerRawResponse raw,
 ) {
+  // 单一累计预算跨全部 Capture + Project 共享（finding 1）：任一步累计扫描超 maxScanBudget
+  // → capture_budget_exceeded fail-closed，整体不交付、不半提交。
+  final budget = _ScanBudget();
   final captured = <CapturedCredential>[];
   for (final rule in rules) {
     final value = rule.capture.source == 'header'
         ? captureHeader(rule.capture.name ?? '', raw)
-        : captureJson(rule.capture.path ?? '', raw);
+        : _captureJson(rule.capture.path ?? '', raw, budget);
     if (rule.capture.destinationKind == 'credential') {
       captured.add(
         CapturedCredential(
@@ -543,6 +700,6 @@ MaskerOutcome applyResponseMasker(
       );
     }
   }
-  final projected = projectResponse(rules, raw);
+  final projected = _projectResponse(rules, raw, budget);
   return MaskerOutcome(captured: captured, projected: projected);
 }

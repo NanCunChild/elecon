@@ -244,6 +244,31 @@
       "expectedCodes": ["RM14_bad_jsonpath"]
     },
     {
+      "name": "bad-jsonpath-unsafe-index",
+      "policy": {
+        "schemaVersion": 1,
+        "rules": [
+          {
+            "id": "unsafe-index-path",
+            "match": {
+              "capability": "notice.list",
+              "method": "GET",
+              "urlScope": "https://api.example.edu/notices"
+            },
+            "capture": {
+              "source": "json",
+              "path": "$.items[9223372036854775808].token",
+              "required": true,
+              "exactly": 1,
+              "destination": { "kind": "redact" }
+            },
+            "project": "replace"
+          }
+        ]
+      },
+      "expectedCodes": ["RM14_bad_jsonpath"]
+    },
+    {
       "name": "direct-capture-must-not-duplicate-bind",
       "policy": {
         "schemaVersion": 1,
