@@ -152,25 +152,6 @@ void main() {
     }
   });
 
-  group('strip（回显剥离）', () {
-    for (final raw in (golden['strip'] as List).cast<Map<String, dynamic>>()) {
-      test(raw['name'] as String, () {
-        final response = _rawResponse(
-          (raw['response'] as Map).cast<String, dynamic>(),
-        );
-        final injected = (raw['injectedValues'] as List).cast<String>();
-        final actual = stripEchoes(response, injected);
-        final expected = (raw['expected'] as Map).cast<String, dynamic>();
-        expect(actual.status, expected['status']);
-        expect(actual.body, expected['body']);
-        expect(
-          actual.headers,
-          equals((expected['headers'] as Map).cast<String, String>()),
-        );
-      });
-    }
-  });
-
   group('pipelines（bytes 编码为 text 后继续参与声明计算）', () {
     for (final raw
         in (golden['pipelines'] as List).cast<Map<String, dynamic>>()) {
@@ -221,25 +202,6 @@ void main() {
     }
   });
 
-  group('echoTargets（审阅 issue 1：url 回显目标含编码形）', () {
-    for (final raw
-        in (golden['echoTargets'] as List).cast<Map<String, dynamic>>()) {
-      test(raw['name'] as String, () {
-        final e = (raw['effect'] as Map).cast<String, dynamic>();
-        final effect = InjectionEffect(
-          into: e['into'] as String,
-          at: e['at'] as String,
-          name: e['name'] as String,
-          value: e['value'] as String,
-        );
-        expect(
-          injectionEchoTargets(effect),
-          equals((raw['expected'] as List).cast<String>()),
-        );
-      });
-    }
-  });
-
   group('topo（请求依赖分层）', () {
     for (final raw in (golden['topo'] as List).cast<Map<String, dynamic>>()) {
       test(raw['name'] as String, () {
@@ -268,7 +230,7 @@ void main() {
     }
   });
 
-  test('端到端串联：抽取→hmac→hex→注入→回显剥离', () {
+  test('端到端串联：抽取→hmac→hex→注入', () {
     const chalBody = 'session_key=SECRETKEY0011; client_id=cust42';
     final chal = RawResponse(status: 200, headers: const {}, body: chalBody);
     final binds = [
@@ -313,14 +275,7 @@ void main() {
       effects,
     );
     expect(applied.url, startsWith('https://h.edu.cn/api/grades?sig='));
-    final sig = env['sig']! as TextHandle;
-    final echoed = RawResponse(
-      status: 200,
-      headers: const {},
-      body: 'ok sig=${sig.text}',
-    );
-    final stripped = stripEchoes(echoed, [sig.text]);
-    expect(stripped.body.contains(sig.text), isFalse);
+    expect(env['sig'], isA<TextHandle>());
   });
 
   // sanity：确保 golden 文件确实被两端读到同一份（jsonEncode 稳定）。

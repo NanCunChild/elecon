@@ -124,7 +124,6 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
   final bound = <String, df.HandleValue>{};
   final computeByVar = {for (final c in computes) c.varName: c};
   final computeMemo = <String, df.HandleValue>{};
-  final injectedValues = <String>[]; // 已注入的文本值（含 url 编码形），供回显剥离
   var dagBytes = 0;
 
   // 🔒 全 DAG 4 MB 预算：**每个** bind 句柄 + **每个** compute 输出都计入，按 UTF-8 字节
@@ -186,9 +185,6 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
           value: v.text,
         );
         effects.add(effect);
-        // 🔒 回显剥离目标含 url 注入的编码形（如 a%20b），否则下游回显编码值仍能被 adapter
-        // 看到秘密等价物（审阅 issue 1 / B7）。
-        injectedValues.addAll(df.injectionEchoTargets(effect));
       }
 
       // ② 展开 URL 模板，再应用注入（url 追加 query / header 交 broker 置头）。
@@ -265,19 +261,12 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
           chargeBudget(handle); // 🔒 bind 句柄计入全 DAG 预算（与服务端一致，issue 3）
         }
 
-        // ⑥ 交回 adapter 前剥除注入值回显（🔒 MVP 必做，堵回读，ADR-023 §2.5）。
-        final stripped = df.stripEchoes(
-          df.RawResponse(
-            status: outcome.status,
-            headers: outcome.headers,
-            body: outcome.body ?? '',
-          ),
-          injectedValues,
-        );
+        // ⑥ 交回 adapter（注入值回显 blanket 剥离已退役，2026-08-05 ADR-023 §2.5：回显交
+        //    Masker 作者 `redact` 承接，ADR-026 §2.10；此处不再做反射剥离）。
         out[key] = <String, dynamic>{
-          'status': stripped.status,
-          'headers': stripped.headers,
-          if (outcome.body != null) 'body': stripped.body,
+          'status': outcome.status,
+          'headers': outcome.headers,
+          if (outcome.body != null) 'body': outcome.body,
         };
       } on BrokerFetchRejected catch (e) {
         throw DeclarativeHostException('declarative 代取被拒绝：${e.reason}');

@@ -2,7 +2,7 @@
  * 统一交付 firewall 冒烟（checklist C1 骨架 + C0 源响应投影用例）。
  *
  *   deliverThroughFirewall  —— 单 choke point：A3 → Capture/Validate/Project → Commit →
- *                              回显剥离 → header 脱敏；任一步 fail-closed，绝不交付原响应。
+ *                              header 脱敏；任一步 fail-closed，绝不交付原响应。
  *
  *   运行：cd server && npm run smoke:delivery-firewall
  *
@@ -202,28 +202,6 @@ async function main(): Promise<void> {
     assert.equal(outcome.committedCount, 0, "无策略不提交凭证");
     passed++;
     console.log("  ✓ 无策略命中：仍经 choke point 交付（header 脱敏生效），committedCount=0");
-  }
-
-  // ⑦ dataflow 回显剥离：下游注入值在交付 body 里被掩码。
-  {
-    const store = new CredentialStore(undefined, ctx.now);
-    const outcome = deliverThroughFirewall({
-      raw: {
-        status: 200,
-        headers: { "content-type": "text/plain" },
-        body: "echo of INJECTED_NONCE_42 here",
-      },
-      transportDecodeOk: true,
-      rules: [],
-      view: AIRCON_VIEW,
-      sink: store,
-      ctx,
-      injectedValues: ["INJECTED_NONCE_42"],
-    });
-    assert.ok(!outcome.response.body!.includes("INJECTED_NONCE_42"), "注入值回显应被剥离");
-    assert.ok(outcome.response.body!.includes("[stripped]"), "回显应替换为掩码");
-    passed++;
-    console.log("  ✓ dataflow 回显剥离：下游注入值在交付 body 被掩码");
   }
 
   console.log(`统一交付 firewall 骨架 smoke: ${passed} 组通过 ✅`);

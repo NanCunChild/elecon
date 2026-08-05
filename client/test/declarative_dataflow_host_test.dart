@@ -1,8 +1,9 @@
 /// ADR-023 声明式数据流**接线**端到端（客户端）—— [fulfillDeclarativeRequests] 带
-/// binds/computes/injects 的编排：拓扑代取 → 脱敏前抽取 → compute → 注入 → 回显剥离。
+/// binds/computes/injects 的编排：拓扑代取 → 脱敏前抽取 → compute → 注入 → 交付。
 ///
 /// 用 FakeTransport 驱动，不经真实网络。重点是**接线正确 + 安全 fail-closed**：
-/// header 源脱敏前可读、url/header 注入落到出站请求、注入值回显被剥、缺失/成环 fail-closed。
+/// header 源脱敏前可读、url/header 注入落到出站请求、缺失/成环 fail-closed。
+/// （注入值回显 blanket 剥离已于 2026-08-05 退役，ADR-023 §2.5 → Masker 作者 redact。）
 /// 数据流**语义**（逐 op / 抽取）的两端一致由 broker_dataflow_test.dart（golden 双跑）保证。
 ///
 ///   运行：cd client && fvm flutter test test/declarative_dataflow_host_test.dart
@@ -19,7 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'utils/test_utils.dart';
 
 void main() {
-  group('数据流接线：challenge → 抽取 → 注入 → 代取 → 回显剥离', () {
+  group('数据流接线：challenge → 抽取 → 注入 → 代取 → 交付', () {
     test('regex 抽 client_id → url 注入下一跳（驱动场景）', () async {
       final view = const BrokerManifestView(
         allow: ['https://h.edu/challenge*', 'https://h.edu/api/*'],
@@ -129,11 +130,12 @@ void main() {
       expect((out['a']?['headers'] as Map).containsKey('X-Token'), isFalse);
     });
 
-    test('注入值回显被剥离（堵回读）', () async {
+    test('注入值回显不再被 host 剥离（退役，ADR-023 §2.5 → Masker redact）', () async {
       final view = const BrokerManifestView(allow: ['https://h.edu/*']);
       final transport = FakeTransport([
         const TransportResponse(status: 200, body: 'seed=longsecret9911'),
-        // b 的响应回显了注入值 → 交回 adapter 前须被掩码
+        // b 回显注入值：host 已不再做 blanket 剥离，原样交付（回显防护改由 Masker 作者
+        // redact 承接，ADR-026 §2.10；本用例锁定退役后行为）。
         const TransportResponse(
           status: 200,
           body: 'you sent longsecret9911 ok',
@@ -168,56 +170,9 @@ void main() {
           InjectDecl(varName: 's', into: 'b', at: 'url', name: 'echo'),
         ],
       );
-      expect((out['b']?['body'] as String).contains('longsecret9911'), isFalse);
-      expect((out['b']?['body'] as String).contains('[stripped]'), isTrue);
-    });
-
-    test('url 注入的编码形回显也被剥离（审阅 issue 1）', () async {
-      final view = const BrokerManifestView(allow: ['https://h.edu/*']);
-      final transport = FakeTransport([
-        // a 抽出含特殊字符的值（空格 + &）
-        const TransportResponse(status: 200, body: 'seed=a b&c9911xx'),
-        // b 的响应回显的是**编码形** a%20b%26c9911xx（原样反射 query 串）
-        const TransportResponse(
-          status: 200,
-          body: 'echo q=a%20b%26c9911xx done',
-        ),
-      ]);
-      final out = await fulfillDeclarativeRequests(
-        requests: const [
-          DeclarativeRequestDecl(
-            key: 'a',
-            method: 'GET',
-            url: 'https://h.edu/a',
-          ),
-          DeclarativeRequestDecl(
-            key: 'b',
-            method: 'GET',
-            url: 'https://h.edu/b',
-          ),
-        ],
-        params: const {},
-        view: view,
-        resolver: FakeResolver({}),
-        transport: transport,
-        binds: const [
-          BindDecl(
-            varName: 's',
-            from: 'a',
-            source: 'regex',
-            extract: {'pattern': r'seed=(.+)$', 'group': 1},
-          ),
-        ],
-        injects: const [
-          InjectDecl(varName: 's', into: 'b', at: 'url', name: 'q'),
-        ],
-      );
-      // 编码形不得残留在交回 adapter 的 body 里。
-      expect(
-        (out['b']?['body'] as String).contains('a%20b%26c9911xx'),
-        isFalse,
-      );
-      expect((out['b']?['body'] as String).contains('[stripped]'), isTrue);
+      // 退役后：回显值原样出现在交回 adapter 的 body（不再有 [stripped] 掩码）。
+      expect((out['b']?['body'] as String).contains('longsecret9911'), isTrue);
+      expect((out['b']?['body'] as String).contains('[stripped]'), isFalse);
     });
   });
 

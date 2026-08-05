@@ -12,8 +12,10 @@
  *   ① extractHandle(bind, response)      抽取：响应 → 不透明句柄（text）。脱敏**前**求值。
  *   ② evalOp(op, args, params, nowMs)     计算：封闭 op 原生执行。含 hmac/hkdf/摘要/aes-cbc（bytes，ADR-028）。
  *   ③ applyInjections(req, injects, env)  注入：句柄 → 下游请求静态汇聚点（url/header）。
- *   ④ stripEchoes(response, injected)     脱敏：剥掉响应里回显的注入值（🔒 MVP 必做，堵回读）。
- *   ⑤ planRequestOrder(requests, injects) 拓扑：无依赖请求并发、有依赖等上游（返回分层）。
+ *   ④ planRequestOrder(requests, injects) 拓扑：无依赖请求并发、有依赖等上游（返回分层）。
+ *
+ * 注入值回显剥离（原 stripEchoes/injectionEchoTargets）已于 2026-08-05 退役（ADR-023 §2.5
+ * 修订）：回显由 Masker 作者 `redact` 承接（ADR-026 §2.10），本层不再做 blanket 反射剥离。
  *
  * 🔒 红线 #1（凭证派生值 / 句柄不进 adapter）+ 承重路径：AI 起草，须人工 + 安全清单复核，
  *    不得 AI 独自闭环（AGENTS.md §1 / ADR-023 §5）。
@@ -585,55 +587,6 @@ export function applyInjections(
     }
   }
   return { url, headers };
-}
-
-/**
- * 一次注入在下游响应里**可能回显的所有形态**——供 [stripEchoes] 堵回读（审阅 issue 1 / B7）。
- *
- * 🔒 `at=url` 时**上线的是 component 编码形**（如 `a b&c` → `a%20b%26c`）：下游既可能回显
- * 原始解码值（服务器解码后写回），也可能回显编码形（原样反射 query 串）。**两者都须剥**，
- * 否则 adapter 仍能看到秘密的等价物。`at=header` 值原样上线，只回原始值。
- */
-export function injectionEchoTargets(effect: InjectionEffect): string[] {
-  if (effect.at === "url") return [effect.value, urlencode(effect.value, false)];
-  return [effect.value];
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ④ 脱敏：剥掉响应里回显的注入值（🔒 MVP 必做，堵回读通道，ADR-023 §2.5）。
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** 注入值在响应体 / 头里的回显掩码。 */
-export const ECHO_MASK = "[stripped]";
-
-/**
- * 从交给 adapter 前的响应里剥除注入值回显。broker 知道注入值的真实字节，像剥 Set-Cookie
- * 一样把它们替换为定值掩码——adapter 无从「注入猜测 → 观察回显」套值。
- *
- * 🔒 **剥除全部非空注入值，不设长度下限**（审阅 issue 2）：短 token / nonce / 凭证派生值
- * 同样是回读面，ADR-023 §2.5 只接受**比较 / 长度**预言机，**未接受**短值的直接回读。代价是
- * 极短且高频的注入值可能过度掩码 body——这是安全侧的取舍（掩码是保守方向，不泄露）。
- * 仅跳过空串（空串 replace 会在每个位置插掩码，且空串无秘密可言）。
- */
-export function stripEchoes(response: RawResponse, injectedValues: readonly string[]): RawResponse {
-  const targets = injectedValues.filter((v) => v.length > 0);
-  if (targets.length === 0) return response;
-  // 长值优先，避免短值先替换破坏长值边界。
-  const ordered = [...new Set(targets)].sort((a, b) => b.length - a.length);
-  let body = response.body;
-  const headers: Record<string, string> = {};
-  for (const val of ordered) body = replaceAllLiteral(body, val, ECHO_MASK);
-  for (const [name, value] of Object.entries(response.headers)) {
-    let masked = value;
-    for (const val of ordered) masked = replaceAllLiteral(masked, val, ECHO_MASK);
-    headers[name] = masked;
-  }
-  return { status: response.status, headers, body };
-}
-
-function replaceAllLiteral(haystack: string, needle: string, replacement: string): string {
-  if (needle === "") return haystack;
-  return haystack.split(needle).join(replacement);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

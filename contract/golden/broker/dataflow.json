@@ -394,48 +394,6 @@
       }
     }
   ],
-  "strip": [
-    {
-      "name": "strip_body_and_header_echo",
-      "response": { "status": 200, "headers": { "X-Echo": "sig=deadbeefcafe0011" }, "body": "{\"got\":\"deadbeefcafe0011\"}" },
-      "injectedValues": ["deadbeefcafe0011"],
-      "expected": { "status": 200, "headers": { "X-Echo": "sig=[stripped]" }, "body": "{\"got\":\"[stripped]\"}" }
-    },
-    {
-      "name": "strip_short_value_stripped",
-      "_doc": "审阅 issue 2：短注入值同样剥（不设长度下限）。此前固化「不剥」的用例已改。",
-      "response": { "status": 200, "headers": {}, "body": "x=ab" },
-      "injectedValues": ["ab"],
-      "expected": { "status": 200, "headers": {}, "body": "x=[stripped]" }
-    },
-    {
-      "name": "strip_empty_value_noop",
-      "_doc": "空串跳过（否则每个位置插掩码）。",
-      "response": { "status": 200, "headers": {}, "body": "abc" },
-      "injectedValues": [""],
-      "expected": { "status": 200, "headers": {}, "body": "abc" }
-    },
-    {
-      "name": "strip_url_encoded_echo",
-      "_doc": "审阅 issue 1：url 注入上线的是编码形；下游回显编码形也须被剥。injectedValues 由 host 经 injectionEchoTargets 展开为原始+编码两形。",
-      "response": { "status": 200, "headers": {}, "body": "reflected q=a%20b%26c end" },
-      "injectedValues": ["a b&c", "a%20b%26c"],
-      "expected": { "status": 200, "headers": {}, "body": "reflected q=[stripped] end" }
-    }
-  ],
-  "echoTargets": [
-    {
-      "name": "url_raw_and_encoded",
-      "_doc": "审阅 issue 1：at=url 回显目标 = 原始值 + component 编码形。",
-      "effect": { "into": "C", "at": "url", "name": "sig", "value": "a b&c" },
-      "expected": ["a b&c", "a%20b%26c"]
-    },
-    {
-      "name": "header_raw_only",
-      "effect": { "into": "C", "at": "header", "name": "X-Token", "value": "tok-1" },
-      "expected": ["tok-1"]
-    }
-  ],
   "topo": [
     {
       "name": "challenge_then_submit",

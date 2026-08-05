@@ -11,8 +11,10 @@
 ///   ① extractHandle  抽取：响应 → 不透明句柄（text）。脱敏**前**求值。
 ///   ② evalOp         计算：封闭 op 原生执行。含 hmac/hkdf/摘要（bytes，ADR-028）。
 ///   ③ resolveInjections / applyInjections  注入：句柄 → 下游请求静态汇聚点。
-///   ④ stripEchoes    脱敏：剥响应里回显的注入值（🔒 MVP 必做，堵回读）。
-///   ⑤ planRequestOrder  拓扑：无依赖并发、有依赖等上游。
+///   ④ planRequestOrder  拓扑：无依赖并发、有依赖等上游。
+///
+/// 注入值回显剥离（原 stripEchoes/injectionEchoTargets）已于 2026-08-05 退役（ADR-023 §2.5
+/// 修订）：回显交 Masker 作者 `redact` 承接（ADR-026 §2.10），本层不再做 blanket 反射剥离。
 ///
 /// 🔒 红线 #1（凭证派生值 / 句柄不进 adapter）+ 承重路径：AI 起草，须人工 + 安全清单
 ///    复核，不得 AI 独自闭环（AGENTS.md §1 / ADR-023 §5）。
@@ -791,49 +793,6 @@ List<InjectionEffect> resolveInjections(
     }
   }
   return (url: url, headers: headers);
-}
-
-/// 一次注入在下游响应里**可能回显的所有形态**——供 [stripEchoes] 堵回读（审阅 issue 1 / B7）。
-///
-/// 🔒 `at=url` 时**上线的是 component 编码形**（如 `a b&c` → `a%20b%26c`）：下游既可能回显
-/// 原始解码值（服务器解码后写回），也可能回显编码形（原样反射 query 串）。**两者都须剥**，
-/// 否则 adapter 仍能看到秘密的等价物。`at=header` 值原样上线，只回原始值。
-List<String> injectionEchoTargets(InjectionEffect effect) {
-  if (effect.at == 'url') return [effect.value, urlencode(effect.value, false)];
-  return [effect.value];
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ④ 脱敏：剥掉响应里回显的注入值（🔒 MVP 必做，堵回读通道，ADR-023 §2.5）。
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// 注入值在响应体 / 头里的回显掩码。
-const String echoMask = '[stripped]';
-
-/// 从交给 adapter 前的响应里剥除注入值回显。broker 知道注入值真实字节，像剥 Set-Cookie
-/// 一样替换为定值掩码——adapter 无从「注入猜测 → 观察回显」套值。
-///
-/// 🔒 **剥除全部非空注入值，不设长度下限**（审阅 issue 2）：短 token / nonce / 凭证派生值
-/// 同样是回读面，ADR-023 §2.5 只接受**比较 / 长度**预言机，**未接受**短值直接回读。代价是
-/// 极短且高频的注入值可能过度掩码 body——安全侧取舍（掩码是保守方向）。仅跳过空串（空串
-/// replace 会在每个位置插掩码，且空串无秘密可言）。
-RawResponse stripEchoes(RawResponse response, List<String> injectedValues) {
-  final targets = injectedValues.where((v) => v.isNotEmpty).toSet().toList()
-    ..sort((a, b) => b.length - a.length); // 长值优先，避免短值先替换破坏长值边界
-  if (targets.isEmpty) return response;
-  var body = response.body;
-  for (final val in targets) {
-    body = body.replaceAll(val, echoMask);
-  }
-  final headers = <String, String>{};
-  response.headers.forEach((name, value) {
-    var masked = value;
-    for (final val in targets) {
-      masked = masked.replaceAll(val, echoMask);
-    }
-    headers[name] = masked;
-  });
-  return RawResponse(status: response.status, headers: headers, body: body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

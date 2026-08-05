@@ -15,12 +15,13 @@
  *   ④ Validate      类型 / 数量 / 大小 / scope / 目标           │ applyResponseMasker（纯，任一失败即抛）
  *   ⑤ Project       删除 / 替换 adapter-visible 响应中的原值   ┘  —— 含 C0：**源响应投影**
  *   ⑥ Commit        原子提交 credential（A6 单持久 ref）        —— commitMaskerCaptured
- *   ⑦ 回显剥离       剥下游响应里回显的 dataflow 注入值          —— stripEchoes（seam：injectedValues）
- *   ⑧ header 脱敏    响应头 allowlist（Set-Cookie/Authorization/Location 剥除）→ adapter —— processResponse
+ *   ⑦ header 脱敏    响应头 allowlist（Set-Cookie/Authorization/Location 剥除）→ adapter —— processResponse
+ *
+ * 注：原 ⑦「注入值回显剥离」（stripEchoes）已于 2026-08-05 退役（ADR-023 §2.5 修订）——回显改由
+ * Masker 作者 `redact` 声明式承接（ADR-026 §2.10），firewall 不再做 blanket 反射剥离。
  *
  * **C0（ADR-023 源响应投影缺口）**：⑤ Project 作用于**源响应**——credential-sensitive `bind`
- * 抽取所在的那条响应，其原值在交付前被替换为 sentinel。⑦ 只剥*下游*回显，⑤ 补*源*投影，二者
- * 组合才使「credential-sensitive 中间值从不进 adapter」为真（ADR-023 §4 精确边界）。firewall
+ * 抽取所在的那条响应，其原值在交付前被替换为 sentinel（ADR-023 §4 精确边界）。firewall
  * 交付事务测试须含「源响应投影后再交付」的 raw→delivered 用例（见 smoke）。
  *
  * 🔒 红线 #1 承重路径 + 不可绕过边界：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环
@@ -32,15 +33,13 @@
  *    `ImperativeAdapterDeps.masker` 提供注入点，端到端 smoke 见 `sandbox.imperative.smoke.ts`。
  *    **owner 决议已处置（2026-08-05，ADR-026 §2.10）**：**①** A3 真实判定已由传输层给出
  *    （`transport/direct.ts` charset + `fatal` 解码 → `decodeOk`，本层 `transportDecodeOk` 入口消费）；
- *    **⑦** 注入凭证回显**不做反射检测**（交 Masker `redact` 承担）——`injectedValues` blanket 剥离
- *    **待退役**（与 ADR-023 §2.5 冲突，代码移除 + §2.5 改写待 owner 签收，暂保留不破坏现测试）；
- *    **actuator** 入口收口已确认（ADR-030 已接受）。
+ *    原 **⑦** 注入值回显 blanket 剥离（`injectedValues`/`stripEchoes`）**已退役**（ADR-023 §2.5 修订，
+ *    回显交 Masker `redact` 承担）；**actuator** 入口收口已确认（ADR-030 已接受）。
  *    **仍待接线**：**declarative** 宿主代取 + **actuator** 两入口；**②** Policy 匹配（§2.10
  *    `match`→rules 解析与 store 装配，seam）、**⑥** Credential Store 原子性 / generation swap（真实 SecureStore）。
  */
 
 import { type ProcessedResponse, processResponse, type RawResponse } from "./assemble.js";
-import { stripEchoes } from "./dataflow.js";
 import type { HeaderMap } from "./header-sanitize.js";
 import type { BrokerManifestView } from "./inject-policy.js";
 import { commitMaskerCaptured, type MaskerCommitContext, type MaskerCommitSink } from "./masker-commit.js";
@@ -84,15 +83,10 @@ export interface DeliveryFirewallInput {
   /** ⑥ Commit 落库目标（`CredentialStore`；真实原子性 / generation swap 为 seam）。 */
   sink: MaskerCommitSink;
   ctx: MaskerCommitContext;
-  /**
-   * ⑦ dataflow 下游回显剥离的注入值（declarative dataflow 链提供；imperative / actuator 可空）。
-   * broker 知道注入值真实字节，像剥 Set-Cookie 一样在交付前掩码（ADR-023 §2.5 必做）。
-   */
-  injectedValues?: readonly string[];
 }
 
 export interface DeliveryOutcome {
-  /** 交回 adapter 的响应（已 ⑤ 投影 + ⑦ 回显剥离 + ⑧ header 脱敏）。 */
+  /** 交回 adapter 的响应（已 ⑤ 投影 + ⑦ header 脱敏）。 */
   response: ProcessedResponse;
   /** 本次交付提交的持久 credential 数（A6：≤1）。诊断用，**不含值**。 */
   committedCount: number;
@@ -131,23 +125,12 @@ export function deliverThroughFirewall(input: DeliveryFirewallInput): DeliveryOu
   // ⑥ Commit（A6 单持久 ref；未声明 ref fail-closed）。在交付**之前**，失败则不交付。
   commitMaskerCaptured(captured, view, sink, ctx);
 
-  // ⑦ dataflow 下游注入值回显剥离（有则剥）。
-  let deliveredHeaders: HeaderMap = projected.headers;
-  let deliveredBody: string | undefined = hadBody ? projected.body : undefined;
-  if (input.injectedValues !== undefined && input.injectedValues.length > 0) {
-    const stripped = stripEchoes(
-      { status: projected.status, headers: projected.headers, body: projected.body },
-      input.injectedValues,
-    );
-    deliveredHeaders = stripped.headers;
-    deliveredBody = hadBody ? stripped.body : undefined;
-  }
-
-  // ⑧ 响应头 allowlist 脱敏（Set-Cookie/Authorization/Location 剥除）→ adapter。
+  // ⑦ 响应头 allowlist 脱敏（Set-Cookie/Authorization/Location 剥除）→ adapter。
+  const deliveredBody: string | undefined = hadBody ? projected.body : undefined;
   const rawForDelivery: RawResponse =
     deliveredBody === undefined
-      ? { status: raw.status, headers: deliveredHeaders }
-      : { status: raw.status, headers: deliveredHeaders, body: deliveredBody };
+      ? { status: raw.status, headers: projected.headers }
+      : { status: raw.status, headers: projected.headers, body: deliveredBody };
 
   return { response: processResponse(rawForDelivery), committedCount: captured.length };
 }

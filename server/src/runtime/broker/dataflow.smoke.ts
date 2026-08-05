@@ -4,7 +4,8 @@
  *   contract/golden/broker/dataflow.json  →  broker/dataflow.ts 纯函数  →  逐例等于 expected
  *
  * 同一份 golden 由客户端（Dart，§5）照样跑（两端双跑，ADR-001 §8）。覆盖 5 段：
- * ops（逐 op 语义 + 跨端陷阱）/ extract（抽取 + fail-closed）/ inject / strip（回显剥离）/ topo。
+ * ops（逐 op 语义 + 跨端陷阱）/ extract（抽取 + fail-closed）/ inject / topo。
+ * （注入值回显剥离 strip/echoTargets 已于 2026-08-05 退役，ADR-023 §2.5 → Masker redact。）
  *
  *   运行：cd server && npm run smoke:dataflow
  *
@@ -24,13 +25,10 @@ import {
   extractHandle,
   type HandleValue,
   type InjectDecl,
-  type InjectionEffect,
-  injectionEchoTargets,
   planRequestOrder,
   type RawResponse,
   type RequestDecl,
   resolveInjections,
-  stripEchoes,
 } from "./dataflow.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
@@ -80,8 +78,6 @@ interface GoldenFile {
       headers: Record<string, string>;
     };
   }>;
-  strip: Array<{ name: string; response: RawResponse; injectedValues: string[]; expected: RawResponse }>;
-  echoTargets: Array<{ name: string; effect: InjectionEffect; expected: string[] }>;
   topo: Array<{
     name: string;
     requests: RequestDecl[];
@@ -251,21 +247,6 @@ for (const c of golden.pipelines) {
 }
 console.log(`  ✓ pipelines: ${golden.pipelines.length} 例`);
 
-// ---- strip ----
-for (const c of golden.strip) {
-  const actual = stripEchoes(c.response, c.injectedValues);
-  assert.deepStrictEqual(actual, c.expected, `strip ${c.name}`);
-  passed++;
-}
-console.log(`  ✓ strip: ${golden.strip.length} 例`);
-
-// ---- echoTargets（审阅 issue 1：url 注入回显目标含编码形）----
-for (const c of golden.echoTargets) {
-  assert.deepStrictEqual(injectionEchoTargets(c.effect), c.expected, `echoTargets ${c.name}`);
-  passed++;
-}
-console.log(`  ✓ echoTargets: ${golden.echoTargets.length} 例`);
-
 // ---- topo ----
 for (const c of golden.topo) {
   const actual = planRequestOrder(c.requests, c.binds, c.computes, c.injects);
@@ -295,13 +276,8 @@ console.log(`  ✓ topo: ${golden.topo.length} 例`);
   const sig = env.get("sig")!;
   assert.equal(sig.type, "text");
   assert.ok(applied.url.startsWith("https://h.edu.cn/api/grades?sig="), "sig 应注入 raw.url");
-  // 回显剥离：若下游响应回显了注入值，交 adapter 前须被掩码。
-  const injectedText = sig.type === "text" ? sig.text : "";
-  const echoed: RawResponse = { status: 200, headers: {}, body: `ok sig=${injectedText}` };
-  const stripped = stripEchoes(echoed, [injectedText]);
-  assert.ok(!stripped.body.includes(injectedText), "注入值回显应被剥离");
   passed++;
-  console.log("  ✓ 端到端串联：抽取→hmac→hex→注入→回显剥离");
+  console.log("  ✓ 端到端串联：抽取→hmac→hex→注入");
 }
 
 console.log(`\ndataflow 执行器 smoke: ${passed} 例通过 ✅`);
