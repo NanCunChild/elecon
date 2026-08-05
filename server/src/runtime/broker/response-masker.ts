@@ -549,10 +549,10 @@ function parseJsonStringToken(token: string): string {
 
 /** 对象键无转义时直接取源码内部文本；仅含反斜杠时调用平台 parser 做 JSON 反转义。 */
 function parseJsonKey(s: string, start: number, end: number): string {
-  const escapeAt = s.indexOf("\\", start + 1);
-  return escapeAt !== -1 && escapeAt < end - 1
-    ? parseJsonStringToken(s.slice(start, end))
-    : s.slice(start + 1, end - 1);
+  for (let i = start + 1; i < end - 1; i++) {
+    if (s[i] === "\\") return parseJsonStringToken(s.slice(start, end));
+  }
+  return s.slice(start + 1, end - 1);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

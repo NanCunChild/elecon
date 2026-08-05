@@ -634,10 +634,10 @@ String _parseJsonStringToken(String token) {
 
 /// 对象键无转义时直接取源码内部文本；仅含反斜杠时调用平台 parser 做 JSON 反转义。
 String _parseJsonKey(String s, int start, int end) {
-  final escapeAt = s.indexOf(r'\', start + 1);
-  return escapeAt != -1 && escapeAt < end - 1
-      ? _parseJsonStringToken(s.substring(start, end))
-      : s.substring(start + 1, end - 1);
+  for (var i = start + 1; i < end - 1; i++) {
+    if (s[i] == r'\') return _parseJsonStringToken(s.substring(start, end));
+  }
+  return s.substring(start + 1, end - 1);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
