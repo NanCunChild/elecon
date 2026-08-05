@@ -65,7 +65,7 @@ official 签名表示维护者认可该 adapter 代码与响应策略的组合�
 
 ### 2.4 统一且不可绕过的响应事务
 
-declarative 和 imperative 必须经过同一个 Broker delivery firewall：
+declarative、imperative 与 **actuator（[ADR-030](./adr_030_actuator_capabilities.md)，2026-08-05 已接受）三入口**必须经过同一个 Broker delivery firewall——**三种情况都需统一防火墙收口**，任一入口都不得各自直接构造 adapter-visible 响应：
 
 ```text
 adapter request declaration / ctx.fetch / action entry
@@ -149,6 +149,19 @@ body 命中值使用核心固定 sentinel，建议为 `__ELECON_MASKED__`。body
 - **A3 明文边界（写入本 ADR 与 Transport 接口）**：Masker **只在传输层解码之后的 UTF-8 明文 body 上运行，绝不猜测编码**。`Content-Encoding` 解压与字符集解码属传输层职责；**非法 / 非 UTF-8 body 在传输层→Broker 边界 fail-closed 拒交付**，不得把原始字节交给 Masker 或 adapter。
 - **A4 sentinel 定值**：固定为 `__ELECON_MASKED__`（不再是「建议」）。
 - **B1 JSON 定位（详文）**：body 投影用手写源码定位 + 按位剪接，**不**改树重序列化；跨端漂移靠共享 golden 限制。**重复键 fail-closed**；开发者结构诊断挂 ADR-024 **DEV** profile。完整决议见 [`response_masker_json_locator.md`](../reference/response_masker_json_locator.md)。
+
+**实施决议（2026-08-05 owner 拍板，随 C1 firewall 接线落实）：**
+
+- **Policy 匹配契约（§2.4 ② 步细化，就近修订本 ADR 而非新增 ADR）**：`masker.json` 顶层为**响应策略条目数组**，每条含一个 `match` 块与其 `rules`。`match` 按下列封闭维度选出适用规则集，**全部为 AND**、缺省即不约束该维度：
+  - `urlPattern`：与 `network.allow` 同形的 glob（对本响应的**请求 URL**匹配，经重定向后为最终跳 URL）；
+  - `status`：整数或整数数组（HTTP 状态码）；
+  - `contentType`：大小写不敏感的 MIME 前缀（如 `application/json`），只比 `;` 前的媒体类型、不解析参数。
+
+  匹配由 **Broker（firewall ② 步）** 解析裁定，**纯引擎 `applyResponseMasker` 只吃已选定的 `rules[]`**、绝不含 match 判定（保持引擎无 I/O、可跨端 golden）。多条 `match` 命中时其 `rules` **并集**后交引擎，规则内既有的数量 / 目标 / overlap 校验不变。match 维度、glob 语义与并集次序须由共享 golden 跨端钉死；`match` 语法进 `masker.json` schema + validator（step 2 契约），受 host/version gate 约束。**首期只接 imperative 入口**（`fetch-proxy` 每次 `ctx.fetch` 已强制经 firewall，见 checklist C1）；match 解析与 declarative/actuator 入口的接线为后续人工主导步。
+
+- **注入凭证回显 = 不做反射检测，交 Masker 承担**：Broker 注入的凭证若被 origin 回显进响应，**不**在 firewall 做「注入值 → 全 body 反射扫描剥离」（`stripEchoes` 式 blanket sweep）——短密文误报 + 大 body 成本，与 B1-a「不做运行期全 body sweep」同理。回显位置由 **adapter 作者显式声明 `redact` 规则**、经 Masker 投影兜底；发布前主捕获同样靠 D3 replay + D6 门 + 人审。**与 [ADR-023](./adr_023_declarative_dataflow.md) §2.5「注入值回显必做剥离」冲突**：该条须相应改为「靠 Masker `redact` 声明式承接」，firewall ⑦ 的 `injectedValues` blanket 剥离随之退役——**此为契约反转，代码移除与 ADR-023 §2.5 改写待 owner 显式签收后执行**（触红线 #1/#6，不由 AI 独自闭环）。
+
+- **A3 明文判定落地（§2.8 A3 的运行期实现）**：真实判定已接入传输层——`transport/direct.ts` 按 `Content-Type` charset（缺省 / `utf-8` / `ascii` 系）以 `fatal` UTF-8 解码验字节，非 UTF-8 charset 或非法字节 → `decodeOk=false`（**绝不猜测转码**），经 `TransportResponse.decodeOk` 传至 firewall ① 步，`false` 即 `body_not_plaintext` fail-closed。封堵旧「非 UTF-8 乱码仍交付」限制。跨端 Dart transport 镜像与 golden 为后续人工步。
 
 ### 2.9 空调操作示例
 
