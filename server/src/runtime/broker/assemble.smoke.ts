@@ -184,6 +184,35 @@ async function driverTests(): Promise<number> {
     checks++;
   }
 
+  // 3b. host-only 不跨子域；显式 Domain 保留 domain 语义。
+  {
+    const view: BrokerManifestView = { allow: ["https://h.edu.cn/*", "https://sub.h.edu.cn/*"] };
+    const transport = new FakeTransport([
+      resp({
+        status: 302,
+        location: "https://sub.h.edu.cn/step2",
+        setCookie: ["host=H; Path=/", "domain=D; Domain=h.edu.cn; Path=/"],
+      }),
+      resp({ status: 200, body: "ok" }),
+    ]);
+    await proxyFetch(
+      "https://h.edu.cn/step1",
+      {},
+      {
+        view,
+        resolver: new FakeResolver({}),
+        jar: new CookieJar(),
+        transport,
+      },
+    );
+    assert.equal(
+      transport.seen[1]!.headers.Cookie,
+      "domain=D",
+      "无 Domain cookie 不得随重定向发往子域；显式 Domain 须保留 domain 语义",
+    );
+    checks++;
+  }
+
   // 4. 重定向越出 allow → stop，交付当前响应（其 Location 被脱敏剥除），不再续跳。
   {
     const view: BrokerManifestView = { allow: ["https://h.edu.cn/*"] };

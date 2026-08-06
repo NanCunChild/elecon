@@ -12,14 +12,16 @@
 ///  - adapter 在**后台 isolate** 执行（红线 #7：不在 UI 线程同步阻塞）。
 ///  - declarative 的 ctx 只有 log/now，**没有 fetch**（无网络能力）。
 ///  - 两端用同一加载约定：以 ES module 加载 adapter、读其 `capabilities` 导出。
-///  - 产出**不在此处按 schema 校验**——校验在宿主（Dart 核心）边界做，
-///    与服务端一致（ADR-001 §2.2：QuickJS 不背校验器）。
+///  - QuickJS 不背 schema 校验器；唯一生产入口 [runLoadedAdapter] 在 Dart 核心边界按已验签
+///    manifest 的精确 emits 校验后才返回（ADR-001 §2.2、ADR-008 §2.4）。
 library;
 
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
 import 'package:flutter_qjs_next/flutter_qjs.dart';
+import 'package:elecon_contract/output_validator_registry.dart'
+    show outputValidatorFor;
 
 import 'broker/assemble.dart' show RequestInit;
 import 'broker/cookie_jar.dart' show CookieJar, EphemeralWriteInput;
@@ -411,7 +413,6 @@ Future<dynamic> _runImperativeAdapter({
 
   // 执行内计量状态（被 host 闭包按引用捕获）。
   var requestCount = 0;
-  var remainingRequests = fetchLimits.maxRequests;
   var networkMs = 0;
   AdapterRunException? fatal;
   final cancelTokens = <TransportCancelToken>{};
@@ -458,7 +459,7 @@ Future<dynamic> _runImperativeAdapter({
               now: () => nowMs,
             ),
       tryReserveRequest: () {
-        if (remainingRequests <= 0) {
+        if (requestCount >= fetchLimits.maxRequests) {
           fatal = const AdapterRunException(
             AdapterFailureReason.fetchLimit,
             '单次执行请求数超限',
@@ -466,7 +467,7 @@ Future<dynamic> _runImperativeAdapter({
           cancelInFlight();
           return false;
         }
-        remainingRequests--;
+        requestCount++;
         return true;
       },
     );
@@ -506,19 +507,10 @@ Future<dynamic> _runImperativeAdapter({
       cancelTokens.remove(cancelToken);
     }
     networkMs += DateTime.now().millisecondsSinceEpoch - start;
-    requestCount += outcome.requestCount;
     if (networkMs > fetchLimits.totalNetworkMs) {
       fatal = const AdapterRunException(
         AdapterFailureReason.fetchLimit,
         '累计网络耗时超限',
-      );
-      cancelInFlight();
-      throw fatal!;
-    }
-    if (requestCount > fetchLimits.maxRequests) {
-      fatal = const AdapterRunException(
-        AdapterFailureReason.fetchLimit,
-        '单次执行请求数超限',
       );
       cancelInFlight();
       throw fatal!;

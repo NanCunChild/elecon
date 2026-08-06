@@ -92,7 +92,7 @@ export function decideHarvest(originCookies: JarCookie[], view: BrokerManifestVi
 
     const reprUrls = decl.scope.map(scopeReprUrl).filter((u): u is string => u !== null);
     const matched = harvestable.filter((c) =>
-      reprUrls.some((u) => matchCookieForSend({ domain: c.domain, path: c.path }, u)),
+      reprUrls.some((u) => matchCookieForSend({ domain: c.domain, path: c.path, hostOnly: c.hostOnly }, u)),
     );
     if (matched.length === 0) continue;
 

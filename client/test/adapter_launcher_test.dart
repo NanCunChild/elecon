@@ -323,6 +323,11 @@ void main() {
         expect(plan.capabilities, ['notice.list']);
         expect(plan.capabilityRequestGraphs['notice.list'], 'imperative');
         expect(plan.capabilityRequests['notice.list'], isEmpty);
+        expect(
+          plan.capabilityEmits['notice.list']!.schema,
+          'elecon.notice.list',
+        );
+        expect(plan.capabilityEmits['notice.list']!.schemaVersion, '1.0');
       },
     );
 

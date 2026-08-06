@@ -130,6 +130,7 @@ JarCookie cookieFromJson(Map<String, dynamic> c) => JarCookie(
   name: c['name'] as String,
   value: c['value'] as String,
   domain: c['domain'] as String,
+  hostOnly: c['hostOnly'] as bool? ?? false,
   path: c['path'] as String,
   source: c['source'] as String,
 );

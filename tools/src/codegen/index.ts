@@ -37,6 +37,7 @@ const outDartDir = join(repoRoot, "contract", "generated", "dart", "lib");
 
 interface JsonSchema {
   $id?: string;
+  $comment?: string;
   title?: string;
   type?: string;
   required?: string[];
@@ -50,6 +51,16 @@ interface JsonSchema {
   anyOf?: unknown;
   definitions?: Record<string, JsonSchema>;
   $defs?: Record<string, JsonSchema>;
+  format?: string;
+  pattern?: string;
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
+  additionalProperties?: boolean | JsonSchema;
+  const?: unknown;
 }
 
 // ---- 命名 ----
@@ -276,6 +287,259 @@ ${entries}
 `;
 }
 
+type ValidatorDescriptor = Record<string, unknown>;
+
+function validatorDescriptor(s: JsonSchema, root: JsonSchema): ValidatorDescriptor {
+  s = resolveRef(s, root);
+  assertSupported(s, "output validator");
+  const supported = new Set([
+    "$schema",
+    "$id",
+    "$comment",
+    "$ref",
+    "$defs",
+    "definitions",
+    "title",
+    "description",
+    "type",
+    "required",
+    "properties",
+    "items",
+    "enum",
+    "oneOf",
+    "const",
+    "additionalProperties",
+    "minimum",
+    "maximum",
+    "minLength",
+    "maxLength",
+    "minItems",
+    "maxItems",
+    "pattern",
+    "format",
+  ]);
+  const unknown = Object.keys(s).filter((key) => !supported.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`output validator: 不支持关键字 ${unknown.join(",")}`);
+  }
+  const out: ValidatorDescriptor = {};
+  const typeTags: Record<string, string> = {
+    object: "o",
+    array: "a",
+    string: "s",
+    number: "n",
+    integer: "i",
+    boolean: "b",
+    null: "z",
+  };
+  if (s.type) {
+    const tag = typeTags[s.type];
+    if (!tag) throw new Error(`output validator: 不支持 type=${s.type}`);
+    out.t = tag;
+  }
+  if (s.required?.length) out.r = s.required;
+  if (s.properties) {
+    out.p = Object.fromEntries(
+      Object.entries(s.properties).map(([key, child]) => [key, validatorDescriptor(child, root)]),
+    );
+  }
+  if (s.items) out.i = validatorDescriptor(s.items, root);
+  if (s.enum) out.e = s.enum;
+  if (s.oneOf) out.o = s.oneOf.map((child) => validatorDescriptor(child, root));
+  if (Object.hasOwn(s, "const")) out.c = s.const;
+  if (s.additionalProperties === false) out.a = false;
+  else if (typeof s.additionalProperties === "object") {
+    out.a = validatorDescriptor(s.additionalProperties, root);
+  }
+  if (s.minimum !== undefined) out.n = s.minimum;
+  if (s.maximum !== undefined) out.x = s.maximum;
+  if (s.minLength !== undefined) out.l = s.minLength;
+  if (s.maxLength !== undefined) out.L = s.maxLength;
+  if (s.minItems !== undefined) out.q = s.minItems;
+  if (s.maxItems !== undefined) out.m = s.maxItems;
+  if (s.pattern !== undefined) out.g = s.pattern;
+  if (s.format !== undefined) {
+    if (!["date", "date-time", "uri"].includes(s.format)) {
+      throw new Error(`output validator: 不支持 format=${s.format}`);
+    }
+    out.f = s.format;
+  }
+  return out;
+}
+
+function dartConst(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value).replaceAll("$", "\\$");
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return `<Object?>[${value.map(dartConst).join(",")}]`;
+  if (typeof value === "object") {
+    return `<String,Object?>{${Object.entries(value)
+      .map(([key, child]) => `${dartConst(key)}:${dartConst(child)}`)
+      .join(",")}}`;
+  }
+  throw new Error(`output validator: 无法生成 Dart 常量 ${typeof value}`);
+}
+
+/**
+ * 生成客户端核心 output validator registry。key 是已验签 manifest 的 emits
+ * `schema + NUL + schemaVersion`；schema 描述和版本均来自契约单源，不做 capability 推断。
+ */
+export function generateOutputValidatorRegistryDart(): string {
+  const reg = JSON.parse(readFileSync(registryPath, "utf-8")) as {
+    capabilities: Record<string, { emits?: { schema?: unknown; schemaVersion?: unknown } }>;
+  };
+  const schemas = new Map<string, JsonSchema>();
+  for (const file of readdirSync(schemaDir).filter((f) => f.endsWith(".schema.json"))) {
+    const schema = JSON.parse(readFileSync(join(schemaDir, file), "utf-8")) as JsonSchema;
+    if (schema.$id) {
+      if (schemas.has(schema.$id)) throw new Error(`重复 schema $id：${schema.$id}`);
+      schemas.set(schema.$id, schema);
+    }
+  }
+
+  const validators = new Map<string, ValidatorDescriptor>();
+  for (const [capability, entry] of Object.entries(reg.capabilities)) {
+    const schemaId = entry.emits?.schema;
+    const version = entry.emits?.schemaVersion;
+    if (typeof schemaId !== "string" || typeof version !== "string") {
+      throw new Error(`${capability}: registry emits 非法`);
+    }
+    const schema = schemas.get(schemaId);
+    if (!schema) throw new Error(`${capability}: 找不到 emits schema ${schemaId}`);
+    const key = `${schemaId}\0${version}`;
+    const descriptor = validatorDescriptor(schema, schema);
+    const previous = validators.get(key);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(descriptor)) {
+      throw new Error(`${capability}: emits key ${schemaId}@${version} 对应多个 schema`);
+    }
+    validators.set(key, descriptor);
+  }
+  if (validators.size === 0) throw new Error("registry.json 无 emits——拒绝生成空 validator registry");
+
+  const entries = [...validators.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, descriptor]) => `  ${dartConst(key)}: ${dartConst(descriptor)},`)
+    .join("\n");
+  return `${DART_HEADER}typedef OutputValidator = bool Function(Object? payload);
+
+/// 精确按已验签 manifest 的 emits 定位 validator；未知 schema/version 不存在于 registry。
+OutputValidator? outputValidatorFor(String schema, String schemaVersion) {
+  final descriptor = _outputSchemas['$schema\\u0000$schemaVersion'];
+  return descriptor == null ? null : (payload) => _validate(payload, descriptor);
+}
+
+final Map<String, Map<String, Object?>> _outputSchemas = {
+${entries}
+};
+
+bool _validate(Object? value, Map<String, Object?> schema) {
+  final choices = schema['o'];
+  if (choices is List && choices.where((s) => _validate(value, (s as Map).cast<String, Object?>())).length != 1) {
+    return false;
+  }
+  if (schema.containsKey('c') && !_jsonEqual(value, schema['c'])) return false;
+  final allowed = schema['e'];
+  if (allowed is List && !allowed.any((item) => _jsonEqual(value, item))) return false;
+
+  switch (schema['t']) {
+    case 'o':
+      if (value is! Map || value.keys.any((key) => key is! String)) return false;
+      final object = value.cast<String, Object?>();
+      final required = schema['r'];
+      if (required is List && required.any((key) => !object.containsKey(key))) return false;
+      final properties = (schema['p'] as Map?)?.cast<String, Object?>() ?? const {};
+      for (final entry in object.entries) {
+        final child = properties[entry.key];
+        if (child is Map) {
+          if (!_validate(entry.value, child.cast<String, Object?>())) return false;
+        } else {
+          final additional = schema['a'];
+          if (additional == false) return false;
+          if (additional is Map && !_validate(entry.value, additional.cast<String, Object?>())) return false;
+        }
+      }
+      break;
+    case 'a':
+      if (value is! List) return false;
+      final min = schema['q'];
+      final max = schema['m'];
+      if (min is int && value.length < min || max is int && value.length > max) return false;
+      final item = schema['i'];
+      if (item is Map && value.any((v) => !_validate(v, item.cast<String, Object?>()))) return false;
+      break;
+    case 's':
+      if (value is! String) return false;
+      final length = value.runes.length;
+      final min = schema['l'];
+      final max = schema['L'];
+      if (min is int && length < min || max is int && length > max) return false;
+      final pattern = schema['g'];
+      if (pattern is String && !RegExp(pattern).hasMatch(value)) return false;
+      final format = schema['f'];
+      if (format is String && !_validFormat(value, format)) return false;
+      break;
+    case 'n':
+      if (value is! num || !value.isFinite) return false;
+      if (!_validRange(value, schema)) return false;
+      break;
+    case 'i':
+      if (value is! num || !value.isFinite || value != value.truncateToDouble()) return false;
+      if (!_validRange(value, schema)) return false;
+      break;
+    case 'b':
+      if (value is! bool) return false;
+      break;
+    case 'z':
+      if (value != null) return false;
+      break;
+  }
+  return true;
+}
+
+bool _validRange(num value, Map<String, Object?> schema) {
+  final min = schema['n'];
+  final max = schema['x'];
+  return (min is! num || value >= min) && (max is! num || value <= max);
+}
+
+bool _validFormat(String value, String format) {
+  if (format == 'date') {
+    return _validDate(value);
+  }
+  if (format == 'date-time') {
+    final match = RegExp(r'^(\\d{4}-\\d{2}-\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d+)?(?:Z|[+-](\\d{2}):(\\d{2}))$').firstMatch(value);
+    if (match == null || !_validDate(match[1]!)) return false;
+    if (int.parse(match[2]!) > 23 || int.parse(match[3]!) > 59 || int.parse(match[4]!) > 59) return false;
+    if (match[5] != null && (int.parse(match[5]!) > 23 || int.parse(match[6]!) > 59)) return false;
+    return DateTime.tryParse(value) != null;
+  }
+  if (format == 'uri') {
+    if (value.contains(RegExp(r'\\s'))) return false;
+    final uri = Uri.tryParse(value);
+    return uri != null && uri.scheme.isNotEmpty && RegExp(r'^[A-Za-z][A-Za-z0-9+.-]*$').hasMatch(uri.scheme);
+  }
+  return false;
+}
+
+bool _validDate(String value) {
+  final match = RegExp(r'^(\\d{4})-(\\d{2})-(\\d{2})$').firstMatch(value);
+  if (match == null) return false;
+  final parsed = DateTime.tryParse(value);
+  return parsed != null && parsed.year == int.parse(match[1]!) && parsed.month == int.parse(match[2]!) && parsed.day == int.parse(match[3]!);
+}
+
+bool _jsonEqual(Object? a, Object? b) {
+  if (a is List && b is List) {
+    return a.length == b.length && List.generate(a.length, (i) => i).every((i) => _jsonEqual(a[i], b[i]));
+  }
+  if (a is Map && b is Map) {
+    return a.length == b.length && a.keys.every((key) => b.containsKey(key) && _jsonEqual(a[key], b[key]));
+  }
+  return a == b;
+}
+`;
+}
+
 /**
  * 生成客户端 `stdlib_version.dart`：`kHostStdlibVersion` = 随 app 打包的 elecon:html stdlib 版本。
  *
@@ -344,6 +608,8 @@ function main(): void {
   }
 
   if (check) {
+    // 同时构建运行时 validator registry，确保 registry emits、schema 与受支持关键字闭合。
+    generateOutputValidatorRegistryDart();
     // description 门（docs/rules/schema_style.md §2）：默认只报告（给出 backfill 规模）；
     // 传 --require-descriptions 才硬失败——backfill 完成后 CI 切到该 flag 强制。
     const requireDesc = process.argv.includes("--require-descriptions");
@@ -379,6 +645,8 @@ function main(): void {
   }
   writeFileSync(join(outDartDir, "capability_registry.dart"), generateCapabilityRegistryDart());
   console.log("✓ capability/registry.json → kCapabilityIds");
+  writeFileSync(join(outDartDir, "output_validator_registry.dart"), generateOutputValidatorRegistryDart());
+  console.log("✓ capability/registry.json + schema/ → output validators");
   writeFileSync(join(outDartDir, "stdlib_version.dart"), generateStdlibVersionDart());
   console.log("✓ adapters/_stdlib/package.json → kHostStdlibVersion");
   console.log(

@@ -96,6 +96,16 @@
       "expected": true
     },
     {
+      "name": "nosend_host_only_to_subdomain",
+      "input": { "cookie": { "domain": "dean.xjtu.edu.cn", "path": "/", "hostOnly": true }, "requestUrl": "https://sub.dean.xjtu.edu.cn/" },
+      "expected": false
+    },
+    {
+      "name": "send_explicit_domain_to_subdomain",
+      "input": { "cookie": { "domain": "dean.xjtu.edu.cn", "path": "/", "hostOnly": false }, "requestUrl": "https://sub.dean.xjtu.edu.cn/" },
+      "expected": true
+    },
+    {
       "name": "nosend_host_mismatch",
       "input": { "cookie": { "domain": "dean.xjtu.edu.cn", "path": "/" }, "requestUrl": "https://evil.com/" },
       "expected": false
@@ -167,6 +177,17 @@
         "requestUrl": "https://h.edu/"
       },
       "expected": [{ "name": "a", "value": "1" }]
+    },
+    {
+      "name": "host_only_dropped_for_subdomain",
+      "input": {
+        "cookies": [
+          { "name": "host", "value": "H", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin" },
+          { "name": "domain", "value": "D", "domain": "h.edu", "hostOnly": false, "path": "/", "source": "origin" }
+        ],
+        "requestUrl": "https://sub.h.edu/"
+      },
+      "expected": [{ "name": "domain", "value": "D" }]
     },
     {
       "name": "longer_path_first",

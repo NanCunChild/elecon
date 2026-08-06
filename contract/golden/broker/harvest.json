@@ -53,6 +53,26 @@
       "expected": [{ "ref": "sess", "value": "SSO=P1" }]
     },
     {
+      "name": "drop_host_only_cookie_for_subdomain_scope",
+      "input": {
+        "originCookies": [
+          { "name": "SID", "value": "HOST", "domain": "ids.xjtu.edu.cn", "hostOnly": true, "path": "/", "source": "origin" }
+        ],
+        "view": { "allow": ["https://sub.ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://sub.ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": []
+    },
+    {
+      "name": "harvest_explicit_domain_cookie_for_subdomain_scope",
+      "input": {
+        "originCookies": [
+          { "name": "SID", "value": "DOMAIN", "domain": "ids.xjtu.edu.cn", "hostOnly": false, "path": "/", "source": "origin" }
+        ],
+        "view": { "allow": ["https://sub.ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://sub.ids.xjtu.edu.cn/*"], "type": "cookie" } } }
+      },
+      "expected": [{ "ref": "sess", "value": "SID=DOMAIN" }]
+    },
+    {
       "name": "nomatch_cookie_path_deeper_than_scope",
       "input": {
         "originCookies": [

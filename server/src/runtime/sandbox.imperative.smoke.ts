@@ -172,6 +172,83 @@ async function testRequestLimitNoHarvest(): Promise<void> {
   console.log("  ✓ 请求数限额硬执行 + fail 不收割");
 }
 
+/** P0-03：21/100 并发 ctx.fetch 都只能在 transport 前原子预留 20 个名额。 */
+async function testConcurrentRequestBudget(): Promise<void> {
+  for (const calls of [21, 100]) {
+    const seen: string[] = [];
+    const transport: Transport = {
+      async fetch(req): Promise<TransportResponse> {
+        seen.push(req.url);
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        return resp({ status: 200, body: "{}" });
+      },
+    };
+    const source = `
+      export const capabilities = {
+        'notice.list': async (ctx) => {
+          await Promise.all(Array.from({ length: ${calls} }, (_, i) =>
+            ctx.fetch('https://h.edu.cn/api/' + i)));
+          return { ok: true };
+        }
+      };`;
+    await assert.rejects(
+      runImperativeAdapter(
+        { source, capability: "notice.list", params: {}, nowMs: NOW },
+        {
+          trust: TrustedAdapterContext.devSideload(),
+          view: { allow: ["https://h.edu.cn/api/*"] },
+          resolver: new FakeResolver({}),
+          transport,
+        },
+        undefined,
+        { perRequestTimeoutMs: 10_000, totalNetworkMs: 30_000, maxRequests: 20, maxHopsPerRequest: 5 },
+      ),
+      (e: unknown) => e instanceof SandboxError && e.reason === "fetch_limit",
+    );
+    assert.equal(seen.length, 20, `${calls} 个并发调用不得产生超过 20 次 transport egress`);
+  }
+  console.log("  ✓ 21/100 并发请求在 transport 前原子预留预算（零超额出网）");
+}
+
+/** P0-03：并发调用的重定向 hop 与首跳共享同一执行级预算。 */
+async function testConcurrentRedirectBudget(): Promise<void> {
+  const seen: string[] = [];
+  const transport: Transport = {
+    async fetch(req): Promise<TransportResponse> {
+      seen.push(req.url);
+      const u = new URL(req.url);
+      if (u.pathname.startsWith("/start/")) {
+        return resp({ status: 302, location: req.url.replace("/start/", "/end/") });
+      }
+      return resp({ status: 200, body: "{}" });
+    },
+  };
+  const source = `
+    export const capabilities = {
+      'notice.list': async (ctx) => {
+        await Promise.all(Array.from({ length: 11 }, (_, i) =>
+          ctx.fetch('https://h.edu.cn/start/' + i)));
+        return { ok: true };
+      }
+    };`;
+  await assert.rejects(
+    runImperativeAdapter(
+      { source, capability: "notice.list", params: {}, nowMs: NOW },
+      {
+        trust: TrustedAdapterContext.devSideload(),
+        view: { allow: ["https://h.edu.cn/*"] },
+        resolver: new FakeResolver({}),
+        transport,
+      },
+      undefined,
+      { perRequestTimeoutMs: 10_000, totalNetworkMs: 30_000, maxRequests: 20, maxHopsPerRequest: 5 },
+    ),
+    (e: unknown) => e instanceof SandboxError && e.reason === "fetch_limit",
+  );
+  assert.equal(seen.length, 20, "并发 redirect hop 不得绕过执行级预算");
+  console.log("  ✓ 并发重定向 hop 共用执行级预算（零超额出网）");
+}
+
 /** 5. 限额：单请求超时是硬终止——adapter catch 后返回"成功"也压不过 fetch_limit，且 fail 不收割。 */
 async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
   const view: BrokerManifestView = {
@@ -186,7 +263,11 @@ async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
         aborted = true;
       });
       return new Promise<TransportResponse>((res) => {
-        setTimeout(() => res(resp({ status: 200, setCookie: ["JSESSIONID=A"], body: "{}" })), 50);
+        // 故意忽略 abort 并晚到：proxy 必须在 firewall Capture / Commit 前复核 signal。
+        setTimeout(
+          () => res(resp({ status: 200, setCookie: ["JSESSIONID=A"], body: '{"token":"LATE_SECRET"}' })),
+          50,
+        );
       });
     },
   };
@@ -204,6 +285,17 @@ async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
     resolver: new FakeResolver({ session: { via: "cookie", value: "JSESSIONID=S" } }),
     transport,
     harvest: { sink: store, schoolId: "xidian" },
+    masker: {
+      rules: [
+        {
+          id: "r-late-abort",
+          capture: { source: "json", path: "$.token", destination: { kind: "credential", ref: "session" } },
+          project: "replace",
+        },
+      ],
+      sink: store,
+      ctx: { schoolId: "xidian", now: () => NOW },
+    },
   };
   await assert.rejects(
     runImperativeAdapter({ source, capability: "notice.list", params: {}, nowMs: NOW }, deps, undefined, {
@@ -216,8 +308,9 @@ async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
     "单请求超时须抛 fetch_limit，即便 adapter catch 后返回成功",
   );
   assert.equal(aborted, true, "单请求超时应 abort in-flight transport");
-  assert.equal(store.list().length, 0, "失败执行不得收割（fail 不收割）");
-  console.log("  ✓ 单请求超时硬终止（adapter catch 不可绕过）+ fail 不收割");
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(store.list().length, 0, "忽略 abort 的晚到 transport 不得越过 firewall Commit 写 sink");
+  console.log("  ✓ 单请求超时硬终止 + abort-ignoring 晚到响应不 Capture/Commit");
 }
 
 /** 6. 信任闸门（ADR-002 §2.6 · #79 P0-1）：伪造/越权 trust 在触达引擎前被拒，零出网。 */
@@ -374,6 +467,8 @@ async function main(): Promise<void> {
   await testEphemeralMultiStep();
   await testFailClosedCatchable();
   await testRequestLimitNoHarvest();
+  await testConcurrentRequestBudget();
+  await testConcurrentRedirectBudget();
   await testPerRequestTimeoutNotSwallowable();
   await testTrustGate();
   await testMaskerDeliveryFirewall();

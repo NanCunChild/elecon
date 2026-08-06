@@ -23,6 +23,7 @@ class JarCookie {
     required this.name,
     required this.value,
     required this.domain,
+    this.hostOnly = false,
     required this.path,
     required this.source,
   });
@@ -30,6 +31,7 @@ class JarCookie {
   final String name;
   final String value;
   final String domain;
+  final bool hostOnly;
   final String path;
   final String source;
 }
@@ -72,14 +74,9 @@ class EphemeralAccept extends EphemeralWriteDecision {
 
   @override
   Map<String, Object?> toJson() => {
-        'ok': true,
-        'cookie': {
-          'name': name,
-          'value': value,
-          'domain': domain,
-          'path': path
-        },
-      };
+    'ok': true,
+    'cookie': {'name': name, 'value': value, 'domain': domain, 'path': path},
+  };
 }
 
 /// 拒绝（fail-closed）。`reason` ∈ {domain_not_passthrough, domain_is_credential, path_too_wide}。
@@ -133,8 +130,9 @@ bool _isPublicSuffixLike(String domain) {
 
 /// cookie path 是否「等于或深于」allow path 前缀（allowPath 为其前缀）——即不更宽。
 bool _pathNotWiderThan(String cookiePath, String allowPathPrefix) {
-  final a =
-      allowPathPrefix.endsWith('/') ? allowPathPrefix : '$allowPathPrefix/';
+  final a = allowPathPrefix.endsWith('/')
+      ? allowPathPrefix
+      : '$allowPathPrefix/';
   final c = cookiePath.endsWith('/') ? cookiePath : '$cookiePath/';
   return c.startsWith(a);
 }
@@ -195,12 +193,15 @@ int compareCookiePathName(JarCookie a, JarCookie b) {
 
 /// 单个 cookie 是否会被发往 requestUrl（RFC 6265 domain-match ∧ path-match）。
 bool matchCookieForSend(
-  ({String domain, String path}) cookie,
+  ({String domain, String path, bool hostOnly}) cookie,
   String requestUrl,
 ) {
   final u = parseUrlHostPath(requestUrl);
   if (u == null) return false;
-  return domainMatch(u.host, cookie.domain) && pathMatch(u.path, cookie.path);
+  final domainMatches = cookie.hostOnly
+      ? u.host == cookie.domain
+      : domainMatch(u.host, cookie.domain);
+  return domainMatches && pathMatch(u.path, cookie.path);
 }
 
 /// 为出站请求选 cookie（纯）。① 过 matchCookieForSend ② 同名按来源优先级
@@ -212,7 +213,11 @@ List<Map<String, String>> selectCookies(
 ) {
   final byName = <String, JarCookie>{};
   for (final c in cookies) {
-    if (!matchCookieForSend((domain: c.domain, path: c.path), requestUrl)) {
+    if (!matchCookieForSend((
+      domain: c.domain,
+      path: c.path,
+      hostOnly: c.hostOnly,
+    ), requestUrl)) {
       continue;
     }
     final cur = byName[c.name];
@@ -263,6 +268,7 @@ JarCookie? _parseSetCookie(String header, String requestUrl) {
     name: name,
     value: value,
     domain: domain,
+    hostOnly: !hasDomainAttr,
     path: path ?? defaultPath(u.path),
     source: 'origin',
   );
@@ -308,6 +314,7 @@ class CookieJar {
       name: accept.name,
       value: accept.value,
       domain: accept.domain,
+      hostOnly: false,
       path: accept.path,
       source: 'ephemeral',
     );
@@ -328,10 +335,10 @@ class CookieJar {
   /// 出站请求选 cookie 对（两分区合并 + selectCookies；origin>ephemeral 已落实）。
   /// B6 拼装（assemble）在此输出之上叠加 broker 注入凭证（broker>origin>ephemeral）。
   /// 返回 typed `CookiePair`（不外泄 domain/path/source；与 TS selectForSend 的 `{name,value}` 对齐）。
-  List<CookiePair> selectForSend(String requestUrl) =>
-      selectCookies([..._origin, ..._ephemeral], requestUrl)
-          .map((m) => CookiePair(m['name']!, m['value']!))
-          .toList();
+  List<CookiePair> selectForSend(String requestUrl) => selectCookies([
+    ..._origin,
+    ..._ephemeral,
+  ], requestUrl).map((m) => CookiePair(m['name']!, m['value']!)).toList();
 
   /// 出站请求的 `Cookie` 头值（空则 ""）。两分区合并后过 selectCookies。
   String cookieHeader(String requestUrl) =>

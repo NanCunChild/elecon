@@ -146,6 +146,23 @@ void main() {
       );
       expect(store.list(), isEmpty);
     });
+
+    test('Set-Cookie parser 的 host-only 标记阻止子域 scope 收割', () {
+      const subdomainView = BrokerManifestView(
+        allow: ['https://sub.ids.xjtu.edu.cn/*'],
+        credentials: {
+          'sub': CredentialDecl(
+            scope: ['https://sub.ids.xjtu.edu.cn/*'],
+            type: 'cookie',
+          ),
+        },
+      );
+      final jar = CookieJar()
+        ..captureSetCookie([
+          'SID=HOST_ONLY; Path=/',
+        ], 'https://ids.xjtu.edu.cn/login');
+      expect(decideHarvest(jar.harvestView(), subdomainView), isEmpty);
+    });
   });
 
   test('query 收割 → 入库 → get 序列化值（决策由 golden 覆盖，此处验集成）', () async {

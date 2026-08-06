@@ -58,6 +58,16 @@ void main() {
           res.headers.set('content-type', 'text/plain');
           res.write('0123456789');
           await res.close();
+        case '/non-utf8-charset':
+          res.statusCode = 200;
+          res.headers.set('content-type', 'text/plain; charset=gbk');
+          res.add(const [0x61, 0x62, 0x63]);
+          await res.close();
+        case '/invalid-utf8':
+          res.statusCode = 200;
+          res.headers.set('content-type', 'application/octet-stream');
+          res.add(const [0xff, 0xfe, 0x00]);
+          await res.close();
         default:
           res.statusCode = 404;
           await res.close();
@@ -86,6 +96,7 @@ void main() {
       expect(resp.headers.containsKey('set-cookie'), isFalse,
           reason: 'Set-Cookie 不并入普通响应头');
       expect(resp.headers['content-type'], contains('application/json'));
+      expect(resp.decodeOk, isTrue, reason: '合法 UTF-8 响应须通过 A3 明文判定');
     });
 
     test('POST 携带 body', () async {
@@ -122,6 +133,34 @@ void main() {
         )),
         throwsA(isA<TransportBodyLimitException>()),
       );
+    });
+
+    test('非 UTF-8 charset 不猜测转码，decodeOk=false', () async {
+      final resp = await transport.fetch(TransportRequest(
+        url: '$base/non-utf8-charset',
+        method: 'GET',
+        headers: const {},
+      ));
+      expect(
+        resp.body,
+        'abc',
+        reason: '保留响应形状供 firewall fail-closed，不将 body 当成已确认明文',
+      );
+      expect(resp.decodeOk, isFalse);
+    });
+
+    test('二进制非法 UTF-8 不抛解码异常，标记 decodeOk=false', () async {
+      final resp = await transport.fetch(TransportRequest(
+        url: '$base/invalid-utf8',
+        method: 'GET',
+        headers: const {},
+      ));
+      expect(
+        resp.body,
+        isNotNull,
+        reason: 'transport 响应结构保持兼容；交付由 firewall 拒绝',
+      );
+      expect(resp.decodeOk, isFalse);
     });
   });
 

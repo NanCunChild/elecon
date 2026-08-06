@@ -38,6 +38,8 @@ export interface JarCookie {
   value: string;
   /** host-only（无前导 `.`），小写。 */
   domain: string;
+  /** `Set-Cookie` 无 Domain 属性时为 true；此时只匹配精确响应 host。 */
+  hostOnly?: boolean;
   path: string;
   source: CookieSource;
 }
@@ -166,10 +168,15 @@ function cmpStr(a: string, b: string): number {
 }
 
 /** 单个 cookie 是否会被发往 requestUrl（RFC 6265 domain-match ∧ path-match）。 */
-export function matchCookieForSend(cookie: { domain: string; path: string }, requestUrl: string): boolean {
+export function matchCookieForSend(
+  cookie: { domain: string; path: string; hostOnly?: boolean | undefined },
+  requestUrl: string,
+): boolean {
   const u = parseUrlHostPath(requestUrl);
   if (!u) return false;
-  return domainMatch(u.host, cookie.domain) && pathMatch(u.path, cookie.path);
+  const domainMatches =
+    cookie.hostOnly === true ? u.host === cookie.domain : domainMatch(u.host, cookie.domain);
+  return domainMatches && pathMatch(u.path, cookie.path);
 }
 
 /**
@@ -221,7 +228,14 @@ function parseSetCookie(header: string, requestUrl: string): JarCookie | null {
   // 封堵「allow 集内某 host 为不属于自己的域或过宽父域伪造 cookie、经后续请求发往
   // 他域」的污染面。缺省 host-only（无 Domain 属性）不受限。
   if (hasDomainAttr && (!domainMatch(u.host, domain) || isPublicSuffixLike(domain))) return null;
-  return { name, value, domain, path: path ?? defaultPath(u.path), source: "origin" };
+  return {
+    name,
+    value,
+    domain,
+    hostOnly: !hasDomainAttr,
+    path: path ?? defaultPath(u.path),
+    source: "origin",
+  };
 }
 
 /**
@@ -262,7 +276,7 @@ export class CookieJar {
     const idx = this.ephemeral.findIndex(
       (e) => e.name === d.cookie.name && e.domain === d.cookie.domain && e.path === d.cookie.path,
     );
-    const entry: JarCookie = { ...d.cookie, source: "ephemeral" };
+    const entry: JarCookie = { ...d.cookie, hostOnly: false, source: "ephemeral" };
     if (idx >= 0) this.ephemeral[idx] = entry;
     else this.ephemeral.push(entry);
     return true;

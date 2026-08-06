@@ -67,10 +67,11 @@ class DirectTransport implements Transport {
         throw const HttpException('transport request cancelled');
       }
 
-      // body：按 UTF-8 解析（allowMalformed 防异常）。**已知限制**：非 UTF-8（如 GBK）页面会乱码，
-      // 待后续按 Content-Type charset 解码（多数 .do/JSON 端点为 UTF-8）。
       final bytes = await _collectBytes(response, maxBodyBytes, cancelToken);
-      final body = utf8.decode(bytes, allowMalformed: true);
+      final decoded = decodeBodyA3(
+        bytes,
+        response.headers.contentType?.charset,
+      );
 
       // 原始 Set-Cookie（多条）单独交回——由 B4 jar 捕获，绝不并入普通头、绝不交 adapter。
       final setCookie = <String>[];
@@ -97,7 +98,8 @@ class DirectTransport implements Transport {
         headers: headers,
         setCookie: setCookie,
         location: response.headers.value('location'),
-        body: body,
+        body: decoded.body,
+        decodeOk: decoded.decodeOk,
       );
     } catch (e) {
       DevLog.instance.network(
@@ -107,6 +109,28 @@ class DirectTransport implements Transport {
         error: e.runtimeType.toString(),
       );
       rethrow;
+    }
+  }
+
+  /// ADR-026 §2.8 A3：只确认 UTF-8 / ASCII 系；非 UTF-8 charset 不猜测转码，非法字节标失败。
+  static ({String body, bool decodeOk}) decodeBodyA3(
+    List<int> bytes,
+    String? charset,
+  ) {
+    final normalized = charset?.trim().toLowerCase();
+    final isUtf8 =
+        normalized == null ||
+        normalized == 'utf-8' ||
+        normalized == 'utf8' ||
+        normalized == 'us-ascii' ||
+        normalized == 'ascii';
+    if (!isUtf8) {
+      return (body: utf8.decode(bytes, allowMalformed: true), decodeOk: false);
+    }
+    try {
+      return (body: utf8.decode(bytes), decodeOk: true);
+    } on FormatException {
+      return (body: utf8.decode(bytes, allowMalformed: true), decodeOk: false);
     }
   }
 

@@ -12,6 +12,7 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart' show Ed25519, KeyPair;
 import 'package:elecon/core/adapter_service.dart';
+import 'package:elecon/core/adapter_runtime.dart' show AdapterFailureReason;
 import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/broker/ports.dart';
 import 'package:elecon/core/credential/blob_store.dart';
@@ -64,10 +65,24 @@ Future<_Bundle> _mkBundle(
   required String adapterId,
   String adapterVersion = '1.0.0',
   String capability = 'notice.list',
+  String requestGraph = 'imperative',
+  String emitsSchema = 'elecon.notice.list',
+  String emitsSchemaVersion = '1.1',
+  Object? output = const {
+    'items': [
+      {
+        'id': 'notice-1',
+        'title': 'Test notice',
+        'category': 'unknown',
+        'source': 'Test source',
+      },
+    ],
+  },
 }) async {
+  final asyncKeyword = requestGraph == 'imperative' ? 'async ' : '';
   final source =
-      "export const capabilities = { '$capability': async (ctx) => { "
-      "ctx.log('info', 'HelloWorld'); return { items: [1,2,3] }; } };";
+      "export const capabilities = { '$capability': $asyncKeyword(ctx) => { "
+      "ctx.log('info', 'HelloWorld'); return ${jsonEncode(output)}; } };";
   final manifest = {
     'schemaVersion': '1.0',
     'adapterId': adapterId,
@@ -75,8 +90,8 @@ Future<_Bundle> _mkBundle(
     'capabilities': [
       {
         'id': capability,
-        'requestGraph': 'imperative',
-        'emits': {'schema': 'elecon.notice.list', 'schemaVersion': '1.0'},
+        'requestGraph': requestGraph,
+        'emits': {'schema': emitsSchema, 'schemaVersion': emitsSchemaVersion},
       },
     ],
     'runtime': {'entry': 'index.js', 'stdlibMin': '1.0.0'},
@@ -294,7 +309,7 @@ void main() {
         onLog: (level, message) => logs.add('$level:$message'),
       );
       expect(r.ok, isTrue, reason: r.reason);
-      expect((r.data as Map)['items'], [1, 2, 3]);
+      expect((r.data as Map)['items'], hasLength(1));
       expect(r.supportedCapabilities, {'notice.list'});
       expect(logs, ['info:HelloWorld']);
     });
@@ -350,6 +365,108 @@ void main() {
       expect(r.supportedCapabilities, {'notice.list'});
     });
 
+    test('declarative output 经过同一 schema boundary 后成功', () async {
+      final b = await _mkBundle(
+        bundleSigner,
+        adapterId: 'school-x',
+        requestGraph: 'declarative',
+      );
+      final svc = await serviceFor(b, adapterId: 'school-x');
+      final r = await svc.run(
+        adapterId: 'school-x',
+        capability: 'notice.list',
+        resolver: _ThrowingResolver(),
+      );
+      expect(r.ok, isTrue, reason: r.reason);
+      expect((r.data as Map)['items'], hasLength(1));
+    });
+
+    for (final invalid in <String, Object?>{
+      'missing required field': const {},
+      'wrong root field type': const {'items': 'not-a-list'},
+      'malformed nested item': const {
+        'items': [
+          {'id': 'payload-must-not-appear'},
+        ],
+      },
+    }.entries) {
+      test(
+        'imperative output rejects entire payload: ${invalid.key}',
+        () async {
+          final b = await _mkBundle(
+            bundleSigner,
+            adapterId: 'school-x',
+            output: invalid.value,
+          );
+          final svc = await serviceFor(b, adapterId: 'school-x');
+          final r = await svc.run(
+            adapterId: 'school-x',
+            capability: 'notice.list',
+            resolver: _ThrowingResolver(),
+          );
+          expect(r.ok, isFalse);
+          expect(r.failureKind, CapabilityFailureKind.run);
+          expect(r.runReason, AdapterFailureReason.badResult);
+          expect(r.data, isNull);
+          expect(r.reason, isNot(contains('payload-must-not-appear')));
+        },
+      );
+    }
+
+    test('declarative malformed nested item rejects entire payload', () async {
+      final b = await _mkBundle(
+        bundleSigner,
+        adapterId: 'school-x',
+        requestGraph: 'declarative',
+        output: const {
+          'items': [
+            {
+              'id': 'valid',
+              'title': 'Valid',
+              'category': 'unknown',
+              'source': 'Test',
+            },
+            {'id': 'nested-secret'},
+          ],
+        },
+      );
+      final svc = await serviceFor(b, adapterId: 'school-x');
+      final r = await svc.run(
+        adapterId: 'school-x',
+        capability: 'notice.list',
+        resolver: _ThrowingResolver(),
+      );
+      expect(r.failureKind, CapabilityFailureKind.run);
+      expect(r.runReason, AdapterFailureReason.badResult);
+      expect(r.reason, isNot(contains('nested-secret')));
+    });
+
+    for (final emits in <({String schema, String version})>[
+      (schema: 'elecon.notice.list', version: '1.0'),
+      (schema: 'elecon.unknown', version: '1.1'),
+    ]) {
+      test(
+        'signed unknown emits rejects: ${emits.schema}@${emits.version}',
+        () async {
+          final b = await _mkBundle(
+            bundleSigner,
+            adapterId: 'school-x',
+            emitsSchema: emits.schema,
+            emitsSchemaVersion: emits.version,
+          );
+          final svc = await serviceFor(b, adapterId: 'school-x');
+          final r = await svc.run(
+            adapterId: 'school-x',
+            capability: 'notice.list',
+            resolver: _ThrowingResolver(),
+          );
+          expect(r.failureKind, CapabilityFailureKind.run);
+          expect(r.runReason, AdapterFailureReason.badResult);
+          expect(r.data, isNull);
+        },
+      );
+    }
+
     test('能力越权（请求未声明能力）→ failed(launch)', () async {
       final b = await _mkBundle(bundleSigner, adapterId: 'school-x');
       final svc = await serviceFor(b, adapterId: 'school-x');
@@ -378,7 +495,7 @@ void main() {
         onLog: (level, message) => logs.add('$level:$message'),
       );
       expect(r.ok, isTrue, reason: r.reason);
-      expect((r.data as Map)['items'], [1, 2, 3]);
+      expect((r.data as Map)['items'], hasLength(1));
       expect(r.supportedCapabilities, {'notice.list'});
       expect(logs, ['info:HelloWorld']);
     });

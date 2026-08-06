@@ -31,12 +31,12 @@ void main() {
   final golden = readGolden('cookie-jar.json');
 
   group('B4 cookie-jar 纯决策（Dart，与 TS 双跑同一 golden）', () {
-    final writeCases =
-        (golden['decideEphemeralWrite'] as List).cast<Map<String, dynamic>>();
-    final matchCases =
-        (golden['matchCookieForSend'] as List).cast<Map<String, dynamic>>();
-    final selectCases =
-        (golden['selectCookies'] as List).cast<Map<String, dynamic>>();
+    final writeCases = (golden['decideEphemeralWrite'] as List)
+        .cast<Map<String, dynamic>>();
+    final matchCases = (golden['matchCookieForSend'] as List)
+        .cast<Map<String, dynamic>>();
+    final selectCases = (golden['selectCookies'] as List)
+        .cast<Map<String, dynamic>>();
 
     test('golden 各组非空', () {
       expect(writeCases, isNotEmpty);
@@ -59,10 +59,11 @@ void main() {
       test('matchCookieForSend · ${c['name']}', () {
         final input = c['input'] as Map<String, dynamic>;
         final cookie = input['cookie'] as Map<String, dynamic>;
-        final actual = matchCookieForSend(
-          (domain: cookie['domain'] as String, path: cookie['path'] as String),
-          input['requestUrl'] as String,
-        );
+        final actual = matchCookieForSend((
+          domain: cookie['domain'] as String,
+          path: cookie['path'] as String,
+          hostOnly: cookie['hostOnly'] as bool? ?? false,
+        ), input['requestUrl'] as String);
         expect(actual, equals(c['expected']));
       });
     }
@@ -97,37 +98,57 @@ void main() {
       final v = jar.harvestView();
       expect(v.length, 1);
       expect(v.first.domain, 'dean.xjtu.edu.cn');
+      expect(v.first.hostOnly, isTrue);
       expect(v.first.path, '/a');
       expect(jar.cookieHeader('https://dean.xjtu.edu.cn/a/x'), 'sid=abc');
       expect(jar.cookieHeader('https://dean.xjtu.edu.cn/other'), '');
     });
 
-    test('显式 Domain/Path（前导点归一为 host-only）；父域合法', () {
+    test('显式 Domain/Path 保留 domain 语义；父域合法', () {
       final jar = CookieJar()
-        ..captureSetCookie(
-          ['sess=xyz; Domain=.xjtu.edu.cn; Path=/'],
-          'https://dean.xjtu.edu.cn/login',
-        );
+        ..captureSetCookie([
+          'sess=xyz; Domain=.xjtu.edu.cn; Path=/',
+        ], 'https://dean.xjtu.edu.cn/login');
       final v = jar.harvestView();
       expect(v.first.domain, 'xjtu.edu.cn');
+      expect(v.first.hostOnly, isFalse);
       expect(v.first.path, '/');
+      expect(jar.cookieHeader('https://child.xjtu.edu.cn/'), 'sess=xyz');
+    });
+
+    test('无 Domain cookie 不发往子域', () {
+      final jar = CookieJar()
+        ..captureSetCookie([
+          'sid=HOST_ONLY; Path=/',
+        ], 'https://dean.xjtu.edu.cn/');
+      expect(jar.cookieHeader('https://dean.xjtu.edu.cn/'), 'sid=HOST_ONLY');
+      expect(jar.cookieHeader('https://sub.dean.xjtu.edu.cn/'), '');
     });
 
     test('非法 Domain 整条丢弃（#79 P0-4，RFC 6265 §5.3 step 6）', () {
       final jar = CookieJar()
         // 完全无关的域
-        ..captureSetCookie(
-            ['evil=1; Domain=other.edu.cn'], 'https://dean.xjtu.edu.cn/x')
+        ..captureSetCookie([
+          'evil=1; Domain=other.edu.cn',
+        ], 'https://dean.xjtu.edu.cn/x')
         // 子域伪造（响应 host 是被声明域的父域，不 domain-match）
-        ..captureSetCookie(['evil2=1; Domain=sub.dean.xjtu.edu.cn'],
-            'https://dean.xjtu.edu.cn/x')
+        ..captureSetCookie([
+          'evil2=1; Domain=sub.dean.xjtu.edu.cn',
+        ], 'https://dean.xjtu.edu.cn/x')
         // 过宽父域 / public suffix 类 Domain：会污染其他 *.edu.cn host
-        ..captureSetCookie(
-            ['evil3=1; Domain=edu.cn'], 'https://dean.xjtu.edu.cn/x');
-      expect(jar.harvestView(), isEmpty,
-          reason: '非法 Domain 的 Set-Cookie 必须整条丢弃');
-      expect(jar.cookieHeader('https://other.edu.cn/x'), '',
-          reason: '伪造 cookie 不得发往他域');
+        ..captureSetCookie([
+          'evil3=1; Domain=edu.cn',
+        ], 'https://dean.xjtu.edu.cn/x');
+      expect(
+        jar.harvestView(),
+        isEmpty,
+        reason: '非法 Domain 的 Set-Cookie 必须整条丢弃',
+      );
+      expect(
+        jar.cookieHeader('https://other.edu.cn/x'),
+        '',
+        reason: '伪造 cookie 不得发往他域',
+      );
     });
 
     test('跨跳累计 + 同 (name,domain,path) 轮换覆盖', () {
@@ -177,19 +198,23 @@ void main() {
     });
 
     test(
-        'public-suffix 护栏常量 == contract/broker/public-suffixes.json（单源钉死）',
-        () {
-      // TS 侧运行时直接加载该 JSON；Dart 侧是编译期常量。本断言保证单边增删条目
-      // 立即 CI 红（审阅建议：数据形式的双写下沉为 contract 单一 JSON）。
-      final json = readJson(repoPath('contract/broker/public-suffixes.json'));
-      final contractSuffixes = (json['multiLabelPublicSuffixes'] as List)
-          .cast<String>()
-          .map((s) => s.toLowerCase())
-          .toSet();
-      expect(contractSuffixes, isNotEmpty);
-      expect(knownMultiLabelPublicSuffixes, equals(contractSuffixes),
-          reason: '护栏列表与 contract 单源漂移：两处须同步增删');
-    });
+      'public-suffix 护栏常量 == contract/broker/public-suffixes.json（单源钉死）',
+      () {
+        // TS 侧运行时直接加载该 JSON；Dart 侧是编译期常量。本断言保证单边增删条目
+        // 立即 CI 红（审阅建议：数据形式的双写下沉为 contract 单一 JSON）。
+        final json = readJson(repoPath('contract/broker/public-suffixes.json'));
+        final contractSuffixes = (json['multiLabelPublicSuffixes'] as List)
+            .cast<String>()
+            .map((s) => s.toLowerCase())
+            .toSet();
+        expect(contractSuffixes, isNotEmpty);
+        expect(
+          knownMultiLabelPublicSuffixes,
+          equals(contractSuffixes),
+          reason: '护栏列表与 contract 单源漂移：两处须同步增删',
+        );
+      },
+    );
 
     test('ephemeral-only 在无 origin 同名时生效，且仍不收割', () {
       final warns = <String>[];

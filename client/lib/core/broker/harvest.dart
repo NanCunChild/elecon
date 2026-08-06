@@ -80,7 +80,11 @@ List<HarvestEntry> decideHarvest(
     final matched = harvestable
         .where(
           (c) => reprUrls.any(
-            (u) => matchCookieForSend((domain: c.domain, path: c.path), u),
+            (u) => matchCookieForSend((
+              domain: c.domain,
+              path: c.path,
+              hostOnly: c.hostOnly,
+            ), u),
           ),
         )
         .toList();

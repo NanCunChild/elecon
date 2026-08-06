@@ -14,7 +14,7 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { resolveRepoRoot, runMain } from "../__testutils__/smoke-utils.js";
 import { CredentialStore } from "../credential/store.js";
-import type { JarCookie } from "./cookie-jar.js";
+import { CookieJar, type JarCookie } from "./cookie-jar.js";
 import { decideHarvest, decideQueryHarvest, type HarvestPlan, harvestInto } from "./harvest.js";
 import type { BrokerManifestView } from "./inject-policy.js";
 
@@ -108,6 +108,20 @@ async function integrationTests(): Promise<number> {
   const noCred: BrokerManifestView = { allow: ["https://ids.xjtu.edu.cn/*"], credentials: {} };
   harvestInto(decideHarvest(cookies, noCred), noCred, emptyStore, { schoolId: "xjt", now: () => clock });
   assert.equal(emptyStore.list().length, 0, "无声明 ref → 不收割");
+  checks++;
+
+  // Set-Cookie parser → harvest：无 Domain 的 host-only cookie 不得被子域 credential scope 收割。
+  const subdomainView: BrokerManifestView = {
+    allow: ["https://sub.ids.xjtu.edu.cn/*"],
+    credentials: { sub: { scope: ["https://sub.ids.xjtu.edu.cn/*"], type: "cookie" } },
+  };
+  const parsedJar = new CookieJar();
+  parsedJar.captureSetCookie(["SID=HOST_ONLY; Path=/"], "https://ids.xjtu.edu.cn/login");
+  assert.deepStrictEqual(
+    decideHarvest([...parsedJar.harvestView()], subdomainView),
+    [],
+    "parser 产生的 host-only 标记必须阻止子域收割",
+  );
   checks++;
 
   // query credential 决策已由 golden queryCases 双跑覆盖；此处只验收割 → 入库 → get 序列化。

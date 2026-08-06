@@ -83,6 +83,8 @@ export interface DeliveryFirewallInput {
   /** ⑥ Commit 落库目标（`CredentialStore`；真实原子性 / generation swap 为 seam）。 */
   sink: MaskerCommitSink;
   ctx: MaskerCommitContext;
+  /** 执行取消信号。Capture 与不可逆 Commit 前均须即时复核，防忽略 abort 的 transport 晚到后落库。 */
+  signal?: AbortSignal;
 }
 
 export interface DeliveryOutcome {
@@ -111,6 +113,9 @@ export function deliverThroughFirewall(input: DeliveryFirewallInput): DeliveryOu
     );
   }
 
+  // 取消可能发生在 transport 已 resolve、但响应尚未进入交付事务的窗口。
+  assertDeliveryActive(input.signal);
+
   const hadBody = raw.body !== undefined;
 
   // ②→⑤ Capture + Validate + Project（纯引擎；任一失败即抛 → fail-closed）。
@@ -123,6 +128,7 @@ export function deliverThroughFirewall(input: DeliveryFirewallInput): DeliveryOu
   const { captured, projected } = applyResponseMasker(rules as MaskerRule[], maskerRaw);
 
   // ⑥ Commit（A6 单持久 ref；未声明 ref fail-closed）。在交付**之前**，失败则不交付。
+  assertDeliveryActive(input.signal);
   commitMaskerCaptured(captured, view, sink, ctx);
 
   // ⑦ 响应头 allowlist 脱敏（Set-Cookie/Authorization/Location 剥除）→ adapter。
@@ -133,4 +139,10 @@ export function deliverThroughFirewall(input: DeliveryFirewallInput): DeliveryOu
       : { status: raw.status, headers: projected.headers, body: deliveredBody };
 
   return { response: processResponse(rawForDelivery), committedCount: captured.length };
+}
+
+function assertDeliveryActive(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new DeliveryFirewallError("delivery_cancelled", "执行已取消，拒绝 Capture / Commit / 交付");
+  }
 }

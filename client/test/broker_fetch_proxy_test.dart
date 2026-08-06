@@ -203,6 +203,35 @@ void main() {
       expect(transport.seen[1].headers['Cookie'], 'hop1=a');
     });
 
+    test('跨子域重定向不携带 host-only cookie，显式 Domain cookie 仍携带', () async {
+      const view = BrokerManifestView(
+        allow: ['https://h.edu.cn/*', 'https://sub.h.edu.cn/*'],
+      );
+      final transport = FakeTransport([
+        const TransportResponse(
+          status: 302,
+          location: 'https://sub.h.edu.cn/step2',
+          setCookie: ['host=H; Path=/', 'domain=D; Domain=h.edu.cn; Path=/'],
+        ),
+        const TransportResponse(status: 200, body: 'ok'),
+      ]);
+      await proxyFetch(
+        'https://h.edu.cn/step1',
+        const RequestInit(),
+        FetchProxyDeps(
+          view: view,
+          resolver: FakeResolver({}),
+          jar: CookieJar(),
+          transport: transport,
+        ),
+      );
+      expect(
+        transport.seen[1].headers['Cookie'],
+        'domain=D',
+        reason: '无 Domain cookie 不得发往子域；显式 Domain 保留 domain 语义',
+      );
+    });
+
     test('重定向越出 allow → stop，交付当前响应，Location 脱敏剥除', () async {
       final view = const BrokerManifestView(allow: ['https://h.edu.cn/*']);
       final transport = FakeTransport([

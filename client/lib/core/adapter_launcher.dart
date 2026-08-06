@@ -40,6 +40,7 @@ class LaunchPlan {
     required this.digest,
     required this.capabilityRequestGraphs,
     required this.capabilityRequests,
+    required this.capabilityEmits,
     this.capabilityDataflow = const {},
   });
 
@@ -64,9 +65,19 @@ class LaunchPlan {
   /// capability id → `requests[]` 配方（仅 declarative 用；imperative 为空 map）。
   final Map<String, List<DeclarativeRequestDecl>> capabilityRequests;
 
+  /// capability id → 已验签 manifest 原样声明的 output schema identity。
+  final Map<String, AdapterEmits> capabilityEmits;
+
   /// capability id → 声明式跨请求数据流（ADR-023 `bind`/`compute`/`inject`）。
   /// 仅 declarative 用；缺省即无数据流（退化为平铺代取）。校验器 D1–D16 已在提交期把关。
   final Map<String, CapabilityDataflow> capabilityDataflow;
+}
+
+class AdapterEmits {
+  const AdapterEmits({required this.schema, required this.schemaVersion});
+
+  final String schema;
+  final String schemaVersion;
 }
 
 /// 一个 declarative capability 的数据流三段（ADR-023）。空 = 无数据流。
@@ -137,6 +148,7 @@ LaunchPlan planLaunch(LoadResult result) {
   final capabilities = _capabilities(manifest);
   final capabilityRequestGraphs = _capabilityRequestGraphs(manifest);
   final capabilityRequests = _capabilityRequests(manifest);
+  final capabilityEmits = _capabilityEmits(manifest);
   final capabilityDataflow = _capabilityDataflow(manifest);
 
   return LaunchPlan(
@@ -147,6 +159,7 @@ LaunchPlan planLaunch(LoadResult result) {
     digest: boundDigest,
     capabilityRequestGraphs: capabilityRequestGraphs,
     capabilityRequests: capabilityRequests,
+    capabilityEmits: capabilityEmits,
     capabilityDataflow: capabilityDataflow,
   );
 }
@@ -220,7 +233,7 @@ Future<dynamic> runLoadedAdapter({
         e.message,
       );
     }
-    return runDeclarativeAdapter(
+    final output = await runDeclarativeAdapter(
       source: plan.source,
       capability: capability,
       params: params,
@@ -229,9 +242,10 @@ Future<dynamic> runLoadedAdapter({
       nowMs: nowMs,
       memoryBytes: memoryBytes,
     );
+    return _validateAdapterOutput(plan, capability, output);
   }
 
-  return _runImperativeAdapter(
+  final output = await _runImperativeAdapter(
     source: plan.source,
     capability: capability,
     trust: plan.trust,
@@ -247,6 +261,35 @@ Future<dynamic> runLoadedAdapter({
     fetchLimits: fetchLimits,
     onLog: onLog,
   );
+  return _validateAdapterOutput(plan, capability, output);
+}
+
+dynamic _validateAdapterOutput(
+  LaunchPlan plan,
+  String capability,
+  dynamic output,
+) {
+  final emits = plan.capabilityEmits[capability];
+  if (emits == null) {
+    throw const AdapterRunException(
+      AdapterFailureReason.badResult,
+      'adapter output schema identity is missing',
+    );
+  }
+  final validator = outputValidatorFor(emits.schema, emits.schemaVersion);
+  if (validator == null) {
+    throw AdapterRunException(
+      AdapterFailureReason.badResult,
+      'adapter output schema is unsupported: ${emits.schema}@${emits.schemaVersion}',
+    );
+  }
+  if (!validator(output)) {
+    throw AdapterRunException(
+      AdapterFailureReason.badResult,
+      'adapter output failed schema validation: ${emits.schema}@${emits.schemaVersion}',
+    );
+  }
+  return output;
 }
 
 /// 取 `runtime.entry` 指向的 **utf-8** 入口源码；缺失 / 非 utf-8 / 不在 bundle → fail-closed。
@@ -660,6 +703,23 @@ List<String> _capabilities(Map<String, dynamic> manifest) {
     caps.add(id);
   }
   return caps;
+}
+
+Map<String, AdapterEmits> _capabilityEmits(Map<String, dynamic> manifest) {
+  final raw = manifest['capabilities'];
+  if (raw is! List) return const {};
+  final out = <String, AdapterEmits>{};
+  for (final capability in raw) {
+    if (capability is! Map) continue;
+    final id = capability['id'];
+    final emits = capability['emits'];
+    if (id is! String || emits is! Map) continue;
+    final schema = emits['schema'];
+    final schemaVersion = emits['schemaVersion'];
+    if (schema is! String || schemaVersion is! String) continue;
+    out[id] = AdapterEmits(schema: schema, schemaVersion: schemaVersion);
+  }
+  return Map.unmodifiable(out);
 }
 
 String _short(String d) => d.length <= 12 ? d : '${d.substring(0, 12)}…';

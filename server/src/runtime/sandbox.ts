@@ -252,6 +252,7 @@ interface ImperativeExecState {
   fatal: SandboxError | null;
   nowMs: number;
   abortControllers: Set<AbortController>;
+  bridgeSettlements: Set<Promise<void>>;
 }
 
 function abortInFlight(state: ImperativeExecState): void {
@@ -270,6 +271,7 @@ function bridgeHostPromise(
   ctx: QuickJSContext,
   hostPromise: Promise<QuickJSHandle>,
   runtime: QuickJSRuntime,
+  settlements: Set<Promise<void>>,
 ): QuickJSHandle {
   const deferred = ctx.newPromise();
   hostPromise.then(
@@ -292,13 +294,18 @@ function bridgeHostPromise(
       }
     },
   );
-  deferred.settled.then(() => {
+  const settlement = deferred.settled.then(() => {
     try {
       runtime.executePendingJobs();
     } catch {
       /* runtime may already be disposed (e.g. timeout during in-flight fetch) */
     }
   });
+  settlements.add(settlement);
+  void settlement.then(
+    () => settlements.delete(settlement),
+    () => settlements.delete(settlement),
+  );
   return deferred.handle;
 }
 
@@ -344,11 +351,6 @@ function buildImperativeCtx(
 
     const hostPromise: Promise<QuickJSHandle> = (async () => {
       if (state.fatal) throw state.fatal;
-      if (state.requestCount >= fetchLimits.maxRequests) {
-        state.fatal = new SandboxError("fetch_limit", `单次执行请求数超限（>${fetchLimits.maxRequests}）`);
-        abortInFlight(state);
-        throw state.fatal;
-      }
       const start = Date.now();
       const controller = new AbortController();
       state.abortControllers.add(controller);
@@ -362,6 +364,18 @@ function buildImperativeCtx(
             transport: deps.transport,
             maxHops: fetchLimits.maxHopsPerRequest,
             signal: controller.signal,
+            reserveRequest: () => {
+              if (state.fatal) throw state.fatal;
+              if (state.requestCount >= fetchLimits.maxRequests) {
+                state.fatal = new SandboxError(
+                  "fetch_limit",
+                  `单次执行请求数超限（>${fetchLimits.maxRequests}）`,
+                );
+                abortInFlight(state);
+                throw state.fatal;
+              }
+              state.requestCount++;
+            },
             ...(deps.harvest
               ? {
                   queryHarvest: {
@@ -396,14 +410,8 @@ function buildImperativeCtx(
         state.abortControllers.delete(controller);
       }
       state.networkMs += Date.now() - start;
-      state.requestCount += outcome.requestCount;
       if (state.networkMs > fetchLimits.totalNetworkMs) {
         state.fatal = new SandboxError("fetch_limit", `累计网络耗时超限（>${fetchLimits.totalNetworkMs}ms）`);
-        abortInFlight(state);
-        throw state.fatal;
-      }
-      if (state.requestCount > fetchLimits.maxRequests) {
-        state.fatal = new SandboxError("fetch_limit", `单次执行请求数超限（>${fetchLimits.maxRequests}）`);
         abortInFlight(state);
         throw state.fatal;
       }
@@ -412,7 +420,7 @@ function buildImperativeCtx(
       return jsonToHandle(ctx, payload);
     })();
 
-    return bridgeHostPromise(ctx, hostPromise, runtime);
+    return bridgeHostPromise(ctx, hostPromise, runtime, state.bridgeSettlements);
   });
 
   // wrap raw fetch into Response-like interface for adapter ergonomics
@@ -542,6 +550,7 @@ export async function runImperativeAdapter(
     fatal: null,
     nowMs: input.nowMs ?? Date.now(),
     abortControllers: new Set(),
+    bridgeSettlements: new Set(),
   };
   const disposables: QuickJSHandle[] = [];
 
@@ -565,6 +574,9 @@ export async function runImperativeAdapter(
     throw err;
   } finally {
     abortInFlight(state);
+    // 并发 fatal 后，已创建的 QuickJS deferred 仍须完成 settle，再释放 runtime。
+    // 否则未决 Promise 会触发 QuickJS gc_obj_list 断言；预算已在 transport 前封死，不会新增出网。
+    await Promise.allSettled([...state.bridgeSettlements]);
     for (const h of disposables) {
       try {
         h.dispose();

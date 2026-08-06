@@ -114,6 +114,8 @@ export interface FetchProxyDeps {
   maxHops?: number;
   /** 单次 ctx.fetch 的取消信号；运行时在超时/fatal 时主动中止上游。 */
   signal?: AbortSignal;
+  /** 执行级预算所有者在每次真实 transport hop 前原子预留一个名额（ADR-009 §2.8）。 */
+  reserveRequest?: () => void;
   /** 每个通过 allow 校验、确定跟随的重定向目标由核心收割 query credential（ADR-020 §2.3）。 */
   queryHarvest?: QueryHarvestTarget;
   /**
@@ -181,6 +183,8 @@ export async function proxyFetch(
       headers: assembled.headers,
     };
     if (assembled.body !== undefined) treq.body = assembled.body;
+    // 预算必须在每个真实 hop 出网前预留；重定向与并发 ctx.fetch 共用宿主执行级计数器。
+    deps.reserveRequest?.();
     const resp = await transport.fetch(treq, deps.signal);
     requestCount++;
     jar.captureSetCookie(resp.setCookie, currentUrl);
@@ -198,7 +202,7 @@ export async function proxyFetch(
       // ⑦ 经统一 firewall choke point 交回 adapter（含 stop：越界/超跳时交付当前响应，其
       // Location 由 header 脱敏剥除）。无 deps.masker → 空规则透明交付（等价旧 processResponse）。
       const masker = deps.masker;
-      const delivered = deliverThroughFirewall({
+      const firewallInput = {
         raw:
           resp.body === undefined
             ? { status: resp.status, headers: resp.headers }
@@ -210,7 +214,10 @@ export async function proxyFetch(
         view,
         sink: masker?.sink ?? NOOP_MASKER_SINK,
         ctx: masker?.ctx ?? NOOP_MASKER_CTX,
-      });
+      };
+      const delivered = deliverThroughFirewall(
+        deps.signal === undefined ? firewallInput : { ...firewallInput, signal: deps.signal },
+      );
       return { ...delivered.response, requestCount };
     }
 

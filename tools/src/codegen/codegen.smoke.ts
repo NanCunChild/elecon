@@ -6,7 +6,13 @@
  */
 
 import { strict as assert } from "node:assert";
-import { collectMissingDescriptions, generateDart, generateTs, pascalCase } from "./index.js";
+import {
+  collectMissingDescriptions,
+  generateDart,
+  generateOutputValidatorRegistryDart,
+  generateTs,
+  pascalCase,
+} from "./index.js";
 
 // ---- pascalCase ----
 
@@ -128,6 +134,14 @@ const noticeSchema = {
   });
   assert.deepStrictEqual(full, [], "全覆盖时应为空");
   console.log("✓ collectMissingDescriptions（嵌套/数组/$ref/全覆盖）");
+}
+
+{
+  const dart = generateOutputValidatorRegistryDart();
+  assert.ok(dart.includes("elecon.notice.list\\u00001.1"), "应按精确 schema+version 生成 notice validator");
+  assert.ok(dart.includes("OutputValidator? outputValidatorFor"), "应生成客户端 registry lookup");
+  assert.ok(dart.includes("value.any((v) => !_validate"), "数组 item 应递归整体校验");
+  console.log("✓ output validator registry（精确 emits / 嵌套校验）");
 }
 
 console.log("\ncodegen smoke 全部通过 ✅");

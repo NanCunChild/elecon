@@ -244,21 +244,51 @@ void main() {
       expect(store.list(), isEmpty, reason: '失败执行不得收割（fail 不收割）');
     });
 
-    test('并发 fetch 也不能超出请求预算', () async {
-      final view = const BrokerManifestView(
-        allow: ['https://h.edu.cn/api/*'],
-        credentials: {},
-      );
-      final transport = _ConcurrentTransport();
+    for (final calls in [21, 100]) {
+      test('$calls 个并发 fetch 在 transport 前最多预留 20 个请求', () async {
+        const view = BrokerManifestView(allow: ['https://h.edu.cn/api/*']);
+        final transport = _ConcurrentTransport();
+        final source =
+            '''
+          export const capabilities = {
+            'notice.list': async (ctx) => {
+              await Promise.all(Array.from({ length: $calls }, (_, i) =>
+                ctx.fetch('https://h.edu.cn/api/' + i)));
+              return { ok: true };
+            }
+          };''';
+
+        await expectLater(
+          runImperativeAdapterForTesting(
+            source: source,
+            trust: TrustedAdapterContext.devSideload(),
+            capability: 'notice.list',
+            view: view,
+            resolver: FakeResolver({}),
+            transport: transport,
+            nowMs: _now,
+            fetchLimits: const FetchLimits(maxRequests: 20),
+          ),
+          throwsA(
+            isA<AdapterRunException>().having(
+              (e) => e.reason,
+              'reason',
+              AdapterFailureReason.fetchLimit,
+            ),
+          ),
+        );
+        expect(transport.seen, hasLength(20));
+      });
+    }
+
+    test('并发重定向 hop 共用执行级请求预算', () async {
+      const view = BrokerManifestView(allow: ['https://h.edu.cn/*']);
+      final transport = _RedirectingConcurrentTransport();
       const source = '''
         export const capabilities = {
           'notice.list': async (ctx) => {
-            await Promise.all([
-              ctx.fetch('https://h.edu.cn/api/a'),
-              ctx.fetch('https://h.edu.cn/api/b'),
-              ctx.fetch('https://h.edu.cn/api/c'),
-              ctx.fetch('https://h.edu.cn/api/d'),
-            ]);
+            await Promise.all(Array.from({ length: 11 }, (_, i) =>
+              ctx.fetch('https://h.edu.cn/start/' + i)));
             return { ok: true };
           }
         };''';
@@ -272,7 +302,7 @@ void main() {
           resolver: FakeResolver({}),
           transport: transport,
           nowMs: _now,
-          fetchLimits: const FetchLimits(maxRequests: 2),
+          fetchLimits: const FetchLimits(maxRequests: 20),
         ),
         throwsA(
           isA<AdapterRunException>().having(
@@ -282,7 +312,7 @@ void main() {
           ),
         ),
       );
-      expect(transport.seen, hasLength(2));
+      expect(transport.seen, hasLength(20));
     });
 
     test('单请求超时 → cancel in-flight transport + fail 不收割', () async {
@@ -403,6 +433,26 @@ class _ConcurrentTransport implements Transport {
   }) async {
     seen.add(req);
     await Future<void>.delayed(const Duration(milliseconds: 5));
+    return const TransportResponse(status: 200, body: '{}');
+  }
+}
+
+class _RedirectingConcurrentTransport implements Transport {
+  final List<TransportRequest> seen = [];
+
+  @override
+  Future<TransportResponse> fetch(
+    TransportRequest req, {
+    TransportCancelToken? cancelToken,
+  }) async {
+    seen.add(req);
+    final uri = Uri.parse(req.url);
+    if (uri.path.startsWith('/start/')) {
+      return TransportResponse(
+        status: 302,
+        location: req.url.replaceFirst('/start/', '/end/'),
+      );
+    }
     return const TransportResponse(status: 200, body: '{}');
   }
 }

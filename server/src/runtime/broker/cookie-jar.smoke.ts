@@ -38,7 +38,7 @@ interface Golden {
   }>;
   matchCookieForSend: Array<{
     name: string;
-    input: { cookie: { domain: string; path: string }; requestUrl: string };
+    input: { cookie: { domain: string; path: string; hostOnly?: boolean }; requestUrl: string };
     expected: boolean;
   }>;
   selectCookies: Array<{
@@ -92,18 +92,28 @@ function statefulTests(): number {
   const jar = new CookieJar();
   jar.captureSetCookie(["sid=abc"], "https://dean.xjtu.edu.cn/a/b");
   assert.deepStrictEqual(jar.harvestView(), [
-    { name: "sid", value: "abc", domain: "dean.xjtu.edu.cn", path: "/a", source: "origin" },
+    {
+      name: "sid",
+      value: "abc",
+      domain: "dean.xjtu.edu.cn",
+      hostOnly: true,
+      path: "/a",
+      source: "origin",
+    },
   ]);
   assert.equal(jar.cookieHeader("https://dean.xjtu.edu.cn/a/x"), "sid=abc");
   assert.equal(jar.cookieHeader("https://dean.xjtu.edu.cn/other"), ""); // path /a 不匹配 /other
   checks++;
 
-  // 2. 显式 Domain/Path 属性（前导点归一为 host-only）；父域合法（dean.xjtu ⊆ xjtu）
+  assert.equal(jar.cookieHeader("https://sub.dean.xjtu.edu.cn/a/x"), "", "host-only 不得发往子域");
+
+  // 2. 显式 Domain/Path 属性保留 domain 语义；父域合法（dean.xjtu ⊆ xjtu）
   const jar2 = new CookieJar();
   jar2.captureSetCookie(["sess=xyz; Domain=.xjtu.edu.cn; Path=/"], "https://dean.xjtu.edu.cn/login");
   assert.deepStrictEqual(jar2.harvestView(), [
-    { name: "sess", value: "xyz", domain: "xjtu.edu.cn", path: "/", source: "origin" },
+    { name: "sess", value: "xyz", domain: "xjtu.edu.cn", hostOnly: false, path: "/", source: "origin" },
   ]);
+  assert.equal(jar2.cookieHeader("https://child.xjtu.edu.cn/"), "sess=xyz");
   checks++;
 
   // 2b. 非法 Domain（#79 P0-4，RFC 6265 §5.3 step 6）：响应 host 不 domain-match 声明的

@@ -49,6 +49,7 @@ class TransportResponse {
     this.setCookie = const [],
     this.location,
     this.body,
+    this.decodeOk,
   });
 
   final int status;
@@ -60,6 +61,10 @@ class TransportResponse {
   /// 响应 `Location` 头（重定向用）；无则 null。绝不外泄给 adapter（脱敏剥除）。
   final String? location;
   final String? body;
+
+  /// ADR-026 §2.8 A3：传输层是否确认 body 为 UTF-8 明文。生产 transport 必须给出真值；
+  /// `false` 的响应只可进入 delivery firewall 并 fail-closed，不得交给 Masker 或 adapter。
+  final bool? decodeOk;
 }
 
 abstract interface class Transport {
