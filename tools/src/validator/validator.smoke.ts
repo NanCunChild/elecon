@@ -6,10 +6,20 @@
  */
 
 import { strict as assert } from "node:assert";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
-import { checkBundleSizeBytes, checkManifest, MAX_BUNDLE_BYTES } from "./index.js";
+import {
+  checkBundleSizeBytes,
+  checkManifest,
+  discoverAdapters,
+  loadContract,
+  MAX_BUNDLE_BYTES,
+  validateAdapterDir,
+} from "./index.js";
 
 // 一个最小的、宽松的 manifest schema 桩：只验我们关心的字段存在性，
 // 让 C2/C3/C4 的逻辑断言不被 C1 噪声淹没。
@@ -137,6 +147,55 @@ function codes(findings: { code: string }[]): string[] {
     `合法 declarative 不应有 error：${JSON.stringify(findings)}`,
   );
   console.log("  ✓ 合法 declarative 通过（占位符不干扰白名单匹配）");
+}
+
+// registry params 与 manifest 必须双向完全一致。
+{
+  const paramsRegistry = {
+    "grades.list": {
+      emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+      params: { schema: "elecon.params.grades.list", schemaVersion: "1.0" },
+    },
+  };
+  const capability = {
+    id: "grades.list",
+    requestGraph: "imperative" as const,
+    emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+  };
+  const manifest = (params?: { schema: string; schemaVersion: string }) => ({
+    adapterId: "school-x",
+    trustTier: "official" as const,
+    network: { allow: ["https://h/api/*"] },
+    capabilities: [{ ...capability, ...(params ? { params } : {}) }],
+  });
+
+  assert.ok(
+    codes(checkManifest(manifest(), { manifestValidate, registry: paramsRegistry })).includes(
+      "C2_missing_params",
+    ),
+  );
+  assert.ok(
+    codes(
+      checkManifest(manifest({ schema: "elecon.params.wrong", schemaVersion: "1.0" }), {
+        manifestValidate,
+        registry: paramsRegistry,
+      }),
+    ).includes("C2_params_mismatch"),
+  );
+  assert.ok(
+    !codes(
+      checkManifest(manifest({ schema: "elecon.params.grades.list", schemaVersion: "1.0" }), {
+        manifestValidate,
+        registry: paramsRegistry,
+      }),
+    ).some((code) => code.startsWith("C2_")),
+  );
+  const unexpected = checkManifest(manifest({ schema: "elecon.params.grades.list", schemaVersion: "1.0" }), {
+    manifestValidate,
+    registry,
+  });
+  assert.ok(codes(unexpected).includes("C2_unexpected_params"));
+  console.log("  ✓ registry params 缺失、错误、额外声明均被拒，完全一致通过（C2）");
 }
 
 // 6) credential scope 越出 network.allow → C6
@@ -1167,6 +1226,87 @@ console.log("  ✓ 禁止头名（Cookie/Host/hop-by-hop/代理认证）作 head
     "official 合法混用不应触发 C4/C12",
   );
   console.log("  ✓ official 混用 declarative+imperative 通过");
+}
+
+// discovery 只识别 ADR-018 创作面，不递归 graphify/cache/vendor 中的 manifest。
+{
+  const root = mkdtempSync(join(tmpdir(), "elecon-validator-discovery-"));
+  try {
+    const dirs = [
+      "school-valid",
+      "_template/declarative",
+      "graphify-out/school-generated",
+      ".cache/school-cached",
+      "vendor/adapters/school-vendored",
+      "notes",
+    ];
+    for (const dir of dirs) {
+      mkdirSync(join(root, dir), { recursive: true });
+      writeFileSync(join(root, dir, "manifest.json"), "{}");
+    }
+
+    assert.deepEqual(
+      discoverAdapters(root).map((dir) => dir.slice(root.length + 1)),
+      ["_template/declarative", "school-valid"],
+    );
+    console.log("  ✓ discovery 排除 graphify/cache/vendor 与非 adapter manifest");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// fixture 缺 expected 或 declarative request 输入时必须硬失败，而不是只验证静态 expected。
+{
+  const dir = mkdtempSync(join(tmpdir(), "elecon-validator-fixture-"));
+  try {
+    writeFileSync(
+      join(dir, "manifest.json"),
+      JSON.stringify({
+        manifestVersion: "1.0",
+        adapterId: "school-fixture-test",
+        adapterVersion: "0.1.0",
+        schoolId: "fixture-test",
+        displayName: "Fixture Test",
+        trustTier: "sideload",
+        runtime: { engine: "quickjs", entry: "index.js" },
+        network: { allow: ["https://fixture.invalid/*"] },
+        capabilities: [
+          {
+            id: "grades.list",
+            requestGraph: "declarative",
+            emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+            params: { schema: "elecon.params.grades.list", schemaVersion: "1.0" },
+            requests: [{ key: "raw", method: "GET", url: "https://fixture.invalid/grades" }],
+          },
+        ],
+      }),
+    );
+    writeFileSync(join(dir, "index.js"), "export const capabilities = {};");
+    mkdirSync(join(dir, "fixtures"));
+    const fixturePath = join(dir, "fixtures/grades.list.json");
+    writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        capability: "grades.list",
+        params: {},
+        responses: {},
+        expected: { term: "x", items: [] },
+      }),
+    );
+    assert.ok(
+      codes(validateAdapterDir(dir, loadContract())).includes("C5_fixture_input_chain"),
+      "缺 request response 必须触发 C5_fixture_input_chain",
+    );
+
+    writeFileSync(fixturePath, JSON.stringify({ capability: "grades.list", params: {}, responses: {} }));
+    assert.ok(
+      codes(validateAdapterDir(dir, loadContract())).includes("C5_fixture_shape"),
+      "缺 expected 必须触发 C5_fixture_shape",
+    );
+    console.log("  ✓ fixture expected 与 request 输入链缺失均硬失败（C5）");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 console.log("validator smoke 全部通过。");

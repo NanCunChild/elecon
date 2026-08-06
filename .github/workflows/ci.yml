@@ -47,7 +47,7 @@ jobs:
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
       # 按需拉取公开仓 elecon-adapters 的 adapters/（ADR-018 §2.11.1，取代 git 子模块）。
-      # 脚本按 adapters.pin 钉死的 ref 浅克隆，并把 ELECON_ADAPTERS_REPO 写入 $GITHUB_ENV。
+      # 脚本按 adapters.pin 钉死的 ref 浅克隆，并导出 runtime/validator 共用的根目录。
       - name: Fetch pinned elecon-adapters
         run: bash scripts/fetch-adapters.sh
       - uses: actions/setup-node@v7
@@ -69,7 +69,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
-      # 按需拉取 elecon-adapters（ADR-018 §2.11.1）；validate 对其 adapters/ 做全量静态校验。
+      # 按需拉取 elecon-adapters（ADR-018 §2.11.1）；脚本导出的 ELECON_ADAPTERS_ROOT
+      # 让 validate 对 pinned checkout 的 adapters/ 做全量静态校验。
       - name: Fetch pinned elecon-adapters
         run: bash scripts/fetch-adapters.sh
       - uses: actions/setup-node@v7

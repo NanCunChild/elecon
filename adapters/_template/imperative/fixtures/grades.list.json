@@ -1,0 +1,36 @@
+{
+  "_note": "脱敏 imperative replay fixture；课程名称与编号均为虚构测试数据。",
+  "kind": "imperative-replay",
+  "capability": "grades.list",
+  "params": { "term": "2025-2026-2" },
+  "responses": [
+    {
+      "status": 200,
+      "headers": { "content-type": "application/json; charset=utf-8" },
+      "body": "{\"list\":[{\"id\":\"CS101\",\"name\":\"计算机导论\",\"credit\":3,\"score\":88,\"gpa\":3.7,\"type\":\"必修\"},{\"id\":\"GEN300\",\"name\":\"跨学科研讨\",\"credit\":2,\"score\":85,\"type\":\"任选\"}]}"
+    }
+  ],
+  "expected": {
+    "term": "2025-2026-2",
+    "items": [
+      {
+        "courseId": "CS101",
+        "courseName": "计算机导论",
+        "credit": 3,
+        "score": { "kind": "numeric", "value": 88, "max": 100 },
+        "gradePoint": 3.7,
+        "category": "required",
+        "status": "final"
+      },
+      {
+        "courseId": "GEN300",
+        "courseName": "跨学科研讨",
+        "credit": 2,
+        "score": { "kind": "numeric", "value": 85, "max": 100 },
+        "category": "unknown",
+        "status": "final"
+      }
+    ]
+  },
+  "assertions": { "requestCount": 1, "methods": ["GET"], "itemCount": 2 }
+}

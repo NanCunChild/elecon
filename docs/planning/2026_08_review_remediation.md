@@ -75,13 +75,21 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | P1-11 | [ ] 落地 ADR-029 固定 body 模板和受限 body credential inject | manifest、validator、TS/Dart Broker | P0-10、P1-10；ADR-029 | 仅固定字段/模板可注入；adapter 不见值；重定向与日志规则闭合；人工签收 |
 | P1-12 | [ ] 完成 ADR-030 actuator 统一副作用闸门 | contract registry、Broker、UI action entry | P0-10、P1-11；ADR-030 | 仅用户手势触发；禁自动重试；状态未知语义；固定 endpoint；审计与人工签收 |
 | P1-13 | [ ] manifest validator 强制 `requests[].key` 唯一，runtime 纵深拒绝重复 key | `contract/manifest.schema.json`、`tools/src/validator/`、TS/Dart runtime | 需确认是否仅 validator bugfix或契约增补 | 重复 key 在签发前和运行时都失败；bind/Masker 负例覆盖 |
-| P1-14 | [ ] registry 有 params 时，manifest 必须声明完全一致的 params binding | `tools/src/validator/index.ts` | 无 | 缺 params、错 schema、额外 params 均硬错误；template 回归通过 |
+| P1-14 | [x] registry 有 params 时，manifest 必须声明完全一致的 params binding | `tools/src/validator/index.ts` | 无 | 缺 params、错 schema、额外 params 均硬错误；template 回归通过 |
 | P1-15 | [ ] 分层关闭 manifest 安全面未知字段 | `contract/manifest.schema.json` | 慢车道；需兼容性方案 | 已删除 `mode`、拼错字段和未知安全声明均失败；旧 bundle 迁移策略明确 |
-| P1-16 | [ ] 修正 declarative/imperative 模板的 `gradePoint:null` 和未知课程类型映射 | `adapters/_template/*/index.js` | P0-08 | 可选字段缺失时省略；未知类别为 `unknown`；真实 replay+schema+golden 通过 |
+| P1-16 | [x] 修正 declarative/imperative 模板的 `gradePoint:null` 和未知课程类型映射 | `adapters/_template/*/index.js` | P0-08 | 可选字段缺失时省略；未知类别为 `unknown`；真实 replay+schema+golden 通过 |
 | P1-17 | [ ] 建立真正的 adapter fixture replay 门，而不是只校验 expected JSON | `tools/src/validator/`、adapter fixtures | P0-08 | replay 请求/dataflow/handler 后逐字段比较 expected 并校验 schema；输入链缺失会失败 |
-| P1-18 | [ ] 修复 external adapter 根环境变量不一致 | `scripts/fetch-adapters.sh`、`tools/src/validator/index.ts`、CI | 无 | CI 输出实际扫描目录和 adapter 数量；pinned adapters 全量 validator 确实运行 |
-| P1-19 | [ ] adapter discovery 排除 `graphify-out`、缓存和非 adapter manifest | `tools/src/validator/index.ts` | 无 | 本地 graphify 后全量 validator 不误扫；只识别合法 adapter 根 |
-| P1-20 | [ ] 修复 `adapters_tests/XIDIAN/jwc/std` 的 entry、schemaVersion、日期和手写校验器漂移 | 对应 manifest/index/run | P0-08 | 使用标准 fixture/replay；坏日期省略；UTC 归一；validator 零错误 |
+| P1-18 | [x] 修复 external adapter 根环境变量不一致 | `scripts/fetch-adapters.sh`、`tools/src/validator/index.ts`、CI | 无 | CI 输出实际扫描目录和 adapter 数量；pinned adapters 全量 validator 确实运行 |
+| P1-19 | [x] adapter discovery 排除 `graphify-out`、缓存和非 adapter manifest | `tools/src/validator/index.ts` | 无 | 本地 graphify 后全量 validator 不误扫；只识别合法 adapter 根 |
+| P1-20 | [x] 修复 `adapters_tests/XIDIAN/jwc/std` 的 entry、schemaVersion、日期和手写校验器漂移 | 对应 manifest/index/run | P0-08 | 使用标准 fixture/replay；坏日期省略；UTC 归一；validator 零错误 |
+
+### 3.1 执行状态（2026-08-06）
+
+- P1-14：validator 已把 params 双向一致设为硬门；外部 manifest 修复钉死在 `elecon-adapters@49ae7f53c380eb40bd283b8dc36ccda1c2a26774`（`elecon-adapters#3`）。
+- P1-17 部分落地，保持开放：validator 已把 fixture expected 和输入链设为硬门；server 对 pinned adapter 的 8 个 fixture 真实执行 QuickJS handler、逐字段比对 expected 并校验 schema。尚缺 declarative request/dataflow host 的完整编排 replay，不能仅凭 handler replay 关闭。
+- P1-16：declarative/imperative 模板均通过真实 QuickJS replay；缺失 `gradePoint` 时省略，未知课程类型归一为 `unknown`。
+- P1-18/P1-19：拉取脚本同时导出 runtime/validator 根；validator 输出扫描根与数量，只发现 ADR-018 定义的 `school-*` 和 `_template/*`，不递归 graphify/cache/vendor manifest。
+- P1-20：XIDIAN JWC std 已使用 `index.js`、registry 对齐版本与 params、标准 fixture replay、真实 contract schema；坏日期省略，上海本地发布日期归一为 UTC。
 
 ## 4. P2：普通逻辑、解耦与可维护性
 

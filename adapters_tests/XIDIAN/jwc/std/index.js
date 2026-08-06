@@ -11,11 +11,18 @@ const BASE = 'https://jwc.xidian.edu.cn/';
 // 注：源页给的是发布日期、无时刻，按校所在时区 Asia/Shanghai 取零点。
 function normalizeDate(yearMonth, day) {
   const nums = (String(yearMonth) + ' ' + String(day)).match(/\d+/g) || [];
-  if (nums.length < 3) return null;
-  const y = nums[0].length >= 4 ? nums[0] : ('20' + nums[0]).slice(-4);
-  const mo = ('0' + nums[1]).slice(-2);
-  const d = ('0' + nums[2]).slice(-2);
-  return y + '-' + mo + '-' + d + 'T00:00:00+08:00';
+  if (nums.length < 3) return undefined;
+  const year = Number(nums[0].length >= 4 ? nums[0] : ('20' + nums[0]).slice(-4));
+  const month = Number(nums[1]);
+  const date = Number(nums[2]);
+  if (month < 1 || month > 12 || date < 1 || date > 31) return undefined;
+
+  const localMidnightUtc = Date.UTC(year, month - 1, date) - 8 * 60 * 60 * 1000;
+  const check = new Date(localMidnightUtc + 8 * 60 * 60 * 1000);
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== date) {
+    return undefined;
+  }
+  return new Date(localMidnightUtc).toISOString().replace('.000Z', 'Z');
 }
 
 // 稳定 id：优先取 href 里的数字标识，否则 slug 化。
@@ -58,21 +65,22 @@ export const capabilities = {
 
       const timeDiv = a.find(function (n) { return n.tag === 'div' && n.hasClass('time'); })
         || lis[i].find(function (n) { return n.tag === 'div' && n.hasClass('time'); });
-      let publishedAt = null;
+      let publishedAt;
       if (timeDiv) {
         const p = timeDiv.find('p');
         const span = timeDiv.find('span');
         publishedAt = normalizeDate(span ? span.text() : '', p ? p.text() : '');
       }
 
-      items.push({
+      const item = {
         id: deriveId(href),
         title: title,
         url: absUrl(href),
-        publishedAt: publishedAt || '1970-01-01T00:00:00+08:00',
         category: 'unknown',   // 源页无逐条分类信号 → unknown（schema 枚举允许）
         source: SOURCE,
-      });
+      };
+      if (publishedAt !== undefined) item.publishedAt = publishedAt;
+      items.push(item);
     }
     return { items: items };
   },

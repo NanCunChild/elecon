@@ -6,7 +6,7 @@
  *  C2 capability id ∈ registry.json，且 emits.schema/version 与 registry 一致（防漂移）
  *  C3 sideload 信任档**强制**每个 capability requestGraph=declarative（拒绝 sideload + imperative，分发/签名路径，红线 #5；ADR-022）
  *  C4 网络白名单：存在 imperative cap 须有 allow；declarative 的每条 requests.url 须被 allow 覆盖；declarative 无 requests → error
- *  C5 夹具：fixtures/*.json 的 expected 须通过该 capability 的 emits schema
+ *  C5 夹具：fixtures/*.json 必须有完整 replay 输入链，expected 须通过 capability emits schema
  *  C6 凭证作用域：credentials.<name>.scope 每条须 ⊆ network.allow（ADR-013 §2.4 规则 1）
  *  C7 作用域消歧：不同凭证的 scope 前缀长度相同且重叠 → 拒绝（ADR-013 §2.4 规则 2 / ADR-009 §2.3b）
  *  C8 引用闭合：declarative 的 requests.credential 须在 credentials 声明；声明未用 → warn（ADR-013 §2.4 规则 3）
@@ -24,17 +24,15 @@
  *    🔒 密钥位须 ref（D10）；复杂度限额（D11）；🔒 信任门正向允许表（D13）；请求依赖无环（D15）；
  *    🔒 凭证头 / 逐跳头不得注入（D16）
  *
- * 尚未覆盖（留给优先级 #3 客户端落地）：
- *  - 完整 golden 双跑：客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产出比对。
- *    服务端单引擎 golden 已由 server/src/runtime/sandbox.smoke.ts 证明。
- *    本校验器只做"夹具 expected 合 schema"这一不依赖沙箱的部分（见 C5）。
+ * handler 的真实 QuickJS replay + expected 逐字段比较由 server 的
+ * adapter-fixture-replay.smoke.ts 执行；本文件负责在执行前关闭 fixture 输入形状。
  *
  *   运行：cd tools && npm run validate                  # 校验 adapters/ 下全部
  *         cd tools && npm run validate -- --adapter=../adapters/_template/declarative
  */
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   allowToRegex,
@@ -306,7 +304,13 @@ export function checkManifest(
     }
     const declaredParams = cap.params;
     const registeredParams = reg.params;
-    if (
+    if (registeredParams && !declaredParams) {
+      findings.push({
+        level: "error",
+        code: "C2_missing_params",
+        message: `capability '${cap.id}' 必须声明 registry params：${registeredParams.schema}@${registeredParams.schemaVersion}`,
+      });
+    } else if (
       registeredParams &&
       declaredParams &&
       (declaredParams.schema !== registeredParams.schema ||
@@ -792,7 +796,7 @@ function checkBundleSize(dir: string): Finding[] {
   return checkBundleSizeBytes(sumBundleBytes(dir));
 }
 
-// ---- C5：夹具 expected 合 schema（不依赖沙箱）----
+// ---- C5：夹具 replay 输入闭合 + expected 合 schema ----
 
 function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Finding[] {
   const findings: Finding[] = [];
@@ -803,15 +807,17 @@ function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Fin
 
   for (const file of readdirSync(fixturesDir)) {
     if (!file.endsWith(".json")) continue;
-    const fx = readJson<{ kind?: string; capability?: string; expected?: unknown }>(join(fixturesDir, file));
-    // imperative-replay fixture 的 expected 由 FakeTransport replay runner 断言；C5
-    // 只负责 declarative 的静态 expected schema 校验，避免把两种 fixture 语义混为一谈。
-    if (fx.kind === "imperative-replay") continue;
+    const fx = readJson<{
+      kind?: string;
+      capability?: string;
+      responses?: unknown;
+      expected?: unknown;
+    }>(join(fixturesDir, file));
     if (!fx.capability || fx.expected === undefined) {
       findings.push({
-        level: "warn",
+        level: "error",
         code: "C5_fixture_shape",
-        message: `fixtures/${file} 缺 capability 或 expected，跳过`,
+        message: `fixtures/${file} 缺 capability 或 expected`,
       });
       continue;
     }
@@ -823,6 +829,28 @@ function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Fin
         message: `fixtures/${file} 引用了 manifest 未声明的 capability '${fx.capability}'`,
       });
       continue;
+    }
+    if (cap.requestGraph === "imperative") {
+      if (fx.kind !== "imperative-replay" || !Array.isArray(fx.responses)) {
+        findings.push({
+          level: "error",
+          code: "C5_fixture_input_chain",
+          message: `fixtures/${file} imperative replay 必须声明 kind=imperative-replay 与 responses 数组`,
+        });
+      }
+    } else {
+      const responses =
+        typeof fx.responses === "object" && fx.responses !== null && !Array.isArray(fx.responses)
+          ? (fx.responses as Record<string, unknown>)
+          : null;
+      const requestKeys = (cap.requests ?? []).map((request) => request.key);
+      if (!responses || requestKeys.some((key) => !(key in responses))) {
+        findings.push({
+          level: "error",
+          code: "C5_fixture_input_chain",
+          message: `fixtures/${file} responses 未覆盖 declarative requests：${requestKeys.join(", ")}`,
+        });
+      }
     }
     const validate = contract.schemaFor(cap.emits.schema);
     if (!validate) {
@@ -935,31 +963,42 @@ function checkResponseMaskerFiles(
   ];
 }
 
-/** 递归发现 adapters/ 下含 manifest.json 的目录。 */
-function discoverAdapters(root: string): string[] {
+/**
+ * 发现 ADR-018 §2.8 定义的创作面：`adapters/school-*` 与 `_template/*`。
+ * 不递归任意 manifest，避免 graphify 输出、缓存或 vendor 快照被误认成 adapter。
+ */
+export function discoverAdapters(root: string): string[] {
+  if (!existsSync(root) || !statSync(root).isDirectory()) {
+    throw new Error(`adapter 扫描根不存在或不是目录：${root}`);
+  }
+
   const out: string[] = [];
-  const walk = (d: string): void => {
-    if (existsSync(join(d, "manifest.json"))) {
-      out.push(d);
-      return; // adapter 目录不再下钻
-    }
-    for (const entry of readdirSync(d)) {
-      const p = join(d, entry);
-      if (statSync(p).isDirectory()) walk(p);
+  const addManifestDirs = (parent: string, accept: (name: string) => boolean): void => {
+    for (const entry of readdirSync(parent, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !accept(entry.name)) continue;
+      const dir = join(parent, entry.name);
+      if (existsSync(join(dir, "manifest.json"))) out.push(dir);
     }
   };
-  walk(root);
-  return out;
+
+  addManifestDirs(root, (name) => /^school-[A-Za-z0-9._-]+$/.test(name));
+  const templates = join(root, "_template");
+  if (existsSync(templates) && statSync(templates).isDirectory()) {
+    addManifestDirs(templates, (name) => !name.startsWith("."));
+  }
+  return out.sort();
 }
 
 function main(): void {
   const arg = process.argv.find((a) => a.startsWith("--adapter="));
   const contract = loadContract();
 
-  const dirs = arg ? [arg.slice("--adapter=".length)] : discoverAdapters(adaptersRoot);
+  const dirs = arg ? [resolve(arg.slice("--adapter=".length))] : discoverAdapters(adaptersRoot);
+  console.log(`adapter 扫描根：${arg ? dirname(dirs[0]!) : adaptersRoot}`);
+  console.log(`adapter 数量：${dirs.length}`);
   if (dirs.length === 0) {
-    console.log("没有发现任何 adapter。");
-    return;
+    console.error("没有发现任何合法 adapter。");
+    process.exit(1);
   }
 
   let errorCount = 0;

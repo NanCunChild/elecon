@@ -1,0 +1,47 @@
+{
+  "_note": "脱敏 declarative replay fixture；名称、编号与日期均为虚构测试数据。",
+  "capability": "notice.list",
+  "params": {},
+  "responses": {
+    "home": {
+      "status": 200,
+      "headers": { "content-type": "text/html; charset=utf-8" },
+      "bodyFile": "fixtures/notice.sample.html"
+    }
+  },
+  "expected": {
+    "items": [
+      {
+        "id": "xidian-jwc-2401",
+        "title": "关于2026学年第二学期选课的通知",
+        "url": "https://jwc.xidian.edu.cn/tzgg/2401.htm",
+        "publishedAt": "2026-06-11T16:00:00Z",
+        "category": "unknown",
+        "source": "西安电子科技大学教务处"
+      },
+      {
+        "id": "xidian-jwc-2399",
+        "title": "期末考试安排公布",
+        "url": "https://jwc.xidian.edu.cn/tzgg/2399.htm",
+        "publishedAt": "2026-06-02T16:00:00Z",
+        "category": "unknown",
+        "source": "西安电子科技大学教务处"
+      },
+      {
+        "id": "xidian-jwc-2388",
+        "title": "关于教室借用流程调整的说明",
+        "url": "https://jwc.xidian.edu.cn/tzgg/2388.htm",
+        "publishedAt": "2026-05-27T16:00:00Z",
+        "category": "unknown",
+        "source": "西安电子科技大学教务处"
+      },
+      {
+        "id": "xidian-jwc-2380",
+        "title": "发布日期待确认的示例通知",
+        "url": "https://jwc.xidian.edu.cn/tzgg/2380.htm",
+        "category": "unknown",
+        "source": "西安电子科技大学教务处"
+      }
+    ]
+  }
+}

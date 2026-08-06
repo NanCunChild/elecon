@@ -23,6 +23,7 @@
       "id": "grades.list",
       "requestGraph": "declarative",
       "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
+      "params": { "schema": "elecon.params.grades.list", "schemaVersion": "1.0" },
       "requests": [
         {
           "key": "chal",

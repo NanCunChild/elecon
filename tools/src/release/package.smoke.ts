@@ -39,6 +39,7 @@ writeFileSync(
         id: "notice.list",
         requestGraph: "declarative",
         emits: { schema: "elecon.notice.list", schemaVersion: "1.1" },
+        params: { schema: "elecon.params.notice.list", schemaVersion: "1.0" },
         requests: [{ key: "raw", method: "GET", url: "https://example.edu/notice" }],
       },
     ],

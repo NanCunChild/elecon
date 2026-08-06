@@ -29,6 +29,7 @@ interface ImperativeFixture {
   capability: string;
   params?: unknown;
   responses: ResponseFixture[];
+  expected: unknown;
   assertions?: {
     requestCount?: number;
     methods?: string[];
@@ -92,6 +93,9 @@ export async function replayImperativeFixture(
     { source, capability: fixture.capability, params: fixture.params ?? {}, nowMs: 1_700_000_000_000 },
     { trust: TrustedAdapterContext.devSideload(), view, resolver: noResolver, transport },
   );
+
+  assert.deepStrictEqual(data, fixture.expected, `${fixtureName} 产出与 expected 不一致`);
+  assert.equal(transport.seen.length, fixture.responses.length, `${fixtureName} 未恰好消费完整响应输入链`);
 
   const assertions = fixture.assertions ?? {};
   if (assertions.requestCount !== undefined) assert.equal(transport.seen.length, assertions.requestCount);

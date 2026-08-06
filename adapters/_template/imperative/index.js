@@ -4,19 +4,22 @@ export const capabilities = {
     const json = await res.json();
     return {
       term: params.term,
-      items: json.list.map((item) => ({
-        courseId: item.id,
-        courseName: item.name,
-        credit: item.credit,
-        score: {
-          kind: "numeric",
-          value: item.score,
-          max: 100,
-        },
-        gradePoint: item.gpa ?? null,
-        category: item.type === "必修" ? "required" : "elective",
-        status: "final",
-      })),
+      items: json.list.map((item) => {
+        const normalized = {
+          courseId: item.id,
+          courseName: item.name,
+          credit: item.credit,
+          score: {
+            kind: "numeric",
+            value: item.score,
+            max: 100,
+          },
+          category: item.type === "必修" ? "required" : item.type === "选修" ? "elective" : "unknown",
+          status: "final",
+        };
+        if (item.gpa !== undefined && item.gpa !== null) normalized.gradePoint = item.gpa;
+        return normalized;
+      }),
     };
   },
 

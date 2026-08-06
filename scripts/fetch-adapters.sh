@@ -7,7 +7,8 @@
 #
 #   用法： bash scripts/fetch-adapters.sh [目标目录]
 #   缺省目标： <repo>/.adapters-cache/elecon-adapters
-#   在 GitHub Actions 下自动把 ELECON_ADAPTERS_REPO 写入 $GITHUB_ENV，后续 step 即可用。
+#   在 GitHub Actions 下自动把 ELECON_ADAPTERS_REPO / ELECON_ADAPTERS_ROOT 写入
+#   $GITHUB_ENV，后续 runtime 与 validator 使用同一份 pinned checkout。
 set -euo pipefail
 
 REPO_URL="${ELECON_ADAPTERS_URL:-https://github.com/ncc-devlab/elecon-adapters.git}"
@@ -45,5 +46,7 @@ fi
 echo "✓ elecon-adapters @ $REF 就绪（adapters/ 可用）"
 if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "ELECON_ADAPTERS_REPO=$TARGET" >>"$GITHUB_ENV"
+  echo "ELECON_ADAPTERS_ROOT=$TARGET/adapters" >>"$GITHUB_ENV"
   echo "  已导出 ELECON_ADAPTERS_REPO=$TARGET 至 \$GITHUB_ENV"
+  echo "  已导出 ELECON_ADAPTERS_ROOT=$TARGET/adapters 至 \$GITHUB_ENV"
 fi

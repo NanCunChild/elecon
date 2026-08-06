@@ -3,10 +3,15 @@
   "capability": "grades.list",
   "params": { "term": "2025-2026-2" },
   "responses": {
+    "chal": {
+      "status": 200,
+      "headers": { "content-type": "text/plain; charset=utf-8" },
+      "body": "client_id=fixture-client"
+    },
     "raw": {
       "status": 200,
       "headers": { "content-type": "application/json; charset=utf-8" },
-      "body": "{\"list\":[{\"id\":\"CS101\",\"name\":\"计算机导论\",\"credit\":3,\"score\":88,\"gpa\":3.7,\"type\":\"必修\"},{\"id\":\"MA201\",\"name\":\"线性代数\",\"credit\":4,\"score\":91,\"gpa\":4.0,\"type\":\"必修\"},{\"id\":\"PE100\",\"name\":\"羽毛球\",\"credit\":1,\"score\":75,\"gpa\":2.0,\"type\":\"选修\"}]}"
+      "body": "{\"list\":[{\"id\":\"CS101\",\"name\":\"计算机导论\",\"credit\":3,\"score\":88,\"gpa\":3.7,\"type\":\"必修\"},{\"id\":\"MA201\",\"name\":\"线性代数\",\"credit\":4,\"score\":91,\"gpa\":4.0,\"type\":\"必修\"},{\"id\":\"PE100\",\"name\":\"羽毛球\",\"credit\":1,\"score\":75,\"gpa\":2.0,\"type\":\"选修\"},{\"id\":\"GEN300\",\"name\":\"跨学科研讨\",\"credit\":2,\"score\":85,\"type\":\"任选\"}]}"
     }
   },
   "expected": {
@@ -37,6 +42,14 @@
         "score": { "kind": "numeric", "value": 75, "max": 100 },
         "gradePoint": 2.0,
         "category": "elective",
+        "status": "final"
+      },
+      {
+        "courseId": "GEN300",
+        "courseName": "跨学科研讨",
+        "credit": 2,
+        "score": { "kind": "numeric", "value": 85, "max": 100 },
+        "category": "unknown",
         "status": "final"
       }
     ]
