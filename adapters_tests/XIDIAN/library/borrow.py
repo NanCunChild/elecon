@@ -178,7 +178,7 @@ if __name__ == "__main__":
 
     lib = LibrarySession(user, pwd)
     lib.login()
-    print(f"[OK] userId={lib.user_id}, token={lib.token[:8]}...")
+    print("[OK] 图书馆会话已建立，userId/token 不输出。")
 
     borrows = lib.get_borrow_list()
     print(f"\n[OK] 当前借阅 {len(borrows)} 本:")

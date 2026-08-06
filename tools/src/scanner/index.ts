@@ -38,7 +38,7 @@ export interface PiiFinding {
   level: Level;
   code: string;
   message: string;
-  /** 命中片段（已截断/打码，避免把疑似 PII 完整写进 CI 日志）。 */
+  /** 固定占位符；不把疑似 PII 的内容或长度写进 CI 日志。 */
   sample: string;
 }
 
@@ -60,10 +60,9 @@ function looksLikePlaceholder(digits: string): boolean {
   return ascending.includes(digits) || descending.includes(digits);
 }
 
-/** 把命中片段打码后再进日志（保留前 2 + 后 2）。 */
-function mask(s: string): string {
-  if (s.length <= 4) return "*".repeat(s.length);
-  return `${s.slice(0, 2)}${"*".repeat(s.length - 4)}${s.slice(-2)}`;
+/** 固定占位符，CI 日志不回显疑似秘密的内容或长度。 */
+function mask(_s: string): string {
+  return "<redacted>";
 }
 
 // ---- 校验位 ----
@@ -197,6 +196,27 @@ export function scanLine(line: string): PiiFinding[] {
     }
   }
 
+  // P8 探针源码安全基线：TLS 校验不可关闭，日志不可输出凭证前缀。
+  if (/\bverify\s*=\s*False\b/.test(line)) {
+    out.push({
+      level: "error",
+      code: "P8_unsafe_probe",
+      message: "探针禁止关闭 TLS 证书校验",
+      sample: "<redacted>",
+    });
+  }
+  if (
+    /\b(?:token|ticket|client_id|node_id)\s*\[\s*:\s*\d+\s*\]/i.test(line) ||
+    /\bprint\s*\(\s*f?["'][^"']*(?:ticket\s+URL|NodeID|token|client_id)[^"']*\{/i.test(line)
+  ) {
+    out.push({
+      level: "error",
+      code: "P8_unsafe_probe",
+      message: "探针日志禁止输出凭证值或前缀",
+      sample: "<redacted>",
+    });
+  }
+
   return out;
 }
 
@@ -221,6 +241,16 @@ function walkFiles(dir: string, out: string[]): void {
 
 export function scanFile(path: string): FileFinding[] {
   const findings: FileFinding[] = [];
+  if (/(^|[\\/])raw([\\/]|$)/i.test(path)) {
+    findings.push({
+      level: "error",
+      code: "P8_unsafe_probe",
+      message: "raw 探针材料只能位于仓库 .private-probes/",
+      sample: "<redacted>",
+      file: path,
+      line: 1,
+    });
+  }
   const text = readFileSync(path, "utf-8");
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {

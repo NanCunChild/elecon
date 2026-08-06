@@ -1,6 +1,6 @@
 /// Settings → 运行时日志查看页。
 ///
-/// release：仅网络条目（无参 URL + 状态）；debug：可切换全部 / 仅网络，可关闭脱敏联调。
+/// release：仅网络条目（无参 URL + 状态）；debug：可切换全部 / 仅网络。
 library;
 
 import 'package:flutter/foundation.dart';
@@ -40,9 +40,8 @@ class _DevLogPageState extends State<DevLogPage> {
     if (mounted) setState(() {});
   }
 
-  List<DevLogEntry> get _visible => _log.visible(
-        only: _networkOnly ? DevLogCategory.network : null,
-      );
+  List<DevLogEntry> get _visible =>
+      _log.visible(only: _networkOnly ? DevLogCategory.network : null);
 
   Future<void> _copyAll() async {
     final l10n = AppLocalizations.of(context);
@@ -51,9 +50,9 @@ class _DevLogPageState extends State<DevLogPage> {
         .join('\n');
     await Clipboard.setData(ClipboardData(text: lines));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.commonCopiedToClipboard)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.commonCopiedToClipboard)));
   }
 
   @override
@@ -106,19 +105,6 @@ class _DevLogPageState extends State<DevLogPage> {
                         ? (_) => setState(() => _networkOnly = true)
                         : null,
                   ),
-                  if (kDebugMode)
-                    FilterChip(
-                      label: Text(
-                        _log.redact
-                            ? l10n.devLogRedactOn
-                            : l10n.devLogRedactOff,
-                      ),
-                      selected: _log.redact,
-                      onSelected: (v) {
-                        _log.setRedact(v);
-                        setState(() {});
-                      },
-                    ),
                 ],
               ),
             ),
@@ -126,14 +112,10 @@ class _DevLogPageState extends State<DevLogPage> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              kDebugMode
-                  ? (_log.redact
-                      ? l10n.devLogHintRedacted
-                      : l10n.devLogHintUnredacted)
-                  : l10n.devLogHintRelease,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
+              kDebugMode ? l10n.devLogHintRedacted : l10n.devLogHintRelease,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           const Divider(height: 1),
@@ -142,9 +124,9 @@ class _DevLogPageState extends State<DevLogPage> {
                 ? Center(
                     child: Text(
                       l10n.devLogEmpty,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: scheme.outline,
-                          ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyLarge?.copyWith(color: scheme.outline),
                     ),
                   )
                 : ListView.separated(
@@ -156,16 +138,14 @@ class _DevLogPageState extends State<DevLogPage> {
                       final color = e.ok == false
                           ? scheme.error
                           : e.category == DevLogCategory.network
-                              ? scheme.primary
-                              : scheme.onSurfaceVariant;
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant;
                       return ListTile(
                         dense: true,
                         title: Text(
                           e.message,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontFamily: 'monospace',
-                                color: color,
-                              ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(fontFamily: 'monospace', color: color),
                         ),
                         subtitle: Text(
                           '${e.timeLabel} · ${e.category.name}',

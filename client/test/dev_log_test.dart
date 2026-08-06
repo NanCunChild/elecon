@@ -23,13 +23,13 @@ void main() {
       );
     });
 
-    test('redact=false 保留 query / fragment，仍剥 userInfo', () {
+    test('redact=false 也永久剥离 query / fragment / userInfo / path session', () {
       expect(
         formatUrlForLog(
-          'https://user:pass@ids.example.edu/auth?ticket=SECRET#frag',
+          'https://user:pass@ids.example.edu/auth;jsessionid=SECRET/next?ticket=SECRET#frag',
           redact: false,
         ),
-        'https://ids.example.edu/auth?ticket=SECRET#frag',
+        'https://ids.example.edu/auth/next',
       );
     });
 
@@ -40,6 +40,21 @@ void main() {
       );
     });
 
+    test('URL path 中的 ticket/token material 使用固定占位符', () {
+      expect(
+        formatUrlForLog(
+          'https://ids.example.edu/callback/token/SECRET_MATERIAL_123456789',
+        ),
+        'https://ids.example.edu/callback/token/<redacted>',
+      );
+      expect(
+        formatUrlForLog(
+          'https://ids.example.edu/cas/ST-123-SECRET_MATERIAL_123456789',
+        ),
+        'https://ids.example.edu/cas/<redacted>',
+      );
+    });
+
     test('非法 URL', () {
       expect(formatUrlForLog('not a url', redact: true), '<invalid-url>');
       expect(sanitizeUrlForLog('not a url'), '<invalid-url>');
@@ -47,12 +62,64 @@ void main() {
   });
 
   group('maskCookieValue', () {
-    test('redact=true 仅长度', () {
-      expect(maskCookieValue('secret-cookie', redact: true), '<13B>');
+    test('redact=true 使用固定占位符', () {
+      expect(maskCookieValue('secret-cookie', redact: true), '<redacted>');
     });
 
-    test('redact=false 原文', () {
-      expect(maskCookieValue('secret-cookie', redact: false), 'secret-cookie');
+    test('redact=false 仍使用固定占位符', () {
+      expect(maskCookieValue('secret-cookie', redact: false), '<redacted>');
+    });
+  });
+
+  group('sanitizeLogMessage', () {
+    test('净化 URL、认证 header、cookie 和裸 CAS ticket', () {
+      const secret = 'SECRET_MATERIAL_123456789';
+      final safe = sanitizeLogMessage(
+        'failed https://user:pass@ids.example.edu/a;jsessionid=$secret/b'
+        '?ticket=$secret#$secret\n'
+        'Cookie: sid=$secret\nSet-Cookie: sid=$secret\n'
+        'Authorization: Bearer $secret token=$secret '
+        'ST-123-$secret',
+      );
+      expect(safe, isNot(contains(secret)));
+      expect(safe, isNot(contains('user:pass')));
+      expect(safe, contains('https://ids.example.edu/a/b'));
+      expect(safe, contains('<redacted>'));
+    });
+
+    test('净化常见敏感键名赋值并使用固定占位符', () {
+      const names = [
+        'session_key',
+        'school_session',
+        'credential',
+        'clientSecret',
+        'api_key',
+        'accessKey',
+        'auth_key',
+        'client-key',
+        'private-key',
+        'signingKey',
+        'password',
+        'passphrase',
+      ];
+      for (final name in names) {
+        final short = sanitizeLogMessage('$name=x');
+        final long = sanitizeLogMessage(
+          '$name=${List.filled(200, 'x').join()}',
+        );
+        expect(short, '$name=<redacted>', reason: name);
+        expect(long, short, reason: '$name must not disclose value length');
+      }
+    });
+
+    test('净化 JSON 风格敏感键赋值', () {
+      const secret = 'SECRET_MATERIAL_123456789';
+      final safe = sanitizeLogMessage(
+        '{"session_key":"$secret", "apiKey": "$secret"}',
+      );
+      expect(safe, isNot(contains(secret)));
+      expect(safe, contains('session_key=<redacted>'));
+      expect(safe, contains('apiKey=<redacted>'));
     });
   });
 
@@ -79,14 +146,36 @@ void main() {
       expect(log.entries.first.ok, isTrue);
     });
 
-    test('setRedact(false) 后 network 保留 query', () {
+    test('setRedact(false) 不能关闭永久脱敏', () {
       log.setRedact(false);
       log.network(
         method: 'GET',
         url: 'https://ehall.example.edu/api?token=x',
         statusCode: 200,
       );
-      expect(log.entries.first.message, contains('token=x'));
+      expect(log.redact, isTrue);
+      expect(log.entries.first.message, isNot(contains('token=x')));
+      expect(
+        log.entries.first.message,
+        'GET https://ehall.example.edu/api → 200',
+      );
+    });
+
+    test('network error 在截断前净化，不泄漏 secret 长度', () {
+      final short = DevLog();
+      final long = DevLog();
+      short.network(
+        method: 'GET',
+        url: 'https://example.edu/',
+        error: 'token=x',
+      );
+      long.network(
+        method: 'GET',
+        url: 'https://example.edu/',
+        error: 'token=${List.filled(200, 'x').join()}',
+      );
+      expect(short.entries.single.message, long.entries.single.message);
+      expect(short.entries.single.message, contains('token=<redacted>'));
     });
 
     test('adapter 分类写入', () {
@@ -98,6 +187,36 @@ void main() {
       } else {
         expect(log.entries, isEmpty);
       }
+    });
+
+    test('generic log/error/adapter 路径在入缓冲前净化', () {
+      const secret = 'SECRET_MATERIAL_123456789';
+      log.runtime('error token=$secret');
+      log.adapter('error', 'Cookie: sid=$secret');
+      log.log(
+        DevLogCategory.network,
+        'https://u:p@example.edu/x?ticket=$secret#$secret',
+      );
+      for (final entry in log.entries) {
+        expect(entry.message, isNot(contains(secret)));
+        expect(entry.message, isNot(contains('u:p')));
+      }
+    });
+
+    test('debug console 只接收净化消息', () {
+      const secret = 'SECRET_MATERIAL_123456789';
+      final printed = <String>[];
+      final previous = debugPrint;
+      debugPrint = (message, {wrapWidth}) {
+        if (message != null) printed.add(message);
+      };
+      try {
+        log.runtime('failed https://u:p@example.edu/x?ticket=$secret');
+      } finally {
+        debugPrint = previous;
+      }
+      expect(printed.join('\n'), isNot(contains(secret)));
+      expect(printed.join('\n'), isNot(contains('u:p')));
     });
 
     test('webview 分类写入', () {

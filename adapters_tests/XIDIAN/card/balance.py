@@ -7,7 +7,6 @@
 注意: 校园卡系统使用 OAuth 跳转获取 openid, 基于 v8scan.xidian.edu.cn
 """
 
-import argparse
 import json
 import os
 import re
@@ -84,10 +83,10 @@ class CardException(Exception):
     pass
 
 
-def _private_output_dir(requested: str | None) -> Path:
+def _private_output_dir() -> Path:
     root = Path(__file__).resolve().parents[3]
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    output = Path(requested).expanduser() if requested else root / ".private-probes" / "xidian-card" / stamp
+    output = root / ".private-probes" / "xidian-card" / stamp
     output.mkdir(parents=True, exist_ok=False)
     output.chmod(0o700)
     return output
@@ -152,17 +151,13 @@ def capture_private(card: CardSession, output: Path) -> None:
 if __name__ == "__main__":
     import getpass
 
-    parser = argparse.ArgumentParser(description="XIDIAN 一卡通本机私有采样（原件永不入库）")
-    parser.add_argument("--output", help="私有输出目录；缺省写入仓库 .private-probes/")
-    args = parser.parse_args()
-
     print("=== XIDIAN School Card Test ===")
     user = input("学号: ").strip()
     pwd = getpass.getpass("密码: ")
 
     card = CardSession(user, pwd)
     card.login()
-    output_dir = _private_output_dir(args.output)
+    output_dir = _private_output_dir()
     capture_private(card, output_dir)
     print(f"[OK] 私有原件已写入: {output_dir}")
     print("[WARN] balance.raw.html / transactions.raw.json 含真实学生数据，只能本机查看。")

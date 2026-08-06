@@ -1,11 +1,10 @@
 /// 运行时日志环缓冲（Settings 可查看）—— client 唯一观测 sink。
 ///
 /// 策略（红线 #1；跨端约定见 `docs/reference/cross_end_logging.md`）：
-///  - **network**：任意 build 可记；[redact] 为 true 时仅无参 URL + 成败/状态码，
-///    永不记 header / body / cookie 值。
+///  - **network**：任意 build 可记；仅记录无参 URL + 成败/状态码，永不记
+///    header / body / cookie 值。
 ///  - **runtime / webview / adapter**：仅 [kDebugMode] 写入；release 丢弃。
-///  - **redact**：release 恒 true；debug 默认 true，可在 DevLog 页关闭以便联调。
-///  - 日志消息本身不得含凭证值或等价物（adapter `ctx.log` 亦受此约束）。
+///  - 凭证脱敏不可关闭；所有类别在进入内存、控制台或 UI 前统一净化。
 ///
 /// 🔒 观测面贴近凭证路径：AI 起草，须人工复核脱敏边界。
 library;
@@ -57,26 +56,18 @@ class DevLogEntry {
 ///
 /// 生产路径（transport / session / login）应写入本 sink；UI 只订阅展示。
 class DevLog extends ChangeNotifier {
-  DevLog({this.capacity = 500, bool redact = true}) : _redact = redact;
+  DevLog({this.capacity = 500});
 
   static final DevLog instance = DevLog();
 
   final int capacity;
   final List<DevLogEntry> _entries = <DevLogEntry>[];
 
-  /// 是否脱敏。release 恒视为 true（[setRedact] 在非 debug 为 no-op）。
-  /// debug 默认 true；关闭后 network 可保留 query、cookie 可显示原文（仅内存环缓冲）。
-  bool _redact;
+  /// 凭证脱敏是永久边界，不能由 build mode 或 UI 关闭（红线 #1）。
+  bool get redact => true;
 
-  bool get redact => !kDebugMode || _redact;
-
-  /// debug 专用：关闭脱敏以便联调。release / profile 忽略。
-  void setRedact(bool value) {
-    if (!kDebugMode) return;
-    if (_redact == value) return;
-    _redact = value;
-    notifyListeners();
-  }
+  /// 兼容既有调用；凭证脱敏不可关闭。
+  void setRedact(bool value) {}
 
   /// 新→旧。
   List<DevLogEntry> get entries => List<DevLogEntry>.unmodifiable(_entries);
@@ -107,10 +98,11 @@ class DevLog extends ChangeNotifier {
     int? statusCode,
   }) {
     if (category != DevLogCategory.network && !kDebugMode) return;
+    final safeMessage = sanitizeLogMessage(message);
     final entry = DevLogEntry(
       time: DateTime.now(),
       category: category,
-      message: message,
+      message: safeMessage,
       ok: ok,
       statusCode: statusCode,
     );
@@ -119,7 +111,7 @@ class DevLog extends ChangeNotifier {
       _entries.removeLast();
     }
     if (kDebugMode) {
-      debugPrint('[dev-log/${category.name}] $message');
+      debugPrint('[dev-log/${category.name}] $safeMessage');
     }
     notifyListeners();
   }
@@ -142,7 +134,7 @@ class DevLog extends ChangeNotifier {
     bool? ok,
     String? error,
   }) {
-    final safe = formatUrlForLog(url, redact: redact);
+    final safe = formatUrlForLog(url);
     final m = method.toUpperCase();
     final String msg;
     if (error != null && error.isNotEmpty) {
@@ -163,34 +155,75 @@ class DevLog extends ChangeNotifier {
 
 /// 按脱敏策略格式化 URL。
 ///
-/// [redact] 为 true（默认 / release）：去掉 userInfo / query / fragment。
-/// false（仅 debug 联调）：保留 query / fragment，仍去掉 userInfo（防 basic-auth 泄露）。
+/// userInfo、query、fragment 与路径会话参数永久移除（红线 #1、ADR-027）。
+/// [redact] 仅为源兼容保留，不能放宽凭证边界。
 String formatUrlForLog(String raw, {bool redact = true}) {
   final u = Uri.tryParse(raw.trim());
   if (u == null || !u.hasScheme || u.host.isEmpty) {
     return '<invalid-url>';
   }
   final port = u.hasPort ? ':${u.port}' : '';
-  final path = u.path.isEmpty ? '' : u.path;
+  var path = u.path.replaceAll(
+    RegExp(
+      r';(?:jsessionid|phpsessid|asp\.net_sessionid|sessionid|sid)=[^/;]*',
+      caseSensitive: false,
+    ),
+    '',
+  );
+  path = path.replaceAllMapped(
+    RegExp(
+      r'/(ticket|token|access_token|refresh_token|id_token)/[^/]*',
+      caseSensitive: false,
+    ),
+    (m) => '/${m.group(1)}/<redacted>',
+  );
+  path = path.replaceAll(
+    RegExp(r'/(?:ST|TGT|PT|PGT|PGTIOU)-\d+-[A-Za-z0-9._-]+'),
+    '/<redacted>',
+  );
   final base = '${u.scheme}://${u.host}$port$path';
-  if (redact) return base;
-  final q = u.hasQuery ? '?${u.query}' : '';
-  final f = u.hasFragment ? '#${u.fragment}' : '';
-  return '$base$q$f';
+  return base;
 }
 
 /// 兼容旧名：始终脱敏（无参 URL）。新代码优先 [formatUrlForLog]。
 String sanitizeUrlForLog(String raw) => formatUrlForLog(raw, redact: true);
 
-/// cookie / secret 值打码。redact=false 时返回原文（debug 联调）。
+/// cookie / secret 值永久使用固定占位符，避免原文和长度泄漏。
 String maskCookieValue(Object? value, {bool redact = true}) {
-  final s = value is String ? value : (value?.toString() ?? '');
-  if (!redact) return s;
-  return '<${s.length}B>';
+  return '<redacted>';
+}
+
+/// 净化 URL、认证 header、已知票据和敏感键赋值。
+///
+/// 无字段名或协议结构的任意裸秘密无法可靠识别，调用方仍不得记录原始响应或凭证值。
+String sanitizeLogMessage(String message) {
+  var out = message.replaceAllMapped(
+    RegExp(r'''https?://[^\s<>"']+''', caseSensitive: false),
+    (m) => formatUrlForLog(m.group(0)!),
+  );
+  out = out.replaceAllMapped(
+    RegExp(
+      r'\b(cookie|set-cookie|authorization|proxy-authorization)\s*[:=]\s*[^\r\n]*',
+      caseSensitive: false,
+    ),
+    (m) => '${m.group(1)}: <redacted>',
+  );
+  out = out.replaceAllMapped(
+    RegExp(
+      r'''["']?\b([a-z0-9_-]*(?:session|credential|secret|(?:api|access|auth|client|private|signing)[_-]?key|password|passwd|passphrase|access[_-]?token|refresh[_-]?token|id[_-]?token|oauth[_-]?token|token|ticket|openid|samlresponse|samlart|tgc)[a-z0-9_-]*)["']?\s*[=:]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;)\]}]+)''',
+      caseSensitive: false,
+    ),
+    (m) => '${m.group(1)}=<redacted>',
+  );
+  out = out.replaceAll(
+    RegExp(r'\b(?:ST|TGT|PT|PGT|PGTIOU)-\d+-[A-Za-z0-9._-]+'),
+    '<redacted>',
+  );
+  return out;
 }
 
 String _shortError(String error) {
-  final one = error.split('\n').first.trim();
+  final one = sanitizeLogMessage(error).split('\n').first.trim();
   if (one.length <= 80) return one;
   return '${one.substring(0, 77)}...';
 }

@@ -245,7 +245,7 @@ if __name__ == "__main__":
 
     energy = EnergySession(user, pwd)
     energy.login()
-    print(f"[OK] NodeID: {energy.node_id}")
+    print("[OK] 水电会话已建立，NodeID 不输出。")
 
     info = energy.get_electricity_info()
     print(f"[OK] 电量余额: {info['remain']} kWh")

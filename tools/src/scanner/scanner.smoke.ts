@@ -107,6 +107,20 @@ function codes(findings: { code: string }[]): string[] {
   assert.ok(codes(f).includes("P6_bank_card"), "银行卡应命中 P6");
 }
 
+// ---- P8 探针源码安全基线 ----
+
+{
+  const tls = scanLine("requests.get(url, verify=False)");
+  assert.ok(codes(tls).includes("P8_unsafe_probe"), "verify=False 应命中 P8");
+
+  const prefix = scanLine('print(f"token={token[:8]}...")');
+  assert.ok(codes(prefix).includes("P8_unsafe_probe"), "凭证前缀日志应命中 P8");
+  assert.ok(
+    prefix.every((f) => f.sample === "<redacted>"),
+    "scanner 不应泄漏值或长度",
+  );
+}
+
 // ---- 脱敏占位豁免 ----
 
 {
@@ -143,6 +157,7 @@ console.log("✓ P3 学号");
 console.log("✓ P4 邮箱");
 console.log("✓ P5 会话凭证");
 console.log("✓ P6 银行卡 Luhn");
+console.log("✓ P8 探针安全基线");
 console.log("✓ 脱敏占位豁免");
 console.log("✓ 混合场景");
 console.log("\nscanner smoke 全部通过 ✅");

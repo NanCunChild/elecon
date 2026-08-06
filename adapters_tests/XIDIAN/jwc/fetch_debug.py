@@ -1,8 +1,5 @@
 import requests
 from bs4 import BeautifulSoup
-import urllib3
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def fetch_notices_fixed():
     url = 'https://jwc.xidian.edu.cn/' 
@@ -13,7 +10,7 @@ def fetch_notices_fixed():
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=10, verify=False)
+        response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status() 
         response.encoding = response.apparent_encoding
         
@@ -65,8 +62,8 @@ def fetch_notices_fixed():
             print(f"[{full_date}] {title}")
             print(f"🔗 {full_link}\n")
 
-    except Exception as e:
-        print(f"抓取发生错误: {e}")
+    except Exception:
+        print("抓取发生错误（详情不输出）。")
 
 if __name__ == "__main__":
     fetch_notices_fixed()

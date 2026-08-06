@@ -230,7 +230,7 @@ class IDSSession:
 
     def login(self, username: str, password: str, target: str | None = None) -> str:
         """
-        执行完整登录流程, 返回最终重定向 URL (已带 CAS ticket)
+        执行完整登录流程，返回仅供会话内部继续跟随的最终重定向 URL。
 
         Args:
             username: 学号/工号
@@ -348,12 +348,14 @@ if __name__ == "__main__":
     ids = IDSSession()
     try:
         url = ids.login(user, pwd, target="https://ehall.xidian.edu.cn/login?service=https://ehall.xidian.edu.cn/new/index.html")
-        print(f"[OK] 登录成功, ticket URL: {url}")
+        print("[OK] 登录成功，票据 URL 不输出。")
         final = ids._follow_redirects(url)
-        print(f"[OK] 最终页面: {final}")
-    except PasswordWrongException as e:
-        print(f"[FAIL] 密码错误: {e}")
-    except LoginFailedException as e:
-        print(f"[FAIL] 登录失败: {e}")
-    except CaptchaSolveFailedException as e:
-        print(f"[FAIL] 验证码: {e}")
+        print("[OK] 重定向流程完成，最终 URL 不输出。")
+    except PasswordWrongException:
+        print("[FAIL] 密码错误（响应内容不输出）。")
+    except LoginFailedException:
+        print("[FAIL] 登录失败（响应内容不输出）。")
+    except CaptchaSolveFailedException:
+        print("[FAIL] 验证码求解失败。")
+    except requests.RequestException:
+        print("[FAIL] 网络请求失败（URL 与响应内容不输出）。")

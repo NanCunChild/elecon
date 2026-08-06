@@ -2,9 +2,6 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import time
-import urllib3
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def fetch_xjtu_auto_bypass():
     url = 'https://dean.xjtu.edu.cn/'
@@ -27,7 +24,7 @@ def fetch_xjtu_auto_bypass():
     try:
         # 第一步：裸奔请求，故意触发挑战页面
         print("[1/4] 发起初始请求，探测反爬机制...")
-        res1 = session.get(url, timeout=10, verify=False)
+        res1 = session.get(url, timeout=10)
         html = res1.text
         
         # 检查是否命中了 JS 挑战页面
@@ -65,23 +62,23 @@ def fetch_xjtu_auto_bypass():
             
             # 第二步：提交挑战换取 client_id
             print("[3/4] 提交指纹与哈希，换取通行证...")
-            res2 = session.post(challenge_url, json=payload, verify=False)
+            res2 = session.post(challenge_url, json=payload, timeout=10)
             data = res2.json()
             
             if data.get('success'):
                 # 提取并手动注入 Cookie
                 client_id = data.get('client_id')
                 session.cookies.set('client_id', client_id, domain='dean.xjtu.edu.cn', path='/')
-                print(f"[*] 挑战通过！获得凭据: {client_id[:10]}...")
+                print("[*] 挑战通过。")
             else:
-                print("服务器拒绝了我们的挑战响应:", data)
+                print("服务器拒绝了挑战响应（响应内容不输出）。")
                 return
         else:
             print("[2/4] 未遇到拦截，直接进入解析流程...")
 
         # 第三步：携带有效 Cookie，请求真实的首页
         print("[4/4] 正在拉取真实的通知列表数据...\n")
-        res3 = session.get(url, timeout=10, verify=False)
+        res3 = session.get(url, timeout=10)
         res3.encoding = res3.apparent_encoding
         final_html = res3.text
         
@@ -119,8 +116,8 @@ def fetch_xjtu_auto_bypass():
             print(f"🔗 {full_link}")
         print("===============================================")
 
-    except Exception as e:
-        print(f"\n运行时发生网络或解析异常: {e}")
+    except Exception:
+        print("\n运行时发生网络或解析异常（详情不输出）。")
 
 if __name__ == "__main__":
     fetch_xjtu_auto_bypass()

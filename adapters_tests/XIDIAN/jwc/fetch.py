@@ -20,8 +20,8 @@ def fetch_notices():
         # 如果返回状态码不是 200，抛出异常
         response.raise_for_status() 
         
-    except requests.RequestException as e:
-        print(f"请求网页失败: {e}")
+    except requests.RequestException:
+        print("请求网页失败（详情不输出）。")
         return
 
     # 使用 bs4 解析 HTML
