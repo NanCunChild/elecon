@@ -30,6 +30,8 @@ function distDir(): string {
 
 const CACHE_IMMUTABLE = "public, max-age=31536000, immutable"; // 内容寻址 bundle
 const CACHE_SHORT = "public, max-age=60"; // catalog / revocation
+const MAX_BUNDLE_ARTIFACT_BYTES = 512 * 1024;
+const BUNDLE_PATH = /^\/bundles\/[0-9a-f]{64}\.json\.gz$/;
 
 function cacheFor(urlPath: string): string {
   return urlPath.startsWith("/bundles/") ? CACHE_IMMUTABLE : CACHE_SHORT;
@@ -41,24 +43,39 @@ function contentType(urlPath: string): string {
   return "application/octet-stream";
 }
 
-/** 把 URL 路径解析到 dist 内的绝对路径;越界（traversal）返回 null。 */
+/** 把已解码 URL 路径解析到 dist 内的绝对路径;越界（traversal）返回 null。 */
 function resolveSafe(urlPath: string): string | null {
   const dir = distDir();
-  const rel = decodeURIComponent(urlPath).replace(/^\/+/, "");
+  const rel = urlPath.replace(/^\/+/, "");
   const abs = resolve(dir, rel);
   if (abs !== dir && !abs.startsWith(dir + sep)) return null; // fail-closed 出界即拒
   return abs;
 }
 
+function allowedArtifactPath(urlPath: string): boolean {
+  return urlPath === "/catalog.json.gz" || urlPath === "/revocation.json" || BUNDLE_PATH.test(urlPath);
+}
+
+function jsonError(res: ServerResponse, code: number, status: string): void {
+  res.writeHead(code, { "content-type": "application/json" });
+  res.end(JSON.stringify({ status }));
+}
+
 function notFound(res: ServerResponse): void {
-  res.writeHead(404, { "content-type": "application/json" });
-  res.end(JSON.stringify({ status: "not_found" }));
+  jsonError(res, 404, "not_found");
 }
 
 export function handler(req: IncomingMessage, res: ServerResponse): void {
   // 零凭证：绝不读取 req.headers.cookie / authorization 做任何分支或记录（红线 #2）。
   const method = req.method ?? "GET";
-  const urlPath = (req.url ?? "/").split("?")[0] ?? "/";
+  const rawPath = (req.url ?? "/").split("?")[0] ?? "/";
+  let urlPath: string;
+  try {
+    urlPath = decodeURIComponent(rawPath);
+  } catch {
+    jsonError(res, 400, "bad_request");
+    return;
+  }
 
   if (urlPath === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
@@ -72,9 +89,19 @@ export function handler(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
 
+  if (!allowedArtifactPath(urlPath)) {
+    notFound(res);
+    return;
+  }
+
   const abs = resolveSafe(urlPath);
   if (abs === null || !existsSync(abs) || !statSync(abs).isFile()) {
     notFound(res);
+    return;
+  }
+
+  if (BUNDLE_PATH.test(urlPath) && statSync(abs).size > MAX_BUNDLE_ARTIFACT_BYTES) {
+    jsonError(res, 413, "artifact_too_large");
     return;
   }
 

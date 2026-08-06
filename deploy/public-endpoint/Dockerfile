@@ -7,8 +7,11 @@
 FROM nginx:alpine
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY validate-dist.sh /validate-dist.sh
+RUN chmod 0555 /validate-dist.sh
 
 # dist 在运行时以只读卷提供;镜像本身零内容、零状态、零凭证（红线 #2）。
 EXPOSE 80
+ENTRYPOINT ["/validate-dist.sh"]
 
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost/health || exit 1
