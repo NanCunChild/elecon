@@ -6,25 +6,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'liquid_glass.dart';
 import 'theme_prefs.dart';
-
-/// 主题扩展：是否启用液态玻璃（由 prefs 有效开关驱动）。
-@immutable
-class LiquidGlassTokens extends ThemeExtension<LiquidGlassTokens> {
-  const LiquidGlassTokens({required this.enabled});
-
-  final bool enabled;
-
-  @override
-  LiquidGlassTokens copyWith({bool? enabled}) =>
-      LiquidGlassTokens(enabled: enabled ?? this.enabled);
-
-  @override
-  LiquidGlassTokens lerp(ThemeExtension<LiquidGlassTokens>? other, double t) {
-    if (other is! LiquidGlassTokens) return this;
-    return t < 0.5 ? this : other;
-  }
-}
 
 /// 应用主题工厂。
 abstract final class AppTheme {
@@ -33,25 +16,20 @@ abstract final class AppTheme {
   static const _buttonRadius = 12.0;
 
   static ShapeBorder get cardShape => const RoundedSuperellipseBorder(
-        borderRadius: BorderRadius.all(Radius.circular(_cardRadius)),
-      );
+    borderRadius: BorderRadius.all(Radius.circular(_cardRadius)),
+  );
 
   static ShapeBorder get barShape => const RoundedSuperellipseBorder(
-        borderRadius: BorderRadius.all(Radius.circular(_barRadius)),
-      );
+    borderRadius: BorderRadius.all(Radius.circular(_barRadius)),
+  );
 
-  static ThemeData light(ThemePrefs prefs) =>
-      _build(Brightness.light, prefs);
+  static ThemeData light(ThemePrefs prefs) => _build(Brightness.light, prefs);
 
-  static ThemeData dark(ThemePrefs prefs) =>
-      _build(Brightness.dark, prefs);
+  static ThemeData dark(ThemePrefs prefs) => _build(Brightness.dark, prefs);
 
   static ThemeData _build(Brightness brightness, ThemePrefs prefs) {
     final seed = SeedPalette.byId(prefs.seedId).seed;
-    var scheme = ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: brightness,
-    );
+    var scheme = ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
 
     if (prefs.highContrast) {
       scheme = _highContrast(scheme, brightness);
@@ -66,7 +44,9 @@ abstract final class AppTheme {
 
     // 液态玻璃开启时：底面略带 seed/primary，作为主色贡献源；
     // 卡片玻璃只留极浅 tint（见 liquid_glass.dart）。
-    final scaffoldBg = prefs.effectiveLiquidGlass
+    final effectiveLiquidGlass =
+        liquidGlassAvailable && prefs.effectiveLiquidGlass;
+    final scaffoldBg = effectiveLiquidGlass
         ? Color.alphaBlend(
             seed.withValues(
               alpha: brightness == Brightness.light ? 0.06 : 0.10,
@@ -77,7 +57,7 @@ abstract final class AppTheme {
 
     return base.copyWith(
       extensions: <ThemeExtension<dynamic>>[
-        LiquidGlassTokens(enabled: prefs.effectiveLiquidGlass),
+        LiquidGlassTokens(enabled: effectiveLiquidGlass),
       ],
       scaffoldBackgroundColor: scaffoldBg,
       appBarTheme: AppBarTheme(
@@ -131,7 +111,9 @@ abstract final class AppTheme {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
             size: 24,
-            color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
+            color: selected
+                ? scheme.onSecondaryContainer
+                : scheme.onSurfaceVariant,
           );
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
@@ -145,9 +127,7 @@ abstract final class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
       listTileTheme: ListTileThemeData(
         shape: RoundedSuperellipseBorder(

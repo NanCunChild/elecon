@@ -1,95 +1,114 @@
-/// 液态玻璃（liquid glass）开关与表面组件。
+/// Platform-neutral liquid-glass facade.
 ///
-/// 主题 [LiquidGlassTokens.enabled] 为 true 时，[LiquidGlassSurface] 走
-/// `liquid_glass_widgets` 的 [GlassContainer]；关闭时回落到 Material 超椭圆表面。
-///
-/// 着色策略：玻璃本身只带**很浅**的主题 seed/primary tint；主色贡献留给
-/// scaffold 底面背景与底栏玻璃（见 [liquidGlassBarSettings] / [AppTheme]）。
+/// The default application entry point never imports the Apple implementation.
+/// `main_apple.dart` installs it for iOS and macOS builds only, leaving other
+/// platforms with the Material fallback and no liquid-glass package in their
+/// compile-time import graph.
 library;
 
 import 'package:flutter/material.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
-import 'app_theme.dart';
+typedef LiquidGlassSurfaceBuilder =
+    Widget Function({
+      required Widget child,
+      required EdgeInsetsGeometry? padding,
+      required EdgeInsetsGeometry? margin,
+      required double borderRadius,
+      required Color? color,
+      required Clip clipBehavior,
+      required double elevation,
+    });
 
-/// 解析当前主题是否启用液态玻璃。
-bool liquidGlassEnabled(BuildContext context) {
-  return Theme.of(context).extension<LiquidGlassTokens>()?.enabled ?? false;
+typedef LiquidGlassShellBarBuilder =
+    Widget Function({
+      required List<LiquidGlassTabSpec> tabs,
+      required int selectedIndex,
+      required ValueChanged<int> onSelected,
+      required ColorScheme scheme,
+    });
+
+typedef LiquidGlassSettingsTileBuilder = Widget Function(BuildContext context);
+
+LiquidGlassSurfaceBuilder? _surfaceBuilder;
+LiquidGlassShellBarBuilder? _shellBarBuilder;
+LiquidGlassSettingsTileBuilder? _settingsTileBuilder;
+
+@immutable
+class LiquidGlassTokens extends ThemeExtension<LiquidGlassTokens> {
+  const LiquidGlassTokens({required this.enabled});
+
+  final bool enabled;
+
+  @override
+  LiquidGlassTokens copyWith({bool? enabled}) =>
+      LiquidGlassTokens(enabled: enabled ?? this.enabled);
+
+  @override
+  LiquidGlassTokens lerp(ThemeExtension<LiquidGlassTokens>? other, double t) {
+    if (other is! LiquidGlassTokens) return this;
+    return t < 0.5 ? this : other;
+  }
 }
 
-/// 将主题 seed/primary 混入玻璃 tint。
-///
-/// [primaryMix] 控制色相偏主题的程度（0–1）；[alpha] 为 shader 着色强度，
-/// 卡片宜低、底栏/指示器可略高。
-Color themedGlassColor(
-  ColorScheme scheme, {
-  required double primaryMix,
-  required double alpha,
+/// Installs the implementation compiled from the Apple-only entry point.
+void installLiquidGlassImplementation({
+  required LiquidGlassSurfaceBuilder surfaceBuilder,
+  required LiquidGlassShellBarBuilder shellBarBuilder,
+  required LiquidGlassSettingsTileBuilder settingsTileBuilder,
 }) {
-  final isLight = scheme.brightness == Brightness.light;
-  final base = isLight ? Colors.white : const Color(0xFFECECEC);
-  final tinted = Color.lerp(base, scheme.primary, primaryMix)!;
-  return tinted.withValues(alpha: alpha);
+  _surfaceBuilder = surfaceBuilder;
+  _shellBarBuilder = shellBarBuilder;
+  _settingsTileBuilder = settingsTileBuilder;
 }
 
-/// 卡片 / 分组面板：极浅主题 tint，不抢背景与底栏的色。
-LiquidGlassSettings liquidGlassSurfaceSettings(ColorScheme scheme) {
-  final isLight = scheme.brightness == Brightness.light;
-  return LiquidGlassSettings(
-    thickness: 28,
-    blur: 10,
-    glassColor: themedGlassColor(
-      scheme,
-      primaryMix: isLight ? 0.28 : 0.36,
-      alpha: isLight ? 0.08 : 0.10,
-    ),
-    lightIntensity: isLight ? 0.68 : 0.55,
-    ambientStrength: isLight ? 0.32 : 0.22,
-    saturation: 1.04,
-    chromaticAberration: 0.01,
+@visibleForTesting
+void resetLiquidGlassImplementation() {
+  _surfaceBuilder = null;
+  _shellBarBuilder = null;
+  _settingsTileBuilder = null;
+}
+
+/// Describes one shell tab without exposing the third-party glass package.
+class LiquidGlassTabSpec {
+  const LiquidGlassTabSpec({
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
+  });
+
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
+}
+
+/// Liquid glass is available only when the Apple entry point installed it.
+bool get liquidGlassAvailable => _surfaceBuilder != null;
+
+bool liquidGlassEnabled(BuildContext context) {
+  return liquidGlassAvailable &&
+      (Theme.of(context).extension<LiquidGlassTokens>()?.enabled ?? false);
+}
+
+Widget? buildLiquidGlassShellBar({
+  required BuildContext context,
+  required List<LiquidGlassTabSpec> tabs,
+  required int selectedIndex,
+  required ValueChanged<int> onSelected,
+}) {
+  if (!liquidGlassEnabled(context)) return null;
+  return _shellBarBuilder?.call(
+    tabs: tabs,
+    selectedIndex: selectedIndex,
+    onSelected: onSelected,
+    scheme: Theme.of(context).colorScheme,
   );
 }
 
-/// 底栏玻璃：略强主题 tint，作为主色贡献面之一。
-LiquidGlassSettings liquidGlassBarSettings(ColorScheme scheme) {
-  final isLight = scheme.brightness == Brightness.light;
-  return LiquidGlassSettings(
-    thickness: 32,
-    blur: 6,
-    glassColor: themedGlassColor(
-      scheme,
-      primaryMix: isLight ? 0.40 : 0.48,
-      alpha: isLight ? 0.16 : 0.18,
-    ),
-    lightIntensity: isLight ? 0.72 : 0.58,
-    ambientStrength: isLight ? 0.55 : 0.4,
-    refractiveIndex: 1.5,
-    saturation: 1.06,
-    chromaticAberration: 0.02,
-  );
+Widget? buildLiquidGlassSettingsTile(BuildContext context) {
+  return _settingsTileBuilder?.call(context);
 }
 
-/// 选中指示器胶囊：再略强一点 primary，与底栏分层。
-LiquidGlassSettings liquidGlassIndicatorSettings(ColorScheme scheme) {
-  final isLight = scheme.brightness == Brightness.light;
-  return LiquidGlassSettings(
-    thickness: 28,
-    blur: 5,
-    glassColor: themedGlassColor(
-      scheme,
-      primaryMix: isLight ? 0.55 : 0.62,
-      alpha: isLight ? 0.22 : 0.24,
-    ),
-    lightIntensity: isLight ? 0.78 : 0.62,
-    ambientStrength: isLight ? 0.45 : 0.35,
-    saturation: 1.08,
-    chromaticAberration: 0.015,
-  );
-}
-
-/// 统一表面：开启液态玻璃时用 [GlassContainer]，否则用超椭圆 [Material]。
-///
-/// 用于卡片、分组面板等；勿把交互式 glass 控件再嵌进本表面（包约束）。
+/// Unified surface that delegates to glass only in an Apple build.
 class LiquidGlassSurface extends StatelessWidget {
   const LiquidGlassSurface({
     super.key,
@@ -112,24 +131,22 @@ class LiquidGlassSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (liquidGlassEnabled(context)) {
+      return _surfaceBuilder!(
+        child: child,
+        padding: padding,
+        margin: margin,
+        borderRadius: borderRadius,
+        color: color,
+        clipBehavior: clipBehavior,
+        elevation: elevation,
+      );
+    }
+
     final scheme = Theme.of(context).colorScheme;
     final content = padding == null
         ? child
         : Padding(padding: padding!, child: child);
-
-    if (liquidGlassEnabled(context)) {
-      return GlassContainer(
-        useOwnLayer: true,
-        quality: GlassQuality.standard,
-        margin: margin,
-        padding: padding,
-        clipBehavior: clipBehavior,
-        shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
-        settings: liquidGlassSurfaceSettings(scheme),
-        child: child,
-      );
-    }
-
     final shape = RoundedSuperellipseBorder(
       borderRadius: BorderRadius.circular(borderRadius),
     );

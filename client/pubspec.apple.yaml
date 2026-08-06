@@ -1,0 +1,38 @@
+name: elecon
+description: "校园信息聚合平台（iOS/macOS 液态玻璃构建）"
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.10.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+  flutter_qjs_next: 1.2.1
+  flutter_inappwebview: ^6.0.0
+  cryptography: 2.9.0
+  crypto: 3.0.7
+  pointycastle: 3.9.1
+  path_provider: ^2.1.5
+  elecon_contract:
+    path: ../contract/generated/dart
+  # Apple-only UI chrome. MIT; does not participate in credential/adapter paths.
+  liquid_glass_widgets: 0.22.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  generate: true
+  assets:
+    - assets/
+    - assets/bootstrap/
+    - assets/bootstrap/bundles/
+    - assets/stdlib/html.bundle.js
