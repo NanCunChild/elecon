@@ -30,13 +30,17 @@ void main() {
 
     test('effectiveLiquidGlass requires both flags', () {
       expect(
-        const ThemePrefs(liquidGlass: true, highContrast: false)
-            .effectiveLiquidGlass,
+        const ThemePrefs(
+          liquidGlass: true,
+          highContrast: false,
+        ).effectiveLiquidGlass,
         isTrue,
       );
       expect(
-        const ThemePrefs(liquidGlass: true, highContrast: true)
-            .effectiveLiquidGlass,
+        const ThemePrefs(
+          liquidGlass: true,
+          highContrast: true,
+        ).effectiveLiquidGlass,
         isFalse,
       );
     });
@@ -54,14 +58,14 @@ void main() {
       expect(light.colorScheme.surfaceTint, Colors.transparent);
     });
 
-    test('liquid glass extension follows effective flag', () {
+    test('liquid glass stays disabled without Apple implementation', () {
       final on = AppTheme.light(
         const ThemePrefs(liquidGlass: true, highContrast: false),
       );
       final off = AppTheme.light(
         const ThemePrefs(liquidGlass: true, highContrast: true),
       );
-      expect(on.extension<LiquidGlassTokens>()!.enabled, isTrue);
+      expect(on.extension<LiquidGlassTokens>()!.enabled, isFalse);
       expect(off.extension<LiquidGlassTokens>()!.enabled, isFalse);
     });
 
@@ -71,7 +75,7 @@ void main() {
       expect(blue.colorScheme.primary, isNot(equals(rose.colorScheme.primary)));
     });
 
-    test('liquid glass scaffold picks up seed tint', () {
+    test('liquid glass preference does not tint unsupported platforms', () {
       final glassOn = AppTheme.light(
         const ThemePrefs(seedId: 'rose', liquidGlass: true),
       );
@@ -80,35 +84,12 @@ void main() {
       );
       expect(
         glassOn.scaffoldBackgroundColor,
-        isNot(equals(glassOff.scaffoldBackgroundColor)),
+        equals(glassOff.scaffoldBackgroundColor),
       );
-      // 与 primary 有可见混合（非纯 surface）。
       expect(
         glassOn.scaffoldBackgroundColor,
-        isNot(equals(glassOn.colorScheme.surface)),
+        equals(glassOn.colorScheme.surface),
       );
-    });
-  });
-
-  group('themed glass settings', () {
-    test('surface tint is weaker than bar tint', () {
-      final scheme = ColorScheme.fromSeed(
-        seedColor: const Color(0xffe11d48),
-        brightness: Brightness.light,
-      );
-      final surface = liquidGlassSurfaceSettings(scheme);
-      final bar = liquidGlassBarSettings(scheme);
-      final indicator = liquidGlassIndicatorSettings(scheme);
-      expect(surface.glassColor.a, lessThan(bar.glassColor.a));
-      expect(bar.glassColor.a, lessThanOrEqualTo(indicator.glassColor.a));
-    });
-
-    test('seed changes glass hue family', () {
-      final blue = ColorScheme.fromSeed(seedColor: const Color(0xff3867d6));
-      final rose = ColorScheme.fromSeed(seedColor: const Color(0xffe11d48));
-      final blueBar = liquidGlassBarSettings(blue).glassColor;
-      final roseBar = liquidGlassBarSettings(rose).glassColor;
-      expect(blueBar.toARGB32(), isNot(equals(roseBar.toARGB32())));
     });
   });
 
