@@ -40,6 +40,11 @@
       "refs": { "type": "String" }
     }
   },
+  "settingsProtectionTitle": "凭证存储保护",
+  "settingsProtectionHardware": "硬件密钥保护",
+  "settingsProtectionSoftware": "仅软件加密：密钥无硬件保护，并与密文一同存储",
+  "settingsProtectionMemory": "仅内存：退出应用后凭证即抹除",
+  "settingsProtectionMixed": "存在多种保护档，请重新登录以统一凭证存储",
   "settingsLoginPrompt": "登录后聚合校园信息",
   "settingsActionLogin": "登录",
   "settingsActionLogout": "退出",

@@ -3,6 +3,7 @@ package dev.nancunchild.elecon
 import android.content.Context
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -11,11 +12,12 @@ import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 
 /**
  * ADR-012 §2.8 H 档：Android Keystore 对称 KEK wrap/unwrap DEK。
- * StrongBox → TEE fallback；KEK 永不出 Keystore。
+ * StrongBox → TEE fallback；每次使用前以 KeyInfo 验证，软件/未知 provider 一律删除拒绝。
  * 🔒 红线 #1 — 须人工 + 安全清单审。
  */
 class HardwareKeystorePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
@@ -63,40 +65,62 @@ class HardwareKeystorePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private fun ensureKek(): SecretKey? {
         val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         if (ks.containsAlias(KEK_ALIAS)) {
-            val entry = ks.getEntry(KEK_ALIAS, null) as? KeyStore.SecretKeyEntry
-            return entry?.secretKey
+            val existing = try {
+                (ks.getEntry(KEK_ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
+            } catch (_: Exception) {
+                null
+            }
+            if (existing != null && isAcceptedHardwareKey(existing)) return existing
+            ks.deleteEntry(KEK_ALIAS)
         }
         // StrongBox first, then TEE.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            try {
-                return generateKek(strongBox = true)
-            } catch (_: Exception) {
-                // fall through
-            }
+            generateVerifiedKek(ks, strongBox = true)?.let { return it }
         }
+        return generateVerifiedKek(ks, strongBox = false)
+    }
+
+    private fun generateVerifiedKek(ks: KeyStore, strongBox: Boolean): SecretKey? {
         return try {
-            generateKek(strongBox = false)
+            val kg = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            val builder = KeyGenParameterSpec.Builder(
+                KEK_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setUserAuthenticationRequired(false)
+                .setRandomizedEncryptionRequired(true)
+            if (strongBox && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                builder.setIsStrongBoxBacked(true)
+            }
+            kg.init(builder.build())
+            val key = kg.generateKey()
+            if (isAcceptedHardwareKey(key)) key else {
+                ks.deleteEntry(KEK_ALIAS)
+                null
+            }
         } catch (_: Exception) {
+            if (ks.containsAlias(KEK_ALIAS)) ks.deleteEntry(KEK_ALIAS)
             null
         }
     }
 
-    private fun generateKek(strongBox: Boolean): SecretKey {
-        val kg = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        val builder = KeyGenParameterSpec.Builder(
-            KEK_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .setUserAuthenticationRequired(false)
-            .setRandomizedEncryptionRequired(true)
-        if (strongBox && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            builder.setIsStrongBoxBacked(true)
+    private fun isAcceptedHardwareKey(key: SecretKey): Boolean {
+        return try {
+            val factory = SecretKeyFactory.getInstance(key.algorithm, ANDROID_KEYSTORE)
+            val info = factory.getKeySpec(key, KeyInfo::class.java) as KeyInfo
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX ||
+                    info.securityLevel == KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT
+            } else {
+                @Suppress("DEPRECATION")
+                info.isInsideSecureHardware
+            }
+        } catch (_: Exception) {
+            false
         }
-        kg.init(builder.build())
-        return kg.generateKey()
     }
 
     /** 产出：12-byte IV ‖ ciphertext+tag（GCM）。 */
@@ -115,7 +139,9 @@ class HardwareKeystorePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         val ct = wrapped.copyOfRange(12, wrapped.size)
         val cipher = Cipher.getInstance(AES_GCM)
         cipher.init(Cipher.DECRYPT_MODE, kek, GCMParameterSpec(128, iv))
-        return cipher.doFinal(ct)
+        return cipher.doFinal(ct).also {
+            require(it.size == 32) { "unwrapped DEK must be 32 bytes" }
+        }
     }
 
     companion object {

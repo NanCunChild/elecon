@@ -6,31 +6,14 @@
 /// 🔒 红线 #1：凭证收割承重路径。AI 起草，须人工 + 安全清单复核。
 library;
 
+export 'webview_auth_ui.dart';
+
 import 'dart:async';
 
 import '../broker/harvest.dart';
 import '../credential/types.dart';
+import 'webview_auth_ui.dart';
 import 'webview_login.dart';
-
-enum WebViewLoginStatus { success, cancelled, error }
-
-class WebViewLoginResult {
-  const WebViewLoginResult({required this.status, this.error});
-
-  final WebViewLoginStatus status;
-  final String? error;
-}
-
-enum WebViewAuthPhase { loading, harvesting, blocked, error, complete }
-
-/// 可安全交给 UI 的状态。结构上不承载 raw URL、cookie、ticket 或异常原文。
-class WebViewAuthUiState {
-  const WebViewAuthUiState({required this.phase, this.location, this.message});
-
-  final WebViewAuthPhase phase;
-  final String? location;
-  final String? message;
-}
 
 typedef WebViewCookieReader = Future<List<WebViewCookie>> Function(String url);
 

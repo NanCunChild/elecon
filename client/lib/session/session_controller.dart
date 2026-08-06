@@ -1,7 +1,7 @@
 /// 应用级会话状态（原型）。
 ///
-/// 持有**单例** [CredentialStore]、当前选中学校、登录状态与调试开关，供开始面板 /
-/// 主壳 / 设置页共享。UI 只读状态（登录与否、凭证条数），**绝不读凭证值**（红线 #1）。
+/// 持有单例凭证库、当前选中学校、登录状态与调试开关，供开始面板 / 主壳 / 设置页共享。
+/// UI 只取得 [SessionCredentialMetadata]，**绝不取得 store 或凭证值**（红线 #1）。
 ///
 /// §2.8 三档存储接线：启动 [bootstrap] 静默续用 H（若有）或已同意的 S 软件档；
 /// 首次持久化前 [ensurePersistentStore] 按硬件可用性 + 用户知情同意裁定 H/S/M。
@@ -43,31 +43,48 @@ import '../core/login/sso_mint.dart';
 import '../core/login/sso_mint_headless.dart';
 import '../core/login/sso_mint_hidden_webview.dart';
 import '../core/login/webview_login.dart';
+import '../core/login/webview_auth_ui_bridge.dart';
 import '../core/transport/direct.dart';
 
 const String _sessionMetaBlob = 'session.json';
 
+enum SessionCredentialStatus { active, expired, revoked }
+
+enum SessionCredentialSensitivity { standard, master }
+
+enum SessionCredentialProtection { hardware, software, memory, mixed }
+
+/// UI 可见的凭证登记信息。只含 ADR-012 §2.7 决策 B 认定的非密元数据。
+class SessionCredentialMetadata {
+  const SessionCredentialMetadata({
+    required this.ref,
+    required this.status,
+    required this.sensitivity,
+    required this.protection,
+  });
+
+  final String ref;
+  final SessionCredentialStatus status;
+  final SessionCredentialSensitivity sensitivity;
+  final SessionCredentialProtection protection;
+}
+
 class SessionController extends ChangeNotifier {
   SessionController({
-    CredentialStore? store,
     HardwareKeyStore hardware = const UnavailableHardwareKeyStore(),
     Future<BlobStore?> Function()? blobStoreProvider,
     Future<AdapterService?> Function()? adapterServiceProvider,
     List<SchoolDescriptor> initialSchools = const [],
     SsoMinter? ssoMinter,
     Future<bool> Function(VisibleLoginRequest request)? onVisibleLogin,
-  }) : _store =
-           store ??
-           CredentialStore(store: InMemorySecureStore(releaseMode: false)),
+  }) : _store = CredentialStore(store: InMemorySecureStore(releaseMode: false)),
        _hardware = hardware,
        _blobStoreProvider = blobStoreProvider,
        _adapterServiceProvider = adapterServiceProvider,
        _availableSchools = List.unmodifiable(initialSchools),
        _ssoMinter = ssoMinter,
        _ssoMinterInjected = ssoMinter != null,
-       _onVisibleLogin = onVisibleLogin,
-       // 注入了 store（测试/自定义）→ 视为已定档，不再重新裁定。
-       _storeResolved = store != null;
+       _onVisibleLogin = onVisibleLogin;
 
   final HardwareKeyStore _hardware;
   final Future<BlobStore?> Function()? _blobStoreProvider;
@@ -93,7 +110,7 @@ class SessionController extends ChangeNotifier {
   SsoMinter? get ssoMinter => _ssoMinter;
 
   /// 创建可信 WebView 认证桥。UI 只持有桥及无秘密状态，不获得 store/cookie 能力（红线 #1）。
-  InAppWebViewAuthBridge createWebViewAuthBridge({
+  WebViewAuthUiBridge createWebViewAuthBridge({
     required LoginManifestView login,
     String? initialUrl,
     String? requiredRef,
@@ -118,7 +135,7 @@ class SessionController extends ChangeNotifier {
   BlobStore? _blobs;
   Future<void> _sessionPersistChain = Future<void>.value();
   bool _bootstrapped = false;
-  bool _storeResolved;
+  bool _storeResolved = false;
 
   SchoolDescriptor? _school;
   List<SchoolDescriptor> _availableSchools;
@@ -127,22 +144,43 @@ class SessionController extends ChangeNotifier {
   /// H 档启动解不开时置位；UI 提示后 [acknowledgeHardwareUnlockFailure] 清除。
   bool _hardwareUnlockFailed = false;
 
-  /// 单例凭证库（收割落点 + 状态来源）。
-  CredentialStore get store => _store;
-
   SchoolDescriptor? get selectedSchool => _school;
   List<SchoolDescriptor> get availableSchools => _availableSchools;
   bool get isConfigured => _school != null;
   bool get debugLog => _debugLog;
-  bool get isLoggedIn => store.list().isNotEmpty;
-  int get credentialCount => store.list().length;
+  bool get isLoggedIn => _store.list().isNotEmpty;
+  int get credentialCount => _store.list().length;
 
   /// 上次 bootstrap 因 TEE/SE 无法 unwrap 而抹除了 H 档凭证。
   bool get hardwareUnlockFailed => _hardwareUnlockFailed;
 
   /// 已收割凭证的 ref 列表（升序）；仅名字，**不含值**。
   List<String> get credentialRefs =>
-      (store.list().map((e) => e.ref).toList())..sort();
+      (credentialMetadata.map((e) => e.ref).toList())..sort();
+
+  /// 已收割凭证的值无关登记信息；不包含 value、scope、type 或可重放等价物（红线 #1）。
+  List<SessionCredentialMetadata> get credentialMetadata => List.unmodifiable(
+    _store.list().map(
+      (entry) => SessionCredentialMetadata(
+        ref: entry.ref,
+        status: SessionCredentialStatus.values.byName(entry.status.name),
+        sensitivity: SessionCredentialSensitivity.values.byName(
+          entry.sensitivity.name,
+        ),
+        protection: SessionCredentialProtection.values.byName(
+          entry.protection.name,
+        ),
+      ),
+    ),
+  );
+
+  /// 当前凭证的持久保护档汇总；只由非密 metadata 计算。
+  SessionCredentialProtection? get credentialProtection {
+    final levels = credentialMetadata.map((e) => e.protection).toSet();
+    if (levels.isEmpty) return null;
+    if (levels.length == 1) return levels.single;
+    return SessionCredentialProtection.mixed;
+  }
 
   /// 启动引导：优先静默续用 H 硬件档，其次已同意的 S 软件档；无持久化则保持
   /// 默认内存档，待首次登录时 [ensurePersistentStore] 裁定。
@@ -350,7 +388,7 @@ class SessionController extends ChangeNotifier {
 
   /// 🔒 跑当前选中学校的 adapter capability（ensure 凭证 → loadAdapter → runLoadedAdapter）。
   ///
-  /// 凭证解析器固定为本会话的 [store]（凭证只在核心闭包侧注入，UI/本方法不触其值，红线 #1）。
+  /// 凭证解析器固定为本会话的私有 store（凭证只在核心闭包侧注入，UI/本方法不触其值，红线 #1）。
   /// 全程 fail-closed，归一化为 [CapabilityRun]：
   /// - 未选校 / 学校未接入 adapter / 运行时未装配 → [CapabilityFailureKind.load]
   /// - 能力所需凭证 ensure 未就绪 → [CapabilityFailureKind.auth]
@@ -465,7 +503,7 @@ class SessionController extends ChangeNotifier {
   }
 
   /// 🔒 [runCapability] / [runAdapterCapability] 的公共尾：解析已装配的 adapter 运行时并执行。
-  /// 凭证解析器固定为本会话 [store]（凭证只在核心闭包侧注入，本方法不触其值，红线 #1）。
+  /// 凭证解析器固定为本会话私有 store（凭证只在核心闭包侧注入，本方法不触其值，红线 #1）。
   /// 运行时未装配 → [CapabilityFailureKind.load]（不上抛）。adapterId 的**来源**（选校 vs debug 直传）
   /// 与门禁由两个公开入口各自裁定，本方法只做「有 service 就跑」。
   ///
@@ -515,16 +553,16 @@ class SessionController extends ChangeNotifier {
   /// 未选校时防御性抹除全部（无归属口径宁可多删，隐私优先于可用性）。
   void logout() {
     final id = _school?.id;
-    for (final e in store.list()) {
-      if (id == null || e.schoolId == id) store.delete(e.ref);
+    for (final e in _store.list()) {
+      if (id == null || e.schoolId == id) _store.delete(e.ref);
     }
     notifyListeners();
   }
 
   /// 彻底重置：抹除凭证并清除选校，回到开始面板。
   void reset() {
-    for (final e in store.list()) {
-      store.delete(e.ref);
+    for (final e in _store.list()) {
+      _store.delete(e.ref);
     }
     _school = null;
     _wireSsoMinterFor(null);

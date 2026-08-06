@@ -10,10 +10,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/debug/perf_trace.dart';
-import '../../core/login/inappwebview_auth_bridge.dart';
-import '../../core/login/webview_auth_session.dart';
+import '../../core/login/webview_auth_ui.dart';
+import '../../core/login/webview_auth_ui_bridge.dart';
 
-export '../../core/login/webview_auth_session.dart'
+export '../../core/login/webview_auth_ui.dart'
     show WebViewLoginResult, WebViewLoginStatus;
 
 class WebViewLoginPage extends StatefulWidget {
@@ -23,7 +23,7 @@ class WebViewLoginPage extends StatefulWidget {
     this.performanceTrace,
   });
 
-  final InAppWebViewAuthBridge bridge;
+  final WebViewAuthUiBridge bridge;
   final PerfTrace? performanceTrace;
 
   @override

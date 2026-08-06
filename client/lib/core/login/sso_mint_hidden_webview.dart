@@ -74,14 +74,14 @@ class HiddenWebViewSsoMinter implements SsoMinter {
               plan.loadUrl,
             );
             if (!injected) {
-              bridge.session.platformError();
+              bridge.reportPlatformError();
             } else {
               await controller.loadUrl(
                 urlRequest: URLRequest(url: WebUri(plan.loadUrl)),
               );
             }
           } catch (_) {
-            bridge.session.platformError();
+            bridge.reportPlatformError();
           } finally {
             if (!started.isCompleted) started.complete();
           }

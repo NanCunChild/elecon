@@ -10,9 +10,10 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../credential/types.dart';
 import 'webview_auth_session.dart';
+import 'webview_auth_ui_bridge.dart';
 import 'webview_login.dart';
 
-class InAppWebViewAuthBridge {
+class InAppWebViewAuthBridge implements WebViewAuthUiBridge {
   InAppWebViewAuthBridge({
     required LoginManifestView login,
     required void Function(CredentialEntry entry) putCredential,
@@ -22,7 +23,7 @@ class InAppWebViewAuthBridge {
   }) : initialUrl = initialUrl ?? login.url,
        _login = login,
        _tlsProceedHosts = tlsProceedHosts {
-    session = WebViewAuthSession(
+    _session = WebViewAuthSession(
       login: login,
       readCookies: _readCookies,
       putCredential: putCredential,
@@ -31,17 +32,20 @@ class InAppWebViewAuthBridge {
     );
   }
 
+  @override
   final String initialUrl;
   final LoginManifestView _login;
   final Set<String> _tlsProceedHosts;
+  @override
   final ValueNotifier<WebViewAuthUiState> state = ValueNotifier(
     const WebViewAuthUiState(phase: WebViewAuthPhase.loading),
   );
-  late final WebViewAuthSession session;
+  late final WebViewAuthSession _session;
   InAppWebViewController? _controller;
 
   void stateNotifier(WebViewAuthUiState next) => state.value = next;
 
+  @override
   InAppWebViewSettings get settings => InAppWebViewSettings(
     incognito: true,
     javaScriptEnabled: true,
@@ -88,6 +92,7 @@ class InAppWebViewAuthBridge {
     return cookies;
   }
 
+  @override
   void onWebViewCreated(InAppWebViewController controller) {
     _controller = controller;
   }
@@ -118,32 +123,36 @@ class InAppWebViewAuthBridge {
     return injected;
   }
 
+  @override
   Future<void> onLoadStart(
     InAppWebViewController controller,
     WebUri? url,
   ) async {
-    final allowed = await session.handleNavigation(
+    final allowed = await _session.handleNavigation(
       url?.toString(),
       loadStopped: false,
     );
     if (!allowed) await controller.stopLoading();
   }
 
+  @override
   Future<void> onLoadStop(InAppWebViewController controller, WebUri? url) =>
-      session.handleNavigation(url?.toString(), loadStopped: true);
+      _session.handleNavigation(url?.toString(), loadStopped: true);
 
+  @override
   Future<void> onUpdateVisitedHistory(
     InAppWebViewController controller,
     WebUri? url,
     bool? isReload,
-  ) => session.handleNavigation(url?.toString(), loadStopped: false);
+  ) => _session.handleNavigation(url?.toString(), loadStopped: false);
 
+  @override
   Future<NavigationActionPolicy?> shouldOverrideUrlLoading(
     InAppWebViewController controller,
     NavigationAction action,
   ) async {
     if (action.isForMainFrame == false) return NavigationActionPolicy.ALLOW;
-    final allowed = await session.handleNavigation(
+    final allowed = await _session.handleNavigation(
       action.request.url?.toString(),
       loadStopped: false,
     );
@@ -152,15 +161,17 @@ class InAppWebViewAuthBridge {
         : NavigationActionPolicy.CANCEL;
   }
 
+  @override
   void onReceivedError(
     InAppWebViewController controller,
     WebResourceRequest request,
     WebResourceError error,
   ) {
     if (request.isForMainFrame == false) return;
-    session.platformError();
+    _session.platformError();
   }
 
+  @override
   Future<ServerTrustAuthResponse?> onReceivedServerTrustAuthRequest(
     InAppWebViewController controller,
     URLAuthenticationChallenge challenge,
@@ -174,15 +185,21 @@ class InAppWebViewAuthBridge {
     );
   }
 
-  Future<WebViewLoginResult> get completion => session.completion;
+  @override
+  Future<WebViewLoginResult> get completion => _session.completion;
 
+  /// 平台宿主报告不可恢复错误；不暴露可读取 cookie 的认证状态机。
+  void reportPlatformError() => _session.platformError();
+
+  @override
   Future<void> stop() async {
-    session.cancel();
+    _session.cancel();
     await _controller?.stopLoading();
   }
 
+  @override
   void dispose({bool disposeController = true}) {
-    session.dispose();
+    _session.dispose();
     if (disposeController) _controller?.dispose();
     _controller = null;
     state.dispose();

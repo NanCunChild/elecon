@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../app_info.dart';
 import '../../l10n/gen/app_localizations.dart';
+import '../../session/session_controller.dart' show SessionCredentialProtection;
 import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
 import '../debug/helloworld_test_page.dart';
@@ -149,6 +150,22 @@ class SettingsPage extends StatelessWidget {
                         ),
                 ),
                 if (loggedIn) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.security_outlined),
+                    title: Text(l10n.settingsProtectionTitle),
+                    subtitle: Text(switch (session.credentialProtection) {
+                      SessionCredentialProtection.hardware =>
+                        l10n.settingsProtectionHardware,
+                      SessionCredentialProtection.software =>
+                        l10n.settingsProtectionSoftware,
+                      SessionCredentialProtection.memory =>
+                        l10n.settingsProtectionMemory,
+                      SessionCredentialProtection.mixed =>
+                        l10n.settingsProtectionMixed,
+                      null => l10n.settingsProtectionMemory,
+                    }),
+                  ),
                   const Divider(height: 1),
                   ListTile(
                     leading: const Icon(Icons.refresh),
