@@ -53,7 +53,7 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | P0-09 | [ ] Masker policy 改为已验签 bundle 的不可选运行时输入；要求 Masker 的 bundle 遗漏装配时拒载 | `server/src/runtime/sandbox.ts`、`fetch-proxy.ts`、Dart runtime | 慢车道；ADR-026 | policy、sink、store 或 host gate 任一缺失均不执行；不允许空规则透明回退；人工安全签收 |
 | P0-10 | [ ] 完成 ADR-026 统一 delivery firewall：TS/Dart、declarative/imperative/actuator、Capture/Project/Commit 全入口收口 | `server/src/runtime/broker/delivery-firewall.ts`、`client/lib/core/broker/response_masker.dart` | 慢车道；ADR-026 | 所有响应入口不可绕过；credential 与 handle 事务提交完整；取消/失败无半提交；签收清单关闭 |
 | P0-11 | [x] 永久禁止 debug 日志输出凭证 query、fragment、userinfo、Cookie 和 ticket URL | `client/lib/core/debug/dev_log.dart`、`dev_log_page.dart` | 慢车道；红线 #1 | 即使关闭普通脱敏，声明为 credential 的值仍不可见；控制台/UI/错误对象负例通过 |
-| P0-12 | [x] 修复 fixture recorder 和探针的凭证落盘/日志风险 | `adapters_tests/XJT/dean/record_fixtures.py`、`XIDIAN/ids/login.py`、`XIDIAN/energy/meter.py` | 慢车道；红线 #1/#8 | 删除全部 Cookie/Set-Cookie；raw 只能写 `.private-probes/`；不打印 ticket URL/真实 NodeID；scanner 作为写后硬门 |
+| P0-12 | [x] 修复 fixture recorder 和探针的凭证落盘/日志风险 | `adapters_tests/XJTU/dean/record_fixtures.py`、`XIDIAN/ids/login.py`、`XIDIAN/energy/meter.py` | 慢车道；红线 #1/#8 | 删除全部 Cookie/Set-Cookie；raw 只能写 `.private-probes/`；不打印 ticket URL/真实 NodeID；scanner 作为写后硬门 |
 | P0-13 | [ ] 让 release workflow 复用完整 CI，不允许 tag 发布绕过 server/tools/contract/adapter/release gate | `.github/workflows/ci.yml`、`release.yml` | 慢车道；发布与信任链 | reusable workflow 覆盖 lint、typecheck、smoke、validator、scanner、codegen、Flutter、bootstrap、trust profile；tag ancestry 和环境审批有机械验证 |
 | P0-14 | [ ] 完成 ADR-024 DEPLOY profile 接线和产物级证明 | `client/lib/core/trust/`、`client/tool/check_release_gate.sh`、release workflow | 慢车道；红线 #4、ADR-024 | release 产物无侧载符号；DEV applicationId/bundle ID 隔离；水印与构建元数据正确；人工签收 |
 | P0-15 | [ ] 建立 git 跟踪的 adapter 发布台账 | `docs/reference/signing_ceremony.md`、`adapter_release.md`、新 ledger | 慢车道；ADR-002/018 | 每次发布记录 source commit、版本、bundle/policy digest、catalog/revocation sequence、keyId、签署人与复核引用 |
@@ -90,26 +90,36 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 - P1-16：declarative/imperative 模板均通过真实 QuickJS replay；缺失 `gradePoint` 时省略，未知课程类型归一为 `unknown`。
 - P1-18/P1-19：拉取脚本同时导出 runtime/validator 根；validator 输出扫描根与数量，只发现 ADR-018 定义的 `school-*` 和 `_template/*`，不递归 graphify/cache/vendor manifest。
 - P1-20：XIDIAN JWC std 已使用 `index.js`、registry 对齐版本与 params、标准 fixture replay、真实 contract schema；坏日期省略，上海本地发布日期归一为 UTC。
+- 集成验证：Linux Flutter `744/744`、Apple 专项 `3/3`、tools smoke `18/18`、pinned adapter replay `8/8` 通过；macOS 测试机已确认 `lib/main_apple.dart` 的 iOS 构建无报错。server smoke 为 `27/28`，唯一开放项是 pinned `school-xidian` 尚无相邻工作区中未提交的 `card.*` handler，不归入上述 P1 项的完成证据。
 
 ## 4. P2：普通逻辑、解耦与可维护性
 
 | ID | TODO | 主要位置 | 完成条件 |
 |---|---|---|---|
 | P2-01 | [ ] 启动页显式处理 bootstrap Future 异常并支持安全重试 | `client/lib/main.dart` | 启动失败不进入半初始化主页；损坏存储恢复路径有测试 |
-| P2-02 | [ ] 首页刷新 Future 等待真实请求完成并处理重复刷新代次 | `client/lib/ui/home/home_page.dart` | spinner 生命周期正确；旧请求结果不覆盖新请求 |
-| P2-03 | [ ] GPA 排除非正学分并处理零分母 | `client/lib/ui/home/home_page.dart` | 零学分不显示 `NaN`；单元/widget 测试覆盖 |
-| P2-04 | [ ] 公网 handler 捕获畸形百分号编码并返回 400 | `server/src/public/index.ts` | `/%`、非法 UTF-8 不抛出 handler；进程保持可用 |
-| P2-05 | [ ] 公网静态端点只允许 catalog、revocation 和合法 digest bundle 路径 | `server/src/public/index.ts`、nginx 配置 | 任意 dist 文件不自动公开；bundle 名称/大小/method 有硬限制 |
+| P2-02 | [x] 首页刷新 Future 等待真实请求完成并处理重复刷新代次 | `client/lib/ui/home/home_page.dart` | spinner 生命周期正确；旧请求结果不覆盖新请求 |
+| P2-03 | [x] GPA 排除非正学分并处理零分母 | `client/lib/ui/home/home_page.dart` | 零学分不显示 `NaN`；单元/widget 测试覆盖 |
+| P2-04 | [x] 公网 handler 捕获畸形百分号编码并返回 400 | `server/src/public/index.ts` | `/%`、非法 UTF-8 不抛出 handler；进程保持可用 |
+| P2-05 | [x] 公网静态端点只允许 catalog、revocation 和合法 digest bundle 路径 | `server/src/public/index.ts`、nginx 配置 | 任意 dist 文件不自动公开；bundle 名称/大小/method 有硬限制 |
 | P2-06 | [ ] 抽取共享 JSONPath tokenizer/AST，消除 dataflow 与 Masker 语义漂移 | `server/src/runtime/broker/dataflow.ts`、`response-masker.ts`、Dart 对应实现 | 安全整数、转义、错误分类共享 golden；不保留平行 parser |
 | P2-07 | [ ] 抽取版本化 Credential codec 和可靠持久化队列 | H/S secure store | H/S 仅负责 DEK custody；序列化、迁移、损坏处理单源 |
 | P2-08 | [ ] 使用生成契约类型替代客户端手写 manifest/credential 枚举解析 | `client/lib/catalog/schools.dart`、loader | 新 credential/schema 类型不需多处手工同步；unknown 处理明确 |
 | P2-09 | [ ] 为 `AdapterService` 增加所有权清晰的 `dispose/close` | `client/lib/core/adapter_service.dart`、transport/fetcher | SessionController dispose 后 HttpClient/socket 释放；测试验证 |
-| P2-10 | [ ] 将 server smoke/replay/testutils 从生产源码和 build 产物分离 | `server/src/runtime/*.smoke.ts`、`tsconfig.json` | `npm run build` 不产出测试入口；测试命令保持可用 |
+| P2-10 | [x] 将 server smoke/replay/testutils 从生产源码和 build 产物分离 | `server/src/runtime/*.smoke.ts`、`tsconfig.json` | `npm run build` 不产出测试入口；测试命令保持可用 |
 | P2-11 | [ ] 将所有用户可见文案迁到 ARB，并加入 UI 字面量静态门 | `client/lib/ui/`、l10n | 英文 locale 下首页、登录、安全警告无中文残留；CI 可阻止新增字面量 |
 | P2-12 | [ ] 修正 Linux 支持矩阵或提供可信登录路径 | `client/lib/ui/login/login_flow.dart`、发布文档 | 若不支持认证则从正式能力矩阵排除；若支持则有平台集成测试 |
 | P2-13 | [ ] 处理 OHOS pubspec 漂移，区分 probe 与正式构建清单 | `client/pubspec.ohos.yaml` | release 不会误用旧 QJS/缺依赖清单；CI 至少解析/最小编译正式清单 |
-| P2-14 | [ ] 统一 XJT/XJTU 命名及 adapter_tests 元数据 | `adapters_tests/` | 每目录说明 schoolId、系统、状态、敏感度和是否仍使用 |
+| P2-14 | [x] 统一 XJT/XJTU 命名及 adapter_tests 元数据 | `adapters_tests/` | 每目录说明 schoolId、系统、状态、敏感度和是否仍使用 |
 | P2-15 | [ ] 更新 adapter SDK 为最小 `BrokerResponse`，移除鼓励 adapter 自取 token 的旧说明 | `contract/adapter-sdk/types.d.ts` | 不暴露完整 DOM Response/url；ADR-026 目标态清楚；契约改动走慢车道 |
+
+### 4.1 执行状态（2026-08-06）
+
+- P2-02/P2-03：刷新 Future 会等待当前最新代，刷新期间保留旧快照，迟到结果不覆盖新代；GPA 只纳入正学分并拒绝零分母/非有限结果，widget 回归通过。
+- P2-04/P2-05：公网 handler 对畸形百分号和非法 UTF-8 返回 400；只服务 catalog、revocation 和 64 位小写 digest bundle，任意 dist 文件、非法名称和超 512 KiB bundle 均拒绝。
+- P2-10：`tsconfig.build.json` 排除 smoke/testutils，production build 每次清空 `dist/` 并机械检查产物；全量 smoke 仍由原 `tsconfig.json` typecheck 和独立 runner 执行。
+- P2-14：测试目录统一为 `XJTU/`，保留发布身份 `school-xjt`；FDU/THU/XIDIAN/XJTU 均记录 schoolId、系统、状态、敏感度和使用情况，ADR 历史证据引用已同步。
+- Linux 构建：默认 lockfile 将 `jni` 从 1.0.2 更新至 1.0.3；clean 后 debug/release bundle 均构建成功，release executable 的 `ldd` 无缺失动态库。该事实只证明可构建，不关闭 P2-12 的可信登录/支持矩阵决策。
+- P2-01 涉及凭证 store bootstrap 失败状态机，按安全规则留待人工协作。P2-11 审计发现约 181 个 UI 字面量位点，需作为独立迁移批次完成，禁止用现有债务 baseline 豁免来伪装静态门。
 
 ## 5. P3：文档、CI、发布与运维
 
