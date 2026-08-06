@@ -68,16 +68,20 @@ if [[ "$STATIC_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
-command -v flutter >/dev/null 2>&1 || fail "未找到 flutter"
-
-echo "[release-gate] flutter build apk --release --target lib/main.dart …"
-flutter build apk --release --target lib/main.dart
-
-APK="build/app/outputs/flutter-apk/app-release.apk"
+if [[ -n "${ELECON_RELEASE_GATE_APK:-}" ]]; then
+  APK="$ELECON_RELEASE_GATE_APK"
+  echo "[release-gate] 使用注入的 APK: $APK"
+else
+  command -v flutter >/dev/null 2>&1 || fail "未找到 flutter"
+  echo "[release-gate] flutter build apk --release --target lib/main.dart …"
+  flutter build apk --release --target lib/main.dart
+  APK="build/app/outputs/flutter-apk/app-release.apk"
+fi
 [[ -f "$APK" ]] || fail "未产出 $APK"
 ok "产出 release APK: $APK"
 
-if unzip -l "$APK" | grep -qE 'liquid_glass_widgets|liquid_glass_.*\.frag'; then
+# 不使用 grep -q：在 pipefail 下提前退出会让 unzip 收到 SIGPIPE，并把真实命中误判为未命中。
+if unzip -l "$APK" | grep -E 'liquid_glass_widgets|liquid_glass_.*\.frag' >/dev/null; then
   fail "release APK 仍包含 Apple-only 液态玻璃资源"
 fi
 ok "release APK 不含液态玻璃代码资源"

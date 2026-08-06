@@ -61,7 +61,8 @@ docs/       ADR、规则细则（docs/rules/）与工程结构说明
 ```bash
 cd client
 flutter pub get
-flutter run                 # iOS / Android / 桌面
+flutter run                 # Android / 非 Apple 桌面
+bash tool/with_apple_pubspec.sh flutter run --target lib/main_apple.dart  # iOS / macOS
 ```
 
 **HarmonyOS：** 用 FVM 管理多版本 SDK，平时用官方版保持主线纯净，仅在打包鸿蒙时切到 OHOS 分支 SDK；鸿蒙特有依赖只写入 `client/pubspec.ohos.yaml`，由 `tools/ohos/build-hap.sh` 临时启用。详见 `client/ohos/README`。

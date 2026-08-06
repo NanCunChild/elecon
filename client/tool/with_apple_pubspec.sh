@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 # Runs a Flutter command with the iOS/macOS-only dependency manifest, then
-# restores the platform-neutral pubspec and lockfile.
+# restores the platform-neutral pubspec and lockfile. Apple dependencies have
+# their own committed lockfile so platform builds are reproducible.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MAIN_PUBSPEC="$ROOT/pubspec.yaml"
 APPLE_PUBSPEC="$ROOT/pubspec.apple.yaml"
 LOCKFILE="$ROOT/pubspec.lock"
+APPLE_LOCKFILE="$ROOT/pubspec.apple.lock"
 MUTEX_DIR="$ROOT/.dart_tool/apple-pubspec-mutex"
 
 if [[ "$#" -eq 0 ]]; then
-  echo "usage: bash tool/with_apple_pubspec.sh <flutter-command> [args...]" >&2
+  echo "usage: bash tool/with_apple_pubspec.sh [--update-lockfile | <flutter-command> [args...]]" >&2
   exit 2
+fi
+
+UPDATE_LOCKFILE=0
+if [[ "${1:-}" == "--update-lockfile" ]]; then
+  [[ "$#" -eq 1 ]] || { echo "--update-lockfile 不接受额外参数" >&2; exit 2; }
+  UPDATE_LOCKFILE=1
 fi
 
 if [[ "${1:-}" == "flutter" && "${2:-}" == "build" ]]; then
@@ -58,5 +66,18 @@ trap restore_pubspec EXIT
 
 cp "$APPLE_PUBSPEC" "$MAIN_PUBSPEC"
 cd "$ROOT"
-flutter pub get
+if [[ "$UPDATE_LOCKFILE" -eq 1 ]]; then
+  rm -f "$LOCKFILE"
+  flutter pub get
+  cp "$LOCKFILE" "$APPLE_LOCKFILE"
+  echo "updated: $APPLE_LOCKFILE"
+  exit 0
+fi
+
+[[ -f "$APPLE_LOCKFILE" ]] || {
+  echo "缺少 $APPLE_LOCKFILE；请先运行 bash tool/with_apple_pubspec.sh --update-lockfile" >&2
+  exit 1
+}
+cp "$APPLE_LOCKFILE" "$LOCKFILE"
+flutter pub get --enforce-lockfile
 "$@"
