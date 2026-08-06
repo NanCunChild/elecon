@@ -221,15 +221,60 @@ npm run bootstrap:check -- --dist=../dist-xidian --assets=../client/assets/boots
 
 ## 7. 发布台账
 
-无云端逐次审计。每次 official 签名后在仓内台账追加一行并提交（ADR-002 / ceremony §7）：
+无云端逐次审计。每次 official 签名后向
+[`release/adapter-release-ledger.json`](../../release/adapter-release-ledger.json) 追加记录并提交
+（ADR-002 / ceremony §7）。该文件不属于 `contract/`，格式版本为
+`elecon-adapter-release-ledger/v1`。
 
 | 字段 | 说明 |
 |---|---|
 | `adapterId` / `adapterVersion` | 取自 bundle 内 manifest |
-| `digest` | 规范化 envelope digest（hex） |
-| `date` | 签署日 |
-| `keyId` | 如 `elecon-official-ncc-1` |
-| `签署人` | 触碰人 |
+| `sourceCommit` | 已审 adapter 源的完整 40 位 commit SHA |
+| `bundleDigest` | 规范化 envelope digest（64 位小写 hex） |
+| `policy` | bundle 是否含 `masker.json`；若含，记录签名 envelope 内该文件字节的 SHA-256 |
+| `catalogSequence` / `revocationSequence` | signed catalog / revocation 内的 sequence |
+| `keyId` / `signedAt` | 出签 token 与实际签署时间 |
+| `signer` / `reviewReference` | 实际触碰人和独立复核记录引用 |
+
+工具只用 Node 内建验签能力，不出签、不加载 PKCS#11，也不把 artifact `issuedAt` 猜作实际签署时间。
+extract 必须由 operator 显式提供受信 `keyId` 和对应的 32-byte Ed25519 裸公钥；工具先把 signed dist 中
+catalog、revocation 和每个 bundle 的 `keyId` 与 operator 提供值比较，再逐一真实验签。不得省略参数或
+静默读取仓内测试公钥。未知事实输出为显式 incomplete：
+
+```bash
+cd ~/projects/elecon
+npm run ledger:extract -w tools -- \
+  --dist=dist-xidian \
+  --key-id=<operator-selected-trusted-key-id> \
+  --public-key-hex=<matching-32-byte-ed25519-public-key-hex> \
+  > /tmp/ledger-draft.json
+```
+
+release owner 从已审源码仓取得 commit，并提供实际 ceremony / 复核事实后，可一次生成完整草稿：
+
+```bash
+npm run ledger:extract -w tools -- \
+  --dist=dist-xidian \
+  --key-id=<operator-selected-trusted-key-id> \
+  --public-key-hex=<matching-32-byte-ed25519-public-key-hex> \
+  --source-commit=<40-hex-source-commit> \
+  --signed-at=<RFC3339-time> \
+  --signer=<actual-token-operator> \
+  --review-reference=<PR-or-audit-reference>
+```
+
+把新记录按发布顺序追加后运行：
+
+```bash
+npm run ledger:validate
+```
+
+validator 拒绝未知字段、缺失却未声明的事实、重复记录、错误摘要，以及 catalog/revocation sequence
+倒退。同一 `adapterId+adapterVersion` 即为同一身份，即使 digest 不同也会作为 equivocation 拒绝。
+`status: "complete"` 不允许任何 `missingFacts`；历史资料尚缺时只能诚实保留 incomplete，不能据 git
+author、文档作者或 `issuedAt` 补猜。普通 `ledger:validate` 分别报告结构有效性与历史完整性，空台账不会
+被称为完整；需要执行严格历史门禁时显式追加 `-- --require-complete`。当前 CI 只做结构门禁，以免诚实的
+空白历史令普通 CI 不可运行。
 
 ---
 

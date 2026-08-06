@@ -14,7 +14,9 @@
     "lint": "biome ci .",
     "format": "biome check --write .",
     "typecheck": "npm run typecheck --workspaces",
-    "smoke:all": "npm run smoke:all -w server && npm run smoke:all -w tools"
+    "smoke:all": "npm run smoke:all -w server && npm run smoke:all -w tools",
+    "ledger:validate": "npm run ledger:validate -w tools",
+    "test:release-preflight": "bash scripts/release-preflight.test.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.3"

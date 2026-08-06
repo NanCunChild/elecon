@@ -190,10 +190,15 @@ App 的信任锚，按 ADR-002 §2.3「多公钥预埋 + 分批启用」登记�
 | 字段 | 说明 |
 |---|---|
 | `adapterId` / `adapterVersion` | 被签对象身份（取自 bundle 内 manifest，非人工填写） |
-| `digest` | 规范化 bundle 摘要 |
-| `date` | 签署时间 |
-| `keyId` | 哪把 token |
-| `签署人` | 谁触碰的 |
+| `sourceCommit` | 已审 adapter 源码的完整 40 位 git commit；不得用分支或 tag 代替 |
+| `bundleDigest` / `policy` | 规范化 bundle 摘要；是否含 `masker.json` 及其签名载荷内字节摘要 |
+| `catalogSequence` / `revocationSequence` | 本次出签所用的防回滚序号 |
+| `signedAt` / `keyId` | 实际签署时间与所用 token |
+| `signer` / `reviewReference` | 实际触碰人，以及独立复核的 PR / issue / 审计记录引用 |
+
+机器可读台账为 [`release/adapter-release-ledger.json`](../../release/adapter-release-ledger.json)，格式与命令见
+[`adapter_release.md`](./adapter_release.md) §7。历史事实不完整时必须保留 `status: "incomplete"` 并逐项列入
+`missingFacts`，不得从产物时间、git author 或文档作者推断签署人/复核人。
 
 ---
 
@@ -209,7 +214,7 @@ ADR-002 §4：CI / 审查沙箱只产出 **unsigned bundle + digest**，签名�
    > 别跳过，也别只看 CI 的输出——要在你**即将触碰的这台机器上**算一遍。
 3. PIN + 触碰：`tools` 下 `npm run release:package -- …` → 签 bundle + catalog + revocation，写出 dist 树。
 4. 上传 dist 到端点 D（`https://elecon.xidian.one/adapters/`）；可选 `bootstrap:sync`。
-5. 更新台账（§7）→ 提交。
+5. 从 signed dist 提取台账草稿，人工补入本次 source commit / 签署 / 复核事实并验证（§7）→ 提交。
 
 ---
 

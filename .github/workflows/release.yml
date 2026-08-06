@@ -11,46 +11,56 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 env:
-  FLUTTER_CHANNEL: stable
+  FLUTTER_VERSION: 3.44.1
 
 jobs:
-  # 发版闸门：tag 推送不触发 flutter-ci（它只跑 main 分支与 PR），故在此复跑
-  # analyze + test。任一失败即阻断 build/publish——绝不发出未过测试的产物。
-  test:
-    name: Analyze and test
+  preflight:
+    name: Resolve immutable release commit
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: client
+    outputs:
+      tag: ${{ steps.preflight.outputs.tag }}
+      sha: ${{ steps.preflight.outputs.sha }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.tag || github.ref }}
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: ${{ env.FLUTTER_CHANNEL }}
-          cache: true
-      - name: Install Linux test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev
-      - name: Install dependencies
-        run: flutter pub get
-      - name: Analyze
-        run: flutter analyze
-      - name: Build QuickJS test library
-        run: ./tool/build_qjs_test_lib.sh
-      - name: Test
-        run: flutter test
+          fetch-depth: 0
+      - name: Validate tag and resolve commit SHA
+        id: preflight
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          RELEASE_EVENT: ${{ github.event_name }}
+          RELEASE_EVENT_REF: ${{ github.ref }}
+        run: bash scripts/release-preflight.sh --tag="$RELEASE_TAG" --event-name="$RELEASE_EVENT" --event-ref="$RELEASE_EVENT_REF"
+
+  # A release reuses the complete CI graph. The caller passes only the commit SHA resolved above;
+  # no verification job is allowed to check out the mutable tag independently.
+  verification:
+    name: Complete CI at release SHA
+    needs: preflight
+    uses: ./.github/workflows/ci.yml
+    with:
+      checkout_ref: ${{ needs.preflight.outputs.sha }}
+    permissions:
+      contents: read
+
+  # Configure required reviewers on the repository's `release` GitHub Environment. The workflow
+  # hook is code; reviewer configuration remains external and must be completed by NanCunChild.
+  approval:
+    name: Protected release approval
+    needs: verification
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: {}
+    steps:
+      - run: ":"
 
   build:
     name: Build ${{ matrix.name }}
-    needs: test
+    needs: [preflight, verification, approval]
     strategy:
       fail-fast: false
       # OHOS/HAP 刻意不在发版矩阵内：主线依赖已迁 flutter_qjs_next，OHOS 旁路仍用
@@ -78,20 +88,21 @@ jobs:
             runner: macos-14
     runs-on: ${{ matrix.runner }}
     env:
-      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
     defaults:
       run:
         working-directory: client
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ needs.preflight.outputs.sha }}
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: ${{ env.FLUTTER_CHANNEL }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
           cache: true
 
       - name: Install Linux build dependencies
@@ -137,8 +148,6 @@ jobs:
       - name: Build Android APK
         if: matrix.platform == 'android'
         env:
-          # 发布信号：缺 key.properties 时让 gradle fail（绝不发布 debug 签名 APK）。
-          # 上一步已从 secrets 落 key.properties，此处双保险。CI 门禁不置此变量 → 回退 debug 签名。
           ELECON_REQUIRE_RELEASE_SIGNING: "true"
         run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
 
@@ -167,8 +176,6 @@ jobs:
           flutter build linux --release --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
           tar -C build/linux/x64/release -czf "$GITHUB_WORKSPACE/elecon-linux-${RELEASE_TAG#v}.tar.gz" bundle
 
-      # macOS 签名渠道：配了证书 secrets 就 codesign，否则产出未签名 .app（现状）。
-      # 未签名包用户侧会被 Gatekeeper 拦（需右键打开）；公证（notarization）待后续接入。
       - name: Build macOS package
         if: matrix.platform == 'macos'
         shell: bash
@@ -180,7 +187,6 @@ jobs:
           flutter build macos --release --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
           APP="build/macos/Build/Products/Release/elecon.app"
           if [ -n "$MACOS_CERTIFICATE_BASE64" ] && [ -n "$MACOS_SIGN_IDENTITY" ]; then
-            echo "检测到 macOS 签名证书 → codesign（identity: $MACOS_SIGN_IDENTITY）"
             KEYCHAIN="$RUNNER_TEMP/elecon-signing.keychain-db"
             KEYCHAIN_PASSWORD="$(uuidgen)"
             CERT_PATH="$RUNNER_TEMP/macos-cert.p12"
@@ -190,14 +196,13 @@ jobs:
             printf '%s' "$MACOS_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
             security import "$CERT_PATH" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
             security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-            # 把临时 keychain 并入搜索域，让 codesign 能找到导入的私钥。
             security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed s/\"//g)
             codesign --force --deep --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$APP"
             codesign --verify --deep --strict --verbose=2 "$APP"
             rm -f "$CERT_PATH"
             security delete-keychain "$KEYCHAIN"
           else
-            echo "未配置 macOS 签名证书 → 产出未签名 .app（Gatekeeper 将告警）"
+            echo "未配置 macOS 签名证书，产出未签名 .app"
           fi
           ditto -c -k --sequesterRsrc --keepParent "$APP" "$GITHUB_WORKSPACE/elecon-macos-${RELEASE_TAG#v}.zip"
 
@@ -219,9 +224,24 @@ jobs:
 
   publish:
     name: Publish GitHub release
-    needs: build
+    needs: [preflight, verification, approval, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - name: Checkout verified SHA and tag refs
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+          fetch-depth: 0
+      - name: Refuse a tag moved after verification
+        env:
+          RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+          RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+          RELEASE_EVENT: ${{ github.event_name }}
+          RELEASE_EVENT_REF: ${{ github.ref }}
+        # This detects movement before publish; immutable tag rules must prevent movement afterward.
+        run: bash scripts/release-preflight.sh --tag="$RELEASE_TAG" --event-name="$RELEASE_EVENT" --event-ref="$RELEASE_EVENT_REF" --expected-sha="$RELEASE_SHA"
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
@@ -231,6 +251,6 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
+          tag_name: ${{ needs.preflight.outputs.tag }}
           generate_release_notes: true
           files: release/**
