@@ -54,8 +54,24 @@ class _EleconHomePageState extends State<EleconHomePage> {
     return loadCampusSnapshot(SessionScope.of(context));
   }
 
-  void _reload() {
-    setState(() => _snapshot = _load());
+  Future<void> _reload() async {
+    final next = Future<CampusSnapshot>.sync(_load);
+    setState(() {
+      _snapshot = next;
+    });
+
+    // A pull-to-refresh already in flight also waits for a newer icon-triggered
+    // refresh, so its spinner cannot finish while the latest generation runs.
+    var observed = next;
+    while (true) {
+      try {
+        await observed;
+      } on Object {
+        // FutureBuilder owns rendering the latest error state.
+      }
+      if (identical(observed, _snapshot)) return;
+      observed = _snapshot;
+    }
   }
 
   @override
@@ -65,7 +81,8 @@ class _EleconHomePageState extends State<EleconHomePage> {
         child: FutureBuilder<CampusSnapshot>(
           future: _snapshot,
           builder: (context, state) {
-            if (state.connectionState != ConnectionState.done) {
+            if (state.connectionState != ConnectionState.done &&
+                !state.hasData) {
               return const _LoadingState();
             }
             if (state.hasError) {
@@ -79,7 +96,7 @@ class _EleconHomePageState extends State<EleconHomePage> {
               return _EmptyState(onRetry: _reload);
             }
             return RefreshIndicator(
-              onRefresh: () async => _reload(),
+              onRefresh: _reload,
               child: CustomScrollView(
                 slivers: [
                   SliverAppBar.large(
@@ -213,15 +230,19 @@ class GradesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final gpaItems = data.items
-        .where((item) => item.gradePoint != null)
-        .toList();
-    final gpa = gpaItems.isEmpty
-        ? null
-        : gpaItems
-                  .map((item) => item.gradePoint! * item.credit)
-                  .reduce((a, b) => a + b) /
-              gpaItems.map((item) => item.credit).reduce((a, b) => a + b);
+    var weightedPoints = 0.0;
+    var totalCredits = 0.0;
+    for (final item in data.items) {
+      if (item.gradePoint == null || item.credit <= 0) continue;
+      weightedPoints += item.gradePoint! * item.credit;
+      totalCredits += item.credit;
+    }
+    final calculatedGpa = totalCredits > 0
+        ? weightedPoints / totalCredits
+        : null;
+    final gpa = calculatedGpa != null && calculatedGpa.isFinite
+        ? calculatedGpa
+        : null;
     return _SectionCard(
       title: '成绩',
       subtitle:
