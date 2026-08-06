@@ -10,7 +10,7 @@ XJT dean 夹具录制脚本 —— 在校园网/本机运行，录一次完整�
 一律替换为假值；不留真实会话态。
 
 用法：
-  cd adapters_tests/XJT/dean
+  cd adapters_tests/XJTU/dean
   python record_fixtures.py                          # 默认输出到 adapters/school-xjt/fixtures/
   python record_fixtures.py --outdir /tmp/fixtures   # 自定义输出目录
   python record_fixtures.py --raw                    # 原始文件仅写仓库 .private-probes/

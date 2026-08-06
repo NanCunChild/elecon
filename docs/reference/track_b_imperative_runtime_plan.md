@@ -93,7 +93,7 @@ jar **仅限单次执行**，不跨执行、不经 public、对 adapter 全程�
 
 **问题**：XJT `client_id` 经 body 下发、无 Set-Cookie → 当前 ADR-009 跑不通。
 
-**抓包已确认（2026-06-15，`adapters_tests/XJT/dean/pac.txt`）**：全程**零 `Set-Cookie`**。挑战页 JS 自身
+**抓包已确认（2026-06-15，`adapters_tests/XJTU/dean/pac.txt`）**：全程**零 `Set-Cookie`**。挑战页 JS 自身
 （`pac.txt:119`）`document.cookie = "client_id=" + data.client_id + "; path=/; max-age=86400; ..."`
 ——`client_id` 取自 `POST /dynamic_challenge` 的**响应 JSON body**，由浏览器端 JS 写 cookie，origin
 **不下发 Set-Cookie**。故 per-execution jar（只抓 Set-Cookie）拿不到、§2.3 又剥 adapter 自设 Cookie 头。

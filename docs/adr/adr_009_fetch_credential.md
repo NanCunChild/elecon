@@ -133,7 +133,7 @@ imperative 下 adapter 不声明具体请求（那是 declarative 的 `requests[
 
 这样：①有效性问题消失（耐久 session 进库可复用）；②红线 #1 不破（收割在核心、adapter 不可见）；③jar 回归纯草稿纸。**未被任何 ref 声明的 cookie 永不进库**——封死"adapter 诱导 origin 下发任意 cookie 持久化到核心"的面。此桥接是宿主侧安全敏感代码，随 imperative 一并人工审（不得 AI 独自闭环）。
 
-**执行内 ephemeral cookie 写回通道（2026-06-15 修订，🔒 待人工复核）。** 实测暴露一类本 ADR 此前未覆盖的会话态：**origin 不经 `Set-Cookie`、而把会话 token 放在响应 body、由页面 JS 自行 `document.cookie` 写入**。证据见 `adapters_tests/XJT/dean/pac.txt`：XJT 教务挑战页 JS `document.cookie = "client_id=" + data.client_id`，`client_id` 取自 `POST /dynamic_challenge` 的响应 JSON body，全程**零 `Set-Cookie`**。此时 per-execution jar（只捕获 `Set-Cookie`）抓不到、§2.3 又剥除 adapter 自设 Cookie 头 → 多步握手在第二个 GET 处断裂。
+**执行内 ephemeral cookie 写回通道（2026-06-15 修订，🔒 待人工复核）。** 实测暴露一类本 ADR 此前未覆盖的会话态：**origin 不经 `Set-Cookie`、而把会话 token 放在响应 body、由页面 JS 自行 `document.cookie` 写入**。证据见 `adapters_tests/XJTU/dean/pac.txt`：XJT 教务挑战页 JS `document.cookie = "client_id=" + data.client_id`，`client_id` 取自 `POST /dynamic_challenge` 的响应 JSON body，全程**零 `Set-Cookie`**。此时 per-execution jar（只捕获 `Set-Cookie`）抓不到、§2.3 又剥除 adapter 自设 Cookie 头 → 多步握手在第二个 GET 处断裂。
 
 **贴合（窄通道，不松动任何凭证边界）**：jar 内划出与 broker 注入分区**严格隔离**的 **ephemeral 分区**；adapter 经专用窄 API 写入：
 
@@ -185,7 +185,7 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 6. **测试不能像 declarative 那样直接 golden 双跑**（网络非确定）。取向：**录制/回放夹具**——录一次真实交互（脱敏后）成固定夹具，之后 imperative 退化为对回放响应的确定性解析，可纳入双跑；凭证注入与脱敏逻辑在**宿主**层单测（不在 QuickJS）。
 7. **iOS 2.5.2（[#4]）联动。** imperative 让"下载的 adapter"真正发起网络请求，合规评估需与本设计一并做。iOS 端整体可上架形态已由 [ADR-010](./adr_010_ios_appstore.md) 定调：**首版仅 declarative 上架，imperative 推迟**——本 ADR 接受并拟上 iOS 时，须按 ADR-010 §3.3 重做 2.5.2(a) 自检（仍限既有能力集）并补 5.1.1 隐私申报。
 8. **单次执行 cookie jar 是新的状态面（§2.4 第 2 条）。** per-execution cookie jar 本身**仅限单次执行、不跨执行、不经 public**；其实现是宿主侧安全敏感代码，随 imperative 一并人工审（不得 AI 独自闭环）。**例外（2026-06-14）**：执行结束时，**仅 manifest `credentials` 显式声明了 ref 的耐久 cookie** 被核心收割进 ADR-012 凭证库（§2.4 收割桥接，判据 b）——这是受控、可审计的跨执行持久化，不是 jar 自身持久化。未被声明的 cookie 一律随 jar 丢弃，绝不进库。jar 的"瞬态搬运"与 broker 的"白名单凭证注入"仍是两条独立路径，注入路径只认凭证库内的条目。
-9. **ephemeral 写回通道是新增的 adapter→jar 写入面（§2.4 修订，2026-06-15）。** 此前 adapter 对 jar 只读不可写；新通道开了一条受控写入路径，须确保四重栅栏（仅 passthrough origin / 不覆盖凭证 / 永不收割 / 执行即弃）由 **Broker 强制**而非依赖 adapter 自律——栅栏校验是宿主侧安全敏感代码，随 B4 人工审。**残余风险**：adapter 可借此向同源 passthrough 端点构造任意 cookie，但因 ① 仅 passthrough（无凭证可冒充）② 该端点本就在 `network.allow`、受签名 + CI + review 三重把关（同 §3.4 请求 body 向量），此面不超出既有已接受残余风险。**抓包前置**：本通道之所以需要，依据 `adapters_tests/XJT/dean/pac.txt` 实测（零 Set-Cookie / body-token）；若未来站点改为标准 `Set-Cookie`，现有 jar 即可，本通道对该站点不激活。
+9. **ephemeral 写回通道是新增的 adapter→jar 写入面（§2.4 修订，2026-06-15）。** 此前 adapter 对 jar 只读不可写；新通道开了一条受控写入路径，须确保四重栅栏（仅 passthrough origin / 不覆盖凭证 / 永不收割 / 执行即弃）由 **Broker 强制**而非依赖 adapter 自律——栅栏校验是宿主侧安全敏感代码，随 B4 人工审。**残余风险**：adapter 可借此向同源 passthrough 端点构造任意 cookie，但因 ① 仅 passthrough（无凭证可冒充）② 该端点本就在 `network.allow`、受签名 + CI + review 三重把关（同 §3.4 请求 body 向量），此面不超出既有已接受残余风险。**抓包前置**：本通道之所以需要，依据 `adapters_tests/XJTU/dean/pac.txt` 实测（零 Set-Cookie / body-token）；若未来站点改为标准 `Set-Cookie`，现有 jar 即可，本通道对该站点不激活。
 
 ---
 
@@ -216,6 +216,6 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 | 2026-06-13 | rev-1b | §2.3 增 scope 重叠消歧规则（最长前缀胜出、等长拒绝）；§3 增第 4 条请求 body 外泄向量声明 |
 | 2026-06-14 | rev-2 | §2.8 限额数值标注临时占位（待实测校准）；§2.4 增执行结束耐久 cookie 收割进凭证库桥接（判据 = manifest 声明的 credential ref，与 ADR-013 对齐）；§2.3 草图正式拆出 ADR-013 |
 | 2026-06-14 | rev-2b（PR #23 review 跟进）| §2.4 补 cookie 收割匹配算法（RFC 6265 §5.1.3/5.1.4 域/路径匹配方向，修正初稿写反的方向）+ jar/broker 同名 cookie 优先级（origin 最新值为准）；§2.8 加校准硬承诺；§4 标 ADR-013 已落地 + pattern-audit 时间线 |
-| 2026-06-15 | rev-3（已接受，PR #25）| 增 §2.4「执行内 ephemeral cookie 写回通道」+ 窄 API `ctx.setEphemeralCookie`——解 XJT body-token 缺口（证据 `adapters_tests/XJT/dean/pac.txt`）。四重栅栏：仅 passthrough origin、不覆盖凭证、永不收割、执行即弃。§2.3 剥除规则不变（纵深防御）。触红线 #1/#6。契约改动见 §4（Gate B） |
+| 2026-06-15 | rev-3（已接受，PR #25）| 增 §2.4「执行内 ephemeral cookie 写回通道」+ 窄 API `ctx.setEphemeralCookie`——解 XJT body-token 缺口（证据 `adapters_tests/XJTU/dean/pac.txt`）。四重栅栏：仅 passthrough origin、不覆盖凭证、永不收割、执行即弃。§2.3 剥除规则不变（纵深防御）。触红线 #1/#6。契约改动见 §4（Gate B） |
 | 2026-06-16 | rev-3a（editorial，B4 计划拍板）| §2.4 四重栅栏违例处置从「抛结构化权限错误」修正为「静默丢弃 + ctx.log("warn")、不抛错」——理由：不给 adapter 探测栅栏边界的异常信号（同 B1 纵深防御哲学）。语义不变（写入仍被拒绝、绝不被 honor），仅实现行为明确化 |
 | 2026-07-04 | **rev-4（已复核并接受，#79 P0-3）** | **推翻 rev-2 决策点 8「body 不设独立上限」**：新增 §2.9——宿主 transport 层强制单响应 body 字节上限（`Content-Length` 预检 + 流式累计上限权威闸门，超限 `body_limit` + fail 不收割，占位 ~8 MiB 纳入 §2.8 校准）+ `Transport.fetch` 增 `AbortSignal`/cancel token、限额/fatal 时主动取消所有 in-flight 上游请求（认领 ADR-014 §4.7）；决策点 8/10 与 §4 同步。理由：宿主在字节进 QuickJS 前已整体读入宿主堆，QuickJS OOM 兜底护不住宿主 transport 阶段。**安全不变量不变**（不触注入/脱敏/白名单），仅加资源闸门 + 取消。 |

@@ -11,7 +11,7 @@
 B4 是 imperative requestGraph Broker（Gate A）的「执行内 cookie jar」件。解的核心缺口：多步握手中
 origin 在流程中途下发的会话态——既包括标准 `Set-Cookie`，也包括 XJT 教务那种
 「token 在响应 body、零 `Set-Cookie`、靠页面 JS `document.cookie` 写入」的真实缺口
-（证据 `adapters_tests/XJT/dean/pac.txt`）。
+（证据 `adapters_tests/XJTU/dean/pac.txt`）。
 
 **前置已就绪**：
 

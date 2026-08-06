@@ -1,5 +1,12 @@
 # FDU 请求测试
 
+- schoolId: `school-fudan`
+- school: 复旦大学
+- systems: 统一认证、教务、一卡通、生活服务、通知
+- status: `reference`
+- sensitivity: `credential-sensitive`
+- inUse: 是；用于 `school-fudan` 请求结构和解析参考
+
 本目录整理自 `/home/nancunchild/projects/DanXi/lib/repository/fdu`，按服务域名保存复旦大学请求结构。
 
 脚本只负责请求与脱敏后的基础解析，登录产生的 `requests.Session` 由调用方传入；目录中不保存账号、密码、Cookie、Token 或真实学生数据。

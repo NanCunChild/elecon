@@ -1,5 +1,12 @@
 # THU 请求测试
 
+- schoolId: `school-thu`
+- school: 清华大学
+- systems: 统一认证、WebVPN、教务、一卡通
+- status: `reference`
+- sensitivity: `credential-sensitive`
+- inUse: 是；用于 `school-thu` 请求结构和解析参考
+
 本目录整理自 `/home/nancunchild/projects/thu-info-app/packages/thu-info-lib`。
 
 脚本按业务域拆分，调用方需要传入已经准备好的 `requests.Session`。这里不实现密码登录，也不保存账号、密码、Cookie、Token 或真实学生数据；这与项目中“登录态由核心会话维护、业务模块只发请求”的边界一致。
