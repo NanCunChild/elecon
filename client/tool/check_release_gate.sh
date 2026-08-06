@@ -38,6 +38,12 @@ ok() {
 MAIN_MANIFEST="android/app/src/main/AndroidManifest.xml"
 [[ -f "$MAIN_MANIFEST" ]] || fail "缺少 $MAIN_MANIFEST"
 
+# Non-Apple builds must not resolve or package the Apple-only shader dependency.
+if grep -qE '^  liquid_glass_widgets:' pubspec.yaml; then
+  fail "默认 pubspec.yaml 不得声明 Apple-only liquid_glass_widgets"
+fi
+ok "默认依赖图不含 liquid_glass_widgets"
+
 # —— 1. main（release 合并基线）必须声明 INTERNET ——
 # 历史事故：只写在 debug/profile，导致 --release APK 无法 WebView 登录 / DirectTransport。
 if ! grep -qE 'android\.permission\.INTERNET' "$MAIN_MANIFEST"; then
@@ -64,12 +70,17 @@ fi
 
 command -v flutter >/dev/null 2>&1 || fail "未找到 flutter"
 
-echo "[release-gate] flutter build apk --release …"
-flutter build apk --release
+echo "[release-gate] flutter build apk --release --target lib/main.dart …"
+flutter build apk --release --target lib/main.dart
 
 APK="build/app/outputs/flutter-apk/app-release.apk"
 [[ -f "$APK" ]] || fail "未产出 $APK"
 ok "产出 release APK: $APK"
+
+if unzip -l "$APK" | grep -qE 'liquid_glass_widgets|liquid_glass_.*\.frag'; then
+  fail "release APK 仍包含 Apple-only 液态玻璃资源"
+fi
+ok "release APK 不含液态玻璃代码资源"
 
 # 优先 aapt dump permissions；无 Android SDK 时回退：解压 binary manifest 不可靠，改用
 # apkanalyzer / aapt2；再不行至少确认 APK 体积非空。

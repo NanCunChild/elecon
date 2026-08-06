@@ -143,6 +143,8 @@ jobs:
       - run: flutter test
         env:
           ELECON_REQUIRE_ADAPTERS: "1"
+      - name: Test Apple-only liquid glass graph
+        run: bash tool/with_apple_pubspec.sh flutter test test_apple/liquid_glass_test.dart
       # 快门：main Manifest 必须含 INTERNET（曾只写在 debug/profile → release 无法登录）
       - name: Release static gate (Android INTERNET)
         run: bash tool/check_release_gate.sh --static-only
