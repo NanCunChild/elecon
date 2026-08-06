@@ -18,20 +18,42 @@
 
 ## 2. P0：安全与发版阻断
 
+P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”表示必须先完成 ADR 修订或澄清，本轮不得修改实现。
+
+| 执行组 | 项目 | 本轮处理 |
+|---|---|---|
+| A：既有 ADR 落地 | P0-02、P0-03、P0-04、P0-06、P0-07、P0-08、P0-11、P0-12、P0-13、P0-15 | 实施并提供验证证据；安全项由 NanCunChild 人工签收后关闭 |
+| B：分段落地 | P0-10 | 先关闭现有入口绕过和取消后提交；handle、policy matcher、actuator 分别受 P1-08、P1-09、P1-12 前置约束，不虚假关闭 |
+| C：ADR 阻塞，跳过 | P0-01、P0-05、P0-09、P0-14 | P0-01 需修订 ADR-002/018；P0-05 需修订 ADR-009；P0-09 需澄清 ADR-026 optional 语义；P0-14 landing 要求同步修订 ADR-002 |
+
+实施顺序：日志与 fixture 止血（P0-11/12）→ 请求配额与 Cookie（P0-03/04）→ UI/硬件档/输出 gate（P0-02/06/07/08）→ firewall 现有入口（P0-10）→ ledger 与 release gate（P0-15/13）。P0-13 的 GitHub Environment 配置和 P0-15 的历史签署事实必须由 NanCunChild 提供或确认，不得由实现者猜测。
+
+### 2.1 执行状态（2026-08-05）
+
+| 状态 | 项目 | 结果 / 剩余门槛 |
+|---|---|---|
+| owner 已签收 | P0-02、P0-03、P0-04、P0-08、P0-11、P0-12 | 实现与自动化测试已完成；NanCunChild 于 2026-08-06 完成人工复核并授权关闭 |
+| 待真机签收 | P0-06、P0-07 | iOS 已降级为 S/M 且 H 路径 fail-closed；Android 已用 `KeyInfo` 拒绝 software/unknown；仍需 iOS 升级安装及 Android emulator/TEE/StrongBox 矩阵 |
+| 部分落地，保持开放 | P0-10 | TS 已阻止取消后 Commit；Dart 已有 firewall/commit 原语与严格 UTF-8 状态；生产 wiring 仍依赖已验签 policy loader/matcher、执行级 query harvest 事务、P1-08/P1-09/P1-12 |
+| 待仓库/历史事实 | P0-13、P0-15 | reusable CI、main-only preflight、tag SHA/ancestry、审批 hook、真实验签 ledger 工具已落地；仍需配置 `release` Environment、不可变 `v*` tag 规则，并由 NanCunChild 提供历史 source commit/签署时间/签署人/复核引用 |
+| ADR 阻塞，未改实现 | P0-01、P0-05、P0-09、P0-14 | 按 owner 指令跳过；先完成上表 C 组所列 ADR 修订或澄清 |
+
+本轮自动验证：`npm run lint`、`npm run typecheck`、`npm run smoke:all`（server 26/26、tools 18/18）、`flutter analyze`、`flutter test`（744 项）、全量 scanner、release ledger smoke/validate、release preflight、recorder Python tests、`git diff --check`。自动验证不是安全签收的替代品。
+
 | ID | TODO | 主要位置 | 车道与依据 | 完成条件 |
 |---|---|---|---|---|
 | P0-01 | [ ] 让 bundle digest 同时绑定规范化路径、编码、长度和内容，拒绝重复路径、绝对路径、反斜杠及 `.`/`..` | `tools/src/signer/index.ts`、`tools/src/bundle/envelope.ts` | 慢车道；签名格式，ADR-002/018 | TS/Dart 共用新 golden；只改路径必须验签失败；写明旧 bundle 迁移和 host version gate；人工签收 |
-| P0-02 | [ ] 从 UI 会话 API 移除完整 `CredentialStore`，只暴露登录状态、数量、ref、保护等级等元数据 | `client/lib/session/session_controller.dart`、`client/lib/core/credential/` | 慢车道；红线 #1、ADR-012 | UI 包无法取得 `CredentialEntry.value`/`ResolvedCredential.value`；Broker 仍可在核心内解析；边界测试通过；人工签收 |
-| P0-03 | [ ] 在每次 transport hop 出网前原子预留全局请求配额，修复并发 `ctx.fetch` 超限 | `server/src/runtime/sandbox.ts`、Dart 对应 runtime | 慢车道；Broker/网络边界，ADR-014/022 | 21/100 并发请求的第 21 个在出网前被拒；并发重定向共用配额；双端测试；人工复核 |
-| P0-04 | [ ] 正确建模 host-only Cookie，禁止无 `Domain` Cookie 发往子域 | `server/src/runtime/broker/cookie-jar.ts`、Dart 对应 Broker | 慢车道；红线 #1 | TS/Dart host-only golden 一致；子域负例零出网凭证；人工复核 |
+| P0-02 | [x] 从 UI 会话 API 移除完整 `CredentialStore`，只暴露登录状态、数量、ref、保护等级等元数据 | `client/lib/session/session_controller.dart`、`client/lib/core/credential/` | 慢车道；红线 #1、ADR-012 | UI 包无法取得 `CredentialEntry.value`/`ResolvedCredential.value`；Broker 仍可在核心内解析；边界测试通过；人工签收 |
+| P0-03 | [x] 在每次 transport hop 出网前原子预留全局请求配额，修复并发 `ctx.fetch` 超限 | `server/src/runtime/sandbox.ts`、Dart 对应 runtime | 慢车道；Broker/网络边界，ADR-014/022 | 21/100 并发请求的第 21 个在出网前被拒；并发重定向共用配额；双端测试；人工复核 |
+| P0-04 | [x] 正确建模 host-only Cookie，禁止无 `Domain` Cookie 发往子域 | `server/src/runtime/broker/cookie-jar.ts`、Dart 对应 Broker | 慢车道；红线 #1 | TS/Dart host-only golden 一致；子域负例零出网凭证；人工复核 |
 | P0-05 | [ ] 安全策略阻止的重定向必须 fail-closed，不向 adapter 交付 3xx 中间 body/header | `server/src/runtime/broker/redirect.ts`、`fetch-proxy.ts`、Dart 对应实现 | 慢车道；红线 #1、ADR-009/020/026 | allow 外、超 hop、非法 Location 的 token body/header 均不可见；正常终态行为有 golden；人工复核 |
 | P0-06 | [ ] 修正 iOS 硬件保护档：采用不可导出 Secure Enclave 密钥包装 DEK，或降级保护等级 | `client/ios/Runner/HardwareKeystorePlugin.swift`、`hardware_secure_store.dart` | 慢车道；ADR-012 | 真机证明密钥不可导出；若降级则显示 S/M 风险提示且不再标 H；人工安全签收 |
 | P0-07 | [ ] Android 使用 `KeyInfo` 验证 StrongBox/TEE，软件 Keystore 不得标记为 H 档 | `client/android/app/src/main/kotlin/dev/nancunchild/elecon/HardwareKeystorePlugin.kt` | 慢车道；ADR-012 | 覆盖软件 provider、模拟器、TEE、StrongBox；每类保护等级符合 ADR；人工安全签收 |
-| P0-08 | [ ] 在客户端核心边界按已验签 manifest 的 `emits.schema/schemaVersion` 严格验证 adapter 输出 | `client/lib/core/adapter_runtime.dart`、`adapter_service.dart` | 慢车道；红线 #6、ADR-008 | 缺字段、错类型、错误 schemaVersion、畸形 item 整体拒绝；UI 不承担契约修复；生成类型/validator 单源 |
+| P0-08 | [x] 在客户端核心边界按已验签 manifest 的 `emits.schema/schemaVersion` 严格验证 adapter 输出 | `client/lib/core/adapter_runtime.dart`、`adapter_service.dart` | 慢车道；红线 #6、ADR-008 | 缺字段、错类型、错误 schemaVersion、畸形 item 整体拒绝；UI 不承担契约修复；生成类型/validator 单源 |
 | P0-09 | [ ] Masker policy 改为已验签 bundle 的不可选运行时输入；要求 Masker 的 bundle 遗漏装配时拒载 | `server/src/runtime/sandbox.ts`、`fetch-proxy.ts`、Dart runtime | 慢车道；ADR-026 | policy、sink、store 或 host gate 任一缺失均不执行；不允许空规则透明回退；人工安全签收 |
 | P0-10 | [ ] 完成 ADR-026 统一 delivery firewall：TS/Dart、declarative/imperative/actuator、Capture/Project/Commit 全入口收口 | `server/src/runtime/broker/delivery-firewall.ts`、`client/lib/core/broker/response_masker.dart` | 慢车道；ADR-026 | 所有响应入口不可绕过；credential 与 handle 事务提交完整；取消/失败无半提交；签收清单关闭 |
-| P0-11 | [ ] 永久禁止 debug 日志输出凭证 query、fragment、userinfo、Cookie 和 ticket URL | `client/lib/core/debug/dev_log.dart`、`dev_log_page.dart` | 慢车道；红线 #1 | 即使关闭普通脱敏，声明为 credential 的值仍不可见；控制台/UI/错误对象负例通过 |
-| P0-12 | [ ] 修复 fixture recorder 和探针的凭证落盘/日志风险 | `adapters_tests/XJT/dean/record_fixtures.py`、`XIDIAN/ids/login.py`、`XIDIAN/energy/meter.py` | 慢车道；红线 #1/#8 | 删除全部 Cookie/Set-Cookie；raw 只能写 `.private-probes/`；不打印 ticket URL/真实 NodeID；scanner 作为写后硬门 |
+| P0-11 | [x] 永久禁止 debug 日志输出凭证 query、fragment、userinfo、Cookie 和 ticket URL | `client/lib/core/debug/dev_log.dart`、`dev_log_page.dart` | 慢车道；红线 #1 | 即使关闭普通脱敏，声明为 credential 的值仍不可见；控制台/UI/错误对象负例通过 |
+| P0-12 | [x] 修复 fixture recorder 和探针的凭证落盘/日志风险 | `adapters_tests/XJT/dean/record_fixtures.py`、`XIDIAN/ids/login.py`、`XIDIAN/energy/meter.py` | 慢车道；红线 #1/#8 | 删除全部 Cookie/Set-Cookie；raw 只能写 `.private-probes/`；不打印 ticket URL/真实 NodeID；scanner 作为写后硬门 |
 | P0-13 | [ ] 让 release workflow 复用完整 CI，不允许 tag 发布绕过 server/tools/contract/adapter/release gate | `.github/workflows/ci.yml`、`release.yml` | 慢车道；发布与信任链 | reusable workflow 覆盖 lint、typecheck、smoke、validator、scanner、codegen、Flutter、bootstrap、trust profile；tag ancestry 和环境审批有机械验证 |
 | P0-14 | [ ] 完成 ADR-024 DEPLOY profile 接线和产物级证明 | `client/lib/core/trust/`、`client/tool/check_release_gate.sh`、release workflow | 慢车道；红线 #4、ADR-024 | release 产物无侧载符号；DEV applicationId/bundle ID 隔离；水印与构建元数据正确；人工签收 |
 | P0-15 | [ ] 建立 git 跟踪的 adapter 发布台账 | `docs/reference/signing_ceremony.md`、`adapter_release.md`、新 ledger | 慢车道；ADR-002/018 | 每次发布记录 source commit、版本、bundle/policy digest、catalog/revocation sequence、keyId、签署人与复核引用 |
