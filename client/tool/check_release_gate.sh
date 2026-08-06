@@ -38,6 +38,12 @@ ok() {
 MAIN_MANIFEST="android/app/src/main/AndroidManifest.xml"
 [[ -f "$MAIN_MANIFEST" ]] || fail "缺少 $MAIN_MANIFEST"
 
+# Non-Apple builds must not resolve or package the Apple-only shader dependency.
+if grep -qE '^  liquid_glass_widgets:' pubspec.yaml; then
+  fail "默认 pubspec.yaml 不得声明 Apple-only liquid_glass_widgets"
+fi
+ok "默认依赖图不含 liquid_glass_widgets"
+
 # —— 1. main（release 合并基线）必须声明 INTERNET ——
 # 历史事故：只写在 debug/profile，导致 --release APK 无法 WebView 登录 / DirectTransport。
 if ! grep -qE 'android\.permission\.INTERNET' "$MAIN_MANIFEST"; then
@@ -62,14 +68,23 @@ if [[ "$STATIC_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
-command -v flutter >/dev/null 2>&1 || fail "未找到 flutter"
-
-echo "[release-gate] flutter build apk --release …"
-flutter build apk --release
-
-APK="build/app/outputs/flutter-apk/app-release.apk"
+if [[ -n "${ELECON_RELEASE_GATE_APK:-}" ]]; then
+  APK="$ELECON_RELEASE_GATE_APK"
+  echo "[release-gate] 使用注入的 APK: $APK"
+else
+  command -v flutter >/dev/null 2>&1 || fail "未找到 flutter"
+  echo "[release-gate] flutter build apk --release --target lib/main.dart …"
+  flutter build apk --release --target lib/main.dart
+  APK="build/app/outputs/flutter-apk/app-release.apk"
+fi
 [[ -f "$APK" ]] || fail "未产出 $APK"
 ok "产出 release APK: $APK"
+
+# 不使用 grep -q：在 pipefail 下提前退出会让 unzip 收到 SIGPIPE，并把真实命中误判为未命中。
+if unzip -l "$APK" | grep -E 'liquid_glass_widgets|liquid_glass_.*\.frag' >/dev/null; then
+  fail "release APK 仍包含 Apple-only 液态玻璃资源"
+fi
+ok "release APK 不含液态玻璃代码资源"
 
 # 优先 aapt dump permissions；无 Android SDK 时回退：解压 binary manifest 不可靠，改用
 # apkanalyzer / aapt2；再不行至少确认 APK 体积非空。

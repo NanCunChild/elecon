@@ -21,6 +21,7 @@ class AppearanceSection extends StatelessWidget {
     final themeCtrl = ThemeScope.of(context);
     final prefs = themeCtrl.prefs;
     final scheme = Theme.of(context).colorScheme;
+    final liquidGlassTile = buildLiquidGlassSettingsTile(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -123,24 +124,11 @@ class AppearanceSection extends StatelessWidget {
             onChanged: themeCtrl.setHighContrast,
           ),
         ),
-        const SizedBox(height: 16),
-        _SectionTitle(title: l10n.experimentalSection),
-        LiquidGlassSurface(
-          child: SwitchListTile(
-            secondary: Icon(
-              Icons.water_drop_outlined,
-              color: prefs.effectiveLiquidGlass ? scheme.primary : null,
-            ),
-            title: Text(l10n.experimentalLiquidGlassTitle),
-            subtitle: Text(
-              prefs.highContrast
-                  ? l10n.experimentalLiquidGlassDisabledByContrast
-                  : l10n.experimentalLiquidGlassSubtitle,
-            ),
-            value: prefs.liquidGlass,
-            onChanged: prefs.highContrast ? null : themeCtrl.setLiquidGlass,
-          ),
-        ),
+        if (liquidGlassTile != null) ...[
+          const SizedBox(height: 16),
+          _SectionTitle(title: l10n.experimentalSection),
+          LiquidGlassSurface(child: liquidGlassTile),
+        ],
       ],
     );
   }
@@ -156,16 +144,16 @@ class AppearanceSection extends StatelessWidget {
 /// [SeedPalette.id] → 显示名。新增预设色 = 加 id + 在两份 arb 补键 + 补一条 case
 ///（漏了会退化为 id 本身，由 `test/appearance_l10n_test.dart` 抓）。
 String seedPaletteLabel(AppLocalizations l10n, String id) => switch (id) {
-      'blue' => l10n.appearanceSeedBlue,
-      'indigo' => l10n.appearanceSeedIndigo,
-      'teal' => l10n.appearanceSeedTeal,
-      'green' => l10n.appearanceSeedGreen,
-      'amber' => l10n.appearanceSeedAmber,
-      'orange' => l10n.appearanceSeedOrange,
-      'rose' => l10n.appearanceSeedRose,
-      'violet' => l10n.appearanceSeedViolet,
-      _ => id,
-    };
+  'blue' => l10n.appearanceSeedBlue,
+  'indigo' => l10n.appearanceSeedIndigo,
+  'teal' => l10n.appearanceSeedTeal,
+  'green' => l10n.appearanceSeedGreen,
+  'amber' => l10n.appearanceSeedAmber,
+  'orange' => l10n.appearanceSeedOrange,
+  'rose' => l10n.appearanceSeedRose,
+  'violet' => l10n.appearanceSeedViolet,
+  _ => id,
+};
 
 class _SeedSwatch extends StatelessWidget {
   const _SeedSwatch({
@@ -219,9 +207,9 @@ class _SeedSwatch extends StatelessWidget {
                     size: 20,
                     color:
                         ThemeData.estimateBrightnessForColor(palette.seed) ==
-                                Brightness.dark
-                            ? Colors.white
-                            : Colors.black,
+                            Brightness.dark
+                        ? Colors.white
+                        : Colors.black,
                   )
                 : null,
           ),
@@ -243,8 +231,8 @@ class _SectionTitle extends StatelessWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-            ),
+          color: Theme.of(context).colorScheme.primary,
+        ),
       ),
     );
   }

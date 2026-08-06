@@ -7,3 +7,8 @@ analyzer:
     # OHOS probe uses the Flutter-OHOS SDK and pubspec.ohos.yaml. Keep the
     # official Flutter/Android route from resolving OHOS-only plugin imports.
     - ohos_probe/**
+    # Apple liquid glass has its own pubspec and compile entry point. The default
+    # analyzer graph intentionally has no access to that package.
+    - lib/main_apple.dart
+    - lib/ui/theme/liquid_glass_apple.dart
+    - test_apple/**

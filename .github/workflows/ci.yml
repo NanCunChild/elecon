@@ -138,12 +138,15 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - name: Build flutter_qjs FFI test lib
-        run: bash tool/build_qjs_test_lib.sh
       - run: flutter analyze
-      - run: flutter test
+      - name: Flutter tests with native QuickJS
+        run: bash tool/flutter_test.sh flutter test
         env:
           ELECON_REQUIRE_ADAPTERS: "1"
+      - name: Test Apple-only liquid glass graph
+        run: bash tool/with_apple_pubspec.sh flutter test test_apple/liquid_glass_test.dart
+      - name: Test release artifact rejection
+        run: bash tool/check_release_gate_test.sh
       # 快门：main Manifest 必须含 INTERNET（曾只写在 debug/profile → release 无法登录）
       - name: Release static gate (Android INTERNET)
         run: bash tool/check_release_gate.sh --static-only

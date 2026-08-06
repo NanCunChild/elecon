@@ -1,11 +1,9 @@
 /// 主壳：底部导航在「首页 / 设置」间切换。
 ///
-/// 开启液态玻璃时底栏为 [GlassTabBar]；关闭时为自绘满高 tab 指示器底栏
-///（指示器高度撑满每个 tab，形状为超椭圆）。
+/// Apple 构建开启液态玻璃时使用玻璃底栏；其余情况为 Material 底栏。
 library;
 
 import 'package:flutter/material.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../l10n/gen/app_localizations.dart';
 import '../home/home_page.dart';
@@ -24,13 +22,14 @@ class _MainShellState extends State<MainShell> {
   int _index = 0;
 
   /// 标签文案随语言变，故在 build 里按当前 l10n 组装（图标是常量）。
-  static List<_ShellTab> _tabsOf(AppLocalizations l10n) => <_ShellTab>[
-        _ShellTab(
+  static List<LiquidGlassTabSpec> _tabsOf(AppLocalizations l10n) =>
+      <LiquidGlassTabSpec>[
+        LiquidGlassTabSpec(
           label: l10n.navHome,
           icon: Icons.home_outlined,
           selectedIcon: Icons.home,
         ),
-        _ShellTab(
+        LiquidGlassTabSpec(
           label: l10n.navSettings,
           icon: Icons.settings_outlined,
           selectedIcon: Icons.settings,
@@ -40,90 +39,27 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final tabs = _tabsOf(AppLocalizations.of(context));
-    final glass = liquidGlassEnabled(context);
-    final scheme = Theme.of(context).colorScheme;
+    final glassBar = buildLiquidGlassShellBar(
+      context: context,
+      tabs: tabs,
+      selectedIndex: _index,
+      onSelected: (i) => setState(() => _index = i),
+    );
 
     return Scaffold(
       // 内容延伸到底栏后，玻璃折射才有内容可采样。
-      extendBody: glass,
+      extendBody: glassBar != null,
       body: IndexedStack(
         index: _index,
-        children: const [
-          EleconHomePage(),
-          SettingsPage(),
-        ],
+        children: const [EleconHomePage(), SettingsPage()],
       ),
-      bottomNavigationBar: glass
-          ? _GlassShellBar(
-              tabs: tabs,
-              selectedIndex: _index,
-              onSelected: (i) => setState(() => _index = i),
-              scheme: scheme,
-            )
-          : _MaterialShellBar(
-              tabs: tabs,
-              selectedIndex: _index,
-              onSelected: (i) => setState(() => _index = i),
-            ),
-    );
-  }
-}
-
-class _ShellTab {
-  const _ShellTab({
-    required this.label,
-    required this.icon,
-    required this.selectedIcon,
-  });
-
-  final String label;
-  final IconData icon;
-  final IconData selectedIcon;
-}
-
-/// 液态玻璃底栏：指示器为每个 tab 的满高玻璃胶囊。
-class _GlassShellBar extends StatelessWidget {
-  const _GlassShellBar({
-    required this.tabs,
-    required this.selectedIndex,
-    required this.onSelected,
-    required this.scheme,
-  });
-
-  final List<_ShellTab> tabs;
-  final int selectedIndex;
-  final ValueChanged<int> onSelected;
-  final ColorScheme scheme;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassTabBar.bottom(
-      tabs: [
-        for (final t in tabs)
-          GlassTab(
-            label: t.label,
-            icon: Icon(t.icon),
-            activeIcon: Icon(t.selectedIcon),
+      bottomNavigationBar:
+          glassBar ??
+          _MaterialShellBar(
+            tabs: tabs,
+            selectedIndex: _index,
+            onSelected: (i) => setState(() => _index = i),
           ),
-      ],
-      selectedIndex: selectedIndex,
-      onTabSelected: onSelected,
-      barHeight: 68,
-      horizontalPadding: 16,
-      verticalPadding: 10,
-      // 指示器相对 tab 槽外扩，竖直撑满 bar 成胶囊（包默认 vertical: 8）。
-      indicatorExpansion:
-          const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-      indicatorBorderRadius: 28,
-      selectedIconColor: scheme.primary,
-      selectedLabelColor: scheme.primary,
-      unselectedIconColor: scheme.onSurfaceVariant,
-      unselectedLabelColor: scheme.onSurfaceVariant,
-      quality: GlassQuality.standard,
-      magnification: 1.08,
-      // 底栏 / 指示器承担主色；卡片表面仅极浅 tint。
-      settings: liquidGlassBarSettings(scheme),
-      indicatorSettings: liquidGlassIndicatorSettings(scheme),
     );
   }
 }
@@ -136,7 +72,7 @@ class _MaterialShellBar extends StatelessWidget {
     required this.onSelected,
   });
 
-  final List<_ShellTab> tabs;
+  final List<LiquidGlassTabSpec> tabs;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
@@ -215,19 +151,21 @@ class _MaterialTab extends StatelessWidget {
     required this.onTap,
   });
 
-  final _ShellTab tab;
+  final LiquidGlassTabSpec tab;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
+    final color = selected
+        ? scheme.onSecondaryContainer
+        : scheme.onSurfaceVariant;
     final labelStyle = Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
-          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-          fontSize: 12,
-        );
+      color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+      fontSize: 12,
+    );
 
     return Semantics(
       button: true,
@@ -241,7 +179,11 @@ class _MaterialTab extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(selected ? tab.selectedIcon : tab.icon, size: 24, color: color),
+            Icon(
+              selected ? tab.selectedIcon : tab.icon,
+              size: 24,
+              color: color,
+            ),
             const SizedBox(height: 2),
             Text(tab.label, style: labelStyle, maxLines: 1),
           ],

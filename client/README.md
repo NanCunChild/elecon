@@ -23,7 +23,8 @@ tool/
 ```bash
 cd client
 fvm flutter pub get
-fvm flutter run
+fvm flutter run  # Android / 非 Apple 桌面
+bash tool/with_apple_pubspec.sh fvm flutter run --target lib/main_apple.dart  # iOS / macOS
 ```
 
 ## Flutter 版本策略
@@ -59,14 +60,12 @@ FLUTTER_QJS_NEXT_LIBRARY=/path/to/libflutter_qjs_next_plugin.so fvm flutter test
 ```bash
 cd client
 fvm flutter pub get
-tool/build_qjs_test_lib.sh
-FLUTTER_QJS_NEXT_LIBRARY="$PWD/.dart_tool/flutter_qjs_next_test_build/example/build/linux/x64/debug/bundle/lib/libflutter_qjs_next_plugin.so" \
-  fvm flutter test
+bash tool/flutter_test.sh fvm flutter test
 ```
 
-脚本会从 `.dart_tool/package_config.json` 定位 `flutter_qjs_next`，复制到临时构建目录，
-创建/构建一个最小 Linux example，并输出 `libflutter_qjs_next_plugin.so` 的绝对路径。CI
-通过 `GITHUB_ENV` 自动注入该环境变量；本地 shell 需要按上面的方式显式传入。
+包装器会在缺少原生库时调用 `build_qjs_test_lib.sh`：从 `.dart_tool/package_config.json`
+定位 `flutter_qjs_next`，复制到临时构建目录，创建/构建一个最小 Linux example，并自动向
+测试进程注入 `FLUTTER_QJS_NEXT_LIBRARY`。本地与 CI 使用同一入口，无需手工复制库路径。
 
 更换开发环境、Flutter 版本、架构或 `flutter_qjs_next` 版本时，需检查：
 

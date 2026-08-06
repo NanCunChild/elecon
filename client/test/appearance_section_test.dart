@@ -58,7 +58,8 @@ void main() {
 
     expect(find.text(zh.appearanceSection), findsOneWidget);
     expect(find.text(zh.accessibilitySection), findsOneWidget);
-    expect(find.text(zh.experimentalSection), findsOneWidget);
+    expect(find.text(zh.experimentalSection), findsNothing);
+    expect(find.text(zh.experimentalLiquidGlassTitle), findsNothing);
     expect(find.text(zh.appearanceLanguageTitle), findsOneWidget);
     // 主题色名走 tooltip / semantics，不把内部 id 露出来。
     expect(find.byTooltip(zh.appearanceSeedBlue), findsOneWidget);

@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'core/adapter_service.dart';
@@ -20,18 +19,27 @@ import 'ui/theme/theme_controller.dart';
 import 'ui/theme/theme_scope.dart';
 
 Future<void> main() async {
+  await runEleconApp();
+}
+
+/// Starts the platform-neutral application.
+///
+/// Apple builds use `main_apple.dart`, which initializes and wraps the app with
+/// the separately compiled liquid-glass implementation.
+Future<void> runEleconApp({
+  Future<void> Function()? initializePlatformUi,
+  Widget Function(Widget child)? wrapApp,
+}) async {
   WidgetsFlutterBinding.ensureInitialized();
   final startupTrace = PerfTrace.start('app_start');
   startupTrace.mark('flutter_binding_ready');
   startupTrace.observeFrames();
-  await LiquidGlassWidgets.initialize();
-  startupTrace.mark('liquid_glass_ready');
-  runApp(
-    LiquidGlassWidgets.wrap(
-      child: EleconApp(startupTrace: startupTrace),
-      adaptiveQuality: true,
-    ),
-  );
+  await initializePlatformUi?.call();
+  if (initializePlatformUi != null) {
+    startupTrace.mark('platform_ui_ready');
+  }
+  final app = EleconApp(startupTrace: startupTrace);
+  runApp(wrapApp?.call(app) ?? app);
 }
 
 /// §2.8 落盘目录：H/S 密文 + wrapped DEK 写入 app 私有 application support。
