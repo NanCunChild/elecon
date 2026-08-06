@@ -57,9 +57,11 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run typecheck -w server
+      - run: npm run build -w server
       - run: npm run smoke:all -w server
         env:
           ELECON_REQUIRE_ADAPTERS: "1"
+      - run: bash deploy/public-endpoint/validate-dist.test.sh
 
   # 工具链：全量 smoke（目录发现，含 validator/urlmatch/scanner/codegen/signer——此前手工
   # 列举漏跑了后三个）+ 对 adapters/ 全量静态校验 + codegen 漂移闸门。
