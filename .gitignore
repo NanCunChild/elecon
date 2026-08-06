@@ -25,6 +25,7 @@ client/ohos/oh_modules/
 
 # npm workspace 共享包构建产物（prepare 时由 tsc 生成）
 packages/*/dist/
+server/dist/
 
 # 按需拉取的 elecon-adapters 缓存（ADR-018 §2.11.1，取代 git 子模块）。
 # 由 scripts/fetch-adapters.sh 按 adapters.pin 克隆，不入库。
