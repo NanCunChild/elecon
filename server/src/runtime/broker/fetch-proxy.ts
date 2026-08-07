@@ -6,8 +6,8 @@
  *   ② resolver.get(ref)（仅 inject）+ B4 jar.selectForSend(url)
  *   ③ assembleRequest（净化 adapter 头 → 叠 broker 凭证 → 合流 jar cookie）
  *   ④ transport.fetch(req)  [seam]          —— 真实出网属 ADR-003，B6a 经 seam 注入 fake 驱动 smoke
- *   ⑤ jar.captureSetCookie(resp, url)       —— 每跳都吃 Set-Cookie（含重定向链）
- *   ⑥ B3 decideRedirect 自驱跟随            —— 每跳重做 ①–⑤；中间 Location 绝不外泄
+ *   ⑤ 取消检查 + B3 decideRedirect           —— blocked 响应零副作用、不可交付
+ *   ⑥ follow/deliver 才 capture Set-Cookie   —— 每跳重做 ①–⑥；中间 Location 绝不外泄
  *   ⑦ deliverThroughFirewall（C1 唯一 choke point）→ 交回 adapter
  *
  * **C1 交付接线（ADR-026 §2.4，checklist C1）**：交回 adapter 的**唯一**出口不再是裸
@@ -176,7 +176,7 @@ export async function proxyFetch(
       throw new BrokerFetchRejected(assembled.reason);
     }
 
-    // ④ 出网（seam）+ ⑤ 吃 Set-Cookie。
+    // ④ 出网（seam）。
     const treq: TransportRequest = {
       url: assembled.url ?? currentUrl,
       method: assembled.method,
@@ -186,10 +186,14 @@ export async function proxyFetch(
     // 预算必须在每个真实 hop 出网前预留；重定向与并发 ctx.fetch 共用宿主执行级计数器。
     deps.reserveRequest?.();
     const resp = await transport.fetch(treq, deps.signal);
+    // ADR-009 §2.5 修订：transport 晚到后必须先观察取消；在任何 cookie/query/raw/firewall
+    // 副作用之前拒绝，避免已取消的 302 推进核心状态或下一跳（红线 #1）。
+    if (deps.signal?.aborted) {
+      throw new BrokerFetchRejected("cancelled");
+    }
     requestCount++;
-    jar.captureSetCookie(resp.setCookie, currentUrl);
 
-    // ⑥ 重定向决策（纯，复用 B3）。deliver/stop → 交付当前响应；follow → 续跳。
+    // ⑤ 重定向决策必须先于响应副作用。blocked 的 status/body/header/Location 均不可交付。
     const rd = decideRedirect({
       status: resp.status,
       location: resp.location,
@@ -198,9 +202,15 @@ export async function proxyFetch(
       hopsSoFar: hops,
       maxHops,
     });
-    if (rd.kind === "deliver" || rd.kind === "stop") {
-      // ⑦ 经统一 firewall choke point 交回 adapter（含 stop：越界/超跳时交付当前响应，其
-      // Location 由 header 脱敏剥除）。无 deps.masker → 空规则透明交付（等价旧 processResponse）。
+    if (rd.kind === "blocked") {
+      throw new BrokerFetchRejected(`redirect_${rd.reason}`);
+    }
+
+    // ADR-009 §2.5：仅 follow/deliver 响应可影响 jar；blocked 响应的 Set-Cookie 必须丢弃。
+    jar.captureSetCookie(resp.setCookie, currentUrl);
+
+    if (rd.kind === "deliver") {
+      // ⑦ 经统一 firewall choke point 交回 adapter。无 deps.masker → 空规则透明交付。
       const masker = deps.masker;
       const firewallInput = {
         raw:

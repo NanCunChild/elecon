@@ -34,7 +34,7 @@ ADR-005/008 已落地 **declarative requestGraph**（旧称 parser 模式）：�
 
    **安全保证不变**：出口仍 fail-closed（白名单外不可达）；数据外泄通道仍被封堵（passthrough URL 也必须在 `network.allow` 内，adapter 无法任意外传）。区别仅在于：不再强制"可达即注入"——这解开了 imperative 多步握手中"挑战端点不应携带凭证"的死结。
 
-5. **响应脱敏在宿主完成后才回交 adapter。** 响应头按 **allowlist** 保留（默认：`Content-Type` / `Content-Length` / `Content-Encoding` / `Date` / `Cache-Control` / `ETag` / `Last-Modified`），**其余一律丢弃**。**重定向由核心自行跟随**（最多 **5 跳**，每跳目标必须仍在 `network.allow` 内，否则停止并返回最后一个合法响应），绝不把中间跳转的 `Location`（可能含 token）暴露给 adapter。**body 透传**——响应体内可能回显 CSRF token 等凭证等价物，这是**已接受的风险**：body 格式不统一（JSON / HTML / 二进制），通用脱敏不可行；缓解靠仅官方签名（§2.6）+ 人工代码审查 + **后续计划的 pattern-based 后置审计**（对 adapter 产出做 token-pattern 扫描告警，非阻断）。
+5. **响应脱敏在宿主完成后才回交 adapter。** 响应头按 **allowlist** 保留（默认：`Content-Type` / `Content-Length` / `Content-Encoding` / `Date` / `Cache-Control` / `ETag` / `Last-Modified`），**其余一律丢弃**。**重定向由核心自行跟随**（最多 **5 跳**，每跳目标必须仍在 `network.allow` 内）；越界、超跳或非空但不可解析的 `Location` 按 §2.5 **security-blocked，整次 fetch 拒绝且当前响应不可交付**，绝不把中间跳转的 `Location`（可能含 token）或 blocked 响应的任何部分暴露给 adapter。**body 透传**只适用于正常 deliver 响应——响应体内可能回显 CSRF token 等凭证等价物，这是**已接受的风险**：body 格式不统一（JSON / HTML / 二进制），通用脱敏不可行；缓解靠仅官方签名（§2.6）+ 人工代码审查 + **后续计划的 pattern-based 后置审计**（对 adapter 产出做 token-pattern 扫描告警，非阻断）。
 
 6. **HTTP 错误响应（含 401）透传给 adapter，imperative adapter 自行处理。** broker 完成脱敏后，**原始 HTTP status code**（包括 401/403/5xx）直接回交 adapter——adapter 可据此决定重试、回退、或返回错误。broker **不拦截 401 做自动重登**（那是 ADR-012 §2.5 生命周期的职责，由核心在 adapter 执行结束后按需触发，不在单次 `ctx.fetch` 调用内联）。declarative 的 401 处理待定（核心代取时遇到 401 的策略由 declarative 设计另行定义）。
 
@@ -44,7 +44,7 @@ ADR-005/008 已落地 **declarative requestGraph**（旧称 parser 模式）：�
 
 9. **执行落点：client-direct 或 campus-relay，永不 public。** 客户端用设备本地保管的凭证直连；校外私密数据走 `server/src/campus` 校内授权中继。`server/src/public` 哑服务**永不**参与 imperative 凭证注入（红线 #2：公网零凭证）。envelope `source.origin` 据此标 `client-direct` / `campus-relay`。
 
-10. **宿主主动取消 in-flight transport 请求（rev-4 新增，见 §2.9）。** 单请求超时 / 累计网络超时 / 请求数超限 / body 超限 / 执行级 fatal 任一触发时，宿主**主动中止**对应的上游请求（不只是竞速丢弃 Promise），并取消该次执行所有仍在飞行的 transport 请求。这封堵 rev-2 的隐患——"超时只是 race，上游请求未必被取消"（[`adr_014`](./adr_014_client_host_fn.md) §4.7 已列为后续项，本修订认领）。
+10. **宿主主动取消 in-flight transport 请求（rev-4 新增，rev-5 补强顺序，见 §2.5/§2.9）。** 单请求超时 / 累计网络超时 / 请求数超限 / body 超限 / 执行级 fatal 任一触发时，宿主**主动中止**对应的上游请求（不只是竞速丢弃 Promise），并取消该次执行所有仍在飞行的 transport 请求。transport 即使竞态晚到响应，宿主也必须在任何 cookie/query/raw/firewall 副作用与 redirect 下一跳之前重新检查 cancellation，已取消即稳定拒绝。这封堵 rev-2 的隐患——"超时只是 race，上游请求未必被取消"（[`adr_014`](./adr_014_client_host_fn.md) §4.7 已列为后续项，本修订认领）。
 
 ### 2.1 凭证注入与脱敏的边界（数据流）
 
@@ -56,8 +56,9 @@ adapter(QuickJS)                 可信核心 / Broker(宿主)              校�
   │                               │    是→注入对应凭证（adapter 不可见）
   │                               │    否→passthrough（不注入，仅放行）
   │                               │ 3) 发起真实请求、自行跟随重定向（max 5 跳，每跳须仍在 allow 内）──▶ │
-  │                               │ 4) 剥 Set-Cookie → per-execution jar（adapter 不可见）◀─ │
-  │                               │ 5) 剥 Auth 回显 / 响应头 allowlist 过滤
+  │                               │ 4) 先检查 cancel + redirect decision；blocked→整次拒绝、零响应副作用
+  │                               │ 5) 仅 follow/deliver：Set-Cookie → per-execution jar（adapter 不可见）
+  │                               │ 6) deliver：剥 Auth 回显 / 响应头 allowlist 过滤
   │  ◀── 脱敏后的 Response ─────── │
   │  （含原始 status code，如 401） │
   │  归一化 → 标准 schema 产出      │
@@ -152,6 +153,26 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 
 3. **反爬挑战由 imperative adapter 处理（official 独占）。** 解析内联 JS 算 answer、伪造浏览器指纹，**超出"薄归一化"**，天然属于 imperative adapter 的职责（ADR-002 official 独占 imperative）。典型流程：adapter `ctx.fetch` 挑战端点（passthrough，不注入凭证）→ 解析 challenge → `ctx.fetch` 提交 answer → per-execution jar 自动带上 origin 下发的 cookie → 后续请求正常走凭证注入。对公开数据，campus-relay 侧的 adapter 执行结果可经**服务端 public 缓存**（ADR-000 §2.1）分发——public 服务器本身**不执行 adapter 也不持凭证**（红线 #2），只缓存已归一化的产出。逆向期的 `verify=False`（关 TLS 校验）一类手段**禁止进标准 adapter**——TLS 必须校验（transport 不 MITM，ADR-003 §2.3）。
 
+### 2.5 重定向终止与 security-blocked 响应（rev-5，待人工复核）
+
+> **本节明确修订 rev-1「越界时停止并返回最后一个合法响应」的旧语义。** 该旧语义会把本应作为安全判定输入的 3xx 响应继续送入 cookie jar、query harvest、raw callback、delivery firewall，且未来调用方可能把脱敏后的 302 当普通响应交给 adapter；这与红线 #1 的最小暴露原则冲突。本修订触核心/凭证承重路径，代码与测试仍须人工 + 安全清单签收。
+
+单跳纯决策只有三类结果：
+
+- **`deliver`**：非自动跟随状态（包括 300、304）正常交付；301/302/303/307/308 的 `Location` 为 `null` 或空字符串时也视为 origin 的正常 non-follow terminal response，正常交付。
+- **`follow`**：301/302/303/307/308 携带非空、可解析且仍在 `network.allow` 内的 `Location`，并且未达到 max hops；核心跟随。307/308 保留方法，其余转 GET。
+- **`blocked`**：非空 `Location` 不可解析、解析后越出 `network.allow`、或达到 max hops。它是 **security rejection，不是可交付 stop**。
+
+`blocked` 的强制语义：
+
+1. proxy 抛稳定 `BrokerFetchRejected`，reason 只需稳定包含 redirect 原因（`outside_allow` / `max_hops` / `unresolvable_location`），不返回 `Response`。
+2. adapter 不得取得 blocked 响应的 status、body、header、`Location` 或其任何投影；driver 的 blocked outcome 在类型上不得携带这些响应字段，避免未来误交付。
+3. blocked 响应不得调用 delivery firewall / `processResponse` / `onRawResponse` / `onRedirectSettled`，不得 capture `Set-Cookie`，不得 query harvest。
+4. transport resolve 后、任何 cookie/query/raw/firewall 副作用之前，必须重新检查 cancellation/abort。若已取消，抛稳定 `BrokerFetchRejected`；晚到 302 不得产生核心副作用或启动下一跳。
+5. `follow` 与 `deliver` 仍按原语义 capture `Set-Cookie`；只有确定 `follow` 后才 query harvest。该顺序既保留正常多步握手，又保证 blocked/cancelled 响应零核心副作用。
+
+🔒 本顺序直接保护凭证与等价物边界（ADR-009 §2.1、红线 #1）：不能依赖后续 header 脱敏来把 security-blocked 响应“洗成可交付”，因为 cookie、query、raw/masker 等核心副作用发生在 adapter 可见性之前，同样属于必须 fail-closed 的安全面。
+
 ### 2.9 宿主侧响应 body 上限 + transport 取消语义（rev-4，已复核并接受）
 
 > **本节是对 rev-2 决策点 8 的已接受修订。** 触传输 / 核心承重路径（红线 #1 数据流 + 资源耗尽面），按 AGENTS.md §1 **AI 不得独自闭环**：本节由 AI 起草（跟踪 #79 P0-3），已完成人工复核并接受；后续实现仍须人工 + 安全清单复核。
@@ -178,7 +199,7 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 ## 3. 已知约束与风险（Consequences，草案）
 
 1. **这是最高风险路径（红线 #1）。** 实现与测试**不得由 AI 独自闭环**；需安全检查清单 + 至少 1 名人工审阅（git.md §3 分级审查）。
-2. **脱敏覆盖面：请求头/响应头已闭合，响应体为已接受风险 + 后置审计计划。** 出站请求头（§2.3）和响应头（§2.5）均走 allowlist、默认丢弃；重定向由核心跟随不暴露（max 5 跳 + 每跳白名单校验）。**响应体透传是已接受的风险**（§2.5）：body 格式不统一，通用脱敏不可行；缓解靠仅官方签名 + 人工代码审查。**后续计划 pattern-based 后置审计**：对 adapter 的最终产出（归一化后的 envelope）做 token-pattern 扫描（正则匹配已知凭证格式），**告警但不阻断**——发现可疑泄露后触发人工复查，不影响正常执行。需维护一份"已知泄露向量"清单并随实现增补。
+2. **脱敏覆盖面：请求头/响应头已闭合，正常 deliver 响应体为已接受风险 + 后置审计计划。** 出站请求头（§2.3）和响应头（决策点 5）均走 allowlist、默认丢弃；重定向由核心跟随不暴露（§2.5：max 5 跳 + 每跳白名单校验，security-blocked 响应完全不交付）。**正常 deliver 响应体透传是已接受的风险**：body 格式不统一，通用脱敏不可行；缓解靠仅官方签名 + 人工代码审查。**后续计划 pattern-based 后置审计**：对 adapter 的最终产出（归一化后的 envelope）做 token-pattern 扫描（正则匹配已知凭证格式），**告警但不阻断**——发现可疑泄露后触发人工复查，不影响正常执行。需维护一份"已知泄露向量"清单并随实现增补。
 3. **恶意/被攻破 adapter 的数据外泄面。** adapter 能读解析前私密响应；缓解靠：①出口白名单 fail-closed（§2.4）②出站请求头净化（§2.3）③仅官方签名（§2.6）④人工审查⑤（可选）出口审计日志。
 4. **请求 body 外泄向量（已接受风险）。** adapter 控制 `ctx.fetch` 的请求 body（POST/PUT），理论上可将从私密响应中解析到的敏感数据编码进请求体，发往 passthrough 端点（该端点在白名单内但不注入凭证）。**缓解**：① passthrough 端点仍须声明于 `network.allow`，**由签名覆盖、CI 静态审计、人工 review 三重把关**——不可能偷偷加入一个 attacker-controlled 的 passthrough URL；② 仅官方签名 adapter 可跑 imperative（§2.6），代码审查覆盖所有出站路径；③ 后续 pattern-based 后置审计可扩展至检查**出站请求 body** 中的 token 模式。此向量与响应 body 透传（§3.2）对称——均是"仅官方签名 + code review"兜底的已接受残余风险。
 5. **契约影响（红线 #6）。** imperative 需声明凭证作用域（§2.3 草图），涉及**扩展 manifest schema** → 属契约改动，须与 ADR-001 协调、走独立 ADR 且保持向后兼容，**不在本 ADR 内落地**。
@@ -193,7 +214,7 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 
 > 安全敏感项标：
 
-- 宿主 Broker：`ctx.fetch` 代理 + 白名单匹配（uri-template）+ **inject/passthrough 分流** + 凭证注入（§2.3 凭证绑定）+ 出站请求头净化（§2.3）+ 响应头 allowlist 脱敏（§2.5）+ **重定向跳数限制 + 每跳白名单校验**。客户端（Dart 核心）与服务端（`server/src/campus`）各一份，**共享同一净化/脱敏规格**。
+- 宿主 Broker：`ctx.fetch` 代理 + 白名单匹配（uri-template）+ **inject/passthrough 分流** + 凭证注入（§2.3 凭证绑定）+ 出站请求头净化（§2.3）+ 响应头 allowlist 脱敏（决策点 5）+ **§2.5 重定向跳数限制、每跳白名单校验与 blocked 零副作用拒绝**。客户端（Dart 核心）与服务端（`server/src/campus`）各一份，**共享同一净化/脱敏规格**。
 - **per-execution cookie jar**：仅限单次执行、不落核心凭证库、不跨执行、scope 受 network.allow 约束；与 broker 凭证注入严格分离。**两分区**：broker 注入区（凭证背书、adapter 只读）+ ephemeral 区（§2.4 修订，adapter 经 `setEphemeralCookie` 写、仅 passthrough、不收割）。
 - **契约改动（§2.4 修订连带，红线 #6）**：`contract/adapter-sdk/types.d.ts` 的 `CtxImperative` 增 `setEphemeralCookie(name, value, { domain, path? })`，**纯新增、向后兼容**；须待本修订经人工 + 安全清单复核后随 B4 一并落地（属 Gate B，不阻塞 Gate A 的 broker 核心工作）。
 - 客户端运行时：`adapter_runtime.dart` 增 imperative（异步 handler、job queue pump、网络/并发限额 §2.8）；`ctx.fetch` 经边界回调到 Dart 宿主。
@@ -219,3 +240,4 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 | 2026-06-15 | rev-3（已接受，PR #25）| 增 §2.4「执行内 ephemeral cookie 写回通道」+ 窄 API `ctx.setEphemeralCookie`——解 XJT body-token 缺口（证据 `adapters_tests/XJTU/dean/pac.txt`）。四重栅栏：仅 passthrough origin、不覆盖凭证、永不收割、执行即弃。§2.3 剥除规则不变（纵深防御）。触红线 #1/#6。契约改动见 §4（Gate B） |
 | 2026-06-16 | rev-3a（editorial，B4 计划拍板）| §2.4 四重栅栏违例处置从「抛结构化权限错误」修正为「静默丢弃 + ctx.log("warn")、不抛错」——理由：不给 adapter 探测栅栏边界的异常信号（同 B1 纵深防御哲学）。语义不变（写入仍被拒绝、绝不被 honor），仅实现行为明确化 |
 | 2026-07-04 | **rev-4（已复核并接受，#79 P0-3）** | **推翻 rev-2 决策点 8「body 不设独立上限」**：新增 §2.9——宿主 transport 层强制单响应 body 字节上限（`Content-Length` 预检 + 流式累计上限权威闸门，超限 `body_limit` + fail 不收割，占位 ~8 MiB 纳入 §2.8 校准）+ `Transport.fetch` 增 `AbortSignal`/cancel token、限额/fatal 时主动取消所有 in-flight 上游请求（认领 ADR-014 §4.7）；决策点 8/10 与 §4 同步。理由：宿主在字节进 QuickJS 前已整体读入宿主堆，QuickJS OOM 兜底护不住宿主 transport 阶段。**安全不变量不变**（不触注入/脱敏/白名单），仅加资源闸门 + 取消。 |
+| 2026-08-07 | **rev-5（待人工复核，P0-05）** | **推翻 rev-1「越界/超跳停止并返回当前响应」**：新增 §2.5，将 outside allow / max hops / 非空不可解析 Location 明确定义为不可交付 `blocked`；null/空 Location 与 300/304 保持正常 deliver；blocked 抛稳定 `BrokerFetchRejected`，不触发 cookie/query/raw/firewall/processResponse，不返回响应。补 transport 晚到后的 cancellation-before-side-effects 顺序。触红线 #1，代码、golden 与测试待人工安全签收；planning 状态不在本修订中变更。 |

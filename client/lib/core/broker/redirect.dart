@@ -4,9 +4,9 @@
 /// 由 `contract/golden/broker/redirect.json` 共享向量钉死两端一致（ADR-001 §8）。
 ///
 /// 核心**自行**跟随重定向；adapter 全程**看不到中间跳转**：
-///   - **每跳须仍在 `network.allow` 内**，越界即停止、交付当前响应（中间 Location 可能含
-///     token，跟随出 allow = 数据外泄面，红线 #1）。
-///   - **最多 `maxHops` 跳**（默认 5）；超限即停。
+///   - **每跳须仍在 `network.allow` 内**，越界即安全拒绝，当前响应不可交付（ADR-009 §2.5；
+///     中间 Location 可能含 token，跟随或交付都会扩大数据外泄面，红线 #1）。
+///   - **最多 `maxHops` 跳**（默认 5）；超限即安全拒绝。
 ///   - **中间 Location 绝不外泄**：driver 只返回**最终**响应；`FollowOutcome` 结构上无
 ///     location 字段。
 ///
@@ -27,8 +27,10 @@ const Set<int> _redirectStatuses = {301, 302, 303, 307, 308};
 ///      会话，导致后续 clean-URL 请求丢会话（ehall jwapp 403）。剥离后落到干净 URL
 ///      触发 `Set-Cookie`，会话回归 CookieJar（核心持有，adapter 全程不见）。
 /// 只匹配矩阵参数形态（分号前缀），不动查询串 `?jsessionid=`。
-final RegExp _urlRewrittenSessionParam =
-    RegExp(r';jsessionid=[^/?#;]*', caseSensitive: false);
+final RegExp _urlRewrittenSessionParam = RegExp(
+  r';jsessionid=[^/?#;]*',
+  caseSensitive: false,
+);
 
 /// 默认最大跳数（ADR-009 §2.5）。
 const int defaultMaxRedirects = 5;
@@ -81,25 +83,28 @@ class FollowDecision extends RedirectDecision {
   final String method;
 
   @override
-  Map<String, Object?> toJson() =>
-      {'kind': 'follow', 'nextUrl': nextUrl, 'method': method};
+  Map<String, Object?> toJson() => {
+    'kind': 'follow',
+    'nextUrl': nextUrl,
+    'method': method,
+  };
 }
 
-/// 想跟随但被策略拦截 → 停止，交付当前响应。
+/// 想跟随但被安全策略拦截 → 整次 fetch 拒绝，当前响应不可交付。
 /// `reason` ∈ {`max_hops`, `outside_allow`, `unresolvable_location`}。
-class StopDecision extends RedirectDecision {
-  const StopDecision(this.reason);
+class BlockedDecision extends RedirectDecision {
+  const BlockedDecision(this.reason);
 
   final String reason;
 
   @override
-  Map<String, Object?> toJson() => {'kind': 'stop', 'reason': reason};
+  Map<String, Object?> toJson() => {'kind': 'blocked', 'reason': reason};
 }
 
 /// 单跳重定向决策（纯函数）。
 ///
-/// 顺序：非重定向→deliver；超跳数→stop(max_hops)；Location 不可解析→stop；
-/// 解析后越 allow→stop(outside_allow)；否则 follow（307/308 保留方法，余者转 GET）。
+/// 顺序：非重定向/Location null 或空→deliver；超跳数→blocked(max_hops)；
+/// 非空 Location 不可解析→blocked；解析后越 allow→blocked(outside_allow)；否则 follow。
 RedirectDecision decideRedirect(RedirectInput input) {
   final status = input.status;
   final location = input.location;
@@ -110,23 +115,23 @@ RedirectDecision decideRedirect(RedirectInput input) {
     return const DeliverDecision();
   }
   if (input.hopsSoFar >= input.maxHops) {
-    return const StopDecision('max_hops');
+    return const BlockedDecision('max_hops');
   }
 
   final String nextUrl;
   try {
     final resolved = Uri.parse(input.currentUrl).resolve(location);
     if (resolved.scheme.isEmpty || resolved.host.isEmpty) {
-      return const StopDecision('unresolvable_location');
+      return const BlockedDecision('unresolvable_location');
     }
     // ADR-027：剥离 URL 重写会话参数（在 allow 校验前，使校验作用于干净 URL）。
     nextUrl = resolved.toString().replaceAll(_urlRewrittenSessionParam, '');
   } catch (_) {
-    return const StopDecision('unresolvable_location');
+    return const BlockedDecision('unresolvable_location');
   }
 
   if (!urlCoveredByAllow(nextUrl, input.allow)) {
-    return const StopDecision('outside_allow');
+    return const BlockedDecision('outside_allow');
   }
 
   final method = status == 307 || status == 308 ? 'preserve' : 'get';
@@ -146,21 +151,28 @@ abstract class RedirectFetcher {
   Future<RedirectHop> fetch(String url, String method);
 }
 
-/// 跟随结果。**结构上不含任何 Location / 中间 URL**——「中间 Location 不外泄」的体现。
-class FollowOutcome {
-  const FollowOutcome({
+/// 跟随结果。blocked 分支在类型上不携带响应 status/body/header/Location，避免未来误交付。
+sealed class FollowOutcome {
+  const FollowOutcome({required this.hops});
+
+  final int hops;
+}
+
+class DeliverFollowOutcome extends FollowOutcome {
+  const DeliverFollowOutcome({
     required this.finalUrl,
     required this.status,
-    required this.hops,
-    required this.stopReason,
+    required super.hops,
   });
 
   final String finalUrl;
   final int status;
-  final int hops;
+}
 
-  /// null = 正常交付；否则为被拦截的停止原因。
-  final String? stopReason;
+class BlockedFollowOutcome extends FollowOutcome {
+  const BlockedFollowOutcome({required this.reason, required super.hops});
+
+  final String reason;
 }
 
 /// 核心自跟随重定向（异步驱动）。只返回**最终**响应的元信息；中间响应/Location 丢弃。
@@ -177,25 +189,26 @@ Future<FollowOutcome> followRedirects(
 
   while (true) {
     final hop = await fetcher.fetch(url, method);
-    final decision = decideRedirect(RedirectInput(
-      status: hop.status,
-      location: hop.location,
-      currentUrl: url,
-      allow: allow,
-      hopsSoFar: hops,
-      maxHops: mh,
-    ));
+    final decision = decideRedirect(
+      RedirectInput(
+        status: hop.status,
+        location: hop.location,
+        currentUrl: url,
+        allow: allow,
+        hopsSoFar: hops,
+        maxHops: mh,
+      ),
+    );
 
     if (decision is DeliverDecision) {
-      return FollowOutcome(
-          finalUrl: url, status: hop.status, hops: hops, stopReason: null);
+      return DeliverFollowOutcome(
+        finalUrl: url,
+        status: hop.status,
+        hops: hops,
+      );
     }
-    if (decision is StopDecision) {
-      return FollowOutcome(
-          finalUrl: url,
-          status: hop.status,
-          hops: hops,
-          stopReason: decision.reason);
+    if (decision is BlockedDecision) {
+      return BlockedFollowOutcome(reason: decision.reason, hops: hops);
     }
 
     final follow = decision as FollowDecision;

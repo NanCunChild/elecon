@@ -17,13 +17,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'utils/test_utils.dart';
 
 RedirectInput _inputFromJson(Map<String, dynamic> i) => RedirectInput(
-      status: i['status'] as int,
-      location: i['location'] as String?,
-      currentUrl: i['currentUrl'] as String,
-      allow: (i['allow'] as List).cast<String>(),
-      hopsSoFar: i['hopsSoFar'] as int,
-      maxHops: i['maxHops'] as int,
-    );
+  status: i['status'] as int,
+  location: i['location'] as String?,
+  currentUrl: i['currentUrl'] as String,
+  allow: (i['allow'] as List).cast<String>(),
+  hopsSoFar: i['hopsSoFar'] as int,
+  maxHops: i['maxHops'] as int,
+);
 
 class _ScriptedFetcher implements RedirectFetcher {
   _ScriptedFetcher(this.script);
@@ -43,7 +43,9 @@ void main() {
 
     for (final c in cases) {
       test(c['name'] as String, () {
-        final decision = decideRedirect(_inputFromJson(c['input'] as Map<String, dynamic>));
+        final decision = decideRedirect(
+          _inputFromJson(c['input'] as Map<String, dynamic>),
+        );
         expect(decision.toJson(), equals(c['expected']));
       });
     }
@@ -54,37 +56,60 @@ void main() {
 
     test('链路跟随到最终 200（含一跳相对 Location）', () async {
       final chain = _ScriptedFetcher({
-        'https://h.edu.cn/a': const RedirectHop(status: 302, location: 'https://h.edu.cn/b'),
+        'https://h.edu.cn/a': const RedirectHop(
+          status: 302,
+          location: 'https://h.edu.cn/b',
+        ),
         'https://h.edu.cn/b': const RedirectHop(status: 302, location: '/c'),
         'https://h.edu.cn/c': const RedirectHop(status: 200, location: null),
       });
-      final out = await followRedirects('https://h.edu.cn/a', chain, allow: allow);
-      expect(out.finalUrl, 'https://h.edu.cn/c');
-      expect(out.status, 200);
-      expect(out.hops, 2);
-      expect(out.stopReason, isNull);
+      final out = await followRedirects(
+        'https://h.edu.cn/a',
+        chain,
+        allow: allow,
+      );
+      expect(out, isA<DeliverFollowOutcome>());
+      final delivered = out as DeliverFollowOutcome;
+      expect(delivered.finalUrl, 'https://h.edu.cn/c');
+      expect(delivered.status, 200);
+      expect(delivered.hops, 2);
     });
 
-    test('自循环 → 触顶 maxHops 停止', () async {
+    test('自循环 → 触顶 maxHops blocked', () async {
       final loop = _ScriptedFetcher({
-        'https://h.edu.cn/loop':
-            const RedirectHop(status: 302, location: 'https://h.edu.cn/loop'),
+        'https://h.edu.cn/loop': const RedirectHop(
+          status: 302,
+          location: 'https://h.edu.cn/loop',
+        ),
       });
-      final out = await followRedirects('https://h.edu.cn/loop', loop, allow: allow, maxHops: 5);
-      expect(out.stopReason, 'max_hops');
-      expect(out.hops, 5);
+      final out = await followRedirects(
+        'https://h.edu.cn/loop',
+        loop,
+        allow: allow,
+        maxHops: 5,
+      );
+      expect(out, isA<BlockedFollowOutcome>());
+      final blocked = out as BlockedFollowOutcome;
+      expect(blocked.reason, 'max_hops');
+      expect(blocked.hops, 5);
     });
 
-    test('越 allow → 停止于 0 跳，交付当前 3xx（Location 不外泄）', () async {
+    test('越 allow → blocked，不携带当前 3xx 可交付元数据', () async {
       final evil = _ScriptedFetcher({
-        'https://h.edu.cn/a':
-            const RedirectHop(status: 302, location: 'https://evil.example.com/x'),
+        'https://h.edu.cn/a': const RedirectHop(
+          status: 302,
+          location: 'https://evil.example.com/x',
+        ),
       });
-      final out = await followRedirects('https://h.edu.cn/a', evil, allow: allow);
-      expect(out.finalUrl, 'https://h.edu.cn/a');
-      expect(out.status, 302);
-      expect(out.hops, 0);
-      expect(out.stopReason, 'outside_allow');
+      final out = await followRedirects(
+        'https://h.edu.cn/a',
+        evil,
+        allow: allow,
+      );
+      expect(out, isA<BlockedFollowOutcome>());
+      final blocked = out as BlockedFollowOutcome;
+      expect(blocked.reason, 'outside_allow');
+      expect(blocked.hops, 0);
     });
   });
 }

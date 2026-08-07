@@ -8,6 +8,8 @@
 ///   运行：cd client && fvm flutter test test/broker_fetch_proxy_test.dart
 library;
 
+import 'dart:async';
+
 import 'package:elecon/core/broker/assemble.dart';
 import 'package:elecon/core/broker/cookie_jar.dart';
 import 'package:elecon/core/broker/fetch_proxy.dart';
@@ -16,6 +18,20 @@ import 'package:elecon/core/broker/harvest.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'utils/test_utils.dart';
+
+class _DeferredTransport implements Transport {
+  final completer = Completer<TransportResponse>();
+  final seen = <TransportRequest>[];
+
+  @override
+  Future<TransportResponse> fetch(
+    TransportRequest req, {
+    TransportCancelToken? cancelToken,
+  }) {
+    seen.add(req);
+    return completer.future;
+  }
+}
 
 void main() {
   group('B6b-Dart proxyFetch（fake transport，与 TS driver 对齐）', () {
@@ -232,28 +248,94 @@ void main() {
       );
     });
 
-    test('重定向越出 allow → stop，交付当前响应，Location 脱敏剥除', () async {
+    test('重定向越出 allow → blocked，响应与 cookie/query/raw callbacks 全不可见', () async {
       final view = const BrokerManifestView(allow: ['https://h.edu.cn/*']);
+      final jar = CookieJar();
+      final harvested = <String>[];
+      var rawCalls = 0;
+      var settledCalls = 0;
       final transport = FakeTransport([
         const TransportResponse(
           status: 302,
-          location: 'https://evil.example.com/grab?t=secret',
-          headers: {'Location': 'https://evil.example.com/grab?t=secret'},
+          location: 'https://evil.example.com/grab?ticket=opaque',
+          headers: {
+            'Location': 'https://evil.example.com/grab?ticket=opaque',
+            'ETag': 'visible-if-delivered',
+          },
+          setCookie: ['blocked=must-not-stick; Path=/'],
+          body: '{poison-not-json',
         ),
       ]);
-      final out = await proxyFetch(
-        'https://h.edu.cn/start',
-        const RequestInit(),
-        FetchProxyDeps(
-          view: view,
-          resolver: FakeResolver({}),
-          jar: CookieJar(),
-          transport: transport,
+      await expectLater(
+        proxyFetch(
+          'https://h.edu.cn/start',
+          const RequestInit(),
+          FetchProxyDeps(
+            view: view,
+            resolver: FakeResolver({}),
+            jar: jar,
+            transport: transport,
+            queryHarvest: QueryHarvestTarget(
+              view: const BrokerManifestView(
+                allow: ['https://evil.example.com/*'],
+                credentials: {
+                  'ticket': CredentialDecl(
+                    scope: ['https://evil.example.com/*'],
+                    type: 'query',
+                    queryParam: 'ticket',
+                  ),
+                },
+              ),
+              put: (entry) => harvested.add(entry.value),
+              schoolId: 'school',
+              now: () => 1,
+            ),
+            onRawResponse: (_, _, _) => rawCalls++,
+            onRedirectSettled: (_) => settledCalls++,
+          ),
+        ),
+        throwsA(
+          isA<BrokerFetchRejected>().having(
+            (e) => e.reason,
+            'reason',
+            'redirect_outside_allow',
+          ),
         ),
       );
-      expect(out.status, 302);
-      expect(out.requestCount, 1);
-      expect(out.headers.containsKey('Location'), isFalse);
+      expect(transport.seen, hasLength(1));
+      expect(jar.selectForSend('https://h.edu.cn/next'), isEmpty);
+      expect(harvested, isEmpty);
+      expect(rawCalls, 0);
+      expect(settledCalls, 0);
+    });
+
+    test('max hops 是 BrokerFetchRejected，不交付 302', () async {
+      await expectLater(
+        proxyFetch(
+          'https://h.edu.cn/start',
+          const RequestInit(),
+          FetchProxyDeps(
+            view: const BrokerManifestView(allow: ['https://h.edu.cn/*']),
+            resolver: FakeResolver({}),
+            jar: CookieJar(),
+            transport: FakeTransport([
+              const TransportResponse(
+                status: 302,
+                location: 'https://h.edu.cn/next',
+                body: 'poison',
+              ),
+            ]),
+            maxHops: 0,
+          ),
+        ),
+        throwsA(
+          isA<BrokerFetchRejected>().having(
+            (e) => e.reason,
+            'reason',
+            'redirect_max_hops',
+          ),
+        ),
+      );
     });
 
     test('仅收割通过 allow 且确定跟随的 query credential 重定向目标', () async {
@@ -297,6 +379,35 @@ void main() {
       expect(entries, [(ref: 'card', value: 'opaque')]);
       expect(transport.seen[1].url, contains('openid=opaque'));
       expect(transport.seen[1].logUrl, 'https://card.h.edu.cn/home');
+    });
+
+    test('302 无 Location 正常 deliver，仍捕获 Set-Cookie', () async {
+      const view = BrokerManifestView(allow: ['https://h.edu.cn/*']);
+      final jar = CookieJar();
+      final out = await proxyFetch(
+        'https://h.edu.cn/terminal',
+        const RequestInit(),
+        FetchProxyDeps(
+          view: view,
+          resolver: FakeResolver({}),
+          jar: jar,
+          transport: FakeTransport([
+            const TransportResponse(
+              status: 302,
+              headers: {'ETag': 'terminal-etag'},
+              setCookie: ['terminal=kept; Path=/'],
+              body: 'terminal-body',
+            ),
+          ]),
+        ),
+      );
+      expect(out.status, 302);
+      expect(out.headers['ETag'], 'terminal-etag');
+      expect(out.body, 'terminal-body');
+      expect(
+        jar.selectForSend('https://h.edu.cn/next').single.name,
+        'terminal',
+      );
     });
 
     test('passthrough：ephemeral cookie 写入后在出站携带（XJT body-token 缺口）', () async {
@@ -355,5 +466,71 @@ void main() {
       expect(sent.containsKey('Authorization'), isFalse);
       expect(sent['Accept'], '*/*');
     });
+
+    test(
+      'transport 晚到 302：取消先于 cookie/query/raw/processResponse 且无下一跳',
+      () async {
+        const view = BrokerManifestView(allow: ['https://h.edu.cn/*']);
+        final jar = CookieJar();
+        final harvested = <String>[];
+        final cancelToken = TransportCancelToken();
+        final transport = _DeferredTransport();
+        var rawCalls = 0;
+        var settledCalls = 0;
+        final pending = proxyFetch(
+          'https://h.edu.cn/start',
+          const RequestInit(),
+          FetchProxyDeps(
+            view: view,
+            resolver: FakeResolver({}),
+            jar: jar,
+            transport: transport,
+            cancelToken: cancelToken,
+            queryHarvest: QueryHarvestTarget(
+              view: const BrokerManifestView(
+                allow: ['https://h.edu.cn/*'],
+                credentials: {
+                  'ticket': CredentialDecl(
+                    scope: ['https://h.edu.cn/*'],
+                    type: 'query',
+                    queryParam: 'ticket',
+                  ),
+                },
+              ),
+              put: (entry) => harvested.add(entry.value),
+              schoolId: 'school',
+              now: () => 1,
+            ),
+            onRawResponse: (_, _, _) => rawCalls++,
+            onRedirectSettled: (_) => settledCalls++,
+          ),
+        );
+        cancelToken.cancel();
+        transport.completer.complete(
+          const TransportResponse(
+            status: 302,
+            location: 'https://h.edu.cn/next?ticket=late',
+            headers: {'ETag': 'late-visible'},
+            setCookie: ['late=must-not-stick; Path=/'],
+            body: 'late-poison',
+          ),
+        );
+        await expectLater(
+          pending,
+          throwsA(
+            isA<BrokerFetchRejected>().having(
+              (e) => e.reason,
+              'reason',
+              'cancelled',
+            ),
+          ),
+        );
+        expect(transport.seen, hasLength(1));
+        expect(jar.selectForSend('https://h.edu.cn/next'), isEmpty);
+        expect(harvested, isEmpty);
+        expect(rawCalls, 0);
+        expect(settledCalls, 0);
+      },
+    );
   });
 }

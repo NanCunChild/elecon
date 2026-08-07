@@ -6,8 +6,8 @@
 /// `broker_fetch_proxy_test.dart` 用 fake Transport 驱动集成。
 ///
 /// 流程逐跳：① decideInjection（reject→fail-closed / passthrough / inject）② resolver.get + jar.selectForSend
-/// ③ assembleRequest（净化→叠 broker 凭证→合流 jar cookie）④ transport.fetch ⑤ jar.captureSetCookie
-/// ⑥ decideRedirect 自驱（每跳重做 ①–⑤；中间 Location 绝不外泄）⑦ processResponse 脱敏交回 adapter。
+/// ③ assembleRequest（净化→叠 broker 凭证→合流 jar cookie）④ transport.fetch ⑤取消检查 +
+/// decideRedirect ⑥ follow/deliver 才 capture Set-Cookie ⑦ processResponse 脱敏交回 adapter。
 ///
 /// **复用纯函数 decideRedirect 自驱**而非 followRedirects（后者只回元信息、不带 body、不逐跳重做
 /// 决策 + 捕获 Set-Cookie），与 TS 一致。限额计量口径（计划 §8 #3）：每跳各计一次请求（requestCount，
@@ -152,7 +152,7 @@ class FetchProxyDeps {
   /// 单次 ctx.fetch 的取消信号；运行时在超时/fatal 时主动中止上游。
   final TransportCancelToken? cancelToken;
 
-  /// 🔒 **核心专用**回调：重定向链定型（deliver/stop）时回传**终点 URL**给核心。
+  /// 🔒 **核心专用**回调：重定向链正常 deliver 时回传**终点 URL**给核心。
   /// 仅宿主（核心）可设 `deps`；adapter 无法构造 [FetchProxyDeps]，故不构成对 adapter 的
   /// URL 外泄（红线 #1「中间跳转对 adapter 不可见」不变——本回调不回传中间跳，只回终点）。
   /// 供 SSO 静默换票（ADR-017 §2.2）判定是否抵达目标服务成功页。缺省 null=普通 ctx.fetch 不回传。
@@ -168,7 +168,7 @@ class FetchProxyDeps {
   /// 供 ADR-023 声明式数据流的 `bind` 抽取——`source: header` 须在 allowlist 脱敏前读，
   /// 否则被丢弃。**只有宿主（核心）能构造 [FetchProxyDeps]，adapter 永远拿不到本回调**，
   /// 故不构成对 adapter 的原始响应外泄（红线 #1 边界不变：交回 adapter 的仍是脱敏后响应）。
-  /// 只在链路**定型**（deliver/stop，即将交付）时回传一次，不回传中间跳。缺省 null=不回传。
+  /// 只在链路正常 deliver（即将交付）时回传一次，不回传中间跳/blocked。缺省 null=不回传。
   final void Function(int status, Map<String, String> headers, String? body)?
   onRawResponse;
 
@@ -281,7 +281,7 @@ Future<FetchProxyOutcome> proxyFetch(
       });
     }
 
-    // ④ 出网（seam）+ ⑤ 吃 Set-Cookie。
+    // ④ 出网（seam）。
     if (deps.tryReserveRequest != null && !deps.tryReserveRequest!()) {
       throw const FetchRequestLimitExceeded();
     }
@@ -300,10 +300,14 @@ Future<FetchProxyOutcome> proxyFetch(
       ),
       cancelToken: deps.cancelToken,
     );
+    // ADR-009 §2.5 修订：transport 晚到后必须先观察取消；在任何 cookie/query/raw/processResponse
+    // 副作用之前拒绝，避免已取消的 302 推进核心状态或下一跳（红线 #1）。
+    if (deps.cancelToken?.isCancelled ?? false) {
+      throw const BrokerFetchRejected('cancelled');
+    }
     requestCount++;
-    deps.jar.captureSetCookie(resp.setCookie, currentUrl);
 
-    // ⑥ 重定向决策（纯，复用 B3）。deliver/stop → 交付当前响应；follow → 续跳。
+    // ⑤ 重定向决策必须先于响应副作用。blocked 的 status/body/header/Location 均不可交付。
     final rd = decideRedirect(
       RedirectInput(
         status: resp.status,
@@ -314,13 +318,20 @@ Future<FetchProxyOutcome> proxyFetch(
         maxHops: maxHops,
       ),
     );
-    if (rd is DeliverDecision || rd is StopDecision) {
+    if (rd is BlockedDecision) {
+      throw BrokerFetchRejected('redirect_${rd.reason}');
+    }
+
+    // ADR-009 §2.5：仅 follow/deliver 响应可影响 jar；blocked 响应的 Set-Cookie 必须丢弃。
+    deps.jar.captureSetCookie(resp.setCookie, currentUrl);
+
+    if (rd is DeliverDecision) {
       // 核心专用：回传终点 URL（仅当宿主设了回调；SSO 换票据此判成功页，ADR-017 §2.2）。
       deps.onRedirectSettled?.call(currentUrl);
       // 🔒 核心专用：脱敏**前**回传原始响应给核心，供数据流 bind 抽取（header 源须在
       // allowlist 脱敏前读）。adapter 拿不到本回调；交回 adapter 的仍是下方脱敏后响应。
       deps.onRawResponse?.call(resp.status, resp.headers, resp.body);
-      // ⑦ 脱敏后交回 adapter（含 stop：越界/超跳时交付当前响应，其 Location 由脱敏剥除）。
+      // ⑦ 脱敏后交回 adapter。
       final processed = processResponse(
         RawResponse(
           status: resp.status,

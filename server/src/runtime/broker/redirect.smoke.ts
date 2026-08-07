@@ -2,7 +2,7 @@
  * Broker B3 重定向冒烟测试 —— golden 驱动 decideRedirect + followRedirects driver。
  *
  *   contract/golden/broker/redirect.json  →  decideRedirect  →  逐例等于 expected
- *   followRedirects + fake fetcher         →  链路跟随 / 超跳数 / 越 allow / Location 不外泄
+ *   followRedirects + fake fetcher         →  链路跟随 / blocked 响应无可交付元数据
  *
  *   运行：cd server && npm run smoke:redirect
  *
@@ -65,34 +65,30 @@ async function driverTests(): Promise<void> {
     "https://h.edu.cn/c": { status: 200, location: null },
   });
   assert.deepStrictEqual(await followRedirects("https://h.edu.cn/a", chain, { allow }), {
+    kind: "deliver",
     finalUrl: "https://h.edu.cn/c",
     status: 200,
     hops: 2,
-    stopReason: null,
   });
 
-  // 自循环 → 触顶 maxHops 停止
+  // 自循环 → 触顶 maxHops 安全拒绝，结果不携带被拦响应 status/URL。
   const loop = scriptedFetcher({
     "https://h.edu.cn/loop": { status: 302, location: "https://h.edu.cn/loop" },
   });
   const loopOut = await followRedirects("https://h.edu.cn/loop", loop, { allow, maxHops: 5 });
-  assert.equal(loopOut.stopReason, "max_hops");
-  assert.equal(loopOut.hops, 5);
+  assert.deepStrictEqual(loopOut, { kind: "blocked", reason: "max_hops", hops: 5 });
 
-  // 越 allow → 停止于 0 跳，交付当前 3xx
+  // 越 allow → 安全拒绝，不返回可误交付的当前 3xx。
   const evil = scriptedFetcher({
     "https://h.edu.cn/a": { status: 302, location: "https://evil.example.com/x" },
   });
   const evilOut = await followRedirects("https://h.edu.cn/a", evil, { allow });
-  assert.deepStrictEqual(evilOut, {
-    finalUrl: "https://h.edu.cn/a",
-    status: 302,
-    hops: 0,
-    stopReason: "outside_allow",
-  });
+  assert.deepStrictEqual(evilOut, { kind: "blocked", reason: "outside_allow", hops: 0 });
 
-  // Location 不外泄：FollowOutcome 结构上无 location / 中间 URL 字段
+  // blocked outcome 结构上无 status/body/header/Location/URL。
   assert.ok(!("location" in evilOut), "FollowOutcome 不得含 location 字段");
+  assert.ok(!("status" in evilOut), "blocked FollowOutcome 不得含 status 字段");
+  assert.ok(!("finalUrl" in evilOut), "blocked FollowOutcome 不得含 URL 字段");
 }
 
 async function main(): Promise<void> {

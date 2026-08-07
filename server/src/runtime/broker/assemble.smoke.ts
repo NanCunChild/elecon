@@ -213,29 +213,85 @@ async function driverTests(): Promise<number> {
     checks++;
   }
 
-  // 4. 重定向越出 allow → stop，交付当前响应（其 Location 被脱敏剥除），不再续跳。
+  // 4. 重定向越出 allow → blocked：poison body/ETag/Set-Cookie/query token 全部不可见且零副作用。
   {
     const view: BrokerManifestView = { allow: ["https://h.edu.cn/*"] };
+    const jar = new CookieJar();
+    const harvested: string[] = [];
     const transport = new FakeTransport([
       resp({
         status: 302,
-        location: "https://evil.example.com/grab?t=secret",
-        headers: { Location: "https://evil.example.com/grab?t=secret" },
+        location: "https://evil.example.com/grab?ticket=opaque",
+        headers: { Location: "https://evil.example.com/grab?ticket=opaque", ETag: "visible-if-delivered" },
+        setCookie: ["blocked=must-not-stick; Path=/"],
+        body: "{poison-not-json",
       }),
     ]);
-    const out = await proxyFetch(
-      "https://h.edu.cn/start",
-      {},
-      {
-        view,
-        resolver: new FakeResolver({}),
-        jar: new CookieJar(),
-        transport,
-      },
+    await assert.rejects(
+      proxyFetch(
+        "https://h.edu.cn/start",
+        {},
+        {
+          view,
+          resolver: new FakeResolver({}),
+          jar,
+          transport,
+          queryHarvest: {
+            view: {
+              allow: ["https://evil.example.com/*"],
+              credentials: {
+                ticket: {
+                  scope: ["https://evil.example.com/*"],
+                  type: "query",
+                  queryParam: "ticket",
+                },
+              },
+            },
+            sink: { put: (entry) => harvested.push(entry.value) },
+            schoolId: "school",
+            now: () => 1,
+          },
+          // 若误入 firewall，此 malformed poison body 会触发 MaskerError。
+          masker: {
+            rules: [
+              {
+                id: "poison-guard",
+                capture: { source: "json", path: "$.token", destination: { kind: "redact" } },
+                project: "delete",
+              },
+            ],
+            sink: { put() {} },
+            ctx: { schoolId: "school", now: () => 1 },
+          },
+        },
+      ),
+      (e: unknown) => e instanceof BrokerFetchRejected && e.reason === "redirect_outside_allow",
     );
-    assert.equal(out.status, 302);
-    assert.equal(out.requestCount, 1, "越界跳不发出");
-    assert.equal(out.headers["Location"], undefined, "越界 Location 不得外泄");
+    assert.equal(transport.seen.length, 1, "越界跳不发出");
+    assert.deepStrictEqual(jar.selectForSend("https://h.edu.cn/next"), [], "blocked Set-Cookie 不得入 jar");
+    assert.deepStrictEqual(harvested, [], "blocked Location query 不得收割");
+    checks++;
+  }
+
+  // 4a. max hops 同样是不可交付的安全拒绝，不是可交付 302。
+  {
+    const view: BrokerManifestView = { allow: ["https://h.edu.cn/*"] };
+    await assert.rejects(
+      proxyFetch(
+        "https://h.edu.cn/start",
+        {},
+        {
+          view,
+          resolver: new FakeResolver({}),
+          jar: new CookieJar(),
+          transport: new FakeTransport([
+            resp({ status: 302, location: "https://h.edu.cn/next", body: "poison" }),
+          ]),
+          maxHops: 0,
+        },
+      ),
+      (e: unknown) => e instanceof BrokerFetchRejected && e.reason === "redirect_max_hops",
+    );
     checks++;
   }
 
@@ -276,6 +332,34 @@ async function driverTests(): Promise<number> {
       },
     );
     assert.deepStrictEqual(entries, [{ ref: "card", value: "opaque" }]);
+    checks++;
+  }
+
+  // 4c. 302 无 Location 是正常 terminal deliver，仍捕获 Set-Cookie 并经 firewall 交付。
+  {
+    const view: BrokerManifestView = { allow: ["https://h.edu.cn/*"] };
+    const jar = new CookieJar();
+    const out = await proxyFetch(
+      "https://h.edu.cn/terminal",
+      {},
+      {
+        view,
+        resolver: new FakeResolver({}),
+        jar,
+        transport: new FakeTransport([
+          resp({
+            status: 302,
+            headers: { ETag: "terminal-etag" },
+            setCookie: ["terminal=kept; Path=/"],
+            body: "terminal-body",
+          }),
+        ]),
+      },
+    );
+    assert.equal(out.status, 302);
+    assert.equal(out.headers.ETag, "terminal-etag");
+    assert.equal(out.body, "terminal-body");
+    assert.equal(jar.selectForSend("https://h.edu.cn/next")[0]?.name, "terminal");
     checks++;
   }
 
@@ -322,6 +406,64 @@ async function driverTests(): Promise<number> {
     assert.equal(sent["Cookie"], undefined, "adapter 自设 Cookie 必须剥除");
     assert.equal(sent["Authorization"], undefined, "adapter 自设 Authorization 必须剥除");
     assert.equal(sent["Accept"], "*/*", "allowlist 头保留");
+    checks++;
+  }
+
+  // 7. transport 晚到 302：取消检查先于 cookie/query/firewall，且不得发下一跳。
+  {
+    const view: BrokerManifestView = { allow: ["https://h.edu.cn/*"] };
+    const jar = new CookieJar();
+    const harvested: string[] = [];
+    const controller = new AbortController();
+    let release!: (response: ReturnType<typeof resp>) => void;
+    const seen: unknown[] = [];
+    const transport = {
+      fetch(req: unknown) {
+        seen.push(req);
+        return new Promise<ReturnType<typeof resp>>((resolve) => {
+          release = resolve;
+        });
+      },
+    };
+    const pending = proxyFetch(
+      "https://h.edu.cn/start",
+      {},
+      {
+        view,
+        resolver: new FakeResolver({}),
+        jar,
+        transport,
+        signal: controller.signal,
+        queryHarvest: {
+          view: {
+            allow: view.allow,
+            credentials: {
+              ticket: { scope: view.allow, type: "query", queryParam: "ticket" },
+            },
+          },
+          sink: { put: (entry) => harvested.push(entry.value) },
+          schoolId: "school",
+          now: () => 1,
+        },
+      },
+    );
+    controller.abort();
+    release(
+      resp({
+        status: 302,
+        location: "https://h.edu.cn/next?ticket=late",
+        headers: { ETag: "late-visible" },
+        setCookie: ["late=must-not-stick; Path=/"],
+        body: "late-poison",
+      }),
+    );
+    await assert.rejects(
+      pending,
+      (e: unknown) => e instanceof BrokerFetchRejected && e.reason === "cancelled",
+    );
+    assert.equal(seen.length, 1, "取消后的晚到 302 不得发下一跳");
+    assert.deepStrictEqual(jar.selectForSend("https://h.edu.cn/next"), [], "晚到 Set-Cookie 不得入 jar");
+    assert.deepStrictEqual(harvested, [], "晚到 Location query 不得收割");
     checks++;
   }
 

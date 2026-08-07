@@ -2,9 +2,9 @@
  * Broker 重定向核心跟随（Gate A · B3）—— ADR-009 §2.1 第 3 步 / §2.5。
  *
  * 核心**自行**跟随重定向；adapter 全程**看不到中间跳转**：
- *   - **每跳须仍在 `network.allow` 内**，越界即停止、交付当前响应（绝不跟随出 allow——
- *     中间 `Location` 可能含 token，跟随出 allow = 数据外泄面，红线 #1）。
- *   - **最多 `maxHops` 跳**（默认 5，ADR-009 §2.5），超限即停。
+ *   - **每跳须仍在 `network.allow` 内**，越界即安全拒绝，当前响应不可交付（ADR-009 §2.5；
+ *     中间 `Location` 可能含 token，跟随或交付都会扩大数据外泄面，红线 #1）。
+ *   - **最多 `maxHops` 跳**（默认 5，ADR-009 §2.5），超限即安全拒绝。
  *   - **中间 `Location` 绝不外泄**：driver 只返回**最终**响应；中间响应（及其 Location）丢弃。
  *
  * `decideRedirect` 是纯策略（golden 双跑钉两端一致）；`followRedirects` 是异步驱动，
@@ -43,20 +43,20 @@ export interface RedirectInput {
   maxHops: number;
 }
 
-export type RedirectStopReason = "max_hops" | "outside_allow" | "unresolvable_location";
+export type RedirectBlockReason = "max_hops" | "outside_allow" | "unresolvable_location";
 
 export type RedirectDecision =
   /** 非重定向 / 无 Location → 当前即最终响应，交付 adapter。 */
   | { kind: "deliver" }
   /** 跟随到 nextUrl（已解析为绝对、已过 allow 校验）。 */
   | { kind: "follow"; nextUrl: string; method: "preserve" | "get" }
-  /** 想跟随但被策略拦截 → 停止，交付当前响应（其 Location 由 B2 脱敏剥除）。 */
-  | { kind: "stop"; reason: RedirectStopReason };
+  /** 想跟随但被安全策略拦截 → 整次 fetch 拒绝，当前响应不可交付。 */
+  | { kind: "blocked"; reason: RedirectBlockReason };
 
 /**
  * 单跳重定向决策（纯函数）。
- * 顺序：非重定向→deliver；超跳数→stop(max_hops)；Location 不可解析→stop；
- * 解析后越 allow→stop(outside_allow)；否则 follow（307/308 保留方法，余者转 GET）。
+ * 顺序：非重定向/Location null 或空→deliver；超跳数→blocked(max_hops)；
+ * 非空 Location 不可解析→blocked；解析后越 allow→blocked(outside_allow)；否则 follow。
  */
 export function decideRedirect(input: RedirectInput): RedirectDecision {
   const { status, location, currentUrl, allow, hopsSoFar, maxHops } = input;
@@ -65,7 +65,7 @@ export function decideRedirect(input: RedirectInput): RedirectDecision {
     return { kind: "deliver" };
   }
   if (hopsSoFar >= maxHops) {
-    return { kind: "stop", reason: "max_hops" };
+    return { kind: "blocked", reason: "max_hops" };
   }
 
   let nextUrl: string;
@@ -73,11 +73,11 @@ export function decideRedirect(input: RedirectInput): RedirectDecision {
     // ADR-027：剥离 URL 重写会话参数（在 allow 校验前，使校验作用于干净 URL）。
     nextUrl = new URL(location, currentUrl).href.replace(URL_REWRITTEN_SESSION_PARAM, "");
   } catch {
-    return { kind: "stop", reason: "unresolvable_location" };
+    return { kind: "blocked", reason: "unresolvable_location" };
   }
 
   if (!urlCoveredByAllow(nextUrl, allow)) {
-    return { kind: "stop", reason: "outside_allow" };
+    return { kind: "blocked", reason: "outside_allow" };
   }
 
   const method = status === 307 || status === 308 ? "preserve" : "get";
@@ -96,16 +96,13 @@ export interface RedirectFetcher {
 }
 
 /**
- * 跟随结果。**结构上不含任何 Location / 中间 URL**——「中间 Location 不外泄」的体现：
- * 调用方只拿到最终 URL + 状态 + 跳数（+ 停止原因）。
+ * 跟随结果。**结构上不含任何 Location / 中间 URL**；正常交付才携带最终 URL + status，
+ * blocked 只携带原因 + 跳数。
  */
-export interface FollowOutcome {
-  finalUrl: string;
-  status: number;
-  hops: number;
-  /** null = 正常交付；否则为被拦截的停止原因。 */
-  stopReason: RedirectStopReason | null;
-}
+export type FollowOutcome =
+  | { kind: "deliver"; finalUrl: string; status: number; hops: number }
+  /** blocked 结果刻意不携带响应 status/body/header/Location，避免被未来调用方误交付。 */
+  | { kind: "blocked"; reason: RedirectBlockReason; hops: number };
 
 /**
  * 核心自跟随重定向（异步驱动）。只返回**最终**响应的元信息；中间响应/Location 丢弃。
@@ -133,10 +130,10 @@ export async function followRedirects(
     });
 
     if (decision.kind === "deliver") {
-      return { finalUrl: url, status: hop.status, hops, stopReason: null };
+      return { kind: "deliver", finalUrl: url, status: hop.status, hops };
     }
-    if (decision.kind === "stop") {
-      return { finalUrl: url, status: hop.status, hops, stopReason: decision.reason };
+    if (decision.kind === "blocked") {
+      return { kind: "blocked", reason: decision.reason, hops };
     }
 
     url = decision.nextUrl;
