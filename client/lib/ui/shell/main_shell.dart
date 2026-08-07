@@ -12,7 +12,9 @@ import '../theme/app_theme.dart';
 import '../theme/liquid_glass.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  const MainShell({super.key, this.loadHomeSnapshot});
+
+  final CampusSnapshotLoader? loadHomeSnapshot;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -51,7 +53,10 @@ class _MainShellState extends State<MainShell> {
       extendBody: glassBar != null,
       body: IndexedStack(
         index: _index,
-        children: const [EleconHomePage(), SettingsPage()],
+        children: [
+          EleconHomePage(loadSnapshot: widget.loadHomeSnapshot),
+          const SettingsPage(),
+        ],
       ),
       bottomNavigationBar:
           glassBar ??

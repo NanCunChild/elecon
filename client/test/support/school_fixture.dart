@@ -1,10 +1,14 @@
 import 'package:elecon/catalog/schools.dart';
 
 /// 脱敏、签名 manifest 同形的学校测试夹具；生产代码不内置任何学校认证事实。
-SchoolDescriptor testSchool() => SchoolDescriptor.fromVerifiedManifest({
-  'adapterId': 'school-xidian',
-  'schoolId': 'xidian',
-  'displayName': '测试大学',
+SchoolDescriptor testSchool({
+  String adapterId = 'school-xidian',
+  String schoolId = 'xidian',
+  String displayName = '测试大学',
+}) => SchoolDescriptor.fromVerifiedManifest({
+  'adapterId': adapterId,
+  'schoolId': schoolId,
+  'displayName': displayName,
   'network': {
     'allow': [
       'https://ids.example.edu/*',

@@ -11,6 +11,8 @@ import 'l10n/gen/app_localizations.dart';
 import 'session/session_controller.dart';
 import 'session/session_scope.dart';
 import 'ui/i18n/locale_options.dart';
+import 'ui/home/home_page.dart';
+import 'ui/login/login_flow.dart';
 import 'ui/onboarding/onboarding_page.dart';
 import 'ui/security/hardware_unlock_failed_dialog.dart';
 import 'ui/shell/main_shell.dart';
@@ -62,22 +64,39 @@ Future<AdapterService?> _adapterServiceProvider() async {
 }
 
 class EleconApp extends StatefulWidget {
-  const EleconApp({super.key, this.startupTrace});
+  const EleconApp({
+    super.key,
+    this.startupTrace,
+    this.sessionController,
+    this.loginRunner = runSchoolLogin,
+    this.loadHomeSnapshot,
+  });
 
   final PerfTrace? startupTrace;
+  final SessionController? sessionController;
+  final SchoolLoginRunner loginRunner;
+  final CampusSnapshotLoader? loadHomeSnapshot;
 
   @override
   State<EleconApp> createState() => _EleconAppState();
 }
 
 class _EleconAppState extends State<EleconApp> {
-  late final SessionController _session = SessionController(
-    hardware: const BackedHardwareKeyStore(),
-    blobStoreProvider: _blobStoreProvider,
-    adapterServiceProvider: _adapterServiceProvider,
-  );
+  late final SessionController _session;
   late final ThemeController _theme = ThemeController();
   late final Future<void> _themeLoad = _theme.load();
+
+  @override
+  void initState() {
+    super.initState();
+    _session =
+        widget.sessionController ??
+        SessionController(
+          hardware: const BackedHardwareKeyStore(),
+          blobStoreProvider: _blobStoreProvider,
+          adapterServiceProvider: _adapterServiceProvider,
+        );
+  }
 
   @override
   void dispose() {
@@ -117,6 +136,8 @@ class _EleconAppState extends State<EleconApp> {
                   home: _BootGate(
                     session: _session,
                     startupTrace: widget.startupTrace,
+                    loginRunner: widget.loginRunner,
+                    loadHomeSnapshot: widget.loadHomeSnapshot,
                   ),
                 );
               },
@@ -131,10 +152,17 @@ class _EleconAppState extends State<EleconApp> {
 /// 启动引导门：先跑 [SessionController.bootstrap]（静默续用已持久化的 S 档），
 /// 就绪后进 [_RootGate]。
 class _BootGate extends StatefulWidget {
-  const _BootGate({required this.session, this.startupTrace});
+  const _BootGate({
+    required this.session,
+    required this.loginRunner,
+    this.startupTrace,
+    this.loadHomeSnapshot,
+  });
 
   final SessionController session;
   final PerfTrace? startupTrace;
+  final SchoolLoginRunner loginRunner;
+  final CampusSnapshotLoader? loadHomeSnapshot;
 
   @override
   State<_BootGate> createState() => _BootGateState();
@@ -166,7 +194,10 @@ class _BootGateState extends State<_BootGate> {
         }
         widget.startupTrace?.mark('school_page_ready');
         widget.startupTrace?.finish();
-        return const _RootGate();
+        return _RootGate(
+          loginRunner: widget.loginRunner,
+          loadHomeSnapshot: widget.loadHomeSnapshot,
+        );
       },
     );
   }
@@ -174,11 +205,16 @@ class _BootGateState extends State<_BootGate> {
 
 /// 根路由闸门：未选校 → 开始面板；已选校 → 主壳。随会话状态自动切换。
 class _RootGate extends StatelessWidget {
-  const _RootGate();
+  const _RootGate({required this.loginRunner, this.loadHomeSnapshot});
+
+  final SchoolLoginRunner loginRunner;
+  final CampusSnapshotLoader? loadHomeSnapshot;
 
   @override
   Widget build(BuildContext context) {
     final session = SessionScope.of(context);
-    return session.isConfigured ? const MainShell() : const OnboardingPage();
+    return session.isConfigured
+        ? MainShell(loadHomeSnapshot: loadHomeSnapshot)
+        : OnboardingPage(loginRunner: loginRunner);
   }
 }

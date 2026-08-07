@@ -11,7 +11,9 @@ import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
 
 class OnboardingPage extends StatefulWidget {
-  const OnboardingPage({super.key});
+  const OnboardingPage({super.key, this.loginRunner = runSchoolLogin});
+
+  final SchoolLoginRunner loginRunner;
 
   @override
   State<OnboardingPage> createState() => _OnboardingPageState();
@@ -26,7 +28,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     final selected = _selected;
     if (selected == null) return;
     setState(() => _busy = true);
-    final result = await runSchoolLogin(context, session, selected);
+    final result = await widget.loginRunner(context, session, selected);
     if (!mounted) return;
     setState(() => _busy = false);
 

@@ -177,3 +177,37 @@ jobs:
       - run: flutter pub get
       - name: Release build gate (apk + INTERNET)
         run: bash tool/check_release_gate.sh
+
+  # Android 模拟器关键流程门：脱敏 fixture + 注入边界，不访问任何学校接口。
+  # 入口仍运行真实 EleconApp/启动门/选校页/主壳/首页，仅替换登录与首页数据 I/O。
+  client-android-emulator:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.1
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build the real app flow harness
+        run: flutter build apk --debug --target tool/android_emulator_flow_app.dart
+      - name: Run startup, school, login, and home error flow
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          script: |
+            adb install -r client/build/app/outputs/flutter-apk/app-debug.apk
+            adb shell am start -W dev.nancunchild.elecon/.MainActivity
+            python3 client/tool/android_emulator_flow.py

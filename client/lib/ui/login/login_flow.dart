@@ -14,6 +14,13 @@ import '../../session/session_controller.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import 'webview_login_page.dart';
 
+typedef SchoolLoginRunner =
+    Future<WebViewLoginResult?> Function(
+      BuildContext context,
+      SessionController session,
+      SchoolDescriptor school,
+    );
+
 /// 发起某校登录；成功则刷新会话并返回结果。调用方据返回值提示用户。
 Future<WebViewLoginResult?> runSchoolLogin(
   BuildContext context,
