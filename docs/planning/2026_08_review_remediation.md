@@ -125,24 +125,33 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 
 | ID | TODO | 完成条件 |
 |---|---|---|
-| P3-01 | [ ] 建立 ADR 索引，分别记录 Decision、Landing、Security signoff、Owner、Blocker | README 不再把 Accepted 误写成 Implemented；ADR-013/023/024/026-031 状态一致 |
-| P3-02 | [ ] 更新或归档旧 `docs/architecture.md` 分支快照 | 不再描述旧 adapter 布局、stripEchoes 或过时 ADR 状态；明确代码事实与 ADR 约束关系 |
-| P3-03 | [ ] 更新 README、adapter README、testing rule 和旧 TODO | 修正模板复制命令、“越薄”两轴含义、外部 adapter fixture 路径和 ADR 状态 |
+| P3-01 | [x] 建立 ADR 索引，分别记录 Decision、Landing、Security signoff、Owner、Blocker | README 不再把 Accepted 误写成 Implemented；ADR-013/023/024/026-031 状态一致 |
+| P3-02 | [x] 更新或归档旧 `docs/architecture.md` 分支快照 | 不再描述旧 adapter 布局、stripEchoes 或过时 ADR 状态；明确代码事实与 ADR 约束关系 |
+| P3-03 | [x] 更新 README、adapter README、testing rule 和旧 TODO | 修正模板复制命令、“越薄”两轴含义、外部 adapter fixture 路径和 ADR 状态 |
 | P3-04 | [ ] 为 35 处 schema 字段补 description，并把 `--require-descriptions` 设为 CI 硬门 | codegen check 零缺失；时间、金额、窗口和缺失语义有文档 |
 | P3-05 | [ ] 统一 Money 字段语义，确认哪些域允许负数 | 非负金额有 `minimum:0`；例外有领域说明；ADR-021 状态明确 |
-| P3-06 | [ ] 将 schema behavior golden 从 7/48 扩展到所有 registry emits/params | 覆盖嵌套 required、enum、format、null/缺失、金额、URI 和 params 边界 |
+| P3-06 | [x] 将 schema behavior golden 从 7/48 扩展到所有 registry emits/params | 覆盖嵌套 required、enum、format、null/缺失、金额、URI 和 params 边界 |
 | P3-07 | [ ] 明确 canonical dist，消除 `dist-full`、`dist-xidian`、bootstrap 和 release 多事实源 | CI 检查实际发布 dist 与 bootstrap 字节一致；不再依赖人工记忆 |
 | P3-08 | [ ] 在发版门检查 revocation 新鲜度与 catalog/revocation sequence 单调性 | 过期或倒退时禁止 release；急性吊销流程可演练 |
-| P3-09 | [ ] 修复应用内版本注入 | release tag 与 About 页面一致；构建命令传入 `ELECON_VERSION` 或改用可靠平台版本源 |
-| P3-10 | [ ] 固定 release Flutter 版本，与普通 CI 使用同一 SDK | release 不再使用浮动 `stable`；升级单独评审 |
+| P3-09 | [x] 修复应用内版本注入 | release tag 与 About 页面一致；构建命令传入 `ELECON_VERSION` 或改用可靠平台版本源 |
+| P3-10 | [x] 固定 release Flutter 版本，与普通 CI 使用同一 SDK | release 不再使用浮动 `stable`；升级单独评审 |
 | P3-11 | [ ] 提交并审查 Windows/macOS 平台工程，禁止 release 临时 `flutter create` | runner、标识、entitlement 可复现且进入代码审查 |
 | P3-12 | [ ] 增加依赖、许可证、SBOM、secret scanning 和 SAST 门 | npm/pub/镜像依赖均覆盖；GPL/未知许可证阻断；安全结果可追踪 |
 | P3-13 | [ ] 增加 release checksum、provenance、签名和人工批准 | 各平台产物身份可验证；unsigned 工件不伪装成正式发布 |
 | P3-14 | [ ] 发布正式隐私政策、数据处理说明和安全联系渠道 | App 内链接有效；说明凭证、WebView、日志、删除和第三方 SDK |
 | P3-15 | [ ] 完善公网端点部署和运维 | 镜像 pin/扫描、非 root、原子发布、回滚、TLS/CDN/DNS、监控和吊销新鲜度告警齐全 |
 | P3-16 | [ ] 为 campus relay 起草专项 ADR，替换“等待 ADR-003”的过时 blocker | 明确授权、协议、凭证一次性投递、状态和部署边界后才实现 |
-| P3-17 | [ ] 将 `widget_test.dart` 占位替换为启动、选校、登录、首页错误态集成测试 | 关键用户流程在至少 Android 模拟器形成门禁 |
-| P3-18 | [ ] 将 QuickJS 文案改为“共享 golden 控制已使用语义漂移” | 不再宣称两种绑定在所有行为上天然零漂移 |
+| P3-17 | [x] 将 `widget_test.dart` 占位替换为启动、选校、登录、首页错误态集成测试 | 关键用户流程在至少 Android 模拟器形成门禁 |
+| P3-18 | [x] 将 QuickJS 文案改为“共享 golden 控制已使用语义漂移” | 不再宣称两种绑定在所有行为上天然零漂移 |
+
+### 5.1 执行状态（2026-08-07）
+
+- P3-01/P3-02/P3-03：新增 `docs/adr/README.md` 双维状态索引；旧分支架构长文移入 `docs/archive/`，当前 `docs/architecture.md` 只保留权威入口与代码/ADR/签收优先关系；README、adapter 指南、testing rule 与旧 TODO 已同步。
+- P3-09/P3-10：Android、Windows、Linux、macOS、iOS release build 均从不可变 release tag 注入 `ELECON_VERSION`；普通 CI 与 release 均固定 Flutter `3.44.1`。
+- P3-06：48/48 个 schema 均有显式 valid/invalid behavior golden；registry 当前 30 个 emits + 16 个 params 引用全部覆盖，另覆盖不在 registry 的 envelope/error，包含嵌套 required、enum、format、null/缺失、Money、URI 与 params 边界。
+- P3-17：占位 widget smoke 已替换为真实 `EleconApp` 启动等待、选校、登录取消与首页错误/重试流程；CI 新增 Android emulator job，以脱敏 fixture 驱动同一流程且不访问学校接口。
+- P3-18：当前 README、运行时代码注释与相关 ADR 已统一为“两种 QuickJS 绑定/版本/编译配置可能不同，仅由共享 golden/canary 约束已使用语义”。
+- 其余 P3 项保持开放；涉及契约、发布密钥、GitHub Environment、法律文本、正式基础设施或专项 ADR 的项目不得以文档/自动化替代人工评审与外部事实。
 
 ## 6. P4：产品与扩展性
 
@@ -155,6 +164,11 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | P4-05 | [ ] 明确 freshness/TTL、刷新和离线陈旧数据的用户语义 | P4-03 | UI 清楚区分最新、缓存、陈旧、失败和不支持 |
 | P4-06 | [ ] 设计无凭证 telemetry/error reporting | P0-11 | 任何 URL/header/body/error 均经过永久脱敏；用户可关闭；隐私政策同步 |
 | P4-07 | [ ] campus relay 在专项 ADR 接受后实现最小授权链 | P3-16 | 公网零凭证；私密数据只在校内授权环境；集成和部署安全测试完整 |
+
+### 6.1 执行状态（2026-08-07）
+
+- P4-03 部分推进，保持开放：在既有 `exam.list` 与 `library.loans` 契约内新增 schema 驱动的按需 UI、严格解码和空/加载/认证/错误状态；连同已有成绩、课表、空教室和一卡通，六类 typed UI 均已有客户端入口。`stale` 与显式 `unsupported` 仍依赖 P4-05 产品语义，对应 adapter 正式签发和真机验收也未完成，因此不关闭 P4-03。
+- P4-01/P4-02/P4-04/P4-05/P4-06/P4-07 均受 P0/P1、独立 ADR、隐私政策、正式 adapter 或部署安全评审约束，本轮未越过前置实现。
 
 ## 7. 推荐修改路线
 
