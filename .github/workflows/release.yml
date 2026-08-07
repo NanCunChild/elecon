@@ -149,7 +149,7 @@ jobs:
         if: matrix.platform == 'android'
         env:
           ELECON_REQUIRE_RELEASE_SIGNING: "true"
-        run: flutter build apk --release --target lib/main.dart --split-per-abi --target-platform android-arm,android-arm64 --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
+        run: flutter build apk --release --target lib/main.dart --split-per-abi --target-platform android-arm,android-arm64 --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER" --dart-define=ELECON_VERSION="${RELEASE_TAG#v}"
 
       - name: Select Android ABI artifact
         if: matrix.platform == 'android'
@@ -166,14 +166,14 @@ jobs:
         if: matrix.platform == 'windows'
         shell: bash
         run: |
-          flutter build windows --release --target lib/main.dart --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
+          flutter build windows --release --target lib/main.dart --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER" --dart-define=ELECON_VERSION="${RELEASE_TAG#v}"
           7z a "$GITHUB_WORKSPACE/elecon-windows-${RELEASE_TAG#v}.zip" build/windows/x64/runner/Release/*
 
       - name: Build Linux package
         if: matrix.platform == 'linux'
         shell: bash
         run: |
-          flutter build linux --release --target lib/main.dart --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
+          flutter build linux --release --target lib/main.dart --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER" --dart-define=ELECON_VERSION="${RELEASE_TAG#v}"
           tar -C build/linux/x64/release -czf "$GITHUB_WORKSPACE/elecon-linux-${RELEASE_TAG#v}.tar.gz" bundle
 
       - name: Build macOS package
@@ -184,7 +184,7 @@ jobs:
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: |
-          bash tool/with_apple_pubspec.sh flutter build macos --release --target lib/main_apple.dart --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
+          bash tool/with_apple_pubspec.sh flutter build macos --release --target lib/main_apple.dart --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER" --dart-define=ELECON_VERSION="${RELEASE_TAG#v}"
           APP="build/macos/Build/Products/Release/elecon.app"
           if [ -n "$MACOS_CERTIFICATE_BASE64" ] && [ -n "$MACOS_SIGN_IDENTITY" ]; then
             KEYCHAIN="$RUNNER_TEMP/elecon-signing.keychain-db"
@@ -209,7 +209,7 @@ jobs:
       - name: Build unsigned iOS package
         if: matrix.platform == 'ios'
         run: |
-          bash tool/with_apple_pubspec.sh flutter build ios --release --target lib/main_apple.dart --no-codesign --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER"
+          bash tool/with_apple_pubspec.sh flutter build ios --release --target lib/main_apple.dart --no-codesign --build-name "${RELEASE_TAG#v}" --build-number "$GITHUB_RUN_NUMBER" --dart-define=ELECON_VERSION="${RELEASE_TAG#v}"
           ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app "$GITHUB_WORKSPACE/elecon-ios-${RELEASE_TAG#v}-unsigned.zip"
 
       - name: Upload artifact
