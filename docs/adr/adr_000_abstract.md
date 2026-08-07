@@ -187,3 +187,4 @@ QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 a
 - `adr_029`：命名 Header 与受限 Body 凭证注入—— **已接受**（2026-07-31；命名 Header 已完成客户端 manifest 接线及双端 CH1–CH3 runtime 纵深校验，待人工安全签收；Body 注入尚未实现）
 - `adr_030`：用户主动触发的物理副作用 Capability—— **已接受**（2026-07-31；实现仍依赖统一 delivery firewall 与副作用执行闸门）
 - `adr_031`：声明式数据流 Seed（公开常量 + `type: material` 进句柄空间，不放宽 D10）—— **已接受**（2026-08-03；触红线 #1/#5/#6；seed/hydrate/validator 人工主导，AI 不闭环）
+- `adr_032`：`app-tunnel` 的嵌入形态与会话材料托管（承接 ADR-003 §2.6 三个开放问题）—— **提议**（2026-08-06；AI 起草；触红线 #1/#4/#9/#10；transport 最高信任面，**接受前不得合并任何隧道实现代码**，须人工主导 + 安全清单 + 人工审签；事实基础见 `docs/probes/probe_002_atrust_tunnel.md`）
