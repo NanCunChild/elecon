@@ -17,7 +17,9 @@ export 'package:elecon_contract/classroom_available.dart';
 export 'package:elecon_contract/classroom_buildings.dart';
 export 'package:elecon_contract/card_balance.dart';
 export 'package:elecon_contract/card_transactions.dart';
+export 'package:elecon_contract/exam_list.dart';
 export 'package:elecon_contract/grades_list.dart';
+export 'package:elecon_contract/library_loans.dart';
 export 'package:elecon_contract/notice_list.dart';
 export 'package:elecon_contract/schedule_week.dart';
 

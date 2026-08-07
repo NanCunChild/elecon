@@ -154,5 +154,47 @@
   "devLogHintRedacted": "默认脱敏：URL 无参、cookie 仅长度。关闭「已脱敏」后新条目可保留 query（仍无 body）。",
   "devLogHintUnredacted": "脱敏已关：新条目可含 query / cookie 原文；仅存本机环缓冲，勿外传。",
   "devLogHintRelease": "正式版仅显示无参数 URL 与成功状态，不含请求/响应内容。",
-  "devLogEmpty": "暂无日志"
+  "devLogEmpty": "暂无日志",
+
+  "homeExamTitle": "考试安排",
+  "homeExamPrompt": "仅在你点击后查询考试安排",
+  "homeExamLoad": "查看考试安排",
+  "homeExamEmpty": "暂无考试安排",
+  "homeExamCount": "{count} 场考试",
+  "@homeExamCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "homeExamTermCount": "{term} · {count} 场考试",
+  "@homeExamTermCount": {
+    "placeholders": {
+      "term": { "type": "String" },
+      "count": { "type": "int" }
+    }
+  },
+  "homeExamSeat": "座位 {seat}",
+  "@homeExamSeat": {
+    "placeholders": { "seat": { "type": "String" } }
+  },
+  "homeExamStatusScheduled": "已安排",
+  "homeExamStatusChanged": "已变更",
+  "homeExamStatusCancelled": "已取消",
+  "homeExamStatusCompleted": "已完成",
+  "homeExamStatusUnknown": "状态未知",
+  "homeLibraryLoansTitle": "图书借阅",
+  "homeLibraryLoansPrompt": "仅在你点击后查询当前借阅",
+  "homeLibraryLoansLoad": "查看当前借阅",
+  "homeLibraryLoansEmpty": "暂无借阅记录",
+  "homeLibraryLoansCount": "当前借阅 {count} 本",
+  "@homeLibraryLoansCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "homeLibraryLoansDue": "应还 {dueAt}",
+  "@homeLibraryLoansDue": {
+    "placeholders": { "dueAt": { "type": "String" } }
+  },
+  "homeLibraryLoansOverdue": "已逾期",
+  "homeLibraryLoansOverdueFee": "逾期费 {fee}",
+  "@homeLibraryLoansOverdueFee": {
+    "placeholders": { "fee": { "type": "String" } }
+  }
 }

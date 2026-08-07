@@ -107,5 +107,26 @@
   "devLogHintRedacted": "Redacted by default: URLs without query, cookies as length only. Turning off redaction keeps query strings on new entries (still no body).",
   "devLogHintUnredacted": "Redaction off: new entries may contain raw query strings and cookies. Kept in an on-device ring buffer only — do not share.",
   "devLogHintRelease": "Release builds show query-less URLs and success status only, never request/response content.",
-  "devLogEmpty": "No log entries yet"
+  "devLogEmpty": "No log entries yet",
+
+  "homeExamTitle": "Exams",
+  "homeExamPrompt": "Exam arrangements are fetched only when you ask",
+  "homeExamLoad": "View exams",
+  "homeExamEmpty": "No exam arrangements",
+  "homeExamCount": "{count} exams",
+  "homeExamTermCount": "{term} · {count} exams",
+  "homeExamSeat": "Seat {seat}",
+  "homeExamStatusScheduled": "Scheduled",
+  "homeExamStatusChanged": "Changed",
+  "homeExamStatusCancelled": "Cancelled",
+  "homeExamStatusCompleted": "Completed",
+  "homeExamStatusUnknown": "Status unknown",
+  "homeLibraryLoansTitle": "Library loans",
+  "homeLibraryLoansPrompt": "Current loans are fetched only when you ask",
+  "homeLibraryLoansLoad": "View current loans",
+  "homeLibraryLoansEmpty": "No current loans",
+  "homeLibraryLoansCount": "{count} current loans",
+  "homeLibraryLoansDue": "Due {dueAt}",
+  "homeLibraryLoansOverdue": "Overdue",
+  "homeLibraryLoansOverdueFee": "Overdue fee {fee}"
 }

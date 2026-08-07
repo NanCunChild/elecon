@@ -1,6 +1,6 @@
 /// M4 取数解码器单测：adapter 产出（JSON 往返 Map）→ 契约 view 类型。
 ///
-/// 覆盖 grades.list / schedule.week / classroom.buildings / classroom.available，
+/// 覆盖 grades.list / schedule.week / classroom.* / exam.list / library.loans，
 /// 校验必填缺失丢弃、可选缺失置 null、类型宽容（红线 #6：不臆造字段）。
 /// 输入为脱敏内联样例，形状对齐 school-xidian adapter 产出与 contract/schema。
 library;
@@ -234,6 +234,126 @@ void main() {
             'amountMinor': 1,
             'currency': 'yuan',
             'direction': 'mystery',
+          },
+        ],
+      });
+      expect(out, isNotNull);
+      expect(out!.items, isEmpty);
+    });
+  });
+
+  group('examListFromDynamic', () {
+    test('解出契约内可选字段与合法状态', () {
+      final out = examListFromDynamic({
+        'term': '2025-2026-2',
+        'items': [
+          {
+            'courseId': 'TEST-201',
+            'courseName': '离散数学',
+            'examAt': '2026-08-10T01:00:00Z',
+            'campus': '测试校区',
+            'building': 'A 楼',
+            'room': 'A-101',
+            'seat': '08',
+            'examType': '期末考试',
+            'status': 'scheduled',
+          },
+        ],
+      });
+
+      expect(out, isNotNull);
+      expect(out!.term, '2025-2026-2');
+      expect(out.items, hasLength(1));
+      expect(out.items!.single.courseName, '离散数学');
+      expect(out.items!.single.status, 'scheduled');
+      expect(out.items!.single.seat, '08');
+    });
+
+    test('items 可缺失；非法必填、状态或时间条目被过滤', () {
+      expect(examListFromDynamic({})?.items, isNull);
+      final out = examListFromDynamic({
+        'items': [
+          {'status': 'scheduled'},
+          {'courseName': '课程一', 'status': 'invented'},
+          {'courseName': '课程二', 'examAt': '2026-08-10'},
+          {'courseName': '课程三', 'examAt': '2026-08-10 01:00:00Z'},
+        ],
+      });
+      expect(out, isNotNull);
+      expect(out!.items, isEmpty);
+      expect(examListFromDynamic({'items': null}), isNull);
+    });
+  });
+
+  group('libraryLoansFromDynamic', () {
+    test('解出借阅条目、非负整数、布尔状态与费用', () {
+      final out = libraryLoansFromDynamic({
+        'items': [
+          {
+            'bookId': 'BOOK-001',
+            'title': '测试图书',
+            'author': '测试作者',
+            'borrowedAt': '2026-07-01T00:00:00Z',
+            'dueAt': '2026-08-31T23:59:59Z',
+            'renewCount': 1,
+            'renewalMax': 2,
+            'renewable': true,
+            'overdue': true,
+            'overdueFee': {'amountMinor': 250, 'currency': 'CNY'},
+          },
+        ],
+      });
+
+      expect(out, isNotNull);
+      expect(out!.items, hasLength(1));
+      final loan = out.items.single;
+      expect(loan.bookId, 'BOOK-001');
+      expect(loan.renewCount, 1);
+      expect(loan.renewable, isTrue);
+      expect(loan.overdueFee?.amountMinor, 250);
+      expect(loan.overdueFee?.currency, 'CNY');
+    });
+
+    test('缺顶层 items 返回 null；空 items 保留明确空列表', () {
+      expect(libraryLoansFromDynamic({}), isNull);
+      expect(libraryLoansFromDynamic({'items': []})?.items, isEmpty);
+    });
+
+    test('非法必填、时间、整数、币种或布尔类型条目被过滤', () {
+      final out = libraryLoansFromDynamic({
+        'items': [
+          {
+            'bookId': '',
+            'title': '无效图书',
+            'borrowedAt': '2026-07-01T00:00:00Z',
+            'dueAt': '2026-08-31T23:59:59Z',
+          },
+          {
+            'bookId': 'BOOK-002',
+            'title': '无效时间',
+            'borrowedAt': '2026-07-01',
+            'dueAt': '2026-08-31T23:59:59Z',
+          },
+          {
+            'bookId': 'BOOK-003',
+            'title': '无效续借次数',
+            'borrowedAt': '2026-07-01T00:00:00Z',
+            'dueAt': '2026-08-31T23:59:59Z',
+            'renewCount': '1',
+          },
+          {
+            'bookId': 'BOOK-004',
+            'title': '无效费用',
+            'borrowedAt': '2026-07-01T00:00:00Z',
+            'dueAt': '2026-08-31T23:59:59Z',
+            'overdueFee': {'amountMinor': 1, 'currency': 'yuan'},
+          },
+          {
+            'bookId': 'BOOK-005',
+            'title': '无效状态',
+            'borrowedAt': '2026-07-01T00:00:00Z',
+            'dueAt': '2026-08-31T23:59:59Z',
+            'overdue': 'yes',
           },
         ],
       });

@@ -20,10 +20,12 @@ export 'models.dart';
 /// debug 下强制走 demo 快照（设置/联调开关可后接；默认 false = 真数据）。
 const bool kForceDemoHomeSnapshot = false;
 
+typedef CampusSnapshotLoader = Future<CampusSnapshot> Function();
+
 class EleconHomePage extends StatefulWidget {
   const EleconHomePage({super.key, this.loadSnapshot});
 
-  final Future<CampusSnapshot> Function()? loadSnapshot;
+  final CampusSnapshotLoader? loadSnapshot;
 
   @override
   State<EleconHomePage> createState() => _EleconHomePageState();
@@ -141,6 +143,12 @@ class _EleconHomePageState extends State<EleconHomePage> {
                         if (_liveSections &&
                             data.supportsAll(const ['schedule.week']))
                           const ScheduleSection(),
+                        if (_liveSections &&
+                            data.supportsAll(const ['exam.list']))
+                          const ExamSection(),
+                        if (_liveSections &&
+                            data.supportsAll(const ['library.loans']))
+                          const LibraryLoansSection(),
                         if (_liveSections &&
                             data.supportsAll(const [
                               'classroom.buildings',

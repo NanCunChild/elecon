@@ -450,6 +450,200 @@ CardTransactionsItems? _cardTransactionItem(Object? raw) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// exam.list / library.loans（用户按需触发）
+// ---------------------------------------------------------------------------
+
+ExamList? examListFromDynamic(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null || !_optionalIs<String>(map, 'term')) return null;
+  final itemsRaw = map['items'];
+  if (map.containsKey('items') && itemsRaw is! List) return null;
+  final items = <ExamListItems>[];
+  if (itemsRaw is List) {
+    for (final rawItem in itemsRaw) {
+      final item = _examItem(rawItem);
+      if (item != null) items.add(item);
+    }
+  }
+  return ExamList(
+    term: map['term'] as String?,
+    items: itemsRaw == null ? null : items,
+  );
+}
+
+ExamListItems? _examItem(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final courseName = map['courseName'];
+  if (courseName is! String || courseName.isEmpty) return null;
+  for (final field in const [
+    'courseId',
+    'campus',
+    'building',
+    'room',
+    'seat',
+    'examType',
+    'changeReason',
+  ]) {
+    if (!_optionalIs<String>(map, field)) return null;
+  }
+  final examAt = _optionalUtcDateTime(map, 'examAt');
+  if (map.containsKey('examAt') && examAt == null) return null;
+  final status = map['status'];
+  if (status != null &&
+      (status is! String || !_examStatuses.contains(status))) {
+    return null;
+  }
+  return ExamListItems(
+    courseId: map['courseId'] as String?,
+    courseName: courseName,
+    examAt: examAt,
+    campus: map['campus'] as String?,
+    building: map['building'] as String?,
+    room: map['room'] as String?,
+    seat: map['seat'] as String?,
+    examType: map['examType'] as String?,
+    status: status as String?,
+    changeReason: map['changeReason'] as String?,
+  );
+}
+
+LibraryLoans? libraryLoansFromDynamic(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  final itemsRaw = map?['items'];
+  if (map == null || itemsRaw is! List) return null;
+  final items = <LibraryLoansItems>[];
+  for (final rawItem in itemsRaw) {
+    final item = _libraryLoanItem(rawItem);
+    if (item != null) items.add(item);
+  }
+  return LibraryLoans(items: items);
+}
+
+LibraryLoansItems? _libraryLoanItem(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  final bookId = map['bookId'];
+  final title = map['title'];
+  final borrowedAt = _requiredUtcDateTime(map['borrowedAt']);
+  final dueAt = _requiredUtcDateTime(map['dueAt']);
+  if (bookId is! String ||
+      bookId.isEmpty ||
+      title is! String ||
+      title.isEmpty ||
+      borrowedAt == null ||
+      dueAt == null) {
+    return null;
+  }
+  for (final field in const ['author', 'callNumber', 'location', 'branch']) {
+    if (!_optionalIs<String>(map, field)) return null;
+  }
+  for (final field in const [
+    'renewable',
+    'overdue',
+    'reserved',
+    'returnConfirmed',
+  ]) {
+    if (!_optionalIs<bool>(map, field)) return null;
+  }
+  final renewCount = _optionalSchemaNonNegativeInt(map, 'renewCount');
+  final renewalMax = _optionalSchemaNonNegativeInt(map, 'renewalMax');
+  if ((map.containsKey('renewCount') && renewCount == null) ||
+      (map.containsKey('renewalMax') && renewalMax == null)) {
+    return null;
+  }
+  final pickupDeadline = _optionalUtcDateTime(map, 'pickupDeadline');
+  final renewalDeadline = _optionalUtcDateTime(map, 'renewalDeadline');
+  if ((map.containsKey('pickupDeadline') && pickupDeadline == null) ||
+      (map.containsKey('renewalDeadline') && renewalDeadline == null)) {
+    return null;
+  }
+  final overdueFee = _overdueFee(map['overdueFee']);
+  if (map.containsKey('overdueFee') && overdueFee == null) return null;
+  return LibraryLoansItems(
+    bookId: bookId,
+    title: title,
+    author: map['author'] as String?,
+    callNumber: map['callNumber'] as String?,
+    location: map['location'] as String?,
+    branch: map['branch'] as String?,
+    borrowedAt: borrowedAt,
+    dueAt: dueAt,
+    renewCount: renewCount,
+    renewalMax: renewalMax,
+    renewable: map['renewable'] as bool?,
+    overdue: map['overdue'] as bool?,
+    overdueFee: overdueFee,
+    reserved: map['reserved'] as bool?,
+    pickupDeadline: pickupDeadline,
+    renewalDeadline: renewalDeadline,
+    returnConfirmed: map['returnConfirmed'] as bool?,
+  );
+}
+
+LibraryLoansItemsOverdueFee? _overdueFee(Object? raw) {
+  if (raw == null) return null;
+  final map = _asStringKeyedMap(raw);
+  final amountMinor = _asSchemaNonNegativeInt(map?['amountMinor']);
+  final currency = map?['currency'];
+  if (map == null ||
+      amountMinor == null ||
+      currency is! String ||
+      !_currencyPattern.hasMatch(currency)) {
+    return null;
+  }
+  return LibraryLoansItemsOverdueFee(
+    amountMinor: amountMinor,
+    currency: currency,
+  );
+}
+
+const Set<String> _examStatuses = {
+  'scheduled',
+  'changed',
+  'cancelled',
+  'completed',
+  'unknown',
+};
+
+bool _optionalIs<T>(Map<String, dynamic> map, String key) =>
+    !map.containsKey(key) || map[key] is T;
+
+int? _optionalSchemaNonNegativeInt(Map<String, dynamic> map, String key) =>
+    map.containsKey(key) ? _asSchemaNonNegativeInt(map[key]) : null;
+
+int? _asSchemaNonNegativeInt(Object? raw) {
+  if (raw is String) return null;
+  final value = _asInt(raw);
+  return value != null && value >= 0 ? value : null;
+}
+
+String? _optionalUtcDateTime(Map<String, dynamic> map, String key) =>
+    map.containsKey(key) ? _requiredUtcDateTime(map[key]) : null;
+
+String? _requiredUtcDateTime(Object? raw) {
+  if (raw is! String) return null;
+  final match = _utcDateTimePattern.firstMatch(raw);
+  final parsed = DateTime.tryParse(raw);
+  if (match == null || parsed == null) return null;
+  final parts = [
+    parsed.year,
+    parsed.month,
+    parsed.day,
+    parsed.hour,
+    parsed.minute,
+    parsed.second,
+  ];
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i] != int.parse(match.group(i + 1)!)) return null;
+  }
+  return raw;
+}
+
+final RegExp _utcDateTimePattern = RegExp(
+  r'^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z$',
+);
 final RegExp _currencyPattern = RegExp(r'^[A-Z]{3}$');
 const Set<String> _cardDirections = {
   'debit',

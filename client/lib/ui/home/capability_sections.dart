@@ -1,15 +1,16 @@
-/// 首页「按需取数」能力区（M4）：成绩 / 课表 / 空教室。
+/// 首页「按需取数」能力区：成绩 / 课表 / 空教室 / 一卡通 / 考试 / 图书借阅。
 ///
-/// 这些能力需 `ehall-session`（[SessionController.runCapability] 内部经 `ensureCredentials`
-/// 静默 mint 或引导可见登录）。UI 只按用户点击触发，**不在开屏强制登录**；也**不接触凭证值**
-/// （红线 #1）——auth 失败一律复用已审的 [runSchoolLogin]，成功后重试能力。
+/// 各能力所需凭证由 manifest 声明，[SessionController.runCapability] 内部按需确保。
+/// UI 只按用户点击触发，**不在开屏强制登录**；也**不接触凭证值**（红线 #1）——auth
+/// 失败一律复用已审的 [runSchoolLogin]，成功后重试能力。
 ///
-/// 见 docs/reference/xidian_mint_closed_loop_plan.md §4/§8（DoD #2–#4）。
+/// 卡片由标准 schema 选择并在客户端固定实现，不接受 adapter 渲染描述（ADR-004 §2.1）。
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../core/adapter_service.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
@@ -788,6 +789,254 @@ String _formatTimestamp(String value) {
       '${date.hour.toString().padLeft(2, '0')}:'
       '${date.minute.toString().padLeft(2, '0')}';
 }
+
+// ===========================================================================
+// 考试 / 图书借阅（用户按需）
+// ===========================================================================
+
+class ExamSection extends StatefulWidget {
+  const ExamSection({super.key});
+
+  @override
+  State<ExamSection> createState() => _ExamSectionState();
+}
+
+class _ExamSectionState extends State<ExamSection> {
+  _Phase _phase = _Phase.idle;
+  ExamList? _data;
+  String? _error;
+
+  Future<void> _load() async {
+    setState(() => _phase = _Phase.loading);
+    final outcome = await _runDecoded<ExamList>(
+      SessionScope.of(context),
+      'exam.list',
+      decode: examListFromDynamic,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (outcome.needLogin) {
+        _phase = _Phase.needLogin;
+      } else if (outcome.error != null) {
+        _phase = _Phase.error;
+        _error = outcome.error;
+      } else {
+        _phase = _Phase.loaded;
+        _data = outcome.data;
+      }
+    });
+  }
+
+  Future<void> _login() async {
+    final ok = await _promptVisibleLogin(context, SessionScope.of(context));
+    if (mounted && ok) await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = _data;
+    if (_phase == _Phase.loaded && data != null) {
+      return _ExamResultCard(data: data);
+    }
+    final l10n = AppLocalizations.of(context);
+    return _PromptCard(
+      title: l10n.homeExamTitle,
+      subtitle: l10n.homeExamPrompt,
+      child: _PhaseBody(
+        phase: _phase,
+        error: _error,
+        idleLabel: l10n.homeExamLoad,
+        onLoad: _load,
+        onLogin: _login,
+      ),
+    );
+  }
+}
+
+class _ExamResultCard extends StatelessWidget {
+  const _ExamResultCard({required this.data});
+
+  final ExamList data;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final items = data.items ?? const <ExamListItems>[];
+    return _SectionShell(
+      title: l10n.homeExamTitle,
+      subtitle: data.term == null
+          ? l10n.homeExamCount(items.length)
+          : l10n.homeExamTermCount(data.term!, items.length),
+      child: items.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(l10n.homeExamEmpty),
+            )
+          : Column(
+              children: [
+                for (final item in items)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.event_note_outlined),
+                    title: Text(item.courseName),
+                    subtitle: Text(
+                      [
+                        if (item.examAt != null) _formatTimestamp(item.examAt!),
+                        if (item.campus != null) item.campus!,
+                        if (item.building != null) item.building!,
+                        if (item.room != null) item.room!,
+                        if (item.examType != null) item.examType!,
+                        if (item.changeReason != null) item.changeReason!,
+                      ].join(' · '),
+                    ),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (item.status != null)
+                          Text(_examStatusText(l10n, item.status!)),
+                        if (item.seat != null)
+                          Text(
+                            l10n.homeExamSeat(item.seat!),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+class LibraryLoansSection extends StatefulWidget {
+  const LibraryLoansSection({super.key});
+
+  @override
+  State<LibraryLoansSection> createState() => _LibraryLoansSectionState();
+}
+
+class _LibraryLoansSectionState extends State<LibraryLoansSection> {
+  _Phase _phase = _Phase.idle;
+  LibraryLoans? _data;
+  String? _error;
+
+  Future<void> _load() async {
+    setState(() => _phase = _Phase.loading);
+    final outcome = await _runDecoded<LibraryLoans>(
+      SessionScope.of(context),
+      'library.loans',
+      decode: libraryLoansFromDynamic,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (outcome.needLogin) {
+        _phase = _Phase.needLogin;
+      } else if (outcome.error != null) {
+        _phase = _Phase.error;
+        _error = outcome.error;
+      } else {
+        _phase = _Phase.loaded;
+        _data = outcome.data;
+      }
+    });
+  }
+
+  Future<void> _login() async {
+    final ok = await _promptVisibleLogin(context, SessionScope.of(context));
+    if (mounted && ok) await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = _data;
+    if (_phase == _Phase.loaded && data != null) {
+      return _LibraryLoansResultCard(data: data);
+    }
+    final l10n = AppLocalizations.of(context);
+    return _PromptCard(
+      title: l10n.homeLibraryLoansTitle,
+      subtitle: l10n.homeLibraryLoansPrompt,
+      child: _PhaseBody(
+        phase: _phase,
+        error: _error,
+        idleLabel: l10n.homeLibraryLoansLoad,
+        onLoad: _load,
+        onLogin: _login,
+      ),
+    );
+  }
+}
+
+class _LibraryLoansResultCard extends StatelessWidget {
+  const _LibraryLoansResultCard({required this.data});
+
+  final LibraryLoans data;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return _SectionShell(
+      title: l10n.homeLibraryLoansTitle,
+      subtitle: l10n.homeLibraryLoansCount(data.items.length),
+      child: data.items.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(l10n.homeLibraryLoansEmpty),
+            )
+          : Column(
+              children: [
+                for (final item in data.items)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      item.overdue == true
+                          ? Icons.warning_amber_rounded
+                          : Icons.menu_book_outlined,
+                      color: item.overdue == true
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                    ),
+                    title: Text(item.title),
+                    subtitle: Text(
+                      [
+                        if (item.author != null) item.author!,
+                        if (item.branch != null) item.branch!,
+                        if (item.location != null) item.location!,
+                        if (item.callNumber != null) item.callNumber!,
+                        l10n.homeLibraryLoansDue(_formatTimestamp(item.dueAt)),
+                        if (item.overdueFee != null)
+                          l10n.homeLibraryLoansOverdueFee(
+                            _money(
+                              item.overdueFee!.amountMinor,
+                              item.overdueFee!.currency,
+                            ),
+                          ),
+                      ].join(' · '),
+                    ),
+                    trailing: item.overdue == true
+                        ? Text(
+                            l10n.homeLibraryLoansOverdue,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          )
+                        : null,
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+String _examStatusText(AppLocalizations l10n, String status) =>
+    switch (status) {
+      'scheduled' => l10n.homeExamStatusScheduled,
+      'changed' => l10n.homeExamStatusChanged,
+      'cancelled' => l10n.homeExamStatusCancelled,
+      'completed' => l10n.homeExamStatusCompleted,
+      _ => l10n.homeExamStatusUnknown,
+    };
 
 // ===========================================================================
 // 共用外壳
