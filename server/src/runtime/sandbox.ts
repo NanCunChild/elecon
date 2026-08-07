@@ -3,8 +3,8 @@
  *
  * 为什么是 QuickJS-wasm 而不是 Node 的 `vm`：
  *   - Node 的 `vm` **不是安全边界**，半可信/侧载 adapter 在里面等于裸奔。
- *   - QuickJS-wasm 同时给到：真正的沙箱、与客户端**同一个引擎**（零语义漂移）、
- *     纯 JS/wasm 无 cgo。
+ *   - QuickJS-wasm 同时给到真正的沙箱与纯 JS/wasm 无 cgo；客户端使用另一套
+ *     QuickJS 绑定，已使用语义的一致性由共享 golden/canary 约束（ADR-008 §3.2）。
  * 详见 docs/adr/adr_005_runtime.md。
  *
  * 分派（ADR-022）：调用方按被执行 capability 的 `requestGraph` 选择入口——

@@ -29,5 +29,5 @@ npm run typecheck      # 严格类型检查
 
 - `src/public` 零凭证、无状态——仅分发 adapter + 缓存公开数据（红线 #2）。
 - `src/campus` 在校内堡垒机后代取私密数据，**经手凭证 = 承重路径**：锁 lockfile、最小依赖、定期 `npm audit`（ADR-005 §3.3）。
-- adapter 用 **QuickJS-wasm** 执行，与客户端 QuickJS 是同一个引擎，零语义漂移；**绝不用** Node 的 `vm`（`vm` 不是安全边界）。
+- adapter 用 **QuickJS-wasm** 执行；客户端是另一套 QuickJS 绑定，跨端只对共享 golden/canary 覆盖的已使用语义承诺一致。**绝不用** Node 的 `vm`（`vm` 不是安全边界）。
 - 全程 TypeScript `strict`；契约校验用 `ajv`，与 `tools/` 共用一套。

@@ -36,9 +36,10 @@ bash tool/with_apple_pubspec.sh fvm flutter run --target lib/main_apple.dart  # 
 
 ## 测试（双跑一致性）
 
-adapter 在客户端用 QuickJS（`flutter_qjs_next`）执行，与服务端 QuickJS-wasm 是同一引擎、
-零语义漂移（ADR-001 §8、ADR-005）。`test/dual_run_test.dart` 用同一份 declarative 夹具验证
-客户端产出 == golden（服务端侧由 `server/src/runtime/sandbox.smoke.ts` 证），传递得两端一致。
+adapter 在客户端用 QuickJS（`flutter_qjs_next`）执行，服务端使用 QuickJS-wasm。两种绑定、
+版本和编译配置可能不同，只对共享 golden/canary 覆盖的已使用语义承诺一致（ADR-008 §3.2）。
+`test/dual_run_test.dart` 用同一份 declarative 夹具验证客户端产出 == golden，服务端侧由
+`server/src/runtime/sandbox.smoke.ts` 验证同一 golden。
 
 `flutter_qjs_next` 是经典 FFI 插件，纯 `flutter test` 不会构建其原生库。先一次性构建：
 
@@ -49,7 +50,7 @@ FLUTTER_QJS_NEXT_LIBRARY=/path/to/libflutter_qjs_next_plugin.so fvm flutter test
 ```
 
 > **依赖说明**：`flutter_qjs_next` 是迁移后的 QuickJS 绑定（非 flutter_js——后者 iOS 用
-> JavaScriptCore，会破坏“同一引擎零漂移”）。它使用更新 QuickJS、`ffi` 2.x，并移除了旧
+> JavaScriptCore，会扩大跨端语义差异与测试矩阵）。它使用更新 QuickJS、`ffi` 2.x，并移除了旧
 > `flutter_qjs` 的 Android Kotlin Gradle Plugin 阻塞。
 
 ### Linux QuickJS 测试库记录

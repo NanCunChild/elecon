@@ -1,7 +1,7 @@
 /// 客户端 adapter 执行运行时 —— QuickJS（flutter_qjs_next / 全平台同一引擎）。
 ///
-/// 与服务端 QuickJS-wasm（`server/src/runtime/sandbox.ts`）是**同一个 QuickJS
-/// 引擎**，对同一份 adapter 源码零语义漂移（ADR-001 §8、ADR-005）。
+/// 服务端使用 QuickJS-wasm（`server/src/runtime/sandbox.ts`）；两端绑定、版本和编译
+/// 配置可能不同，已使用语义的一致性由共享 golden/canary 约束（ADR-008 §3.2）。
 ///
 /// 当前实现：**declarative requestGraph**（无网络、无凭证、纯解析器）+
 /// **imperative requestGraph**（受限 ctx.fetch、凭证白名单注入，B6b-Dart，见文件下半部）。

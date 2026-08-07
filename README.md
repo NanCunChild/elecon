@@ -32,7 +32,7 @@
 **两条要记住的原则：**
 
 1. **公网服务端是"哑"的**——只发 adapter、只缓存公开数据，永不持凭证。它同时解决了成本、合规、安全。
-2. **一份 adapter，两端运行**——客户端用 QuickJS、服务端用 QuickJS-wasm 跑同一份脚本（同一个引擎、零语义漂移），归一化逻辑只写一次。
+2. **一份 adapter，两端运行**——客户端 QuickJS 与服务端 QuickJS-wasm 跑同一份脚本；两种绑定、版本和编译配置可能不同，以共享 golden/canary 约束项目实际使用的语义。
 
 完整路线与取舍见 [`docs/adr/adr_000_abstract.md`](docs/adr/adr_000_abstract.md)；目录与职责见下方[「仓库结构」](#仓库结构)与各子目录的 `README.md`，开发总则见 [`AGENTS.md`](AGENTS.md)。
 
@@ -84,7 +84,7 @@ npm run smoke:credential    # 凭证存储 smoke
 npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新增即跑）
 ```
 
-> adapter 在服务端用 **QuickJS-wasm**（`quickjs-emscripten`）执行，与客户端是同一个引擎；**不使用** Node 的 `vm` 模块（`vm` 不是安全边界）。运行时选型见 [`docs/adr/adr_005_runtime.md`](docs/adr/adr_005_runtime.md)。
+> adapter 在服务端用 **QuickJS-wasm**（`quickjs-emscripten`）执行；客户端使用另一套 QuickJS 绑定，跨端一致性由共享 golden/canary 验证。**不使用** Node 的 `vm` 模块（`vm` 不是安全边界）。运行时选型见 [`docs/adr/adr_005_runtime.md`](docs/adr/adr_005_runtime.md)。
 
 ---
 
@@ -92,9 +92,9 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 
 > 真实学校 adapter 现落在独立公开仓 **elecon-adapters**（本仓按 `adapters.pin` 拉取，见[「仓库结构」](#仓库结构)）。下列以模板 `adapters/_template/` 为例说明形态，实际提交面向 elecon-adapters。
 
-1. 复制 `adapters/_template/` 为 `school-<你的学校id>/`。
+1. 按信任档复制 `adapters/_template/imperative/` 或 `adapters/_template/declarative/` 为 `school-<你的学校id>/`。
 2. 在 `manifest.json` 声明能力与**域名白名单**（核心据此注入凭证，越界请求不带凭证）。
-3. 在 `index.js` 实现归一化：把该校接口返回的数据转成 `contract/schema/` 定义的标准结构。**adapter 越薄越好——只做归一化，不持凭证、不做编排。**
+3. 在 `index.js` 实现归一化：把该校接口返回的数据转成 `contract/schema/` 定义的标准结构。adapter 的**能力/信任面越薄越好**，但归一化、脏数据清洗与校本派生应尽量完整；凭证、网络授权、渲染和跨源编排仍留在核心。
 4. 在 `fixtures/` 放抓包样本，写归一化回归测试。
 5. 在该 adapter 的 `README.md` 记录：该校属哪一档（UA 门禁 / CAS 逃生口 / openid 唯一身份 / 微信小程序）及已知坑。
 
@@ -115,10 +115,10 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 
 ## 路线状态
 
-架构决策已接受至 **ADR-025**（ADR-026 响应 masker 延后）。当前处于**基础设施型 Alpha / 0.1**：承重链路已成形，产品能力面仍薄。最新盘点见 [`docs/planning/2026_07_capability_roadmap.md`](docs/planning/2026_07_capability_roadmap.md)。
+架构的 Decision 与 Landing 是两个独立维度，不能用 `Accepted` 推断 `Implemented`。当前处于**基础设施型 Alpha / 0.1**：承重链路已成形但仍有开放安全项，产品能力面仍薄。逐项状态见 [`docs/adr/README.md`](docs/adr/README.md)，最新整改盘点见 [`docs/planning/2026_08_review_remediation.md`](docs/planning/2026_08_review_remediation.md)。
 
-- **已落地**：Broker 核心零件 B1–B6 两端（TS + Dart）镜像实现，照 `contract/golden/` 向量逐字节双跑；声明式跨请求数据流（ADR-023，含回显剥离）；真实 OS keystore 凭证存储（硬件 keystore + 软件回退）；官方签名分发 / 吊销 / bootstrap 与签名工具链（PKCS#11 / YubiKey）；WebView 登录 + SSO 换票收割；ADR-020 URL query 凭证（一卡通 `openid`）端到端；adapter 按需拉取（`adapters.pin`，取代子模块）。Xidian 公开通知（`notice.list`）已产品闭环。
-- **进行中**：一卡通 OpenID 真机验收；capability 级 `credentialRefs` 最小权限 ADR；图书馆 body 凭证注入 ADR；课表 / 成绩 / 考试 / 空教室已有 adapter + 夹具，缺产品 UI 与真机验收。
+- **已落地**：Broker 核心零件 B1–B6 两端（TS + Dart）镜像实现，照 `contract/golden/` 向量逐字节双跑；声明式跨请求数据流 ADR-023 MVP；真实 OS keystore 凭证存储（硬件 keystore + 软件回退）；官方签名分发 / 吊销 / bootstrap 与签名工具链（PKCS#11 / YubiKey）；WebView 登录 + SSO 换票收割；ADR-020 URL query 凭证（一卡通 `openid`）端到端；adapter 按需拉取（`adapters.pin`，取代子模块）。Xidian 公开通知（`notice.list`）已产品闭环。
+- **进行中**：一卡通 OpenID 真机验收；capability 级 `credentialRefs` 最小权限 ADR；图书馆 body 凭证注入；课表、成绩、考试、空教室、一卡通和图书借阅均已有 schema 驱动 UI，仍缺 freshness/unsupported 统一语义、对应 adapter 正式签发和真机验收。
 - **待补齐**：campus relay（当前 501 stub）；iOS 正式签名 / App Store 合规（首版 declarative-only）；OHOS 与多校正式目录；备用签名密钥；首页数据闭环（目前仍主要消费 `notice.list`）。
 
 > 状态提示：主仓旧 Xidian adapter、已签名 bootstrap、外部仓开发态三者版本不同，发布流程中需分别对待（见 roadmap §1）。

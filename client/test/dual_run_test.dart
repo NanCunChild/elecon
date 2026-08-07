@@ -6,7 +6,7 @@
 /// 这是 ADR-001 §8 双跑闸门的客户端侧：
 ///   - 服务端 QuickJS-wasm == expected  →  server/src/runtime/sandbox.smoke.ts 已证
 ///   - 客户端 QuickJS     == expected  →  本测试
-///   ⟹ 传递地，客户端 == 服务端（同一引擎，零语义漂移）。
+///   ⟹ 传递地，客户端与服务端在这些共享 golden 覆盖的语义上一致。
 ///
 /// 原生库依赖：纯 flutter test 不会构建 flutter_qjs_next 原生库；先构建插件 Linux
 /// example。库的定位交给 flutter_qjs_next 的 ffi 加载器——它**先认** `FLUTTER_QJS_NEXT_LIBRARY`
@@ -64,7 +64,7 @@ void main() {
     // XIDIAN notice.list：首个用 elecon:html 标准库的真实 adapter（ADR-011 §4）。
     // 客户端 QuickJS 加载与服务端**同一份** html.bundle.js，对同一脱敏 HTML 夹具的
     // 产出必须等于 golden——服务端侧由 sandbox.smoke.ts 的 testXidianNoticeList 证，
-    // 两端同引擎 + 同 bundle ⟹ 零漂移（ADR-011 §2.1/§2.3）。
+    // 两端同 bundle 且分别命中同一 golden，证明本用例覆盖的行为一致（ADR-011 §2.1/§2.3）。
     test('XIDIAN notice.list：elecon:html 解析产出与 golden 一致', () async {
       final stdlibDir = repoPath('adapters/_stdlib');
       final source = File('$xidianDir/index.js').readAsStringSync();

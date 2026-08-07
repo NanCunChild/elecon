@@ -18,7 +18,7 @@
 - 客户端 QuickJS 是 Bellard **2021-03** 版（ADR-008 §3.6），**无 DOM、无 ES2022+、无 BigInt**。
 - 现有模板 adapter 全靠 `JSON.parse`——HTML 抓取目前**无支持**。
 
-需求：给 adapter 一个能写"层级定位"（如 XIDIAN 的 `找'通知公告'锚点 → 上溯 div.tit → 取兄弟 ul → 遍历 li`）的 HTML 解析手段，**且不破坏"一份 adapter 两端同一引擎、零漂移"的承重墙**（ADR-005/008）。
+需求：给 adapter 一个能写"层级定位"（如 XIDIAN 的 `找'通知公告'锚点 → 上溯 div.tit → 取兄弟 ul → 遍历 li`）的 HTML 解析手段，并让两端加载同一份解析器源码，以共享 golden 控制项目已使用语义的漂移（ADR-005/008）。
 
 ---
 
@@ -28,8 +28,8 @@
 
 ### 2.1 解析器是「QuickJS 内执行的纯 JS 共享模块」，不是 host 原生 `ctx` 函数
 
-- **决定性理由（零漂移）**：若由 host 原生提供（客户端 Dart 一个 HTML 解析器、服务端 Node 一个），两个 tag-soup 实现对**畸形 HTML 的容错行为必然不同** → 同一页面两端解析结果可能不一致 → **双跑 golden 飘**，直接打穿 ADR-005/008 的零漂移墙（与"客户端别用 JavaScriptCore""服务端别用 goja"是同一类理由）。
-- **形态**：**一份纯 JS 解析器**作为 SDK 模块，经 ADR-008 的 `moduleHandler` 以固定模块名（建议 `elecon:html`）解析；**两端加载同一份源码、各自在 QuickJS 内执行** → 与 adapter 同引擎、零漂移。
+- **决定性理由（缩小漂移面）**：若由 host 原生提供（客户端 Dart 一个 HTML 解析器、服务端 Node 一个），两个 tag-soup 实现对**畸形 HTML 的容错行为必然不同**，会扩大双跑差异。
+- **形态**：**一份纯 JS 解析器**作为 SDK 模块，经 ADR-008 的 `moduleHandler` 以固定模块名（建议 `elecon:html`）解析；两端加载同一份源码、各自在 QuickJS 内执行，再由共享 golden 验证已使用行为。
 - htmlparser2 编译产物为 ES5 兼容（验证通过），**天然遵守引擎地板**（无 ES2022+ / 无 BigInt）；bundle 纳入双跑闸门确保两端加载一致（ADR-008 §3.6 canary）。
 
 ### 2.2 API：htmlparser2 + domutils 的 DOM-lite 表面
@@ -50,7 +50,7 @@ adapter 通过 `elecon:html` 模块获得以下能力（底层由 htmlparser2 + 
 
 ### 2.3 容错与确定性（双跑一致性的新承重点）
 
-- **零漂移保证**：两端加载**同一份** htmlparser2 bundle 源码 → 同一输入必然同一输出，容错行为天然一致（不存在"两个不同实现对 tag-soup 行为不同"的问题）。
+- **漂移控制**：两端加载**同一份** htmlparser2 bundle 源码，避免维护两套 parser；不同 QuickJS 绑定/版本下的实际行为仍由共享 golden 验证。
 - htmlparser2 的 tag-soup 容错策略（未闭合标签、可选闭合的 `li`/`p`、void 元素等）是成熟且稳定的（npm 周下载 7500 万+，edge case 经多年社区验证）。
 - **版本锁定**：htmlparser2 版本一经选定，**升级等同契约改动**（红线 #6），须走 ADR / 版本化，不得随手升——任何容错行为变更都可能导致双跑 golden 飘。
 - **确定性硬要求不变**：同一输入两端必须同一输出（golden）。双跑测试覆盖 htmlparser2 的容错矩阵。
@@ -65,7 +65,7 @@ adapter 通过 `elecon:html` 模块获得以下能力（底层由 htmlparser2 + 
 **决定取向**：采用 **htmlparser2 生态**。理由：
 
 1. **最大兼容性**：在学校普遍无 JSON feed、HTML 是唯一数据源的现实下，HTML 解析是几乎所有 adapter 的基础能力，必须可靠——不能用"够用就行"的极简解析器赌每所学校的 HTML 都规范。
-2. **零漂移**：经 esbuild 打成单文件 ESM bundle，两端加载同一份源码，确定性保证与自写等价。
+2. **共享实现**：经 esbuild 打成单文件 ESM bundle，两端加载同一份源码，并用双跑 golden 约束已使用语义。
 3. **许可证**：htmlparser2（MIT）、domutils（BSD-2-Clause）、css-select（BSD-2-Clause）、domhandler（BSD-2-Clause）、entities（BSD-2-Clause）——全部宽松许可证，红线 #9 无风险。
 4. **引擎地板**：htmlparser2 编译产物为 ES5 兼容，使用 `Uint8Array`（QuickJS 支持），无 ES2022+ 特性，无 BigInt。
 5. **体积可接受**：实测 bundle 约 **205KB（未压缩，`build.mjs` 中 `minify: false`）**——刻意不压缩，使 bundle 在仓库内**可读、可审计**（§3.3 的"无隐藏 I/O"靠肉眼/审计核验，压缩后无从审）。205KB 源码在 64MiB 内存限额内可忽略；HTML 解析是高频基础设施，"为最大兼容性 + 可审计性牺牲一部分空间"的权衡合理。（起草期 59KB 估值系 minify 后口径，与本仓库保留未压缩版的取舍不同。）
@@ -87,7 +87,7 @@ adapter 通过 `elecon:html` 模块获得以下能力（底层由 htmlparser2 + 
 - [x] **Bundle 构建**：以 esbuild 将 htmlparser2 + domutils + css-select + entities + domhandler 打为**单文件 ESM bundle**（目标 ES2020，`minify:false`，无外部依赖）；产出置于 `adapters/_stdlib/html.bundle.js`，纳入版本管理。 — PR #15（`build.mjs` + bundle）
 - [x] **运行时（服务端）**：`server/src/runtime/sandbox.ts` 的 `setModuleLoader` 注册 `elecon:html` → 加载同一份 bundle；未知模块名 fail-closed 抛错。 — PR #15
 - [x] **运行时（客户端）**：`client/lib/core/adapter_runtime.dart` 的 `moduleHandler` 注册 `elecon:html` → 加载同一份 bundle；未注入时 fail-closed。 — PR #15（本批补全，与服务端对称）
-- [x] **测试**：服务端 `sandbox.smoke.ts` XIDIAN golden + schema；客户端 `test/dual_run_test.dart` 同一 bundle、同一夹具 golden 一致 + 未注入 fail-closed。两端 == golden ⟹ 零漂移。 — PR #15
+- [x] **测试**：服务端 `sandbox.smoke.ts` XIDIAN golden + schema；客户端 `test/dual_run_test.dart` 同一 bundle、同一夹具 golden 一致 + 未注入 fail-closed。两端分别命中同一 golden，证明覆盖到的行为一致。 — PR #15
 - [ ] **SDK 类型声明**：`contract/adapter-sdk/` 增 `elecon:html` 模块 `.d.ts`（re-export §2.2 的公开 API 子集），让 adapter 作者有类型提示。 — **待补**（不阻断运行，仅 DX；adapter 现以 JS 写，无类型门禁）
 - [ ] **畸形 HTML 容错矩阵**：把"未闭合 / 可选闭合 li·p / void 元素 / 属性引号缺失 / 实体解码 / 注释·CDATA"做成两端共跑的 golden 套件（§2.3）。当前仅 XIDIAN 真实页 + 模板覆盖，矩阵化待补。 — **待补**
 - [ ] **文档**：adapter 编写指南补"HTML 源 adapter"小节 + `elecon:html` API 参考（指向 htmlparser2 官方文档）。 — **待补**

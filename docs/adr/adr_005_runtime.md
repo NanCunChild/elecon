@@ -23,20 +23,20 @@ ADR-000 把"一份 adapter，两端运行"定为承重墙：客户端用 QuickJS
 ## 2. 决策（Decision）
 
 1. **宿主语言：TypeScript on Node.js。** `server/` 与 `tools/` 统一到 TS/Node。注意是 **TypeScript，不是裸 Node**。
-2. **adapter 服务端沙箱：编译成 wasm 的 QuickJS（`quickjs-emscripten` 一类）。** 服务端用与客户端**字面意义上同一个引擎**执行 adapter。
+2. **adapter 服务端沙箱：编译成 wasm 的 QuickJS（`quickjs-emscripten` 一类）。** 服务端与客户端同属 QuickJS/Bellard 谱系，但绑定、版本和编译配置不同；共享 golden/canary 控制已使用语义的漂移（事实修正见 ADR-008 §3.2）。
 3. **全栈统一到 JS/TS：** adapter 是 JS、服务端是 TS、契约校验工具（`ajv` 一类）客户端服务端共用一套、`tools/` 也是 TS。一个心智模型，对"人力不足"的项目，统一语言的维护收益远大于逐组件抠性能——直接对齐 ADR-000 的低维护主线。
 
 ### 2.1 为什么是 QuickJS-wasm 而不是别的服务端执行方式
 
 | 候选 | 取 | 舍 |
 |---|---|---|
-| **QuickJS-wasm（`quickjs-emscripten`，选用）** | 真正的沙箱；与客户端**同一个引擎、零语义漂移**；全程纯 JS/wasm，无 cgo | 需管理 wasm 运行时与内存边界 |
+| **QuickJS-wasm（`quickjs-emscripten`，选用）** | 真正的沙箱；与客户端同属 QuickJS 谱系，可用共享 golden 约束已使用语义；全程纯 JS/wasm，无 cgo | 需管理 wasm 运行时与内存边界及跨绑定漂移 |
 | Node 的 `vm` 模块 | 零依赖、就在标准库 | **`vm` 明确不是安全边界**，半可信/侧载 adapter 在里面等于裸奔——直接违背红线 #5 与信任分层 |
 | Go + `goja` | 纯 Go、单二进制 | 引擎不完整、与客户端语义漂移（本文要解的问题） |
 | Go + `quickjs-go` | 是 QuickJS、无语义漂移 | 需 cgo，抵消单静态二进制的部署优势 |
 | `isolated-vm` | 强隔离的 V8 isolate | 去用前**必须先查其当前维护状态**；与客户端引擎不同（V8 vs QuickJS），有语义漂移风险 |
 
-结论：**QuickJS-wasm 同时拿到三样东西——真正的沙箱、与客户端零语义漂移、纯 JS/wasm 无 cgo**，比 Go+goja（有缺口）和 Go+quickjs-go（要 cgo）都干净。
+结论：**QuickJS-wasm 同时拿到真正的沙箱、与客户端接近的 QuickJS 语义基础、纯 JS/wasm 无 cgo**，比 Go+goja（有缺口）和 Go+quickjs-go（要 cgo）都干净；跨绑定一致性仍必须由共享 golden/canary 验证。
 
 ---
 
@@ -55,7 +55,7 @@ Node 的 `vm` 模块**不是安全边界**（官方文档明确声明）。半�
 **唯一允许的服务端 adapter 执行方式是 QuickJS-wasm。** 这同时满足：
 
 - **真正的沙箱**：wasm 线性内存内执行，无宿主引用泄漏；
-- **零语义漂移**：与客户端 QuickJS 是同一引擎，双跑一致性（ADR-001 §8）名副其实；
+- **可控语义漂移**：客户端与服务端分别对同一套 golden/canary 验证，承诺范围限于测试覆盖的已使用语义；
 - **无 cgo**：纯 JS/wasm，不破坏 Node 的部署模型。
 
 ### 3.3 部署与供应链要补课

@@ -33,7 +33,7 @@ ADR-001 §8 把"客户端 QuickJS 与服务端 QuickJS-wasm 对同一夹具产�
 
 | 候选 | 取 | 舍 |
 |---|---|---|
-| **flutter_qjs_next（当前主线）** | 全平台 QuickJS，与服务端**同一引擎零漂移**；纯 ffi；保留 `IsolateQjs`/host-fn；QuickJS 2026-06-04；解除旧 KGP/ffi 1.x 阻塞 | 当前以 pub.dev `1.0.2` 精确版本接入；MIT；OHOS 未验证 |
+| **flutter_qjs_next（当前主线）** | 全平台 QuickJS；与服务端同属 QuickJS 谱系并以共享 golden/canary 约束已使用语义；纯 ffi；保留 `IsolateQjs`/host-fn；QuickJS 2026-06-04；解除旧 KGP/ffi 1.x 阻塞 | 与服务端绑定、版本和编译配置不同；当前以 pub.dev `1.0.2` 精确版本接入；MIT；OHOS 未验证 |
 | flutter_qjs（ekibun，旧方案） | 全平台 QuickJS；API 干净；自带 cxx/QuickJS 源 | 已停更，0.3.7 在 Dart 3.12 编不过；旧 fork 拖累 ffi/KGP |
 | flutter_js | 维护中 | **iOS/macOS 用 JavaScriptCore** → 引擎漂移，违背承重墙 |
 | kodjodevf/flutter_qjs | 较新 | 实为 flutter_js 改名（`getJavascriptRuntime` API），v0.0.1、未发 pub，来路不稳，不宜作承重依赖 |

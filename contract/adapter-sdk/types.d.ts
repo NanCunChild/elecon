@@ -1,8 +1,8 @@
 /**
  * Adapter SDK 类型声明（供 adapter 编写者参考，非运行期依赖）
  *
- * 同一份 adapter 在客户端（QuickJS）与服务端（QuickJS-wasm）以相同语义被调用——
- * 两端是同一个 QuickJS 引擎，零语义漂移（见 docs/adr/adr_005_runtime.md）。
+ * 同一份 adapter 在客户端（QuickJS）与服务端（QuickJS-wasm）以相同宿主契约被调用；
+ * 两种绑定、版本和编译配置的已使用语义由共享 golden/canary 约束（ADR-008 §3.2）。
  * 请求图由每 capability 的 `requestGraph` 决定（declarative | imperative；ADR-022）。
  */
 

@@ -17,7 +17,7 @@
 
 ## 2. 夹具驱动（Fixture-driven）
 
-- **CI 不打真实学校接口**：学校接口会变、需鉴权，live 测试既不稳定又有合规风险。adapter 测试一律基于 `adapters/school-<id>/fixtures/` 里的抓包样本。
+- **CI 不打真实学校接口**：学校接口会变、需鉴权，live 测试既不稳定又有合规风险。真实学校 adapter 由 `adapters.pin` 固定的外部仓提供，测试使用其 `adapters/school-<id>/fixtures/` 脱敏样本；本仓 `adapters_tests/` 只保留探针、研究证据与脱敏回归材料。
 - **Golden 测试**：固定"输入样本 → 期望标准 schema 输出"，归一化逻辑变更必须先更新 golden 并解释原因。
 - **夹具必须脱敏**：见红线 #8，样本中不得含真实学生姓名、学号、token 等。脱敏在采样阶段完成，提交前由 `tools/` 的校验器扫描。
 
@@ -27,7 +27,7 @@
 
 - **schema 一致性**：adapter 输出、UI 输入、`contract/schema/` 三者必须对得上，由 CI 自动校验。
 - **manifest 合规**：adapter 声明的能力与域名白名单合法、无越界，由 `tools/` 静态校验。
-- **双跑一致性**：同一份 adapter 在客户端（QuickJS）与服务端（QuickJS-wasm，见 [`adr_005`](../adr/adr_005_runtime.md)）上对同一夹具应产出一致结果——两端是同一引擎，理应零漂移，把它作为一条专门的回归测试。
+- **双跑一致性**：同一份 adapter 在客户端 QuickJS 与服务端 QuickJS-wasm（见 [`adr_005`](../adr/adr_005_runtime.md)）上对同一夹具应产出一致结果。两端绑定、版本和编译配置可能不同，只对共享 golden/canary 覆盖的已使用语义承诺一致，不能假定天然零漂移。
 
 ---
 

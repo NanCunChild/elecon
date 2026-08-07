@@ -200,7 +200,7 @@ manifest 是 adapter 对核心的契约，JSON 格式，供宿主与 `tools/` �
 
 ## 6. 请求图声明性（adapter-sdk 约定；ADR-022）
 
-同一份 adapter 在客户端与服务端以相同语义被调用——两端均为 QuickJS（服务端走 QuickJS-wasm，见 [`adr_005`](./adr_005_runtime.md)），零语义漂移。**每 capability** 用 `requestGraph` 声明取数请求图（**required、无 default**）；同一 adapter 可混用两种图。
+同一份 adapter 在客户端与服务端以相同宿主契约被调用——两端均属 QuickJS 谱系（服务端走 QuickJS-wasm，见 [`adr_005`](./adr_005_runtime.md)），但绑定、版本和编译配置不同；共享 golden/canary 只保证覆盖到的已使用语义一致（ADR-008 §3.2）。**每 capability** 用 `requestGraph` 声明取数请求图（**required、无 default**）；同一 adapter 可混用两种图。
 
 > 旧称「fetch 模式 / parser 模式」与顶层 `mode` 已由 [ADR-022](./adr_022_request_graph.md) 抹除。真正发请求与注入凭证的始终是核心 broker。
 

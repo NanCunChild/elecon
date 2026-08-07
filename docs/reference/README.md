@@ -6,7 +6,7 @@
 - [B6 实现计划 —— ctx.fetch 代理 + 异步运行时 + 限额](./b6_imperative_runtime_plan.md)（ADR-009 §2.1/§2.7，🔒 人工主导，含开放点）
 - [WebView 登录收割 + XIDIAN 取数可行性](./webview_login_fetch_feasibility.md)（ADR-012/015/016，🔒 人工主导）
 - [XIDIAN 全闭环 + SSO mint 签票](./xidian_mint_closed_loop_plan.md)（ADR-017，🔒 接线/执行人工主导）
-- [ADR-023 声明式跨请求数据流落地清单](./declarative_dataflow_migration.md)（准备阶段；§5 开放问题勾决后落地，🔒 人工主导）
+- [ADR-023 声明式跨请求数据流落地清单](./declarative_dataflow_migration.md)（MVP 已于 2026-07-24 完成并由 owner 安全签收；后续增量单独评审）
 - [Response Masker 重构与迁移计划](./response_masker_plan.md)（ADR-026；Broker 响应凭证收割与投影）
 - [Response Masker · JSON 定位 / 重复键 / DEV 诊断](./response_masker_json_locator.md)（B1 拍板：手写剪接 + 重复键 fail-closed + ADR-024 DEV 诊断）
 - [Response Masker 签收清单](./response_masker_signoff_checklist.md)

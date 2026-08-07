@@ -98,7 +98,7 @@ adapter 是**逻辑**，不是数据，也不是底座。它的唯一职责是�
 QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 adapter，两端运行**"：
 
 - **客户端**：用 QuickJS 执行 adapter，配合传输底座**直连**学校（私密数据不经服务器）。
-- **服务端**：Node/TS 服务用 **QuickJS-wasm（`quickjs-emscripten` 一类）**执行**同一份** adapter，用于填充公网的公开数据缓存。两端是同一个 QuickJS 引擎，零语义漂移。（运行时选型见 [`adr_005`](./adr_005_runtime.md)，它覆盖了本文早先"Go + goja"的设想。）
+- **服务端**：Node/TS 服务用 **QuickJS-wasm（`quickjs-emscripten` 一类）**执行**同一份** adapter，用于填充公网的公开数据缓存。客户端与服务端使用不同绑定、版本和编译配置；共享 golden/canary 约束项目实际使用的语义，不宣称所有行为天然零漂移。（运行时选型见 [`adr_005`](./adr_005_runtime.md)，运行时差异见 [`adr_008`](./adr_008_client_runtime.md) §3.2。）
 
 由此，每个学校的对接逻辑只写一次，客户端与服务端共用——这正是"简化上层开发、降低贡献门槛"的落点：贡献者只需写一个 JS 文件，无需懂客户端/服务端/原生。
 
