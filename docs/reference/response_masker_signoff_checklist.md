@@ -1,9 +1,9 @@
 # Response Masker 安全签收与收尾清单（ADR-026）
 
-> 状态：**纯 Capture/Project 引擎（工程说明 §9.2 step 3）已落地并双端双跑绿**；方案 A 基线已签收，后续方案 B 单次稀疏索引重构已实现、**待 owner 重新逐行安全复签**。本清单同时登记后续阶段收尾项与 elecon-adapters 侧改动。
+> 状态：**纯 Capture/Project 引擎（工程说明 §9.2 step 3）已落地并双端双跑绿**；2026-08-07 owner 已裁定 selector miss、mandatory policy 与空规则语义，代码与契约已实现、**待 owner 逐行安全复签**。mandatory loader/runtime gate 仍受 P0-01、P1-04 与生产装配阻塞。
 > 🔒 触红线 #1/#5/#6/#10。凭证 / Broker / 契约 / 签名路径的实现与测试须人工主导，AI 不得独自闭环（AGENTS.md §1）。
 
-已落地文件：`server/src/runtime/broker/response-masker.ts`、`client/lib/core/broker/response_masker.dart`、`contract/golden/broker/response-masker.json`（52 例，含 3 个共享生成式超限向量 + 1 个索引复用向量）、两端 smoke/test。契约+validator（step 2）见 `contract/response-masker.schema.json`、`tools/src/validator/response-masker.ts`。**B2–B6 与 B1 方案 A 基线已由 owner 于 2026-08-05 签收；B1 方案 B 须复签**；C/D 组生产接线与发布控制仍独立阻塞。
+已落地文件：`server/src/runtime/broker/response-masker.ts`、`client/lib/core/broker/response_masker.dart`、`contract/golden/broker/response-masker.json`（57 例）、两端 smoke/test。契约+validator（step 2）见 `contract/response-masker.schema.json`、`tools/src/validator/response-masker.ts`。**B2–B6 与 B1 方案 A 基线已由 owner 于 2026-08-05 签收；B1 方案 B 与 2026-08-07 miss 增量须复签**；C/D 组生产接线与发布控制仍独立阻塞。
 
 ---
 
@@ -20,6 +20,7 @@
 | B1a | JSON body：**手写源码定位 + 按位剪接**，不改树重序列化；漂移靠共享 golden（详文 [`response_masker_json_locator.md`](./response_masker_json_locator.md) §1） | 引擎已采用剪接；**B1 人审 + golden 补强已完成（2026-08-05）** |
 | B1b | **重复 JSON 键 fail-closed**（码 `capture_duplicate_key`）；无 first/last、不重命名消歧；责任在学校侧畸形载荷（同文 §2） | **语义已实现；方案 B 待复签**（两端单次扫描完整导航层、索引记录首个重复键、查询经过该层时拒绝；未导航兄弟嵌套内部重复键不检测）；golden 覆盖目标键/兄弟键/嵌套导航层/转义等价键 fail-closed、未导航兄弟重复忽略及 transaction 原子失败 |
 | B1c | 开发者**结构**诊断（码 / ruleId / path·header 名 / 重复 key 名）挂 **ADR-024 DEV profile**，非 `kDebugMode`；DEPLOY 仅稳定错误码级；永不回显原值（同文 §3） | **ADR-024 落地后接线**；ADR §2.4 已记 |
+| B7 | 不增加 optional/required 开关；selector 缺失逐规则 miss，mixed/all miss 可交付且不更新 Store；类型、大小、重复/多命中与投影错误仍 fail-closed；接受存在性 oracle 与字段漂移残余风险 | **契约、TS/Dart 引擎、57 例 golden、firewall 旧值保持测试已实现，待 owner 复签** |
 
 ---
 
@@ -48,7 +49,7 @@
 - [x] **B3 字符串反转义 / 下标漂移（owner 签收 2026-08-05）**：以平台 JSON 反转义单 token；UTF-16 码元下标假设是剪接承重前提。**golden 补齐**：`json_surrogate_pair_value`（代理对→非 BMP）、`json_trailing_backslash_value`（末尾 `\\`）、`json_escaped_quote_value`（`\"`）、project `replace_json_after_non_bmp_preserves_bytes`（**非 BMP 前置 → span 下标 parity**）、`replace_json_value_with_escaped_quote`；两端双跑绿。
   - **finding 2（数组下标安全整数已修）**：超 2^53−1 下标两端漂移（TS 丢精 `capture_not_found` vs Dart `int.parse` 抛逃逸）→ 两端 tokenizer + validator `validJsonPath` 统一判**不支持语法**（runtime `capture_bad_jsonpath` / 发布期 `RM14_bad_jsonpath`）。golden `json_array_index_unsafe_fail_closed` + validator `bad-jsonpath-unsafe-index` 双锁。
   - **孤立/错序代理对（建议 #8）**：**不入 shared golden**——lone high / lone low / 错序代理对的 capture 结果含孤立代理码元，无法在 UTF-8 golden 的 `expected` 里表达；归入 finding 1 之外的**差分/属性测试**（建议 #10）另行覆盖。
-- [x] **B4 header 大小写 / 歧义（owner 拍板 2026-08-04：定为契约，签收）**：大小写不敏感匹配，多种大小写并存判 `capture_ambiguous`。**调查结论**：两端**生产传输层均归一化** header——server `transport/direct.ts` 用 WHATWG `Headers.forEach`（名全小写 + 同名合并）、client `transport/direct.dart` 用 `HttpHeaders.forEach`（名小写 + `values.join(', ')`）。**owner 定性 = (a)**：**声明「header map 到达 masker 前已归一（键小写、同名合并、Set-Cookie 另路）」为契约**；`capture_ambiguous` 分支记为 **belt-and-suspenders 纵深冗余**（防非归一化上游 / firewall 手搓 map），保留不删。golden `header_ambiguous_case_fail_closed` 用手搓双大小写 map 证明护栏仍有效。**C1 接线约束**：firewall 组装/透传 header map 时不得破坏该归一契约（列入 C1 审查项）。
+- [ ] **B4 header 大小写 / 原始基数（2026-08-07 重开）**：owner 最新决策要求多次命中 fail-closed，覆盖真实 HTTP 同名 header，而不只手工 map 的大小写歧义。当前 server WHATWG `Headers` 与 Dart `HttpHeaders` 会在 Masker 前折叠同名值，无法证明原始基数。须按 P1-04 在折叠前保留 cardinality，并用真实 TS/Dart HTTP 测试证明两个同名 token header 拒绝；完成前 P0-09 不得关闭。
 - [x] **B5 日志 / 诊断纪律（引擎层 owner 签收 2026-08-05）**：`capture_*` / `project_overlap` / `capture_duplicate_key` / `capture_too_deep` / `capture_budget_exceeded` 全 fail-closed；消息**不含原值/命中片段/敏感 URL**（ADR §2.4）。C1 的 DEV/DEPLOY 发射接线仍独立待审。
   - **B5 契约（owner 拍板 2026-08-04，决议已落，发射挂 C1）**：对宿主诊断的**稳定契约 = §3.3 结构化字段**（`code`/`ruleId`/`source`/`path`\|`headerName`/重复键 `key`），**非 message 文案**；DEPLOY 丢 message、留稳定 `code`。发射由 C1 firewall 上层 catch 在 **ADR-024 DEV profile** 决定（`ruleId`/`path` 上下文只在规则层可得）。ADR-024 前若临时挂 `kDebugMode` 须标注为临时通道。C1 接线后扫上层 catch / 遥测。
   - **finding 3（引擎携带 `key`）**：重复 sibling 键名只在引擎层可得，故 `MaskerError.detail.key` / `MaskerException.key` 在 `capture_duplicate_key` 时携带（golden `errorKey` 双端校验）；只含键名。至此 §3.3 白名单里引擎层可得字段（`code`+`key`）已可兑现，规则层字段（`ruleId`/`path`）由 C1 补。
@@ -79,7 +80,7 @@
   - **进度（2026-08-03，🔒 待人工审）**：骨架已起草 `server/src/runtime/broker/delivery-firewall.ts`——单 choke point `deliverThroughFirewall`，按 ADR-026 §2.4 次序编织已落地零件：① **A3** 明文边界断言（`transportDecodeOk=false → body_not_plaintext` fail-closed）→ ②→⑤ `applyResponseMasker`（Capture/Validate/Project，含 **C0 源响应投影**）→ ⑥ `commitMaskerCaptured`（**A6** 在此，未声明 ref fail-closed）→ ⑦ `stripEchoes` 下游回显剥离 → ⑧ `processResponse` header allowlist 脱敏。**交付事务 fail-closed**：任一步抛错绝不交付原响应、绝不半提交。smoke `delivery-firewall.smoke.ts` 7 组绿（含 **C0 raw→delivered 源投影 + 落库闭环**、编码二进制文本投影、header 源删除、A3 fail-closed、事务不半提交、无策略仍经 choke point、回显剥离）；dataflow shared golden 另含 bytes→base64/base64url text→后续 compute/inject 两条双端 pipeline。**seam（待接线，人工主导）**：② Policy 匹配（`masker.json` match→rules，现由调用方传入）、① A3 真实 UTF-8 判定（传输层职责）、⑥ Credential Store 原子性 / generation swap（真实 SecureStore）；**替换三入口现有直接交付**（如 `fetch-proxy` 末尾 `processResponse`）+ 无旁路证明是接线主步。
 - [ ] **C2 Commit 接线（step 5）**：Credential Store 原子提交（§2.4 单持久 ref + generation swap + 崩溃语义）；ADR-023 opaque handle staging；handle 源投影（§3：同次 raw 提取执行 bind 一次，产出 staged handle + 投影响应，不重复计量）。
   - **进度（🔒 待人工审，未接入 live 路径）**：落库中段已起草 `server/src/runtime/broker/masker-commit.ts`（`planMaskerCommit` 纯编排 + `commitMaskerCaptured` 薄桥接到 `CredentialStore.put`，与 `harvest.ts` 同构）。含 **A6** 运行期 assert（`captured.length ≤ 1` → `commit_multiple_credentials` fail-closed）、未声明 ref → `commit_ref_undeclared` fail-closed（已收割敏感值绝不静默丢，异于 harvest 的防御性跳过）；type/scope 取自 manifest decl（ADR-012 §2.4）。smoke `masker-commit.smoke.ts` 5 组绿（含 Capture→Commit→`get(ref)` 闭环，via=header 供命名头注入）。**仍缺**：原子性 / generation swap / 崩溃语义（走真实 store 落地，非本原型桥接）；接入 live 交付路径 = C1 firewall 无旁路证明 + C0 源投影缺口前置（下）。Dart 侧镜像随客户端核心（同 harvest 目前 TS-only 原型）。
-- [ ] **C3 host/version gate**：落地后移除 validator `RM0_host_gate_unavailable` 阻断；同步改 **ADR-018** bundle 内容说明（`masker.json` 为受版本门约束的可选签名运行时文件）；旧 host 遇新 bundle 拒载。
+- [ ] **C3 mandatory policy + host/version gate**：official bundle 必须恰有一个 `masker.json`，`rules: []` 合法；policy、sink、store 或 host gate 任一缺失均拒载。实际 loader 接线须先完成 P0-01，使 digest 绑定 path/encoding/length/content 并拒绝重复路径；否则签名不能证明被加载字节确属 `masker.json`。落地后移除 validator `RM0_host_gate_unavailable` 阻断，旧 host 遇新 bundle 拒载。
 - [ ] **C4 §7.4 尚缺项**：charset / 压缩 / 非法编码语义（呼应 A3，多数属传输层）由 golden 钉死。
 - [ ] **C5 §10 发布/吊销门**：observation→rule→destination→replay 闭合；raw canary 不出现在 delivered fixture；policy diff / 删除 waiver；旧漏洞版本 revocation / `minVersion`；review fixtures 不进 bundle；签名台账加 `maskerDigest`。
 - [ ] **C6 §2.6 adapter-side 提取 scanner**：token/session/cookie、认证 header、跨请求值传递、高危正则作**人工审查触发器**（非自动裁定）。
@@ -91,7 +92,7 @@
 
 > adapters 在 `ncc-devlab`、合并后自动镜像；客户端按需拉取（`adapters.pin` + `fetch-adapters.sh`）；per-capability 门 `check-adapters.mjs` 仍 DRAFT。
 
-- [ ] **D1 bundle 内新增 `masker.json`**（schema v1，adapter 根，进 digest + 官方签名）；确保按需拉取/镜像链路一并带上。
+- [ ] **D1 bundle 内 mandatory `masker.json`**（schema v1，adapter 根，空 `rules` 合法，进 digest + 官方签名）；确保按需拉取/镜像链路一并带上。旧 adapter 由 owner 手工迁移，不保留缺文件兼容。
 - [ ] **D2 manifest 声明 credential ref**：`credential` 目标引用的 ref 须在 manifest 已声明（validator RM8），形态依赖 **ADR-029**。**ADR-029 已接受（2026-07-31）**，§2.1 命名 header 的契约、validator、Broker 纯函数/拼装、客户端两个生产 manifest parser、双端 runtime CH1–CH3 与共享 golden 已落地；verified manifest→Broker view 及 Dart policy→resolver→transport 集成测试已补（🔒 待人工逐行安全签收）。**进度**：Masker Commit → Credential Store 写入该 ref 的落库中段已起草（见 C2 进度：`masker-commit.ts`，smoke 含 `aircon-session`→`x-access-token` 闭环，🔒 待人工审、未接 live）；`aircon-session` 等 ref 正式声明随首例（D7）落。**仍待**：接入 live 交付路径（C1/C0）。
 - [ ] **D3 审查材料 `review/`**（`fixtures/raw`、`fixtures/delivered`、`security-observations.json`）放仓库但**不进发布 bundle**；CI 校验不被打包。
 - [ ] **D4 迁移盘点（§9.1）**：逐个扫 adapter/probe 对 header/body/URL 的正则/JSONPath/切片提取 `token/session/code/openid/client_id`、cookie value 来源（`setEphemeralCookie`）、跨请求值流；逐项人工分类，不按变量名批改。

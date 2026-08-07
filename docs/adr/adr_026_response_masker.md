@@ -1,7 +1,7 @@
 # ADR-026：Broker 响应凭证收割与投影（Response Masker）
 
 - **状态**：已接受（2026-07-30）。本文将原 Deferred 议题重构为正式方案；Broker、契约、签名 bundle 与正式 adapter 的各阶段实现仍须人工安全复核。
-- **日期**：2026-07-27；2026-07-30 重写职责与迁移方向
+- **日期**：2026-07-27；2026-07-30 重写职责与迁移方向；2026-08-07 接受 selector miss 语义与 mandatory policy gate
 - **适用范围**：Broker 从学校响应中提取非标准凭证敏感值、在核心内建立受控引用，并向 declarative / imperative adapter 交付投影响应。
 - **触及红线**：#1、#5、#6、#10。凭证收割、存储、句柄、注入、响应投影和签名发布均属人工主导的承重路径，AI 不得独自闭环。
 - **依赖**：[`ADR-000`](./adr_000_abstract.md)（可信核心与凭证边界）、[`ADR-009`](./adr_009_fetch_credential.md)（响应脱敏）、[`ADR-012`](./adr_012_credential_store.md)（凭证存储）、[`ADR-018`](./adr_018_adapter_distribution.md)（签名 bundle 与发布门）、[`ADR-023`](./adr_023_declarative_dataflow.md)（不透明句柄）、[`ADR-029`](./adr_029_named_and_body_credentials.md)（命名 header / body 注入）。
@@ -10,7 +10,7 @@
 
 本文接受后，显式修订 ADR-009 §2 第 5 条的 body 透传边界：普通业务 body 仍可在投影后交给 adapter；经 official 审核分类的 credential-equivalent 不再属于可接受透传风险，必须由本文机制收割或删除。未知、漏报字段仍属于 §2.6/§5.2 的供应链残余风险。
 
-本文同时修订 ADR-018 的 bundle 内容说明：`masker.json` 成为可选但受 host/version gate 约束的签名运行时文件；现有 signer 已覆盖 `.json`，但加载、校验和发布治理仍须按本文补齐。
+本文同时修订 ADR-018 的 bundle 内容说明：official adapter 的 `masker.json` 是 mandatory、受 host/version gate 约束的签名运行时文件；其 `rules` 可为空。现有 signer 已覆盖 `.json`，但加载、校验和发布治理仍须按本文补齐。
 
 ## 1. 背景
 
@@ -80,7 +80,7 @@ adapter request declaration / ctx.fetch / action entry
   -> adapter
 ```
 
-Capture、Validate、Project 和 Commit 是一个交付事务。任何必需步骤失败，响应不得进入 adapter；不得出现“凭证已经写入但投影失败仍交付原 body”或“投影成功但句柄缺失后继续发未认证请求”的半完成状态。
+Capture、Validate、Project 和 Commit 是一个交付事务。selector 缺失按 §2.5 只令该规则 miss；命中规则的任何步骤失败时响应不得进入 adapter。不得出现“凭证已经写入但投影失败仍交付原 body”或“投影成功但句柄缺失后继续发未认证请求”的半完成状态。
 
 首期每个响应事务最多更新 **一个持久 credential ref**；所有 handle 先在 execution-local staging generation 中完成预算校验，不直接修改活动表。实现先准备投影响应与 staged handles，再执行一次安全存储原子替换，成功后以不可失败的内存 swap 激活 handles。安全存储写入后若进程崩溃，允许出现“新 credential 已保存但本次响应未交付”的安全侧偏差；不得出现原响应泄漏或部分持久凭证集合。若未来单响应必须原子更新多个持久 ref，须先为 Credential Store 增加 generation/CAS 与崩溃恢复设计，不能放宽本文语义。
 
@@ -88,24 +88,30 @@ Capture、Validate、Project 和 Commit 是一个交付事务。任何必需步�
 
 **开发者溯源诊断（2026-07-31）**：允许在宿主诊断中输出**结构定位**（错误码、规则 id、JSONPath / header **名**、重复键的 key **名**），但永不输出材料原值。该详细诊断**预备挂在 [ADR-024](./adr_024_build_profile_trust.md) 的 DEV 信任 profile** 上（编译期 flag，与优化等级解绑），**不**绑定传统 `kDebugMode`。DEPLOY 仅保留稳定错误码级摘要。字段白名单与接线节奏见 [`response_masker_json_locator.md`](../reference/response_masker_json_locator.md) §3。
 
-### 2.5 失败语义：功能与安全共同 fail-closed
+### 2.5 selector miss 与 fail-closed 边界
 
-当 adapter 的功能依赖被收割值时，学校字段变化本来就会使旧 adapter 不可用。继续交付原响应不会恢复正确功能，只会让敏感值重新进入 adapter。因此：
+2026-08-07 owner 决定不在规则上增加 `optional` / `required` 字段。每条 selector 缺失（header 无命中、JSON key 不存在或数组下标越界）即该规则 **miss 并跳过**；mixed hit/miss 合法，只有命中规则参与 Capture / Project / Commit。所有规则 miss 或 `rules: []` 时，正常交付已经过 Broker 通用脱敏的原响应，`captured=[]`，不写 Credential Store，既有 credential 保持不变。
 
-- 必需 selector 未命中、解析失败、数量异常：整条 capability fail-closed；
+miss 只覆盖“路径在正确容器中确实不存在”。以下情况仍 fail-closed：
+
+- header 多命中或其他数量异常；
+- JSON 路径导航期望 object / array、实际容器类型不符（稳定码 `capture_type_mismatch`，不得归为 `capture_not_found` 或被 miss 吞掉）；
 - **JSON 对象内重复键**（路径导航层级上同名键出现 ≥2 次）：fail-closed（建议码 `capture_duplicate_key`）；**不**提供 first/last 选择器，**不**重命名消歧——畸形载荷责任在学校侧，见 [`response_masker_json_locator.md`](../reference/response_masker_json_locator.md) §2；
-- 类型、大小、scope 或目标校验失败：fail-closed；
+- JSON / JSONPath 解析错误、错误容器类型、非标量或 `null`；
+- 类型、大小、深度、扫描预算、scope 或目标校验失败；
 - 投影、Credential Store 或 opaque handle 提交失败：fail-closed；
 - Masker 内部异常：fail-closed；
-- 响应格式变化：等待 adapter 代码与响应策略在同一签名 bundle 中原子更新。
+- 命中载体格式变化并触发上述解析、类型或校验错误：等待 adapter 代码与响应策略在同一签名 bundle 中原子更新。
 
-规则可以显式声明只用于 `redact` 的可选目标，但“可选”不得用于认证是否存在、是否注入或是否发送请求等会形成凭证预言机的路径。可选规则的缺失语义须在契约接受前逐类列举，默认仍为必需。
+owner 明示接受 selector miss 形成的存在性 oracle：adapter 可从投影后响应差异推知已登记字段是否存在，但仍不得获得命中值。不得用 miss 结果在核心内改变认证是否注入或是否发送请求；它只决定本响应中对应规则是否 Capture / Project / Commit。
 
 ### 2.6 对不配合 adapter 的边界
 
 本层能强制保护的是 **已登记响应策略命中的值**：adapter 无法读取 Masker 前的响应，无法关闭规则，也无法把已收割值从核心读回。
 
 本层不能从任意 body 中完备判断所有秘密。若 official adapter 作者故意不登记某个非标准凭证字段，坚持把它伪装成普通业务字段并从投影响应中自行正则提取，Broker 无法仅靠通用运行时识别其语义；这不是 selector 技术可以解决的问题。
+
+selector miss 还扩大了一项明确接受的字段漂移残余风险：学校把已登记字段改名或新增未登记字段时，旧规则可能全部 miss，新字段会作为普通业务字段进入 adapter。该风险不靠运行时猜测字段语义消除，而由 official 审核、脱敏 fixture / observation 回放、同 bundle 更新及发现后的拒签或吊销承接。
 
 该威胁由 official 供应链治理承接：
 
@@ -119,7 +125,11 @@ Capture、Validate、Project 和 Commit 是一个交付事务。任何必需步�
 
 ### 2.7 配置与 adapter 原子发布
 
-响应策略放在独立 `masker.json`，与 `manifest.json`、adapter 代码一起进入 bundle digest 和 official 签名。选择独立文件是为了保持 capability manifest 聚焦能力声明，同时允许策略随学校接口热更新。
+响应策略放在独立且 mandatory 的 `masker.json`，与 `manifest.json`、adapter 代码一起进入 bundle digest 和 official 签名。`rules: []` 合法，表示该版本没有非标准响应凭证规则，但不能用缺少文件表达同一状态。选择独立文件是为了保持 capability manifest 聚焦能力声明，同时允许策略随学校接口热更新。
+
+不保留“缺文件等价空规则”的旧 bundle 兼容。owner 确认现有 official adapter 数量有限，将在新 host gate 启用前手工补齐 `masker.json` 并重新签发；未迁移 bundle 由新 host 拒载，旧 host 则由最低 host/version gate 阻止采纳新 bundle。
+
+运行时加载 official adapter 时，policy、delivery sink、Credential Store 或 host/version gate 任一缺失，adapter 均须拒载；空规则不放宽这些依赖。该 loader 接线目前仍受 **P0-01 bundle digest 路径绑定**阻塞：在 digest 能把已验签 `masker.json` 唯一绑定到实际加载路径前，不得实现旁路加载或宣称运行时门已闭合。本文只记录门禁决策，本次纯引擎 / 契约改动不修改 bundle loader 或 signer。
 
 发布门必须验证：
 
@@ -224,7 +234,7 @@ ADR-023 当前“中间值从不进 adapter”的叙述与源响应交付实现�
 
 - 已签名策略命中的凭证值只存在于可信核心；
 - adapter 不能读取 Masker 前响应、关闭规则或解引用核心 handle；
-- 必需字段漂移不会降级为原 body 交付，而会令 capability 失败；
+- 已登记且命中的字段按策略收割和投影；命中规则失败不会降级为原 body 交付；
 - adapter、策略与版本治理原子发布；
 - 后续注入继续受 credential scope、静态汇聚点和 action policy 约束。
 
@@ -233,6 +243,8 @@ ADR-023 当前“中间值从不进 adapter”的叙述与源响应交付实现�
 - 人工审核、fixture 和 observation 可能同时漏掉一个实际凭证字段；
 - 恶意或有缺陷的 official adapter 可能把未登记秘密伪装成业务字段自行解析；
 - 学校可能新增尚未被人工分类的凭证载体；
+- 字段改名可能令规则 miss，未登记的新字段因而进入 adapter；
+- selector 是否命中会向 adapter 暴露有限的存在性 oracle；
 - selector 或跨端实现缺陷可能导致 capability 拒绝服务；
 - 签署者可能错误批准不完整策略。
 
@@ -243,7 +255,7 @@ ADR-023 当前“中间值从不进 adapter”的叙述与源响应交付实现�
 接受后预计至少涉及：
 
 - `contract/response-masker.schema.json` 与共享 golden；
-- `masker.json` 的 capture target、selector、cardinality 和资源限额；
+- mandatory `masker.json`（允许空 `rules`）的 capture target、selector、cardinality 和资源限额；
 - tools validator、policy diff、scanner 与 fixture observation 闭环；
 - adapter bundle include、digest、验签后加载和旧版本吊销；
 - Dart / TS 对称 Capture / Project 纯函数；
@@ -252,19 +264,19 @@ ADR-023 当前“中间值从不进 adapter”的叙述与源响应交付实现�
 - raw Transport -> Broker -> adapter replay；
 - adapter 全量迁移与发布安全清单。
 
-所有 schema 新增保持向后兼容，但旧客户端遇到声明 Masker 要求的新 bundle 时必须经 host/version gate 拒载，不能忽略 `masker.json` 后继续运行。
+旧客户端遇到要求 Masker 的 bundle 时必须经 host/version gate 拒载，不能忽略 `masker.json` 后继续运行。official adapter 即使无规则也必须携带 `masker.json`；policy / sink / store / host gate 任一缺失均拒载。实际接线仍受 §2.7 所述 P0-01 digest 路径绑定阻塞。
 
 ## 7. 实施阶段必须落实
 
-1. `masker.json` schema 与 bundle 最低 host/version gate。
+1. mandatory `masker.json` schema（空 `rules` 合法）与 bundle 最低 host/version gate；实际 loader 接线须等待 P0-01 digest 路径绑定。
 2. `credential` capture 的覆盖、过期、撤销、来源和原子提交语义。
 3. `handle` 与 ADR-023 bind 的统一或映射方式，及源响应投影修订。
-4. selector 缺失、多次命中、非法 body、字符编码和实体头清理语义。
-5. 可选 `redact` 规则是否首期存在；若存在，允许的封闭场景。
+4. selector miss / mixed / all-miss、类型不匹配、多次命中、非法 body、字符编码和实体头清理语义。
+5. `redact` 与其他目标使用同一 miss 语义，不增加 optional / required 字段。
 6. policy diff、规则删除 waiver、release ledger 和旧版本吊销流程。
 7. adapter-side credential extraction scanner 的告警规则与人工处置标准。
 8. 首批迁移清单及至少一个脱敏真实案例；空调可以作为命名 header 注入的小例子，但不得使用真实 token、IMEI 或学生数据。
 
 ## 8. 决策结果
 
-**Accepted（2026-07-30）。** Response Masker 是 Broker 的响应凭证收割与投影层，不是 fail-open 的附加字符串过滤器。实现按 §4 的大重构迁移，并在各阶段落实 §7 的工程与治理要求；不保留 adapter 自行读取已分类凭证的长期兼容路径。
+**Accepted（2026-07-30；2026-08-07 owner 补充决策）。** Response Masker 是 Broker 的响应凭证收割与投影层，不是 fail-open 的附加字符串过滤器。selector 缺失按 §2.5 作为 rule miss，其他错误仍 fail-closed；实现按 §4 的大重构迁移，并在各阶段落实 §7 的工程与治理要求。不保留 adapter 自行读取已分类凭证的长期兼容路径，也不因本次契约与纯引擎落地声称关闭任何 loader / 运行时 P0。

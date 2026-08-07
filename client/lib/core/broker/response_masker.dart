@@ -201,7 +201,7 @@ String _capValue(String value) {
 // Capture ①：header 源。大小写不敏感固定头名，须恰 1 命中（schema exactly:1）。
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// 从**脱敏前**响应头收割一个值。0 命中 / 多命中 / 超限一律 fail-closed（§2.5）。
+/// 从**脱敏前**响应头收割一个值。0 命中由事务层解释为 rule miss；多命中 / 超限 fail-closed。
 String captureHeader(String name, MaskerRawResponse raw) {
   final wanted = name.toLowerCase();
   final matches = <String>[];
@@ -575,14 +575,14 @@ _JsonSpan _lookupJsonSpan(_JsonIndexNode index, List<Object> tokens) {
   for (final token in tokens) {
     if (token is String) {
       if (node.kind != _JsonKind.object) {
-        throw const MaskerException('capture_not_found', '路径期望对象');
+        throw const MaskerException('capture_type_mismatch', '路径期望对象');
       }
       final key = node.duplicateKey;
       if (key != null) {
         throw MaskerException('capture_duplicate_key', 'JSON 对象重复键', key: key);
       }
     } else if (node.kind != _JsonKind.array) {
-      throw const MaskerException('capture_not_found', '路径期望数组');
+      throw const MaskerException('capture_type_mismatch', '路径期望数组');
     }
     final child = node.children[token];
     if (child == null) {
@@ -645,12 +645,12 @@ String _parseJsonKey(String s, int start, int end) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 构造 adapter-visible 投影响应。header 源规则删除整头；json 源规则把命中标量剪接为固定
-/// sentinel。任一命中缺失 / 越界 / 非标量一律 fail-closed（与 Capture 同口径，纵深防御）。
+/// sentinel。此内部函数只接收已命中规则；非标量等投影错误仍 fail-closed（纵深防御）。
 /// body 被改写后删除 Content-Length / Content-Encoding / ETag（失效实体元数据）。
 MaskerRawResponse projectResponse(
   List<MaskerRule> rules,
   MaskerRawResponse raw,
-) => _projectResponse(rules, raw, _ScanBudget());
+) => applyResponseMasker(rules, raw).projected;
 
 /// 内部实现：接受跨规则共享的累计预算（finding 1）。公开的 [projectResponse] 是单预算薄包装，
 /// 避免把私有类型 `_ScanBudget` 暴露进公开 API。
@@ -770,8 +770,9 @@ Map<String, String> _stripEntityHeaders(Map<String, String> headers) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 执行 Capture + Project 纯函数部分，返回待托管凭证与投影响应。**不**做 Commit / 注入。
-/// 先对**每条**规则 Capture（redact 也收割以强制存在性），credential 目标产出待托管值；再一次
-/// 性投影。任一 Capture 或 Project 抛错 → 整体 fail-closed，调用方不交付、不发下游请求。
+/// selector 缺失只令该规则 miss；只有命中规则参与 Capture / Project，credential 目标才产出待
+/// 托管值。所有规则 miss（含空 rules）时返回原投影响应与空 captured。除 `capture_not_found` 外
+/// 任一 Capture / Project 错误仍令整体 fail-closed。
 MaskerOutcome applyResponseMasker(
   List<MaskerRule> rules,
   MaskerRawResponse raw,
@@ -780,15 +781,27 @@ MaskerOutcome applyResponseMasker(
   final tokenized = _tokenizeRulePaths(rules);
   _JsonIndexNode? index;
   final captured = <CapturedCredential>[];
+  final hitRules = <MaskerRule>[];
   for (final rule in rules) {
     late final String value;
-    if (rule.capture.source == 'header') {
-      value = captureHeader(rule.capture.name ?? '', raw);
-    } else {
-      index ??= _buildIndexForTokenized(raw.body, tokenized, budget);
-      final path = rule.capture.path ?? '';
-      value = _captureJsonFromIndex(path, tokenized[path], raw.body, index);
+    try {
+      if (rule.capture.source == 'header') {
+        value = captureHeader(rule.capture.name ?? '', raw);
+      } else if (rule.capture.source == 'json') {
+        index ??= _buildIndexForTokenized(raw.body, tokenized, budget);
+        final path = rule.capture.path ?? '';
+        value = _captureJsonFromIndex(path, tokenized[path], raw.body, index);
+      } else {
+        throw MaskerException(
+          'capture_bad_source',
+          "未知 capture 源 '${rule.capture.source}'",
+        );
+      }
+    } on MaskerException catch (error) {
+      if (error.code == 'capture_not_found') continue;
+      rethrow;
     }
+    hitRules.add(rule);
     if (rule.capture.destinationKind == 'credential') {
       captured.add(
         CapturedCredential(
@@ -800,7 +813,7 @@ MaskerOutcome applyResponseMasker(
     }
   }
   final projected = _projectResponse(
-    rules,
+    hitRules,
     raw,
     budget,
     tokenized: tokenized,

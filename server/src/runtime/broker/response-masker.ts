@@ -152,7 +152,7 @@ function capValue(value: string): string {
 // Capture ①：header 源。大小写不敏感固定头名，须恰 1 命中（schema exactly:1）。
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** 从**脱敏前**响应头收割一个值。0 命中 / 多命中 / 超限一律 fail-closed（§2.5）。 */
+/** 从**脱敏前**响应头收割一个值。0 命中由事务层解释为 rule miss；多命中 / 超限 fail-closed。 */
 export function captureHeader(name: string, raw: MaskerRawResponse): string {
   const wanted = name.toLowerCase();
   const matches: string[] = [];
@@ -497,14 +497,14 @@ function lookupJsonSpan(index: JsonIndexNode, tokens: Array<string | number>): J
   let node = index;
   for (const token of tokens) {
     if (typeof token === "string") {
-      if (node.kind !== "object") throw new MaskerError("capture_not_found", "路径期望对象");
+      if (node.kind !== "object") throw new MaskerError("capture_type_mismatch", "路径期望对象");
       if (node.duplicateKey !== undefined) {
         throw new MaskerError("capture_duplicate_key", "JSON 对象重复键", {
           key: node.duplicateKey,
         });
       }
     } else if (node.kind !== "array") {
-      throw new MaskerError("capture_not_found", "路径期望数组");
+      throw new MaskerError("capture_type_mismatch", "路径期望数组");
     }
     const child = node.children.get(token);
     if (child === undefined) {
@@ -561,16 +561,11 @@ function parseJsonKey(s: string, start: number, end: number): string {
 
 /**
  * 构造 adapter-visible 投影响应。header 源规则删除整头；json 源规则把命中标量剪接为固定
- * sentinel。任一命中缺失 / 越界 / 非标量一律 fail-closed（与 Capture 同口径，纵深防御）。
+ * sentinel。此内部函数只接收已命中规则；非标量等投影错误仍 fail-closed（纵深防御）。
  * body 被改写后删除 Content-Length / Content-Encoding / ETag（失效实体元数据）。
  */
-export function projectResponse(
-  rules: MaskerRule[],
-  raw: MaskerRawResponse,
-  budget: ScanBudget = newScanBudget(),
-): MaskerRawResponse {
-  const tokenized = tokenizeRulePaths(rules);
-  return projectResponseWithIndex(rules, raw, tokenized, undefined, budget);
+export function projectResponse(rules: MaskerRule[], raw: MaskerRawResponse): MaskerRawResponse {
+  return applyResponseMasker(rules, raw).projected;
 }
 
 function projectResponseWithIndex(
@@ -678,23 +673,33 @@ function stripEntityHeaders(headers: Record<string, string>): Record<string, str
 
 /**
  * 执行 Capture + Project 纯函数部分，返回待托管凭证与投影响应。**不**做 Commit / 注入。
- * 先对**每条**规则 Capture（redact 也收割以强制存在性），credential 目标产出待托管值；再一次
- * 性投影。任一 Capture 或 Project 抛错 → 整体 fail-closed，调用方不交付、不发下游请求。
+ * selector 缺失只令该规则 miss；只有命中规则参与 Capture / Project，credential 目标才产出待
+ * 托管值。所有规则 miss（含空 rules）时返回原投影响应与空 captured。除 `capture_not_found` 外
+ * 任一 Capture / Project 错误仍令整体 fail-closed。
  */
 export function applyResponseMasker(rules: MaskerRule[], raw: MaskerRawResponse): MaskerOutcome {
   const budget = newScanBudget();
   const tokenized = tokenizeRulePaths(rules);
   let index: JsonIndexNode | undefined;
   const captured: CapturedCredential[] = [];
+  const hitRules: MaskerRule[] = [];
   for (const rule of rules) {
     let value: string;
-    if (rule.capture.source === "header") {
-      value = captureHeader(rule.capture.name ?? "", raw);
-    } else {
-      index ??= buildIndexForTokenized(raw.body, tokenized, budget);
-      const path = rule.capture.path ?? "";
-      value = captureJsonFromIndex(path, tokenized.get(path) ?? null, raw.body, index);
+    try {
+      if (rule.capture.source === "header") {
+        value = captureHeader(rule.capture.name ?? "", raw);
+      } else if (rule.capture.source === "json") {
+        index ??= buildIndexForTokenized(raw.body, tokenized, budget);
+        const path = rule.capture.path ?? "";
+        value = captureJsonFromIndex(path, tokenized.get(path) ?? null, raw.body, index);
+      } else {
+        throw new MaskerError("capture_bad_source", `未知 capture 源 '${rule.capture.source}'`);
+      }
+    } catch (error) {
+      if (error instanceof MaskerError && error.code === "capture_not_found") continue;
+      throw error;
     }
+    hitRules.push(rule);
     if (rule.capture.destination.kind === "credential") {
       captured.push({
         ruleId: rule.id,
@@ -703,6 +708,6 @@ export function applyResponseMasker(rules: MaskerRule[], raw: MaskerRawResponse)
       });
     }
   }
-  const projected = projectResponseWithIndex(rules, raw, tokenized, index, budget);
+  const projected = projectResponseWithIndex(hitRules, raw, tokenized, index, budget);
   return { captured, projected };
 }

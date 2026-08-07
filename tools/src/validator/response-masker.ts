@@ -29,7 +29,6 @@ interface MaskerCapture {
   source?: "header" | "json";
   name?: string;
   path?: string;
-  required: true;
   exactly: 1;
   destination: MaskerDestination;
 }

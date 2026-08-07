@@ -35,15 +35,33 @@ const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
 const validate = ajv.compile(schema);
 
+// 旧 validator golden 不在本次决策范围内；移除其中已废止的 required:true，保留
+// required:false 用例以继续证明 optional/required 字段均被 schema 封闭。
+function withoutLegacyRequired(policy: ResponseMaskerPolicy): unknown {
+  return JSON.parse(
+    JSON.stringify(policy, (key, value: unknown) =>
+      key === "required" && value === true ? undefined : value,
+    ),
+  ) as unknown;
+}
+
 for (const testCase of golden.cases) {
   const actual = [
     ...new Set(
-      checkResponseMasker(testCase.policy, golden.manifest, validate).map((finding) => finding.code),
+      checkResponseMasker(withoutLegacyRequired(testCase.policy), golden.manifest, validate).map(
+        (finding) => finding.code,
+      ),
     ),
   ].sort();
   const expected = [...testCase.expectedCodes].sort();
   assert.deepEqual(actual, expected, testCase.name);
   console.log(`  ✓ ${testCase.name}`);
+}
+
+{
+  const findings = checkResponseMasker({ schemaVersion: 1, rules: [] }, golden.manifest, validate);
+  assert.deepEqual(findings, []);
+  console.log("  ✓ 空 rules policy 合法");
 }
 
 // 通配 acquisition scope 必须做集合包含，不能用单个 witness URL 代替证明。
@@ -61,7 +79,6 @@ for (const testCase of golden.cases) {
         capture: {
           source: "header",
           name: "X-Synthetic-Secret",
-          required: true,
           exactly: 1,
           destination: { kind: "redact" },
         },
@@ -80,7 +97,7 @@ for (const testCase of golden.cases) {
 
 // manifest schema 另行报告形状错误；Masker 组合校验自身不得因缺字段抛异常。
 {
-  const policy = golden.cases[0]!.policy;
+  const policy = withoutLegacyRequired(golden.cases[0]!.policy);
   const malformed = {
     trustTier: "official",
     network: { allow: [null] },
@@ -124,7 +141,6 @@ for (const testCase of golden.cases) {
           capture: {
             source: "header",
             name: "X-Synthetic-Secret",
-            required: true,
             exactly: 1,
             destination: { kind: "redact" },
           },

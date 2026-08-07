@@ -94,6 +94,51 @@ void main() {
     },
   );
 
+  test('selector miss delivers without replacing an existing credential', () {
+    const existing = CredentialEntry(
+      ref: 'session',
+      schoolId: 'demo',
+      type: 'header',
+      scope: ['https://school.example/*'],
+      value: 'OLD_FIXTURE_SECRET',
+      acquiredAt: 1000,
+      expiresAt: 9000,
+      status: CredentialStatus.active,
+    );
+    final writes = <CredentialEntry>[];
+    final result = deliverThroughFirewall(
+      raw: const MaskerRawResponse(
+        status: 200,
+        headers: {'content-type': 'application/json'},
+        body: '{"business":"ok"}',
+      ),
+      transportDecodeOk: true,
+      rules: const [
+        MaskerRule(
+          id: 'r-missing',
+          capture: MaskerCaptureDecl(
+            source: 'json',
+            destinationKind: 'credential',
+            path: r'$.missing',
+            destinationRef: 'session',
+          ),
+          project: 'replace',
+        ),
+      ],
+      view: _view,
+      sink: writes.add,
+      context: MaskerCommitContext(schoolId: 'demo', now: () => 2000),
+    );
+
+    expect(result.response.body, '{"business":"ok"}');
+    expect(result.committedCount, 0);
+    expect(writes, isEmpty);
+    expect(existing.value, 'OLD_FIXTURE_SECRET');
+    expect(existing.status, CredentialStatus.active);
+    expect(existing.acquiredAt, 1000);
+    expect(existing.expiresAt, 9000);
+  });
+
   test(
     'Commit planner rejects multiple or undeclared credential targets before writes',
     () {

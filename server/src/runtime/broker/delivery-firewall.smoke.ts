@@ -156,29 +156,39 @@ async function main(): Promise<void> {
     console.log("  ✓ A3：transportDecodeOk=false → body_not_plaintext fail-closed（不交付/不落库）");
   }
 
-  // ⑤ 交付事务 fail-closed：capture 未命中 → 抛、不半提交、不交付原响应。
+  // ⑤ selector miss：允许交付、不提交，并逐字段保留既有 credential。
   {
     const store = new CredentialStore(undefined, ctx.now);
-    const badRule: MaskerRule = {
+    const existing = {
+      ref: "aircon-session",
+      schoolId: "juhaolian-demo",
+      type: "header" as const,
+      scope: ["https://gxkt.juhaolian.cn/*"],
+      value: "OLD_FIXTURE_SECRET",
+      acquiredAt: 1_600_000_000_000,
+      expiresAt: 1_800_000_000_000,
+      status: "active" as const,
+    };
+    store.put(existing);
+    const missingRule: MaskerRule = {
       id: "r-missing",
       capture: { source: "json", path: "$.nope", destination: { kind: "credential", ref: "aircon-session" } },
       project: "replace",
     };
-    assert.throws(
-      () =>
-        deliverThroughFirewall({
-          raw: { status: 200, headers: { "content-type": "application/json" }, body: '{"token":"x"}' },
-          transportDecodeOk: true,
-          rules: [badRule],
-          view: AIRCON_VIEW,
-          sink: store,
-          ctx,
-        }),
-      "capture 未命中应整体 fail-closed（抛错）",
-    );
-    assert.equal(store.list().length, 0, "capture 失败不得半提交");
+    const raw = { status: 200, headers: { "content-type": "application/json" }, body: '{"business":"ok"}' };
+    const outcome = deliverThroughFirewall({
+      raw,
+      transportDecodeOk: true,
+      rules: [missingRule],
+      view: AIRCON_VIEW,
+      sink: store,
+      ctx,
+    });
+    assert.equal(outcome.committedCount, 0, "selector miss 不得提交 credential");
+    assert.equal(outcome.response.body, raw.body, "selector miss 应交付未投影的业务响应");
+    assert.deepEqual(store.list(), [existing], "selector miss 后旧 credential 的值、状态与时间戳须全部保持");
     passed++;
-    console.log("  ✓ 交付事务 fail-closed：capture 未命中 → 抛错、不半提交、不交付原响应");
+    console.log("  ✓ selector miss：正常交付、commit=0、旧 credential 逐字段保持");
   }
 
   // ⑥ 无策略命中：响应仍经 choke point 交付（header 脱敏生效），committedCount=0。
