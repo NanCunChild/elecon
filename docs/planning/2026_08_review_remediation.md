@@ -36,7 +36,7 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | 待真机签收 | P0-06、P0-07 | iOS 已降级为 S/M 且 H 路径 fail-closed；Android 已用 `KeyInfo` 拒绝 software/unknown；仍需 iOS 升级安装及 Android emulator/TEE/StrongBox 矩阵 |
 | 部分落地，保持开放 | P0-10 | TS 已阻止取消后 Commit；Dart 已有 firewall/commit 原语与严格 UTF-8 状态；生产 wiring 仍依赖已验签 policy loader/matcher、执行级 query harvest 事务、P1-08/P1-09/P1-12 |
 | 待仓库/历史事实 | P0-13、P0-15 | reusable CI、main-only preflight、tag SHA/ancestry、审批 hook、真实验签 ledger 工具已落地；仍需配置 `release` Environment、不可变 `v*` tag 规则，并由 NanCunChild 提供历史 source commit/签署时间/签署人/复核引用 |
-| ADR 阻塞，未改实现 | P0-01、P0-05、P0-09、P0-14 | 按 owner 指令跳过；先完成上表 C 组所列 ADR 修订或澄清 |
+| ADR / 签收阻塞 | P0-01、P0-05、P0-09、P0-14 | P0-05 的 ADR-009 rev-5 与两端实现已起草，待 owner 按专项清单复签；P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；P0-01/P0-14 保持原前置 |
 
 本轮自动验证：`npm run lint`、`npm run typecheck`、`npm run smoke:all`（server 26/26、tools 18/18）、`flutter analyze`、`flutter test`（744 项）、全量 scanner、release ledger smoke/validate、release preflight、recorder Python tests、`git diff --check`。自动验证不是安全签收的替代品。
 
