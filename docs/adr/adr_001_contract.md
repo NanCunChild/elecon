@@ -191,6 +191,8 @@ manifest 是 adapter 对核心的契约，JSON 格式，供宿主与 `tools/` �
 
 ### 5.2 信任档与 requestGraph 约束
 
+> ⚠ **待修订（[ADR-033](./adr_033_production_sideload.md) · Proposed，2026-08-09）**：[ADR-033](./adr_033_production_sideload.md) 提议把本节约束（validator C3）的适用范围由「分发 / 签名路径」扩到**运行时**，并对生产侧载档叠加额外能力面闸门（其 §2.4 G1–G6）。 **ADR-033 接受前，本节逐字有效。**
+
 - `trustTier: official` → 每 capability 可用 `requestGraph: imperative` 和/或 `declarative`（release 下凭证注入资格仍由 trust tier 裁定；ADR-022）。
 - `trustTier: sideload` → **release 下每个 capability 强制 `requestGraph: declarative`**；`tools/` 校验器在**官方分发/签名路径**拒绝 sideload + 任一 imperative cap（`C3_sideload_must_declarative`）。**dev/debug build 例外**：无签名侧载 adapter 可跑 imperative（强警告 + 全占用确认），见 [`adr_002`](./adr_002_trust_model.md) §2.5——dev 本地加载不经此静态闸门。
 - **`community` 档已移除**（ADR-002 2026-06-14 修订）：信任模型只剩 official + sideload，`trustTier` 枚举不再含 `community`（见 [`adr_002`](./adr_002_trust_model.md) §2.1）。

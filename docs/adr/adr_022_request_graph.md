@@ -60,6 +60,8 @@ ADR-001 §6 把 adapter 的调用分成两种**模式**：`fetch`（adapter 用 
 
 - **对 sideload（硬约束，红线 #5 的落地）**：`trustTier: sideload` 的 adapter，其**每个** capability 的 `requestGraph` 必须为 `declarative`。**理由不是可审计性**（那可被夹具近似，见 §1），**而是能力面**：`imperative` 要给 adapter `ctx.fetch` + 凭证注入能力，红线 #5 明令不可信代码「无网络、无凭证」。若降级成推荐，恶意侧载 adapter 即可在运行时把用户 session 注入到它临时选择的任意校内端点；声明式下该受凭证请求集是**静态钉死、可审的**。这是纵深防御，**不可退让**。与旧「sideload 强制 parser」在约束强度上**等价**，只是表述从「模式」精确化到「能力面」并下沉到 capability 粒度。
 
+> ⚠ **待修订（[ADR-033](./adr_033_production_sideload.md) · Proposed，2026-08-09）**：ADR-033 §2.2 指出：本条「sideload ⟹ declarative」在**生产**侧载档下**不足以独立成立**——ADR-023 把 `declarative` 扩宽到含跨请求数据流后，`bind`→`inject` 可把已认证响应的内容送往 manifest 自声明的任意 host，全程不调 `ctx.fetch`。故生产侧载须叠加 ADR-033 §2.4 的 G2（禁 dataflow）与 G3（host 须属本校官方域）。**本条对 official 与 DEV 侧载的含义不变。** **ADR-033 接受前，本节逐字有效。**
+
 - **dev/debug build 例外不变**（ADR-002 §2.5）：无签名侧载 adapter 仍可跑 `imperative`（强警告 + 全占用确认），该路径编译期从 release 剔除。
 - **ADR-002 §2.6 的 `ctx.fetch` 档位闸门**：保证不变（非 official 永不触达凭证注入），仅**触发条件**从「fetch 模式」改为「capability 的 requestGraph=imperative」。broker 凭证注入机制（ADR-009）**一字不改**。
 

@@ -123,6 +123,8 @@ auth_A        auth_B
 
 ### 2.6 信任门：`devSideload` 在 DEV 下与 official 同权（2026-07-24 修订）
 
+> ⚠ **待修订（[ADR-033](./adr_033_production_sideload.md) · Proposed，2026-08-09）**：本节的 🔒 防扩散条款已被触发：[ADR-033](./adr_033_production_sideload.md) 提议新增「在生产环境中可存在的非 official 档」。按本节要求，该档**不自动继承**本节结论；ADR-033 §2.4 G2 提议对其**禁用 `bind`/`compute`/`inject`**。 **ADR-033 接受前，本节逐字有效。**
+
 > **本节推翻本 ADR 初稿「带 `compute` 的数据流 official-only」的决策**（owner 2026-07-24 勾决）。初稿理由是「审计面增大，保守 official-first」；下述证据表明该保守取向在本项目的信任档结构下不产生实际收益，反而卡死 official adapter 的供给侧。
 
 **决策：`devSideload` 档的声明式 capability 获得与 official 完全相同的 `bind`/`compute`/`inject` 能力面。**

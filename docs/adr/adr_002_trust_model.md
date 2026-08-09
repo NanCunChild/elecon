@@ -85,6 +85,8 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 
 ### 2.5 dev 侧载闸门（红线 #4）
 
+> ⚠ **待修订（[ADR-033](./adr_033_production_sideload.md) · Proposed，2026-08-09）**：ADR-033 提议在 **DEPLOY profile 的 Android/桌面产物**上允许**声明式**侧载 adapter，从而修订本节「release 下侧载入口根本不存在」这一句（**iOS 与 dev 语义均不变**）。该提议同时指出：本节这句与红线 #5「release 下侧载 adapter 每个 capability 必须是 declarative」长期矛盾——契约层（`trustTier` enum、validator C3）站红线 #5，运行时（`verify.dart`）站本节。 **ADR-033 接受前，本节逐字有效。**
+
 - 侧载加载路径**在编译阶段即从 release 剔除**——不是运行时开关，而是 release 二进制里**根本不存在**加载未签名 adapter 的代码（编译期 `kReleaseMode` / 条件编译裁掉整段）。**侧载-imperative 路径（dev 下凭证注入给无签名 adapter）同样编译期剔除**——release 二进制里没有"给非 official 注入凭证"的代码分支。
 - dev 传输底座同样**仅 debug build**存在（红线 #4）。
 - **dev/debug build 的侧载能力（2026-06-14 人工 owner 决策）**：无签名侧载 adapter **可跑 imperative、可触发凭证注入**（用开发者自有测试账号），不再强制退化为 declarative。这是开发者本地调试 imperative adapter 的必要能力。**风险以多重警告兜底，不以能力阉割兜底**：

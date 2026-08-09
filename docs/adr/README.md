@@ -42,5 +42,6 @@
 | [030](./adr_030_actuator_capabilities.md) | Accepted | 未落地 | 待人工 | P1-12 |
 | [031](./adr_031_dataflow_seed.md) | Accepted | 未落地 | 待人工 | P1-10 |
 | [032](./adr_032_app_tunnel_embedding.md) | Proposed | 禁止实现 | 待人工评审 | 接受前不得合并 transport 实现 |
+| [033](./adr_033_production_sideload.md) | Proposed | 禁止实现 | 待人工评审 | 接受前不得合并生产侧载实现；触发 ADR-023 §2.6 防扩散条款 |
 
 更新规则：接受或废弃 ADR 时更新 `Decision`；实现 PR 只更新 `Landing`；安全签收必须附人工复核引用，不能以 smoke 通过代替。

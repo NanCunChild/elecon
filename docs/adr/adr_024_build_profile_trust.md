@@ -43,6 +43,8 @@ if (kSideloadEnabled) { /* 侧载加载 + dev 凭证注入分支 */ }       // d
 
 > profile 清单**已终定（2026-07-31 owner）：仅 DEPLOY + DEV，不设第三个 `UX` profile**（§5.1）。
 
+> ⚠ **待修订（[ADR-033](./adr_033_production_sideload.md) · Proposed，2026-08-09）**：ADR-033 提议给本矩阵加**平台维度**（DEPLOY-iOS 零侧载 / DEPLOY-桌面与 Android 声明式侧载）。该提议**不推翻**「仅两 profile」的终定结论——iOS 豁免走平台条件编译，不是新信任档。另见 ADR-033 §4.1：护栏 4a 的符号断言在桌面/Android 上会**变弱**。 **ADR-033 接受前，本节逐字有效。**
+
 ### 2.3 判别器换位的四条护栏（`kReleaseMode` 白送、现须自证）
 
 `kReleaseMode` 是 Flutter 内建、几乎不可能设错；换成项目 flag 后，以下从「自动成立」变「须自证」：

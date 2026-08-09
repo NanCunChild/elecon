@@ -140,6 +140,18 @@ RFC 忽略该属性（退化为 session），而不是当作「立刻过期」�
    ADR-010 的商店提交论点因此只在 Android 有证据。
 3. **人工安全签收未完成**：本轨触红线 #4，AI 不得独自闭环。
 
+**ADR-033（生产侧载档）已起草为 Proposed（2026-08-09）。** 起因是 owner 倾向把 DEPLOY 的侧载形态
+定为 declarative-only 而非零侧载。查实外泄面的结论改变了这项的范围：`format: uri` 的 emits 字段
+**当前不构成通道**（客户端无 `url_launcher` 依赖、无 `Image.network`，唯一附件渲染点 `enabled: false`），
+真正的通道是**声明式数据流本身**——`bind`→`compute`→`inject{at:"url"}` 可把已认证响应的内容经 broker
+送往 manifest 自声明的任意 host，零点击、adapter 不调 `ctx.fetch`、不看句柄值。ADR-023 §2.5 已写明
+该威胁「归 official = 人工审 + 签名 兜」，而生产侧载拆掉的正是这道闸门，故 ADR-033 §2.4 补 G1–G6
+能力面闸门（其中 G2 禁 dataflow、G3 限 host 属本校官方域），并把告知义务分三级。
+
+该 ADR 一旦接受，会**削弱** P0-14 刚落地的护栏 4a：桌面/Android 的 DEPLOY 产物里侧载加载路径必须存在，
+「哨兵 0 次」的结构性断言只在 DEPLOY-iOS 上保留（详见 ADR-033 §4.1）。**P0-14 的安全签收应在
+ADR-033 决策之后进行**，否则会签收一个即将改变语义的护栏。
+
 > 过程中的一个实证值得留档：护栏 4b 的标记生成任务最初只声明 `outputs`、未声明 `inputs`，
 > gradle 判 UP-TO-DATE，导致**首次 DEV 构建原样留下上一次 DEPLOY 的标记**——元数据自称 DEPLOY、
 > 产物里却带侧载入口。是护栏 4a 的符号 grep 拦下的。这正是 ADR-024 §5.3 坚持「符号 + 元数据
