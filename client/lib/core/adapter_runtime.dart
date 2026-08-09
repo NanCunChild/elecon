@@ -18,7 +18,7 @@ library;
 
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_qjs_next/flutter_qjs.dart';
 import 'package:elecon_contract/output_validator_registry.dart'
     show outputValidatorFor;
@@ -57,6 +57,7 @@ import 'declarative_host.dart'
         DeclarativeRequestDecl,
         InjectDecl,
         fulfillDeclarativeRequests;
+import 'trust/trust_profile.dart' show kSideloadEnabled;
 import 'trust/trusted_context.dart'
     show AdapterTrustTier, TrustedAdapterContext, fetchTrustPermitted;
 
@@ -393,12 +394,13 @@ Future<dynamic> _runImperativeAdapter({
   void Function(String level, String message)? onLog,
 }) async {
   // 信任闸门：在触达引擎、注册任何 host function 之前 fail-closed（ADR-002 §2.6）。
-  // debugBuild 硬接 kDebugMode（编译期常量）——不提供注入点，release 语义不可被调用方改写。
-  if (!fetchTrustPermitted(trust.tier, debugBuild: kDebugMode)) {
+  // sideloadEnabled 硬接 kSideloadEnabled（编译期常量，ADR-024 判别器）——不提供注入点，
+  // DEPLOY 语义不可被调用方改写。注意：判别器是**信任 profile**，不再是优化等级。
+  if (!fetchTrustPermitted(trust.tier, sideloadEnabled: kSideloadEnabled)) {
     throw AdapterRunException(
       AdapterFailureReason.trustRejected,
-      '非 official adapter 无 imperative 权限（档位 ${trust.tier.name}，release/profile '
-      'build）——ADR-002 §2.6 结构化权限错误，凭证注入路径不可达',
+      '非 official adapter 无 imperative 权限（档位 ${trust.tier.name}，DEPLOY '
+      'profile）——ADR-002 §2.6 结构化权限错误，凭证注入路径不可达',
     );
   }
 
