@@ -168,14 +168,17 @@ AssembleResult assembleRequest(AssembleRequestInput input) {
     url = _injectQueryParam(url, decision.queryParam!, input.resolved!.value);
   }
 
-  // ③ Cookie 合流：broker 注入名优先，其后补 jar。
-  final seen = <String>{};
+  // ③ Cookie 合流：broker 注入名优先——注入过的**名字**把 jar 里所有同名条目（不论
+  //    Path）整体压掉，凭证以核心注入的那份为准（栅栏 2 的最外层）。
+  //    jar 侧同名不同 Path 的多条**全部保留**（P1-05：浏览器语义，长 Path 在前；
+  //    此前按名去重会把 selectCookies 已正确选出的深路径 cookie 又丢一次）。
+  final injectedNames = <String>{};
   final cookiePairs = <CookiePair>[];
   for (final p in injectCookie) {
-    if (seen.add(p.name)) cookiePairs.add(p);
+    if (injectedNames.add(p.name)) cookiePairs.add(p);
   }
   for (final p in input.jarCookies) {
-    if (seen.add(p.name)) cookiePairs.add(p);
+    if (!injectedNames.contains(p.name)) cookiePairs.add(p);
   }
   if (cookiePairs.isNotEmpty) {
     headers['Cookie'] = cookiePairs

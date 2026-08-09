@@ -144,17 +144,19 @@ export function assembleRequest(input: AssembleRequestInput): AssembleResult {
     url = injectQueryParam(url, decision.queryParam, resolved.value);
   }
 
-  // ③ Cookie 合流：broker 注入名优先，其后补 jar（origin>ephemeral 已由 selectCookies 落实）。
-  const seen = new Set<string>();
+  // ③ Cookie 合流：broker 注入名优先——注入过的**名字**把 jar 里所有同名条目（不论
+  //    Path）整体压掉，凭证以核心注入的那份为准（栅栏 2 的最外层）。
+  //    jar 侧同名不同 Path 的多条**全部保留**（P1-05：浏览器语义，长 Path 在前；
+  //    此前按名去重会把 selectCookies 已正确选出的深路径 cookie 又丢一次）。
+  const injectedNames = new Set<string>();
   const cookiePairs: CookiePair[] = [];
   for (const p of injectCookie) {
-    if (seen.has(p.name)) continue;
-    seen.add(p.name);
+    if (injectedNames.has(p.name)) continue;
+    injectedNames.add(p.name);
     cookiePairs.push(p);
   }
   for (const p of jarCookies) {
-    if (seen.has(p.name)) continue;
-    seen.add(p.name);
+    if (injectedNames.has(p.name)) continue;
     cookiePairs.push(p);
   }
   if (cookiePairs.length > 0) {

@@ -607,7 +607,9 @@ Future<dynamic> _runImperativeAdapter({
         }
         // 执行结束 B5 收割（仅成功路径；fail 不收割）。
         if (harvest != null) {
-          final plan = decideHarvest(theJar.harvestView(), view);
+          // 收割用执行内冻结时钟（与 harvestInto 的 acquiredAt 同源），避免
+          // 「选 cookie 时未过期、收割时已过期」这类执行内自相矛盾（P1-06）。
+          final plan = decideHarvest(theJar.harvestView(), view, nowMs);
           harvestInto(
             plan,
             view,

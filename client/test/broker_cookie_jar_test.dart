@@ -14,6 +14,8 @@
 library;
 
 import 'package:elecon/core/broker/cookie_jar.dart';
+import 'package:elecon/core/broker/cookie_match.dart'
+    show parseCookieDate, parseMaxAge;
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -27,6 +29,9 @@ EphemeralWriteInput _optsFromJson(Map<String, dynamic> o) =>
       path: o['path'] as String?,
     );
 
+/// 旧向量无 nowMs 字段（其 cookie 也无 expiresAt）；补 0 不改变任一例的判定。
+const int _defaultNowMs = 0;
+
 void main() {
   final golden = readGolden('cookie-jar.json');
 
@@ -37,12 +42,45 @@ void main() {
         .cast<Map<String, dynamic>>();
     final selectCases = (golden['selectCookies'] as List)
         .cast<Map<String, dynamic>>();
+    final dateCases = (golden['parseCookieDate'] as List)
+        .cast<Map<String, dynamic>>();
+    final maxAgeCases = (golden['parseMaxAge'] as List)
+        .cast<Map<String, dynamic>>();
+    final setCookieCases = (golden['parseSetCookie'] as List)
+        .cast<Map<String, dynamic>>();
 
     test('golden 各组非空', () {
       expect(writeCases, isNotEmpty);
       expect(matchCases, isNotEmpty);
       expect(selectCases, isNotEmpty);
+      expect(dateCases, isNotEmpty);
+      expect(maxAgeCases, isNotEmpty);
+      expect(setCookieCases, isNotEmpty);
     });
+
+    for (final c in dateCases) {
+      test('parseCookieDate · ${c['name']}', () {
+        expect(parseCookieDate(c['input'] as String), equals(c['expected']));
+      });
+    }
+
+    for (final c in maxAgeCases) {
+      test('parseMaxAge · ${c['name']}', () {
+        expect(parseMaxAge(c['input'] as String), equals(c['expected']));
+      });
+    }
+
+    for (final c in setCookieCases) {
+      test('parseSetCookie · ${c['name']}', () {
+        final input = c['input'] as Map<String, dynamic>;
+        final actual = parseSetCookie(
+          input['header'] as String,
+          input['requestUrl'] as String,
+          input['nowMs'] as int,
+        );
+        expect(actual?.toJson(), equals(c['expected']));
+      });
+    }
 
     for (final c in writeCases) {
       test('decideEphemeralWrite · ${c['name']}', () {
@@ -59,11 +97,21 @@ void main() {
       test('matchCookieForSend · ${c['name']}', () {
         final input = c['input'] as Map<String, dynamic>;
         final cookie = input['cookie'] as Map<String, dynamic>;
-        final actual = matchCookieForSend((
-          domain: cookie['domain'] as String,
-          path: cookie['path'] as String,
-          hostOnly: cookie['hostOnly'] as bool? ?? false,
-        ), input['requestUrl'] as String);
+        // 该组向量只给发送判据相关字段；补齐 JarCookie 必填项（不参与判定）。
+        final actual = matchCookieForSend(
+          JarCookie(
+            name: 'n',
+            value: 'v',
+            domain: cookie['domain'] as String,
+            path: cookie['path'] as String,
+            hostOnly: cookie['hostOnly'] as bool? ?? false,
+            source: 'origin',
+            secure: cookie['secure'] as bool? ?? false,
+            expiresAt: cookie['expiresAt'] as int?,
+          ),
+          input['requestUrl'] as String,
+          input['nowMs'] as int? ?? _defaultNowMs,
+        );
         expect(actual, equals(c['expected']));
       });
     }
@@ -75,7 +123,11 @@ void main() {
             .cast<Map<String, dynamic>>()
             .map(cookieFromJson)
             .toList();
-        final actual = selectCookies(cookies, input['requestUrl'] as String);
+        final actual = selectCookies(
+          cookies,
+          input['requestUrl'] as String,
+          input['nowMs'] as int? ?? _defaultNowMs,
+        );
         expect(actual, equals(c['expected']));
       });
     }
@@ -231,6 +283,108 @@ void main() {
       expect(ok, isTrue);
       expect(jar.cookieHeader('https://dean.xjtu.edu.cn/'), 'client_id=EPH');
       expect(jar.harvestView(), isEmpty);
+    });
+  });
+
+  // 与 TS `cookie-jar.smoke.ts` 的「P1-05 / P1-06 有态行为」逐条同场景（2026-08-07）。
+  group('B4 cookie-jar 有态 · P1-05 同名多 Path / P1-06 生命周期（Dart）', () {
+    const now = 1600000000000;
+    CookieJar at(int t) => CookieJar(() => t);
+
+    test('P1-05：同名不同 Path 并存，两条都发（长 Path 先）', () {
+      final jar = at(now)
+        ..captureSetCookie(['sid=ROOT; Path=/'], 'https://dean.xjtu.edu.cn/')
+        ..captureSetCookie([
+          'sid=API; Path=/api',
+        ], 'https://dean.xjtu.edu.cn/api/x');
+      expect(
+        jar.harvestView().length,
+        2,
+        reason: '同名不同 Path 必须并存（旧实现折叠成 1 条）',
+      );
+      expect(
+        jar.cookieHeader('https://dean.xjtu.edu.cn/api/grades'),
+        'sid=API; sid=ROOT',
+      );
+      expect(jar.cookieHeader('https://dean.xjtu.edu.cn/portal'), 'sid=ROOT');
+    });
+
+    test('覆盖键 = (name, domain, path)：同名同域同 Path 新值替换旧值', () {
+      final jar = at(now)
+        ..captureSetCookie([
+          'sid=OLD; Path=/api',
+        ], 'https://dean.xjtu.edu.cn/api/x')
+        ..captureSetCookie([
+          'sid=NEW; Path=/api',
+        ], 'https://dean.xjtu.edu.cn/api/x');
+      expect(jar.harvestView().length, 1);
+      expect(jar.cookieHeader('https://dean.xjtu.edu.cn/api/x'), 'sid=NEW');
+    });
+
+    test('P1-06：Max-Age=0 删除该 cookie（不留死条目）', () {
+      final jar = at(now)
+        ..captureSetCookie(['sid=LIVE; Path=/'], 'https://dean.xjtu.edu.cn/')
+        ..captureSetCookie([
+          'sid=; Path=/; Max-Age=0',
+        ], 'https://dean.xjtu.edu.cn/');
+      expect(jar.harvestView(), isEmpty, reason: 'Max-Age=0 必须删除该 cookie');
+      expect(jar.cookieHeader('https://dean.xjtu.edu.cn/'), '');
+    });
+
+    test('删除只命中同 Path 的那条，不误删同名其它 Path', () {
+      final jar = at(now)
+        ..captureSetCookie(['sid=ROOT; Path=/'], 'https://dean.xjtu.edu.cn/')
+        ..captureSetCookie([
+          'sid=API; Path=/api',
+        ], 'https://dean.xjtu.edu.cn/api/x')
+        ..captureSetCookie([
+          'sid=; Path=/api; Max-Age=0',
+        ], 'https://dean.xjtu.edu.cn/api/x');
+      expect(jar.cookieHeader('https://dean.xjtu.edu.cn/api/x'), 'sid=ROOT');
+    });
+
+    test('P1-06：过去的 Expires 同样是删除信号', () {
+      final jar = at(now)
+        ..captureSetCookie(['sid=LIVE'], 'https://dean.xjtu.edu.cn/')
+        ..captureSetCookie([
+          'sid=X; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+        ], 'https://dean.xjtu.edu.cn/');
+      expect(
+        jar.harvestView(),
+        isEmpty,
+        reason: '过去的 Expires 必须删除该 cookie',
+      );
+    });
+
+    test('P1-06：捕获后自然到点 → 不再发送、不再收割', () {
+      var clock = now;
+      final jar = CookieJar(() => clock)
+        ..captureSetCookie([
+          'sid=abc; Max-Age=60',
+        ], 'https://dean.xjtu.edu.cn/');
+      expect(jar.cookieHeader('https://dean.xjtu.edu.cn/'), 'sid=abc');
+      expect(jar.harvestView().length, 1);
+      clock = now + 61000;
+      expect(
+        jar.cookieHeader('https://dean.xjtu.edu.cn/'),
+        '',
+        reason: '过期后不得再发出',
+      );
+      expect(jar.harvestView(), isEmpty, reason: '过期后不得再进收割');
+    });
+
+    test('P1-06：Secure 只随 https 出门', () {
+      final jar = at(now)
+        ..captureSetCookie([
+          'sess=S; Secure',
+          'pref=P',
+        ], 'https://dean.xjtu.edu.cn/');
+      expect(jar.cookieHeader('https://dean.xjtu.edu.cn/'), 'pref=P; sess=S');
+      expect(
+        jar.cookieHeader('http://dean.xjtu.edu.cn/'),
+        'pref=P',
+        reason: 'Secure 不得随 http 发出',
+      );
     });
   });
 }

@@ -1,5 +1,6 @@
 {
-  "_doc": "Broker B4 执行内 cookie jar 纯决策 golden 向量。语言无关唯一事实源：TS（server cookie-jar.smoke.ts）与 Dart（client）照同一向量双跑。规格见 ADR-009 §2.4：四重栅栏（仅 passthrough origin / 不覆盖注入 / 永不收割 / 执行即弃）+ RFC 6265 domain/path 匹配。三组：decideEphemeralWrite（写回栅栏 1）/ matchCookieForSend（发送方向）/ selectCookies（同名优先级 origin>ephemeral）。改动须人工 + 安全清单复核（红线 #1）。",
+  "_doc": "Broker B4 执行内 cookie jar 纯决策 golden 向量。语言无关唯一事实源：TS（server cookie-jar.smoke.ts）与 Dart（client broker_cookie_jar_test.dart）照同一向量双跑。规格见 ADR-009 §2.4：四重栅栏（仅 passthrough origin / 不覆盖注入 / 永不收割 / 执行即弃）+ RFC 6265 domain/path 匹配。六组：decideEphemeralWrite（写回栅栏 1）/ parseCookieDate（RFC 6265 §5.1.1 逐 token 日期算法）/ parseMaxAge（§5.2.2 delta-seconds）/ parseSetCookie（§5.2 属性解析，含 Secure/Max-Age/Expires）/ matchCookieForSend（发送方向，含 Secure⟹https 与过期判据）/ selectCookies（同名多 Path 并存、长 Path 优先、ephemeral 按名被 origin 压制）。P1-05/P1-06 于 2026-08-07 扩组。改动须人工 + 安全清单复核（红线 #1）。",
+  "_time_note": "所有 nowMs / expiresAt 均为 ms epoch。基准 nowMs=1600000000000（2020-09-13T12:26:40Z）。缺省 nowMs 的旧例由 harness 补 0（不影响无 expiresAt 的向量）。",
   "_view": {
     "_doc": "A 组各例共享的 manifest 视图（credentials.scope ⊆ allow，校验器 C6 已保证）。",
     "allow": [
@@ -134,6 +135,47 @@
       "name": "nosend_path_false_prefix",
       "input": { "cookie": { "domain": "h.edu", "path": "/app" }, "requestUrl": "https://h.edu/application" },
       "expected": false
+    },
+
+    {
+      "name": "secure_sent_over_https",
+      "input": { "cookie": { "domain": "h.edu", "path": "/", "secure": true }, "requestUrl": "https://h.edu/x", "nowMs": 1600000000000 },
+      "expected": true
+    },
+    {
+      "name": "secure_not_sent_over_http",
+      "input": { "cookie": { "domain": "h.edu", "path": "/", "secure": true }, "requestUrl": "http://h.edu/x", "nowMs": 1600000000000 },
+      "expected": false
+    },
+    {
+      "name": "nonsecure_sent_over_http",
+      "input": { "cookie": { "domain": "h.edu", "path": "/", "secure": false }, "requestUrl": "http://h.edu/x", "nowMs": 1600000000000 },
+      "expected": true
+    },
+    {
+      "name": "secure_not_sent_over_http_localhost_no_exemption",
+      "input": { "cookie": { "domain": "localhost", "path": "/", "secure": true }, "requestUrl": "http://localhost/x", "nowMs": 1600000000000 },
+      "expected": false
+    },
+    {
+      "name": "expired_not_sent",
+      "input": { "cookie": { "domain": "h.edu", "path": "/", "expiresAt": 1599999999999 }, "requestUrl": "https://h.edu/x", "nowMs": 1600000000000 },
+      "expected": false
+    },
+    {
+      "name": "expiring_exactly_now_not_sent",
+      "input": { "cookie": { "domain": "h.edu", "path": "/", "expiresAt": 1600000000000 }, "requestUrl": "https://h.edu/x", "nowMs": 1600000000000 },
+      "expected": false
+    },
+    {
+      "name": "unexpired_sent",
+      "input": { "cookie": { "domain": "h.edu", "path": "/", "expiresAt": 1600000000001 }, "requestUrl": "https://h.edu/x", "nowMs": 1600000000000 },
+      "expected": true
+    },
+    {
+      "name": "session_cookie_never_expires",
+      "input": { "cookie": { "domain": "h.edu", "path": "/", "expiresAt": null }, "requestUrl": "https://h.edu/x", "nowMs": 8640000000000000 },
+      "expected": true
     }
   ],
   "selectCookies": [
@@ -199,6 +241,285 @@
         "requestUrl": "https://h.edu/app/x"
       },
       "expected": [{ "name": "q", "value": "deep" }, { "name": "p", "value": "root" }]
+    },
+
+    {
+      "name": "p1_05_same_name_different_path_both_sent_longer_first",
+      "_doc": "P1-05 回归：`sid` 同时存在于 / 与 /api。浏览器两条都带、长 Path 在前。旧实现按 name 折叠，只剩一条（深路径会话被静默丢失）。",
+      "input": {
+        "cookies": [
+          { "name": "sid", "value": "ROOT", "domain": "h.edu", "path": "/", "source": "origin" },
+          { "name": "sid", "value": "API", "domain": "h.edu", "path": "/api", "source": "origin" }
+        ],
+        "requestUrl": "https://h.edu/api/grades",
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "name": "sid", "value": "API" }, { "name": "sid", "value": "ROOT" }]
+    },
+    {
+      "name": "p1_05_same_name_only_matching_path_sent_outside",
+      "_doc": "同名多 Path 时，路径不匹配的那条照常不发——并存不等于放宽 path-match。",
+      "input": {
+        "cookies": [
+          { "name": "sid", "value": "ROOT", "domain": "h.edu", "path": "/", "source": "origin" },
+          { "name": "sid", "value": "API", "domain": "h.edu", "path": "/api", "source": "origin" }
+        ],
+        "requestUrl": "https://h.edu/portal",
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "name": "sid", "value": "ROOT" }]
+    },
+    {
+      "name": "p1_05_same_name_different_domain_both_sent",
+      "_doc": "父域 + host-only 同名同 Path：域不同故互不覆盖，两条都发，tie-break 按 domain 升序。",
+      "input": {
+        "cookies": [
+          { "name": "JSESSIONID", "value": "PARENT", "domain": "h.edu", "hostOnly": false, "path": "/", "source": "origin" },
+          { "name": "JSESSIONID", "value": "HOST", "domain": "app.h.edu", "hostOnly": true, "path": "/", "source": "origin" }
+        ],
+        "requestUrl": "https://app.h.edu/x",
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "name": "JSESSIONID", "value": "HOST" }, { "name": "JSESSIONID", "value": "PARENT" }]
+    },
+    {
+      "name": "gate2_ephemeral_suppressed_by_origin_same_name_other_path",
+      "_doc": "栅栏 2 未被 P1-05 放宽：origin 有 `sid`（/api）时，ephemeral 的 `sid`（/）整条丢弃——adapter 不得借不同 Path 在同名会话旁「加塞」一条。",
+      "input": {
+        "cookies": [
+          { "name": "sid", "value": "FROM_ORIGIN", "domain": "h.edu", "path": "/api", "source": "origin" },
+          { "name": "sid", "value": "FROM_EPHEMERAL", "domain": "h.edu", "path": "/", "source": "ephemeral" }
+        ],
+        "requestUrl": "https://h.edu/api/x",
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "name": "sid", "value": "FROM_ORIGIN" }]
+    },
+    {
+      "name": "gate2_ephemeral_kept_when_origin_same_name_does_not_match",
+      "_doc": "压制只针对**本次请求实际命中**的 origin 同名条目；origin 的 `sid` 在 /admin 下不参与本请求，则 ephemeral 的 `sid` 仍可用。",
+      "input": {
+        "cookies": [
+          { "name": "sid", "value": "FROM_ORIGIN", "domain": "h.edu", "path": "/admin", "source": "origin" },
+          { "name": "sid", "value": "FROM_EPHEMERAL", "domain": "h.edu", "path": "/", "source": "ephemeral" }
+        ],
+        "requestUrl": "https://h.edu/public",
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "name": "sid", "value": "FROM_EPHEMERAL" }]
+    },
+    {
+      "name": "p1_06_expired_cookie_not_selected",
+      "input": {
+        "cookies": [
+          { "name": "live", "value": "1", "domain": "h.edu", "path": "/", "source": "origin", "expiresAt": 1600000000001 },
+          { "name": "dead", "value": "2", "domain": "h.edu", "path": "/", "source": "origin", "expiresAt": 1599999999999 }
+        ],
+        "requestUrl": "https://h.edu/",
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "name": "live", "value": "1" }]
+    },
+    {
+      "name": "p1_06_secure_cookie_not_selected_over_http",
+      "input": {
+        "cookies": [
+          { "name": "sess", "value": "S", "domain": "h.edu", "path": "/", "source": "origin", "secure": true },
+          { "name": "pref", "value": "P", "domain": "h.edu", "path": "/", "source": "origin", "secure": false }
+        ],
+        "requestUrl": "http://h.edu/",
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "name": "pref", "value": "P" }]
+    },
+    {
+      "name": "p1_06_expired_origin_does_not_suppress_ephemeral",
+      "_doc": "栅栏 2 的压制以「命中」为前提：已过期的 origin 同名条目不参与本请求，故不压制 ephemeral（也不会让请求带上死值）。",
+      "input": {
+        "cookies": [
+          { "name": "t", "value": "DEAD_ORIGIN", "domain": "h.edu", "path": "/", "source": "origin", "expiresAt": 1599999999999 },
+          { "name": "t", "value": "EPHEMERAL", "domain": "h.edu", "path": "/", "source": "ephemeral" }
+        ],
+        "requestUrl": "https://h.edu/",
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "name": "t", "value": "EPHEMERAL" }]
+    }
+  ],
+
+  "parseCookieDate": [
+    {
+      "name": "rfc1123_imf_fixdate",
+      "input": "Wed, 09 Jun 2021 10:18:14 GMT",
+      "expected": 1623233894000
+    },
+    {
+      "name": "rfc850_two_digit_year_70_99_maps_to_1900s",
+      "input": "Sunday, 06-Nov-94 08:49:37 GMT",
+      "expected": 784111777000
+    },
+    {
+      "name": "asctime_no_timezone",
+      "input": "Sun Nov  6 08:49:37 1994",
+      "expected": 784111777000
+    },
+    {
+      "name": "single_digit_time_components",
+      "input": "Mon, 09 Jun 2031 1:2:3 GMT",
+      "expected": 1938733323000
+    },
+    {
+      "name": "epoch_zero_is_valid_not_null",
+      "_doc": "1970-01-01 解析成功、值为 0——不得与「解析失败」混同（0 是合法过期时刻，含义是「立刻过期」）。",
+      "input": "Thu, 01 Jan 1970 00:00:00 GMT",
+      "expected": 0
+    },
+    {
+      "name": "invalid_calendar_day_rolls_over_deterministically",
+      "_doc": "2 月 31 日：日数 1–31 合法故不判失败，按宿主日历自然进位到 3 月 3 日。两端必须给同一个值。",
+      "input": "Tue, 31 Feb 2021 00:00:00 GMT",
+      "expected": 1614729600000
+    },
+    {
+      "name": "future_2038_beyond_32bit",
+      "input": "Fri, 01 Jan 2038 03:04:05 GMT",
+      "expected": 2145927845000
+    },
+    { "name": "missing_time_fails", "input": "Wed, 09 Jun 2021 GMT", "expected": null },
+    { "name": "missing_year_fails", "input": "Wed, 09 Jun 10:18:14 GMT", "expected": null },
+    { "name": "missing_month_fails", "input": "Wed, 09 2021 10:18:14 GMT", "expected": null },
+    { "name": "day_zero_fails", "input": "Wed, 00 Jun 2021 10:18:14 GMT", "expected": null },
+    { "name": "day_32_fails", "input": "Wed, 32 Jun 2021 10:18:14 GMT", "expected": null },
+    { "name": "year_before_1601_fails", "input": "Wed, 09 Jun 1600 10:18:14 GMT", "expected": null },
+    { "name": "hour_24_fails", "input": "Wed, 09 Jun 2021 24:18:14 GMT", "expected": null },
+    { "name": "minute_60_fails", "input": "Wed, 09 Jun 2021 10:60:14 GMT", "expected": null },
+    { "name": "second_60_fails", "input": "Wed, 09 Jun 2021 10:18:60 GMT", "expected": null },
+    { "name": "empty_fails", "input": "", "expected": null },
+    { "name": "garbage_fails", "input": "not-a-date", "expected": null }
+  ],
+
+  "parseMaxAge": [
+    { "name": "positive", "input": "3600", "expected": 3600 },
+    { "name": "zero_is_valid_delete_signal", "input": "0", "expected": 0 },
+    { "name": "negative_is_valid_delete_signal", "input": "-1", "expected": -1 },
+    { "name": "leading_zeros", "input": "0060", "expected": 60 },
+    { "name": "surrounding_whitespace_trimmed", "input": "  120  ", "expected": 120 },
+    {
+      "name": "over_18_digits_clamped_for_cross_end_determinism",
+      "_doc": "JS 里是有限 float、Dart 里 int 溢出返 null——不夹取即两端分叉。夹到 10^18。",
+      "input": "999999999999999999999999999999",
+      "expected": 1000000000000000000
+    },
+    { "name": "empty_ignored", "input": "", "expected": null },
+    { "name": "non_numeric_ignored", "input": "abc", "expected": null },
+    { "name": "trailing_garbage_ignored", "input": "60s", "expected": null },
+    { "name": "plus_sign_ignored", "input": "+60", "expected": null },
+    { "name": "lone_minus_ignored", "input": "-", "expected": null },
+    { "name": "decimal_ignored", "input": "1.5", "expected": null }
+  ],
+
+  "parseSetCookie": [
+    {
+      "name": "session_cookie_defaults",
+      "_doc": "无 Domain/Path/Secure/生命周期属性 ⟹ host-only、default-path、非 Secure、session。",
+      "input": { "header": "sid=abc", "requestUrl": "https://h.edu/a/b", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/a", "source": "origin", "secure": false, "expiresAt": null }
+    },
+    {
+      "name": "secure_attribute_valueless",
+      "input": { "header": "sid=abc; Secure", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": true, "expiresAt": null }
+    },
+    {
+      "name": "secure_attribute_case_insensitive_with_value_ignored",
+      "input": { "header": "sid=abc; SECURE=whatever", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": true, "expiresAt": null }
+    },
+    {
+      "name": "max_age_relative_to_now",
+      "input": { "header": "sid=abc; Max-Age=3600", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": false, "expiresAt": 1600003600000 }
+    },
+    {
+      "name": "max_age_zero_yields_earliest_representable_delete",
+      "_doc": "Max-Age=0 ⟹ 最早可表示时刻（-8.64e15）⟹ 必然已过期 ⟹ jar 侧翻译为删除。",
+      "input": { "header": "sid=abc; Max-Age=0", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": false, "expiresAt": -8640000000000000 }
+    },
+    {
+      "name": "max_age_negative_yields_earliest_representable_delete",
+      "input": { "header": "sid=abc; Max-Age=-99", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": false, "expiresAt": -8640000000000000 }
+    },
+    {
+      "name": "max_age_huge_clamped_to_max_expiry",
+      "input": { "header": "sid=abc; Max-Age=999999999999999999999", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": false, "expiresAt": 8640000000000000 }
+    },
+    {
+      "name": "max_age_invalid_attribute_ignored_stays_session",
+      "_doc": "§5.2.2：非法 Max-Age 忽略整条属性 ⟹ session，**不是**立刻过期。",
+      "input": { "header": "sid=abc; Max-Age=abc", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": false, "expiresAt": null }
+    },
+    {
+      "name": "expires_absolute",
+      "input": { "header": "sid=abc; Expires=Wed, 09 Jun 2021 10:18:14 GMT", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": false, "expiresAt": 1623233894000 }
+    },
+    {
+      "name": "expires_in_the_past_is_delete_signal",
+      "input": { "header": "sid=abc; Expires=Thu, 01 Jan 1970 00:00:00 GMT", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": false, "expiresAt": 0 }
+    },
+    {
+      "name": "expires_invalid_ignored_stays_session",
+      "input": { "header": "sid=abc; Expires=not-a-date", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": false, "expiresAt": null }
+    },
+    {
+      "name": "max_age_wins_over_expires",
+      "_doc": "§5.2.2 优先级：Max-Age 压过 Expires，不论出现顺序。",
+      "input": { "header": "sid=abc; Expires=Wed, 09 Jun 2021 10:18:14 GMT; Max-Age=3600", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": false, "expiresAt": 1600003600000 }
+    },
+    {
+      "name": "max_age_wins_over_expires_reversed_order",
+      "input": { "header": "sid=abc; Max-Age=3600; Expires=Wed, 09 Jun 2021 10:18:14 GMT", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": false, "expiresAt": 1600003600000 }
+    },
+    {
+      "name": "invalid_max_age_does_not_shadow_valid_expires",
+      "_doc": "Max-Age 非法 ⟹ 该属性被忽略 ⟹ 回落到 Expires，而不是退化为 session。",
+      "input": { "header": "sid=abc; Max-Age=oops; Expires=Wed, 09 Jun 2021 10:18:14 GMT", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": false, "expiresAt": 1623233894000 }
+    },
+    {
+      "name": "all_attributes_together",
+      "input": { "header": "JSESSIONID=S1; Domain=.h.edu; Path=/api; Secure; HttpOnly; Max-Age=60; SameSite=Lax", "requestUrl": "https://app.h.edu/x/y", "nowMs": 1600000000000 },
+      "expected": { "name": "JSESSIONID", "value": "S1", "domain": "h.edu", "hostOnly": false, "path": "/api", "source": "origin", "secure": true, "expiresAt": 1600000060000 }
+    },
+    {
+      "name": "secure_cookie_from_http_response_is_still_parsed",
+      "_doc": "捕获不拦截：http 响应设 Secure cookie 照收，限制发生在**发送**方向（matchCookieForSend）。",
+      "input": { "header": "sid=abc; Secure", "requestUrl": "http://h.edu/", "nowMs": 1600000000000 },
+      "expected": { "name": "sid", "value": "abc", "domain": "h.edu", "hostOnly": true, "path": "/", "source": "origin", "secure": true, "expiresAt": null }
+    },
+    {
+      "name": "illegal_domain_still_rejected_whole_header",
+      "_doc": "#79 P0-4 不被属性面改动放宽：Domain 非 domain-match ⟹ 整条丢弃。",
+      "input": { "header": "evil=1; Domain=other.edu.cn; Max-Age=3600", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": null
+    },
+    {
+      "name": "public_suffix_domain_still_rejected",
+      "input": { "header": "evil=1; Domain=edu.cn; Secure", "requestUrl": "https://dean.xjtu.edu.cn/", "nowMs": 1600000000000 },
+      "expected": null
+    },
+    {
+      "name": "nameless_header_rejected",
+      "input": { "header": "=novalue", "requestUrl": "https://h.edu/", "nowMs": 1600000000000 },
+      "expected": null
     }
   ]
 }

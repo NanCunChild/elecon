@@ -15,20 +15,25 @@
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { resolveRepoRoot, runMain } from "../__testutils__/smoke-utils.js";
-
 import {
   CookieJar,
+  type CookieSendCandidate,
   decideEphemeralWrite,
   type EphemeralWriteDecision,
   type EphemeralWriteInput,
   type JarCookie,
   matchCookieForSend,
+  parseSetCookie,
   selectCookies,
 } from "./cookie-jar.js";
+import { parseCookieDate, parseMaxAge } from "./cookie-match.js";
 import type { BrokerManifestView } from "./inject-policy.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 const goldenPath = `${repoRoot}contract/golden/broker/cookie-jar.json`;
+
+/** 旧向量无 nowMs 字段（其 cookie 也无 expiresAt）；补 0 不改变任一例的判定。 */
+const DEFAULT_NOW_MS = 0;
 
 interface Golden {
   decideEphemeralWrite: Array<{
@@ -38,13 +43,20 @@ interface Golden {
   }>;
   matchCookieForSend: Array<{
     name: string;
-    input: { cookie: { domain: string; path: string; hostOnly?: boolean }; requestUrl: string };
+    input: { cookie: CookieSendCandidate; requestUrl: string; nowMs?: number };
     expected: boolean;
   }>;
   selectCookies: Array<{
     name: string;
-    input: { cookies: JarCookie[]; requestUrl: string };
+    input: { cookies: JarCookie[]; requestUrl: string; nowMs?: number };
     expected: Array<{ name: string; value: string }>;
+  }>;
+  parseCookieDate: Array<{ name: string; input: string; expected: number | null }>;
+  parseMaxAge: Array<{ name: string; input: string; expected: number | null }>;
+  parseSetCookie: Array<{
+    name: string;
+    input: { header: string; requestUrl: string; nowMs: number };
+    expected: JarCookie | null;
   }>;
 }
 
@@ -61,7 +73,7 @@ function goldenTests(): number {
   }
   for (const c of g.matchCookieForSend) {
     assert.equal(
-      matchCookieForSend(c.input.cookie, c.input.requestUrl),
+      matchCookieForSend(c.input.cookie, c.input.requestUrl, c.input.nowMs ?? DEFAULT_NOW_MS),
       c.expected,
       `matchCookieForSend '${c.name}'`,
     );
@@ -69,9 +81,25 @@ function goldenTests(): number {
   }
   for (const c of g.selectCookies) {
     assert.deepStrictEqual(
-      selectCookies(c.input.cookies, c.input.requestUrl),
+      selectCookies(c.input.cookies, c.input.requestUrl, c.input.nowMs ?? DEFAULT_NOW_MS),
       c.expected,
       `selectCookies '${c.name}'`,
+    );
+    n++;
+  }
+  for (const c of g.parseCookieDate) {
+    assert.equal(parseCookieDate(c.input), c.expected, `parseCookieDate '${c.name}'`);
+    n++;
+  }
+  for (const c of g.parseMaxAge) {
+    assert.equal(parseMaxAge(c.input), c.expected, `parseMaxAge '${c.name}'`);
+    n++;
+  }
+  for (const c of g.parseSetCookie) {
+    assert.deepStrictEqual(
+      parseSetCookie(c.input.header, c.input.requestUrl, c.input.nowMs),
+      c.expected,
+      `parseSetCookie '${c.name}'`,
     );
     n++;
   }
@@ -99,6 +127,8 @@ function statefulTests(): number {
       hostOnly: true,
       path: "/a",
       source: "origin",
+      secure: false,
+      expiresAt: null,
     },
   ]);
   assert.equal(jar.cookieHeader("https://dean.xjtu.edu.cn/a/x"), "sid=abc");
@@ -111,7 +141,16 @@ function statefulTests(): number {
   const jar2 = new CookieJar();
   jar2.captureSetCookie(["sess=xyz; Domain=.xjtu.edu.cn; Path=/"], "https://dean.xjtu.edu.cn/login");
   assert.deepStrictEqual(jar2.harvestView(), [
-    { name: "sess", value: "xyz", domain: "xjtu.edu.cn", hostOnly: false, path: "/", source: "origin" },
+    {
+      name: "sess",
+      value: "xyz",
+      domain: "xjtu.edu.cn",
+      hostOnly: false,
+      path: "/",
+      source: "origin",
+      secure: false,
+      expiresAt: null,
+    },
   ]);
   assert.equal(jar2.cookieHeader("https://child.xjtu.edu.cn/"), "sess=xyz");
   checks++;
@@ -172,6 +211,69 @@ function statefulTests(): number {
   );
   assert.equal(jar6.cookieHeader("https://dean.xjtu.edu.cn/"), "client_id=EPH");
   assert.equal(jar6.harvestView().length, 0);
+  checks++;
+
+  // ——— P1-05 / P1-06 有态行为（2026-08-07）———
+
+  const NOW = 1_600_000_000_000;
+  const at = (t: number) => new CookieJar(() => t);
+
+  // 7. P1-05：同名不同 Path 并存，互不覆盖；请求按 RFC 6265 §5.4 两条都带（长 Path 先）。
+  const jar7 = at(NOW);
+  jar7.captureSetCookie(["sid=ROOT; Path=/"], "https://dean.xjtu.edu.cn/");
+  jar7.captureSetCookie(["sid=API; Path=/api"], "https://dean.xjtu.edu.cn/api/x");
+  assert.equal(jar7.harvestView().length, 2, "同名不同 Path 必须并存（旧实现折叠成 1 条）");
+  assert.equal(jar7.cookieHeader("https://dean.xjtu.edu.cn/api/grades"), "sid=API; sid=ROOT");
+  assert.equal(jar7.cookieHeader("https://dean.xjtu.edu.cn/portal"), "sid=ROOT");
+  checks++;
+
+  // 8. 覆盖键 = (name, domain, path)：同名同域同 Path 新值替换旧值。
+  const jar8 = at(NOW);
+  jar8.captureSetCookie(["sid=OLD; Path=/api"], "https://dean.xjtu.edu.cn/api/x");
+  jar8.captureSetCookie(["sid=NEW; Path=/api"], "https://dean.xjtu.edu.cn/api/x");
+  assert.equal(jar8.harvestView().length, 1);
+  assert.equal(jar8.cookieHeader("https://dean.xjtu.edu.cn/api/x"), "sid=NEW");
+  checks++;
+
+  // 9. P1-06 删除语义：Max-Age=0 删掉同 (name,domain,path) 条目，且不留新条目。
+  const jar9 = at(NOW);
+  jar9.captureSetCookie(["sid=LIVE; Path=/"], "https://dean.xjtu.edu.cn/");
+  jar9.captureSetCookie(["sid=; Path=/; Max-Age=0"], "https://dean.xjtu.edu.cn/");
+  assert.deepStrictEqual(jar9.harvestView(), [], "Max-Age=0 必须删除该 cookie");
+  assert.equal(jar9.cookieHeader("https://dean.xjtu.edu.cn/"), "");
+  checks++;
+
+  // 9b. 删除只命中同 Path 的那条——不得误删同名的其它 Path（P1-05 与 P1-06 交叉）。
+  const jar9b = at(NOW);
+  jar9b.captureSetCookie(["sid=ROOT; Path=/"], "https://dean.xjtu.edu.cn/");
+  jar9b.captureSetCookie(["sid=API; Path=/api"], "https://dean.xjtu.edu.cn/api/x");
+  jar9b.captureSetCookie(["sid=; Path=/api; Max-Age=0"], "https://dean.xjtu.edu.cn/api/x");
+  assert.equal(jar9b.cookieHeader("https://dean.xjtu.edu.cn/api/x"), "sid=ROOT");
+  checks++;
+
+  // 10. 过期 Expires 同样是删除信号。
+  const jar10 = at(NOW);
+  jar10.captureSetCookie(["sid=LIVE"], "https://dean.xjtu.edu.cn/");
+  jar10.captureSetCookie(["sid=X; Expires=Thu, 01 Jan 1970 00:00:00 GMT"], "https://dean.xjtu.edu.cn/");
+  assert.deepStrictEqual(jar10.harvestView(), [], "过去的 Expires 必须删除该 cookie");
+  checks++;
+
+  // 11. 捕获后自然到点：不再发送、不再收割（时钟前移到过期之后）。
+  let clock = NOW;
+  const jar11 = new CookieJar(() => clock);
+  jar11.captureSetCookie(["sid=abc; Max-Age=60"], "https://dean.xjtu.edu.cn/");
+  assert.equal(jar11.cookieHeader("https://dean.xjtu.edu.cn/"), "sid=abc");
+  assert.equal(jar11.harvestView().length, 1);
+  clock = NOW + 61_000;
+  assert.equal(jar11.cookieHeader("https://dean.xjtu.edu.cn/"), "", "过期后不得再发出");
+  assert.deepStrictEqual(jar11.harvestView(), [], "过期后不得再进收割");
+  checks++;
+
+  // 12. Secure 只随 https 出门；非 Secure 不受限。
+  const jar12 = at(NOW);
+  jar12.captureSetCookie(["sess=S; Secure", "pref=P"], "https://dean.xjtu.edu.cn/");
+  assert.equal(jar12.cookieHeader("https://dean.xjtu.edu.cn/"), "pref=P; sess=S");
+  assert.equal(jar12.cookieHeader("http://dean.xjtu.edu.cn/"), "pref=P", "Secure 不得随 http 发出");
   checks++;
 
   return checks;

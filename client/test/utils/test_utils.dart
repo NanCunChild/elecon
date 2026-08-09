@@ -126,6 +126,8 @@ BrokerManifestView viewFromJson(Map<String, dynamic> v) {
   );
 }
 
+/// golden cookie → [JarCookie]。`secure`/`expiresAt` 缺省对应「非 Secure + session」，
+/// 与 TS 侧 `JarCookie` 的可选字段缺省语义一致（P1-06 前的旧向量不受影响）。
 JarCookie cookieFromJson(Map<String, dynamic> c) => JarCookie(
   name: c['name'] as String,
   value: c['value'] as String,
@@ -133,6 +135,8 @@ JarCookie cookieFromJson(Map<String, dynamic> c) => JarCookie(
   hostOnly: c['hostOnly'] as bool? ?? false,
   path: c['path'] as String,
   source: c['source'] as String,
+  secure: c['secure'] as bool? ?? false,
+  expiresAt: c['expiresAt'] as int?,
 );
 
 Map<String, String> headersFromJson(Object? json) =>

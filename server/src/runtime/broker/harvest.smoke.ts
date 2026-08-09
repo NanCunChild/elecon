@@ -23,7 +23,8 @@ const goldenPath = `${repoRoot}contract/golden/broker/harvest.json`;
 
 interface GoldenCase {
   name: string;
-  input: { originCookies: JarCookie[]; view: BrokerManifestView };
+  /** nowMs 缺省 0：无 expiresAt 的旧向量不受过期判据影响（P1-06 新增例显式给值）。 */
+  input: { originCookies: JarCookie[]; view: BrokerManifestView; nowMs?: number };
   expected: HarvestPlan;
 }
 
@@ -40,7 +41,7 @@ function goldenTests(): number {
   };
   assert.ok(golden.cases.length > 0, "golden 向量为空");
   for (const c of golden.cases) {
-    const actual = decideHarvest(c.input.originCookies, c.input.view);
+    const actual = decideHarvest(c.input.originCookies, c.input.view, c.input.nowMs ?? 0);
     assert.deepStrictEqual(
       actual,
       c.expected,
@@ -76,7 +77,7 @@ async function integrationTests(): Promise<number> {
   // 收割 → 入库 → get 取到序列化值（B6 注入即用此值）
   let clock = 5000;
   const store = new CredentialStore(undefined, () => clock);
-  const plan = decideHarvest(cookies, view);
+  const plan = decideHarvest(cookies, view, clock);
   harvestInto(plan, view, store, { schoolId: "xjt", now: () => clock });
 
   const resolved = await store.get("sess");
@@ -98,7 +99,7 @@ async function integrationTests(): Promise<number> {
     { name: "JSESSIONID", value: "S2", domain: "ids.xjtu.edu.cn", path: "/", source: "origin" },
   ];
   clock = 6000;
-  harvestInto(decideHarvest(rotated, view), view, store, { schoolId: "xjt", now: () => clock });
+  harvestInto(decideHarvest(rotated, view, clock), view, store, { schoolId: "xjt", now: () => clock });
   const after = await store.get("sess");
   assert.equal(after?.value, "JSESSIONID=S2");
   checks++;
@@ -106,7 +107,10 @@ async function integrationTests(): Promise<number> {
   // 空计划不写库
   const emptyStore = new CredentialStore(undefined, () => clock);
   const noCred: BrokerManifestView = { allow: ["https://ids.xjtu.edu.cn/*"], credentials: {} };
-  harvestInto(decideHarvest(cookies, noCred), noCred, emptyStore, { schoolId: "xjt", now: () => clock });
+  harvestInto(decideHarvest(cookies, noCred, clock), noCred, emptyStore, {
+    schoolId: "xjt",
+    now: () => clock,
+  });
   assert.equal(emptyStore.list().length, 0, "无声明 ref → 不收割");
   checks++;
 
@@ -118,7 +122,7 @@ async function integrationTests(): Promise<number> {
   const parsedJar = new CookieJar();
   parsedJar.captureSetCookie(["SID=HOST_ONLY; Path=/"], "https://ids.xjtu.edu.cn/login");
   assert.deepStrictEqual(
-    decideHarvest([...parsedJar.harvestView()], subdomainView),
+    decideHarvest([...parsedJar.harvestView()], subdomainView, clock),
     [],
     "parser 产生的 host-only 标记必须阻止子域收割",
   );

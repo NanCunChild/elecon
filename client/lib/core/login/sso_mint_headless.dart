@@ -150,7 +150,7 @@ class HeadlessSsoMinter implements SsoMinter {
     // 印发成功 → 存储：把新签发的下游 session 收割入核心库（判据 b，复用 B5 桥接）。
     // 全新 jar 只含本次下游 session（母凭证不入 jar），故收割计划天然聚焦目标 session；
     // 若 CAS 期间刷新了母票（ids 域 Set-Cookie），亦一并刷新母凭证 ref（幂等、无害）。
-    final harvestPlan = decideHarvest(jar.harvestView(), brokerView);
+    final harvestPlan = decideHarvest(jar.harvestView(), brokerView, now());
     harvestInto(
       harvestPlan,
       brokerView,
