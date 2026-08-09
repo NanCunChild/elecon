@@ -141,8 +141,18 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - name: Flutter tests with native QuickJS
+      # 默认轮次 = DEPLOY profile（无 dart-define）：断言 ADR-024 护栏 1 的 fail-closed
+      # 默认，以及 devSideload() 在 DEPLOY 下恒抛。需侧载信任票的用例在此轮 skip。
+      - name: Flutter tests with native QuickJS (DEPLOY profile)
         run: bash tool/flutter_test.sh flutter test
+        env:
+          ELECON_REQUIRE_ADAPTERS: "1"
+      # DEV profile 轮次：执行上一轮 skip 掉的侧载路径用例（imperative 运行时集成）。
+      # 两轮合起来才覆盖 ADR-024 的两个信任档——少任一轮都会留下未被断言的分支。
+      - name: Flutter tests with native QuickJS (DEV sideload profile)
+        run: >-
+          bash tool/flutter_test.sh flutter test
+          --dart-define=ELECON_TRUST_PROFILE=dev-sideload
         env:
           ELECON_REQUIRE_ADAPTERS: "1"
       - name: Test Apple-only liquid glass graph
