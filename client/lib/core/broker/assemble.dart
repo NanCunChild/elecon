@@ -172,10 +172,19 @@ AssembleResult assembleRequest(AssembleRequestInput input) {
   //    Path）整体压掉，凭证以核心注入的那份为准（栅栏 2 的最外层）。
   //    jar 侧同名不同 Path 的多条**全部保留**（P1-05：浏览器语义，长 Path 在前；
   //    此前按名去重会把 selectCookies 已正确选出的深路径 cookie 又丢一次）。
+  //
+  //    **凭证束内部同样不去重（P1-05 补齐，2026-08-10）**：`resolved.value` 是 B5
+  //    路线 a 收割的**一束** origin cookie（`n1=v1; n2=v2`，RFC 6265 §5.4 序，长 Path
+  //    在前），束内同名不同 Path 合法并存。此前这里按名只留第一条，于是
+  //    `sid=/api` 与 `sid=/` 同时被收割时，根会话在注入侧被**静默丢掉**——正是 P1-05
+  //    在 jar 侧修掉、却在凭证注入侧幸存的同一个缺陷（同名折叠 ⟹ 带错/漏带值且无报错）。
+  //    安全面不变：束内容全部来自核心自己收割的 origin 区（ephemeral 永不入收割，
+  //    栅栏 3），adapter 既不可见也不可控，原样带出不扩大任何 adapter 可控面。
   final injectedNames = <String>{};
   final cookiePairs = <CookiePair>[];
   for (final p in injectCookie) {
-    if (injectedNames.add(p.name)) cookiePairs.add(p);
+    injectedNames.add(p.name);
+    cookiePairs.add(p);
   }
   for (final p in input.jarCookies) {
     if (!injectedNames.contains(p.name)) cookiePairs.add(p);

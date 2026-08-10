@@ -135,6 +135,28 @@
       "expected": { "kind": "ok", "method": "POST", "headers": { "Content-Type": "application/json", "Cookie": "SESS=brk; origin_c=o1; client_id=eph1" }, "body": "{\"q\":1}" }
     },
     {
+      "name": "inject_cookie_bundle_keeps_same_name_different_path_entries",
+      "_doc": "🔒 P1-05 补齐（2026-08-10）：resolved.value 是 B5 路线 a 收割的一束 origin cookie（RFC 6265 §5.4 序，长 Path 在前），束内同名不同 Path 合法并存（origin 同时下发 sid Path=/ 与 sid Path=/api）。注入侧**不得**按名去重——此前只留第一条，根会话被静默丢弃，是 P1-05 在 jar 侧修掉却于凭证注入侧幸存的同一缺陷。",
+      "input": {
+        "init": { "method": "GET", "headers": {} },
+        "decision": { "kind": "inject", "ref": "session", "via": "cookie" },
+        "resolved": { "via": "cookie", "value": "sid=API_ONLY; sid=ROOT_SESSION" },
+        "jarCookies": []
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Cookie": "sid=API_ONLY; sid=ROOT_SESSION" } }
+    },
+    {
+      "name": "inject_cookie_bundle_same_name_entries_still_suppress_jar_same_name",
+      "_doc": "束内不去重不放松栅栏 2 的最外层：注入过的**名字**仍把 jar 里所有同名条目整体压掉（jar 的 sid 不出现），其余 jar 名照常补上。",
+      "input": {
+        "init": { "method": "GET", "headers": {} },
+        "decision": { "kind": "inject", "ref": "session", "via": "cookie" },
+        "resolved": { "via": "cookie", "value": "sid=API_ONLY; sid=ROOT_SESSION" },
+        "jarCookies": [{ "name": "sid", "value": "JAR_SHOULD_NOT_APPEAR" }, { "name": "extra", "value": "e1" }]
+      },
+      "expected": { "kind": "ok", "method": "GET", "headers": { "Cookie": "sid=API_ONLY; sid=ROOT_SESSION; extra=e1" } }
+    },
+    {
       "name": "inject_resolved_null_credential_unavailable_fail_closed",
       "_doc": "🔒 inject 但 resolver 未命中（凭证缺失/过期/吊销）→ fail-closed reject(credential_unavailable)，绝不发请求、绝不附任何 cookie（含 jar）。驱动层转受控错误 → 宿主触发续期/重登。2026-06-18 人工采纳（此前为「不伪造+照发」）。",
       "input": {
