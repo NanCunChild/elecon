@@ -59,7 +59,7 @@
 1. 母凭证 / ST / Set-Cookie / 带票 URL **只在核心**（红线 #1）。
 2. 母凭证 scope **仅** `ids.xidian.edu.cn`，与下游域不重叠（M4）。
 3. mint 目标 ∈ `ssoMint.services` 白名单 fail-closed。
-4. adapter **不见**凭证值；release 下侧载无 fetch（红线 #5）。
+4. adapter **不见**凭证值；DEPLOY 无论 catalog / 本地导入都只运行 official，DEV-Sideload 可全能力调试但凭证值仍留核心、产物不可分发（红线 #4/#5，ADR-024/033）。
 5. 无 `sso-master` / 无 `ssoMint` → 行为与旧版逐服务可见登录一致（§2.6）。
 
 ---

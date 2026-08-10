@@ -67,7 +67,7 @@
 | # | 路径 | 审什么 | ☑ |
 |---|---|---|---|
 | D1 | `client/lib/core/trust/trusted_context.dart` + server `trusted-context.ts` | 防伪造签发；未登记 token 拒；与 PR #80 结论一致 | |
-| D2 | `client/lib/core/adapter_runtime.dart` + server `sandbox.ts` | fetch 必经信任上下文；release 无侧载-fetch；凭证不进 JS | |
+| D2 | `client/lib/core/adapter_runtime.dart` + server `sandbox.ts` | fetch 必经信任上下文；DEPLOY 无未签名/devSideload fetch，DEV-Sideload 例外由 profile 隔离；凭证值不进 JS | |
 | D3 | `client/lib/core/transport/direct.dart` + server `transport/direct.ts` | 注入后出网；无日志明文凭证 | |
 | D4 | OOM / `bad_export` 词表双端 | 归类一致；不吞安全错误为成功 | |
 
