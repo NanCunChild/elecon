@@ -35,10 +35,8 @@ DPLA §3.3.2 允许把解释型代码下载到 App，**只要同时满足**：
 | 条款 | elecon 的满足方式 | 依据 |
 |---|---|---|
 | **(a) 不改变主要用途** | 能力集**固定在 App 内**：`contract/capability/registry.json` 枚举全部 capability（grades.list / schedule.week / card.balance / library.loans / notice.list / generic.section），"新增 id 或改语义须走 ADR"。**adapter 只能产出这些已知 schema、渲染由本体完成**——adapter 不引入功能，只把"新数据源"接到"App 内已存在的功能"上。SDUI 保持声明式、受限（ADR-000 §5.1 已主动放弃图灵完备 UI DSL）。 | ADR-000 §2.3/§5.1；`contract/capability/registry.json` |
-| **(b) 非代码市场** | release **无侧载入口**、仅官方/社区**签名** adapter 经官方渠道分发；签名管"分发"、信任档管"能力"（ADR-002）。这是分发治理，不是面向第三方的代码商店。 | 红线 #4/#5；ADR-002 §2.1/§2.5 |
+| **(b) 非代码市场** | **当前绑定决策不变：iOS DEPLOY 无本地导入入口，仅 official adapter 经官方 catalog 分发。** ADR-033 提议的 iOS official 本地导入尚不足以自证“非市场”，须先完成人工/Apple 合规复核；本文接受修订前不得在 iOS 实现。 | 红线 #4/#5；ADR-002 §2.1/§2.5；ADR-033（Proposed） |
 | **(c) 不绕过系统安全** | QuickJS 是**纯解释器、无 JIT**（不触 iOS 的 JIT / W^X 禁令）；在 App 沙箱内的 background isolate 执行；wasm/ffi 线性内存内运行，无宿主引用逃逸。 | ADR-008 §2、§3.6 |
-
-> ⚠ **待修订（[ADR-033](./adr_033_production_sideload.md) · Proposed，2026-08-09）**：ADR-033 提议在 **Android/桌面**的 DEPLOY 产物上允许声明式侧载，但**iOS 产物保持零侧载入口**（平台条件编译）。故上表 **(b)「非代码市场」对提交 App Store 的产物逐字仍然成立**；需要的修订是把 §2.3/§5 的构建期断言标注为 **iOS 专属**，以及在 §2.4 话术中注明「无侧载入口」一句仅描述 iOS 产物。 **ADR-033 接受前，本节逐字有效。**
 
 **(a) 的关键护栏**：真正的"新功能 / 新 capability / 新卡片类型"**只能随 App 更新发版**，经 `contract/` 改动 + ADR；**adapter 热推只在既有能力集内更新"数据源映射"**。这条把 ADR-000 §2.4"推 adapter 不发版"严格约束在"数据/配置"范畴内，使其落在 §3.3.2(a) 安全区，而非"下载代码改变功能"的雷区。
 
@@ -49,7 +47,7 @@ DPLA §3.3.2 允许把解释型代码下载到 App，**只要同时满足**：
 1. **仅 declarative requestGraph 上架。** imperative（ADR-009，带凭证的 `ctx.fetch`）**推迟到后续版本**——避免首版把 2.5.2 与隐私（指南 5.1.1 数据收集申报）耦合在一起。
 2. **bundle 内预置一组基线 adapter。** 让 App **自包含、可离线演示核心功能**；下载仅用于"更新 / 新增数据源"。审核员只测提交的 build——若功能依赖联网拉 adapter 才出现，易被判"功能依赖下载代码"。
 3. **iOS 不带 App 内隧道。** 传输默认 = **校内直连 + 引导系统 VPN**（`NEVPNManager` / on-demand），落实 ADR-000 §5.2 已写的降级路径。**不在 iOS release 编入任何 App 内私有隧道目标**（见 §2.3）。
-4. **release build 仅官方签名 adapter、物理无侧载入口**，并以**构建期断言 / 测试**强制（依赖 ADR-002 §2.5 落地；ADR-002 接受并实现前，iOS release 不得开启任何可侧载 / 未签名的 adapter 下载路径）。
+4. **iOS DEPLOY build 仅运行 official 签名 adapter、物理无本地导入入口。** ADR-033 的跨平台 local-import 提议在完成人工/Apple 合规复核并正式修订本文前，不适用于 iOS。
 
 ### 2.3 相邻的更高风险，明确立场
 
@@ -64,7 +62,7 @@ issue #4 要求一并评估的两项，上架风险高于 2.5.2，单列结论�
 
 合规与"让审核员看懂"是两件事。随提交准备：
 
-- **一页《2.5.2 / DPLA 3.3.2 合规声明》**（即 §2.1 三段论），被问时直接引用。核心三句：*固定能力集 → adapter 不引入功能；QuickJS 无 JIT → 不绕过系统安全；无侧载入口 → 非代码市场*。
+- **一页《2.5.2 / DPLA 3.3.2 合规声明》**（即 §2.1 三段论），被问时直接引用。当前核心三句仍是：*固定能力集 → adapter 不引入功能；QuickJS 无 JIT → 不绕过系统安全；无侧载入口 → 非代码市场*。ADR-033 若接受，第三句须经人工合规复核后改为：*本地导入只接受项目 official 签名并受在线吊销治理，不构成第三方代码市场*。
 - **Reviewer notes**：说明 *adapters are data-source connectors that map external campus endpoints onto a fixed, in-bundle capability set; they cannot add UI or features*。
 - **演示账号 + 预置 adapter**，保证审核员在提交 build 上即可走通核心功能。
 - 隐私：隐私政策 + App Store 隐私清单（nutrition labels）；申明私密数据不出端 / 仅经校内授权中继（红线 #1–#3）；登录走校方 CAS / SSO。
@@ -75,7 +73,7 @@ issue #4 要求一并评估的两项，上架风险高于 2.5.2，单列结论�
 
 1. **"推 adapter 不发版"被严格限幅。** 仅在固定能力集内更新数据源映射才安全；**真正的新功能仍须 App 更新**（§2.1(a) 护栏）。这是为合规接受的代价——与 ADR-000 §2.4 的便利相比，边界更窄但更稳。
 2. **审核员有自由裁量权。** 即便满足 §3.3.2，仍可能遇主观拒审；缓解靠 §2.4 沟通工具包，必要时走申诉（App Review Board）。这是不可完全消除的残余风险。
-3. **依赖 ADR-002 / ADR-009 的落地状态。** (b)/(c) 论点依赖 ADR-002 的"签名 + 无侧载入口"真正实现；在此之前，iOS release 必须保证无未签名 / 可侧载的 adapter 下载路径，否则 §3.3.2(b) 立论不成立。imperative requestGraph（ADR-009）引入 iOS 时**须重做** 2.5.2(a) 自检（仍限既有能力集）+ 补 5.1.1 隐私申报。
+3. **依赖 ADR-002 / ADR-009 / ADR-033 的落地状态。** (b)/(c) 论点要求 iOS DEPLOY 不运行未签名 / 非 official adapter。ADR-033 若接受，本地文件入口必须只接受项目 official 签名、在线检查吊销且不形成第三方市场，并先完成人工合规复核。imperative requestGraph 引入 iOS 时仍须重做 2.5.2(a) 自检 + 补 5.1.1 隐私申报。
 4. **法律 / 授权事项须外部确认。** VPN entitlement（§2.3）、GPL 授权（§2.3）非工程可独断；正式提交前找 Apple 开发者支持 / 法务确认。本文不构成法律意见。
 5. **跨平台不对称。** iOS 因本文约束最严（首版 declarative-only、无隧道）；Android / HarmonyOS 可更早开 imperative / 传输底座。需接受三端能力短期不齐，并在产品文案上说明校外可用性差异（与 ADR-000 §5.2 微信绑定天花板一致）。
 
@@ -85,7 +83,7 @@ issue #4 要求一并评估的两项，上架风险高于 2.5.2，单列结论�
 
 > 安全 / 合规敏感项标（人工主导）：
 
-- **构建期断言**：iOS release build 无侧载 / 未签名 adapter 加载路径（绑定 ADR-002 §2.5；加测试，红线 #4）。
+- **构建期断言**：当前 iOS DEPLOY 无本地导入。只有在 **ADR-033 接受 + 人工/Apple 合规复核通过 + 本 ADR 正式修订** 后，才可改为“无 devSideload/未签名路径；设置内入口只汇入 official verifier + 在线治理门”的新断言。
 - **预置基线 adapter**：bundle 内打包一组已签名 adapter，首启可离线演示（§2.2.2）。
 - **iOS 传输默认**：校内直连 + 系统 VPN 引导（`NEVPNManager` on-demand）；iOS release **不编入** App 内私有隧道目标（§2.2.3 / §2.3）。
 - **隐私合规**：隐私政策 + App Store 隐私清单；私密数据不出端声明（§2.4）。

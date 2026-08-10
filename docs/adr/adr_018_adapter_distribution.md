@@ -23,15 +23,13 @@
 3. **打包/签名走什么途径？**（ADR-002 §2.3 已于 2026-07-15 把签名从 AWS KMS 改为离线 YubiKey。）
 4. **解释器版本怎么同步？** adapter 依赖宿主提供的 QuickJS 引擎 + `elecon:html` stdlib；包与客户端各自独立发版后，版本偏斜会破坏「双端不漂移」与确定性。
 
-红线约束（承重墙）：#1 凭证永不离核心；#2 公网哑服务零凭证/无状态；#4 release 仅官方签名加载、无侧载入口；#5 adapter 越薄（release 第三方=declarative 纯解析）；#6 契约改动先 ADR 且向后兼容。
+红线约束（承重墙）：#1 凭证永不离核心；#2 公网哑服务零凭证/无状态；#4 DEPLOY 无论 catalog / 本地来源都仅运行 official；#5 DEV-Sideload 全能力但不可分发、凭证值仍不离核心；#6 契约改动先 ADR 且向后兼容。DEPLOY 本地 official 导入与 C3 退役见 ADR-033（Proposed）。
 
 ---
 
 ## 2. 决策（Decision）
 
 ### 2.1 四个信任域（仓库分离 = 信任边界分离）
-
-> ⚠ **待修订（[ADR-033](./adr_033_production_sideload.md) · Proposed，2026-08-09）**：[ADR-033](./adr_033_production_sideload.md) 提议的生产侧载包**不经信任域 D**（用户手动导入本地文件），因而**不在** catalog / revocation 的治理范围内——不可吊销属该 ADR §3 明示接受的残余风险。 **ADR-033 接受前，本节逐字有效。**
 
 「服务器能不能跑 adapter」不是红线的提法；红线管的是**哪个信任域、碰不碰凭证**。把角色拆成四个**必须分开部署/分权**的盒子：
 
@@ -41,6 +39,8 @@
 | **B. 审查/打包沙箱**（服务端，构建期） | 二次审查:容器内跑 adapter 做性能/行为验证 + 打包 unsigned bundle + 算 digest | **是** | **仅测试账号**（复用 broker 注入，adapter 仍看不到凭证值） | **容器隔离 + 无生产密钥**（dev 侧载-imperative 的服务端类比，ADR-002 §2.5） | #1（broker 不泄值）/#5 |
 | **C. 签名**（离线，维护者） | 对 digest 做 YubiKey PIN+触碰签名 → `signature.json` | 否 | 否（私钥在硬件） | **离线气隙 + 硬件 token**，私钥连服务器都不上 | #4（ADR-002 §2.3） |
 | **D. 公网分发端点**（`server/src/public` / CDN） | 客户端拉 signed bundle + catalog + revocation | 否 | **否（根本不放）** | **无状态、零凭证**，可退化为静态 CDN | #2 |
+
+> **DEPLOY 加载边界**：A 产出的未签名素材用于 DEV-Sideload 全能力调试；进入 DEPLOY 前必须经过 B 审查与 C official 签名。ADR-033 提议增加用户本地文件来源，但它只绕过 D 的字节下载，不绕过 official 验签，并须在线取得 D 发布的最新 catalog/revocation 治理材料。
 
 > **正交提醒**：运行时的 `server/src/campus`（校内授权中继，带真实凭证取私密数据，红线 #3）与本文的**分发**无关——分发管"把签名包送到客户端"，中继管"运行时取数"。本文不改中继。
 
@@ -132,7 +132,7 @@ adapter 依赖两层宿主运行时:**QuickJS 引擎**（ADR-005，双端同引�
 
 ### 2.7 与 App Store 合规的联动（继承 ADR-010）
 
-- 「非代码市场」依赖 **release 无侧载入口 + 仅官方签名分发**。社区仓库 A 是**公开但未签名**素材，非 app 内第三方代码商店——只要加载器只从官方签名渠道（D）加载、且不从任意 URL 拉 adapter，立论成立。
+- 「非代码市场」当前依赖 DEPLOY 无本地入口 + official 分发。ADR-033 若接受，论证改为：设置内只导入项目 official 签名包、无任意 URL/catalog/第三方 key，并强制在线吊销治理；须由 ADR-010 人工合规复核后才能落地 iOS。
 - 热推只换"数据源映射"、不引入功能:由 §2.5 catalog 不得引入新 capability + §2.4 stdlib/引擎能力在 app 内 共同强制。
 
 ### 2.8 单个 adapter 项目结构与 adapters 仓库组织
@@ -198,7 +198,7 @@ elecon-adapters/（public,另一组织）
 
 | # | 检查 | 手段 |
 |---|---|---|
-| 1 | **manifest schema 合法** | ajv(`tools/validator`):结构 + `trustTier` + per-cap `requestGraph` + **拒 `sideload+任一 imperative cap`**（`C3_sideload_must_declarative`）+ capability id ∈ `capability/registry.json` + `stdlibMin` 语义 + **`credentials.scope ⊆ network.allow`** 等包含关系 |
+| 1 | **manifest schema 合法** | ajv(`tools/validator`)：结构 + `trustTier` + per-cap `requestGraph` + capability id ∈ registry + `stdlibMin` + credentials scope 等。当前另拒 `sideload+imperative`（C3）；ADR-033 提议退役 C3，使 DEV 素材可完整预检，DEPLOY 由 official grant 门禁承担。 |
 | 2 | **JS 可编译 + import 白名单** | index.js 作为 ES module 解析(esbuild/acorn 或 QuickJS compile 空跑);**import 仅允许 `elecon:html`**,禁止任意外部/相对 import |
 | 3 | **declarative 档源码静态检查**(ADR-002 §2.6 闸门) | AST 扫描:declarative capability 不得出现网络/凭证/副作用 API(`fetch`/XHR/`eval`/`Function`/`globalThis` 逃逸等) |
 | 4 | **fixtures 脱敏扫描**(红线 #1/#8) | `tools/scanner`:真实学生数据(PII)**一律拒** + **凭证等价物模式扫描**(ticket / JSESSIONID / Set-Cookie / openid 等,接 Track B B8 token-pattern);**强制通过方可合并** |
