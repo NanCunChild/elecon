@@ -11,6 +11,17 @@
 ///
 ///   运行：cd client && fvm flutter test test/imperative_runtime_test.dart
 ///
+/// **ADR-024 判别器换位后的运行方式（2026-08-07）**：本文件多数用例需要一张 dev 侧载
+/// 信任票，而侧载入口已由信任 profile（非优化等级）判别——DEPLOY 产物里它被编译期
+/// 剔除，`TrustedAdapterContext.devSideload()` 恒抛。故这些用例在 DEPLOY 构建下
+/// **skip**，由 CI 的 DEV profile 轮次执行：
+///
+///   fvm flutter test test/imperative_runtime_test.dart \
+///     --dart-define=ELECON_TRUST_PROFILE=dev-sideload
+///
+/// 默认（无 define）轮次仍会跑「信任闸门」组——那组断言的正是 DEPLOY fail-closed 语义，
+/// 只有在 DEPLOY 构建里断言才有意义。两个轮次合起来覆盖两档。
+///
 /// 🔒 红线 #1 凭证注入 + 出网承重路径：与被测代码一并须人工 + 安全清单复核。
 library;
 
@@ -21,12 +32,21 @@ import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/broker/inject_policy.dart';
 import 'package:elecon/core/broker/ports.dart';
 import 'package:elecon/core/credential/store.dart';
+import 'package:elecon/core/trust/trust_profile.dart';
 import 'package:elecon/core/trust/trusted_context.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'utils/test_utils.dart';
 
 const _now = 1700000000000;
+
+/// DEPLOY 构建下跳过需侧载信任票的用例的理由串（null = 不跳过）。
+/// 见文件头：DEV profile 轮次会真正执行它们。
+const Object? _needsSideloadProfile = kSideloadEnabled
+    ? null
+    : 'ADR-024：需 DEV profile 才能构造侧载信任票'
+          '（--dart-define=ELECON_TRUST_PROFILE=dev-sideload）；'
+          'DEPLOY 下侧载入口已被编译期剔除，由 CI 的 DEV 轮次覆盖本组';
 
 void main() {
   group('B6b-Dart imperative 运行时（host-fn 通道 + fake transport）', () {
@@ -367,40 +387,63 @@ void main() {
       );
       expect(store.list(), isEmpty, reason: '失败执行不得收割（fail 不收割）');
     });
-  });
+  }, skip: _needsSideloadProfile);
 
   group('信任闸门（ADR-002 §2.6 · #79 P0-1）', () {
-    // 入场判定纯函数：release 语义无法在 flutter_test（debug 模式）下经
-    // runImperativeAdapter 端到端触发，负例由纯函数覆盖；生产接线
-    // （debugBuild: kDebugMode 硬接、无注入点）由人工审阅把关（🔒）。
-    test('release/profile 下非 official 拒绝（fail-closed 负例）', () {
+    // 入场判定纯函数：DEPLOY 语义的负例由纯函数覆盖（两档都能在任一 profile 下断言）；
+    // 生产接线（sideloadEnabled: kSideloadEnabled 硬接、无注入点）由人工审阅把关（🔒）。
+    test('DEPLOY profile 下非 official 拒绝（fail-closed 负例）', () {
       expect(
-        fetchTrustPermitted(AdapterTrustTier.devSideload, debugBuild: false),
+        fetchTrustPermitted(
+          AdapterTrustTier.devSideload,
+          sideloadEnabled: false,
+        ),
         isFalse,
-        reason: 'release 下 dev 侧载不得触达 fetch（红线 #4/#5）',
+        reason: 'DEPLOY 下 dev 侧载不得触达 fetch（红线 #4/#5，ADR-024）',
       );
     });
 
-    test('official 一律放行；devSideload 仅 debug 放行', () {
+    test('official 一律放行；devSideload 仅 DEV profile 放行', () {
       expect(
-        fetchTrustPermitted(AdapterTrustTier.official, debugBuild: false),
+        fetchTrustPermitted(AdapterTrustTier.official, sideloadEnabled: false),
         isTrue,
       );
       expect(
-        fetchTrustPermitted(AdapterTrustTier.official, debugBuild: true),
+        fetchTrustPermitted(AdapterTrustTier.official, sideloadEnabled: true),
         isTrue,
       );
       expect(
-        fetchTrustPermitted(AdapterTrustTier.devSideload, debugBuild: true),
+        fetchTrustPermitted(
+          AdapterTrustTier.devSideload,
+          sideloadEnabled: true,
+        ),
         isTrue,
-        reason: 'debug 下 dev 侧载可跑 imperative（ADR-002 §2.5 owner 决策）',
+        reason: 'DEV profile 下 dev 侧载可跑 imperative（ADR-002 §2.5 owner 决策）',
       );
     });
 
-    test('devSideload 上下文在 debug（测试环境）可构造，档位正确', () {
-      final trust = TrustedAdapterContext.devSideload();
-      expect(trust.tier, AdapterTrustTier.devSideload);
-    });
+    test(
+      'devSideload 上下文在 DEV profile 可构造，档位正确',
+      () {
+        final trust = TrustedAdapterContext.devSideload();
+        expect(trust.tier, AdapterTrustTier.devSideload);
+      },
+      skip: _needsSideloadProfile,
+    );
+
+    test(
+      'DEPLOY profile 下 devSideload() 恒抛（护栏 2：编译期剔除）',
+      () {
+        expect(
+          TrustedAdapterContext.devSideload,
+          throwsA(isA<StateError>()),
+          reason: 'DEPLOY 产物内不存在启用侧载的构造路径（红线 #4 / ADR-024 §2.3）',
+        );
+      },
+      skip: kSideloadEnabled
+          ? '本断言只在 DEPLOY 构建有意义（默认轮次执行）'
+          : null,
+    );
   });
 }
 

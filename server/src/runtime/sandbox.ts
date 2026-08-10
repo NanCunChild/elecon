@@ -543,12 +543,15 @@ export async function runImperativeAdapter(
 
   const { runtime, ctx, deadline } = await createRuntime(limits);
 
+  // 单次执行的 cookie 时钟 = 执行 nowMs（冻结）。捕获、发送选择、收割三处共用同一
+  // 时刻，避免「选 cookie 时未过期、收割时已过期」这类执行内自相矛盾（P1-06）。
+  const execNowMs = input.nowMs ?? Date.now();
   const state: ImperativeExecState = {
-    jar: new CookieJar(),
+    jar: new CookieJar(() => execNowMs),
     requestCount: 0,
     networkMs: 0,
     fatal: null,
-    nowMs: input.nowMs ?? Date.now(),
+    nowMs: execNowMs,
     abortControllers: new Set(),
     bridgeSettlements: new Set(),
   };
@@ -559,7 +562,7 @@ export async function runImperativeAdapter(
     const data = await invokeImperativeHandler(ctx, runtime, input, ctxObj, deadline, state, disposables);
 
     if (deps.harvest) {
-      const plan = decideHarvest([...state.jar.harvestView()], deps.view);
+      const plan = decideHarvest([...state.jar.harvestView()], deps.view, state.nowMs);
       harvestInto(plan, deps.view, deps.harvest.sink, {
         schoolId: deps.harvest.schoolId,
         now: () => state.nowMs,

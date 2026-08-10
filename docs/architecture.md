@@ -21,7 +21,7 @@
 - `adapters/`：stdlib、模板、canary 和示例；真实学校 adapter 从 `adapters.pin` 固定的外部仓拉取。
 - `tools/`：validator、codegen、签名、发布台账与 release gate。
 
-adapter 的**能力/信任面越薄越好**，但作为吸收学校接口差异的 shim，其**归一化和校本派生功能应尽量完整**。release 下第三方/侧载 capability 仍必须是 declarative requestGraph。
+adapter 的**能力/信任面越薄越好**，但作为吸收学校接口差异的 shim，其**归一化和校本派生功能应尽量完整**。DEPLOY 只运行通过 official 验签与吊销门禁的 adapter；本地导入只可作为 official bundle 的另一字节来源。DEV-Sideload 是全能力开发环境，可调试未签名 declarative / imperative adapter。双渠道与 C3 退役见 ADR-033（已接受，尚未落地）。
 
 ## 历史资料
 

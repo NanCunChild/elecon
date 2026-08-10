@@ -52,21 +52,21 @@ ADR-001 §6 把 adapter 的调用分成两种**模式**：`fetch`（adapter 用 
   - `imperative` → ctx 有 `fetch` + `setEphemeralCookie`（+ `log`/`now`），handler **异步** `(ctx, params) => Promise<Result>`。
 - adapter-sdk 类型对应重命名：`CtxParser → CtxDeclarative`、`CtxFetch → CtxImperative`（语义不变，仅名对齐）。
 
-### 2.3 requestGraph 不是信任档：对 official 是推荐，对 sideload 是红线 #5 的能力后果
+### 2.3 requestGraph 不是信任档：official 与 DEV-Sideload 均可按 capability 选择
 
 **requestGraph 不创建、也不细分信任档。** 分级轴仍只有 trust tier。requestGraph 与 trust 的关系是**单向约束**：
 
 - **对 official（推荐，非分级）**：official adapter 可自由选 `declarative` 或 `imperative`，**推荐优先声明式**——可审计 + 受信代码面更小。**仅当请求图太动态**（数据依赖链 / 未知页数分页 / 挑战应答，即 §2.5 的「离奇请求」）才用 `imperative`。选 `imperative` **不降低** official 的信任（它已签名/审阅），只是把审查成本从「读一张静态 `requests[]` 表」变成「读编排代码」。这是**工程推荐**，落在 `docs/rules/`，不是硬闸门。
 
-- **对 sideload（硬约束，红线 #5 的落地）**：`trustTier: sideload` 的 adapter，其**每个** capability 的 `requestGraph` 必须为 `declarative`。**理由不是可审计性**（那可被夹具近似，见 §1），**而是能力面**：`imperative` 要给 adapter `ctx.fetch` + 凭证注入能力，红线 #5 明令不可信代码「无网络、无凭证」。若降级成推荐，恶意侧载 adapter 即可在运行时把用户 session 注入到它临时选择的任意校内端点；声明式下该受凭证请求集是**静态钉死、可审的**。这是纵深防御，**不可退让**。与旧「sideload 强制 parser」在约束强度上**等价**，只是表述从「模式」精确化到「能力面」并下沉到 capability 粒度。
-
-- **dev/debug build 例外不变**（ADR-002 §2.5）：无签名侧载 adapter 仍可跑 `imperative`（强警告 + 全占用确认），该路径编译期从 release 剔除。
-- **ADR-002 §2.6 的 `ctx.fetch` 档位闸门**：保证不变（非 official 永不触达凭证注入），仅**触发条件**从「fetch 模式」改为「capability 的 requestGraph=imperative」。broker 凭证注入机制（ADR-009）**一字不改**。
+- **对 DEV-Sideload（全能力开发语义）**：`trustTier: sideload` 表示未签名 DEV 素材，不限制 requestGraph；每个 capability 可选 `declarative` 或 `imperative`，并可调试当前 DEV 宿主已编入的敏感能力。强警告、全占用确认、独立应用身份和不可分发要求不变，凭证值仍不离核心。
+- **C3 退役**：ADR-033（已接受）决定删除 `C3_sideload_must_declarative`，因为它阻断 imperative adapter 的贡献预检与本地调试。validator 继续执行 requestGraph 结构、白名单、凭证引用和能力专属规则。**该退役尚未落地：现有 C3 仍在 validator 里生效，删除须与 DEPLOY official-only 负例同批提交。**
+- **DEPLOY 本地导入不使用 sideload 档**：本地 bundle 只有通过 official 验签、身份绑定、在线吊销治理和兼容门后才可铸造 official grant；未签名 / 非 official 无运行路径。
+- **ADR-002 §2.6 的 `ctx.fetch` 档位闸门**：DEPLOY 保证不变（非 official 无加载路径，宿主边界仍纵深拒绝，永不触达凭证注入），仅**触发条件**从「fetch 模式」改为「capability 的 requestGraph=imperative」。DEV profile 的本地侧载例外由编译期隔离；broker 凭证注入机制（ADR-009）**一字不改**。
 
 ### 2.4 为什么不碰红线
 
 - **红线 #1（凭证不离核心）**：两种 requestGraph 下，凭证注入都由 broker 完成、adapter 永不见值——本 ADR 不改 broker，注入面不变。
-- **红线 #5（能力面越薄）**：`declarative` capability 的 adapter 仍是无网络/无凭证/无副作用的纯解析器（能力面）；`imperative` 仍 official 独占（release）。能力上限不放松，只把「按模式一刀切」换成「按 capability 精确 gate」。
+- **红线 #5（能力面越薄）**：DEPLOY 的能力边界由 official grant 承担，无论 bundle 来自 catalog 还是本地文件；未签名 / 非 official adapter 不运行。DEV-Sideload 全能力是编译期隔离的开发例外，不得分发。
 - **红线 #6（契约承重墙）**：本 ADR **即**红线要求的 ADR。**破坏性变更、不留兼容字段**——理由见 §3。
 
 ### 2.5 声明式的凭证能力对等，命令式只补「离奇请求」

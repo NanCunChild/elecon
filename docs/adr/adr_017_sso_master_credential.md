@@ -69,7 +69,7 @@ GET https://ids.xidian.edu.cn/authserver/login?service=<S>   （携带 CASTGC）
 - adapter **全程拿不到**母凭证值、ST、Set-Cookie 或带票 URL（红线 #1「等价物」条款）——它只是**请求形状的作者**，核心才是**执行者 + 凭证托管者**（比 ADR-016 §2.3「登录动作执行者」更弱一层）。
 - **已知边界**：若某校把凭证**嵌入 body 且纳入签名**，adapter 无法在不见凭证前提下算签名 → 此类校 mint 回退可见 WebView 或走核心侧签名钩子（落地再议，§4）。
 
-> 静默换票**不是新信任档**：它是 ADR-016 §2.2「登录/收割」能力的受控子例，落**同一条 official-only-except-debug 能力门禁**。adapter 只**贡献请求构造逻辑**，不改变「凭证托管在核心」的边界。
+> 静默换票**不是新信任档**：DEPLOY 落 official-only grant 门禁（catalog / 本地来源同义），DEV-Sideload 可全能力调试。adapter 只**贡献请求构造逻辑**，不改变「凭证托管在核心」的边界。
 
 ### 2.3 首次登录仍走可见 WebView（不变）
 
@@ -112,7 +112,7 @@ CASTGC 能换任意服务票，是**高价值目标**。注入约束：
 | M2 | 每个 `ssoMint.services[*].service` 与其 `success` 均须 ⊆ `navigationAllow` | error |
 | M3 | `ssoMint.services` 的键须存在于 `credentials`（换票产物有 ref 可收割）| error |
 | M4 | 母凭证 ref（scope 覆盖 `authEndpoint` 域者）须存在且 scope **不**与任何下游数据域重叠（防母凭证外注入）| error |
-| M5 | `services[*].via` 指定的 adapter mint 能力须 official 签名并声明 sso-mint 能力（sideload → 拒绝，release）| error |
+| M5 | DEPLOY 中 `services[*].via` 指定的 adapter mint 能力须由 official grant 授权并声明 sso-mint；catalog / 本地来源同门禁。DEV-Sideload 可全能力调试，但凭证值仍不离核心 | error |
 
 ### 2.6 无母凭证 / 单次授权：退化到逐服务可见登录（一等情形）
 
@@ -175,7 +175,7 @@ CASTGC 能换任意服务票，是**高价值目标**。注入约束：
 
 - **母票过期判据（反馈 3）**：核心确难普适决策（各校过期表现不一——有的 302 回登录页、有的返 JSON `code`、有的换 200 错误页）。→ 允许 official adapter / manifest 给**声明式过期判据**（如 `expiredWhenUrlMatches` / `expiredWhenBodyMatches`），核心在**非凭证输入**（终点 URL、脱敏后标记）上求值分类。默认仍是 §2.7 的 URL 推断（未达成功页即疑过期）；描述符是**精化**、非取代。校验随落地：official-only + 仅对非凭证输入求值（不得引用 body 内凭证位）。
 - **升级原因 + 前提条件（反馈 4）**：阶梯自诊断（§2.7）为**地板**；在其上，声明式判据可把结果分类为 `needs-user`（滑块 / 2FA 标记命中）/ `transient`（疑形状漂移）→ **有前提地短路**：`needs-user` **直升可见登录**（不浪费隐藏 WebView 级）、`transient` 走 headless→隐藏。**关键分界**：**「adapter *描述* 升级原因」可行**（声明式判据，核心据以决策）；**「adapter *处理 / 执行* 升级」不可行**（越红线——adapter 不跑阶梯控制流、不碰凭证）。用户原话「描述**或**处理」中，**只接受「描述」这一支**。
-- **能力边界扩展（反馈 5）**：当声明式词表**表达不了**某校需求 → **扩 official adapter 的封闭词表**（新增声明式原语，official 签名 + 走 ADR / 契约改动，红线 #6 + 人工 / 安全审）——**而非**硬编码进核心（膨胀）、**也非**放宽侧载 adapter 权限（红线 #5，release 侧载恒为 declarative 纯解析）。增长发生在 official 描述词表、经契约版本化，**核心保持薄**。每次扩词表是一次可审查的契约演进，不是给 adapter 开自由执行面。
+- **能力边界扩展（反馈 5）**：当声明式词表**表达不了**某校需求 → **扩 official adapter 的封闭词表**（新增声明式原语，official 签名 + 走 ADR / 契约改动，红线 #6 + 人工 / 安全审）——**而非**硬编码进核心。DEV-Sideload 可先全能力调试，但进入 DEPLOY 前仍须 official 审查/签名；本地导入不绕过该过程（ADR-033）。增长发生在 official 描述词表、经契约版本化，**核心保持薄**。
 
 ---
 

@@ -32,7 +32,7 @@ void main() {
             .map(cookieFromJson)
             .toList();
         final view = viewFromJson(input['view'] as Map<String, dynamic>);
-        final plan = decideHarvest(cookies, view);
+        final plan = decideHarvest(cookies, view, input['nowMs'] as int? ?? 0);
         expect(plan.map((e) => e.toJson()).toList(), equals(c['expected']));
       });
     }
@@ -82,7 +82,7 @@ void main() {
       var clock = 5000;
       final store = CredentialStore(now: () => clock);
       harvestInto(
-        decideHarvest(cookies, view),
+        decideHarvest(cookies, view, clock),
         view,
         store.put,
         schoolId: 'xjt',
@@ -104,7 +104,7 @@ void main() {
       var clock = 5000;
       final store = CredentialStore(now: () => clock);
       harvestInto(
-        decideHarvest(cookies, view),
+        decideHarvest(cookies, view, clock),
         view,
         store.put,
         schoolId: 'xjt',
@@ -121,7 +121,7 @@ void main() {
         ),
       ];
       harvestInto(
-        decideHarvest(rotated, view),
+        decideHarvest(rotated, view, clock),
         view,
         store.put,
         schoolId: 'xjt',
@@ -138,7 +138,7 @@ void main() {
         credentials: {},
       );
       harvestInto(
-        decideHarvest(cookies, noCred),
+        decideHarvest(cookies, noCred, 5000),
         noCred,
         store.put,
         schoolId: 'xjt',
@@ -161,7 +161,7 @@ void main() {
         ..captureSetCookie([
           'SID=HOST_ONLY; Path=/',
         ], 'https://ids.xjtu.edu.cn/login');
-      expect(decideHarvest(jar.harvestView(), subdomainView), isEmpty);
+      expect(decideHarvest(jar.harvestView(), subdomainView, 5000), isEmpty);
     });
   });
 

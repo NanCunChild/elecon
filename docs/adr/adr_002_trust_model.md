@@ -16,8 +16,8 @@ ADR-000 §2.2 把"签名校验、吊销、dev 侧载闸门"定为可信核心的
 
 红线约束（承重墙，不可违背）：
 - #1 凭证永不离核心 → 只有最高信任档才有资格触发凭证注入。
-- #4 传输底座仅官方签名加载；release 无侧载入口；dev 传输仅 debug build。
-- #5 第三方/侧载 adapter 必须是 declarative 纯解析（无网络/无凭证/无副作用）。
+- #4 传输底座仅官方签名加载且无侧载；DEPLOY adapter 无论字节来源都只运行 official；dev 传输仅 debug build。
+- #5 DEPLOY 不运行未签名 / 非 official adapter；DEV-Sideload 是全能力调试例外，凭证值仍不离核心，见 §2.5。DEPLOY 本地 official 导入与 C3 退役由 ADR-033 决定（已接受，尚未落地）。
 
 ---
 
@@ -29,15 +29,15 @@ ADR-000 §2.2 把"签名校验、吊销、dev 侧载闸门"定为可信核心的
 
 把两件常被混为一谈的事拆开：
 
-- **是否官方签名** → 决定**能否进 release / 被分发**。official 签名 = 可经官方渠道分发；未签名 = 仅 dev 侧载。
+- **是否通过 official 验签** → 决定**能否在 DEPLOY 运行**。字节可来自 catalog，或在 ADR-033 接受后来自用户显式本地导入；来源不改变 trust tier。未签名 = 仅 DEV-Sideload。
 - **信任档** → 决定**能做什么**（能力上限）。
 
-| 档 | 建立方式 | 分发 | 能力上限（release） | 能力上限（dev/debug build） | 执行落点 |
+| 档 | 建立方式 | 分发 | 能力上限（DEPLOY） | 能力上限（DEV profile） | 执行落点 |
 |---|---|---|---|---|---|
-| **official** | 一方编写或深度审查 + 项目签名 | release | **imperative requestGraph**（凭证注入资格）、可作为传输底座加载目标；亦可 declarative | 同 release | client-direct / campus-relay |
-| **sideload** | 开发者本地加载，**无签名** | **仅 debug build** | —（release 无侧载入口） | **可跑 imperative**（含凭证注入），但须强警告 + 全占用确认；亦可 declarative | 同 declarative/imperative，dev 专用 |
+| **official** | 一方编写或深度审查 + 项目签名 | DEPLOY（catalog；ADR-033 增加本地文件来源，待落地） | **imperative / declarative requestGraph**、当前正式宿主能力 | 同 DEPLOY | client-direct / campus-relay |
+| **sideload / devSideload** | 开发者本地加载，**无签名** | **仅 DEV-Sideload，不可分发** | —（DEPLOY 不运行此档） | **全能力调试**：imperative / declarative、当前 DEV 宿主已编入能力；须强警告 + 全占用确认 | DEV 专用 |
 
-**release 下凭证注入（imperative requestGraph；旧称 fetch 模式，见 ADR-022）是 official 独占**——把最高风险面（红线 #1）锁死在一方授权的代码上。**dev/debug build 例外**（2026-06-14 人工 owner 决策，仿红线 #4 的 dev 传输例外）：无签名侧载 adapter 可跑 imperative、可触发凭证注入，用于本地开发自有测试账号；以**多重警告**兜底（§2.5），且该路径**编译期从 release 剔除**（§2.5）。换言之：release 维持 `sideload ⊆ official`、imperative 为 official 独占的硬约束；dev 放开侧载-imperative 仅是开发者工具，永不进发版二进制——安全不变量在 release 语义下不变。
+**DEPLOY 下凭证注入（imperative requestGraph；旧称 fetch 模式，见 ADR-022）是 official 独占**——把最高风险面锁死在项目授权代码上。**DEV-Sideload 例外**：无签名 adapter 可调试 imperative 及当前 DEV 宿主能力、可触发开发者测试凭证注入；以多重警告兜底，未签名 grant 与 dev 凭证放行路径编译期不进入 DEPLOY。ADR-033 的 DEPLOY 本地导入即使落地，也只铸造 official grant，不改变此不变量。
 
 **community 档已砍（2026-06-13 决定）**：原拟的 community 与 sideload 能力上限相同（都 declarative-only），背书签名只买到「能经官方渠道分发」，代价却是**维护者须逐个审查并背书**——正是 ADR-000 要消除的人工瓶颈。权衡后**取消 community 档**：信任模型只剩 **official** 与 **sideload** 两档。社区贡献的 adapter 一律走 **sideload**（贡献者自行 debug 加载，或经审查被收编为 official）；**官方维护 / 深度审查的 adapter 一律 official**。这把维护者从"为可分发性背书"的责任里解放出来，与「最小人力」主线对齐。代价：**没有"已签名可分发但仍由社区维护"的中间态**——可分发即官方背书。核心**无 community 验证路径**，任何自报 community 的包按 sideload 处理（§2.2）。**契约清理（2026-06-14 人工 owner 决策）**：`community` 枚举值**从 `contract/manifest.schema.json` 与 ADR-001 §5 彻底移除**（不再保留枚举位）。这属契约改动（红线 #6），向后兼容性说明：`community` 此前**无任何生效验证路径**（运行时一律按 sideload 处理），移除后自报 `community` 的 manifest 在 `tools/` 静态校验阶段即被拒——行为从"运行时降级"前移为"加载前拒绝"，不放松任何安全约束。
 
@@ -45,7 +45,7 @@ ADR-000 §2.2 把"签名校验、吊销、dev 侧载闸门"定为可信核心的
 
 manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权威信任档来自核心对签名/背书的验证**：
 
-- 一个侧载包把 `trustTier: "official"` 写进 manifest **不能**提权——核心验不到对应签名 → 一律按 sideload 处理（declarative 笼子、debug-only）。
+- 一个侧载包把 `trustTier: "official"` 写进 manifest **不能**提权——核心验不到对应签名；DEPLOY 直接拒绝，DEV 才可按 sideload 本地加载。
 - 签名载荷**覆盖** `adapterId` + `adapterVersion` + 内容哈希 + **裁定档位**（两档制下即 official；无签名 = sideload），使档位不可伪造。核心以"验签得到的档位"为准；与 manifest 自报不符则拒绝加载（fail-closed）。
 
 ### 2.3 签名机制
@@ -83,29 +83,31 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 - **时效与离线**：吊销清单自带新鲜度/TTL；拉取失败时回退到**上一份已验签的清单**（绝不把"拉不到"当成"全部放行"）。
 - **首次启动 / 全新安装的 bootstrap（消解 fail-closed 的两难）。** "回退到上一份已验签清单"在全新安装、**尚无 last-good** 时无依据，会陷入「fail-open 不安全 / fail-closed 离线即不可用」两难。对策：**App bundle 内预置一份初始的已签名吊销清单**（随发版更新），作为 last-good 的初值——新装即有一份可信基线，离线也能 fail-closed 而不瘫。这与 [`adr_010`](./adr_010_ios_appstore.md) §2.2「bundle 预置基线 adapter」同源：让 App 在零网络下即自包含可用。预置清单只是**下限**，联网后按 TTL 拉取更新。
 
-### 2.5 dev 侧载闸门（红线 #4）
+### 2.5 本地导入与 DEV-Sideload 闸门（红线 #4；ADR-033 修订，已接受待落地）
 
-- 侧载加载路径**在编译阶段即从 release 剔除**——不是运行时开关，而是 release 二进制里**根本不存在**加载未签名 adapter 的代码（编译期 `kReleaseMode` / 条件编译裁掉整段）。**侧载-imperative 路径（dev 下凭证注入给无签名 adapter）同样编译期剔除**——release 二进制里没有"给非 official 注入凭证"的代码分支。
+- **渠道不等于信任档**：DEPLOY 本地文件若通过 official 验签与治理门，仍按 official 运行；`devSideload` 只在 DEV profile 可铸造。
+- **当前运行基线**：ADR-033 已接受但尚未落地，故 ADR-024 的 DEPLOY 零本地导入实现与 gate 目前仍原样生效——这是实现进度，不是 ADR 状态。
+- **落地后的 DEPLOY**：设置内保留低频本地导入，只接受 official 签名；每次新增/更新必须在线刷新并验证 catalog/revocation，网络失败、陈旧、回滚、吊销或身份不符均拒绝。入口低可达性不替代安全门禁。
 - dev 传输底座同样**仅 debug build**存在（红线 #4）。
-- **dev/debug build 的侧载能力（2026-06-14 人工 owner 决策）**：无签名侧载 adapter **可跑 imperative、可触发凭证注入**（用开发者自有测试账号），不再强制退化为 declarative。这是开发者本地调试 imperative adapter 的必要能力。**风险以多重警告兜底，不以能力阉割兜底**：
-  - **dev build 启动即提示**：进入 debug build 时持久提示「当前为开发版，允许加载未签名 adapter，凭证可能暴露给未审查代码」。
+- **DEV-Sideload 全部允许**：无签名 adapter 可用 declarative / imperative，并调试登录、收割、ssoMint、dataflow、action 等当前 DEV 宿主已编入能力；可触发开发者测试凭证注入，但凭证值仍不离核心。DEV 可以是优化的 `--release` build，必须使用独立 applicationId、启动警告且不可分发。**风险以多重警告兜底，不以 declarative 阉割兜底**：
+  - **DEV 启动即提示**：进入 DEV profile 时持久提示「当前为开发版；未审查 adapter 可驱动核心使用开发者测试凭证、读取脱敏后的私密响应并在声明白名单内发请求」。不得表述成 adapter 能看到凭证值；红线 #1 在 DEV 仍成立。
   - **侧载 imperative adapter 时全占用确认**：加载含 `requestGraph: imperative` 的无签名 adapter 前，弹**全占用模态框**逐条列明风险（该 adapter 未经签名/审查、将获得凭证注入能力、可读取私密响应），用户须显式确认方可继续。
-  - 上述警告 UI 与"允许注入"分支均在 `kReleaseMode` 条件编译内，**release 不存在**。
-- **release 维持原约束不变**：release 下侧载入口根本不存在；任何非 official adapter 无加载路径，更无凭证注入路径。§2.6 的"`ctx.fetch` 存在但档位校验"描述的是 **release / official 渠道** 的运行时语义；dev 侧载-imperative 是与之正交的、编译期隔离的开发者工具。
+  - 上述警告 UI 与"允许注入"分支均挂在编译期 `kSideloadEnabled` 下，**DEPLOY 不存在**。
+- **DEPLOY 维持信任约束不变**：任何未签名 / 非 official adapter 无运行路径。ADR-033 只增加 official bundle 的本地字节来源，不增加生产低信任档。
 
 ### 2.6 纵深防御：静态（tools）+ 运行时（core）
 
 | 闸门 | 位置 | 职责 |
 |---|---|---|
-| 静态 | `tools/` 校验器（CI） | **分发/签名路径**拒 `sideload + 任一 imperative cap`（`C3_sideload_must_declarative`，ADR-001 §5.2 / ADR-022）——即"提交走官方渠道签名分发的 imperative adapter 必须裁定为 official"；白名单越界；declarative 档源码静态检查（不得出现网络/凭证 API）；capability id 在注册表内。**注**：dev 本地侧载-imperative（§2.5）**不经 `tools/` CI 校验**——它是开发者直接加载到 debug build 的，此静态闸门只管官方分发产物，不拦 dev 本地加载。 |
-| 运行时 | 可信核心 | 验签（fail-closed）→ 查吊销 → 由签名裁定档位 → imperative 入口的 `ctx.fetch` 对所有档**存在**，但调用时按"宿主裁定的档位"校验：非 official 得到**结构化权限错误**（非 `TypeError`、非静默），且**永不触达凭证注入路径** |
+| 静态 | `tools/` 校验器（CI） | 校验 requestGraph 结构、白名单、凭证引用、capability registry 与能力专属规则。当前 C3 仍拒 `sideload + imperative`；ADR-033 已决定退役 C3 使 DEV 素材可完整预检，落地须与 DEPLOY official-only 负例同批，不得只删断言。 |
+| 运行时 | 可信核心 | DEPLOY 无论 catalog / 本地来源都只接受 official 验签 + 身份绑定 + 吊销 + stdlib 门全过的 bundle；本地新增/更新额外要求在线新鲜治理材料。DEV-Sideload 可铸造未签名开发 context，但该路径不进入 DEPLOY。 |
 
-**`ctx.fetch` 的形态（2026-06-13 调整；触发条件 ADR-022 改为 imperative requestGraph）**：`ctx.fetch` 在 imperative 入口对所有档**一律存在**——目的是让非 official 调用时拿到清晰的「权限不足」错误，而不是晦涩的 `ctx.fetch is not a function`（`TypeError`）。但这**不削弱** capability-based 保证：
+**DEPLOY 中 `ctx.fetch` 的形态（2026-06-13 调整；触发条件 ADR-022 改为 imperative requestGraph）**：`ctx.fetch` 在 imperative 入口对所有档**一律存在**——目的是让错误送入的非 official context 拿到清晰的「权限不足」错误，而不是晦涩的 `TypeError`。但这不削弱 capability-based 保证：
 - **档位由宿主据验签结果裁定**（非 adapter 自报），校验**在宿主边界 fail-closed**。
-- 非 official 的 `ctx.fetch` 调用在拿到**任何**网络/凭证能力**之前**即被拒——被守的不是"错误提示"，而是**宿主侧的网络出口与凭证注入**，二者对非 official 物理不可达。
-- 因此即便侧载 adapter 谎称 official、或静态检查被绕过，提权仍在机制上不可能；变的只是**错误形态（权限错误 vs `TypeError`）**，不变的是**非 official 永不触达凭证注入**。
+- DEPLOY 非 official 的 `ctx.fetch` 调用在拿到任何网络/凭证能力前即被拒；本地导入也不能绕过。
+- DEV-Sideload 是显式全能力例外，可驱动核心使用开发者测试凭证；该放行由编译期 profile 隔离，不能据此推导 DEPLOY 放行。
 
-**适用范围（2026-06-14 澄清）**：本 §2.6 描述的是 **release 二进制**的运行时语义——release 下非 official 在宿主边界被拒、永不触达凭证注入，是不可削弱的硬约束。**dev/debug build 是正交例外**（§2.5）：debug 下侧载 adapter 可跑 imperative 并触发凭证注入（开发者自有测试账号 + 强警告），该"允许注入"分支与本节的"拒绝注入"分支**同处 `kReleaseMode` 条件编译**——release 里只编进"拒绝"分支，dev 里编进"警告 + 允许"分支。两者互斥、由编译期决定，故 release 不变量与 dev 开发能力并不冲突。
+**适用范围（ADR-024 / ADR-033）**：DEPLOY 的权威边界是 official grant，不是字节来源；非 official 在加载与宿主边界均被拒。DEV-Sideload 是正交全能力例外，未签名 context 与开发凭证放行由编译期 profile 隔离。优化等级与信任 profile 正交，不能以 `debug/release` 代称二者。
 
 ---
 
@@ -117,7 +119,7 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 4. **离线/陈旧吊销的可用性权衡。** fail-closed 与"拉不到清单时仍可用上次良好状态"之间的策略已在 §2.4 定调（last-good 回退 + bundle 预置初始清单解全新安装的两难），避免吊销机制本身成为 DoS 面。残余权衡：预置清单的新鲜度受发版节奏限制，急性吊销仍依赖联网拉取 + kill-switch。
 5. **签名规范化（canonicalization）已钉死规格（§2.3），残余风险在跨平台实现一致性。** 规则已固定（字典序/LF/UTF-8 NFC/二进制资产不变/Merkle-like 双层 SHA-256），但 Dart/Node/Wasm 三端的 NFC 归一化、路径排序（locale 无关排序）需跨平台 golden test 保证。
 6. **与契约的边界。** `trustTier` 的 `community` 枚举清理已于 2026-06-14 修订**随本 ADR 一并落地**（§2.1，红线 #6，向后兼容）——这是经人工 owner 批准的契约改动，非"顺手改"。若日后需在 manifest 增签名/背书相关字段，仍另起独立 ADR。
-7. **`ctx.fetch`"存在但档位校验"需下游一致性更新（§2.6）。** 此取向改了运行时 ctx 形态——[`adr_009`](./adr_009_fetch_credential.md) §2.6「非 official 强制 declarative」、[`adr_008`](./adr_008_client_runtime.md) 客户端运行时、以及**现有 declarative ctx 实现**（`server/src/runtime/sandbox.ts` 的 `buildParserCtx` 与 `client/lib/core/adapter_runtime.dart` 的 bootstrap 目前只给 `log`/`now`、无 `fetch`）都需同步为"`ctx.fetch` 存在但宿主边界 fail-closed 拒绝非 official"。**安全不变量不变**（非 official 不可达凭证注入），变的只是**错误形态**（权限错误 vs `TypeError`）。
+7. **`ctx.fetch`"存在但档位校验"需下游一致性更新（§2.6）。** 此取向改了运行时 ctx 形态——[`adr_009`](./adr_009_fetch_credential.md) §2 决策 7、[`adr_008`](./adr_008_client_runtime.md) 客户端运行时及 declarative ctx 实现须一致。DEPLOY 非 official 仍 fail-closed；DEV-Sideload 全能力例外由编译期 profile 隔离。
 
 ---
 
@@ -129,10 +131,10 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 - **新依赖声明（红线 #9）**：`pkcs11js`（**MIT**）——PKCS#11 2.40 的 Node 绑定，仅供 `tools/src/signer/pkcs11.ts` 在**离线签名机**上驱动 YubiKey；**不进客户端 / 服务端二进制，不随 [`adr_018`](./adr_018_adapter_distribution.md) §2.8 的镜像发布**。定为 **`optionalDependencies`**：它是原生模块（node-gyp），而 CI / 普通开发机既无令牌也未必有构建工具链——惰性 `import` + fail-closed，缺它时 validator / scanner / digest / 验签均不受影响。MIT 与红线 #9 的 GPL 传染性隔离要求无冲突。
   - 实现注意（已在代码内注释钉死）：`pkcs11js` 只实现到 **PKCS#11 2.40**，而 Ed25519 相关机制是 **3.0** 才引入的（`CKM_EDDSA`=0x1057、`CKM_EC_EDWARDS_KEY_PAIR_GEN`=0x1055）——**须自行定义常量**。且该包是 CJS、常量动态赋值到 `module.exports`，ESM `import` 拿不到（全为 `undefined`，症状伪装成参数类型错），须取 `default`。
 - **离线硬件签名工作流**（取代原 OIDC→KMS 管线）：CI/审查沙箱只产出 **unsigned bundle + digest**；维护者本地重算 digest 确认一致 → YubiKey PIN+触碰签 → 提交 `signature.json` + 更新发布台账。签名不在任何自动化上。实现注意：须取**裸 64 字节 Ed25519 签名**（PIV/PKCS#11，非 OpenPGP packet 封装）以对齐现有验签——`YubiKeySignBackend` 与 `YubiKeyPkcs11Signer` 两处均有 64B 守卫（纵深防御）。**「本地重算 digest 比对」是 §3 风险 2(e)「所见非所签」的唯一防线，不可省。**
-- 可信核心：加载前验签（fail-closed，针对 active 预埋公钥）+ 吊销查询 + 由签名裁定档位 + `ctx.fetch` 档位校验（非 official → 结构化权限错误、永不触达注入）。客户端与服务端核心共享同一裁定逻辑。
+- 可信核心：DEPLOY 加载前验签（active pin）+ 吊销 + 签名裁定档位 + `ctx.fetch` 档位校验（非 official → 结构化权限错误、永不触达注入）；DEV-Sideload 的显式放行分支单独隔离。客户端与服务端核心共享裁定语义。
 - **多公钥预埋 + 分批启用**：active/dormant 公钥集合；晋升（应对丢失）/ 停用（应对泄漏）方向不对称（§2.3）；**晋升与集合增删一律随 App 发版**（不做热推启用声明）。
-- `tools/` 校验器：补 declarative 能力源码静态检查（无网络/凭证 API）；强化 `sideload + imperative` 拒绝（已在 ADR-001 列为闸门）。
-- 侧载闸门：确保侧载加载路径 + **侧载-imperative 凭证注入分支**均**编译期从 release 剔除**（非运行时开关）。dev build 形态（§2.5）：启动持久警告 + 侧载 imperative adapter 全占用确认模态框，警告 UI 与"允许注入"分支同处 `kReleaseMode` 条件编译内。🔒 安全敏感（凭证注入分支），人工主导。
+- `tools/` 校验器：补 requestGraph 与能力专属静态检查。当前保留 `sideload + imperative` C3；ADR-033 已决定退役，落地时须同批补 DEPLOY official-only 负例，不得只删断言。
+- 侧载闸门：ADR-033 落地前仍确保全部本地导入入口从 DEPLOY 剔除；落地后改为确保 **devSideload grant、未签名执行与 DEV 凭证放行路径**从 DEPLOY 剔除，同时 DEPLOY 本地入口只汇入 official verifier + 在线治理门。DEV 形态为独立应用身份 + 启动持久警告 + 全占用确认。🔒 安全敏感，人工主导。
 - 吊销分发：公网哑服务托管签名吊销清单；核心拉取/验签/回退策略。
-- 测试：验签正/反例、谎报档位提权反例、`ctx.fetch` 非 official 拒绝（权限错误而非 TypeError 且不触达注入）、公钥晋升/停用、吊销生效、规范化稳定性；安全敏感测试人工编写或实质审阅（testing.md §44）。
+- 测试：验签正/反例、谎报档位提权反例、**DEPLOY** `ctx.fetch` 非 official 拒绝、**DEV-Sideload** 未签名 imperative 放行但凭证值不可见、公钥晋升/停用、吊销与规范化；安全敏感测试人工编写或实质审阅。
 - 契约：`trustTier` 枚举 `community` 清理**已于 2026-06-14 修订落地**（`contract/manifest.schema.json` + ADR-001 §5，红线 #6，向后兼容见 §2.1）。manifest 签名字段如需新增另起独立 ADR。

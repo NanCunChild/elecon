@@ -114,6 +114,7 @@ class WebViewAuthSession {
           login: login,
           cookies: cookies,
           currentUrl: _successUrl,
+          nowMs: _now(),
         );
         final fingerprint = plan
             .map((e) => '${e.ref}\u0000${e.value}')

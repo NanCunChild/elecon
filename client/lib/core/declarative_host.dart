@@ -94,7 +94,9 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
   List<df.InjectDecl> injects = const [],
 }) async {
   final out = <String, dynamic>{};
-  final effectiveJar = jar ?? CookieJar();
+  // 冻结执行时钟（同 `adapter_runtime.dart` / TS `sandbox.ts` 的 execNowMs）：捕获、
+  // 发送选择、收割共用同一时刻（P1-06）。注入 jar 时尊重其自带时钟。
+  final effectiveJar = jar ?? CookieJar(() => nowMs);
   var used = 0;
 
   final reqByKey = {for (final r in requests) r.key: r};

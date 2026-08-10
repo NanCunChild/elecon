@@ -14,19 +14,33 @@
 ///    使其**绑定到具体 bundle**而非一张通用 bearer 票——上层运行前须核对将执行的 bundle 与本凭据
 ///    的 [digest] 一致（评审 #2，见下方字段文档）。
 ///  - **devSideload**：dev 侧载例外（ADR-002 §2.5，红线 #5 dev 例外）。
-///    仅 debug build 存在：[kDebugMode] 为编译期常量，release/profile 下
+///    仅 **DEV 信任 profile** 存在：[kSideloadEnabled] 为编译期常量，DEPLOY 下
 ///    工厂首行恒抛、其余代码作为死代码被剔除——「允许侧载注入」的分支在
-///    release 二进制里不存在（红线 #4 同构手法）。
+///    DEPLOY 产物里不存在（红线 #4 同构手法）。
+///
+/// **判别器换位（ADR-024，2026-08-07 落地）**：侧载判别器由 [kDebugMode]（优化等级）
+/// 改挂 [kSideloadEnabled]（`--dart-define=ELECON_TRUST_PROFILE=dev-sideload`）。
+/// 语义与手法完全同构（编译期常量 + tree-shake），只是把「是否含侧载入口」从
+/// 「是否优化」这根正交轴上解绑：社区 adapter 开发者可拿 `--release` 的性能 + 侧载。
+///
+/// 换位丢掉的自动正确性由 ADR-024 §2.3 四护栏补：① fail-closed 默认 DEPLOY
+/// （见 `trust_profile.dart`）；② 编译期剔除而非运行时开关；③ DEV 独立
+/// applicationId 后缀 + 启动页水印（`android/app/build.gradle.kts`、
+/// `ui/security/dev_sideload_banner.dart`）；④ `tool/check_release_gate.sh` 机械断言。
+///
+/// **传输底座不受影响**（ADR-024 §2.4）：dev 传输看全部流量，风险量级更高，
+/// 恒 [kDebugMode]-only，本次换位不碰。
 ///
 /// 纵深防御（ADR-002 §2.6：运行时不信任上游）：即便持有本类型实例，
-/// `runImperativeAdapter` 入口仍以 [fetchTrustPermitted] 复核档位 × build 模式。
+/// `runImperativeAdapter` 入口仍以 [fetchTrustPermitted] 复核档位 × 侧载 profile。
 ///
-/// 🔒 红线 #1 凭证路径承重件：改动本文件须人工 + 安全清单复核，不得 AI 独自闭环。
+/// 🔒 红线 #1/#4 凭证与信任判别承重件：改动本文件须人工 + 安全清单复核，不得 AI 独自闭环。
 library;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 
 import '../loader/load_grant.dart' show AdapterLoadGrant;
+import 'trust_profile.dart' show kSideloadEnabled, kSideloadEntryMarker;
 
 /// 宿主裁定的 adapter 信任档（ADR-002 §2.1 两档制）。
 ///
@@ -68,13 +82,20 @@ class TrustedAdapterContext {
   final String? adapterVersion;
   final String? digest;
 
-  /// dev 侧载裁定（ADR-002 §2.5）：开发者在 debug build 显式确认加载无签名
-  /// imperative adapter 后由核心调用。**仅 debug build 存在**——[kDebugMode] 是
-  /// 编译期常量，release/profile 下首行恒抛 [StateError]、返回分支被死代码
-  /// 剔除；调用方的警告 UI 与本调用同属 debug-only 条件编译。
+  /// dev 侧载裁定（ADR-002 §2.5 · 判别器见 ADR-024）：开发者在 **DEV profile** 构建里
+  /// 显式确认加载无签名 imperative adapter 后由核心调用。**仅 DEV profile 存在**——
+  /// [kSideloadEnabled] 是编译期常量，DEPLOY 下首行恒抛 [StateError]、返回分支被死代码
+  /// 剔除；调用方的警告 UI 与本调用同属 profile 条件编译。
+  ///
+  /// 抛出的信息里带 [kSideloadEntryMarker]：DEPLOY 产物中本函数被整体剔除后该字面量
+  /// 随之消失，`tool/check_release_gate.sh` 的符号 grep（护栏 4a）据此判「侧载入口
+  /// 确实不在产物里」。**不要改写或拼接这个常量**——gate 靠它是字面量才能命中。
   factory TrustedAdapterContext.devSideload() {
-    if (!kDebugMode) {
-      throw StateError('dev 侧载信任上下文仅 debug build 存在（红线 #4/#5，ADR-002 §2.5）');
+    if (!kSideloadEnabled) {
+      throw StateError(
+        'dev 侧载信任上下文仅 DEV profile 存在（红线 #4/#5，ADR-002 §2.5 / ADR-024）'
+        ' [$kSideloadEntryMarker]',
+      );
     }
     return const TrustedAdapterContext._(AdapterTrustTier.devSideload);
   }
@@ -107,20 +128,27 @@ class TrustedAdapterContext {
 }
 
 /// imperative 运行时入场判定（纯函数，负例可测）：official 一律放行；
-/// devSideload 仅 debug build 放行；其余 fail-closed。
+/// devSideload 仅 **DEV 信任 profile** 放行；其余 fail-closed。
 ///
-/// 生产接线固定为 `debugBuild: kDebugMode`（`runImperativeAdapter` 入口），
-/// 本函数把判定逻辑与编译期常量解耦，使 release 语义可被单测覆盖。
+/// 生产接线固定为 `sideloadEnabled: kSideloadEnabled`（`runImperativeAdapter` 入口），
+/// 本函数把判定逻辑与编译期常量解耦，使 DEPLOY 语义可被单测覆盖。
+///
+/// **参数由 `debugBuild` 改名为 [sideloadEnabled]（ADR-024）**：改名不是修辞——旧名会
+/// 诱导调用方继续传 `kDebugMode`，而判别器已换成信任 profile；同名不同义是最容易
+/// 悄悄接错的一类改动，故连名字一起换掉。
 ///
 /// **穷尽 switch（不设 default）是刻意的**（2026-07-16 收紧）：原实现
 /// `tier == official || debugBuild` 会在 debug 下**放行任何 tier**——将来新增枚举值
 /// 会被静默允许。改为逐档裁定后，新增枚举值会让本函数**编译不过**，强制显式决策，
 /// 杜绝"默默放行"。对现有两档行为完全不变。
-bool fetchTrustPermitted(AdapterTrustTier tier, {required bool debugBuild}) {
+bool fetchTrustPermitted(
+  AdapterTrustTier tier, {
+  required bool sideloadEnabled,
+}) {
   switch (tier) {
     case AdapterTrustTier.official:
-      return true; // official 一律放行（唯一可在 release 跑 imperative 的档）
+      return true; // official 一律放行（唯一可在 DEPLOY 跑 imperative 的档）
     case AdapterTrustTier.devSideload:
-      return debugBuild; // 侧载仅 debug；release/profile 下 fail-closed
+      return sideloadEnabled; // 侧载仅 DEV profile；DEPLOY 下 fail-closed
   }
 }

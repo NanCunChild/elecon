@@ -38,7 +38,7 @@ ADR-005/008 已落地 **declarative requestGraph**（旧称 parser 模式）：�
 
 6. **HTTP 错误响应（含 401）透传给 adapter，imperative adapter 自行处理。** broker 完成脱敏后，**原始 HTTP status code**（包括 401/403/5xx）直接回交 adapter——adapter 可据此决定重试、回退、或返回错误。broker **不拦截 401 做自动重登**（那是 ADR-012 §2.5 生命周期的职责，由核心在 adapter 执行结束后按需触发，不在单次 `ctx.fetch` 调用内联）。declarative 的 401 处理待定（核心代取时遇到 401 的策略由 declarative 设计另行定义）。
 
-7. **仅官方签名 adapter 可跑 imperative requestGraph。** 侧载 adapter 每个 capability 强制 declarative（ADR-000 §3.3、红线 #5 / ADR-022）。信任档由**核心验签裁定**（ADR-002 §2.2），不信任 manifest 自报的 `trustTier`；非 official → `ctx.fetch` 调用被宿主边界拒绝（ADR-002 §2.6 结构化权限错误），永不触达凭证注入。
+7. **DEPLOY 仅运行 official 签名 adapter。** official 可跑 imperative / declarative；catalog 与本地文件只是不可信字节来源，均须汇入同一 official verifier。信任档由**核心验签裁定**，不信 manifest 自报；非 official 无 DEPLOY 运行路径。**DEV-Sideload 全能力例外**可调试未签名 imperative 并使用开发者测试凭证；ADR-033（已接受）决定退役 declarative C3，落地须与 DEPLOY official-only 负例同批。
 
 8. **imperative handler 是异步的（返回 Promise）**，与 declarative 的"必须同步"相反。运行时需 pump job queue 并 await。限额（**数值为临时占位，2026-06-14：尚无实测依据，待真实多步握手 adapter 上线后校准——多步反爬流程可能吃掉请求数预算，需实践验证 20 是否够用**）：墙钟/内存对齐 `DEFAULT_LIMITS`；**单请求超时 ~10s**；**累计网络超时 ~30s**；**单次执行最大请求数 ~20**（防 DDoS / 资源耗尽）。**单次响应 body 大小设宿主侧独立上限**（rev-4 修订，见 §2.9——**推翻 rev-2 的"不设独立上限、靠 QuickJS OOM 兜底"**：宿主在字节进 QuickJS 之前已把整个 body 读进宿主堆，OOM 覆盖不到宿主 transport 阶段）。最终数值随实测在落地清单的运行时 PR 内固定。**校准承诺**：首个 imperative adapter 上线前，须以真实多步握手流程（至少覆盖一个含反爬挑战的学校）实测校准上述占位值（含 §2.9 body 上限），并更新本节为正式数值。
 
@@ -151,7 +151,7 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 
 **为何不破红线 #1**：`client_id` 一类是 **origin 的反爬会话 token，非学生凭证**；adapter 经 §2.5 body 透传**本就能读到该值**，允许其写回**同源 passthrough** cookie，不新增任何超出 body 透传既有面的外泄面。`max-age` 等"看似耐久"属性不改变定性——收割只认判据 b，未声明即瞬态。此通道是宿主侧安全敏感代码，随 imperative 一并人工审（不得 AI 独自闭环）。
 
-3. **反爬挑战由 imperative adapter 处理（official 独占）。** 解析内联 JS 算 answer、伪造浏览器指纹，**超出"薄归一化"**，天然属于 imperative adapter 的职责（ADR-002 official 独占 imperative）。典型流程：adapter `ctx.fetch` 挑战端点（passthrough，不注入凭证）→ 解析 challenge → `ctx.fetch` 提交 answer → per-execution jar 自动带上 origin 下发的 cookie → 后续请求正常走凭证注入。对公开数据，campus-relay 侧的 adapter 执行结果可经**服务端 public 缓存**（ADR-000 §2.1）分发——public 服务器本身**不执行 adapter 也不持凭证**（红线 #2），只缓存已归一化的产出。逆向期的 `verify=False`（关 TLS 校验）一类手段**禁止进标准 adapter**——TLS 必须校验（transport 不 MITM，ADR-003 §2.3）。
+3. **反爬挑战由 imperative adapter 处理（DEPLOY official-only；DEV-Sideload 可调试）。** 解析内联 JS 算 answer、伪造浏览器指纹，天然属于 imperative adapter 的职责。典型流程：adapter `ctx.fetch` 挑战端点 → 解析 challenge → 提交 answer → per-execution jar 携带 origin cookie → 后续请求走凭证注入。DEPLOY 无论 catalog / 本地来源均须 official grant；DEV 未签名例外由 profile 隔离。TLS 必须校验，逆向期 `verify=False` 禁止进入标准 adapter。
 
 ### 2.5 重定向终止与 security-blocked 响应（rev-5，待人工复核）
 
@@ -200,8 +200,8 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 
 1. **这是最高风险路径（红线 #1）。** 实现与测试**不得由 AI 独自闭环**；需安全检查清单 + 至少 1 名人工审阅（git.md §3 分级审查）。
 2. **脱敏覆盖面：请求头/响应头已闭合，正常 deliver 响应体为已接受风险 + 后置审计计划。** 出站请求头（§2.3）和响应头（决策点 5）均走 allowlist、默认丢弃；重定向由核心跟随不暴露（§2.5：max 5 跳 + 每跳白名单校验，security-blocked 响应完全不交付）。**正常 deliver 响应体透传是已接受的风险**：body 格式不统一，通用脱敏不可行；缓解靠仅官方签名 + 人工代码审查。**后续计划 pattern-based 后置审计**：对 adapter 的最终产出（归一化后的 envelope）做 token-pattern 扫描（正则匹配已知凭证格式），**告警但不阻断**——发现可疑泄露后触发人工复查，不影响正常执行。需维护一份"已知泄露向量"清单并随实现增补。
-3. **恶意/被攻破 adapter 的数据外泄面。** adapter 能读解析前私密响应；缓解靠：①出口白名单 fail-closed（§2.4）②出站请求头净化（§2.3）③仅官方签名（§2.6）④人工审查⑤（可选）出口审计日志。
-4. **请求 body 外泄向量（已接受风险）。** adapter 控制 `ctx.fetch` 的请求 body（POST/PUT），理论上可将从私密响应中解析到的敏感数据编码进请求体，发往 passthrough 端点（该端点在白名单内但不注入凭证）。**缓解**：① passthrough 端点仍须声明于 `network.allow`，**由签名覆盖、CI 静态审计、人工 review 三重把关**——不可能偷偷加入一个 attacker-controlled 的 passthrough URL；② 仅官方签名 adapter 可跑 imperative（§2.6），代码审查覆盖所有出站路径；③ 后续 pattern-based 后置审计可扩展至检查**出站请求 body** 中的 token 模式。此向量与响应 body 透传（§3.2）对称——均是"仅官方签名 + code review"兜底的已接受残余风险。
+3. **恶意/被攻破 adapter 的数据外泄面。** adapter 能读解析前私密响应；DEPLOY 缓解靠：①出口白名单 fail-closed（§2.4）②出站请求头净化（§2.3）③ official grant（ADR-002 §2.5/§2.6）④人工审查⑤出口审计。DEV-Sideload 的扩大风险由开发者警告承接。
+4. **请求 body 外泄向量（已接受风险）。** adapter 控制 `ctx.fetch` body，理论上可把私密响应编码后发往白名单内 passthrough 端点。DEPLOY 缓解：端点受签名、CI 和人工 review；imperative 只对 official grant 放行（ADR-002 §2.5/§2.6）；后续可审计出站 body token。DEV-Sideload 是显式全能力开发例外。
 5. **契约影响（红线 #6）。** imperative 需声明凭证作用域（§2.3 草图），涉及**扩展 manifest schema** → 属契约改动，须与 ADR-001 协调、走独立 ADR 且保持向后兼容，**不在本 ADR 内落地**。
 6. **测试不能像 declarative 那样直接 golden 双跑**（网络非确定）。取向：**录制/回放夹具**——录一次真实交互（脱敏后）成固定夹具，之后 imperative 退化为对回放响应的确定性解析，可纳入双跑；凭证注入与脱敏逻辑在**宿主**层单测（不在 QuickJS）。
 7. **iOS 2.5.2（[#4]）联动。** imperative 让"下载的 adapter"真正发起网络请求，合规评估需与本设计一并做。iOS 端整体可上架形态已由 [ADR-010](./adr_010_ios_appstore.md) 定调：**首版仅 declarative 上架，imperative 推迟**——本 ADR 接受并拟上 iOS 时，须按 ADR-010 §3.3 重做 2.5.2(a) 自检（仍限既有能力集）并补 5.1.1 隐私申报。

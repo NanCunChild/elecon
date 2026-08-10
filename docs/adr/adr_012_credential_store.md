@@ -20,7 +20,7 @@ ADR-009 假定"按 reference 注入凭证"，ADR-002 假定"official 才有凭�
 - #2 公网哑服务零凭证、无状态。
 - #3 私密数据只走 client-direct 或 campus-relay。
 
-**核心难题（本文要解的张力）**：登录流程**高度校校异**——端点、CSRF、验证码、2FA、SSO 跳转、JS 挑战各不相同，天然像"需要一段 per-school 代码"；但红线 #1 + #5 要求**凭证绝不经过 adapter**（release 侧载 adapter 必须是 declarative 纯解析）。**如何在不让 adapter 碰凭证的前提下完成校异登录？**
+**核心难题（本文要解的张力）**：登录流程**高度校校异**——端点、CSRF、验证码、2FA、SSO 跳转、JS 挑战各不相同，天然像"需要一段 per-school 代码"；但红线 #1 + #4/#5 要求**凭证绝不经过 adapter**，且 DEPLOY 无论 catalog / 本地来源都只运行 official。DEV-Sideload 虽可全能力调试，凭证值也仍留在核心。**如何在不让 adapter 碰凭证的前提下完成校异登录？**
 
 ---
 

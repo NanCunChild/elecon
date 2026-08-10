@@ -22,7 +22,7 @@ ADR-023 把「响应派生值 → 计算 → 注入下一请求」这条数据�
    - 西电水电取数（`adapters_tests/XIDIAN/energy/meter.py`）：请求体 `AES-CBC` 加密，**固定 key/iv** `"1234567812345678"`。
    - 西电密码加密（`adapters_tests/XIDIAN/ids/login.py`）：`AES-CBC`，key=登录页 `#pwdEncryptSalt` 动态盐（属 `bind`），**IV 固定** `"xidianscriptsxdu"`，明文补固定前缀后 PKCS7。
 
-缺这两类算子，上述场景只能落 imperative——给 adapter 开 `ctx.fetch` + body 透传见值的口子，触发 official-only 门禁（ADR-009 §2.6）与项目最高风险面（红线 #1）。**本 ADR 补齐算子，把这批场景收回 ADR-023「broker 持密钥并执行、adapter 只声明方案、全程不见值」模型。**
+缺这两类算子，上述场景只能落 imperative——给 adapter 开 `ctx.fetch` + body 透传见值的口子，在 DEPLOY 触发 official-only 门禁（ADR-002 §2.5/§2.6、ADR-009 §2 决策 7）与项目最高风险面（红线 #1）。**本 ADR 补齐算子，把这批场景收回 ADR-023「broker 持密钥并执行、adapter 只声明方案、全程不见值」模型。**
 
 > **不是「打包 CyberChef」。** CyberChef 是 JS（forge/crypto-js），进不了 Dart 客户端；工作量是每个算子在 TS 与 Dart 里**逐字节一致**的形式化语义 + 双跑 golden，「打包」省不掉。CyberChef 仅作参数形状 / 语义的**参照**，不作依赖。对 adapter 作者这是**降低**门槛（声明 `op:"aes-cbc"` 远比写 imperative JS + 申请签名 + 见值简单）；重量落可信核心，成本随算子数量**线性增长**，故第一批**证据驱动、克制**。
 

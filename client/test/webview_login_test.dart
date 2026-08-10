@@ -89,7 +89,10 @@ void main() {
 
   test('planWebViewHarvest 干跑：只判定不写入（页面轮询依据）', () {
     // session cookie 未落定 → 计划为空（轮询继续等）。
-    expect(planWebViewHarvest(login: login, cookies: const []), isEmpty);
+    expect(
+      planWebViewHarvest(login: login, cookies: const [], nowMs: 1000),
+      isEmpty,
+    );
     // 落定后 → 计划出现声明 ref；干跑本身不接触任何 store。
     final plan = planWebViewHarvest(
       login: login,
@@ -101,6 +104,7 @@ void main() {
           path: '/',
         ),
       ],
+      nowMs: 1000,
     );
     expect(plan.map((e) => e.ref), ['ehall-session']);
   });
@@ -144,6 +148,7 @@ void main() {
         login: cardLogin,
         cookies: const [],
         currentUrl: 'https://v8scan.xidian.edu.cn/myaccount/home#openid=opaque',
+        nowMs: 1000,
       ),
       isEmpty,
     );

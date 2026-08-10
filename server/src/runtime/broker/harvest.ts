@@ -15,8 +15,11 @@
  * 不含（划走）：收割**触发时机**（执行结束调用点属 B6）；ephemeral 区（结构上不可达，
  * 输入仅 `harvestView()` origin 区）；WebView 收割（ADR-012 §2.2）。
  *
- * expiresAt：本件一律 `null`（session 语义）——精确生命周期须 Max-Age/Expires，但 B4 jar
- * 未捕获该属性（见 b5 计划 §8 #2，路线选 null + 靠 §2.5 401-重登兜底，跑通优先）。
+ * **expiresAt（P1-06 起不再恒 null）**：B4 jar 现已捕获 `Max-Age`/`Expires`，故收割项带
+ * 真实过期时刻。一个 ref 的值是**一束** cookie（路线 a），其整体有效期取束内**最早**的
+ * 非 null 过期时刻——束里任一条死掉，这串序列化值就不再是完整会话，按最早者失效是
+ * 唯一 fail-closed 的取法（取 max 会把已残缺的凭证当有效用，换回 401 且掩盖重登信号）。
+ * 束内全为 session cookie ⟹ `null`，维持原语义（靠 ADR-012 §2.5 401-重登兜底）。
  *
  * 🔒 红线 #1 承重路径（凭证入核心库）：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环。
  */
@@ -32,6 +35,8 @@ export interface HarvestEntry {
   ref: string;
   /** scope 命中的全部 origin cookie 序列化串（路线 a）：`n1=v1; n2=v2`。 */
   value: string;
+  /** 束内最早的非 null 过期时刻（ms epoch）；全为 session cookie ⟹ null。见文件头。 */
+  expiresAt: number | null;
 }
 
 export type HarvestPlan = HarvestEntry[];
@@ -68,6 +73,17 @@ function serialize(cookies: JarCookie[]): string {
     .join("; ");
 }
 
+/** 束内最早的非 null 过期时刻；全为 session cookie ⟹ null（见文件头 fail-closed 论据）。 */
+function earliestExpiry(cookies: JarCookie[]): number | null {
+  let earliest: number | null = null;
+  for (const c of cookies) {
+    const e = c.expiresAt;
+    if (e === null || e === undefined) continue;
+    if (earliest === null || e < earliest) earliest = e;
+  }
+  return earliest;
+}
+
 /**
  * 决定 origin 区哪些 cookie 收割、归属哪个 ref（纯，judge b + 收割方向匹配）。
  *
@@ -80,11 +96,17 @@ function serialize(cookies: JarCookie[]): string {
  * 都合法含它；下次执行 B1 按最长前缀选 ref 注入，仍带该 cookie）。
  * 计划项按 ref 名升序；无命中的 ref 不产出空项。
  */
-export function decideHarvest(originCookies: JarCookie[], view: BrokerManifestView): HarvestPlan {
+export function decideHarvest(
+  originCookies: JarCookie[],
+  view: BrokerManifestView,
+  nowMs: number,
+): HarvestPlan {
   const plan: HarvestPlan = [];
 
   // 纵深防御（栅栏 3）：只收 origin 区。正常输入是 jar.harvestView()（已仅 origin），
   // 但本函数不信任上游——即便误传入 ephemeral cookie，也在此丢弃，绝不入库。
+  // [nowMs] 同理是纵深防御：jar.harvestView() 已滤过期，此处按同一时钟再滤一次
+  // （P1-06——绝不把已死会话写进持久 Store）。
   const harvestable = originCookies.filter((c) => c.source === "origin");
 
   for (const [ref, decl] of Object.entries(view.credentials ?? {})) {
@@ -92,11 +114,13 @@ export function decideHarvest(originCookies: JarCookie[], view: BrokerManifestVi
 
     const reprUrls = decl.scope.map(scopeReprUrl).filter((u): u is string => u !== null);
     const matched = harvestable.filter((c) =>
-      reprUrls.some((u) => matchCookieForSend({ domain: c.domain, path: c.path, hostOnly: c.hostOnly }, u)),
+      // 整条 cookie 直接喂匹配器（JarCookie ⊇ CookieSendCandidate）：secure/expiresAt
+      // 不会被漏传。scope 代表 URL 恒 https，故 Secure 判据在收割方向天然满足。
+      reprUrls.some((u) => matchCookieForSend(c, u, nowMs)),
     );
     if (matched.length === 0) continue;
 
-    plan.push({ ref, value: serialize(matched) });
+    plan.push({ ref, value: serialize(matched), expiresAt: earliestExpiry(matched) });
   }
 
   return plan.sort((a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0));
@@ -120,7 +144,8 @@ export function decideQueryHarvest(url: string, view: BrokerManifestView): Harve
     if (!decl.scope.some((scope) => scopeMatches(url, scope))) continue;
     const values = parsed.searchParams.getAll(decl.queryParam);
     if (values.length !== 1 || values[0] === "") continue;
-    plan.push({ ref, value: values[0]! });
+    // query 凭证无 cookie 属性面，无从得知生命周期 ⟹ session 语义（同 P1-06 前行为）。
+    plan.push({ ref, value: values[0]!, expiresAt: null });
   }
   return plan.sort((a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0));
 }
@@ -133,7 +158,7 @@ export function harvestQueryUrl(url: string, target: QueryHarvestTarget): void {
 /**
  * 把收割计划写入凭证库（薄桥接）。每项构造 `CredentialEntry`：注入权威字段（type/scope）
  * 以**已验签 manifest**为准、store 仅防御性副本（ADR-012 §2.4）；同 ref 已存在 → put 覆盖
- * （会话轮换）。expiresAt=null（见文件头）。
+ * （会话轮换）。`expiresAt` 取自计划项（P1-06，见文件头；null = session）。
  */
 export function harvestInto(
   plan: HarvestPlan,
@@ -141,7 +166,7 @@ export function harvestInto(
   sink: HarvestSink,
   ctx: HarvestContext,
 ): void {
-  for (const { ref, value } of plan) {
+  for (const { ref, value, expiresAt } of plan) {
     const decl = view.credentials?.[ref];
     if (!decl) continue; // 计划只来自 decideHarvest，理论上恒有；防御性跳过
     sink.put({
@@ -151,7 +176,7 @@ export function harvestInto(
       scope: [...decl.scope], // 防御性副本
       value,
       acquiredAt: ctx.now(),
-      expiresAt: null,
+      expiresAt,
       status: "active",
     });
   }

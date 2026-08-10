@@ -9,7 +9,7 @@
         ],
         "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
       },
-      "expected": [{ "ref": "sess", "value": "JSESSIONID=S1" }]
+      "expected": [{ "ref": "sess", "value": "JSESSIONID=S1", "expiresAt": null }]
     },
     {
       "name": "harvest_multi_cookies_into_one_ref",
@@ -20,7 +20,7 @@
         ],
         "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
       },
-      "expected": [{ "ref": "sess", "value": "CASTGC=C1; JSESSIONID=S1" }]
+      "expected": [{ "ref": "sess", "value": "CASTGC=C1; JSESSIONID=S1", "expiresAt": null }]
     },
     {
       "name": "drop_undeclared_domain",
@@ -50,7 +50,7 @@
         ],
         "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
       },
-      "expected": [{ "ref": "sess", "value": "SSO=P1" }]
+      "expected": [{ "ref": "sess", "value": "SSO=P1", "expiresAt": null }]
     },
     {
       "name": "drop_host_only_cookie_for_subdomain_scope",
@@ -70,7 +70,7 @@
         ],
         "view": { "allow": ["https://sub.ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://sub.ids.xjtu.edu.cn/*"], "type": "cookie" } } }
       },
-      "expected": [{ "ref": "sess", "value": "SID=DOMAIN" }]
+      "expected": [{ "ref": "sess", "value": "SID=DOMAIN", "expiresAt": null }]
     },
     {
       "name": "nomatch_cookie_path_deeper_than_scope",
@@ -90,7 +90,7 @@
         ],
         "view": { "allow": ["https://dean.xjtu.edu.cn/portal/*"], "credentials": { "portal": { "scope": ["https://dean.xjtu.edu.cn/portal/*"], "type": "cookie" } } }
       },
-      "expected": [{ "ref": "portal", "value": "P=1" }]
+      "expected": [{ "ref": "portal", "value": "P=1", "expiresAt": null }]
     },
     {
       "name": "defense_ephemeral_source_never_harvested",
@@ -101,7 +101,7 @@
         ],
         "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
       },
-      "expected": [{ "ref": "sess", "value": "JSESSIONID=S1" }]
+      "expected": [{ "ref": "sess", "value": "JSESSIONID=S1", "expiresAt": null }]
     },
     {
       "name": "shared_parent_cookie_harvested_into_multiple_refs",
@@ -112,8 +112,8 @@
         "view": { "allow": ["https://ids.xjtu.edu.cn/*", "https://dean.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" }, "dean": { "scope": ["https://dean.xjtu.edu.cn/*"], "type": "cookie" } } }
       },
       "expected": [
-        { "ref": "dean", "value": "SSO=P1" },
-        { "ref": "sess", "value": "SSO=P1" }
+        { "ref": "dean", "value": "SSO=P1", "expiresAt": null },
+        { "ref": "sess", "value": "SSO=P1", "expiresAt": null }
       ]
     },
     {
@@ -127,8 +127,8 @@
         "view": { "allow": ["https://ids.xjtu.edu.cn/*", "https://dean.xjtu.edu.cn/portal/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" }, "portal": { "scope": ["https://dean.xjtu.edu.cn/portal/*"], "type": "cookie" } } }
       },
       "expected": [
-        { "ref": "portal", "value": "P=1" },
-        { "ref": "sess", "value": "JSESSIONID=S1" }
+        { "ref": "portal", "value": "P=1", "expiresAt": null },
+        { "ref": "sess", "value": "JSESSIONID=S1", "expiresAt": null }
       ]
     },
     {
@@ -140,7 +140,83 @@
         ],
         "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } }
       },
-      "expected": [{ "ref": "sess", "value": "JSESSIONID=HOST; JSESSIONID=PARENT" }]
+      "expected": [{ "ref": "sess", "value": "JSESSIONID=HOST; JSESSIONID=PARENT", "expiresAt": null }]
+    },
+
+    {
+      "name": "p1_06_expiry_propagates_to_plan",
+      "_doc": "P1-06：cookie 的 expiresAt 随收割项进入 Store，不再恒 null。",
+      "input": {
+        "originCookies": [
+          { "name": "JSESSIONID", "value": "S1", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin", "expiresAt": 1603600000000 }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } },
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "ref": "sess", "value": "JSESSIONID=S1", "expiresAt": 1603600000000 }]
+    },
+    {
+      "name": "p1_06_bundle_takes_earliest_expiry",
+      "_doc": "一束 cookie 取**最早**过期时刻：束内任一条死掉，这串序列化值就不再是完整会话（fail-closed，取 max 会把残缺凭证当有效用）。",
+      "input": {
+        "originCookies": [
+          { "name": "JSESSIONID", "value": "S1", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin", "expiresAt": 1603600000000 },
+          { "name": "CASTGC", "value": "C1", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin", "expiresAt": 1601000000000 }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } },
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "ref": "sess", "value": "CASTGC=C1; JSESSIONID=S1", "expiresAt": 1601000000000 }]
+    },
+    {
+      "name": "p1_06_session_cookie_in_bundle_does_not_null_out_expiry",
+      "_doc": "session cookie（expiresAt=null）不参与取最早——它不会自己失效，故只由有期限的那条决定整束期限。",
+      "input": {
+        "originCookies": [
+          { "name": "JSESSIONID", "value": "S1", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin", "expiresAt": null },
+          { "name": "CASTGC", "value": "C1", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin", "expiresAt": 1601000000000 }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } },
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "ref": "sess", "value": "CASTGC=C1; JSESSIONID=S1", "expiresAt": 1601000000000 }]
+    },
+    {
+      "name": "p1_06_expired_cookie_never_harvested",
+      "_doc": "纵深防御：即便调用方喂进已过期 cookie，也不得写进持久 Store（此例中束内只剩未过期的那条）。",
+      "input": {
+        "originCookies": [
+          { "name": "DEAD", "value": "D", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin", "expiresAt": 1599999999999 },
+          { "name": "LIVE", "value": "L", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin", "expiresAt": 1603600000000 }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } },
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "ref": "sess", "value": "LIVE=L", "expiresAt": 1603600000000 }]
+    },
+    {
+      "name": "p1_06_all_expired_yields_no_plan_item",
+      "input": {
+        "originCookies": [
+          { "name": "DEAD", "value": "D", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin", "expiresAt": 1599999999999 }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/*"], "type": "cookie" } } },
+        "nowMs": 1600000000000
+      },
+      "expected": []
+    },
+    {
+      "name": "p1_05_same_name_different_path_both_harvested",
+      "_doc": "P1-05：同名不同 Path 的两条都在束内（收割方向要求 cookie Path 是 scope pathPrefix 的前缀，故 / 与 /api 在 scope=/api 下都命中），长 Path 在前。",
+      "input": {
+        "originCookies": [
+          { "name": "sid", "value": "ROOT", "domain": "ids.xjtu.edu.cn", "path": "/", "source": "origin" },
+          { "name": "sid", "value": "API", "domain": "ids.xjtu.edu.cn", "path": "/api", "source": "origin" }
+        ],
+        "view": { "allow": ["https://ids.xjtu.edu.cn/api/*"], "credentials": { "sess": { "scope": ["https://ids.xjtu.edu.cn/api/*"], "type": "cookie" } } },
+        "nowMs": 1600000000000
+      },
+      "expected": [{ "ref": "sess", "value": "sid=API; sid=ROOT", "expiresAt": null }]
     }
   ],
   "_docQuery": "Broker query 凭证收割决策 golden 向量（decideQueryHarvest，ADR-020 §2.3 判据 q）。与上 cases 同为语言无关唯一事实源：TS（server harvest.smoke.ts）与 Dart（client broker_harvest_test.dart）照同一向量双跑。规格：取 manifest 中所有 type:query ref；URL 命中该 ref scope（前缀语义）且 query 恰含一个非空 queryParam 值 → 收割（URL 解码后的裸值，覆盖同 ref 旧值）；fragment 不参与；重复同名参数拒收（避免两端首/末值差异）；未声明键不收（q4：不误收追踪/CSRF 参数）。改动须人工 + 安全清单复核（红线 #1）。",
@@ -151,7 +227,7 @@
         "url": "https://card.xidian.edu.cn/home?openid=opaque%2Bvalue",
         "view": { "allow": ["https://card.xidian.edu.cn/*"], "credentials": { "card": { "scope": ["https://card.xidian.edu.cn/*"], "type": "query", "queryParam": "openid" } } }
       },
-      "expected": [{ "ref": "card", "value": "opaque+value" }]
+      "expected": [{ "ref": "card", "value": "opaque+value", "expiresAt": null }]
     },
     {
       "name": "query_harvest_keeps_single_among_tracking_params",
@@ -159,7 +235,7 @@
         "url": "https://card.xidian.edu.cn/home?openid=opaque&trk=1&utm_source=x",
         "view": { "allow": ["https://card.xidian.edu.cn/*"], "credentials": { "card": { "scope": ["https://card.xidian.edu.cn/*"], "type": "query", "queryParam": "openid" } } }
       },
-      "expected": [{ "ref": "card", "value": "opaque" }]
+      "expected": [{ "ref": "card", "value": "opaque", "expiresAt": null }]
     },
     {
       "name": "query_harvest_ignores_fragment",

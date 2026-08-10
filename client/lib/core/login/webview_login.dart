@@ -145,6 +145,10 @@ List<JarCookie> webViewCookiesToHarvestCookies(List<WebViewCookie> cookies) {
           domain: c.domain.toLowerCase().replaceFirst(RegExp(r'^\.'), ''),
           path: c.path.isEmpty ? '/' : c.path,
           source: 'origin',
+          // 平台未上报 isSecure ⟹ 保守按非 Secure（收割方向 scope 代表 URL 恒 https，
+          // 两种取值都不影响本路径判定）。WebView 桥不上报 Max-Age/Expires，故
+          // expiresAt 保持 null（session 语义，靠 ADR-012 §2.5 401-重登兜底）。
+          secure: c.isSecure ?? false,
         ),
       )
       .toList();
@@ -159,10 +163,12 @@ List<HarvestEntry> planWebViewHarvest({
   required LoginManifestView login,
   required List<WebViewCookie> cookies,
   String? currentUrl,
+  required int nowMs,
 }) {
   final plan = decideHarvest(
     webViewCookiesToHarvestCookies(cookies),
     login.brokerView,
+    nowMs,
   );
   if (currentUrl != null) {
     plan.addAll(decideQueryHarvest(currentUrl, login.brokerView));
@@ -182,6 +188,7 @@ WebViewHarvestResult harvestWebViewCookies({
     login: login,
     cookies: cookies,
     currentUrl: currentUrl,
+    nowMs: now(),
   );
   harvestInto(plan, login.brokerView, put, schoolId: login.schoolId, now: now);
   return WebViewHarvestResult(entries: plan);

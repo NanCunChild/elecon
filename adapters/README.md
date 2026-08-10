@@ -8,8 +8,8 @@
 ```
 adapters/
   _template/          脚手架模板（两种 requestGraph）
-    imperative/       → 官方签名 adapter 模板（ctx.fetch 自取）
-    declarative/      → 第三方/侧载 adapter 模板（核心代取 + 纯解析）
+    imperative/       → imperative 模板（official 或 DEV-Sideload 调试）
+    declarative/      → declarative 模板（official 或 DEV-Sideload 调试）
   school-<id>/        各学校 adapter
     manifest.json
     index.js
@@ -20,7 +20,7 @@ adapters/
 ## 快速开始
 
 ```bash
-# 从模板复制（official 常用 imperative；sideload 必须 declarative）
+# 按目标 capability 选择模板；DEV-Sideload 可调试两种 requestGraph
 cp -r adapters/_template/imperative adapters/school-<你的学校id>
 # 或
 cp -r adapters/_template/declarative adapters/school-<你的学校id>
@@ -38,7 +38,10 @@ cd tools && npm run validate -- --adapter=../adapters/school-<id>
 | trustTier | requestGraph（每 capability） | 能做什么 |
 |---|---|---|
 | `official` | `imperative` 和/或 `declarative` | imperative：受限 `ctx.fetch`（白名单内注入凭证）；declarative：核心代取 + 纯解析 |
-| `sideload` | **强制全部** `declarative` | declarative 纯解析，无网络、无凭证、无副作用（红线 #5；ADR-022） |
+| `sideload` / DEV-Sideload | `imperative` 和/或 `declarative` | 全能力开发调试；imperative 可驱动核心使用开发者测试凭证，但凭证值仍不离核心；不可分发 |
 
 > `community` 档已于 ADR-002（2026-06-14 修订）移除，`manifest.schema.json` 的
 > `trustTier` enum 仅 `official` / `sideload`。
+>
+> **当前实现差异**：validator 仍有 `C3_sideload_must_declarative`，会拒绝 sideload + imperative；
+> ADR-033（已接受）将退役 C3，但**尚未落地**：在它随 DEPLOY official-only 负例同批提交前，不要通过放宽断言绕过，DEV imperative 的完整预检链待该批落地。

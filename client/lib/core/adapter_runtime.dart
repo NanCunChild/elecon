@@ -18,7 +18,7 @@ library;
 
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_qjs_next/flutter_qjs.dart';
 import 'package:elecon_contract/output_validator_registry.dart'
     show outputValidatorFor;
@@ -57,6 +57,7 @@ import 'declarative_host.dart'
         DeclarativeRequestDecl,
         InjectDecl,
         fulfillDeclarativeRequests;
+import 'trust/trust_profile.dart' show kSideloadEnabled;
 import 'trust/trusted_context.dart'
     show AdapterTrustTier, TrustedAdapterContext, fetchTrustPermitted;
 
@@ -393,16 +394,23 @@ Future<dynamic> _runImperativeAdapter({
   void Function(String level, String message)? onLog,
 }) async {
   // 信任闸门：在触达引擎、注册任何 host function 之前 fail-closed（ADR-002 §2.6）。
-  // debugBuild 硬接 kDebugMode（编译期常量）——不提供注入点，release 语义不可被调用方改写。
-  if (!fetchTrustPermitted(trust.tier, debugBuild: kDebugMode)) {
+  // sideloadEnabled 硬接 kSideloadEnabled（编译期常量，ADR-024 判别器）——不提供注入点，
+  // DEPLOY 语义不可被调用方改写。注意：判别器是**信任 profile**，不再是优化等级。
+  if (!fetchTrustPermitted(trust.tier, sideloadEnabled: kSideloadEnabled)) {
     throw AdapterRunException(
       AdapterFailureReason.trustRejected,
-      '非 official adapter 无 imperative 权限（档位 ${trust.tier.name}，release/profile '
-      'build）——ADR-002 §2.6 结构化权限错误，凭证注入路径不可达',
+      '非 official adapter 无 imperative 权限（档位 ${trust.tier.name}，DEPLOY '
+      'profile）——ADR-002 §2.6 结构化权限错误，凭证注入路径不可达',
     );
   }
 
-  final theJar = jar ?? CookieJar();
+  // 单次执行的 cookie 时钟 = 执行 [nowMs]（冻结），与 TS 侧 `sandbox.ts` 的 execNowMs
+  // 逐字对齐：捕获、发送选择、收割三处共用同一时刻，避免「选 cookie 时未过期、收割时
+  // 已过期」这类执行内自相矛盾（P1-06）。此前这里用 `CookieJar()` 的活钟
+  // （`DateTime.now()`），只有 decideHarvest 吃冻结钟——那条不变量在客户端并不成立，
+  // 且属 golden 抓不到的分叉（golden 只钉纯函数，有态部分各端自测）。
+  // 调用方显式注入 jar 时尊重其自带时钟（测试用的确定化seam）。
+  final theJar = jar ?? CookieJar(() => nowMs);
   final deps = FetchProxyDeps(
     view: view,
     resolver: resolver,
@@ -607,7 +615,9 @@ Future<dynamic> _runImperativeAdapter({
         }
         // 执行结束 B5 收割（仅成功路径；fail 不收割）。
         if (harvest != null) {
-          final plan = decideHarvest(theJar.harvestView(), view);
+          // 收割用执行内冻结时钟（与 harvestInto 的 acquiredAt 同源），避免
+          // 「选 cookie 时未过期、收割时已过期」这类执行内自相矛盾（P1-06）。
+          final plan = decideHarvest(theJar.harvestView(), view, nowMs);
           harvestInto(
             plan,
             view,

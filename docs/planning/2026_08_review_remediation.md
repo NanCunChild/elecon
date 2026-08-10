@@ -36,7 +36,7 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | 待真机签收 | P0-06、P0-07 | iOS 已降级为 S/M 且 H 路径 fail-closed；Android 已用 `KeyInfo` 拒绝 software/unknown；仍需 iOS 升级安装及 Android emulator/TEE/StrongBox 矩阵 |
 | 部分落地，保持开放 | P0-10 | TS 已阻止取消后 Commit；Dart 已有 firewall/commit 原语与严格 UTF-8 状态；生产 wiring 仍依赖已验签 policy loader/matcher、执行级 query harvest 事务、P1-08/P1-09/P1-12 |
 | 待仓库/历史事实 | P0-13、P0-15 | reusable CI、main-only preflight、tag SHA/ancestry、审批 hook、真实验签 ledger 工具已落地；仍需配置 `release` Environment、不可变 `v*` tag 规则，并由 NanCunChild 提供历史 source commit/签署时间/签署人/复核引用 |
-| ADR / 签收阻塞 | P0-01、P0-05、P0-09、P0-14 | P0-05 的 ADR-009 rev-5 与两端实现已起草，待 owner 按专项清单复签；P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；P0-01/P0-14 保持原前置 |
+| ADR / 签收阻塞 | P0-01、P0-05、P0-09、P0-14 | P0-05 的 ADR-009 rev-5 与两端实现已起草，待 owner 按专项清单复签；P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；P0-01 保持原前置。**P0-14 于 2026-08-07 改判**：不再是 ADR 阻塞——slice 1–3 已落地且有 Android 产物级证据，剩余门槛是 slice 4 红线措辞（owner）、非 Android 平台产物断言、人工安全签收（见 §3.2）|
 
 本轮自动验证：`npm run lint`、`npm run typecheck`、`npm run smoke:all`（server 26/26、tools 18/18）、`flutter analyze`、`flutter test`（744 项）、全量 scanner、release ledger smoke/validate、release preflight、recorder Python tests、`git diff --check`。自动验证不是安全签收的替代品。
 
@@ -66,8 +66,8 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | P1-02 | [ ] 修复 H/S 持久化队列首次失败后永久中毒 | `software_secure_store.dart`、`hardware_secure_store.dart` | 无 | 首写失败后后写可恢复；durability failure 可见；无静默内存成功 |
 | P1-03 | [ ] 登出改为等待 `delete + flush` 的异步事务 | `session_controller.dart`、`settings_page.dart` | P1-02 | 删除未落盘时不得显示完成；失败有安全错误；立即重启不恢复旧凭证 |
 | P1-04 | [ ] 保留重复响应头的原始多值语义，Masker 基数检查发生在折叠前 | `server/src/runtime/transport/direct.ts`、Dart transport、Masker | P0-09 | 两个同名 token header 触发 ambiguous fail-closed；双端真实 HTTP 测试 |
-| P1-05 | [ ] 修复同名不同 Path Cookie 的选择与排序 | `server/src/runtime/broker/cookie-jar.ts`、Dart 对应实现 | P0-04 | `/` 与 `/api` 同名 Cookie 行为符合明确策略/RFC；双端 golden |
-| P1-06 | [ ] 补齐 Cookie 的 Secure、Max-Age、Expires 和删除语义 | TS/Dart CookieJar | P0-04 | HTTPS/HTTP、过期、`Max-Age=0`、覆盖删除均有共享 golden |
+| P1-05 | [x] 修复同名不同 Path Cookie 的选择与排序 | `server/src/runtime/broker/cookie-jar.ts`、Dart 对应实现 | P0-04 | `/` 与 `/api` 同名 Cookie 行为符合明确策略/RFC；双端 golden |
+| P1-06 | [x] 补齐 Cookie 的 Secure、Max-Age、Expires 和删除语义 | TS/Dart CookieJar | P0-04 | HTTPS/HTTP、过期、`Max-Age=0`、覆盖删除均有共享 golden |
 | P1-07 | [ ] Transport 解压 body 后清理或重算 `Content-Encoding/Content-Length` | `server/src/runtime/transport/direct.ts`、Dart transport | 无 | gzip/br 响应交给 adapter 时 body 与实体头一致；双端测试 |
 | P1-08 | [ ] Masker 支持并事务提交 `destination.kind: handle` | TS/Dart Response Masker 与 dataflow runtime | P0-10 | staged handle 与 credential 同事务；失败不激活旧/半成品 generation；共享 golden |
 | P1-09 | [ ] ADR-026 policy 按最终 URL、status、Content-Type 匹配并合并多条规则 | `contract/response-masker.schema.json`、validator、runtime | P0-09；需按 ADR-026 慢车道 | schema、validator、TS/Dart runtime 一致；host gate 生效；人工签收 |
@@ -91,6 +91,112 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 - P1-18/P1-19：拉取脚本同时导出 runtime/validator 根；validator 输出扫描根与数量，只发现 ADR-018 定义的 `school-*` 和 `_template/*`，不递归 graphify/cache/vendor manifest。
 - P1-20：XIDIAN JWC std 已使用 `index.js`、registry 对齐版本与 params、标准 fixture replay、真实 contract schema；坏日期省略，上海本地发布日期归一为 UTC。
 - 集成验证：Linux Flutter `744/744`、Apple 专项 `3/3`、tools smoke `18/18`、pinned adapter replay `8/8` 通过；macOS 测试机已确认 `lib/main_apple.dart` 的 iOS 构建无报错。server smoke 为 `27/28`，唯一开放项是 pinned `school-xidian` 尚无相邻工作区中未提交的 `card.*` handler，不归入上述 P1 项的完成证据。
+
+### 3.2 执行状态（2026-08-07 · P1-05 / P1-06 关闭，ADR-024 落地）
+
+**P1-05（同名不同 Path Cookie）已关闭。** 根因是 `selectCookies` 按 `name` 收进 Map——
+`sid=/` 与 `sid=/api` 只能活一条，origin 下发的深路径会话被根路径同名顶掉，请求带错值且无任何
+报错。现按浏览器语义：命中的**全部**带上，长 Path 在前（RFC 6265 §5.4），覆盖键改为
+`(name, domain, path)`。栅栏 2 未被放宽——改由「某名字只要有任一 origin cookie **在本次请求
+命中**，该名下 ephemeral 全部丢弃」表达，因此 adapter 无法借不同 Path 在同名会话旁加塞。
+`assembleRequest` 的同名去重也同步放开（broker 注入名仍整体压过 jar 同名条目）。
+
+**补丁（2026-08-10 复审）：P1-05 此前只关了执行内的一半。** 首轮改动放开的是
+`assembleRequest` 里 **jar 侧**的同名去重，**凭证束内部**仍按名只留第一条。于是走 B5 路线 a
+收割的一束 origin cookie（`sid=API; sid=ROOT`，长 Path 在前）在注入侧被砍成 `sid=API`——
+根会话**静默丢失**，与 P1-05 原始缺陷同型，只是从 jar 挪到了凭证注入这一步。收割侧的
+golden（`harvest.json` 的 `p1_05_same_name_different_path_both_harvested`）本已把束形状钉成
+`"sid=API; sid=ROOT"`，消费侧却把它丢了一半，**两端 golden 各自为真、合起来不成立**。
+现两端 `assembleRequest` 对凭证束不再去重，新增 `assemble.json` 的
+`inject_cookie_bundle_keeps_same_name_different_path_entries` /
+`…_still_suppress_jar_same_name` 两例双跑钉死；栅栏 2 最外层不变（注入过的名字仍整体压掉 jar
+同名条目）。安全面不变：束内容全部来自核心自己收割的 origin 区，ephemeral 永不入收割（栅栏 3）。
+
+**残留（不在 P1-05 范围内，需要时另开 ADR）**：路线 a 的 ref 值是**路径无关**的一串，
+per-cookie 的 Path 在入 Store 时就已丢失，注入时无从按请求路径再筛。当前不构成越权外发——
+B1 只对命中该 ref `scope` 的 URL 注入，而收割方向要求 cookie Path 是 scope pathPrefix 的前缀，
+故被注入的 URL 路径恒不浅于束内任何 cookie 的 Path。**唯一边角**是 scope 前缀不落在 `/` 边界时
+（如 `https://h.edu/api*` 可匹配 `/apifoo`），浏览器不会发的 `Path=/api` cookie 仍会被带上。
+要根治须走路线 b（manifest 扩 `cookieNames` 或让 ref 值携带 per-cookie Path），属契约改动
+（红线 #6），需先有 ADR。
+
+**P1-06（Secure / Max-Age / Expires / 删除）已关闭。** 四条语义按 owner 指定落地：
+`Secure` 只随 https 发出（刻意不给 `http://localhost` 开浏览器式豁免）；过期不再发出、也不
+再收割；收割进 Store 时带 `expiresAt`；`Max-Age=0` 与过期 `Expires` 从 jar **删除**该条。
+两个刻意的取舍：① 一个 ref 的值是一束 cookie，其 `expiresAt` 取束内**最早**者——任一条死掉这
+串序列化值就不再是完整会话，取 max 会把残缺凭证当有效用；② `Expires`/`Max-Age` **非法**时按
+RFC 忽略该属性（退化为 session），而不是当作「立刻过期」。
+
+**补丁（2026-08-10 复审）：客户端缺省 jar 此前没冻结时钟。** 服务端 `sandbox.ts` 把
+`execNowMs` 注入 jar，捕获 / 发送选择 / 收割三处共用同一时刻；客户端
+`adapter_runtime.dart` 与 `declarative_host.dart` 的 `jar ?? CookieJar()` 用的却是活钟
+（`DateTime.now()`），只有 `decideHarvest` 吃冻结钟——**代码注释宣称的「执行内不自相矛盾」
+在客户端并不成立**。偏差方向虽是 fail-closed，但这正是双端 golden 抓不到的一类分叉
+（golden 只钉纯函数，有态部分各端自测）。现两处缺省 jar 均改为 `CookieJar(() => nowMs)`；
+显式注入 jar 时仍尊重调用方自带时钟（测试确定化 seam）。回归由
+`declarative_host_test.dart` 的「缺省 jar 用执行冻结钟」一例覆盖——该例用「Expires 落在
+nowMs 之后、墙钟之前」判别两种钟，退回活钟必失败，非空断言。
+
+- 跨端确定性是本批的主要风险面，故日期与 `Max-Age` 都**自己实现**、不依赖宿主：`Date.parse`
+  与 `DateTime.parse` 对 RFC 850 两位年、asctime、非法日历日的处理各不相同；`Max-Age` 超长数字
+  在 JS 是有限 float、在 Dart 溢出 int。两者均按 RFC 6265 §5.1.1/§5.2.2 逐 token 实现并夹取。
+- golden 从 3 组扩到 6 组（新增 `parseCookieDate` / `parseMaxAge` / `parseSetCookie`），
+  双端同向量双跑：server `cookie-jar` smoke `golden 90/90 + stateful 14/14`，
+  client `flutter test` 全绿。`decideHarvest` / `matchCookieForSend` / `selectCookies` 的
+  `nowMs` 一律**必填**，不设缺省——缺省值只会在某个调用点悄悄退化成「永不过期」。
+
+**P0-14（ADR-024）保持开放，但已从「ADR 阻塞」推进到「代码与 Android 产物级证据齐备，待人工
+签收 + 非 Android 平台补齐」。** slice 1–3 已按 landing 文档的捆绑约束同一批落地：判别器由
+`kDebugMode` 换为 `kSideloadEnabled`；DEV 用独立 `applicationId` 后缀 + 启动页不可关水印；
+`check_release_gate.sh` 对分发产物做符号 grep + 元数据双断言，并在 `release.yml` 中跑在**真正
+要分发的那个 APK** 上。本机 Android release 实测（详见
+[`docs/reference/adr_024_landing.md`](../reference/adr_024_landing.md) §4）：
+
+| 断言 | DEPLOY | DEV |
+|---|---|---|
+| `applicationId` | `dev.nancunchild.elecon` | `…​.devsideload` |
+| 侧载哨兵出现次数 | **0** | 3 |
+| 构建元数据标记 | `DEPLOY` | `DEV-SIDELOAD` |
+| release gate | 通过 | **拒绝** |
+
+两次均为 `--release`，证实 ADR-024 §2.1 的「优化等级 ⊥ 信任 profile」解绑成立。
+
+**slice 4 已按 2026-08-10 owner 第二轮决策重写**：渠道与信任档分离。DEV-Sideload 是全能力开发环境；
+DEPLOY 永不运行未签名 / 非 official adapter。ADR-033（**已接受**，2026-08-10）在设置高级项增加
+official-only 本地导入，并退役 C3；其落地前当前 DEPLOY 零入口实现与 gate 不变。
+
+**P0-14 仍不能关闭的两点**（不得以自动验证代替）：
+1. **ADR-033 会重定义 gate**：当前 Android 的“全部侧载哨兵为零”证据只覆盖旧基线；ADR-033 已接受，其落地后
+   新 gate 须证明 DEPLOY 不含 devSideload grant、未签名执行与 DEV 凭证放行路径，同时证明设置内入口只汇入
+   official verifier + 在线 catalog/revocation 门。单一哨兵不足以证明调用关系。
+2. **非 Android 平台无产物级证明**：iOS bundle ID 后缀、macOS/Windows/Linux/OHOS 的 profile 标记与
+   符号断言均未做。这些平台目前只靠护栏 1 的 fail-closed 默认成立，**没有机械复核**；
+   当前仅 Android 完成 ADR-024 的产物级证明；ADR-010 的 iOS App Store 论点尚无 iOS 产物级机械证据。
+3. **人工安全签收未完成**：本轨触红线 #4，AI 不得独自闭环。ADR-033 已接受但未落地，故现在只能按**旧零入口语义**签收；
+   新语义须待其 §5 清单同批落地、新 gate 就位后另行签收。
+
+**ADR-033 已于 2026-08-10 接受（打回修改后定稿）。** 全文保留完整决策过程：
+① 初稿的未签名 declarative 生产侧载；② 第一轮倾向全平台 DEPLOY 零侧载；③ 定稿的双渠道方案。
+定稿内容：DEV-Sideload 全能力，不再用 declarative C3 阉割开发调试；DEPLOY 在设置高级项保留本地文件
+导入，但只接受 official 签名，并在每次新增/更新时强制在线刷新、验证 catalog/revocation 后才可安装。
+本地导入成功后仍铸造 official grant，不新增生产低信任档。
+
+**接受 ≠ 已落地**：截至本次记录，validator 的 C3 与 DEPLOY 零入口 gate 均未改动，实现须按 ADR-033 §5
+清单同批推进（AI 不得独自闭环）。
+
+初稿查实的 `bind`→`compute`→`inject{at:"url"}` 外泄面继续作为关键决策依据：它说明 declarative-only
+不足以让未签名 adapter 进入 DEPLOY；当前方案因此把安全边界放回 official 签名、审查和吊销治理。
+P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态，待 ADR-033 §5 落地后再以新 gate 重新取证并二次签收。
+
+> 过程中的一个实证值得留档：护栏 4b 的标记生成任务最初只声明 `outputs`、未声明 `inputs`，
+> gradle 判 UP-TO-DATE，导致**首次 DEV 构建原样留下上一次 DEPLOY 的标记**——元数据自称 DEPLOY、
+> 产物里却带侧载入口。是护栏 4a 的符号 grep 拦下的。这正是 ADR-024 §5.3 坚持「符号 + 元数据
+> 二者并用」的价值：单靠元数据会被构建缓存击穿。已修复并双向验证。
+
+- 本轮自动验证：server `npm run typecheck`、`npm run smoke:all`（`25/28`，三个失败项与改动前
+  基线完全一致，均为外部 adapter fixture 缺失）；client `flutter analyze` 零问题；
+  `flutter test` **两轮 profile** 均全绿（DEPLOY `835 passed / 11 skipped`、
+  DEV `844 passed / 2 skipped`）；`check_release_gate_test.sh` 负例 4 + 正例 1 全通过。
 
 ## 4. P2：普通逻辑、解耦与可维护性
 

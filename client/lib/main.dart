@@ -7,6 +7,7 @@ import 'core/adapter_service.dart';
 import 'core/credential/blob_store.dart';
 import 'core/credential/hardware_keystore_channel.dart';
 import 'core/debug/perf_trace.dart';
+import 'core/trust/trust_profile.dart' show kSideloadEnabled;
 import 'l10n/gen/app_localizations.dart';
 import 'session/session_controller.dart';
 import 'session/session_scope.dart';
@@ -14,6 +15,8 @@ import 'ui/i18n/locale_options.dart';
 import 'ui/home/home_page.dart';
 import 'ui/login/login_flow.dart';
 import 'ui/onboarding/onboarding_page.dart';
+import 'ui/security/dev_sideload_banner.dart'
+    show DevSideloadStartupWarning, devSideloadStartupDwell;
 import 'ui/security/hardware_unlock_failed_dialog.dart';
 import 'ui/shell/main_shell.dart';
 import 'ui/theme/app_theme.dart';
@@ -169,7 +172,15 @@ class _BootGate extends StatefulWidget {
 }
 
 class _BootGateState extends State<_BootGate> {
-  late final Future<void> _boot = widget.session.bootstrap();
+  /// DEV 侧载产物：启动等待 = bootstrap **并行** 最小水印停留（ADR-024 §5.4）。
+  /// [kSideloadEnabled] 是编译期常量 ⟹ DEPLOY 下三元的 DEV 分支是死代码，与
+  /// `dev_sideload_banner.dart` 一并被 tree-shake 剔除（护栏 2）。
+  late final Future<void> _boot = kSideloadEnabled
+      ? Future.wait([
+          widget.session.bootstrap(),
+          Future<void>.delayed(devSideloadStartupDwell),
+        ])
+      : widget.session.bootstrap();
   var _unlockDialogShown = false;
 
   @override
@@ -178,6 +189,8 @@ class _BootGateState extends State<_BootGate> {
       future: _boot,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
+          // DEV 侧载产物的启动页即水印页（不可关闭，见 dev_sideload_banner.dart）。
+          if (kSideloadEnabled) return const DevSideloadStartupWarning();
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );

@@ -72,17 +72,22 @@ decideEphemeralWrite(opts:{domain,path?}, view) →
 **静默丢弃该写入 + `ctx.log("warn", ...)`**，**不抛错中断执行**——不给 adapter 探测栅栏边界的
 异常信号。栅栏由 Broker 强制，绝不静默放宽为「接受」（同 B1「不信任上游已校验」哲学）。
 
-**关于 `Secure` / `__Host-` 前缀（已拍板）**：本件 jar **不参与**该校验——匹配仅按
-domain / path（RFC 6265 §5.1.3/§5.1.4），不校验 cookie 前缀 / Secure 属性。若未来需要，
-另行评估扩面。
+**关于 `Secure` / `__Host-` 前缀（已拍板；`Secure` 与生命周期已于 2026-08-07 扩面）**：
+B4 本件 jar 只按 domain / path 匹配（RFC 6265 §5.1.3/§5.1.4）。**P1-05 / P1-06 已把
+`Secure`、`Max-Age`、`Expires` 纳入**（见下方 §8 拍板 #1 的修订行）：`Secure` 只随 https
+发出、到期不发不收割、`Max-Age=0` / 过期 `Expires` 从 jar 删除。`__Host-` / `__Secure-`
+**名称前缀**仍不校验，维持原拍板。
 
 ## 4. golden 向量设计（`cookie-jar.json`）
 
-三组纯决策，逐条钉两端：
+六组纯决策，逐条钉两端（A–C 为原设计；D–F 为 P1-05/P1-06 扩组，2026-08-07）：
 
 - **A. `decideEphemeralWrite`**（约 8 例）：passthrough 接受 / 凭证域拒（栅栏 1.2）/ 域不在 allow 拒 / path 越界拒 / path 缺省 `/` / 父域 domain-match 边界 / 大小写。
-- **B. `matchCookieForSend`**（约 8 例）：domain-match 父域命中、host 不匹配不发、path 前缀命中 / 更深不发、**方向不可写反**（cookie 域更宽才发，ADR-009 §2.4 第 123 行）。
-- **C. `selectCookies` 优先级**（约 5 例）：同名 broker > origin > ephemeral（栅栏 2）；多 cookie 拼接顺序；ephemeral 与 broker 不同名共存。
+- **B. `matchCookieForSend`**（约 18 例）：domain-match 父域命中、host 不匹配不发、path 前缀命中 / 更深不发、**方向不可写反**（cookie 域更宽才发，ADR-009 §2.4 第 123 行）；**Secure ⟹ 仅 https**（含刻意不给 `http://localhost` 豁免的负例）；**过期不发**（边界：`expiresAt == nowMs` 即算过期）。
+- **C. `selectCookies` 优先级**（约 14 例）：同名 broker > origin > ephemeral（栅栏 2）；多 cookie 拼接顺序；ephemeral 与 broker 不同名共存；**同名不同 Path 全部带上、长 Path 在前**（P1-05）；栅栏 2 的压制以「本次请求实际命中的 origin 名字」为准。
+- **D. `parseCookieDate`**（18 例）：RFC 6265 §5.1.1 逐 token 算法——IMF-fixdate / RFC 850 两位年 / asctime；越界字段判失败；非法日历日按宿主日历确定性进位。
+- **E. `parseMaxAge`**（12 例）：§5.2.2 delta-seconds；`0` / 负值是**合法的删除信号**（非解析失败）；超 18 位夹取（防 JS float 与 Dart int 溢出分叉）。
+- **F. `parseSetCookie`**（19 例）：属性组合与优先级（`Max-Age` 压过 `Expires`；非法属性被忽略而非当作立刻过期）；非法 `Domain` 仍整条丢弃。
 
 **有态行为**（不进 golden，进 smoke）：`Set-Cookie` 捕获默认 domain/path（RFC 6265 §5.3）、
 跨重定向跳捕获、执行结束即弃、两分区隔离（写 ephemeral 不污染 broker 区收割视图）。
@@ -117,6 +122,6 @@ domain / path（RFC 6265 §5.1.3/§5.1.4），不校验 cookie 前缀 / Secure �
 
 | # | 议题 | 决定 |
 |---|---|---|
-| 1 | `Secure` / `__Host-` 前缀是否纳入 jar 校验 | **不纳入**，本件仅 domain/path 匹配 |
+| 1 | `Secure` / `__Host-` 前缀是否纳入 jar 校验 | **不纳入**，本件仅 domain/path 匹配 —— **2026-08-07 部分修订**：P1-06 已纳入 `Secure`（只随 https 发出）与 `Max-Age`/`Expires` 生命周期；`__Host-`/`__Secure-` 名称前缀维持不纳入 |
 | 2 | PR 拆分 | **拆两个**（TS 先行 + Dart 对齐） |
 | 3 | 栅栏违例处置 | **静默丢弃 + `ctx.log("warn")`**，不抛错 |
