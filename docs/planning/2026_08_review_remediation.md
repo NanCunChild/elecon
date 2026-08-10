@@ -101,12 +101,41 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 命中**，该名下 ephemeral 全部丢弃」表达，因此 adapter 无法借不同 Path 在同名会话旁加塞。
 `assembleRequest` 的同名去重也同步放开（broker 注入名仍整体压过 jar 同名条目）。
 
+**补丁（2026-08-10 复审）：P1-05 此前只关了执行内的一半。** 首轮改动放开的是
+`assembleRequest` 里 **jar 侧**的同名去重，**凭证束内部**仍按名只留第一条。于是走 B5 路线 a
+收割的一束 origin cookie（`sid=API; sid=ROOT`，长 Path 在前）在注入侧被砍成 `sid=API`——
+根会话**静默丢失**，与 P1-05 原始缺陷同型，只是从 jar 挪到了凭证注入这一步。收割侧的
+golden（`harvest.json` 的 `p1_05_same_name_different_path_both_harvested`）本已把束形状钉成
+`"sid=API; sid=ROOT"`，消费侧却把它丢了一半，**两端 golden 各自为真、合起来不成立**。
+现两端 `assembleRequest` 对凭证束不再去重，新增 `assemble.json` 的
+`inject_cookie_bundle_keeps_same_name_different_path_entries` /
+`…_still_suppress_jar_same_name` 两例双跑钉死；栅栏 2 最外层不变（注入过的名字仍整体压掉 jar
+同名条目）。安全面不变：束内容全部来自核心自己收割的 origin 区，ephemeral 永不入收割（栅栏 3）。
+
+**残留（不在 P1-05 范围内，需要时另开 ADR）**：路线 a 的 ref 值是**路径无关**的一串，
+per-cookie 的 Path 在入 Store 时就已丢失，注入时无从按请求路径再筛。当前不构成越权外发——
+B1 只对命中该 ref `scope` 的 URL 注入，而收割方向要求 cookie Path 是 scope pathPrefix 的前缀，
+故被注入的 URL 路径恒不浅于束内任何 cookie 的 Path。**唯一边角**是 scope 前缀不落在 `/` 边界时
+（如 `https://h.edu/api*` 可匹配 `/apifoo`），浏览器不会发的 `Path=/api` cookie 仍会被带上。
+要根治须走路线 b（manifest 扩 `cookieNames` 或让 ref 值携带 per-cookie Path），属契约改动
+（红线 #6），需先有 ADR。
+
 **P1-06（Secure / Max-Age / Expires / 删除）已关闭。** 四条语义按 owner 指定落地：
 `Secure` 只随 https 发出（刻意不给 `http://localhost` 开浏览器式豁免）；过期不再发出、也不
 再收割；收割进 Store 时带 `expiresAt`；`Max-Age=0` 与过期 `Expires` 从 jar **删除**该条。
 两个刻意的取舍：① 一个 ref 的值是一束 cookie，其 `expiresAt` 取束内**最早**者——任一条死掉这
 串序列化值就不再是完整会话，取 max 会把残缺凭证当有效用；② `Expires`/`Max-Age` **非法**时按
 RFC 忽略该属性（退化为 session），而不是当作「立刻过期」。
+
+**补丁（2026-08-10 复审）：客户端缺省 jar 此前没冻结时钟。** 服务端 `sandbox.ts` 把
+`execNowMs` 注入 jar，捕获 / 发送选择 / 收割三处共用同一时刻；客户端
+`adapter_runtime.dart` 与 `declarative_host.dart` 的 `jar ?? CookieJar()` 用的却是活钟
+（`DateTime.now()`），只有 `decideHarvest` 吃冻结钟——**代码注释宣称的「执行内不自相矛盾」
+在客户端并不成立**。偏差方向虽是 fail-closed，但这正是双端 golden 抓不到的一类分叉
+（golden 只钉纯函数，有态部分各端自测）。现两处缺省 jar 均改为 `CookieJar(() => nowMs)`；
+显式注入 jar 时仍尊重调用方自带时钟（测试确定化 seam）。回归由
+`declarative_host_test.dart` 的「缺省 jar 用执行冻结钟」一例覆盖——该例用「Expires 落在
+nowMs 之后、墙钟之前」判别两种钟，退回活钟必失败，非空断言。
 
 - 跨端确定性是本批的主要风险面，故日期与 `Max-Age` 都**自己实现**、不依赖宿主：`Date.parse`
   与 `DateTime.parse` 对 RFC 850 两位年、asctime、非法日历日的处理各不相同；`Max-Age` 超长数字
@@ -132,25 +161,28 @@ RFC 忽略该属性（退化为 session），而不是当作「立刻过期」�
 
 两次均为 `--release`，证实 ADR-024 §2.1 的「优化等级 ⊥ 信任 profile」解绑成立。
 
-**P0-14 仍不能关闭的三点**（不得以自动验证代替）：
-1. **slice 4 未做**：AGENTS.md 红线 #4 与 ADR-002 §2.5 仍是旧措辞（"release 包内无侧载入口"），
-   与已落地的代码语义（"DEPLOY profile 包内无侧载入口"）**当前不一致**。属红线原文，owner 决策。
-2. **非 Android 平台无产物级证明**：iOS bundle ID 后缀、macOS/Windows/Linux 的 profile 标记与
+**slice 4 已按 2026-08-10 owner 第二轮决策重写**：渠道与信任档分离。DEV-Sideload 是全能力开发环境；
+DEPLOY 永不运行未签名 / 非 official adapter。ADR-033（打回修改后 Proposed）提议在设置高级项增加
+official-only 本地导入，并退役 C3；接受前当前 DEPLOY 零入口实现与 gate 不变。
+
+**P0-14 仍不能关闭的两点**（不得以自动验证代替）：
+1. **ADR-033 会重定义 gate**：当前 Android 的“全部侧载哨兵为零”证据只覆盖旧基线；若 ADR-033 接受，
+   新 gate 须证明 DEPLOY 不含 devSideload grant、未签名执行与 DEV 凭证放行路径，同时证明设置内入口只汇入
+   official verifier + 在线 catalog/revocation 门。单一哨兵不足以证明调用关系。
+2. **非 Android 平台无产物级证明**：iOS bundle ID 后缀、macOS/Windows/Linux/OHOS 的 profile 标记与
    符号断言均未做。这些平台目前只靠护栏 1 的 fail-closed 默认成立，**没有机械复核**；
-   ADR-010 的商店提交论点因此只在 Android 有证据。
-3. **人工安全签收未完成**：本轨触红线 #4，AI 不得独自闭环。
+   当前仅 Android 完成 ADR-024 的产物级证明；ADR-010 的 iOS App Store 论点尚无 iOS 产物级机械证据。
+3. **人工安全签收未完成**：本轨触红线 #4，AI 不得独自闭环；ADR-033 接受前不能按新语义签收。
 
-**ADR-033（生产侧载档）已起草为 Proposed（2026-08-09）。** 起因是 owner 倾向把 DEPLOY 的侧载形态
-定为 declarative-only 而非零侧载。查实外泄面的结论改变了这项的范围：`format: uri` 的 emits 字段
-**当前不构成通道**（客户端无 `url_launcher` 依赖、无 `Image.network`，唯一附件渲染点 `enabled: false`），
-真正的通道是**声明式数据流本身**——`bind`→`compute`→`inject{at:"url"}` 可把已认证响应的内容经 broker
-送往 manifest 自声明的任意 host，零点击、adapter 不调 `ctx.fetch`、不看句柄值。ADR-023 §2.5 已写明
-该威胁「归 official = 人工审 + 签名 兜」，而生产侧载拆掉的正是这道闸门，故 ADR-033 §2.4 补 G1–G6
-能力面闸门（其中 G2 禁 dataflow、G3 限 host 属本校官方域），并把告知义务分三级。
+**ADR-033 已打回修改并恢复为 Proposed（2026-08-10 owner 第二轮决策）。** 当前稿保留完整过程：
+① 初稿的未签名 declarative 生产侧载；② 第一轮倾向全平台 DEPLOY 零侧载；③ 当前的双渠道方案。
+当前提议为：DEV-Sideload 全能力，不再用 declarative C3 阉割开发调试；DEPLOY 在设置高级项保留本地文件
+导入，但只接受 official 签名，并在每次新增/更新时强制在线刷新、验证 catalog/revocation 后才可安装。
+本地导入成功后仍铸造 official grant，不新增生产低信任档。
 
-该 ADR 一旦接受，会**削弱** P0-14 刚落地的护栏 4a：桌面/Android 的 DEPLOY 产物里侧载加载路径必须存在，
-「哨兵 0 次」的结构性断言只在 DEPLOY-iOS 上保留（详见 ADR-033 §4.1）。**P0-14 的安全签收应在
-ADR-033 决策之后进行**，否则会签收一个即将改变语义的护栏。
+初稿查实的 `bind`→`compute`→`inject{at:"url"}` 外泄面继续作为关键决策依据：它说明 declarative-only
+不足以让未签名 adapter 进入 DEPLOY；当前方案因此把安全边界放回 official 签名、审查和吊销治理。
+P0-14 应等待 ADR-033 评审结果，再决定保留旧零入口 gate 还是落新 official-only 导入 gate。
 
 > 过程中的一个实证值得留档：护栏 4b 的标记生成任务最初只声明 `outputs`、未声明 `inputs`，
 > gradle 判 UP-TO-DATE，导致**首次 DEV 构建原样留下上一次 DEPLOY 的标记**——元数据自称 DEPLOY、
