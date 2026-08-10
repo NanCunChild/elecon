@@ -44,4 +44,4 @@ cd tools && npm run validate -- --adapter=../adapters/school-<id>
 > `trustTier` enum 仅 `official` / `sideload`。
 >
 > **当前实现差异**：validator 仍有 `C3_sideload_must_declarative`，会拒绝 sideload + imperative；
-> ADR-033（Proposed）提议退役 C3。其接受前不要通过放宽断言绕过，DEV imperative 的完整预检链待该 ADR 落地。
+> ADR-033（已接受）将退役 C3，但**尚未落地**：在它随 DEPLOY official-only 负例同批提交前，不要通过放宽断言绕过，DEV imperative 的完整预检链待该批落地。

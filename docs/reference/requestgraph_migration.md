@@ -27,7 +27,7 @@
 **不变量（迁移不得破坏）：**
 
 1. 凭证永不进 adapter；broker 注入 / 脱敏路径不变。
-2. **当前基线**仍有 sideload→declarative C3；ADR-033 提议退役它，使 DEV-Sideload 每个 capability 可选 declarative / imperative。DEPLOY 本地导入不按 sideload 运行，只接受 official grant。
+2. **当前基线**仍有 sideload→declarative C3；ADR-033（已接受，待落地）退役它，使 DEV-Sideload 每个 capability 可选 declarative / imperative。DEPLOY 本地导入不按 sideload 运行，只接受 official grant。
 3. declarative 必须有 `requests[]`；imperative **禁止** `requests[]`。
 4. 错误码 `async_in_parser` **删除**，改为 `async_in_declarative`（不留别名）。
 5. `requestGraph` **required、无 schema default**（缺字段=校验失败）。
@@ -94,7 +94,7 @@
 
 | 编号 | 旧条件 / code | 新条件 / code | 说明 |
 |---|---|---|---|
-| **C3（当前基线；ADR-033 提议退役）** | `trustTier==sideload && mode!="parser"` / `C3_sideload_must_parser` | 当前：`trustTier==sideload` 且任一 cap 非 declarative；目标：删除该 trustTier 一刀切规则 | DEV-Sideload 全能力；DEPLOY 由 official grant 门禁承担 |
+| **C3（当前基线；ADR-033 已决定退役，待落地）** | `trustTier==sideload && mode!="parser"` / `C3_sideload_must_parser` | 当前：`trustTier==sideload` 且任一 cap 非 declarative；目标：删除该 trustTier 一刀切规则 | DEV-Sideload 全能力；DEPLOY 由 official grant 门禁承担 |
 | **C4-a** | `mode=="fetch" && allow.length==0` / `C4_fetch_empty_allow` | **存在** cap `requestGraph=="imperative"` 且 `allow.length==0` / **`C4_imperative_empty_allow`** | 无 allow 则 imperative 无处可请求 |
 | **C4-b** | `mode=="parser"` 整 manifest 扫 requests / `C4_parser_no_requests` | **仅** `requestGraph=="declarative"` 的 cap：无 `requests` 或 empty → **`C4_declarative_no_requests`**；url ⊆ allow 逻辑保留 | 原 C4 白名单覆盖不变 |
 | **C8** | `mode=="parser"` 时 credential 引用闭合 + unused warn | **仅 declarative cap 集合** 的 `requests.credential` | unused warn 文案去掉「parser 模式」 |
@@ -126,7 +126,7 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
 
 | # | 场景 | 期望 |
 |---|---|---|
-| 1 | sideload + 任一 cap imperative | 当前基线触发 `C3_sideload_must_declarative`；ADR-033 接受后改为合法 DEV 素材正例 |
+| 1 | sideload + 任一 cap imperative | 当前基线触发 `C3_sideload_must_declarative`；ADR-033 落地后改为合法 DEV 素材正例 |
 | 2 | official + 全 imperative + empty allow | C4 empty allow |
 | 3 | declarative request 越出 allow | C4 url 越界 |
 | 4 | 合法 declarative（占位符 URL） | 无 error |
@@ -134,10 +134,10 @@ C8 签名：`Pick<Manifest, "credentials" | "mode" | "capabilities">` → 去掉
 | **新** | declarative 无 requests | `C4_declarative_no_requests` |
 | **新** | imperative + requests[] | `C12_imperative_with_requests` |
 | **新** | **混用 adapter**：capA declarative+requests，capB imperative 无 requests，official | **通过**（ADR-022 核心动机） |
-| **新** | sideload 混用（含 imperative） | 当前基线 C3 拒绝；ADR-033 接受后改为 DEV 合法正例，并验证 DEPLOY 无法铸造 devSideload grant |
+| **新** | sideload 混用（含 imperative） | 当前基线 C3 拒绝；ADR-033 落地后改为 DEV 合法正例，并验证 DEPLOY 无法铸造 devSideload grant |
 | **删** | 对顶层 `mode` 的任何断言 | |
 
-🔒 当前安全相关负例（C3/C12）须人工编写或实质审阅；ADR-033 接受后删除 C3 负例时，必须同批增加 DEPLOY official-only grant/本地导入门禁负例，不得仅删断言。
+🔒 当前安全相关负例（C3/C12）须人工编写或实质审阅；ADR-033 落地、删除 C3 负例时，必须同批增加 DEPLOY official-only grant/本地导入门禁负例，不得仅删断言。
 
 ### 2.4 其它 tools 引用
 

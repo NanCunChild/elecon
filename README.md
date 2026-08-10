@@ -98,7 +98,7 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 4. 在 `fixtures/` 放抓包样本，写归一化回归测试。
 5. 在该 adapter 的 `README.md` 记录：该校属哪一档（UA 门禁 / CAS 逃生口 / openid 唯一身份 / 微信小程序）及已知坑。
 
-**信任级别：** DEPLOY 只运行通过 official 验签与吊销门禁的 adapter；ADR-033 提议在设置中保留本地 official bundle 导入，但它只改变字节来源，不产生低信任运行档。DEV-Sideload 可本地加载未签名 adapter，declarative / imperative 与当前 DEV 宿主能力全部可调试；DEV 可使用优化 build，但不可分发。ADR-033 同时提议退役 `C3_sideload_must_declarative`。
+**信任级别：** DEPLOY 只运行通过 official 验签与吊销门禁的 adapter；ADR-033（已接受，尚未落地）在设置中保留本地 official bundle 导入，但它只改变字节来源，不产生低信任运行档。DEV-Sideload 可本地加载未签名 adapter，declarative / imperative 与当前 DEV 宿主能力全部可调试；DEV 可使用优化 build，但不可分发。ADR-033 同时退役 `C3_sideload_must_declarative`（待落地）。
 
 ---
 

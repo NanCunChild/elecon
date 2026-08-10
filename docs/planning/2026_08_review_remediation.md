@@ -162,27 +162,31 @@ nowMs 之后、墙钟之前」判别两种钟，退回活钟必失败，非空�
 两次均为 `--release`，证实 ADR-024 §2.1 的「优化等级 ⊥ 信任 profile」解绑成立。
 
 **slice 4 已按 2026-08-10 owner 第二轮决策重写**：渠道与信任档分离。DEV-Sideload 是全能力开发环境；
-DEPLOY 永不运行未签名 / 非 official adapter。ADR-033（打回修改后 Proposed）提议在设置高级项增加
-official-only 本地导入，并退役 C3；接受前当前 DEPLOY 零入口实现与 gate 不变。
+DEPLOY 永不运行未签名 / 非 official adapter。ADR-033（**已接受**，2026-08-10）在设置高级项增加
+official-only 本地导入，并退役 C3；其落地前当前 DEPLOY 零入口实现与 gate 不变。
 
 **P0-14 仍不能关闭的两点**（不得以自动验证代替）：
-1. **ADR-033 会重定义 gate**：当前 Android 的“全部侧载哨兵为零”证据只覆盖旧基线；若 ADR-033 接受，
+1. **ADR-033 会重定义 gate**：当前 Android 的“全部侧载哨兵为零”证据只覆盖旧基线；ADR-033 已接受，其落地后
    新 gate 须证明 DEPLOY 不含 devSideload grant、未签名执行与 DEV 凭证放行路径，同时证明设置内入口只汇入
    official verifier + 在线 catalog/revocation 门。单一哨兵不足以证明调用关系。
 2. **非 Android 平台无产物级证明**：iOS bundle ID 后缀、macOS/Windows/Linux/OHOS 的 profile 标记与
    符号断言均未做。这些平台目前只靠护栏 1 的 fail-closed 默认成立，**没有机械复核**；
    当前仅 Android 完成 ADR-024 的产物级证明；ADR-010 的 iOS App Store 论点尚无 iOS 产物级机械证据。
-3. **人工安全签收未完成**：本轨触红线 #4，AI 不得独自闭环；ADR-033 接受前不能按新语义签收。
+3. **人工安全签收未完成**：本轨触红线 #4，AI 不得独自闭环。ADR-033 已接受但未落地，故现在只能按**旧零入口语义**签收；
+   新语义须待其 §5 清单同批落地、新 gate 就位后另行签收。
 
-**ADR-033 已打回修改并恢复为 Proposed（2026-08-10 owner 第二轮决策）。** 当前稿保留完整过程：
-① 初稿的未签名 declarative 生产侧载；② 第一轮倾向全平台 DEPLOY 零侧载；③ 当前的双渠道方案。
-当前提议为：DEV-Sideload 全能力，不再用 declarative C3 阉割开发调试；DEPLOY 在设置高级项保留本地文件
+**ADR-033 已于 2026-08-10 接受（打回修改后定稿）。** 全文保留完整决策过程：
+① 初稿的未签名 declarative 生产侧载；② 第一轮倾向全平台 DEPLOY 零侧载；③ 定稿的双渠道方案。
+定稿内容：DEV-Sideload 全能力，不再用 declarative C3 阉割开发调试；DEPLOY 在设置高级项保留本地文件
 导入，但只接受 official 签名，并在每次新增/更新时强制在线刷新、验证 catalog/revocation 后才可安装。
 本地导入成功后仍铸造 official grant，不新增生产低信任档。
 
+**接受 ≠ 已落地**：截至本次记录，validator 的 C3 与 DEPLOY 零入口 gate 均未改动，实现须按 ADR-033 §5
+清单同批推进（AI 不得独自闭环）。
+
 初稿查实的 `bind`→`compute`→`inject{at:"url"}` 外泄面继续作为关键决策依据：它说明 declarative-only
 不足以让未签名 adapter 进入 DEPLOY；当前方案因此把安全边界放回 official 签名、审查和吊销治理。
-P0-14 应等待 ADR-033 评审结果，再决定保留旧零入口 gate 还是落新 official-only 导入 gate。
+P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态，待 ADR-033 §5 落地后再以新 gate 重新取证并二次签收。
 
 > 过程中的一个实证值得留档：护栏 4b 的标记生成任务最初只声明 `outputs`、未声明 `inputs`，
 > gradle 判 UP-TO-DATE，导致**首次 DEV 构建原样留下上一次 DEPLOY 的标记**——元数据自称 DEPLOY、

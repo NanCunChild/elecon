@@ -1,7 +1,7 @@
 # ADR-024 落地计划：信任 profile 解绑优化等级
 
 > **状态**：owner 四问已勾决（2026-07-31，见 [`adr_024_build_profile_trust.md`](../adr/adr_024_build_profile_trust.md) §5）；
-> **slice 0–3 代码已落地（2026-08-07），Android 旧零入口产物证据已取（见 §4）；slice 4 已按 2026-08-10 owner 第二轮决策记录双渠道目标。ADR-033 仍 Proposed，接受前不改实现。
+> **slice 0–3 代码已落地（2026-08-07），Android 旧零入口产物证据已取（见 §4）；slice 4 已按 2026-08-10 owner 第二轮决策记录双渠道目标。ADR-033 已接受但尚未落地，代码仍为零入口基线。
 > 🔒 安全签收未完成——代码落地 ≠ 签收。**
 > 🔒 触红线 #4（DEPLOY 不运行未签名 / 非 official；dev 传输仅 debug）。判别器、未签名路径剔除与 gate 断言属安全承重，**AI 起草、须人工主导 + 安全清单 + ≥1 人工审，不得 AI 独自闭环**。
 
@@ -47,17 +47,17 @@
 - **(b) 构建元数据标记**：构建注入的 profile 标记必须为 DEPLOY——防符号 grep 因混淆 / 重命名漏网。
 - 任一不满足即 `fail`。与现有 INTERNET 权限断言并列。
 
-### slice 4 · 红线 #4/#5 措辞同步（**已按第二轮反馈重写；实现待 ADR-033**）
+### slice 4 · 红线 #4/#5 措辞同步（**已重写并随 ADR-033 接受定稿；实现待 ADR-033 §5 落地**）
 
-- 红线 #4 改为来源无关不变量：DEPLOY 只运行 official；ADR-033 提议的本地导入只汇入 official verifier + 在线治理门。dev transport 仅 debug 不变。
+- 红线 #4 改为来源无关不变量：DEPLOY 只运行 official；ADR-033 的本地导入只汇入 official verifier + 在线治理门。dev transport 仅 debug 不变。
 - 红线 #5 明确 DEV-Sideload 全能力；凭证值仍不离核心、DEV 不可分发。
-- ADR-033 提议退役 C3；接受前现有 validator 与 DEPLOY 零入口实现保持不变。
+- ADR-033 已决定退役 C3；落地前现有 validator 与 DEPLOY 零入口实现保持不变。
 
 ## 2. 合并约束
 
-- **slice 1–3 原落地保持不变**；ADR-033 若接受，DEPLOY official 本地入口、在线治理门与新 gate 必须同批落地，禁止出现“入口已开、治理/gate 未跟上”的中间态。
+- **slice 1–3 原落地保持不变**；ADR-033 已接受，其 DEPLOY official 本地入口、在线治理门与新 gate 必须同批落地，禁止出现“入口已开、治理/gate 未跟上”的中间态。
 - 每片 PR 声明遵循 ADR-024 §2.3 四护栏；gate 断言纳入 CI。
-- 安全清单：当前仍验 DEPLOY 全部侧载符号为零；ADR-033 接受后改验 devSideload/未签名路径为零 + official 本地入口只连统一 verifier/在线治理门；另人工确认 DEV applicationId 隔离与水印。
+- 安全清单：当前仍验 DEPLOY 全部侧载符号为零；ADR-033 落地后改验 devSideload/未签名路径为零 + official 本地入口只连统一 verifier/在线治理门；另人工确认 DEV applicationId 隔离与水印。
 
 ## 3. 落地实况（2026-08-07）
 
@@ -92,10 +92,10 @@ slice 1–3 已按 §2「捆绑」约束**同一批**落地，无中间态。逐
 与 "gate 正确" 无法区分。
 `release.yml` 新增一步：闸门跑在**真正要分发的那个 APK** 上，而非 CI 另编的一份。
 
-### slice 4 · 红线 #4/#5 措辞 —— 已按第二轮反馈重写，代码待 ADR-033
+### slice 4 · 红线 #4/#5 措辞 —— 已随 ADR-033 接受定稿，代码待其 §5 落地
 
 文档已区分渠道与信任档：DEPLOY 只运行 official；DEV-Sideload 全能力。当前代码仍是 DEPLOY 零本地入口，
-与 ADR-033 Proposed 的目标差异已显式记录；接受前不得实现 official 本地导入或删除 C3。
+与 ADR-033 目标态的差异已显式记录；其 §5 清单同批落地前，不得单独实现 official 本地导入或单独删除 C3。
 
 ## 4. 产物级证据（2026-08-07，本机 Android release 实测）
 
