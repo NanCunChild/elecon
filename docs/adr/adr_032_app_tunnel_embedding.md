@@ -138,7 +138,7 @@ ADR-003 §2.1 要求 transport 有 `init/connect/disconnect/dispose` 生命周�
 | **iOS** | ❌ 不编入 | 非因 GPL（已不适用），而是指南 5.2.2 未评估（Probe-002 §3） |
 | **OHOS / 桌面** | ❌ 不编入 | 优先级，非阻塞 |
 
-**信任（红线 #4）**：`app-tunnel` 是最高信任档，**仅官方签名加载、release 无侧载入口**。原生 `.so` 的完整性由「编入官方包 + APK 签名」承担——**这与 ADR-002 现有的 adapter bundle 验签体系不是同一条链路**，本文明确记录该边界：ADR-002 §2.3/§2.4 的 Ed25519 bundle 验签**不覆盖**原生库。补偿手段是 **kill-switch**：隧道档纳入 ADR-002 §2.4 吊销清单，可远端禁用某版本，核心据此降级到 `direct`/`system-vpn`（fail-safe）。
+**信任（红线 #4）**：`app-tunnel` 是最高信任档，**仅官方签名加载，DEPLOY/DEV 均无 transport 本地导入或侧载入口**。ADR-033 只涉及 adapter，不扩散到 transport。原生 `.so` 的完整性由「编入官方包 + APK 签名」承担——**这与 ADR-002 现有的 adapter bundle 验签体系不是同一条链路**，本文明确记录该边界：ADR-002 §2.3/§2.4 的 Ed25519 bundle 验签**不覆盖**原生库。补偿手段是 **kill-switch**：隧道档纳入 ADR-002 §2.4 吊销清单，可远端禁用某版本，核心据此降级到 `direct`/`system-vpn`（fail-safe）。
 
 ---
 

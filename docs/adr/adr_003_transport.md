@@ -58,7 +58,7 @@ ADR-000 §3.4 把**传输底座**（原生、长生命周期、有状态、**承
 
 ### 2.3 安全不变量：transport 看全部流量 → 最高信任 + 永不见凭证明文
 
-- **仅官方签名 transport 可加载**（红线 #4；二进制签名/验签见 ADR-002 §2.3）；**dev transport 仅 debug build**；**release 无侧载入口**。
+- **仅官方签名 transport 可加载**（红线 #4；二进制签名/验签见 ADR-002 §2.3）；**dev transport 仅 debug build**；**DEPLOY 无任何 transport 侧载入口**。
 - **transport 不得终止 / 中间人 TLS。** 分层澄清：broker 在 **TLS 之上的 HTTP 语义层**构造请求并注入凭证（ADR-009）→ TLS 由核心/OS 的 TLS 栈完成 → **密文字节**才交给 transport 搬运。transport 处于 TLS 之下，**天然只见密文**；它**不得**解密、注入根证书或 MITM。否则它即可窥见 broker 注入的凭证明文，直接打穿红线 #1。**凭证明文永不出现在 transport 可见层**——这是本档最高信任门槛之外的硬技术约束。
 
 - **"不终止"≠"禁止隧道封装"（2026-06-14 澄清，回应"部分 VPN 是否支持"的疑问）。** 本不变量约束的是**我方签名加载的 transport 模块不做 MITM**，**不**禁止嵌套加密。绝大多数 VPN 天然兼容：

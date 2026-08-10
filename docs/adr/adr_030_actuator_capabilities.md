@@ -35,7 +35,7 @@ XIDIAN 聚好联探针提供状态查询和 `POST /api/device/direct/command`。
 - **先操作后同步，禁乐观更新**：UI 不得在收到确认前抢先反映目标态；命令返回后经 `climate.status`
   核验，UI 只反映核验回来的真实态（见 §5.2）；
 - 固定 HTTPS origin/path，参数经可信核心按 schema 校验；
-- **release official-only、dev 侧载等同 official**（红线 #5 dev 例外 / ADR-002 §2.5，见 §8.4）；
+- **DEPLOY official-only（catalog / 本地来源同门禁）、DEV-Sideload 全能力调试**（红线 #4/#5 / ADR-002 §2.5，见 §8.4）；
   Android-first、client-direct；iOS 在专项合规复评前不加载 command。
 
 首版命令限定为：开/关机、设定温度、模式、风速、扫风、强力和辅热。温度范围及枚举由设备 discovery
@@ -105,20 +105,19 @@ Owner 接受本 ADR 主体，附以下四点细化（已并入 §3/§5，此处�
 UI 一律「操作 → 核验 → 反映」，不做「先反映目标态再对账」。乐观更新在 unknown/失败语义下会给出与设备不符的
 假象，与 §5「2xx≠applied」同源。细则见 §5.2。
 
-### 8.4 official-only 的真实边界：release official-only、dev 侧载等同 official
+### 8.4 official-only 的真实边界：DEPLOY official-only、DEV 侧载等同 official
 
-- **release**：`climate.command` 为 official-only。但需澄清其**边界**——official-only **并不能、也不试图
-  禁止一个声明式 adapter *构造*到设备端点的请求**（declarative requestGraph 只要 allow-list 允许即可声明任意
-  URL 的请求，这是既定语义，红线 #5 未禁止声明式 adapter 发请求）。因此 mutation 的真实护栏**不是**「别人无法
-  形成这个请求」，而是三层叠加：
+- **DEPLOY**：不存在未签名 / 非 official 运行路径，`climate.command` 仅可由 official adapter 声明和执行；ADR-033 提议的本地导入也须先铸造 official grant。但 official-only
+  仍不能替代 action 自身的安全语义：一个有缺陷的 official declarative requestGraph 仍可能构造到设备端点的请求，
+  因此 mutation 的真实护栏是供应链信任之外的三层叠加：
   1. **凭证托管 fail-closed**（§4）：`x-access-token` 等授权凭证只经 official command 的独立 action 入口注入；
-     任何绕过该入口的裸声明式请求缺凭证 → 设备侧/核心侧 fail-closed。**这是承重护栏**。
+     任何绕过该入口的裸请求缺凭证 → 设备侧/核心侧 fail-closed。**这是承重护栏**。
   2. **命令 action 闸门**（§3）：手势证明、一次性确认 token、单请求、禁重试/重定向等安全语义只存在于该专用入口；
      声明式请求即使发出也拿不到这套语义，无法冒充「一次经确认的用户操作」。
-  3. **能力注册档位**：`climate.command` 在 release 只对 official trust tier 放行执行入口。
-- **dev/debug**：按红线 #5 dev 例外与 ADR-002 §2.5，无签名侧载 adapter 能力**等同 official**（可跑 imperative、
-  可触发凭证注入），故 dev 下侧载 adapter 亦可加载并执行 `climate.command`，与 official 同权。该「允许」分支
-  `kReleaseMode` 条件编译内，release 二进制不存在。
+  3. **能力注册档位**：`climate.command` 在 DEPLOY 只对 official trust tier 放行执行入口。
+- **DEV-Sideload**：按红线 #5 与 ADR-002 §2.5，无签名侧载 adapter 是**全能力开发环境**（可跑 imperative、
+  可触发开发者测试凭证注入并调试 command），故 DEV 下可执行 `climate.command`。该「允许」分支挂编译期
+  `kSideloadEnabled`，从 DEPLOY 产物剔除；DEV 可使用优化 build，但不可分发。
 
 **推论（给实现与安全审）**：核心不得把「official-only」实现成「校验请求 URL 是否属于 command 端点并拦截非
 official」——那既做不到（声明式可换 URL/参数）也无必要。正确实现是：把 mutation 语义与凭证注入**收敛到唯一的

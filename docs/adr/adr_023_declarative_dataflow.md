@@ -123,19 +123,17 @@ auth_A        auth_B
 
 ### 2.6 信任门：`devSideload` 在 DEV 下与 official 同权（2026-07-24 修订）
 
-> ⚠ **待修订（[ADR-033](./adr_033_production_sideload.md) · Proposed，2026-08-09）**：本节的 🔒 防扩散条款已被触发：[ADR-033](./adr_033_production_sideload.md) 提议新增「在生产环境中可存在的非 official 档」。按本节要求，该档**不自动继承**本节结论；ADR-033 §2.4 G2 提议对其**禁用 `bind`/`compute`/`inject`**。 **ADR-033 接受前，本节逐字有效。**
-
 > **本节推翻本 ADR 初稿「带 `compute` 的数据流 official-only」的决策**（owner 2026-07-24 勾决）。初稿理由是「审计面增大，保守 official-first」；下述证据表明该保守取向在本项目的信任档结构下不产生实际收益，反而卡死 official adapter 的供给侧。
 
 **决策：`devSideload` 档的声明式 capability 获得与 official 完全相同的 `bind`/`compute`/`inject` 能力面。**
 
-**依据一（结构性）**：本项目信任档只有两个——`AdapterTrustTier.official` / `devSideload`（`client/lib/core/trust/trusted_context.dart`），且 `devSideload` **结构上仅 debug build 可构造**（`fetchTrustPermitted`：official 恒放行，其余仅非生产；服务端对应 `NODE_ENV !== "production"`）。叠加 ADR-024：DEPLOY profile 的侧载路径**编译期剔除**。故 **sideload 在出货产物里根本不存在**——给它 dataflow 能力**不改变终端用户面临的攻击面**，只影响开发者本机，属「本地运行了不可信代码」的既有风险，由 ADR-002 §2.5 的强警告 + 每 `adapterId` 首次确认承接。
+**依据一（结构性）**：`devSideload` 仅 DEV profile 可构造，且 DEV 本就定位为全能力 adapter 调试环境，可使用优化 build。ADR-033 提议的 DEPLOY 本地导入只铸造 official grant，未签名 `devSideload` 仍不进入出货运行路径。故给 DEV dataflow 能力不扩大终端用户面，只影响开发者本机，由 ADR-002 §2.5 的警告与确认承接。
 
 **依据二（供给侧）**：official adapter 由社区先写出、再经审查铸造。若 sideload 不能跑 `compute`，社区开发者**无法在本地开发与调试声明式 dataflow adapter**，等于卡死 official 的上游来源。
 
 **红线 #5 不破**：sideload adapter 仍无 `ctx.fetch`、仍不见句柄值——数据流全程由 broker 执行。本决策放宽的是**声明面的表达力**，不是 adapter 的能力/信任面。
 
-**🔒 防扩散条款（不可省略）**：本决策**只绑定「`devSideload` 这一档结构上仅存在于 DEV 构建」这一事实**。ADR-018 正在铺第三方分发与四信任域——**若将来新增任何「在生产环境中可存在的第三方 / 非 official 档」，它不自动继承本决策**，必须就 dataflow 能力面重新裁定。实现上要求：能力判定挂 `devSideload` 档本身，不得写成「非 official 即放行」的否定式。
+**🔒 防扩散条款（不可省略）**：本决策只绑定 `devSideload` 结构上仅存在于 DEV 的事实。ADR-033 的 DEPLOY 本地导入不得铸造新档或复用 `devSideload`，只能在 official 门禁全过后铸造既有 official grant；若未来提出生产非 official 档，必须另起 ADR 重裁 dataflow 能力面。
 
 ---
 

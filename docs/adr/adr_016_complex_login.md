@@ -35,15 +35,15 @@ WebView 为默认主路线；headless **仅在上述两类场景**按需开启�
 
 **沿用 ADR-002 的 official / sideload 两档，不为登录脚本新增信任档。** headless 登录与凭证收割不是「另一档信任的脚本」，而是**能力**——由**能力门禁**约束：
 
-- **敏感能力 = official-only**：仅官方签名 adapter 可声明；**debug build 例外**（与红线 #5 的 dev 侧载-imperative 例外同范式，编译期从 release 剔除）。**敏感能力集**当前为：
+- **敏感能力 = DEPLOY official-only**：DEPLOY 无论 catalog / 本地来源都只运行 official；**DEV-Sideload 全能力例外**可调试下列能力，未签名 grant 路径不进入 DEPLOY。**敏感能力集**当前为：
   - **imperative requestGraph（带凭证注入的 `ctx.fetch`）** —— 见下方说明，这是门禁的**既有锚点**；
   - **登录**（触发核心托管 WebView / headless 登录流）；
   - **凭证收割**（从 WebView cookie jar / headless 握手结果收割 session 入核心）；
   - **headless 登录**（直接走协议的登录脚本，含验证码自动求解）。
-- 校验器加一条静态检查（**类比 C3「sideload ⟹ 每 capability 声明式」**）：sideload 声明敏感能力 → 拒绝（release）；运行时**双重 enforce**（不信任上游已校验，红线 #1 纵深防御）。
-- **公开 declarative 能力**（如 `notice.list`，零凭证、纯解析）不受此门禁，按既有 official/sideload 规则。注意：**带凭证取数的数据能力**（如 `scores` / `schedule` / 一卡通——它们经 imperative 注入 session）天然落在 imperative 门禁内，亦为 official-only。
+- 校验器对敏感能力执行结构与引用规则；ADR-033 提议退役按 `trustTier: sideload` 一刀切拒绝的 C3/同类门禁，使 DEV 可完整预检和调试。DEPLOY 则在 official grant 与能力入口**双重 enforce**（不信任上游已校验，红线 #1 纵深防御）。
+- **普通取数 capability** 可用 declarative 或 imperative；两者都可能由 broker 注入凭证，requestGraph 类型不等于“是否带凭证”。本节 official-only 门禁针对的是 imperative 自编排入口以及登录、收割、headless 等敏感能力；DEPLOY 本地来源同门禁，DEV-Sideload 可全能力调试。
 
-**imperative 能力说明（门禁锚点）**：「能力门禁 official-only」不是本 ADR 新发明——ADR-009 §2.6 / ADR-022 早已定「**仅官方签名 adapter 可跑 imperative requestGraph**」，红线 #5 定「sideload ⟹ 每 capability declarative（无网络/无凭证）、dev build 例外」。即 imperative（带凭证注入）**本就是**一条 official-only-except-debug 的能力门禁，已在校验器 C3 + 运行时落地。本 ADR 只是把**登录 / 收割 / headless 登录**纳入**同一条已验证的门禁**，与 imperative 同档对待——这正是「不必新增信任档、用能力确认即可」的依据：门禁模式已被 imperative 证明可行，复用即可。
+**imperative 能力说明（门禁锚点）**：DEPLOY 的 official-only 由宿主验签 grant 与能力入口承担，本地导入不改变它；DEV-Sideload 则是全能力调试环境，可运行 imperative、登录、收割与 headless 登录。两者由编译期 profile 和不可伪造 grant 隔离，不以 declarative C3 代替运行时信任门。
 
 **为何不新增信任档**：增一档 = 增概念面 + 维护面 + 全套签名/吊销/校验逻辑的再适配；而「能力门禁」复用现有 `trustTier` + capability registry + 校验器机制（且 imperative 已是先例），维护省、心智负担低（维护者 2026-06-18 拍板）。
 
@@ -84,7 +84,7 @@ XIDIAN 水电（`ignypt.xidian.edu.cn`，校园网内）是 headless + campus �
 1. **验证码自动化的合规面（headless 解滑块）。** headless 路线对 CAS+验证码学校须自动求解验证码（NCC + 仿真轨迹），属 anti-bot 规避的灰区。**对策**：headless 仅对**确有必要**的学校/场景开启（默认走 WebView 让用户自解）；自动求解逻辑文档化、可随时降级到 WebView；不把它作为普适默认。落地前须过合规清单。
 2. **headless per-school 逻辑仍是维护负担。** 即便签名 + 热替换，逐校登录/验证码逻辑会随学校改版而碎。比编译期定制好（不发版即可推新脚本），但不消除维护面——故 §2.1 限定 headless 为选择性补充，不普适。
 3. **OHOS WebView 可行性是主路线关键未知。** 若 OHOS 上 WebView 无法读 cookie jar 或拦导航，WebView 主路线在鸿蒙上不成立 → 须 headless 兜或另寻方案。**探针先行**（§2.4 / §5）。
-4. **能力门禁须双重 enforce。** official-only-except-debug 的能力门禁，校验器（静态，类比 C3）+ 运行时（红线 #1 纵深防御，不信任上游）都要拦；debug 例外路径须**编译期从 release 剔除**（同红线 #5）。
+4. **能力门禁须双重 enforce。** DEPLOY official-only 由静态能力规则 + 运行时不可伪造 grant 双重约束；catalog / 本地来源同门禁。DEV-Sideload 是全能力例外，未签名 grant 与 DEV 凭证放行路径须编译期不进入 DEPLOY。C3 退役不削弱这些运行时边界。
 5. **🔒 服务红线 #1 最高风险面 + 触红线 #5 / #10 + 合规。** 本 ADR 的接受、能力门禁的校验器/运行时实现、WebView 与 headless 登录收割及其测试，按 AGENTS.md §1 不得 AI 独自闭环，须人工主导 + 安全清单 + ≥1 人工审。
 
 ---
@@ -104,5 +104,5 @@ XIDIAN 水电（`ignypt.xidian.edu.cn`，校园网内）是 headless + campus �
 | 日期 | 版本 | 摘要 |
 |---|---|---|
 | 2026-06-18 | 草案 | 起草：复杂登录两路线（WebView 主 / headless 选择性补充）；**不新增信任档，按能力门禁**（敏感能力 official-only，debug 例外，类比红线 #5）；凭证边界不变（红线 #1）；WebView 选型先做 OHOS 收割探针。拒新增信任档 / headless 编进二进制 / adapter 自登录。 |
-| 2026-06-18 | 已接受 | 经人工 review 后接受。§2.2 补「`fetch` 能力说明」——明确 `fetch`（带凭证注入）是能力门禁的既有锚点（ADR-009 §2.6 + 红线 #5），登录/收割/headless 纳入同一门禁；修正示例（`scores` 等带凭证能力落 `fetch` 门禁，非无门禁）。实现（校验器/运行时门禁、登录收割、OHOS 探针 #65）仍按红线 #1 须人工主导。 |
+| 2026-06-18 | 已接受 | 经人工 review 后接受。§2.2 补 `fetch` 能力说明：带凭证注入是既有门禁锚点（现见 ADR-002 §2.5/§2.6、ADR-009 §2 决策 7），登录/收割/headless 纳入同一门禁。实现仍按红线 #1 须人工主导。 |
 | 2026-06-19 | 已接受（§2.4 补桌面调研结论） | OHOS WebView 桌面调研产出（`probe_001_research_findings.md`）回写 §2.4：选型确定 `flutter_inappwebview`（OHOS 移植），能力 ①② 文档级确认、③ 待真机；WebView 主路线在 OHOS GO-leaning，最终 go/no-go 待真机 ③。不改决策主体，仅落实 §2.4「结论回写」。 |

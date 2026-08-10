@@ -99,7 +99,7 @@ manifest 增一个**可选**顶层对象 `credentials`，与 `network` 平级。
 3. **引用闭合**：`requests[].credential`（declarative）引用的名必须在 `credentials` 中声明；声明了但**从未被任何请求/scope 使用**的 credential 给 **warning**（非阻断，可能是预声明）。
 4. **type 合法**：`type ∈ {cookie, header}`。
 5. **passthrough 合法性**：`network.allow` 中未被任何 `credentials.scope` 覆盖的条目 = **passthrough**（可达不注入，ADR-009 §2.4），**无需**被 scope 覆盖——这是合法的"声明但不注入"，校验器不得因此报错。
-6. **sideload 约束联动**：`trustTier: sideload` + 任一 `requestGraph: imperative` 在**官方分发路径**已被拒（ADR-002 §2.6 / `C3_sideload_must_declarative`）；其 `credentials` 块在 release 不生效（无 imperative 注入）。dev 侧载-imperative 的 credentials 仅在 debug build 由 dev 测试凭证填充（ADR-002 §2.5），不经 CI 此闸门。
+6. **DEV-Sideload 联动**：DEV 是全能力调试环境，`trustTier: sideload` 可搭配 imperative，credentials 由开发者测试凭证填充但值仍不离核心。ADR-033 提议退役 `C3_sideload_must_declarative`；接受前现有 C3 仍保留。DEPLOY 本地导入不按 sideload 运行，只有 official 门禁全过后 credentials 才可生效。
 
 ### 2.5 版本与兼容
 

@@ -88,7 +88,7 @@ adapter 是**逻辑**，不是数据，也不是底座。它的唯一职责是�
 
 **「越薄越好」是安全口号，不是工程口号（2026-07-23 澄清）。** 这句口号约束的是 adapter 的**能力 / 信任面**，不是它的**代码量 / 功能复杂度**——两者是正交的两个轴，长期被这一句话混为一谈，造成"adapter 少干活才是对的"这一误读。澄清如下：
 
-- **能力面（安全轴，越薄越好，红线 #5）**：不可信 adapter 无凭证、无网络、无副作用、不驱动渲染、不做跨数据源编排。这是承重墙，不可退让——`release` 下侧载 adapter 恒为 declarative 纯解析。
+- **能力面（安全轴，越薄越好，红线 #5）**：在**生产/DEPLOY 边界**，未签名 / 非 official adapter 不得运行；bundle 来自 catalog 还是本地文件不改变裁定，均须通过 official 验签、身份绑定与吊销门禁。**DEV-Sideload 是全能力开发例外**，可调试未签名 declarative / imperative adapter，但凭证值仍不离核心、产物不可分发。DEPLOY official 本地导入与 C3 退役由 ADR-033 提议，接受前不得实现。
 - **功能面（工程轴，越重越好）**：adapter 是**吸收对端混乱的 shim**，是整个系统里功能复杂度**最应该集中**的地方。归一化越彻底、把越多校异脏活关进这个**可热替换、可隔离、可夹具回归**的盒子，上层（UI / 本体 / 核心）就越干净、系统对学校接口变动越有韧性（呼应本文第一目标）。**工程上我们期望 adapter 尽量重，而不是尽量薄。**
 
 分工线由此清晰：**对端原始事实的归一化 + 校本特有派生 → adapter（尽量重）；跨校统一、本体要施加智能的派生语义（算 GPA、排序、聚合、提醒）→ 本体；凭证 / 网络 / 渲染 / 跨源编排 → 核心（能力面，adapter 永不碰）。**
@@ -107,7 +107,7 @@ QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 a
 - **不碰渲染**：QuickJS 只执行逻辑、不渲染任何 UI，因此不引入 WebView 式卡顿。性能瓶颈在网络 I/O，不在脚本执行；卡顿的真正来源是"在 UI 线程上同步跑重活"，解法是把 adapter 丢到 background isolate，与运行时选型无关。
 - **不持凭证**：cookie/token 由可信核心保管，adapter 通过核心暴露的受限方法访问数据（capability-based security / broker 模式）。按信任级别分档（见 §4 与后续 ADR）：
   - **官方签名 adapter** → 能力限定的取数（`core.fetch` 仅在命中 manifest 白名单时注入凭证）；
-  - **侧载/第三方 dev adapter** → 退化为 **declarative 纯解析**：核心负责认证+取数，adapter 只把原始响应解析成标准 schema，无网络、无凭证、无副作用。
+  - **DEV-Sideload adapter** → 仅供开发者本地调试；经强警告与全占用确认后，可使用 declarative / imperative 及当前 DEV 宿主已编入的能力（使用开发者自有测试账号）。未签名执行与 dev 凭证放行路径由编译期 profile 隔离，不进入 DEPLOY；DEPLOY 若提供本地导入，也只汇入 official loader（ADR-002 §2.5、ADR-024、ADR-033）。
 - **凭证零泄露的更强要求**：不仅"不传凭证的值"，更要"不传任何等价于该凭证的东西"——不给带 token 的完整 URL、交给 adapter 的响应里不残留 `Set-Cookie`、不暴露重定向链中的中间 token。
 
 ### 3.4 与传输底座的区分（不要混为一类）
@@ -117,7 +117,7 @@ QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 a
 | | 数据 adapter | 传输底座（Transport） |
 |---|---|---|
 | 形态 | QuickJS 脚本 | 原生模块（Go/C + 用户态网络栈） |
-| 信任 | 官方签名 / dev 侧载 | **仅官方签名**，release 无侧载入口 |
+| 信任 | DEPLOY 仅 official（catalog / 本地导入同门禁）/ DEV 全能力本地侧载 | **仅官方签名**，无 transport 侧载入口 |
 | 能见度 | 看到单个数据源 | 看到**全部**流量 |
 | 故障影响 | 单数据源无数据 | 收敛为"transport 失败 → 降级到只读公开缓存 / 引导系统 VPN" |
 
@@ -188,3 +188,4 @@ QuickJS 是 adapter 的**执行运行时**。选它的直接收益是"**一份 a
 - `adr_030`：用户主动触发的物理副作用 Capability—— **已接受**（2026-07-31；实现仍依赖统一 delivery firewall 与副作用执行闸门）
 - `adr_031`：声明式数据流 Seed（公开常量 + `type: material` 进句柄空间，不放宽 D10）—— **已接受**（2026-08-03；触红线 #1/#5/#6；seed/hydrate/validator 人工主导，AI 不闭环）
 - `adr_032`：`app-tunnel` 的嵌入形态与会话材料托管（承接 ADR-003 §2.6 三个开放问题）—— **提议**（2026-08-06；AI 起草；触红线 #1/#4/#9/#10；transport 最高信任面，**接受前不得合并任何隧道实现代码**，须人工主导 + 安全清单 + 人工审签；事实基础见 `docs/probes/probe_002_atrust_tunnel.md`）
+- `adr_033`：双 profile 本地导入—— **提议（打回修改后待审）**（2026-08-10；DEPLOY 只导入 official 签名且强制在线吊销治理；DEV-Sideload 全能力；提议退役 C3；接受前不得实现）
