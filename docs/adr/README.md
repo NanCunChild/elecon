@@ -33,7 +33,7 @@
 | 021 | Reserved | 未起草 | 不适用 | P3-05 先决定 Money 领域语义 |
 | [022](./adr_022_request_graph.md) | Accepted | 基线已落地 | 已人工复核 | fixture 全编排见 P1-17 |
 | [023](./adr_023_declarative_dataflow.md) | Accepted | MVP 已落地 | 2026-07-24 owner 签收 | [落地清单](../reference/declarative_dataflow_migration.md) |
-| [024](./adr_024_build_profile_trust.md) | Accepted | slice 0–3 已落地（Android 有产物级证据）；slice 4 红线措辞未做 | 待人工签收；非 Android 平台无产物断言 | P0-14、[落地清单](../reference/adr_024_landing.md) |
+| [024](./adr_024_build_profile_trust.md) | Accepted | 当前零入口 slice 0–4 已落地（Android 有证据）；ADR-033 提议重做 gate | 待人工签收；先审 ADR-033 | P0-14、[落地清单](../reference/adr_024_landing.md) |
 | [025](./adr_025_item_link.md) | Accepted | 契约/UI 基线已落地 | 外跳路径增量另审 | ADR 正文 §2.7 |
 | [026](./adr_026_response_masker.md) | Accepted | 部分落地 | 待人工 | P0-09/P0-10、P1-08/P1-09 |
 | [027](./adr_027_url_session_param_stripping.md) | Accepted | 实现已提交 | 待人工 | 纳入 P0-10 firewall 总签收 |
@@ -42,6 +42,6 @@
 | [030](./adr_030_actuator_capabilities.md) | Accepted | 未落地 | 待人工 | P1-12 |
 | [031](./adr_031_dataflow_seed.md) | Accepted | 未落地 | 待人工 | P1-10 |
 | [032](./adr_032_app_tunnel_embedding.md) | Proposed | 禁止实现 | 待人工评审 | 接受前不得合并 transport 实现 |
-| [033](./adr_033_production_sideload.md) | Proposed | 禁止实现 | 待人工评审 | 接受前不得合并生产侧载实现；触发 ADR-023 §2.6 防扩散条款 |
+| [033](./adr_033_production_sideload.md) | Proposed（打回修改） | 禁止实现 | 待人工评审 | DEPLOY 本地 official 导入；DEV-Sideload 全能力；记录三阶段决策过程 |
 
 更新规则：接受或废弃 ADR 时更新 `Decision`；实现 PR 只更新 `Landing`；安全签收必须附人工复核引用，不能以 smoke 通过代替。

