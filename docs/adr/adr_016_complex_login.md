@@ -40,7 +40,7 @@ WebView 为默认主路线；headless **仅在上述两类场景**按需开启�
   - **登录**（触发核心托管 WebView / headless 登录流）；
   - **凭证收割**（从 WebView cookie jar / headless 握手结果收割 session 入核心）；
   - **headless 登录**（直接走协议的登录脚本，含验证码自动求解）。
-- 校验器对敏感能力执行结构与引用规则；ADR-033 提议退役按 `trustTier: sideload` 一刀切拒绝的 C3/同类门禁，使 DEV 可完整预检和调试。DEPLOY 则在 official grant 与能力入口**双重 enforce**（不信任上游已校验，红线 #1 纵深防御）。
+- 校验器对敏感能力执行结构与引用规则；ADR-033（已接受）退役按 `trustTier: sideload` 一刀切拒绝的 C3/同类门禁，使 DEV 可完整预检和调试（待落地）。DEPLOY 则在 official grant 与能力入口**双重 enforce**（不信任上游已校验，红线 #1 纵深防御）。
 - **普通取数 capability** 可用 declarative 或 imperative；两者都可能由 broker 注入凭证，requestGraph 类型不等于“是否带凭证”。本节 official-only 门禁针对的是 imperative 自编排入口以及登录、收割、headless 等敏感能力；DEPLOY 本地来源同门禁，DEV-Sideload 可全能力调试。
 
 **imperative 能力说明（门禁锚点）**：DEPLOY 的 official-only 由宿主验签 grant 与能力入口承担，本地导入不改变它；DEV-Sideload 则是全能力调试环境，可运行 imperative、登录、收割与 headless 登录。两者由编译期 profile 和不可伪造 grant 隔离，不以 declarative C3 代替运行时信任门。

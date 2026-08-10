@@ -1,6 +1,6 @@
 # ADR-024：信任 profile 解绑优化等级——侧载判别器从 `kReleaseMode` 改为自定义编译期 flag
 
-- **状态**：**已接受（Accepted）** · 2026-07-23 owner 评审通过。当前实现仍为 DEPLOY 零本地导入；[ADR-033](./adr_033_production_sideload.md)（Proposed）提议把 DEPLOY gate 改为“仅 official 本地导入，devSideload/未签名路径剔除”，接受前不得改实现。触碰红线 #4，须人工主导 + 安全清单 + ≥1 人工审。
+- **状态**：**已接受（Accepted）** · 2026-07-23 owner 评审通过。当前实现仍为 DEPLOY 零本地导入；[ADR-033](./adr_033_production_sideload.md)（**已接受，尚未落地**）把 DEPLOY gate 改为“仅 official 本地导入，devSideload/未签名路径剔除”，须按其 §5 清单同批落地。触碰红线 #4，须人工主导 + 安全清单 + ≥1 人工审。
 - **日期**：2026-07-23
 - **依赖**：
   - [`adr_002_trust_model.md`](./adr_002_trust_model.md)（§2.5 dev 侧载闸门、§2.6 运行时语义——本文改 §2.5 的**判别器**，不改运行时语义）
@@ -38,12 +38,12 @@ if (kSideloadEnabled) { /* 侧载加载 + dev 凭证注入分支 */ }       // d
 
 | profile | 优化 | adapter 侧载入口 | dev 传输底座 | 分发对象 |
 |---|---|---|---|---|
-| **DEPLOY** | ✔ | **当前剔除；ADR-033 提议编入 official-only 本地导入** | 无 | 终端用户 / 商店提交 |
+| **DEPLOY** | ✔ | **当前剔除；按 ADR-033 将编入 official-only 本地导入（待落地）** | 无 | 终端用户 / 商店提交 |
 | **DEV-Sideload** | ✔ | 编入（未签名 adapter **全能力调试**，警告见 ADR-002 §2.5 + 每 `adapterId` 首次确认） | **仍 debug-only（§2.4）** | 仅开发者，**不可分发** |
 
 > profile 清单**已终定（2026-07-31 owner）：仅 DEPLOY + DEV，不设第三个 `UX` profile**（§5.1）。
 
-> ADR-033 已从“未签名 declarative 生产侧载”打回重写为“DEPLOY official-only 本地导入 + DEV-Sideload 全能力”，现为 Proposed。接受前本 ADR 的 DEPLOY 零入口 gate 仍生效。
+> ADR-033 已从“未签名 declarative 生产侧载”打回重写为“DEPLOY official-only 本地导入 + DEV-Sideload 全能力”，并于 2026-08-10 接受。其落地前，本 ADR 的 DEPLOY 零入口 gate 仍是运行基线。
 
 ### 2.3 判别器换位的四条护栏（`kReleaseMode` 白送、现须自证）
 
@@ -99,7 +99,7 @@ if (kSideloadEnabled) { /* 侧载加载 + dev 凭证注入分支 */ }       // d
 
 ### 5.3 gate 断言检测手段 → **二者并用（符号 grep + 构建元数据标记）**
 
-当前 `tool/check_release_gate.sh` 同时校验：**（a）产物符号**——全部侧载入口已剥离；**（b）构建元数据标记**——必须为 DEPLOY。ADR-033 接受后，（a）须重构为多项断言：DEV/未签名 grant 与执行路径为零；DEPLOY 本地入口存在且只汇入 official verifier + 在线治理门。单一哨兵不足以证明此调用关系，具体机械证明是 ADR-033 待审问题。
+当前 `tool/check_release_gate.sh` 同时校验：**（a）产物符号**——全部侧载入口已剥离；**（b）构建元数据标记**——必须为 DEPLOY。ADR-033 落地时，（a）须重构为多项断言：DEV/未签名 grant 与执行路径为零；DEPLOY 本地入口存在且只汇入 official verifier + 在线治理门。单一哨兵不足以证明此调用关系——如何机械证明该调用关系仍是 ADR-033 §6 的开放问题，须在新 gate 落地前有答案。
 
 ### 5.4 水印形态 → **启动页警告**
 

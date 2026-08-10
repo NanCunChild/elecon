@@ -35,7 +35,7 @@ DPLA §3.3.2 允许把解释型代码下载到 App，**只要同时满足**：
 | 条款 | elecon 的满足方式 | 依据 |
 |---|---|---|
 | **(a) 不改变主要用途** | 能力集**固定在 App 内**：`contract/capability/registry.json` 枚举全部 capability（grades.list / schedule.week / card.balance / library.loans / notice.list / generic.section），"新增 id 或改语义须走 ADR"。**adapter 只能产出这些已知 schema、渲染由本体完成**——adapter 不引入功能，只把"新数据源"接到"App 内已存在的功能"上。SDUI 保持声明式、受限（ADR-000 §5.1 已主动放弃图灵完备 UI DSL）。 | ADR-000 §2.3/§5.1；`contract/capability/registry.json` |
-| **(b) 非代码市场** | **当前绑定决策不变：iOS DEPLOY 无本地导入入口，仅 official adapter 经官方 catalog 分发。** ADR-033 提议的 iOS official 本地导入尚不足以自证“非市场”，须先完成人工/Apple 合规复核；本文接受修订前不得在 iOS 实现。 | 红线 #4/#5；ADR-002 §2.1/§2.5；ADR-033（Proposed） |
+| **(b) 非代码市场** | **当前绑定决策不变：iOS DEPLOY 无本地导入入口，仅 official adapter 经官方 catalog 分发。** ADR-033 虽已接受，但其 iOS official 本地导入尚不足以自证“非市场”——须先完成人工/Apple 合规复核并正式修订本文，方可在 iOS 实现（ADR-033 §6 开放问题 1）。 | 红线 #4/#5；ADR-002 §2.1/§2.5；ADR-033（已接受，iOS 部分待合规复核） |
 | **(c) 不绕过系统安全** | QuickJS 是**纯解释器、无 JIT**（不触 iOS 的 JIT / W^X 禁令）；在 App 沙箱内的 background isolate 执行；wasm/ffi 线性内存内运行，无宿主引用逃逸。 | ADR-008 §2、§3.6 |
 
 **(a) 的关键护栏**：真正的"新功能 / 新 capability / 新卡片类型"**只能随 App 更新发版**，经 `contract/` 改动 + ADR；**adapter 热推只在既有能力集内更新"数据源映射"**。这条把 ADR-000 §2.4"推 adapter 不发版"严格约束在"数据/配置"范畴内，使其落在 §3.3.2(a) 安全区，而非"下载代码改变功能"的雷区。
@@ -47,7 +47,7 @@ DPLA §3.3.2 允许把解释型代码下载到 App，**只要同时满足**：
 1. **仅 declarative requestGraph 上架。** imperative（ADR-009，带凭证的 `ctx.fetch`）**推迟到后续版本**——避免首版把 2.5.2 与隐私（指南 5.1.1 数据收集申报）耦合在一起。
 2. **bundle 内预置一组基线 adapter。** 让 App **自包含、可离线演示核心功能**；下载仅用于"更新 / 新增数据源"。审核员只测提交的 build——若功能依赖联网拉 adapter 才出现，易被判"功能依赖下载代码"。
 3. **iOS 不带 App 内隧道。** 传输默认 = **校内直连 + 引导系统 VPN**（`NEVPNManager` / on-demand），落实 ADR-000 §5.2 已写的降级路径。**不在 iOS release 编入任何 App 内私有隧道目标**（见 §2.3）。
-4. **iOS DEPLOY build 仅运行 official 签名 adapter、物理无本地导入入口。** ADR-033 的跨平台 local-import 提议在完成人工/Apple 合规复核并正式修订本文前，不适用于 iOS。
+4. **iOS DEPLOY build 仅运行 official 签名 adapter、物理无本地导入入口。** ADR-033 已接受，但其跨平台 local-import 在完成人工/Apple 合规复核并正式修订本文前，**不适用于 iOS**——ADR 的接受不替代平台合规结论。
 
 ### 2.3 相邻的更高风险，明确立场
 

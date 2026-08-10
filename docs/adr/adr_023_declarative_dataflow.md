@@ -127,7 +127,7 @@ auth_A        auth_B
 
 **决策：`devSideload` 档的声明式 capability 获得与 official 完全相同的 `bind`/`compute`/`inject` 能力面。**
 
-**依据一（结构性）**：`devSideload` 仅 DEV profile 可构造，且 DEV 本就定位为全能力 adapter 调试环境，可使用优化 build。ADR-033 提议的 DEPLOY 本地导入只铸造 official grant，未签名 `devSideload` 仍不进入出货运行路径。故给 DEV dataflow 能力不扩大终端用户面，只影响开发者本机，由 ADR-002 §2.5 的警告与确认承接。
+**依据一（结构性）**：`devSideload` 仅 DEV profile 可构造，且 DEV 本就定位为全能力 adapter 调试环境，可使用优化 build。ADR-033 的 DEPLOY 本地导入只铸造 official grant，未签名 `devSideload` 仍不进入出货运行路径。故给 DEV dataflow 能力不扩大终端用户面，只影响开发者本机，由 ADR-002 §2.5 的警告与确认承接。
 
 **依据二（供给侧）**：official adapter 由社区先写出、再经审查铸造。若 sideload 不能跑 `compute`，社区开发者**无法在本地开发与调试声明式 dataflow adapter**，等于卡死 official 的上游来源。
 

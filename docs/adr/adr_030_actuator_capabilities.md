@@ -107,7 +107,7 @@ UI 一律「操作 → 核验 → 反映」，不做「先反映目标态再对�
 
 ### 8.4 official-only 的真实边界：DEPLOY official-only、DEV 侧载等同 official
 
-- **DEPLOY**：不存在未签名 / 非 official 运行路径，`climate.command` 仅可由 official adapter 声明和执行；ADR-033 提议的本地导入也须先铸造 official grant。但 official-only
+- **DEPLOY**：不存在未签名 / 非 official 运行路径，`climate.command` 仅可由 official adapter 声明和执行；ADR-033 的本地导入也须先铸造 official grant。但 official-only
   仍不能替代 action 自身的安全语义：一个有缺陷的 official declarative requestGraph 仍可能构造到设备端点的请求，
   因此 mutation 的真实护栏是供应链信任之外的三层叠加：
   1. **凭证托管 fail-closed**（§4）：`x-access-token` 等授权凭证只经 official command 的独立 action 入口注入；

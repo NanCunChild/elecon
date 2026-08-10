@@ -59,7 +59,7 @@ ADR-001 §6 把 adapter 的调用分成两种**模式**：`fetch`（adapter 用 
 - **对 official（推荐，非分级）**：official adapter 可自由选 `declarative` 或 `imperative`，**推荐优先声明式**——可审计 + 受信代码面更小。**仅当请求图太动态**（数据依赖链 / 未知页数分页 / 挑战应答，即 §2.5 的「离奇请求」）才用 `imperative`。选 `imperative` **不降低** official 的信任（它已签名/审阅），只是把审查成本从「读一张静态 `requests[]` 表」变成「读编排代码」。这是**工程推荐**，落在 `docs/rules/`，不是硬闸门。
 
 - **对 DEV-Sideload（全能力开发语义）**：`trustTier: sideload` 表示未签名 DEV 素材，不限制 requestGraph；每个 capability 可选 `declarative` 或 `imperative`，并可调试当前 DEV 宿主已编入的敏感能力。强警告、全占用确认、独立应用身份和不可分发要求不变，凭证值仍不离核心。
-- **C3 退役提议**：ADR-033 提议删除 `C3_sideload_must_declarative`，因为它阻断 imperative adapter 的贡献预检与本地调试。validator 继续执行 requestGraph 结构、白名单、凭证引用和能力专属规则。**ADR-033 接受前现有 C3 仍生效，不得提前删实现。**
+- **C3 退役**：ADR-033（已接受）决定删除 `C3_sideload_must_declarative`，因为它阻断 imperative adapter 的贡献预检与本地调试。validator 继续执行 requestGraph 结构、白名单、凭证引用和能力专属规则。**该退役尚未落地：现有 C3 仍在 validator 里生效，删除须与 DEPLOY official-only 负例同批提交。**
 - **DEPLOY 本地导入不使用 sideload 档**：本地 bundle 只有通过 official 验签、身份绑定、在线吊销治理和兼容门后才可铸造 official grant；未签名 / 非 official 无运行路径。
 - **ADR-002 §2.6 的 `ctx.fetch` 档位闸门**：DEPLOY 保证不变（非 official 无加载路径，宿主边界仍纵深拒绝，永不触达凭证注入），仅**触发条件**从「fetch 模式」改为「capability 的 requestGraph=imperative」。DEV profile 的本地侧载例外由编译期隔离；broker 凭证注入机制（ADR-009）**一字不改**。
 

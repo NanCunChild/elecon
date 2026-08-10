@@ -17,7 +17,7 @@ ADR-000 §2.2 把"签名校验、吊销、dev 侧载闸门"定为可信核心的
 红线约束（承重墙，不可违背）：
 - #1 凭证永不离核心 → 只有最高信任档才有资格触发凭证注入。
 - #4 传输底座仅官方签名加载且无侧载；DEPLOY adapter 无论字节来源都只运行 official；dev 传输仅 debug build。
-- #5 DEPLOY 不运行未签名 / 非 official adapter；DEV-Sideload 是全能力调试例外，凭证值仍不离核心，见 §2.5。DEPLOY 本地 official 导入与 C3 退役由 ADR-033 提议，接受前不得实现。
+- #5 DEPLOY 不运行未签名 / 非 official adapter；DEV-Sideload 是全能力调试例外，凭证值仍不离核心，见 §2.5。DEPLOY 本地 official 导入与 C3 退役由 ADR-033 决定（已接受，尚未落地）。
 
 ---
 
@@ -34,7 +34,7 @@ ADR-000 §2.2 把"签名校验、吊销、dev 侧载闸门"定为可信核心的
 
 | 档 | 建立方式 | 分发 | 能力上限（DEPLOY） | 能力上限（DEV profile） | 执行落点 |
 |---|---|---|---|---|---|
-| **official** | 一方编写或深度审查 + 项目签名 | DEPLOY（catalog；ADR-033 提议增加本地文件来源） | **imperative / declarative requestGraph**、当前正式宿主能力 | 同 DEPLOY | client-direct / campus-relay |
+| **official** | 一方编写或深度审查 + 项目签名 | DEPLOY（catalog；ADR-033 增加本地文件来源，待落地） | **imperative / declarative requestGraph**、当前正式宿主能力 | 同 DEPLOY | client-direct / campus-relay |
 | **sideload / devSideload** | 开发者本地加载，**无签名** | **仅 DEV-Sideload，不可分发** | —（DEPLOY 不运行此档） | **全能力调试**：imperative / declarative、当前 DEV 宿主已编入能力；须强警告 + 全占用确认 | DEV 专用 |
 
 **DEPLOY 下凭证注入（imperative requestGraph；旧称 fetch 模式，见 ADR-022）是 official 独占**——把最高风险面锁死在项目授权代码上。**DEV-Sideload 例外**：无签名 adapter 可调试 imperative 及当前 DEV 宿主能力、可触发开发者测试凭证注入；以多重警告兜底，未签名 grant 与 dev 凭证放行路径编译期不进入 DEPLOY。ADR-033 的 DEPLOY 本地导入即使落地，也只铸造 official grant，不改变此不变量。
@@ -83,23 +83,23 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 - **时效与离线**：吊销清单自带新鲜度/TTL；拉取失败时回退到**上一份已验签的清单**（绝不把"拉不到"当成"全部放行"）。
 - **首次启动 / 全新安装的 bootstrap（消解 fail-closed 的两难）。** "回退到上一份已验签清单"在全新安装、**尚无 last-good** 时无依据，会陷入「fail-open 不安全 / fail-closed 离线即不可用」两难。对策：**App bundle 内预置一份初始的已签名吊销清单**（随发版更新），作为 last-good 的初值——新装即有一份可信基线，离线也能 fail-closed 而不瘫。这与 [`adr_010`](./adr_010_ios_appstore.md) §2.2「bundle 预置基线 adapter」同源：让 App 在零网络下即自包含可用。预置清单只是**下限**，联网后按 TTL 拉取更新。
 
-### 2.5 本地导入与 DEV-Sideload 闸门（红线 #4；ADR-033 Proposed 修订）
+### 2.5 本地导入与 DEV-Sideload 闸门（红线 #4；ADR-033 修订，已接受待落地）
 
 - **渠道不等于信任档**：DEPLOY 本地文件若通过 official 验签与治理门，仍按 official 运行；`devSideload` 只在 DEV profile 可铸造。
-- **当前生效基线**：ADR-033 接受前，ADR-024 的 DEPLOY 零本地导入实现与 gate 保持不变。
-- **提议后的 DEPLOY**：设置内保留低频本地导入，只接受 official 签名；每次新增/更新必须在线刷新并验证 catalog/revocation，网络失败、陈旧、回滚、吊销或身份不符均拒绝。入口低可达性不替代安全门禁。
+- **当前运行基线**：ADR-033 已接受但尚未落地，故 ADR-024 的 DEPLOY 零本地导入实现与 gate 目前仍原样生效——这是实现进度，不是 ADR 状态。
+- **落地后的 DEPLOY**：设置内保留低频本地导入，只接受 official 签名；每次新增/更新必须在线刷新并验证 catalog/revocation，网络失败、陈旧、回滚、吊销或身份不符均拒绝。入口低可达性不替代安全门禁。
 - dev 传输底座同样**仅 debug build**存在（红线 #4）。
 - **DEV-Sideload 全部允许**：无签名 adapter 可用 declarative / imperative，并调试登录、收割、ssoMint、dataflow、action 等当前 DEV 宿主已编入能力；可触发开发者测试凭证注入，但凭证值仍不离核心。DEV 可以是优化的 `--release` build，必须使用独立 applicationId、启动警告且不可分发。**风险以多重警告兜底，不以 declarative 阉割兜底**：
   - **DEV 启动即提示**：进入 DEV profile 时持久提示「当前为开发版；未审查 adapter 可驱动核心使用开发者测试凭证、读取脱敏后的私密响应并在声明白名单内发请求」。不得表述成 adapter 能看到凭证值；红线 #1 在 DEV 仍成立。
   - **侧载 imperative adapter 时全占用确认**：加载含 `requestGraph: imperative` 的无签名 adapter 前，弹**全占用模态框**逐条列明风险（该 adapter 未经签名/审查、将获得凭证注入能力、可读取私密响应），用户须显式确认方可继续。
   - 上述警告 UI 与"允许注入"分支均挂在编译期 `kSideloadEnabled` 下，**DEPLOY 不存在**。
-- **DEPLOY 维持信任约束不变**：任何未签名 / 非 official adapter 无运行路径。ADR-033 只提议增加 official bundle 的本地字节来源，不增加生产低信任档。
+- **DEPLOY 维持信任约束不变**：任何未签名 / 非 official adapter 无运行路径。ADR-033 只增加 official bundle 的本地字节来源，不增加生产低信任档。
 
 ### 2.6 纵深防御：静态（tools）+ 运行时（core）
 
 | 闸门 | 位置 | 职责 |
 |---|---|---|
-| 静态 | `tools/` 校验器（CI） | 校验 requestGraph 结构、白名单、凭证引用、capability registry 与能力专属规则。当前 C3 仍拒 `sideload + imperative`；ADR-033 提议退役 C3，使 DEV 素材可完整预检，接受前不得先改实现。 |
+| 静态 | `tools/` 校验器（CI） | 校验 requestGraph 结构、白名单、凭证引用、capability registry 与能力专属规则。当前 C3 仍拒 `sideload + imperative`；ADR-033 已决定退役 C3 使 DEV 素材可完整预检，落地须与 DEPLOY official-only 负例同批，不得只删断言。 |
 | 运行时 | 可信核心 | DEPLOY 无论 catalog / 本地来源都只接受 official 验签 + 身份绑定 + 吊销 + stdlib 门全过的 bundle；本地新增/更新额外要求在线新鲜治理材料。DEV-Sideload 可铸造未签名开发 context，但该路径不进入 DEPLOY。 |
 
 **DEPLOY 中 `ctx.fetch` 的形态（2026-06-13 调整；触发条件 ADR-022 改为 imperative requestGraph）**：`ctx.fetch` 在 imperative 入口对所有档**一律存在**——目的是让错误送入的非 official context 拿到清晰的「权限不足」错误，而不是晦涩的 `TypeError`。但这不削弱 capability-based 保证：
@@ -133,8 +133,8 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 - **离线硬件签名工作流**（取代原 OIDC→KMS 管线）：CI/审查沙箱只产出 **unsigned bundle + digest**；维护者本地重算 digest 确认一致 → YubiKey PIN+触碰签 → 提交 `signature.json` + 更新发布台账。签名不在任何自动化上。实现注意：须取**裸 64 字节 Ed25519 签名**（PIV/PKCS#11，非 OpenPGP packet 封装）以对齐现有验签——`YubiKeySignBackend` 与 `YubiKeyPkcs11Signer` 两处均有 64B 守卫（纵深防御）。**「本地重算 digest 比对」是 §3 风险 2(e)「所见非所签」的唯一防线，不可省。**
 - 可信核心：DEPLOY 加载前验签（active pin）+ 吊销 + 签名裁定档位 + `ctx.fetch` 档位校验（非 official → 结构化权限错误、永不触达注入）；DEV-Sideload 的显式放行分支单独隔离。客户端与服务端核心共享裁定语义。
 - **多公钥预埋 + 分批启用**：active/dormant 公钥集合；晋升（应对丢失）/ 停用（应对泄漏）方向不对称（§2.3）；**晋升与集合增删一律随 App 发版**（不做热推启用声明）。
-- `tools/` 校验器：补 requestGraph 与能力专属静态检查。当前保留 `sideload + imperative` C3；ADR-033 提议退役，接受时须同批补 DEPLOY official-only 负例，不得只删断言。
-- 侧载闸门：ADR-033 接受前仍确保全部本地导入入口从 DEPLOY 剔除；接受后改为确保 **devSideload grant、未签名执行与 DEV 凭证放行路径**从 DEPLOY 剔除，同时 DEPLOY 本地入口只汇入 official verifier + 在线治理门。DEV 形态为独立应用身份 + 启动持久警告 + 全占用确认。🔒 安全敏感，人工主导。
+- `tools/` 校验器：补 requestGraph 与能力专属静态检查。当前保留 `sideload + imperative` C3；ADR-033 已决定退役，落地时须同批补 DEPLOY official-only 负例，不得只删断言。
+- 侧载闸门：ADR-033 落地前仍确保全部本地导入入口从 DEPLOY 剔除；落地后改为确保 **devSideload grant、未签名执行与 DEV 凭证放行路径**从 DEPLOY 剔除，同时 DEPLOY 本地入口只汇入 official verifier + 在线治理门。DEV 形态为独立应用身份 + 启动持久警告 + 全占用确认。🔒 安全敏感，人工主导。
 - 吊销分发：公网哑服务托管签名吊销清单；核心拉取/验签/回退策略。
 - 测试：验签正/反例、谎报档位提权反例、**DEPLOY** `ctx.fetch` 非 official 拒绝、**DEV-Sideload** 未签名 imperative 放行但凭证值不可见、公钥晋升/停用、吊销与规范化；安全敏感测试人工编写或实质审阅。
 - 契约：`trustTier` 枚举 `community` 清理**已于 2026-06-14 修订落地**（`contract/manifest.schema.json` + ADR-001 §5，红线 #6，向后兼容见 §2.1）。manifest 签名字段如需新增另起独立 ADR。

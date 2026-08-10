@@ -38,7 +38,7 @@ ADR-005/008 已落地 **declarative requestGraph**（旧称 parser 模式）：�
 
 6. **HTTP 错误响应（含 401）透传给 adapter，imperative adapter 自行处理。** broker 完成脱敏后，**原始 HTTP status code**（包括 401/403/5xx）直接回交 adapter——adapter 可据此决定重试、回退、或返回错误。broker **不拦截 401 做自动重登**（那是 ADR-012 §2.5 生命周期的职责，由核心在 adapter 执行结束后按需触发，不在单次 `ctx.fetch` 调用内联）。declarative 的 401 处理待定（核心代取时遇到 401 的策略由 declarative 设计另行定义）。
 
-7. **DEPLOY 仅运行 official 签名 adapter。** official 可跑 imperative / declarative；catalog 与本地文件只是不可信字节来源，均须汇入同一 official verifier。信任档由**核心验签裁定**，不信 manifest 自报；非 official 无 DEPLOY 运行路径。**DEV-Sideload 全能力例外**可调试未签名 imperative 并使用开发者测试凭证；ADR-033 提议退役 declarative C3，接受前不得先改实现。
+7. **DEPLOY 仅运行 official 签名 adapter。** official 可跑 imperative / declarative；catalog 与本地文件只是不可信字节来源，均须汇入同一 official verifier。信任档由**核心验签裁定**，不信 manifest 自报；非 official 无 DEPLOY 运行路径。**DEV-Sideload 全能力例外**可调试未签名 imperative 并使用开发者测试凭证；ADR-033（已接受）决定退役 declarative C3，落地须与 DEPLOY official-only 负例同批。
 
 8. **imperative handler 是异步的（返回 Promise）**，与 declarative 的"必须同步"相反。运行时需 pump job queue 并 await。限额（**数值为临时占位，2026-06-14：尚无实测依据，待真实多步握手 adapter 上线后校准——多步反爬流程可能吃掉请求数预算，需实践验证 20 是否够用**）：墙钟/内存对齐 `DEFAULT_LIMITS`；**单请求超时 ~10s**；**累计网络超时 ~30s**；**单次执行最大请求数 ~20**（防 DDoS / 资源耗尽）。**单次响应 body 大小设宿主侧独立上限**（rev-4 修订，见 §2.9——**推翻 rev-2 的"不设独立上限、靠 QuickJS OOM 兜底"**：宿主在字节进 QuickJS 之前已把整个 body 读进宿主堆，OOM 覆盖不到宿主 transport 阶段）。最终数值随实测在落地清单的运行时 PR 内固定。**校准承诺**：首个 imperative adapter 上线前，须以真实多步握手流程（至少覆盖一个含反爬挑战的学校）实测校准上述占位值（含 §2.9 body 上限），并更新本节为正式数值。
 

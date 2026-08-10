@@ -14,7 +14,7 @@ ADR-000 把"标准数据 schema + Capability Manifest"定为整个项目最重�
 - **schema** 是 adapter 与 UI 之间唯一的耦合面：adapter 负责"某校混乱格式 → 标准 schema"，UI 只认标准 schema、与学校无关。
 - **manifest** 是 adapter 对核心的声明：声明能提供什么能力、需要访问哪些域名——核心据此做凭证注入与撮合。
 
-ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端与服务端双跑（两端均为 QuickJS——服务端走 QuickJS-wasm，见 [`adr_005`](./adr_005_runtime.md)）；②按宿主裁定信任，DEPLOY 仅运行 official，DEV-Sideload 可调试未签名全能力 adapter；③数据用 TTL/新鲜度、代码用版本号。本文把这些从"原则"变成"可校验的规范"。C3 退役与 DEPLOY 本地 official 导入见 ADR-033（Proposed）。
+ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端与服务端双跑（两端均为 QuickJS——服务端走 QuickJS-wasm，见 [`adr_005`](./adr_005_runtime.md)）；②按宿主裁定信任，DEPLOY 仅运行 official，DEV-Sideload 可调试未签名全能力 adapter；③数据用 TTL/新鲜度、代码用版本号。本文把这些从"原则"变成"可校验的规范"。C3 退役与 DEPLOY 本地 official 导入见 ADR-033（已接受，尚未落地）。
 
 ---
 
@@ -192,8 +192,8 @@ manifest 是 adapter 对核心的契约，JSON 格式，供宿主与 `tools/` �
 ### 5.2 信任档与 requestGraph 约束
 
 - `trustTier: official` → 每 capability 可用 `requestGraph: imperative` 和/或 `declarative`（DEPLOY 下凭证注入资格仍由宿主验签裁定的 trust tier 决定；ADR-022）。
-- `trustTier: sideload` → 表示 DEV 未签名素材，不是 DEPLOY 运行档。**DEV-Sideload 全部允许**：每个 capability 可选 `declarative` 或 `imperative`，并可调试当前 DEV 宿主已编入的敏感能力；凭证值仍不离核心。ADR-033 提议退役 `C3_sideload_must_declarative`，改由 requestGraph 结构、白名单、凭证引用与能力专属规则逐项校验。**ADR-033 接受前，现有 C3 实现仍保留，不得先改 validator。**
-- DEPLOY 本地导入的 bundle 不按 `sideload` 档运行：只有 official 验签、身份绑定、在线吊销治理与兼容门全过后，才能铸造既有 official grant（ADR-033 Proposed）。
+- `trustTier: sideload` → 表示 DEV 未签名素材，不是 DEPLOY 运行档。**DEV-Sideload 全部允许**：每个 capability 可选 `declarative` 或 `imperative`，并可调试当前 DEV 宿主已编入的敏感能力；凭证值仍不离核心。ADR-033（已接受）决定退役 `C3_sideload_must_declarative`，改由 requestGraph 结构、白名单、凭证引用与能力专属规则逐项校验。**该退役尚未落地：现有 C3 实现仍在 validator 内，删除须与 DEPLOY official-only 负例同批。**
+- DEPLOY 本地导入的 bundle 不按 `sideload` 档运行：只有 official 验签、身份绑定、在线吊销治理与兼容门全过后，才能铸造既有 official grant（ADR-033，已接受待落地）。
 - **`community` 档已移除**（ADR-002 2026-06-14 修订）：信任模型只剩 official + sideload，`trustTier` 枚举不再含 `community`（见 [`adr_002`](./adr_002_trust_model.md) §2.1）。
 - **无 adapter 级 `mode`**：取数图声明性 per-capability，见 §6 / [`adr_022`](./adr_022_request_graph.md)。
 
@@ -317,7 +317,7 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
 - **manifest 版本**：`manifestVersion` 独立演进；宿主拒绝不认识的大版本。
 - **adapter 版本**：参与 ADR-000 的 `max(本地, 服务端)` 解析，与数据新鲜度无关。
 - **契约变更须走 ADR**：新增/修改 capability id、新增域 schema、破坏性变更，均属慢车道，默认保持向后兼容（呼应 AGENTS.md 红线 #6 与 feature-workflow）。
-- **`tools/` 强制校验**：manifest 合法性、requestGraph 结构、白名单越界、凭证引用、capability id、能力专属规则与双端夹具一致性均做成 CI 闸门。当前另有 `C3_sideload_must_declarative`；ADR-033 提议退役 C3 以支持 DEV-Sideload 全能力调试，接受前不得先改实现。
+- **`tools/` 强制校验**：manifest 合法性、requestGraph 结构、白名单越界、凭证引用、capability id、能力专属规则与双端夹具一致性均做成 CI 闸门。当前另有 `C3_sideload_must_declarative`；ADR-033 已决定退役 C3 以支持 DEV-Sideload 全能力调试，落地须与负例同批。
 
 ### 8.1 变更记录（dated）
 
@@ -358,7 +358,7 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
 
 **收益**
 - adapter 与 UI 彻底解耦，UI 不含任何学校逻辑；新学校只写 adapter + manifest。
-- 网络白名单 + per-capability `requestGraph` 把 adapter 的能力声明变成机制约束。DEV-Sideload 需要完整调试 imperative，故 ADR-033 提议退役按 trustTier 一刀切的 declarative C3；DEPLOY 则在更外层只铸造 official grant，本地导入不产生低信任运行档。
+- 网络白名单 + per-capability `requestGraph` 把 adapter 的能力声明变成机制约束。DEV-Sideload 需要完整调试 imperative，故 ADR-033 已决定退役按 trustTier 一刀切的 declarative C3；DEPLOY 则在更外层只铸造 official grant，本地导入不产生低信任运行档。
 - 统一 envelope/错误模型让同步层、缓存、降级有一致依据。
 
 **代价 / 已知约束**
