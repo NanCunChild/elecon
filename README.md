@@ -98,7 +98,7 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 4. 在 `fixtures/` 放抓包样本，写归一化回归测试。
 5. 在该 adapter 的 `README.md` 记录：该校属哪一档（UA 门禁 / CAS 逃生口 / openid 唯一身份 / 微信小程序）及已知坑。
 
-**信任级别：** 官方签名 adapter 可用 imperative / declarative `requestGraph`；第三方/侧载 dev adapter 在客户端强制 **declarative**（无网络、无凭证、纯解析），且仅在 debug build / 显式开发者模式下可加载，release 包从编译期拒绝。
+**信任级别：** DEPLOY 只运行通过 official 验签与吊销门禁的 adapter；ADR-033 提议在设置中保留本地 official bundle 导入，但它只改变字节来源，不产生低信任运行档。DEV-Sideload 可本地加载未签名 adapter，declarative / imperative 与当前 DEV 宿主能力全部可调试；DEV 可使用优化 build，但不可分发。ADR-033 同时提议退役 `C3_sideload_must_declarative`。
 
 ---
 
@@ -106,7 +106,7 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 
 - **客户端直连为基线**：私密、认证相关的数据走客户端直连或校内授权中继，**不经公网服务器**。
 - **凭证零泄露给插件**：cookie/token 只存于可信核心，adapter 通过受限方法访问数据，拿不到凭证的值，也拿不到任何等价于凭证的东西（带 token 的 URL、`Set-Cookie`、重定向中间 token 等均不暴露）。
-- **传输底座最高门槛**：能看到全部流量的传输底座仅接受官方签名，release 无侧载入口。
+- **传输底座最高门槛**：能看到全部流量的传输底座仅接受官方签名，DEPLOY/DEV 均无 transport 侧载；dev transport 仍仅存在于 debug build。adapter 本地导入不放宽 transport。
 - **显式知情同意**：启用能看到全部流量的隧道时，提供独立且更重的告知与授权流。
 
 > 涉及第三方协议复刻（如校园 VPN）的接入，需先完成"许可证 + 协议模式 + iOS 可行性"评估，并以可热替换的传输底座形式接入，不焊死在客户端。
