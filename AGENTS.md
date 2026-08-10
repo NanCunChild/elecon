@@ -15,8 +15,8 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 1. **凭证永不离开核心。** cookie / token 只存于可信核心；adapter、UI、公网服务端永远拿不到凭证的值，也拿不到任何等价物（带 token 的 URL、`Set-Cookie`、重定向中间 token）。
 2. **公网服务端零凭证、无状态。** 不得为公网哑服务（`server/src/public`）添加任何凭证存储或私密数据持久化。
 3. **私密数据不经公网。** 私密 / 认证数据只走客户端直连或校内授权中继（`server/src/campus`）。
-4. **传输底座仅官方签名加载。** release 包内**无侧载入口**；dev 传输只在 debug build 存在。
-5. **adapter 能力面越薄越好（安全口号，非工程口号）。**「越薄」约束的是**能力 / 信任面**，不是功能复杂度——**工程上 adapter 是吸收对端混乱的 shim，功能上越重越好**（归一化、校本派生尽量压进这层；分工线与「两个轴」见 [`adr_000`](docs/adr/adr_000_abstract.md) §3.1）。能力面的硬约束不变：**release 下**第三方 / 侧载 adapter 的**每个 capability 必须是 declarative requestGraph**（无网络、无凭证、无副作用）。**dev/debug build 例外**（仿红线 #4）：可加载无签名 imperative adapter 用于本地开发，须经强警告 + 全占用确认，且该侧载-imperative 路径**编译期从 release 剔除**，永不进发版二进制。详见 [`adr_002`](docs/adr/adr_002_trust_model.md) §2.5 / [`adr_022`](docs/adr/adr_022_request_graph.md)。
+4. **传输底座仅官方签名加载。** DEPLOY 无论 bundle 来自 catalog 还是本地文件，**都只运行通过 official 验签、身份绑定与吊销门禁的 adapter**；不得存在未签名 / 非 official 的加载路径。DEV-Sideload 可本地加载未签名 adapter、可使用优化 build，但不可分发。dev 传输仍只在 debug build 存在。DEPLOY 本地 official 导入提议见 ADR-033；其接受前不得实现。
+5. **adapter 能力面越薄越好（安全口号，非工程口号）。**「越薄」约束的是**能力 / 信任面**，不是功能复杂度——**工程上 adapter 是吸收对端混乱的 shim，功能上越重越好**（归一化、校本派生尽量压进这层；分工线与「两个轴」见 [`adr_000`](docs/adr/adr_000_abstract.md) §3.1）。能力面的硬约束不变：**DEPLOY 永不运行未签名 / 非 official adapter**；本地导入不是低信任档，导入成功后仍须铸造既有 official grant。**DEV-Sideload 是全能力开发环境**：可加载未签名 declarative / imperative adapter，并调试当前 DEV 宿主已编入的能力；须经强警告 + 全占用确认，凭证值仍不离核心。`C3_sideload_must_declarative` 与 DEPLOY official 本地导入的变更由 [`adr_033`](docs/adr/adr_033_production_sideload.md) 提议，接受前不得改实现。详见 [`adr_002`](docs/adr/adr_002_trust_model.md) §2.5 / [`adr_022`](docs/adr/adr_022_request_graph.md)。
 6. **契约即承重墙。** 改动 `contract/`（schema、manifest）必须先有 ADR，且默认保持向后兼容。
 7. **adapter 不在 UI 线程同步执行。** 一律背景 isolate，UI 永远异步。
 8. **不提交真实学生数据。** 测试夹具必须脱敏。
