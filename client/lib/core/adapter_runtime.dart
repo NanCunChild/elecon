@@ -404,7 +404,13 @@ Future<dynamic> _runImperativeAdapter({
     );
   }
 
-  final theJar = jar ?? CookieJar();
+  // 单次执行的 cookie 时钟 = 执行 [nowMs]（冻结），与 TS 侧 `sandbox.ts` 的 execNowMs
+  // 逐字对齐：捕获、发送选择、收割三处共用同一时刻，避免「选 cookie 时未过期、收割时
+  // 已过期」这类执行内自相矛盾（P1-06）。此前这里用 `CookieJar()` 的活钟
+  // （`DateTime.now()`），只有 decideHarvest 吃冻结钟——那条不变量在客户端并不成立，
+  // 且属 golden 抓不到的分叉（golden 只钉纯函数，有态部分各端自测）。
+  // 调用方显式注入 jar 时尊重其自带时钟（测试用的确定化seam）。
+  final theJar = jar ?? CookieJar(() => nowMs);
   final deps = FetchProxyDeps(
     view: view,
     resolver: resolver,

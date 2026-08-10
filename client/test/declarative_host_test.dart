@@ -189,5 +189,45 @@ void main() {
       expect(transport.seen.single.url, 'https://h.edu/api?term=2024');
       expect(out['raw']?['body'], '{"ok":true}');
     });
+
+    // P1-06 双端对齐：缺省 jar 的时钟必须是**执行冻结钟**（nowMs），与 TS 侧
+    // `sandbox.ts` 的 execNowMs 同构；此前用 `DateTime.now()` 活钟，只有 decideHarvest
+    // 吃冻结钟，「捕获/选择/收割共用同一时刻」在客户端并不成立。
+    //
+    // 本例靠「Expires 落在 nowMs 之后、但落在真实墙钟之前」来判别两种钟：
+    //   - 冻结钟（nowMs=2020-09）⟹ 2021-12 的 Expires 尚未到点 ⟹ cookie 存活、随第二跳发出；
+    //   - 墙钟（真实 2026+）⟹ 2021-12 已过期 ⟹ captureSetCookie 按删除语义丢弃 ⟹ 第二跳无 Cookie。
+    // 故这条断言在退回活钟时必然失败——不是一条永远为真的空断言。
+    test('缺省 jar 用执行冻结钟（nowMs），非墙钟（P1-06 双端对齐）', () async {
+      const view = BrokerManifestView(allow: ['https://h.edu/*']);
+      final transport = FakeTransport([
+        const TransportResponse(
+          status: 200,
+          setCookie: ['sid=alive; Expires=Wed, 01 Dec 2021 00:00:00 GMT'],
+          body: 'first',
+        ),
+        const TransportResponse(status: 200, body: 'second'),
+      ]);
+      await fulfillDeclarativeRequests(
+        requests: const [
+          DeclarativeRequestDecl(
+            key: 'a',
+            method: 'GET',
+            url: 'https://h.edu/1',
+          ),
+          DeclarativeRequestDecl(
+            key: 'b',
+            method: 'GET',
+            url: 'https://h.edu/2',
+          ),
+        ],
+        params: const {},
+        view: view,
+        resolver: FakeResolver({}),
+        transport: transport,
+        nowMs: 1600000000000, // 2020-09-13，早于 Expires
+      );
+      expect(transport.seen[1].headers['Cookie'], 'sid=alive');
+    });
   });
 }
