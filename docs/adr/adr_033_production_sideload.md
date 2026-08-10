@@ -1,6 +1,6 @@
 # ADR-033：双 profile 本地导入（DEPLOY official-only / DEV 全能力侧载）
 
-- **状态**：已接受（Accepted）。2026-08-10 owner 明确：不得将初稿一次性拒绝后搁置；须保留决策过程，按本文新边界继续评审。**本文接受前，现有 DEPLOY 零侧载实现与 ADR-024 gate 仍是生效基线，不得先合并生产导入实现。**
+- **状态**：**已接受（Accepted）** · 2026-08-10 owner 评审通过。决策过程逐轮保留于 §1（不作一次性拒绝）。**已接受但尚未落地**：实现按 §5 连带清单推进，落地前现有 DEPLOY 零本地导入实现与 ADR-024 gate 仍是运行基线——这是实现进度，不再是 ADR 状态闸门。
 - **日期**：2026-08-09（2026-08-10 两轮反馈后重写）
 - **适用范围**：adapter bundle 的本地导入渠道、DEPLOY/DEV profile 的加载门禁、吊销新鲜度、设置入口与 `trustTier: sideload` / validator C3 的去留。
 - **不含**：transport 侧载（仍禁止）、签名密码学与私钥流程本身（ADR-002/018）、新 capability 或凭证契约（须另走 ADR）。
@@ -29,7 +29,7 @@ owner 最终要求继续保留两种本地导入，但严格区分：
 - **DEPLOY 本地导入是 official 的另一条输入渠道**：只接受通过 official 签名与远端吊销校验的 bundle，导入后信任档仍是 official；
 - DEPLOY 入口放在设置中的低频高级项，避免成为日常动线，低可达性只减误触，不承担安全边界。此路径安全边界由adapters签名承担。
 
-本文据此重写，回到 Proposed 待审状态。
+本文据此重写，并于 2026-08-10 由 owner 接受。
 
 ---
 
@@ -49,7 +49,7 @@ owner 最终要求继续保留两种本地导入，但严格区分：
 
 ---
 
-## 3. 提议决策
+## 3. 决策
 
 ### 3.1 profile 矩阵
 
@@ -74,14 +74,14 @@ DEV-Sideload 的职责是调试 adapter，而不是模拟低信任生产沙箱�
 
 #### C3 处置
 
-提议退役 `C3_sideload_must_declarative`：
+退役 `C3_sideload_must_declarative`：
 
 - 它会阻止 imperative adapter 作为 DEV/社区素材被完整预检，与 DEV-Sideload 的调试职责冲突；
 - official 签名流程应审查最终 bundle 的真实能力，而不是要求待签素材先伪装成 sideload declarative；
 - 签名 ceremony 输出的权威档位是 official，DEPLOY 能力由 official 签名、人工审查和运行时宿主门禁承担；
 - validator 仍须校验 requestGraph 结构、域名白名单、凭证引用、capability registry 与所有能力专属规则，但不再以 `trustTier: sideload` 一刀切禁止 imperative。
 
-这是 validator 行为修订，不删除 manifest 的 `trustTier: sideload` 枚举。落地前须补 C3 删除的正反例，并人工复核不存在把 manifest claim 当成权威档位的路径。
+这是 validator 行为修订，不删除 manifest 的 `trustTier: sideload` 枚举。落地前须补 C3 删除的正反例，并人工复核不存在把 manifest claim 当成权威档位的路径。**在该批测试与复核完成前，现有 C3 不得先删。**
 
 ### 3.3 DEPLOY：official-only 本地导入
 
@@ -152,24 +152,31 @@ DEV 入口可更直接，但必须保留不可关闭的 DEV 身份提示与风�
 
 ## 5. 连带修订与落地闸门
 
-本文接受后须同批完成：
+本文已接受。**文档修订（1–5）随接受一并完成；实现（6–8）尚未开始，须同批落地，不得只落其中一项。**
 
-1. 修订 ADR-002 §2.5/§2.6：渠道与 trust tier 分离，DEV 全能力，DEPLOY local import official-only；
-2. 修订 ADR-022/001：退役 C3，保留 per-capability requestGraph 结构校验；
-3. 修订 ADR-024：从“DEPLOY 无入口”改为“DEPLOY 无 devSideload/未签名路径”，重做 gate 哨兵；
-4. 修订 ADR-010：重写 iOS 非代码市场论证并人工复核；
-5. 修订 ADR-018：新增本地文件这一 official bundle 字节来源，但不新增信任域或签名档；
-6. 为 Android、iOS、macOS、Windows、Linux、OHOS 补产物与入口测试；
-7. 安全实现与测试须人工主导 + 安全清单 + 至少一名人工审阅，AI 不得独自闭环。
+| # | 项 | 状态 |
+|---|---|---|
+| 1 | 修订 ADR-002 §2.5/§2.6：渠道与 trust tier 分离，DEV 全能力，DEPLOY local import official-only | ✅ 文档已改 |
+| 2 | 修订 ADR-022/001：记 C3 退役，保留 per-capability requestGraph 结构校验 | ✅ 文档已改 |
+| 3 | 修订 ADR-024：从“DEPLOY 无入口”改为“DEPLOY 无 devSideload/未签名路径”，gate 哨兵待重做 | ✅ 文档已改 |
+| 4 | 修订 ADR-010：iOS 论证改写；**iOS 实现仍待人工/Apple 合规复核**（§6 开放问题 1） | ✅ 文档已改，合规复核未做 |
+| 5 | 修订 ADR-018：新增本地文件这一 official bundle 字节来源，不新增信任域或签名档 | ✅ 文档已改 |
+| 6 | validator 退役 C3，同批补 DEPLOY official-only 负例 | ⬜ 未开始（C3 仍在位） |
+| 7 | DEPLOY official 本地导入实现 + 在线治理门 + 新 release gate 断言 | ⬜ 未开始（仍为零入口 gate） |
+| 8 | 为 Android、iOS、macOS、Windows、Linux、OHOS 补产物与入口测试 | ⬜ 未开始（仅 Android 有旧基线证据） |
 
-**接受前禁止实现**：当前代码仍应保持 ADR-024 的 DEPLOY 零侧载 gate；本文评审通过后，才可按上述连带清单修改实现与红线终稿。
+第 6–8 项属安全实现，须人工主导 + 安全清单 + 至少一名人工审阅，**AI 不得独自闭环**。
+
+**落地纪律**：本文已接受，但落地前代码仍保持 ADR-024 的 DEPLOY 零本地导入 gate 与现有 C3——**接受授权了实现，不等于实现已存在**。任一项单独落地都会造出「文档说 official-only 导入、代码却没有对应门禁」的错配，故须按 §5 第 6–8 项同批推进，并遵守其人工闸门（AI 不得独自闭环）。
 
 ---
 
-## 6. 待审问题
+## 6. 落地前须解决的开放问题
+
+本文已接受，但下列问题必须在对应实现落地**之前**逐条有答案；它们不阻塞本 ADR 的状态，阻塞的是各自那部分实现。
 
 1. iOS 本地 official 导入是否足以维持 DPLA §3.3.2(b)“非代码市场”论证，是否需要平台例外？本文倾向全平台一致，但须人工合规复核。
-2. official 签名但尚未进入 catalog 的 bundle 是否允许导入；本文提议允许，但必须通过最新 revocation，且不得降级当前已安装版本。
+2. official 签名但尚未进入 catalog 的 bundle 是否允许导入；本文规定允许，但必须通过最新 revocation，且不得降级当前已安装版本。
 3. 本地导入文件格式是否直接复用 ADR-018 envelope，是否需要单文件封装；实现前须固定路径/大小上限。
 4. 新 gate 如何机械证明 DEPLOY 不含 `devSideload` grant 铸造与未签名执行路径，而不是只检查一个可绕过的哨兵字符串。
 
@@ -183,3 +190,4 @@ DEV 入口可更直接，但必须保留不可关闭的 DEV 身份提示与风�
 | 2026-08-10 | 第一轮反馈 | 倾向拒绝初稿并改为全平台 DEPLOY 零侧载；识别到该方案把渠道与信任档捆绑。 |
 | 2026-08-10 | 第二轮反馈 | 不作一次性拒绝，打回重写后待审：DEV-Sideload 全能力；DEPLOY 保留设置内本地导入，但只接受 official 签名且每次导入强制在线吊销治理。 |
 | 2026-08-10 | 正式同意 | 修改验证签名等表述，检验物料等修正 |
+| 2026-08-10 | **接受（Accepted）** | owner 同意全文并收敛各处引用表述：状态由 Proposed 转 Accepted，跨文档「接受前不得实现」一律改为「已接受、待按 §5 落地」。实现尚未开始。 |
