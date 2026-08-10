@@ -56,9 +56,8 @@ docs(adr): 起草 adr_001 标准 schema 规范
 - **分级审查**：
   - 普通 adapter / UI 卡片 → 1 人审，快车道；
   - 触碰 `contract/`、`core/`、`transport/`、签名/吊销 → **至少 1 名人工审阅 + 安全检查清单**，AI 不得独自闭环。
-- **CI 必过**：契约一致性检查、adapter 静态校验（白名单越界 / sideload 强制 declarative requestGraph）、夹具回归、lint、**客户端 release 构建阀门**（`client-release`：`tool/check_release_gate.sh`——main Manifest 含 `INTERNET` + `flutter build apk --release` + 产物权限；防止 debug-only 配置导致 release 无法登录）。
+- **CI 必过**：契约一致性检查、adapter 静态校验（requestGraph 结构、白名单、凭证引用与能力专属规则；C3 退役提议见 ADR-033）、夹具回归、lint、**客户端 release 构建阀门**（分发产物必须为 DEPLOY，拒绝 DEV profile；ADR-033 接受前侧载哨兵仍须为零，接受后的新 gate 须证明 DEPLOY 不含未签名/devSideload 执行路径）。
 
 ### PR 描述模板
 
 见`.github/pull_request_template.md`文件描述
-
