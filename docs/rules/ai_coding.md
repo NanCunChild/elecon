@@ -9,7 +9,7 @@
 - [ ] 已读 ADR-000 与本次改动相关的 `docs/rules/` 细则。
 - [ ] adapter bundle 只有在 official 门或用户 digest trust 通过后才执行；iOS runtime 仍为 official-only。
 - [ ] **未**给公网哑服务（`server/src/public`）增加凭证存储或私密数据持久化。
-- [ ] 私密数据路径仍走客户端直连或校内中继，**未**改道经公网。
+- [ ] 私密数据只在用户设备侧经 direct、系统 VPN 或 official transport/app-tunnel 访问学校；未新增项目中继或公网私密路径。
 - [ ] adapter 所有网络仍经过宿主出口，未新增 raw socket、Node 网络模块、WebView、原生 FFI 或其他旁路。
 - [ ] local unsigned 信任绑定 bundle digest；manifest 自报、无效签名或同名 adapter 不能铸造 official 或继承旧 digest trust。
 - [ ] Credential Store 使用后继 ADR 规定的复合键；没有把全局裸 ref 直接暴露给 adapter。复合键只防误碰撞，未被错误描述为受信 adapter 间的安全隔离。

@@ -4,11 +4,11 @@
 
 | 工具 | 目录 | 用途 |
 |---|---|---|
-| validator | `src/validator/` | manifest 合法性校验（ajv）、白名单越界检查、sideload 强制 declarative requestGraph、fixture golden 测试 |
+| validator | `src/validator/` | 当前 V1 manifest/网络/fixture 校验；随 Manifest V2 改为完整网络声明、bundle 和 expected fixture gate |
 | codegen | `src/codegen/` | JSON Schema → Dart / TS 类型生成 |
 | signer | `src/signer/` | 官方 adapter 签名 / 吊销 |
 | release | `src/release/` | 生成 endpoint D 的 signed catalog、revocation 和 bundle dist；从 dist 派生客户端 bootstrap 基线资产 |
-| scanner | `src/scanner/` | 夹具 PII 扫描（脱敏检查） |
+| scanner | `src/scanner/` | fixture PII/凭证扫描（脱敏检查） |
 
 ## 运行
 

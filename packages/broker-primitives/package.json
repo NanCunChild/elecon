@@ -2,7 +2,7 @@
   "name": "@elecon/broker-primitives",
   "version": "0.1.0",
   "private": true,
-  "description": "elecon Broker/校验器共享纯原语（uri-template url-match）。TS 侧单一实现，供 server broker 与 tools validator 共用；Dart 镜像（client url_match.dart）与本包由 contract/golden/broker/url-match.json 共同钉死（ADR-001 §8）。",
+  "description": "V1 Broker/validator URL 原语。V2 将按 ADR-001 §4.7 重写为 tools validator 与客户端网络门共享的结构化 policy，不再服务 server runtime 双跑。",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

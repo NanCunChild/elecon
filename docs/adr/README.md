@@ -10,7 +10,7 @@ ADR 编号从 `000` 重新开始。`Accepted` 表示决策可据以实现，不�
 | ADR | Decision | Landing | Review |
 |---|---|---|---|
 | [000](./adr_000_abstract.md) | Accepted | V2 总则生效；实现迁移未开始 | 后继契约、凭证、网络、签名与平台 ADR 须分别评审 |
-| [001](./adr_001_project_shape.md) | Proposed | 未实现 | 项目责任拓扑 |
+| [001](./adr_001_project_shape.md) | Accepted | campus 已删除、public 构建已收窄；服务端 runtime/双跑待清理 | 客户端单一执行面、fixture 与 golden 审计已评审 |
 | [002](./adr_002_execution_trust.md) | Proposed | 未实现 | 执行准入与 digest trust |
 | [003](./adr_003_core_security_boundary.md) | Proposed | 未实现 | QuickJS、网络与资源边界 |
 | [004](./adr_004_credential_store.md) | Proposed | 未实现 | Credential Store 复合键和 JS API |

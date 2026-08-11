@@ -122,7 +122,7 @@ LLM 的目标是提高发现率和审核效率，不提供“已证明安全”�
 未受信 adapter 永不执行：
 
 - official 必须通过官方验签、身份绑定、吊销和兼容门；
-- local unsigned 必须命中用户明确保存的 bundle digest trust；
+- local unsigned 的安装界面必须先展示风险和 exact bundle digest；用户点击确认接受前，只允许 bounded unpack、digest、manifest/schema 校验和静态分析，不得创建 adapter runtime 或执行任何 bundle 代码；确认后才能保存 digest trust；
 - manifest 自报、adapter ID 相同、文件名相同或无效签名都不能产生或继承信任；
 - iOS MVP 只运行 official adapter。即使导入代码存在，也必须由 loader/runtime 强制 official-only，不能只隐藏 UI 入口。
 
@@ -149,6 +149,8 @@ adapter 只在背景 QuickJS isolate 中异步运行，不获得：
 - 请求体、响应体、超时、取消和并发预算；
 - transport 选择和 TLS 边界。
 
+manifest 必须声明 adapter 可能访问的全部网络目标；声明同时用于用户风险展示、official 审核和宿主运行时 fail-closed 上限。
+
 网络门限制 adapter 可以连接的位置和消耗的资源，不是内容 DLP。受信 adapter 可以把凭证或私密数据编码进获准请求，宿主不承诺识别或阻止这种行为。
 
 ### 5.4 Credential Store
@@ -160,7 +162,8 @@ adapter 只在背景 QuickJS isolate 中异步运行，不获得：
 ### 5.5 公网与私密数据
 
 - `server/src/public` 保持零凭证、无私密数据持久化；
-- 私密和认证数据只走客户端直连或校内授权中继；
+- `server/src/public` 不执行任何 adapter；
+- 私密和认证数据只在用户设备上经 direct、系统 VPN 或 official transport/app-tunnel 访问学校；项目不提供校内授权中继；
 - official 审核环境只使用测试账号、脱敏 fixture 或合成凭证；
 - 不得因 adapter 获得凭证而把用户凭证上传到官方平台。
 
@@ -202,7 +205,8 @@ V2 不是推倒重来。以下资产继续保留：
 - 宿主网络代理、URL/redirect 检查和 transport；
 - Credential Store 的平台安全存储后端；
 - 标准数据 schema、capability registry 和 UI；
-- fixture replay、PII scanner、跨端 golden 和输出校验；
+- 脱敏 fixture replay、expected schema、PII scanner 和输出校验；
+- catalog/revocation 等跨组件 wire/signature 向量；不再维护客户端/服务端 adapter runtime 一致性 golden；
 - bundle envelope、digest、官方签名、catalog、sequence 和吊销；
 - 公网零凭证与客户端直连架构；
 - adapter 热更新和公开 adapter 仓库。

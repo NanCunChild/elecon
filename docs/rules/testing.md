@@ -18,7 +18,7 @@
 ## 2. 夹具驱动（Fixture-driven）
 
 - **CI 不打真实学校接口**：学校接口会变、需鉴权，live 测试既不稳定又有合规风险。真实学校 adapter 由 `adapters.pin` 固定的外部仓提供，测试使用其 `adapters/school-<id>/fixtures/` 脱敏样本；本仓 `adapters_tests/` 只保留探针、研究证据与脱敏回归材料。
-- **Golden 测试**：固定"输入样本 → 期望标准 schema 输出"，归一化逻辑变更必须先更新 golden 并解释原因。
+- **Fixture expected-output**：固定“脱敏响应/mock transport → 期望标准 schema 或错误”，归一化逻辑变更必须先更新 expected output 并解释原因。fixture 不是客户端/服务端 runtime 等价证明。
 - **夹具必须脱敏**：见红线 #8，样本中不得含真实学生姓名、学号、token 等。脱敏在采样阶段完成，提交前由 `tools/` 的校验器扫描。
 
 ---
@@ -27,7 +27,7 @@
 
 - **schema 一致性**：adapter 输出、UI 输入、`contract/schema/` 三者必须对得上，由 CI 自动校验。
 - **manifest 合规**：adapter 声明的能力与域名白名单合法、无越界，由 `tools/` 静态校验。
-- **双跑一致性**：同一份 adapter 在客户端 QuickJS 与服务端 QuickJS-wasm 上对同一夹具应产出一致结果（ADR-000 §7）。两端绑定、版本和编译配置可能不同，只对共享 golden/canary 覆盖的已使用语义承诺一致，不能假定天然零漂移。
+- **客户端 runtime 权威**：adapter 的产品行为以全平台共用的客户端 QuickJS/host API 契约为准。服务端工具可预检 fixture，但不得宣称与客户端逐字节、逐异常或逐调度等价；official 发布必须包含目标客户端 runtime 的 fixture replay 证据（ADR-001 §4.5–§4.9）。
 
 ---
 

@@ -33,7 +33,7 @@ Store 使用结构化复合键，至少包含：
 
 ## 3. 私密数据路径
 
-真实凭证和学生数据只允许存在于客户端、校内授权中继或用户明确触发的学校请求中。public 服务、catalog、telemetry、crash report、LLM 审核和官方 fixture 均不得接触真实值。
+真实凭证和学生数据只允许存在于客户端 Credential Store 或用户设备直接发往学校的请求中；系统 VPN 与 official transport/app-tunnel 只承载用户侧链路，不产生项目服务端存储。public 服务、catalog、telemetry、crash report、LLM 审核和 official fixture 均不得接触真实值。
 
 测试只使用合成凭证或脱敏 fixture。V2 不再依赖 opaque handle、自动注入或 mandatory Masker 兑现该边界。
 

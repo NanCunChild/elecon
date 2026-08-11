@@ -24,11 +24,17 @@ const walk = (dir) => {
 };
 walk(dist);
 
-const forbidden = files.filter((path) => path.includes(".smoke.") || path.includes("__testutils__"));
+const forbidden = files.filter(
+  (path) =>
+    path.includes(".smoke.") ||
+    path.includes("__testutils__") ||
+    path.startsWith("runtime/") ||
+    path.startsWith("campus/"),
+);
 if (forbidden.length > 0) {
-  throw new Error(`production build 包含测试文件：${forbidden.join(", ")}`);
+  throw new Error(`public production build 包含非 public 文件：${forbidden.join(", ")}`);
 }
-for (const required of ["public/index.js", "runtime/sandbox.js"]) {
+for (const required of ["public/index.js"]) {
   if (!files.includes(required)) throw new Error(`production build 缺少入口：${required}`);
 }
-console.log(`server production build：${files.length} 个文件，零 smoke/testutils`);
+console.log(`server public production build：${files.length} 个文件，零 adapter runtime/campus/test`);

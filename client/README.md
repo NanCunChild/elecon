@@ -6,14 +6,14 @@
 lib/
   main.dart            入口
   core/
-    adapter_runtime.dart  QuickJS adapter 运行时（declarative/imperative requestGraph，后台 isolate）
+    adapter_runtime.dart  QuickJS adapter 运行时（V1 双轨迁移中；V2 统一异步 JS，后台 isolate）
   ui/                  UI 层（数据驱动 / SDUI，只认标准 schema）
 assets/                静态资源
 test/
   utils/
     test_utils.dart    共享测试工具（repoRoot / readGolden / FakeResolver / FakeTransport / viewFromJson）
-  dual_run_test.dart   双跑一致性（客户端半边）
-  broker_*_test.dart   broker 组件冒烟测试（与 server 共用 contract/golden/ 向量）
+  dual_run_test.dart   V1 legacy baseline，客户端 fixture gate 接管后删除
+  broker_*_test.dart   宿主网络/Broker 迁移测试，按 ADR-001 §4.7 逐项重写
 tool/
   build_qjs_test_lib.sh  构建 flutter_qjs_next FFI 测试库
 ```
@@ -32,21 +32,21 @@ bash tool/with_apple_pubspec.sh fvm flutter run --target lib/main_apple.dart  # 
 - Android / iOS 主线跟进官方 Flutter stable；当前基线为 Flutter 3.44.1 / Dart 3.12.1。
 - OHOS 使用 OpenHarmony-SIG Flutter-OHOS fork（当前 3.27.5-ohos-1.0.4 / Dart 3.6.2），作为挂起旁路线等待上游更新或官方主线支持。
 - 主线新增 Dart 语法、依赖版本、`pubspec.lock` 解析结果以 Android / iOS stable 为准；不为 OHOS fork 牺牲主线升级节奏。
-- OHOS 恢复打包前再核对 fork 是否跟进。若主线已使用 OHOS fork 不支持的语法或依赖，按兼容债务处理；V1 探针见 `docs/probes/archived/v1/probe_001_smoke_plan.md` §4.1，V2 复用前须重跑。
+- OHOS 恢复打包前再核对 fork 是否跟进。若主线已使用 OHOS fork 不支持的语法或依赖，按兼容债务处理；V1 探针见 `../docs/probes/archived/v1/probe_001_smoke_plan.md` §4.1，V2 复用前须重跑。
 
-## 测试（双跑一致性）
+## 测试（客户端 runtime 权威）
 
-adapter 在客户端用 QuickJS（`flutter_qjs_next`）执行，服务端使用 QuickJS-wasm。两种绑定、
-版本和编译配置可能不同，只对共享 golden/canary 覆盖的已使用语义承诺一致（ADR-008 §3.2）。
-`test/dual_run_test.dart` 用同一份 declarative 夹具验证客户端产出 == golden，服务端侧由
-`server/src/runtime/sandbox.smoke.ts` 验证同一 golden。
+V2 adapter 的产品行为以全平台共用的客户端 QuickJS/host API 契约为准。fixture、mock
+transport 和 expected schema 回归长期保留；不再维护客户端与服务端 QuickJS-wasm 的等价
+承诺。`test/dual_run_test.dart` 和服务端镜像 smoke 目前只是迁移期 legacy baseline，按
+ADR-001 §4.7 在客户端替代 gate 落地后逐项删除。
 
 `flutter_qjs_next` 是经典 FFI 插件，纯 `flutter test` 不会构建其原生库。先一次性构建：
 
 ```bash
 fvm flutter pub get
 tool/build_qjs_test_lib.sh        # 输出 FLUTTER_QJS_NEXT_LIBRARY 路径（仅 Linux）
-FLUTTER_QJS_NEXT_LIBRARY=/path/to/libflutter_qjs_next_plugin.so fvm flutter test test/dual_run_test.dart
+FLUTTER_QJS_NEXT_LIBRARY=/path/to/libflutter_qjs_next_plugin.so fvm flutter test
 ```
 
 > **依赖说明**：`flutter_qjs_next` 是迁移后的 QuickJS 绑定（非 flutter_js——后者 iOS 用

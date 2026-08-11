@@ -18,7 +18,7 @@
 - `contract/`：跨端 schema、manifest、adapter SDK 与共享 golden。
 - `client/`：Flutter UI、执行准入、QuickJS、Credential Store、宿主网络和平台能力。
 - `server/src/public/`：零凭证、无状态的公网分发与公开数据服务。
-- `server/src/campus/`：尚未实施的校内授权中继；专项 ADR 接受前保持 501 stub。
+- 项目不提供校内授权中继；私密 adapter 只在客户端执行，public server 不执行任何 adapter。
 - `adapters/`：stdlib、模板、canary 和示例；真实学校 adapter 从 `adapters.pin` 固定的外部仓拉取。
 - `tools/`：validator、replay、LLM finding 接口、codegen、签名、发布台账与 release gate。
 

@@ -147,9 +147,8 @@ jobs:
       - name: Bootstrap assets must match the canonical checked-in dist
         run: npm run bootstrap:check -w tools
 
-  # stdlib：vendored html.bundle.js 可复现性闸门（#16）。在干净环境按锁定依赖重建，
-  # 与入库 bundle 做 git diff 比对——不一致即 fail。bundle 是两端 QuickJS 实际加载的
-  # 解析器源码，漂移 = 双跑 golden 可能飘且无人察觉（ADR-011 §2.3 版本锁定即契约 / 红线 #9）。
+  # stdlib：vendored html.bundle.js 可复现性闸门。在干净环境按锁定依赖重建，
+  # 与入库 bundle 做 git diff 比对；V2 客户端 runtime 继续加载 exact bundle。
   stdlib:
     runs-on: ubuntu-latest
     defaults:
@@ -169,7 +168,7 @@ jobs:
       - name: 入库 bundle 必须等于按锁定依赖重建的产物
         run: git diff --exit-code html.bundle.js
 
-  # 迁移期客户端 baseline：lint、当前 trust profile、QuickJS 与共享 golden。
+  # 迁移期客户端 baseline：lint、当前 trust profile、QuickJS 和 fixture/legacy golden。
   # flutter_qjs 是经典 FFI 插件，需先用 CMake 预构建原生测试库（见 build 脚本）。
   client:
     runs-on: ubuntu-latest
@@ -180,7 +179,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
-      # 按需拉取 elecon-adapters（ADR-018 §2.11.1）；flutter test 双跑用其 school-* fixtures。
+      # 按需拉取 elecon-adapters；客户端 fixture replay 使用其 school-* 脱敏样本。
       - name: Fetch pinned elecon-adapters
         working-directory: ${{ github.workspace }}
         run: bash scripts/fetch-adapters.sh

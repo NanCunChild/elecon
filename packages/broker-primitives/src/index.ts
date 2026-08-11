@@ -2,10 +2,10 @@
  * Broker URL 匹配原语 —— network.allow / credentials.scope 的 uri-template 匹配。
  *
  * **TS 侧单一实现**（审阅 P2-4）：此前 server broker 与 tools validator 各持一份
- * 内联拷贝、靠共享 golden 事后钉死；现收敛为本包，二者 import 之，结构上消除
+ * 内联拷贝、靠共享 golden 事后钉死；V1 收敛为本包，二者 import 之，结构上消除
  * TS 内漂移面。客户端 Dart 镜像（`client/lib/core/broker/url_match.dart`）照同一
- * golden（`contract/golden/broker/url-match.json`）复刻——钉死的是**行为**，不是
- * 源文件（ADR-001 §8 两端双跑哲学）。
+ * golden（`contract/golden/broker/url-match.json`）复刻。该文件是 V1 legacy；V2 按
+ * ADR-001 §4.7 重写为客户端网络门与 tools validator 的结构化 policy 向量。
  *
  * 约定（broker 运行时与校验器 C4/C6/C7 同一套）：白名单 / scope 为「尾随 `*` 的
  * 前缀型」模板（`https://host/path/*`），`*` 是唯一通配。多段 `*` / `{+path}` 等
@@ -41,7 +41,7 @@ export const RESPONSE_HEADER_ALLOWLIST: ReadonlySet<string> = new Set([
  * ADR-029 §2.1 命名 credential header 固定禁集（小写）。
  *
  * CH3 的完整禁集是本集合与 [RESPONSE_HEADER_ALLOWLIST] 的并集。validator 与 TS Broker
- * runtime 必须共用这份定义；Dart 侧由 inject-policy golden 镜像锁定（ADR-001 §8）。
+ * V1 runtime 共用此定义；V2 不再维持 server/Dart 镜像，迁移见 ADR-001 §4.7。
  */
 export const FORBIDDEN_CREDENTIAL_HEADER_NAMES: ReadonlySet<string> = new Set([
   "cookie",

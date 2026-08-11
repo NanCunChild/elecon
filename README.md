@@ -7,8 +7,8 @@
 ## 它解决什么
 
 - **学校接口频繁变动** → 把对接逻辑沉成可热替换的 adapter，接口一改推新 adapter 即可，**无需发版**。
-- **维护人力不足 / 社区难参与** → 贡献者只需写一个 JS 文件（adapter），客户端与服务端共用，门槛最低。
-- **合规与安全** → 私密数据永远走客户端直连或校内授权环境，**公网组件不持有任何凭证**。
+- **维护人力不足 / 社区难参与** → 贡献者使用普通异步 JavaScript 编写 adapter，只面向一套全平台客户端 runtime。
+- **合规与安全** → 私密数据只在用户设备侧经 direct、系统 VPN 或 official transport 访问学校，**项目服务端不持有任何凭证**。
 - **多平台割裂（iOS / Android / HarmonyOS）** → 保留 Flutter UI，传输/数据/UI 三层各自可替换。
 
 ---
@@ -18,21 +18,20 @@
 ```
         UI 层（数据驱动 / SDUI，只认"标准 schema"）
                        │
-        可信核心 Core —— 凭证保管 · Capability Broker · 插件信任 · 版本/时效
+        可信宿主 —— 执行准入 · QuickJS · Credential Store · 网络出口
             │                                   │
    数据 adapter（QuickJS 脚本，热替换）    传输底座（原生，仅官方签名）
             │                                   │
-   ┌────────┴─────────┐                ┌────────┴─────────┐
-   │ 校内授权中继 campus │                │  公网哑服务 public │
-   │ 堡垒机后·代取私密   │                │ 无状态·发adapter+  │
-   │                  │                │ 缓存公开数据·零凭证 │
-   └──────────────────┘                └──────────────────┘
+             │                                   │
+       学校 origin                         公网哑服务 public
+  direct / VPN / app-tunnel          静态分发 adapter/catalog
+                                         零凭证、不执行 adapter
 ```
 
 **两条要记住的原则：**
 
-1. **公网服务端是"哑"的**——只发 adapter、只缓存公开数据，永不持凭证。它同时解决了成本、合规、安全。
-2. **一份 adapter，两端运行**——客户端 QuickJS 与服务端 QuickJS-wasm 跑同一份脚本；两种绑定、版本和编译配置可能不同，以共享 golden/canary 约束项目实际使用的语义。
+1. **客户端是唯一生产执行面**——adapter 在全平台共用的客户端 QuickJS/host API 中运行；项目不提供校内中继。
+2. **公网服务端是静态分发面**——不执行 adapter、不持凭证或私密数据。fixture 回归保留，但不再维护客户端/服务端 runtime 一致性 golden。
 
 完整路线与取舍见 [`docs/adr/adr_000_abstract.md`](docs/adr/adr_000_abstract.md)；目录与职责见下方[「仓库结构」](#仓库结构)与各子目录的 `README.md`，开发总则见 [`AGENTS.md`](AGENTS.md)。
 
@@ -41,13 +40,13 @@
 ## 仓库结构
 
 ```
-contract/   跨端共享契约：标准 schema + capability manifest + adapter SDK + golden 向量（最重要的一层）
+contract/   V2 契约：标准 schema + capability manifest + adapter SDK + wire/security 向量
 adapters/   仅核心自带 adapter：_stdlib（vendored 解析器）/ _template / _canary / school-helloworld。
             真实学校 adapter 已迁出到独立公开仓 elecon-adapters，构建期按 adapters.pin 钉死的 ref
             拉取（scripts/fetch-adapters.sh，ADR-018 §2.11.1，取代旧 git 子模块）。
 adapters_tests/  各校抓包探针与脱敏夹具（红线 #8：不含真实学生数据/凭证）。
 client/     Flutter 客户端（iOS / Android / HarmonyOS / 桌面）
-server/     Node/TS 服务端：public（公网哑服务）+ campus（校内授权中继，当前 501 stub），adapter 用 QuickJS-wasm 执行
+server/     Node/TS 公网静态分发服务 + V1 迁移期/审核辅助工具；不执行产品 adapter
 tools/      Node/TS 工具链：签名（PKCS#11 / YubiKey）/ 吊销 / adapter 校验 / 契约一致性 / codegen
 docs/       ADR、规则细则（docs/rules/）与工程结构说明
 ```
@@ -72,19 +71,13 @@ bash tool/with_apple_pubspec.sh flutter run --target lib/main_apple.dart  # iOS 
 ```bash
 cd server
 npm install
-npm run dev:public          # 公网哑服务：分发 adapter + 缓存公开数据
-npm run dev:campus          # 校内授权中继：堡垒机后部署
+npm run dev:public          # 公网哑服务：静态分发 adapter/catalog/revocation
 npm run typecheck           # TypeScript 类型检查
-npm run smoke:broker        # Broker B1 注入策略 smoke（12 例 golden）
-npm run smoke:header        # B2 头净化 smoke（12 例）
-npm run smoke:redirect      # B3 重定向 smoke（14 例 + driver 4）
-npm run smoke:cookie        # B4 cookie jar smoke（22 例 + 有态 6）
-npm run smoke:harvest       # B5 收割桥接 smoke（golden 18 例：cookie 11 + query 7 + 集成 5）
-npm run smoke:credential    # 凭证存储 smoke
-npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新增即跑）
+npm run build               # 只生成 public 部署包，拒绝 runtime/campus
+npm run smoke:all           # 迁移期 legacy baseline；V2 客户端 fixture gate 接管后瘦身
 ```
 
-> adapter 在服务端用 **QuickJS-wasm**（`quickjs-emscripten`）执行；客户端使用另一套 QuickJS 绑定，跨端一致性由共享 golden/canary 验证。**不使用** Node 的 `vm` 模块（`vm` 不是安全边界）。运行时选型的历史论证见 [V1 ADR-005](docs/adr/archived/v1/adr_005_runtime.md)，V2 延续决定见 [ADR-000](docs/adr/adr_000_abstract.md) §7。
+> `server/src/runtime` 是 V1 迁移期与审核辅助代码，不是 V2 产品 runtime。V2 adapter 的行为权威是全平台共用的客户端 QuickJS/host API；fixture 保留，但不再用 TS/Dart 双跑证明等价。
 
 ---
 
@@ -92,20 +85,20 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 
 > 真实学校 adapter 现落在独立公开仓 **elecon-adapters**（本仓按 `adapters.pin` 拉取，见[「仓库结构」](#仓库结构)）。下列以模板 `adapters/_template/` 为例说明形态，实际提交面向 elecon-adapters。
 
-1. 按信任档复制 `adapters/_template/imperative/` 或 `adapters/_template/declarative/` 为 `school-<你的学校id>/`。
-2. 在 `manifest.json` 声明能力与**域名白名单**（核心据此注入凭证，越界请求不带凭证）。
-3. 在 `index.js` 实现归一化：把该校接口返回的数据转成 `contract/schema/` 定义的标准结构。adapter 的**能力/信任面越薄越好**，但归一化、脏数据清洗与校本派生应尽量完整；凭证、网络授权、渲染和跨源编排仍留在核心。
+1. 使用 V2 统一异步 JavaScript template 创建 `school-<你的学校id>/`；V1 declarative template 仅作迁移历史。
+2. 在 `manifest.json` 完整声明能力与可能访问的所有 scheme/origin/path/method；宿主据此 fail-closed。
+3. 在 `index.js` 自行读取凭证、编排学校流程并把响应归一化成 `contract/schema/` 定义的标准结构。
 4. 在 `fixtures/` 放抓包样本，写归一化回归测试。
 5. 在该 adapter 的 `README.md` 记录：该校属哪一档（UA 门禁 / CAS 逃生口 / openid 唯一身份 / 微信小程序）及已知坑。
 
-**信任级别：** DEPLOY 只运行通过 official 验签与吊销门禁的 adapter；ADR-033（已接受，尚未落地）在设置中保留本地 official bundle 导入，但它只改变字节来源，不产生低信任运行档。DEV-Sideload 可本地加载未签名 adapter，declarative / imperative 与当前 DEV 宿主能力全部可调试；DEV 可使用优化 build，但不可分发。ADR-033 同时退役 `C3_sideload_must_declarative`（待落地）。
+**执行信任：** official 经官方门后自动受信。支持本地导入的平台在用户确认接受 exact bundle digest 前不得执行任何 bundle 代码；确认后 local unsigned 获得完整 adapter 能力。iOS 仅运行 official。
 
 ---
 
 ## 合规与安全
 
-- **客户端直连为基线**：私密、认证相关的数据走客户端直连或校内授权中继，**不经公网服务器**。
-- **凭证零泄露给插件**：cookie/token 只存于可信核心，adapter 通过受限方法访问数据，拿不到凭证的值，也拿不到任何等价于凭证的东西（带 token 的 URL、`Set-Cookie`、重定向中间 token 等均不暴露）。
+- **客户端是唯一私密执行面**：私密数据经 direct、系统 VPN 或 official transport/app-tunnel 从用户设备访问学校；项目不提供中继。
+- **信任即完整能力**：受信 adapter 可读写全部 Credential Store 和私密响应；项目不承诺阻止其泄漏或篡改数据。
 - **传输底座最高门槛**：能看到全部流量的传输底座仅接受官方签名，DEPLOY/DEV 均无 transport 侧载；dev transport 仍仅存在于 debug build。adapter 本地导入不放宽 transport。
 - **显式知情同意**：启用能看到全部流量的隧道时，提供独立且更重的告知与授权流。
 
@@ -117,9 +110,9 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 
 架构的 Decision 与 Landing 是两个独立维度，不能用 `Accepted` 推断 `Implemented`。当前处于 **V1→V2 架构迁移期**：V2 决策已重启，runtime/contract 仍保留 V1 基线。逐项状态见 [`docs/adr/README.md`](docs/adr/README.md)，迁移顺序见 [`docs/planning/v2_migration.md`](docs/planning/v2_migration.md)。
 
-- **已落地**：Broker 核心零件 B1–B6 两端（TS + Dart）镜像实现，照 `contract/golden/` 向量逐字节双跑；声明式跨请求数据流 ADR-023 MVP；真实 OS keystore 凭证存储（硬件 keystore + 软件回退）；官方签名分发 / 吊销 / bootstrap 与签名工具链（PKCS#11 / YubiKey）；WebView 登录 + SSO 换票收割；ADR-020 URL query 凭证（一卡通 `openid`）端到端；adapter 按需拉取（`adapters.pin`，取代子模块）。Xidian 公开通知（`notice.list`）已产品闭环。
-- **进行中**：一卡通 OpenID 真机验收；capability 级 `credentialRefs` 最小权限 ADR；图书馆 body 凭证注入；课表、成绩、考试、空教室、一卡通和图书借阅均已有 schema 驱动 UI，仍缺 freshness/unsupported 统一语义、对应 adapter 正式签发和真机验收。
-- **待补齐**：campus relay（当前 501 stub）；iOS 正式签名 / App Store 合规（首版 declarative-only）；OHOS 与多校正式目录；备用签名密钥；首页数据闭环（目前仍主要消费 `notice.list`）。
+- **保留资产**：客户端 QuickJS、OS secure store、宿主网络、fixture、标准 schema、official 签名/catalog/revocation、WebView 登录和 adapter 仓库。
+- **迁移中**：Manifest/SDK V2、local digest trust、Credential Store JS API、客户端单端 fixture gate、official 审核与 LLM finding 流程。
+- **待清理**：V1 declarative/dataflow/Masker、自动凭证注入、服务端 runtime 镜像和跨 runtime golden。campus relay 已决定删除。
 
 > 状态提示：主仓旧 Xidian adapter、已签名 bootstrap、外部仓开发态三者版本不同，发布流程中需分别对待（见 roadmap §1）。
 

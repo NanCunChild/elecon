@@ -1,33 +1,33 @@
-# server/ — Node/TS 服务端
+# server/ — Node/TS 公网服务与审核工具
 
-> 运行时选型的历史论证见 [V1 ADR-005](../docs/adr/archived/v1/adr_005_runtime.md)，V2 延续决定见 [ADR-000](../docs/adr/adr_000_abstract.md) §7：
-> **TypeScript on Node**（不是裸 Node），adapter 用 **QuickJS-wasm** 执行（不用 Node 的 `vm`）。
+V2 服务端不是 adapter 的产品运行目标。项目不提供校内授权中继；公网服务不执行任何
+adapter，不接触凭证、用户会话或私密校园响应。决策见
+[`ADR-001`](../docs/adr/adr_001_project_shape.md)。
 
 ## 结构
 
-```
+```text
 src/
-  public/      公网哑服务（无状态、零凭证）
-  campus/      校内授权中继（堡垒机后部署，承重路径）
-  runtime/     adapter 执行沙箱（QuickJS-wasm / quickjs-emscripten）
-    __testutils__/  共享冒烟测试工具（resolveRepoRoot / FakeResolver / FakeTransport / runMain）
-    broker/         能力 broker（B1-B6，与 client 镜像）
-    credential/     凭证存储
-    transport/      传输层
+  public/      公网静态分发服务：无状态、零凭证、不执行 adapter
+  runtime/     V1 迁移期与审核辅助代码；不是 V2 产品 runtime
 ```
+
+`src/runtime/` 中现有 QuickJS-wasm、Broker 和 smoke 在客户端 fixture gate 接管前作为
+legacy baseline 保留。它们不得被描述为与客户端 runtime 等价，也不得承接 public 请求。
 
 ## 运行
 
 ```bash
 npm install
-npm run dev:public     # 公网哑服务
-npm run dev:campus     # 校内授权中继（需校内部署）
-npm run typecheck      # 严格类型检查
+npm run dev:public
+npm run typecheck
+npm run smoke:all
 ```
 
 ## 原则
 
-- `src/public` 零凭证、无状态——仅分发 adapter + 缓存公开数据（红线 #2）。
-- `src/campus` 在校内堡垒机后代取私密数据，**经手凭证 = 承重路径**：锁 lockfile、最小依赖、定期 `npm audit`（ADR-005 §3.3）。
-- adapter 用 **QuickJS-wasm** 执行；客户端是另一套 QuickJS 绑定，跨端只对共享 golden/canary 覆盖的已使用语义承诺一致。**绝不用** Node 的 `vm`（`vm` 不是安全边界）。
-- 全程 TypeScript `strict`；契约校验用 `ajv`，与 `tools/` 共用一套。
+- `src/public` 只按原字节分发预先构建的 bundle、catalog 和 revocation。
+- public 不读取 Cookie/Authorization，不加载 adapter entry，不导入 `src/runtime`。
+- server replay 只能辅助审核；official 发布必须包含客户端目标 runtime 的 fixture 证据。
+- `src/campus` 已退役并删除，不得重新引入项目中继或私密代理入口。
+- 全程 TypeScript `strict`；契约工具可以复用 `ajv`，但不建立客户端/服务端 runtime 一致性承诺。
