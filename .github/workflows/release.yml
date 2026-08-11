@@ -162,10 +162,9 @@ jobs:
           mkdir -p ../release-artifacts
           cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "../release-artifacts/elecon-${{ matrix.name }}-${RELEASE_TAG#v}.apk"
 
-      # ADR-024 护栏 4：闸门必须跑在**真正要分发的那个产物**上，不是 CI 另编的一份。
-      # 上面的 build 刻意不传 ELECON_TRUST_PROFILE——走护栏 1 的 fail-closed 默认，
-      # 于是「发布路径拿到 DEPLOY」这件事由默认值本身保证，再由本步机械复核。
-      - name: ADR-024 release gate on the shipped APK
+      # 迁移期 legacy baseline：闸门必须跑在真正分发的产物上。V2 artifact gate
+      # 落地前不得删除；后续将改为验证 digest trust、测试 signer 与平台门。
+      - name: Legacy baseline / current release gate on the shipped APK
         if: matrix.platform == 'android'
         shell: bash
         run: |

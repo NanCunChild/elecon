@@ -1,6 +1,6 @@
 # server/ — Node/TS 服务端
 
-> 运行时选型见 [`docs/adr/adr_005_runtime.md`](../docs/adr/adr_005_runtime.md)：
+> 运行时选型的历史论证见 [V1 ADR-005](../docs/adr/archived/v1/adr_005_runtime.md)，V2 延续决定见 [ADR-000](../docs/adr/adr_000_abstract.md) §7：
 > **TypeScript on Node**（不是裸 Node），adapter 用 **QuickJS-wasm** 执行（不用 Node 的 `vm`）。
 
 ## 结构

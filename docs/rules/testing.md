@@ -8,10 +8,10 @@
 
 | 组件 | 信任/能见度 | 测试要求 |
 |---|---|---|
-| 可信核心 / Broker / 凭证 | 最高（持凭证、不可绕过） | 最严：单元 + 集成 + 安全用例（凭证不外泄、白名单越界被拒、注入路径正确）。**AI 不得独自编写并作为唯一作者**，需人工审阅。 |
+| 执行信任 / Credential Store / 宿主网络出口 | 最高（决定代码能否运行、持有全部凭证、出网不可绕过） | 最严：单元 + 集成 + 安全用例（未受信不执行、digest 绑定、iOS official-only、复合键、出口越界在 transport 前被拒）。**AI 不得独自编写并作为唯一作者**，需人工审阅。 |
 | 传输底座 | 看到全部流量 | 严：连接生命周期、失败降级、签名校验、不泄露明文边界。 |
-| 官方签名 adapter | 中（能力限定取数） | 夹具驱动的归一化回归 + 白名单合规。 |
-| declarative requestGraph adapter（第三方/侧载） | 最低（纯函数） | 易测：输入夹具 → 标准 schema 的纯函数断言。 |
+| official adapter | 自动受信，可读写全部 adapter 凭证 | 夹具驱动归一化回归 + 出网范围合规 + 官方发布治理。 |
+| local unsigned adapter | 用户按 digest 整体受信，可读写全部 adapter 凭证 | 与 official 使用同一 sandbox/schema/出网测试；另测 digest 变化重授权、撤销、来源与风险展示。 |
 
 ---
 
@@ -27,7 +27,7 @@
 
 - **schema 一致性**：adapter 输出、UI 输入、`contract/schema/` 三者必须对得上，由 CI 自动校验。
 - **manifest 合规**：adapter 声明的能力与域名白名单合法、无越界，由 `tools/` 静态校验。
-- **双跑一致性**：同一份 adapter 在客户端 QuickJS 与服务端 QuickJS-wasm（见 [`adr_005`](../adr/adr_005_runtime.md)）上对同一夹具应产出一致结果。两端绑定、版本和编译配置可能不同，只对共享 golden/canary 覆盖的已使用语义承诺一致，不能假定天然零漂移。
+- **双跑一致性**：同一份 adapter 在客户端 QuickJS 与服务端 QuickJS-wasm 上对同一夹具应产出一致结果（ADR-000 §7）。两端绑定、版本和编译配置可能不同，只对共享 golden/canary 覆盖的已使用语义承诺一致，不能假定天然零漂移。
 
 ---
 

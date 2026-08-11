@@ -1,10 +1,10 @@
 # 规则 · AI 生成 Flutter UI
 
-配合 [`AGENTS.md`](../../AGENTS.md) 与 [`docs/rules/ai_coding.md`](ai_coding.md) 阅读，约束在后者基础上**叠加**。立场：**UI 可以大量交给 AI 生成，但生成必须落在 [ADR-004](../adr/adr_004_ui_sdui.md) 的框内**——elecon 不做完整 SDUI（无 Widget-tree JSON），UI = 客户端硬编码的**有界卡片组件集** + generic 域固定模板。AI 自由发挥页面布局会直接和这套架构打架。
+配合 [`AGENTS.md`](../../AGENTS.md) 与 [`docs/rules/ai_coding.md`](ai_coding.md) 阅读，约束在后者基础上**叠加**。立场：**UI 可以大量交给 AI 生成，但生成必须落在有界客户端组件框内**——elecon 不做完整 SDUI（无 Widget-tree JSON），UI = 客户端硬编码的**有界卡片组件集** + generic 域固定模板。AI 自由发挥页面布局会直接和这套架构打架。V1 的详细论证归档于 [`ADR-004`](../adr/archived/v1/adr_004_ui_sdui.md)，V2 总边界见 ADR-000 §5.7。
 
 视觉基线：**Material 3**（M3 的 token 化主题契合 ADR-004「token 随主题变、组件不感知」）。
 
-> **依据 ADR-004**：ADR-004 已**接受（Accepted，2026-06-20）**，本规则在其框内落地；若 ADR-004 后续被修订，本文同步调整。本文中标「ADR-004 §…」的均为 ADR 原文约束，标「（规则层）」的为本规则在 ADR 之上的额外加强。
+> **历史依据**：本文中标「ADR-004 §…」的内容来自已归档的 V1 ADR-004；其有效约束已由本规则承接。若 V2 后续 UI ADR 与本文冲突，以新的 V2 ADR 为准。
 
 ---
 
@@ -22,7 +22,7 @@
 
 4. **UI 是不可信侧，永远异步。**
    - ❌ 生成的 UI **绝不接触凭证**的值或等价物（红线 #1）；不引入任何凭证存储 / 透传。
-   - ❌ 不让 adapter 输出**驱动 widget 结构**（半可信 adapter 不得驱动渲染，ADR-002）——adapter 只决定"有什么数据"，客户端决定"怎么渲染"。
+   - ❌ 不让 adapter 输出**驱动 widget 结构**（ADR-000 §5.7）——adapter 只决定“有什么数据”，客户端决定“怎么渲染”。
    - adapter 在背景 isolate、**UI 永远异步**（红线 #7）：组件必须显式处理 **loading / error / empty** 三态，不得假设同步数据。
 
 ---

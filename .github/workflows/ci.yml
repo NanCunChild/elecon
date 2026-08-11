@@ -3,9 +3,9 @@ name: CI
 # 把三条验证链做成必过闸门（git.md §3：契约一致性 / adapter 静态校验 / 夹具回归 / lint）。
 on:
   push:
-    branches: [main]
+    branches: [main, V2]
   pull_request:
-    branches: [main]
+    branches: [main, V2]
   workflow_call:
     inputs:
       checkout_ref:
@@ -17,6 +17,56 @@ permissions:
   contents: read
 
 jobs:
+  v2-docs-structure:
+    name: V2 / docs structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - name: Verify active V2 and frozen V1 documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f docs/adr/README.md
+          test -f docs/adr/adr_000_abstract.md
+          test -f docs/adr/archived/v1/README.md
+          test -f docs/notes/README.md
+          test -f docs/notes/archived/v1/README.md
+          test -f docs/planning/README.md
+          test -f docs/planning/v2_migration.md
+          test -f docs/planning/archived/v1/README.md
+          test -f docs/probes/README.md
+          test -f docs/probes/archived/v1/README.md
+          test -f docs/reference/README.md
+          test -f docs/reference/archived/v1/README.md
+
+          set -- docs/adr/archived/v1/adr_*.md
+          test "$#" -eq 34 || {
+            printf 'expected 34 frozen V1 ADRs, got %s\n' "$#" >&2
+            exit 1
+          }
+
+          set -- docs/adr/adr_*.md
+          test "$#" -eq 10 || {
+            printf 'expected V2 ADR-000 through ADR-009, got %s files\n' "$#" >&2
+            exit 1
+          }
+
+          for filename in \
+            adr_001_contract.md \
+            adr_002_trust_model.md \
+            adr_022_request_graph.md \
+            adr_023_declarative_dataflow.md \
+            adr_026_response_masker.md \
+            adr_033_production_sideload.md; do
+            test ! -e "docs/adr/$filename" || {
+              printf 'V1 ADR remains active: docs/adr/%s\n' "$filename" >&2
+              exit 1
+            }
+          done
+
   # lint + 全 workspace 严格类型：Biome（server/tools/packages/scripts + adapters 一方 JS，
   # 规则取舍见 biome.jsonc）+ tsc --noEmit（含共享包 @elecon/broker-primitives）。
   # npm ci 在仓库根（workspace）执行，共享包经 prepare 自动构建。
@@ -37,9 +87,8 @@ jobs:
       # pkcs11js 仅离线签名机需要；普通 CI 必须在省略 optional 原生模块时仍可编译 tools。
       - run: npm ci --omit=optional && npm run typecheck -w tools
 
-  # 服务端：全量 golden 冒烟（目录发现；沙箱 parser 端到端/超时/OOM/缺能力 + Broker B1–B6
-  # + 凭证 + transport + fetch/xjt）。golden 向量钉死两端双跑行为；漏跑 = TS 侧可静默漂移
-  # 而 Dart 侧（flutter test 全量）仍被门住，破坏双跑一致性的强制对称（ADR-001 §8）。
+  # 迁移期服务端 baseline：目录发现运行当前全部 runtime/Broker/transport smoke。
+  # V2 替代 gate 落地前保留，避免通过重启 ADR 静默丢失已实现的回归覆盖。
   server:
     runs-on: ubuntu-latest
     steps:
@@ -58,13 +107,14 @@ jobs:
       - run: npm ci
       - run: npm run typecheck -w server
       - run: npm run build -w server
-      - run: npm run smoke:all -w server
+      - name: Legacy baseline / current server smoke suite
+        run: npm run smoke:all -w server
         env:
           ELECON_REQUIRE_ADAPTERS: "1"
       - run: bash deploy/public-endpoint/validate-dist.test.sh
 
-  # 工具链：全量 smoke（目录发现，含 validator/urlmatch/scanner/codegen/signer——此前手工
-  # 列举漏跑了后三个）+ 对 adapters/ 全量静态校验 + codegen 漂移闸门。
+  # 迁移期工具链 baseline：全量 smoke、adapter 校验、扫描与 codegen 漂移闸门。
+  # Manifest V2 gate 落地后逐项替换旧 validator 断言，不先删除。
   tools:
     runs-on: ubuntu-latest
     steps:
@@ -82,11 +132,13 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run typecheck -w tools
-      - run: npm run smoke:all -w tools
+      - name: Legacy baseline / current tools smoke suite
+        run: npm run smoke:all -w tools
       - run: npm run ledger:validate -w tools
       # 红线 #8：提交的 adapter 与 fixture 不得包含真实学生数据或凭证等价物。
       - run: npm run scan -w tools
-      - run: npm run validate -w tools
+      - name: Legacy baseline / current adapter validation
+        run: npm run validate -w tools
       # codegen 漂移闸门（仿 stdlib bundle 闸门）：入库生成物必须等于按当前
       # contract/schema 重新生成的产物——schema 改了、生成物没跟上即 fail。
       # 生成物已被消费（client elecon_contract 包 / server 类型化 smoke），漂移会伤下游。
@@ -117,7 +169,7 @@ jobs:
       - name: 入库 bundle 必须等于按锁定依赖重建的产物
         run: git diff --exit-code html.bundle.js
 
-  # 客户端：lint + 双跑一致性（客户端 QuickJS == golden）。
+  # 迁移期客户端 baseline：lint、当前 trust profile、QuickJS 与共享 golden。
   # flutter_qjs 是经典 FFI 插件，需先用 CMake 预构建原生测试库（见 build 脚本）。
   client:
     runs-on: ubuntu-latest
@@ -143,13 +195,13 @@ jobs:
       - run: flutter analyze
       # 默认轮次 = DEPLOY profile（无 dart-define）：断言 ADR-024 护栏 1 的 fail-closed
       # 默认，以及 devSideload() 在 DEPLOY 下恒抛。需侧载信任票的用例在此轮 skip。
-      - name: Flutter tests with native QuickJS (DEPLOY profile)
+      - name: Legacy baseline / Flutter tests with current DEPLOY profile
         run: bash tool/flutter_test.sh flutter test
         env:
           ELECON_REQUIRE_ADAPTERS: "1"
       # DEV profile 轮次：执行上一轮 skip 掉的侧载路径用例（imperative 运行时集成）。
       # 两轮合起来才覆盖 ADR-024 的两个信任档——少任一轮都会留下未被断言的分支。
-      - name: Flutter tests with native QuickJS (DEV sideload profile)
+      - name: Legacy baseline / Flutter tests with current DEV sideload profile
         run: >-
           bash tool/flutter_test.sh flutter test
           --dart-define=ELECON_TRUST_PROFILE=dev-sideload

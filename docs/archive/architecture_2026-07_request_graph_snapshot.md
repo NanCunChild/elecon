@@ -659,10 +659,10 @@ server/src/campus/index.ts
 新架构师或程序员建议按以下顺序建立上下文：
 
 1. 阅读 `AGENTS.md` 和本文，先理解不变量与实际状态。
-2. 阅读 `docs/adr/adr_000_abstract.md`，理解总体取舍。
-3. 阅读 `docs/adr/adr_009_fetch_credential.md`，理解 imperative Broker 和凭证边界。
-4. 阅读 `docs/adr/adr_022_request_graph.md`，理解 declarative/imperative 分派。
-5. 阅读 `docs/adr/adr_023_declarative_dataflow.md`，理解 bind/compute/inject。
+2. 阅读 `docs/adr/archived/v1/adr_000_abstract.md`，理解 V1 总体取舍。
+3. 阅读 `docs/adr/archived/v1/adr_009_fetch_credential.md`，理解 imperative Broker 和凭证边界。
+4. 阅读 `docs/adr/archived/v1/adr_022_request_graph.md`，理解 declarative/imperative 分派。
+5. 阅读 `docs/adr/archived/v1/adr_023_declarative_dataflow.md`，理解 bind/compute/inject。
 6. 从 `client/lib/core/adapter_launcher.dart` 进入生产执行路径。
 7. 继续读 `client/lib/core/declarative_host.dart` 或 `client/lib/core/adapter_runtime.dart`。
 8. 重点读 `client/lib/core/broker/fetch_proxy.dart` 和同目录纯函数。

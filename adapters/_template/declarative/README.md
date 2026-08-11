@@ -15,9 +15,9 @@
 2. `bind.client_id`：用 `regex` 从 `chal` 响应体抽出 `client_id`，绑为不透明句柄。
 3. `inject`：把 `client_id` 注入 `raw` 请求 URL 的 `cid` 参数（**静态汇聚点**，绝不依值选择注入到哪）。注入到 `at: url` 时 broker **自动 component 编码**，故无需 `urlencode` compute。
 
-> 需要 `compute`（如 `hmac-sha256` 签名、`base64` 编码）时在 §2/③ 之间插 `compute` 段；逐 op 语义见 [`declarative_dataflow_ops.md`](../../../docs/reference/declarative_dataflow_ops.md)。
+> **V1 legacy template**：V2 已退役 declarative dataflow，不得用于新 adapter。历史逐 op 语义见 [`declarative_dataflow_ops.md`](../../../docs/reference/archived/v1/declarative_dataflow_ops.md)。
 
-`index.js` 的解析函数**只读 `responses.raw`**——句柄、中间响应、注入值都不进 adapter。这正是数据流比命令式更安全之处（命令式下 adapter 必须自己读 body 才拿得到中间 token）。逐 op 语义见 [`docs/reference/declarative_dataflow_ops.md`](../../../docs/reference/declarative_dataflow_ops.md)。
+`index.js` 的解析函数只读 `responses.raw` 是 V1 行为。V2 使用统一异步 JavaScript；本模板将在 V2 adapter 迁移后删除。历史语义见 [`docs/reference/declarative_dataflow_ops.md`](../../../docs/reference/archived/v1/declarative_dataflow_ops.md)。
 
 ## 夹具说明
 

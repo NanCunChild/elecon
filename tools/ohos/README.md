@@ -6,7 +6,7 @@ Linux 无 DevEco Studio 下，用华为 **Command Line Tools** 完成 OHOS（Har
 > 面向：`client/ohos/`（Flutter-OHOS 嵌入）。build/装机的完整流程见
 > [`client/ohos/README.md`](../../client/ohos/README.md)；本目录只管**环境隔离**与**签名材料**两件事。
 > 边界见 AGENTS.md 红线 #4/#5/#8。
-> 关联：[`docs/probes/probe_001_smoke_plan.md`](../../docs/probes/probe_001_smoke_plan.md) · issue #65 · ADR-016 §2.4。
+> V1 关联：[归档 Probe-001](../../docs/probes/archived/v1/probe_001_smoke_plan.md) · issue #65。V2 复用前须由新 ADR 要求并重跑 probe。
 
 ---
 
@@ -136,4 +136,3 @@ profile（`.p7b`）是**签名期**嵌入 hap 签名块的，**不进编译产�
 ## Docker（backlog，暂不做）
 
 探针阶段的 go/no-go 是**真机 + 用户手解滑块**的交互测试，塞不进 headless 容器，Docker 现在收益≈0。**该上的时机**：有了**非交互 `hvigorw assembleHap`** 且值得可复现进 CI/release 时。**前置**：先确认华为 DevEco/OpenHarmony SDK 的 **EULA 是否允许打进镜像 / 再分发**（红线 #9 许可证）——否则只能"本地构建镜像、不发布"。
-

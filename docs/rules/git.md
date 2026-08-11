@@ -36,7 +36,7 @@
 ```
 feat(adapter): 新增 school-1234 课表归一化
 fix(broker): 修复白名单外请求误注入凭证
-docs(adr): 起草 adr_001 标准 schema 规范
+docs(adr): 起草 adr_001 manifest v2 规范
 ```
 
 约定补充：
@@ -56,7 +56,7 @@ docs(adr): 起草 adr_001 标准 schema 规范
 - **分级审查**：
   - 普通 adapter / UI 卡片 → 1 人审，快车道；
   - 触碰 `contract/`、`core/`、`transport/`、签名/吊销 → **至少 1 名人工审阅 + 安全检查清单**，AI 不得独自闭环。
-- **CI 必过**：契约一致性检查、adapter 静态校验（requestGraph 结构、白名单、凭证引用与能力专属规则；C3 退役见 ADR-033，已接受待落地）、夹具回归、lint、**客户端 release 构建阀门**（分发产物必须为 DEPLOY，拒绝 DEV profile；ADR-033 落地前侧载哨兵仍须为零，落地后的新 gate 须证明 DEPLOY 不含未签名/devSideload 执行路径）。
+- **CI 必过**：契约一致性、adapter 静态校验、fixture 回归、lint、QuickJS 隔离、宿主出网边界、official 验签/local digest trust、iOS official-only 和客户端 release 产物检查。CI 细项随 V2 后继 ADR 落地，禁止用删除旧断言代替新门禁。
 
 ### PR 描述模板
 

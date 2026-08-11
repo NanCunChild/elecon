@@ -1,8 +1,10 @@
-# CI 自动发版
+# App 工件 CI 自动发版
 
 推送 `vMAJOR.MINOR.PATCH` tag，或手动运行 `Release Flutter artifacts` 并填写已有 tag，即可生成 GitHub Release。
 
-发版会先跑 `test` 闸门（`flutter analyze` + `flutter test`，含 QuickJS 原生测试库构建）；**任一失败即阻断构建与发布**——tag 推送不触发 `flutter-ci`（它只跑 main/PR），故发版流水线自带这道闸门。
+发版先通过 immutable tag/SHA preflight，再复用完整 `.github/workflows/ci.yml`，经受保护 Environment 人工批准后构建并发布。任一 required job 失败即阻断。当前 CI 同时包含 V2 文档结构门和 V1 runtime legacy baseline；通过不等于 V2 runtime 已完成迁移。
+
+本页只描述 App 平台工件。official adapter 的审核、离线签名、catalog 和 revocation 由 ADR-006 及其未来 V2 runbook 负责；不得继续按 V1 archived release runbook 发布 V2 adapter。
 
 ## 构建矩阵与签名状态
 
@@ -14,7 +16,7 @@
 | Windows x64 | `.zip` | 未签名（OV 证书暂缺，SmartScreen 会告警） |
 | iOS | 未签名 `.app`（zip） | 未签名，**不能直接安装或提交 App Store** |
 
-> **OHOS/HAP 不在发版矩阵内。** 主线依赖已迁 `flutter_qjs_next`，OHOS 旁路仍用旧 `flutter_qjs` fork（`pubspec.ohos.yaml`），需单独验证后再纳入。见 `docs/notes/build_blockers.md` §2。
+> **OHOS/HAP 不在发版矩阵内。** 主线依赖已迁 `flutter_qjs_next`，OHOS 旁路仍用旧 `flutter_qjs` fork（`pubspec.ohos.yaml`），需由新的 V2 平台 probe 验证后再纳入。V1 状态快照见 `docs/notes/archived/v1/build_blockers.md` §2。
 
 > 仓库只提交了 `android/ios/linux` 平台目录；`macos/windows` runner 未入库，流水线在构建前按需 `flutter create` 脚手架。
 
@@ -28,7 +30,7 @@
 `MACOS_CERTIFICATE_BASE64`（Developer ID Application 证书导出的 `.p12` 的 base64）、`MACOS_CERTIFICATE_PASSWORD`、`MACOS_SIGN_IDENTITY`（如 `Developer ID Application: Name (TEAMID)`）。
 未配置时产出未签名 `.app`（用户侧被 Gatekeeper 拦，需右键打开）。**公证（notarization）尚未接入**，待后续补齐。
 
-**Windows / iOS：** 暂无签名渠道。Windows OV 证书、Apple 证书 / provisioning profile / Bundle ID / App Store Connect 流程均待补齐后再接入。
+**Windows / iOS：** 暂无签名渠道。Windows OV 证书、Apple 证书 / provisioning profile / Bundle ID / App Store Connect 流程均待补齐。当前 unsigned iOS `.app` 只是 CI 工件，不是 App Store 产物；V2 上架受 ADR-009 阻塞。
 
 ## 发版前提
 

@@ -1,6 +1,6 @@
 # tools/ — 开发工具链（Node/TS）
 
-> 语言选型见 [`docs/adr/adr_005_runtime.md`](../docs/adr/adr_005_runtime.md)：全栈统一到 JS/TS，契约校验用 `ajv`，与服务端共用一套。
+> 语言选型的历史论证见 [V1 ADR-005](../docs/adr/archived/v1/adr_005_runtime.md)：全栈统一到 JS/TS，契约校验用 `ajv`，与服务端共用一套；V2 延续决定见 [ADR-000](../docs/adr/adr_000_abstract.md) §7。
 
 | 工具 | 目录 | 用途 |
 |---|---|---|

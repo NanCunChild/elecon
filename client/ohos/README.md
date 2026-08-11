@@ -4,8 +4,8 @@ Flutter 客户端的 **OHOS（HarmonyOS NEXT / OpenHarmony）平台目录**，�
 `flutter create --platforms ohos` 生成。当前为 **Probe-001 阶段一（工具链冒烟）** 的底座 ——
 仅平台 scaffold + 已验证可 build/签名，**尚未承载真实业务 UI**。
 
-> 关联：[`docs/probes/probe_001_smoke_plan.md`](../../docs/probes/probe_001_smoke_plan.md) ·
-> [`docs/adr/adr_016_complex_login.md`](../../docs/adr/adr_016_complex_login.md) §2.4 · issue #65 ·
+> V1 关联：[归档 Probe-001](../../docs/probes/archived/v1/probe_001_smoke_plan.md)；V2 复用前须重跑。
+> [V1 ADR-016](../../docs/adr/archived/v1/adr_016_complex_login.md) §2.4 · issue #65 ·
 > 构建环境与签名脚本见 [`tools/ohos/README.md`](../../tools/ohos/README.md)。
 
 ---

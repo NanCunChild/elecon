@@ -7,11 +7,12 @@
 ## 1. 产出前自检清单（AI 每次改动前逐条过）
 
 - [ ] 已读 ADR-000 与本次改动相关的 `docs/rules/` 细则。
-- [ ] 改动**未**让 adapter / UI / 公网服务端接触凭证的值或等价物。
+- [ ] adapter bundle 只有在 official 门或用户 digest trust 通过后才执行；iOS runtime 仍为 official-only。
 - [ ] **未**给公网哑服务（`server/src/public`）增加凭证存储或私密数据持久化。
 - [ ] 私密数据路径仍走客户端直连或校内中继，**未**改道经公网。
-- [ ] DEPLOY 无论字节来源都只运行 official adapter，未新增绕过验签、身份绑定、在线导入吊销门禁或统一 loader 的路径；DEV 产物仍不可分发。
-- [ ] DEV-Sideload 仍是全能力开发环境且凭证值不离核心；ADR-033 虽已接受，但其 §5 清单未同批落地前，不得单独删除 C3 或单独实现 DEPLOY 本地导入（红线 #4/#5）。
+- [ ] adapter 所有网络仍经过宿主出口，未新增 raw socket、Node 网络模块、WebView、原生 FFI 或其他旁路。
+- [ ] local unsigned 信任绑定 bundle digest；manifest 自报、无效签名或同名 adapter 不能铸造 official 或继承旧 digest trust。
+- [ ] Credential Store 使用后继 ADR 规定的复合键；没有把全局裸 ref 直接暴露给 adapter。复合键只防误碰撞，未被错误描述为受信 adapter 间的安全隔离。
 - [ ] 若动了 `contract/`：已有对应 ADR，且保持向后兼容。
 - [ ] adapter 仍在背景 isolate 执行，未引入 UI 线程同步阻塞。
 - [ ] 新增/修改的夹具已脱敏，无真实学生数据。
@@ -39,7 +40,7 @@
 ## 3. 升级信号（出现即停手，交回人工 / 开 ADR）
 
 - 需要改 `contract/`（schema 或 manifest 规范）。
-- 需要让 adapter 获得超出当前信任档的能力。
+- 需要改变 official、local digest trust、iOS official-only 或未来签名者信任的执行准入语义。
 - 需要触碰凭证保管、broker 注入逻辑、签名或吊销。
 - 需要给公网服务端加状态/持久化。
 - 需要引入 GPL 系或来源/许可证不明的依赖。

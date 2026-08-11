@@ -4,7 +4,7 @@
 > 用 Claude Code / 其他 agent 工具时，可把 `CLAUDE.md` 软链到本文：`ln -s AGENTS.md CLAUDE.md`。
 > 细则见 [`docs/rules/`](docs/rules/)；架构设计理由见 [`docs/adr/adr_000_abstract.md`](docs/adr/adr_000_abstract.md)。
 
-elecon 是面向学生的校园信息聚合平台。架构第一目标是**在最少人力下对学校接口变动与多平台差异保持韧性**。这决定了一切规则的取向：**优先可热替换、优先隔离、优先把适用最小信任原则。**
+elecon 是面向学生的校园信息聚合平台。架构第一目标是**在最少人力下对学校接口变动与多平台差异保持韧性**。V2 将 adapter 视为项目或用户选择信任的本地程序：优先可热替换、降低贡献门槛，并把强制边界收敛到执行准入、QuickJS 隔离、宿主网络出口、公网零凭证与 transport。V2 总纲见 [`ADR-000`](docs/adr/adr_000_abstract.md)。
 
 ---
 
@@ -12,11 +12,11 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 
 以下是架构的承重墙。**任何代码、任何 AI 生成的改动，都不得违背。触碰即拒绝合并。** AI 在产出前必须逐条自检（见 [`docs/rules/ai_coding.md`](docs/rules/ai_coding.md)）。
 
-1. **凭证永不离开核心。** cookie / token 只存于可信核心；adapter、UI、公网服务端永远拿不到凭证的值，也拿不到任何等价物（带 token 的 URL、`Set-Cookie`、重定向中间 token）。
+1. **未受信 adapter 永不执行。** official adapter 通过官方验签、身份绑定、吊销与兼容门后自动受信；支持本地导入的平台可由用户按 bundle digest 整体信任 local unsigned adapter。受信 adapter 可读写全部 Credential Store、读取私密响应并使用 adapter 能力；项目不承诺阻止其泄漏或篡改这些数据。MVP 不实现用户自签或签名者信任。iOS 仅运行 official，loader/runtime 必须强制，不能只隐藏入口（ADR-000 §3.1、§5.1）。
 2. **公网服务端零凭证、无状态。** 不得为公网哑服务（`server/src/public`）添加任何凭证存储或私密数据持久化。
 3. **私密数据不经公网。** 私密 / 认证数据只走客户端直连或校内授权中继（`server/src/campus`）。
-4. **传输底座仅官方签名加载。** DEPLOY 无论 bundle 来自 catalog 还是本地文件，**都只运行通过 official 验签、身份绑定与吊销门禁的 adapter**；不得存在未签名 / 非 official 的加载路径。DEV-Sideload 可本地加载未签名 adapter、可使用优化 build，但不可分发。dev 传输仍只在 debug build 存在。DEPLOY 本地 official 导入见 [`adr_033`](docs/adr/adr_033_production_sideload.md)（已接受，尚未落地）——落地后本地文件仅作 official bundle 的字节来源，仍须过同一验签与吊销门禁。
-5. **adapter 能力面越薄越好（安全口号，非工程口号）。**「越薄」约束的是**能力 / 信任面**，不是功能复杂度——**工程上 adapter 是吸收对端混乱的 shim，功能上越重越好**（归一化、校本派生尽量压进这层；分工线与「两个轴」见 [`adr_000`](docs/adr/adr_000_abstract.md) §3.1）。能力面的硬约束不变：**DEPLOY 永不运行未签名 / 非 official adapter**；本地导入不是低信任档，导入成功后仍须铸造既有 official grant。**DEV-Sideload 是全能力开发环境**：可加载未签名 declarative / imperative adapter，并调试当前 DEV 宿主已编入的能力；须经强警告 + 全占用确认，凭证值仍不离核心。`C3_sideload_must_declarative` 退役与 DEPLOY official 本地导入由 [`adr_033`](docs/adr/adr_033_production_sideload.md) 决定（已接受，尚未落地）；须按其 §5 清单同批落地，不得单项抢跑。详见 [`adr_002`](docs/adr/adr_002_trust_model.md) §2.5 / [`adr_022`](docs/adr/adr_022_request_graph.md)。
+4. **传输底座仅官方加载。** adapter 的本地导入自由不得扩展到 transport。transport 仍只随官方应用分发，不向 adapter 或本地 bundle 开放原生模块、raw socket、VPN 或 TLS 中间人能力；dev transport 仍只在 debug build 存在。
+5. **adapter 网络只有宿主出口。** adapter 不得获得 raw socket、Node 网络模块、WebView、原生 FFI 或旁路网络能力；所有请求必须经过宿主，强制 scheme / origin / path / method、逐跳重定向和资源预算。出网门只限制目标和资源，不承诺识别 adapter 编码进获准请求的凭证或私密数据（ADR-000 §5.3）。
 6. **契约即承重墙。** 改动 `contract/`（schema、manifest）必须先有 ADR，且默认保持向后兼容。
 7. **adapter 不在 UI 线程同步执行。** 一律背景 isolate，UI 永远异步。
 8. **不提交真实学生数据。** 测试夹具必须脱敏。
@@ -42,4 +42,4 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 | [`docs/rules/git.md`](docs/rules/git.md) | 分支模型、commit 规范、PR 规范 |
 | [`docs/rules/testing.md`](docs/rules/testing.md) | 测试原则：信任越高测试越严、夹具驱动 |
 | [`docs/rules/ai_coding.md`](docs/rules/ai_coding.md) | AI 编程纪律与产出前自检清单 |
-| [`docs/rules/ui_ai_generation.md`](docs/rules/ui_ai_generation.md) | AI 生成 Flutter UI 的边界（ADR-004 框内、Material 3） |
+| [`docs/rules/ui_ai_generation.md`](docs/rules/ui_ai_generation.md) | AI 生成 Flutter UI 的边界（有界组件、标准 schema、Material 3） |

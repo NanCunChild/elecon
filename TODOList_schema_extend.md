@@ -26,7 +26,7 @@
 ### 宿主 / 运行时（非 schema 正文）
 
 - [ ] WebVPN、多跳统一认证、验证码、会话过期的**宿主侧**能力面（adapter 不存凭证）
-- [ ] XIDIAN mint 全闭环：见 [`docs/reference/xidian_mint_closed_loop_plan.md`](docs/reference/xidian_mint_closed_loop_plan.md)
+- [ ] XIDIAN mint 的 V2 流程随 Manifest/SDK 与 Credential Store ADR 落地；V1 方案见 [`docs/reference/archived/v1/xidian_mint_closed_loop_plan.md`](docs/reference/archived/v1/xidian_mint_closed_loop_plan.md)
 - [ ] 命名 Header / 固定 body 凭证注入：ADR-029 已接受；named header 已落地，body 注入仍须按 P1-11 完成人工主导实现与签收
 - [ ] 空调物理控制：ADR-030 已接受；仍须按 P1-12 完成统一副作用闸门与人工签收后再接正式 adapter
 

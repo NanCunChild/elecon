@@ -84,7 +84,7 @@ npm run smoke:credential    # 凭证存储 smoke
 npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新增即跑）
 ```
 
-> adapter 在服务端用 **QuickJS-wasm**（`quickjs-emscripten`）执行；客户端使用另一套 QuickJS 绑定，跨端一致性由共享 golden/canary 验证。**不使用** Node 的 `vm` 模块（`vm` 不是安全边界）。运行时选型见 [`docs/adr/adr_005_runtime.md`](docs/adr/adr_005_runtime.md)。
+> adapter 在服务端用 **QuickJS-wasm**（`quickjs-emscripten`）执行；客户端使用另一套 QuickJS 绑定，跨端一致性由共享 golden/canary 验证。**不使用** Node 的 `vm` 模块（`vm` 不是安全边界）。运行时选型的历史论证见 [V1 ADR-005](docs/adr/archived/v1/adr_005_runtime.md)，V2 延续决定见 [ADR-000](docs/adr/adr_000_abstract.md) §7。
 
 ---
 
@@ -115,7 +115,7 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 
 ## 路线状态
 
-架构的 Decision 与 Landing 是两个独立维度，不能用 `Accepted` 推断 `Implemented`。当前处于**基础设施型 Alpha / 0.1**：承重链路已成形但仍有开放安全项，产品能力面仍薄。逐项状态见 [`docs/adr/README.md`](docs/adr/README.md)，最新整改盘点见 [`docs/planning/2026_08_review_remediation.md`](docs/planning/2026_08_review_remediation.md)。
+架构的 Decision 与 Landing 是两个独立维度，不能用 `Accepted` 推断 `Implemented`。当前处于 **V1→V2 架构迁移期**：V2 决策已重启，runtime/contract 仍保留 V1 基线。逐项状态见 [`docs/adr/README.md`](docs/adr/README.md)，迁移顺序见 [`docs/planning/v2_migration.md`](docs/planning/v2_migration.md)。
 
 - **已落地**：Broker 核心零件 B1–B6 两端（TS + Dart）镜像实现，照 `contract/golden/` 向量逐字节双跑；声明式跨请求数据流 ADR-023 MVP；真实 OS keystore 凭证存储（硬件 keystore + 软件回退）；官方签名分发 / 吊销 / bootstrap 与签名工具链（PKCS#11 / YubiKey）；WebView 登录 + SSO 换票收割；ADR-020 URL query 凭证（一卡通 `openid`）端到端；adapter 按需拉取（`adapters.pin`，取代子模块）。Xidian 公开通知（`notice.list`）已产品闭环。
 - **进行中**：一卡通 OpenID 真机验收；capability 级 `credentialRefs` 最小权限 ADR；图书馆 body 凭证注入；课表、成绩、考试、空教室、一卡通和图书借阅均已有 schema 驱动 UI，仍缺 freshness/unsupported 统一语义、对应 adapter 正式签发和真机验收。
@@ -123,7 +123,7 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 
 > 状态提示：主仓旧 Xidian adapter、已签名 bootstrap、外部仓开发态三者版本不同，发布流程中需分别对待（见 roadmap §1）。
 
-细分决策与取舍见 `docs/adr/` 索引；规则细则见 `docs/rules/`；实现计划见 `docs/reference/` 与 `docs/planning/`。
+细分决策与取舍见 `docs/adr/` 索引；规则细则见 `docs/rules/`；当前计划见 `docs/planning/`。V1 实施资料已移入各目录的 `archived/v1/`。
 
 ---
 

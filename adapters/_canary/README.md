@@ -2,7 +2,7 @@
 
 挂在双跑闸门（ADR-001 §8）上的引擎一致性回归哨兵。只调用两端共有的"地板"内建，断言产出逐字段等于 golden；任一侧漂移即变红。
 
-版本差异、`avoided` 清单与迁移策略见 [`docs/adr/adr_008_client_runtime.md`](../../docs/adr/adr_008_client_runtime.md) §3。
+版本差异、`avoided` 清单与迁移策略见 [V1 ADR-008](../../docs/adr/archived/v1/adr_008_client_runtime.md) §3。
 
 ## 运行
 
