@@ -26,7 +26,7 @@ npm run smoke:all
 
 ## 原则
 
-- `src/public` 只按原字节分发预先构建的 bundle、catalog 和 revocation。
+- `src/public` 当前仍按原字节分发 V1 migration baseline 的 bundle、signed catalog 和 revocation。ADR-005 落地后改为分发自包含 `.eleb`、非权威 discovery index 和独立 revocation；public 始终不参与执行信任。
 - public 不读取 Cookie/Authorization，不加载 adapter entry，不导入 `src/runtime`。
 - server replay 只能辅助审核；official 发布必须包含客户端目标 runtime 的 fixture 证据。
 - `src/campus` 已退役并删除，不得重新引入项目中继或私密代理入口。

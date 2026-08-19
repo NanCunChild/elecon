@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elecon.example/contract/eleb/manifest-v2.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifestVersion", "adapterId", "adapterVersion", "minimumAppVersion", "payload", "capabilities", "files"],
+  "properties": {
+    "manifestVersion": { "const": "2.0" },
+    "adapterId": { "type": "string", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*(?:\\.[a-z0-9]+(?:[.-][a-z0-9]+)*)+$" },
+    "adapterVersion": { "type": "string", "minLength": 1 },
+    "minimumAppVersion": { "type": "string", "minLength": 1 },
+    "payload": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind", "entry"], "properties": { "kind": { "const": "source" }, "entry": { "type": "string" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "variants"], "properties": { "kind": { "const": "bytecode-only" }, "variants": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } } } }
+      ]
+    },
+    "capabilities": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["id", "emits"], "properties": { "id": { "type": "string" }, "params": { "type": "object", "additionalProperties": false, "required": ["schema", "version"], "properties": { "schema": { "type": "string" }, "version": { "type": "string" } } }, "emits": { "type": "object", "additionalProperties": false, "required": ["schema", "version"], "properties": { "schema": { "type": "string" }, "version": { "type": "string" } } } } } },
+    "files": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["path", "role", "encoding"], "properties": { "path": { "type": "string" }, "role": { "enum": ["manifest", "source", "bytecode", "resource"] }, "encoding": { "enum": ["jcs", "utf8", "binary"] } } } }
+  }
+}

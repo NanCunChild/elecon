@@ -85,7 +85,7 @@ V2 由四个长期责任单元组成：
    - manifest 必须完整声明 adapter 可能访问的所有网络 scheme、origin、path 和 method；宿主将其作为强制上限。
 
 3. **公网哑服务 `server/src/public`**
-   - 只分发 official adapter、catalog、revocation、公开配置和允许缓存的公开数据；
+   - 只分发 official `.eleb`、非权威 discovery index、revocation、公开配置和允许缓存的公开数据；
    - 零用户凭证、零私密校园数据、无用户会话；
    - 不执行需要用户身份、学校 session 或私密响应的 adapter；
    - 不提供“临时”“降级”或“仅部分学校”的私密代理入口。
@@ -111,18 +111,18 @@ V2 不实现或维护校内授权中继：
 
 ### 4.3 执行前确认与 manifest 网络声明
 
-official adapter 经官方执行准入门后自动受信。local unsigned adapter 的安装流程可以在执行前完成 bounded unpack、digest、manifest/schema 校验和静态风险分析，但在用户点击“确认接受并安装非官方 adapter”之前，不得：
+official adapter 经官方执行准入门后自动受信。local signer 和过渡 local unsigned 的安装流程可以在执行前完成 bounded unpack、digest、manifest/schema、signature/ABI compatibility 校验和 source 静态风险分析，但在用户完成对应的 signer 或 unsigned 首次确认之前，不得：
 
 - 创建 QuickJS adapter runtime；
 - 执行 entry、module initializer、capability 或迁移脚本；
 - 调用 adapter 提供的探测、预览或安装钩子；
 - 读取 Credential Store、发起 adapter 网络请求或产生 adapter 持久化副作用。
 
-用户确认必须绑定界面实际展示的 exact bundle digest。确认后才可铸造 local digest trust 并进入统一执行路径；取消、关闭窗口或解析失败均不得留下可执行 grant。
+local signer 的首次确认必须绑定界面展示的 signer fingerprint、adapterId、exact digest、载荷形态和权限；过渡 unsigned 确认绑定 exact digest。确认后才可铸造对应 trust 并进入统一执行路径；取消、关闭窗口或解析失败均不得留下可执行 grant。
 
 Manifest V2 继续强制 adapter 声明其可能访问的全部网络目标。完整声明用于：
 
-- 用户在确认 local unsigned adapter 时理解其出网面；
+- 用户在确认 non-official adapter 时理解 signer/unsigned 状态、source/bytecode-only 载荷和出网面；
 - official reviewer 比较声明与代码、fixture 和观测行为；
 - 宿主在每次请求和每跳重定向前执行 fail-closed 裁定。
 
@@ -175,10 +175,11 @@ V2 不新增、不扩展并最终删除用于证明客户端与服务端执行�
 
 | 处理 | 文件 | 理由与前置 |
 |---|---|---|
-| **保留** | `catalog/catalog.json`、`revocation/revocation.json` | TS 发布工具与客户端 loader 的 wire/signature 互操作，不属于双 runtime；继续保护 exact bytes、签名、回滚和吊销 |
+| **迁移后删除/降级** | `catalog/catalog.json` | 当前 TS 发布工具与客户端 loader 的 runtime trust vector；ADR-005 目标中 catalog 不再参与准入，先建立 `.eleb` 自包含 identity/signature 和非权威 discovery tests 后删除或改写 |
+| **保留并重写** | `revocation/revocation.json` | 独立 official revocation 继续保护 signer/digest 吊销与 sequence 防回滚，不依赖 catalog |
 | **迁为客户端单端 fixture** | `broker/redirect.json` | 重定向仍是宿主网络安全边界，但权威实现只在客户端；补齐 canonical URL、跨 origin、DNS/IP、取消后零副作用后再删除 TS 镜像 |
 | **随 V1 删除** | `broker/dataflow.json`、`broker/harvest.json`、`broker/inject-policy.json`、`broker/response-masker.json`、`broker/response-masker-validator.json` | 分别绑定已退役的 dataflow、自动收割/注入和 mandatory Masker；须先迁完 adapter、contract、validator、fixture 和客户端接线 |
-| **按 V2 重写** | `bundle/loader.json` | 保留 bundle/digest/signature 测试职责，改为 official 与 local digest trust、TOCTOU、iOS official-only 和 Manifest V2 |
+| **按 V2 重写** | `bundle/loader.json` | 保留 bundle/digest/signature 测试职责，改为 `.eleb`、official/local signer/过渡 unsigned、QuickJS ABI、TOCTOU 和 iOS/OHOS official-only |
 | **按 V2 重写并迁客户端** | `broker/cookie-jar.json`、`broker/assemble.json`、`broker/url-match.json`、`broker/header-sanitize.json` | HTTP/cookie/network/header 仍有独立价值，但 V1 自动凭证注入、响应隐藏和 TS/Dart 镜像语义不能继承 |
 
 不得按目录批量删除 `contract/golden/`。每个文件只有在表中指定的 V2 替代测试成为 required gate、消费者完成迁移后才能删除或替换。
@@ -227,7 +228,7 @@ adapter 更新只能实现 App 已知 capability，不能通过 bundle 增加原
 
 ### 5.2 保留风险
 
-- 受信 adapter 仍可读取并外传客户端 Credential Store；该风险由执行信任、official 审核和用户 digest trust 承担。
+- 受信 adapter 仍可读取并外传自身 Credential namespace 及 manifest 已声明的跨 adapter 范围；该风险由 namespace enforcement、official 审核和用户 digest trust 承担。
 - 用户设备、系统 VPN 和 official transport 仍可观察或影响流量，其边界由后继 ADR 约束。
 - 客户端成为唯一生产实现后，其 runtime bug 影响全部用户，必须提高客户端测试和人工审查强度。
 - 无服务端 fallback 时，学校网络不可达会直接降低可用性。
@@ -333,7 +334,7 @@ adapter 更新只能实现 App 已知 capability，不能通过 bundle 增加原
 
 2026-08-11 owner 接受本 ADR，并确认：
 
-1. local unsigned adapter 只有在用户点击确认接受安装窗口、且确认绑定 exact digest 后才可首次执行；manifest 继续声明全部网络目标。
+1. local signer/过渡 unsigned 只有在用户完成对应首次确认后才可执行；manifest 继续声明全部网络和跨 namespace 目标，unsigned 按 ADR-002 退役。
 2. `server/src/campus` 直接删除，不保留 501 stub。
 3. public server 不执行任何 adapter。
 4. 客户端 runtime 对全平台使用同一契约，不按平台拆分 adapter；具体测试矩阵后议。

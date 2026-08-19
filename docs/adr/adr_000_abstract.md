@@ -47,18 +47,18 @@ V2 不以阻止受信 adapter 泄漏、篡改或误用凭证为目标。
 用户拥有最终执行决定权：
 
 - official adapter 由项目审核并自动受信，不逐项请求用户授权；
-- 支持本地导入的平台允许用户按 bundle digest 整体信任 local unsigned adapter；
-- digest 变化视为新代码，必须重新选择信任；
+- Android/desktop 的 `local` 表示第三方 signer 签名 `.eleb`：用户首次确认 signer，后续同 signer 更新按权限 diff 规则处理；
+- `local unsigned` 仅为过渡路径：signed local 全链路就绪后保留一个稳定版本，下一稳定版本从所有构建删除；
 - MVP 不实现用户自签或“信任某签名者”的自动继承，后者保留为未来能力；
 - 用户可撤销本地 digest trust、禁用或删除 adapter。
 
-用户信任 local unsigned adapter，表示接受该 adapter 读取、修改、删除或泄漏应用内全部凭证和私密 adapter 数据的风险。项目必须提供准确、显著的风险说明，但不以风险为由替用户禁止该选择。
+用户信任 local signer 或过渡 unsigned adapter，表示接受该 adapter 读取、修改、删除或泄漏其自身 namespace，以及 manifest 明确声明的其他 adapter namespace 中凭证和私密数据的风险。非 official adapter 的安装风险页必须展示 signer/unsigned 状态、source/bytecode-only 载荷、全部跨 namespace 目标及 `read`、`write`、`delete` 模式；该展示并非独立权限弹窗。项目不得以风险为由替用户禁止该选择。
 
 ### 3.2 adapter 作者
 
 adapter 作者获得流程决定权：
 
-- 自行读取所需凭证；
+- 自行读取其 namespace 内凭证，并按 manifest 声明访问其他 adapter namespace；
 - 自行构造请求、处理重定向可见信息和协议中间值；
 - 自行实现动态分支、循环、分页、签名、挑战应答和校本计算；
 - 自行解析私密响应并输出标准 schema；
@@ -82,7 +82,7 @@ official 表示项目对特定 adapter 字节进行了严格审核和背书。of
 - 验证 bundle identity、来源、依赖、网络声明和 fixture；
 - 对代码和更新执行确定性静态检查、fixture replay、行为观察和威胁分析；
 - 由人工完成最终安全与质量把关；
-- 使用离线签名、catalog、sequence、兼容门和吊销治理 exact bytes；
+- 使用离线签名、自包含 `.eleb`、兼容门、独立 revocation 和 release ledger 治理 exact content；
 - 对已发布 adapter 持续复审，并快速吊销确认有害的版本。
 
 签名证明来源、完整性和官方背书，不证明代码不存在缺陷或恶意行为。
@@ -121,8 +121,8 @@ LLM 的目标是提高发现率和审核效率，不提供“已证明安全”�
 
 未受信 adapter 永不执行：
 
-- official 必须通过官方验签、身份绑定、吊销和兼容门；
-- local unsigned 的安装界面必须先展示风险和 exact bundle digest；用户点击确认接受前，只允许 bounded unpack、digest、manifest/schema 校验和静态分析，不得创建 adapter runtime 或执行任何 bundle 代码；确认后才能保存 digest trust；
+- official 必须通过 `.eleb` 官方验签、身份绑定、独立吊销和兼容门，不依赖 runtime catalog；
+- local signer/过渡 unsigned 在首次确认前只允许 bounded unpack、digest、manifest/schema、signature/ABI compatibility 校验和 source 静态分析，不得创建 adapter runtime 或执行任何 bundle 代码；bytecode-only 必须标记无法源码级静态检查；
 - manifest 自报、adapter ID 相同、文件名相同或无效签名都不能产生或继承信任；
 - iOS MVP 只运行 official adapter。即使导入代码存在，也必须由 loader/runtime 强制 official-only，不能只隐藏 UI 入口。
 
@@ -155,9 +155,9 @@ manifest 必须声明 adapter 可能访问的全部网络目标；声明同时�
 
 ### 5.4 Credential Store
 
-受信 adapter 可读写全部 Credential Store。Store 使用结构化复合键避免不同 profile、学校、账户、服务和凭证名称发生无意重名；不得继续仅以全局裸字符串 `session`、`token` 等寻址。
+Credential Store 顶层 `profile` 表示一个用户在一所学校中的完整身份域，adapter 永远不得跨 profile。MVP 由宿主持久化唯一 profile，不开放多 profile UI。每个 profile 内以稳定 `adapterId` 建立 owner namespace；受信 adapter 默认只能枚举、读取、写入和删除自己的 namespace，跨 adapter 访问必须由 manifest 对 exact target namespace 分别声明 `read`、`write`、`delete`，宿主逐操作 fail closed 强制。
 
-复合键只解决命名和误覆盖，不构成受信 adapter 之间的机密性或完整性隔离。精确键结构、并发和原子写语义由后继 ADR 固定。
+非 official adapter 在整体信任界面展示全部跨 namespace 声明，不增加逐项授权；official adapter 经审核后静默加载，但同样只能访问已声明范围。MVP canonical key 为 `profileId / adapterId / systemId / credentialName`；profile 已同时代表用户和学校，不重复 `schoolId` 或 `accountId`。精确并发和原子写语义由后继 ADR 固定。
 
 ### 5.5 公网与私密数据
 
@@ -190,7 +190,7 @@ V2 不继续维护：
 - Broker 自动代 adapter 完成全部凭证注入；
 - 为 dataflow 维护的跨端封闭 crypto op；
 - mandatory Response Masker；
-- 以 DEV/DEPLOY profile 作为 unsigned adapter 唯一执行边界；
+- 以 DEV/DEPLOY build trust profile 作为 unsigned adapter 唯一执行边界；
 - “凭证及等价物永不进入 adapter”的产品保证。
 
 现有实现应在 V2 替代门和 adapter 迁移完成后删除，不长期维护双契约或双 runtime。
@@ -206,8 +206,8 @@ V2 不是推倒重来。以下资产继续保留：
 - Credential Store 的平台安全存储后端；
 - 标准数据 schema、capability registry 和 UI；
 - 脱敏 fixture replay、expected schema、PII scanner 和输出校验；
-- catalog/revocation 等跨组件 wire/signature 向量；不再维护客户端/服务端 adapter runtime 一致性 golden；
-- bundle envelope、digest、官方签名、catalog、sequence 和吊销；
+- revocation、`.eleb`、QuickJS ABI 等跨组件 wire/signature 向量；不再维护客户端/服务端 adapter runtime 一致性 golden；
+- canonical digest、official/local signer、非权威 discovery index、独立 revocation 和 release ledger；
 - 公网零凭证与客户端直连架构；
 - adapter 热更新和公开 adapter 仓库。
 
@@ -219,8 +219,8 @@ V2 不是推倒重来。以下资产继续保留：
 
 1. 先建立 V2 contract、执行准入、digest trust、iOS loader gate、Credential Store API 和网络出口测试；
 2. 将现有 adapter 转为统一异步 JavaScript；
-3. official 与 local unsigned 两条路径均通过真实 bundle 和合成凭证测试；
-4. 再删除 declarative/dataflow/opaque handle/Masker 和旧 trust profile；
+3. official、local signer 和过渡 unsigned 三条路径均通过真实 `.eleb` 和合成凭证测试；
+4. 再删除 declarative/dataflow/opaque handle/Masker 和旧 build trust profile；
 5. 最后清理 V1 兼容字段、实现和 CI 门。
 
 不得先移除旧边界，再补 V2 的执行准入或宿主出口。
@@ -234,9 +234,9 @@ V2 不是推倒重来。以下资产继续保留：
 - Manifest V2、统一 adapter SDK 与迁移窗口；
 - Credential Store 复合键和 JS 读写 API；
 - 宿主网络权限、URL canonicalization 与地址策略；
-- local bundle 导入、digest trust、更新和撤销；
+- local `.eleb` 导入、signer/过渡 unsigned trust、更新和撤销；
 - official 审核流水线、LLM threat scan 与人工签署 ceremony；
-- bundle 签名、catalog、revocation 和 release ledger；
+- `.eleb` 签名、第三方 signer trust、discovery index、独立 revocation 和 release ledger；
 - iOS/App Store 分发策略；
 - transport 与 app-tunnel；
 - 标准 schema、UI 和 actuator 边界。

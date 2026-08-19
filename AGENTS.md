@@ -12,7 +12,7 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 
 以下是架构的承重墙。**任何代码、任何 AI 生成的改动，都不得违背。触碰即拒绝合并。** AI 在产出前必须逐条自检（见 [`docs/rules/ai_coding.md`](docs/rules/ai_coding.md)）。
 
-1. **未受信 adapter 永不执行。** official adapter 通过官方验签、身份绑定、吊销与兼容门后自动受信；支持本地导入的平台可由用户按 bundle digest 整体信任 local unsigned adapter。受信 adapter 可读写全部 Credential Store、读取私密响应并使用 adapter 能力；项目不承诺阻止其泄漏或篡改这些数据。MVP 不实现用户自签或签名者信任。iOS 仅运行 official，loader/runtime 必须强制，不能只隐藏入口（ADR-000 §3.1、§5.1）。
+1. **未受信 adapter 永不执行。** `.eleb` 有 official、local signer、local unsigned 三条过渡期路径；Android/desktop 支持三者，iOS/OHOS 仅 official。local unsigned 在 signed local 全链路成为 required gate 后只保留一个稳定版本，下一版本从所有构建删除，之后开发构建也必须使用隔离 signer。受信 adapter 完整控制当前 profile 中自己的 Credential Store namespace；adapter 永不得跨 profile。跨 adapter 访问必须由 manifest 对 exact namespace 分别声明 `read`、`write`、`delete` 并由宿主强制。非 official 安装页展示 signer、载荷与跨域声明，official 静默加载但不绕过边界（ADR-000 §3.1、§5.1、§5.4；ADR-002）。
 2. **公网服务端零凭证、无状态。** 不得为公网哑服务（`server/src/public`）添加任何凭证存储或私密数据持久化。
 3. **私密数据只在用户设备侧。** 私密 / 认证数据只由客户端经 direct、系统 VPN 或 official transport/app-tunnel 访问学校；项目不提供校内授权中继，`server/src/public` 不执行 adapter、不接触凭证或私密响应（ADR-001 §4.1–§4.4）。
 4. **传输底座仅官方加载。** adapter 的本地导入自由不得扩展到 transport。transport 仍只随官方应用分发，不向 adapter 或本地 bundle 开放原生模块、raw socket、VPN 或 TLS 中间人能力；dev transport 仍只在 debug build 存在。

@@ -8,12 +8,12 @@
 | 阶段 | 目标 | 删除旧门的条件 |
 |---|---|---|
 | M0 | 冻结 V1 文档，建立 V2 ADR 与 CI 文档结构门；删除 campus stub | 不删除 runtime gate |
-| M1 | Manifest V2、统一 SDK、bundle digest trust | V2 contract gate 阻塞通过 |
+| M1 | Manifest V2、`.eleb`、QuickJS ABI、统一 SDK 与三路径 trust | V2 contract gate 阻塞通过 |
 | M2 | QuickJS 执行准入、宿主出网和 Credential Store API | V2 安全 golden 双端通过 |
 | M3 | 转换全部 official adapter 与 fixture | pinned adapter 无 V1 requestGraph |
-| M4 | official 审核、LLM scan、签名/catalog/revocation | exact digest 人工签署链通过 |
+| M4 | official 审核、LLM scan、`.eleb` 签名、discovery index 与独立 revocation | exact digest 人工签署链通过 |
 | M5 | iOS official-only、WebView、transport 平台门 | 真机与 release artifact gate 通过 |
-| M6 | 删除 declarative/dataflow/Masker/旧 trust profile、服务端 runtime 镜像和跨 runtime golden | 所有替代门已成为 required checks |
+| M6 | 删除 declarative/dataflow/Masker/旧 build trust profile、unsigned 生产路径、runtime catalog 依赖、服务端 runtime 镜像和跨 runtime golden | 所有替代门已成为 required checks |
 
 ## 原则
 

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elecon.example/contract/eleb/signature-v1.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["signatureFormat", "algorithm", "digestAlgorithm", "contentDigest", "publicKey", "signerFingerprint", "signature"],
+  "properties": {
+    "signatureFormat": { "const": "elecon-eleb-signature/1" },
+    "algorithm": { "const": "ed25519" }, "digestAlgorithm": { "const": "sha256-v1" },
+    "contentDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "publicKey": { "type": "string", "contentEncoding": "base64" },
+    "signerFingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "keyId": { "type": "string" }, "signature": { "type": "string", "contentEncoding": "base64" }
+  }
+}

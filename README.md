@@ -91,14 +91,14 @@ npm run smoke:all           # 迁移期 legacy baseline；V2 客户端 fixture g
 4. 在 `fixtures/` 放抓包样本，写归一化回归测试。
 5. 在该 adapter 的 `README.md` 记录：该校属哪一档（UA 门禁 / CAS 逃生口 / openid 唯一身份 / 微信小程序）及已知坑。
 
-**执行信任：** official 经官方门后自动受信。支持本地导入的平台在用户确认接受 exact bundle digest 前不得执行任何 bundle 代码；确认后 local unsigned 获得完整 adapter 能力。iOS 仅运行 official。
+**执行信任：** `.eleb` 有 official、local signer 和过渡 local unsigned 三条路径。Android/desktop 可本地导入；iOS/OHOS 仅 official。unsigned 在 signed local 门就绪后的下一稳定版本删除，之后所有构建都必须签名。
 
 ---
 
 ## 合规与安全
 
 - **客户端是唯一私密执行面**：私密数据经 direct、系统 VPN 或 official transport/app-tunnel 从用户设备访问学校；项目不提供中继。
-- **信任即完整能力**：受信 adapter 可读写全部 Credential Store 和私密响应；项目不承诺阻止其泄漏或篡改数据。
+- **信任与 namespace**：profile 表示一个用户在一所学校的完整身份，adapter 永不跨 profile。受信 adapter 完整控制当前 profile 中自己的 namespace；同 profile 跨 adapter 访问须由 manifest 逐 namespace、逐 `read/write/delete` 声明并由宿主强制。
 - **传输底座最高门槛**：能看到全部流量的传输底座仅接受官方签名，DEPLOY/DEV 均无 transport 侧载；dev transport 仍仅存在于 debug build。adapter 本地导入不放宽 transport。
 - **显式知情同意**：启用能看到全部流量的隧道时，提供独立且更重的告知与授权流。
 
@@ -110,7 +110,7 @@ npm run smoke:all           # 迁移期 legacy baseline；V2 客户端 fixture g
 
 架构的 Decision 与 Landing 是两个独立维度，不能用 `Accepted` 推断 `Implemented`。当前处于 **V1→V2 架构迁移期**：V2 决策已重启，runtime/contract 仍保留 V1 基线。逐项状态见 [`docs/adr/README.md`](docs/adr/README.md)，迁移顺序见 [`docs/planning/v2_migration.md`](docs/planning/v2_migration.md)。
 
-- **保留资产**：客户端 QuickJS、OS secure store、宿主网络、fixture、标准 schema、official 签名/catalog/revocation、WebView 登录和 adapter 仓库。
+- **保留资产**：客户端 QuickJS、OS secure store、宿主网络、fixture、标准 schema、`.eleb` 签名、非权威 discovery、独立 revocation、WebView 登录和 adapter 仓库。
 - **迁移中**：Manifest/SDK V2、local digest trust、Credential Store JS API、客户端单端 fixture gate、official 审核与 LLM finding 流程。
 - **待清理**：V1 declarative/dataflow/Masker、自动凭证注入、服务端 runtime 镜像和跨 runtime golden。campus relay 已决定删除。
 

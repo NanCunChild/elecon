@@ -4,7 +4,7 @@
 
 发版先通过 immutable tag/SHA preflight，再复用完整 `.github/workflows/ci.yml`，经受保护 Environment 人工批准后构建并发布。任一 required job 失败即阻断。当前 CI 同时包含 V2 文档结构门和 V1 runtime legacy baseline；通过不等于 V2 runtime 已完成迁移。
 
-本页只描述 App 平台工件。official adapter 的审核、离线签名、catalog 和 revocation 由 ADR-006 及其未来 V2 runbook 负责；不得继续按 V1 archived release runbook 发布 V2 adapter。
+本页只描述 App 平台工件。official adapter 的审核、自包含 `.eleb` 离线签名、非权威 discovery index 和独立 revocation 由 ADR-005/006 及其未来 V2 runbook 负责；不得继续按 V1 archived release runbook 发布 V2 adapter。现有 signed catalog 只作为迁移 baseline，在替代门成为 required check 后删除 runtime trust 职责。
 
 ## 构建矩阵与签名状态
 

@@ -8,10 +8,11 @@
 
 | 组件 | 信任/能见度 | 测试要求 |
 |---|---|---|
-| 执行信任 / Credential Store / 宿主网络出口 | 最高（决定代码能否运行、持有全部凭证、出网不可绕过） | 最严：单元 + 集成 + 安全用例（未受信不执行、digest 绑定、iOS official-only、复合键、出口越界在 transport 前被拒）。**AI 不得独自编写并作为唯一作者**，需人工审阅。 |
+| 执行信任 / Credential Store / 宿主网络出口 | 最高（决定代码能否运行、profile/namespace 隔离、出网不可绕过） | 最严：单元 + 集成 + 安全用例（未受信不执行、digest 绑定、iOS official-only、跨 profile 永久拒绝、namespace/mode 越权拒绝、复合键、出口越界在 transport 前被拒）。**AI 不得独自编写并作为唯一作者**，需人工审阅。 |
 | 传输底座 | 看到全部流量 | 严：连接生命周期、失败降级、签名校验、不泄露明文边界。 |
-| official adapter | 自动受信，可读写全部 adapter 凭证 | 夹具驱动归一化回归 + 出网范围合规 + 官方发布治理。 |
-| local unsigned adapter | 用户按 digest 整体受信，可读写全部 adapter 凭证 | 与 official 使用同一 sandbox/schema/出网测试；另测 digest 变化重授权、撤销、来源与风险展示。 |
+| official adapter | 自动受信；完整控制当前 profile 的 self namespace，同 profile 跨 adapter 访问受 manifest mode 上限 | 夹具驱动归一化回归 + namespace 越权负例 + 出网范围合规 + 官方发布治理。 |
+| local signed adapter | 首次确认 signer；同 signer 更新按权限 diff；完整控制当前 profile 的 self namespace | 与 official 使用同一 sandbox/schema/出网测试；另测 signer identity、扩权确认、identity 冲突、bytecode-only 风险和跨 profile拒绝。 |
+| local unsigned adapter（过渡） | 首次按 digest 受信；signed local 就绪后仅留一个稳定版本 | 另测无效签名不降级、退役版本门和最终所有 artifact 不含 unsigned grant。 |
 
 ---
 

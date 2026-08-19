@@ -2,6 +2,8 @@
 
 端点 D 只做一件事：把**预先构建、已签名**的静态产物按原样发出去。它**不签名、不验签、不读
 adapter 源、无状态、零凭证**（红线 #2）。完整性由**客户端**对 app 内 pin 公钥验签保证
+> 本目录描述当前 V1 migration baseline。ADR-005/006 落地后，signed catalog 将由非权威 discovery index 取代，执行信任直接来自自包含 `.eleb`；独立 revocation 保留。
+
 （ADR-002 §2.3/§2.6，ADR-018 §2.9）——**端点被投毒也无法提权**：篡改的 bundle/catalog 在
 客户端验签 fail-closed。故本端点可无差别替换为任意静态托管 / CDN / 对象存储。
 

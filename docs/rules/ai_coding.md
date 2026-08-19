@@ -11,8 +11,8 @@
 - [ ] **未**给公网哑服务（`server/src/public`）增加凭证存储或私密数据持久化。
 - [ ] 私密数据只在用户设备侧经 direct、系统 VPN 或 official transport/app-tunnel 访问学校；未新增项目中继或公网私密路径。
 - [ ] adapter 所有网络仍经过宿主出口，未新增 raw socket、Node 网络模块、WebView、原生 FFI 或其他旁路。
-- [ ] local unsigned 信任绑定 bundle digest；manifest 自报、无效签名或同名 adapter 不能铸造 official 或继承旧 digest trust。
-- [ ] Credential Store 使用后继 ADR 规定的复合键；没有把全局裸 ref 直接暴露给 adapter。复合键只防误碰撞，未被错误描述为受信 adapter 间的安全隔离。
+- [ ] `.eleb` 只有 official、已确认 local signer 或迁移期已确认 unsigned 才执行；无效签名不得降级 unsigned，unsigned 退役门未被绕过。
+- [ ] Credential Store 的 profile 由宿主绑定且 adapter 永不跨 profile；同 profile 以 `adapterId` namespace 隔离，跨 adapter 访问只允许 manifest 对 exact target 声明的 `read`、`write`、`delete`，未暴露全局裸 ref 或 wildcard namespace。
 - [ ] 若动了 `contract/`：已有对应 ADR，且保持向后兼容。
 - [ ] adapter 仍在背景 isolate 执行，未引入 UI 线程同步阻塞。
 - [ ] 新增/修改的夹具已脱敏，无真实学生数据。

@@ -7,7 +7,7 @@
 | validator | `src/validator/` | 当前 V1 manifest/网络/fixture 校验；随 Manifest V2 改为完整网络声明、bundle 和 expected fixture gate |
 | codegen | `src/codegen/` | JSON Schema → Dart / TS 类型生成 |
 | signer | `src/signer/` | 官方 adapter 签名 / 吊销 |
-| release | `src/release/` | 生成 endpoint D 的 signed catalog、revocation 和 bundle dist；从 dist 派生客户端 bootstrap 基线资产 |
+| release | `src/release/` | 当前生成 V1 migration baseline 的 signed catalog、revocation 和 bundle dist；ADR-005/006 后迁为自包含 `.eleb`、非权威 discovery index 和独立 revocation |
 | scanner | `src/scanner/` | fixture PII/凭证扫描（脱敏检查） |
 
 ## 运行

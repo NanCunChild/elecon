@@ -8,7 +8,7 @@
 
 iOS 使用与其他平台相同的普通异步 JavaScript adapter，不恢复 declarative/dataflow 作为特例，但只允许运行 official adapter。
 
-iOS MVP 不提供 local unsigned digest trust、用户自签、签名者信任或本地代码导入执行。共享导入代码可以存在，但 UI 入口、loader、runtime 和 release artifact 必须共同执行 official-only；仅隐藏入口不构成边界。
+iOS MVP 不提供 local signer trust、local unsigned、用户自签或本地 `.eleb` 导入执行。共享导入代码可以存在，但 UI 入口、loader、runtime 和 release artifact 必须共同执行 official-only；仅隐藏入口不构成边界。
 
 下载 adapter 只能实现 App 已内置的固定 capability 和标准 schema，不能增加 UI、native module、transport、支付或任意宿主能力。App bundle 预置可运行的 official baseline，保证提交 build 自包含并可供审核演示。
 
@@ -21,14 +21,14 @@ iOS MVP 不提供 local unsigned digest trust、用户自签、签名者信任�
 - reviewer notes、演示账号和离线 baseline 路径；
 - privacy policy、Privacy Manifest 和第三方 SDK 声明；
 - archive/export、provisioning、entitlements 和 codesign 验证；
-- official catalog、adapter 更新和 transport 的审核说明。
+- official `.eleb`、非权威 discovery index、adapter 更新、独立 revocation 和 transport 的审核说明。
 
 Apple 政策变化、新 host API、新 capability、local import、app-tunnel 或 WebView 能力变化均触发重新评估。
 
 ## 3. Release gates
 
 - release 构建中不存在 local trust factory、测试 signer、DEV transport 或导入 bypass。
-- loader/runtime 对 unsigned、未知 signer、无效 signature、非 catalog bundle 均有负例。
+- loader/runtime 对 unsigned、未知 signer、无效 signature、吊销 bundle 和不支持 QuickJS ABI 均有负例；catalog 不参与准入。
 - QuickJS 构建不得依赖 JIT/W^X 不兼容能力。
 - 审核 build 与实际分发 build 使用相同 trust、adapter baseline 和 transport 配置。
 

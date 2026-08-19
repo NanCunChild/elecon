@@ -24,7 +24,7 @@
 
 V2 adapter 是项目或用户选择信任的本地程序，使用普通异步 JavaScript 自行读取凭证、
 编排学校流程并输出标准 schema。official 自动受信；支持的平台允许用户按 exact bundle
-digest 整体信任 local unsigned；iOS 仅运行 official。所有 adapter 仍受 QuickJS、宿主唯一
+首次信任 local signer，过渡期也可确认 local unsigned；iOS/OHOS 仅运行 official。所有 adapter 仍受 QuickJS、宿主唯一
 网络出口、资源预算和标准输出校验约束。
 
 ## 历史资料
