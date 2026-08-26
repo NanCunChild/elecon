@@ -37,6 +37,10 @@ class HardwareSecureStore implements SecureStore {
   final BlobStore _blobs;
   final Map<String, CredentialEntry> _entries = {};
   Future<void> _persistChain = Future<void>.value();
+  Object? _durabilityError;
+
+  /// 最近一次未被成功重试覆盖的持久化错误。
+  Object? get durabilityError => _durabilityError;
 
   /// 是否已存在 H 档（据 wrapped DEK blob）。
   static Future<bool> hasPersisted(BlobStore blobs) async =>
@@ -77,8 +81,9 @@ class HardwareSecureStore implements SecureStore {
       }
     }
     final rnd = Random.secure();
-    final dek =
-        Uint8List.fromList(List<int>.generate(32, (_) => rnd.nextInt(256)));
+    final dek = Uint8List.fromList(
+      List<int>.generate(32, (_) => rnd.nextInt(256)),
+    );
     final w = await hardware.wrapDek(dek);
     await blobs.write(_wrappedDekBlob, w);
     return dek;
@@ -100,7 +105,24 @@ class HardwareSecureStore implements SecureStore {
   }
 
   void _schedulePersist() {
-    _persistChain = _persistChain.then((_) => _persist());
+    final previous = _persistChain;
+    _persistChain = _persistAfter(previous);
+  }
+
+  Future<void> _persistAfter(Future<void> previous) async {
+    // A failed task must not poison the queue. The current task rewrites the
+    // latest in-memory state, so it also acts as the retry.
+    try {
+      await previous;
+    } catch (_) {
+      // The original error remains observable through durabilityError/flush.
+    }
+    try {
+      await _persist();
+      _durabilityError = null;
+    } catch (e) {
+      _durabilityError = e;
+    }
   }
 
   Future<void> _persist() async {
@@ -111,12 +133,15 @@ class HardwareSecureStore implements SecureStore {
     await _blobs.write(_storeBlob, sealed);
   }
 
-  Future<void> flush() => _persistChain;
+  Future<void> flush() async {
+    await _persistChain;
+    final error = _durabilityError;
+    if (error != null) throw error;
+  }
 
   @override
   void put(CredentialEntry entry) {
-    _entries[entry.ref] =
-        _withProtection(entry, CredentialProtection.hardware);
+    _entries[entry.ref] = _withProtection(entry, CredentialProtection.hardware);
     _schedulePersist();
   }
 
@@ -134,32 +159,30 @@ class HardwareSecureStore implements SecureStore {
 }
 
 Map<String, dynamic> _entryToJson(CredentialEntry e) => {
-      'ref': e.ref,
-      'schoolId': e.schoolId,
-      'type': e.type,
-      'scope': e.scope,
-      'value': e.value,
-      'acquiredAt': e.acquiredAt,
-      'expiresAt': e.expiresAt,
-      'status': e.status.name,
-      'sensitivity': e.sensitivity.name,
-      'protection': e.protection.name,
-    };
+  'ref': e.ref,
+  'schoolId': e.schoolId,
+  'type': e.type,
+  'scope': e.scope,
+  'value': e.value,
+  'acquiredAt': e.acquiredAt,
+  'expiresAt': e.expiresAt,
+  'status': e.status.name,
+  'sensitivity': e.sensitivity.name,
+  'protection': e.protection.name,
+};
 
 CredentialEntry _entryFromJson(Map<String, dynamic> j) => CredentialEntry(
-      ref: j['ref'] as String,
-      schoolId: j['schoolId'] as String,
-      type: j['type'] as String,
-      scope: (j['scope'] as List).cast<String>(),
-      value: j['value'] as String,
-      acquiredAt: j['acquiredAt'] as int,
-      expiresAt: j['expiresAt'] as int?,
-      status: CredentialStatus.values.byName(j['status'] as String),
-      sensitivity:
-          CredentialSensitivity.values.byName(j['sensitivity'] as String),
-      protection:
-          CredentialProtection.values.byName(j['protection'] as String),
-    );
+  ref: j['ref'] as String,
+  schoolId: j['schoolId'] as String,
+  type: j['type'] as String,
+  scope: (j['scope'] as List).cast<String>(),
+  value: j['value'] as String,
+  acquiredAt: j['acquiredAt'] as int,
+  expiresAt: j['expiresAt'] as int?,
+  status: CredentialStatus.values.byName(j['status'] as String),
+  sensitivity: CredentialSensitivity.values.byName(j['sensitivity'] as String),
+  protection: CredentialProtection.values.byName(j['protection'] as String),
+);
 
 CredentialEntry _withProtection(CredentialEntry e, CredentialProtection p) =>
     CredentialEntry(

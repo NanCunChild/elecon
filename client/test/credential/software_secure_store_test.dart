@@ -6,21 +6,43 @@
 /// 功能测试。持久化并发/写序、崩溃一致性等更深覆盖作为后续测试增强（红线 #1 / testing.md）。
 library;
 
+import 'dart:typed_data';
+
 import 'package:elecon/core/credential/blob_store.dart';
 import 'package:elecon/core/credential/software_secure_store.dart';
 import 'package:elecon/core/credential/types.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+class _FlakyBlobStore implements BlobStore {
+  final _inner = InMemoryBlobStore();
+  int failedWrites = 0;
+
+  @override
+  Future<Uint8List?> read(String name) => _inner.read(name);
+
+  @override
+  Future<void> write(String name, List<int> bytes) {
+    if (failedWrites > 0) {
+      failedWrites--;
+      return Future<void>.error(StateError('sim-write-fail'));
+    }
+    return _inner.write(name, bytes);
+  }
+
+  @override
+  Future<void> delete(String name) => _inner.delete(name);
+}
+
 CredentialEntry _entry(String ref, String value) => CredentialEntry(
-      ref: ref,
-      schoolId: 'xidian',
-      type: 'cookie',
-      scope: const ['https://ehall.xidian.edu.cn/*'],
-      value: value,
-      acquiredAt: 1000,
-      expiresAt: null,
-      status: CredentialStatus.active,
-    );
+  ref: ref,
+  schoolId: 'xidian',
+  type: 'cookie',
+  scope: const ['https://ehall.xidian.edu.cn/*'],
+  value: value,
+  acquiredAt: 1000,
+  expiresAt: null,
+  status: CredentialStatus.active,
+);
 
 void main() {
   test('put → flush → 重开解密还原 value', () async {
@@ -45,8 +67,11 @@ void main() {
     final sealed = await blobs.read('store.enc');
     expect(sealed, isNotNull);
     final asText = String.fromCharCodes(sealed!);
-    expect(asText.contains('PLAINTEXT-NEEDLE'), isFalse,
-        reason: 'value 应在密文内，不得明文出现');
+    expect(
+      asText.contains('PLAINTEXT-NEEDLE'),
+      isFalse,
+      reason: 'value 应在密文内，不得明文出现',
+    );
   });
 
   test('登记 protection=software', () async {
@@ -73,5 +98,22 @@ void main() {
 
     final reopened = await SoftwareSecureStore.open(blobs);
     expect(reopened.get('s'), isNull);
+  });
+
+  test('首写失败后后写可恢复，flush 暴露 durability failure', () async {
+    final blobs = _FlakyBlobStore();
+    final store = await SoftwareSecureStore.open(blobs);
+    blobs.failedWrites = 1;
+
+    store.put(_entry('first', 'v1'));
+    await expectLater(store.flush(), throwsStateError);
+    expect(store.durabilityError, isA<StateError>());
+
+    store.put(_entry('second', 'v2'));
+    await store.flush();
+    expect(store.durabilityError, isNull);
+    final reopened = await SoftwareSecureStore.open(blobs);
+    expect(reopened.get('first')!.value, 'v1');
+    expect(reopened.get('second')!.value, 'v2');
   });
 }

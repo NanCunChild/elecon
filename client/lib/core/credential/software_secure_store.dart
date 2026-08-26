@@ -31,6 +31,10 @@ class SoftwareSecureStore implements SecureStore {
 
   /// 串行持久化队列：保证多次 put/delete 的写序，不并发覆写。
   Future<void> _persistChain = Future<void>.value();
+  Object? _durabilityError;
+
+  /// 最近一次未被成功重试覆盖的持久化错误。
+  Object? get durabilityError => _durabilityError;
 
   /// 是否已存在持久化的 S 档（据 DEK blob 判定）——用于启动时静默续用此前已同意的 S 档。
   static Future<bool> hasPersisted(BlobStore blobs) async =>
@@ -49,8 +53,9 @@ class SoftwareSecureStore implements SecureStore {
     if (existing != null && existing.length == 32) return existing;
     // 每安装随机生成（非内嵌，不变量 ⑦）；S 档下明文落盘。
     final rnd = Random.secure();
-    final dek =
-        Uint8List.fromList(List<int>.generate(32, (_) => rnd.nextInt(256)));
+    final dek = Uint8List.fromList(
+      List<int>.generate(32, (_) => rnd.nextInt(256)),
+    );
     await blobs.write(_dekBlob, dek);
     return dek;
   }
@@ -67,7 +72,24 @@ class SoftwareSecureStore implements SecureStore {
   }
 
   void _schedulePersist() {
-    _persistChain = _persistChain.then((_) => _persist());
+    final previous = _persistChain;
+    _persistChain = _persistAfter(previous);
+  }
+
+  Future<void> _persistAfter(Future<void> previous) async {
+    // A failed task must not poison the queue. The current task rewrites the
+    // latest in-memory state, so it also acts as the retry.
+    try {
+      await previous;
+    } catch (_) {
+      // The original error remains observable through durabilityError/flush.
+    }
+    try {
+      await _persist();
+      _durabilityError = null;
+    } catch (e) {
+      _durabilityError = e;
+    }
   }
 
   Future<void> _persist() async {
@@ -79,12 +101,15 @@ class SoftwareSecureStore implements SecureStore {
   }
 
   /// durability 屏障：等待所有已排队的持久化落盘。收割后调用以确保不丢。
-  Future<void> flush() => _persistChain;
+  Future<void> flush() async {
+    await _persistChain;
+    final error = _durabilityError;
+    if (error != null) throw error;
+  }
 
   @override
   void put(CredentialEntry entry) {
-    _entries[entry.ref] =
-        _withProtection(entry, CredentialProtection.software);
+    _entries[entry.ref] = _withProtection(entry, CredentialProtection.software);
     _schedulePersist();
   }
 
@@ -104,32 +129,30 @@ class SoftwareSecureStore implements SecureStore {
 // ---- 序列化（含 value；仅存在于 AEAD 密文内）----
 
 Map<String, dynamic> _entryToJson(CredentialEntry e) => {
-      'ref': e.ref,
-      'schoolId': e.schoolId,
-      'type': e.type,
-      'scope': e.scope,
-      'value': e.value,
-      'acquiredAt': e.acquiredAt,
-      'expiresAt': e.expiresAt,
-      'status': e.status.name,
-      'sensitivity': e.sensitivity.name,
-      'protection': e.protection.name,
-    };
+  'ref': e.ref,
+  'schoolId': e.schoolId,
+  'type': e.type,
+  'scope': e.scope,
+  'value': e.value,
+  'acquiredAt': e.acquiredAt,
+  'expiresAt': e.expiresAt,
+  'status': e.status.name,
+  'sensitivity': e.sensitivity.name,
+  'protection': e.protection.name,
+};
 
 CredentialEntry _entryFromJson(Map<String, dynamic> j) => CredentialEntry(
-      ref: j['ref'] as String,
-      schoolId: j['schoolId'] as String,
-      type: j['type'] as String,
-      scope: (j['scope'] as List).cast<String>(),
-      value: j['value'] as String,
-      acquiredAt: j['acquiredAt'] as int,
-      expiresAt: j['expiresAt'] as int?,
-      status: CredentialStatus.values.byName(j['status'] as String),
-      sensitivity:
-          CredentialSensitivity.values.byName(j['sensitivity'] as String),
-      protection:
-          CredentialProtection.values.byName(j['protection'] as String),
-    );
+  ref: j['ref'] as String,
+  schoolId: j['schoolId'] as String,
+  type: j['type'] as String,
+  scope: (j['scope'] as List).cast<String>(),
+  value: j['value'] as String,
+  acquiredAt: j['acquiredAt'] as int,
+  expiresAt: j['expiresAt'] as int?,
+  status: CredentialStatus.values.byName(j['status'] as String),
+  sensitivity: CredentialSensitivity.values.byName(j['sensitivity'] as String),
+  protection: CredentialProtection.values.byName(j['protection'] as String),
+);
 
 CredentialEntry _withProtection(CredentialEntry e, CredentialProtection p) =>
     CredentialEntry(
