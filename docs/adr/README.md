@@ -18,7 +18,7 @@
 | [006](./adr_006_school_auth.md) | Deferred | 不实施 | 不适用 | 由 ADR-012 通用路径覆盖 |
 | [007](./adr_007_public_deploy.md) | Deferred | 不实施 | 不适用 | P3-15 有真实部署需求时重启评审 |
 | [008](./adr_008_client_runtime.md) | Accepted | 已落地 | 按 runtime 改动 | P2-09 |
-| [009](./adr_009_fetch_credential.md) | Accepted | 部分落地 | 待人工 | P0-05/P0-10 |
+| [009](./adr_009_fetch_credential.md) | Accepted | 部分落地 | 待人工 | P0-10 |
 | [010](./adr_010_ios_appstore.md) | Accepted | 分发约束生效；正式上架未闭环 | 待人工/外部 | P3-13/P3-14 |
 | [011](./adr_011_html_parser.md) | Accepted | 分批落地 | 按 runtime 改动 | 正文 §4 |
 | [012](./adr_012_credential_store.md) | Accepted | 部分落地 | 待人工/真机 | P0-06/P0-07、P1-01/P1-03 |
