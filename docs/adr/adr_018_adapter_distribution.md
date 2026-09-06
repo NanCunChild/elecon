@@ -184,13 +184,87 @@ elecon-adapters/（public,另一组织）
 发放给用户的**不是**整个项目目录,而是**签名 bundle**:
 
 - **内容 = digest 覆盖的运行时文件 + detached 签名**:`manifest.json` + `index.js`(+ 运行时资产,若有)+ `signature.json`。**fixtures / README / FLOW.md / node_modules 一律剔除**(signer `BUNDLE_EXCLUDE`)。
-- **内容寻址**:catalog 以 `digest`(ADR-002 §2.3 规范化双层 SHA-256)标识每个 bundle 版本;客户端拿到字节 → 重算 digest → 验签 → 交 QuickJS(§2.6)。
-- **容器封装（2026-07-15 定，同日修订 tar→gzip-JSON）**:**签名对象 = 确定性 JSON envelope**——`{ bundleFormat, files: [{ path, encoding, content }...] }`,文件为 §2.3 BUNDLE_INCLUDE 集、按路径字典序、内容 NFC/LF 规范化;其 digest **等同**现 signer 的目录式双层 SHA-256（同一批规范化文件,签/验两端可各自复现）。**on-wire = `gzip( JSON.stringify({ envelope, signature }) )`**（`.json.gz`），gzip 在**签名之外**、仅作传输压缩。
-  - **为何弃 tar（原方案）**:① envelope JSON 本身已是多文件容器,tar 的多文件打包冗余;② 手写 tar 需再移植解析器到 🔒 Dart 加载器(验签前的自研二进制解析,edge case 累积);③ gzip 用两端**内建 codec**（node:zlib ↔ Dart `GZipCodec`）——🔒 加载器零自研归档解析;④ gzip 自带压缩省客户端流量。gzip 头非确定性**无碍**:它在签名之外,digest 只认 envelope 内容。
-  - 硬约束:① envelope 只含 digest 覆盖文件 + detached 签名;② 可复现 §2.3 规范化 digest;③ 验签 fail-closed;④ 解包（gunzip+parse）后**以内容寻址校验**（重算 envelope digest 比对签名声明）,不信任传输层元数据。
+- **内容寻址**:catalog 以 `digest`(ADR-002 §2.3 **digest v2**)标识每个 bundle 版本;客户端拿到字节 → 重算 digest → 验签 → 交 QuickJS(§2.6)。
+- **容器封装（2026-07-15 定，同日修订 tar→gzip-JSON；2026-09-01 修订 digest 与上线形态）**:**签名对象 = 确定性 JSON envelope**——`{ bundleFormat, files: [{ path, encoding, content }...] }`,文件为 §2.3 BUNDLE_INCLUDE 集、按路径字典序、内容 LF/NFC（构建期检查，不符即拒签）。
+  - **为何弃 tar（原方案）**:① envelope JSON 本身已是多文件容器,tar 的多文件打包冗余;② 手写 tar 需再移植解析器到 🔒 Dart 加载器(验签前的自研二进制解析,edge case 累积);③ gzip 用两端**内建 codec**（node:zlib ↔ Dart `GZipCodec`）——🔒 加载器零自研归档解析;④ gzip 自带压缩省客户端流量。gzip 头非确定性**无碍**:它在签名之外。
+  - **为何也不签压缩包字节（2026-09-01 记）**:曾考虑"整包压缩后签压缩字节"（APK v2 式单段连续字节）。方向对、落点错——gzip 输出不确定（压缩级别、header 的 OS 字节/mtime、zlib 版本），签压缩字节会**废掉 §3 风险 (e)「所见非所签」的唯一防线**（离线机重算 digest 与审查沙箱产物比对），也使 P0-15 台账无法从 source commit 复算 digest。故取**未压缩的 envelope 字节**：同样是单段连续字节，但可从 git checkout 复现。若"包"指 tar/zip，则等于把自研归档解析器塞回 🔒 加载器，正是当初弃 tar 的理由。
+
+  - 硬约束:① envelope 只含 digest 覆盖文件 + detached 签名;② digest 可从 source commit 复现;③ 验签 fail-closed 且**先于解析**;④ 解包后**以内容寻址校验**（重算 digest 比对签名声明）,不信任传输层元数据;⑤ 验签后**必过路径卫生闸门**方可使用。
+
 - **体积上限（红线 #5 越薄的硬防线）**:validator 对 bundle（BUNDLE_INCLUDE 文件总字节）设上限,超限**加载前拒**（`C11`）。"脚本非常大"由此在提交期挡掉,而非靠容器兜底。
 - **预置基线同格式**:app 内预置的 baseline adapter 用同一 bundle 格式(§2.6),保证在线更新与离线基线一致可验。
 - **stdlib 不在 bundle 内**(B-host):运行时由宿主注入,版本经 `stdlibMin` 协商(§2.4)。
+
+#### 2.9.1 digest v2 与上线形态（2026-09-01 修订）
+
+**缺陷**（详见 ADR-002 §2.3「被取代的规格」）:原 digest 只哈希**按路径排序后的内容**,路径自身不进哈希 → **保序重命名**不改 digest,而加载器按路径取入口与 `masker.json` → official 签名可背书受审时无害的资产文件被执行。验收红用例 `tools/src/bundle/path-binding.redcase.ts`（现 2/14，A2/B1/C1–C9/D1 红）。
+
+**修订后的规格**——envelope 从「容器」降为「清单」，文件字节改由按内容哈希寻址的 blob 表承载:
+
+```jsonc
+// envelope = 签名对象（小、可读、可人眼审完）
+{
+  "bundleFormat": "elecon-bundle/2",
+  "adapterId": "school-xidian",
+  "adapterVersion": "0.3.1",
+  "files": [
+    { "path": "index.js",      "size": 4211, "sha256": "9f2c…" },
+    { "path": "manifest.json", "size":  812, "sha256": "3ab0…" },
+    { "path": "masker.json",   "size":  147, "sha256": "c751…" }
+  ]
+}
+
+digest = SHA-256( envelopeBytes )                       // envelopeBytes = UTF-8(JSON(envelope))
+
+// on-wire（.json.gz）
+gzip(JSON({
+  "envelopeB64": "<base64(envelopeBytes)>",             // 不透明字节串,不是嵌套对象
+  "signature":   { adapterId, adapterVersion, tier, digest, signature, keyId, algorithm },
+  "blobs":       { "<sha256>": "<base64(raw bytes)>" }  // **按内容哈希寻址,不按路径**
+}))
+```
+
+`blobs` 按哈希而非路径寻址,故仍是纯 JSON、🔒 加载器零自研归档解析（弃 tar 的理由完好）,且**编码彻底离开信任边界**:解码器宽严无关,产出字节必须命中 descriptor 的 `sha256`。gzip 仍在签名之外、仅作传输压缩。
+
+**Ed25519 签名输入带域分隔**（ADR-002 §2.3）:`"elecon.bundle-payload/2" ‖ 0x00 ‖ serializePayload(...)`;catalog 与 revocation 同法加 `elecon.catalog/1` / `elecon.revocation/1`。传输对象不变,前缀只加在签/验输入上。
+
+**验证顺序（不可改，fail-closed）**:
+
+| # | 步骤 | 说明 |
+|---|---|---|
+| 1 | 压缩体上限 → 有界 gunzip | `kMaxBundleGzBytes` / `kMaxBundlePayloadBytes` 不变（压缩炸弹护栏） |
+| 2 | 解析**外层信封**（仅 `envelopeB64`/`signature`/`blobs` 三字段） | 验签前唯一允许的解析;严格类型,多余字段拒 |
+| 3 | base64 解码得 `envelopeBytes`（受字节上限约束） | 非规范 base64 拒 |
+| 4 | 算法只认 `ed25519`;`keyId` → **预埋 active** 信任锚（命不中即拒） | 不按签名文件自述选算法 |
+| 5 | `SHA-256(envelopeBytes)` 比对 `signature.digest` | 内容寻址 |
+| 6 | Ed25519 验签（带 `contextTag` 前缀的载荷） | **到此为止未 parse 过 envelope** |
+| 7 | **才** `JSON.parse(envelopeBytes)`;`bundleFormat` 严格相等 | 两端对称:Dart `verify.dart` 已有,TS `verifyBundleSignature` 须补 |
+| 8 | **路径卫生闸门** | 重复 / 绝对（含 `C:` 盘符）/ `.`·`..` 段 / 反斜杠 / 空 / 尾随分隔符 / NUL / 非 NFC → 整体拒载 |
+| 9 | **blob 集合精确相等** | descriptor 的 `sha256` 集合 ↔ blob 键集合一一对应;多一个（夹带）或少一个均拒 |
+| 10 | 逐文件:先按 `size` 界定 → 解码 → 长度**精确等于** `size` → `SHA-256` 命中 descriptor | 防 endless-data;编码差异在此被吸收 |
+| 11 | **身份三方一致**:签名载荷 ↔ envelope 顶层 ↔ `manifest.json` 内容 | 任一不符即拒（ADR-002 §2.2 加强版） |
+| 12 | stdlibMin 门 → 吊销 → 交 QuickJS | 与现行 §2.6 顺序一致 |
+
+**为何第 8 步不能省**:签名只证明发布者确实想要这些路径,不证明路径安全。当前 bundle 内容不按路径落盘（`bundle_cache.dart` 以 digest 为 key）,故多数项是纵深防御;但**重复路径是活口子**——Dart `List.sort` 不保证稳定、TS `Array.sort` 保证。且 `masker.json` 唯一性（ADR-026 §2.7 C3）与 ADR-033 本地导入都直接依赖这一步。
+
+**为何第 9 步是新的风险点**:blob 集合精确相等是本方案**唯一新增的、可以搞砸的不变量**。少一个 blob 会被第 10 步抓到,但**多一个 blob 不会**——它必须由第 9 步显式拒绝,否则就是夹带通道。双端 golden 必须钉死四个负例:多余 blob / 缺失 blob / 哈希不符 / 重复 path。
+
+**签发侧新增硬约束**:`buildEnvelope` 对目录做**全量文件承诺**——目录内存在未进 envelope 的文件即**拒签**,取代 `BUNDLE_INCLUDE` 的静默剔除（`fixtures/`、`README`、`node_modules`、`.git` 等仍按 `BUNDLE_EXCLUDE` 显式排除,排除名单本身进版本控制）。LF/NFC 由静默改写改为**不符即拒签**。
+
+**为何也不签压缩包字节**:见 §2.9「为何也不签压缩包字节」。
+
+**落地清单**（🔒 每项均触红线 #4，须人工复核，AI 不得独自闭环）:
+
+1. `tools/src/bundle/envelope.ts`:envelope 改 descriptor（`path`/`size`/`sha256` + 顶层身份）;显式确定性序列化器（固定键序、无多余空白）;`digest = SHA-256(envelopeBytes)`;`BUNDLE_FORMAT` → `elecon-bundle/2`。
+2. `tools/src/signer/index.ts`:`serializePayload` 加 `contextTag` 前缀;`computeBundleDigest(dir)` 走 `buildEnvelope(dir)` 同一条 digest;`collectBundleFiles` 增全量文件承诺;`canonicalizeContent` → `assertCanonical`（拒绝而非改写）。
+3. `tools/src/catalog/sign.ts` / `tools/src/signer/revocation.ts`:签/验输入加各自 `contextTag` 前缀（传输对象不变）。
+4. `tools/src/bundle/package.ts`:上线形态改 `{envelopeB64, signature, blobs}`;实现验签先于解析;补 `bundleFormat` 检查、卫生闸门、blob 集合精确相等、逐文件 size/hash 校验、三方身份一致。
+5. `client/lib/core/loader/bundle.dart` / `verify.dart`:同上（Dart 侧只需「哈希收到的串」+ 逐 blob 校验,删除排序与逐文件拼接哈希）。
+6. `contract/golden/bundle/loader.json`:改为 `{ envelopeBytes(hex), blobs, expectedDigest, signature, publicKeyRawHex }` 形态,两端同向量;新增卫生闸门与 blob 集合四负例向量。
+7. `tools/src/bundle/path-binding.redcase.ts`:补 descriptor 形态的负例（见文件末「待实现后可表达」清单）;全绿后改名 `path-binding.smoke.ts` 纳入 `smoke:all`。
+8. **迁移 = 无代码兼容层 + 一次重签仪式**（2026-09-01 核实修正）:ledger 为空是 P0-15 台账未建立,**不等于未签发**——实存 7 份 `elecon-official-ncc-1` 签发的 official bundle（5 份随包在 `client/assets/bootstrap/`）+ 已签 catalog（sequence 3）+ revocation。无外部持有者,故 `/1` 路径整体删除、不设双读、不新增 host version gate（旧端由既有 `bundleFormat` 相等判断自动拒载）;但须一次离线 YubiKey 重签（5 adapter + catalog + revocation，随后 `bootstrap:sync` 重派生），**与 ADR-026 §2.7 已预定的「补齐 `masker.json` 后重签」合并为同一次**，并一次补齐 P0-15 台账首批记录。
+9. **暴露面核实**:攻击充要条件 = 「`manifest.json` 字典序同一侧存在 ≥2 个文件且至少一个不按固定路径查找」。现存 7 份 bundle 的 `files` 全为 `[index.js, manifest.json]`,补 `masker.json` 后为三个固定位次 → **均不可利用**;暴露面在第一份**携带运行时资产**的 bundle 出现时打开。故不需紧急吊销,但须在 adapter 开始携带资产前落地。
+10. **未纳入本批**:manifest `trustTier` 的去留。它无运行时消费者,但是 validator 三道签发期闸门（C3、`ssoMint` official-only、masker official-only）的输入,且 ADR-033 §5 明文要求 C3 删除须与 DEPLOY official-only 负例同批、不得抢跑。目标形态是把「意图档位」改为**签发流水线显式入参**（与 ADR-002 §2.2 同构）而非留在 manifest,随 ADR-033 落地一并处理。
 
 ### 2.10 语法 / 静态检查的方式（展开 §2.2 门 1 CI,复用既有 `tools/`）
 
