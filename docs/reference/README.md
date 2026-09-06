@@ -12,6 +12,8 @@
 - [Response Masker 签收清单](./response_masker_signoff_checklist.md)
 - [ADR-024 落地计划 —— 信任 profile 解绑优化等级](./adr_024_landing.md)（四问已勾决；slice 0 基座已落，判别器翻转 + 护栏捆绑待人工主导，🔒 红线 #4）
 - [跨端日志策略](./cross_end_logging.md)（DevLog 唯一 sink、默认脱敏、campus 不落凭证）
+- [**Adapter 包与签名机制 · 快速入门**](./adapter_bundle_primer.md)（**临时文档**，写给外部贡献者：包形态 / 五个角色各看到什么 / 常见误解；digest v2 落地后应删除或重写）
+- [签名面与元数据复盘](./signing_surface_review.md)（2026-09-01：三类被签对象、元数据落点、五项发现与去向；非 ADR）
 - [离线 YubiKey 签名密钥 Ceremony](./signing_ceremony.md)（密钥生成 / PIN / 公钥预埋；**不得由 AI 执行**）
 - [Adapter 发布 runbook](./adapter_release.md)（每次发版：unsigned → digest 比对 → `release:package` → 端点 D）
 - [adapter-sdk 类型声明](../../contract/adapter-sdk/types.d.ts)
