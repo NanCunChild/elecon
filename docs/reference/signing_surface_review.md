@@ -98,8 +98,15 @@ tools/src/validator/response-masker.ts:146  masker 规则仅 official
 且 [`adr_033`](../adr/adr_033_production_sideload.md) §5 明文要求：不删除 `trustTier: sideload` 枚举，
 C3 删除须与 DEPLOY official-only 负例同批、不得抢跑。
 
-**处理：本批不动。** 目标形态是把「意图档位」改为**签发流水线显式入参**（与 ADR-002 §2.2
-「档位由签名流程注入，不取自 manifest 自报」同构）而非留在 manifest，随 ADR-033 落地一并处理。
+**处理（2026-09-01 已落地，分支 `refactor/intended-tier-as-pipeline-input`）**：引入**意图档位**
+（`IntendedTier`）作为校验器与发布流水线的**显式入参**，三道闸门改读该入参；`manifest.trustTier`
+从 `required` 移出、降为过渡期回退（未给入参→warn 回退；两者皆缺→fail-closed 取 `sideload`；
+分歧→error 且**以入参为准**，claim 永不放宽）。`release/package.ts` 改为一律以 `"official"` 调用
+校验，与其 `signEnvelope(…, "official", …)` 同源。**C3 本身保留**，其退役仍随 ADR-033。
+详见 ADR-002 §2.2。
+
+> 复盘还发现第四个消费者，且是最关键的一个：`release/package.ts:144` 原本以「manifest 是否
+> 自称 official」作为 release 准入判断——**发布流水线在向被发布物提问**。现已倒置。
 
 ---
 

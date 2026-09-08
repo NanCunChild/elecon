@@ -264,7 +264,7 @@ gzip(JSON({
 7. `tools/src/bundle/path-binding.redcase.ts`:补 descriptor 形态的负例（见文件末「待实现后可表达」清单）;全绿后改名 `path-binding.smoke.ts` 纳入 `smoke:all`。
 8. **迁移 = 无代码兼容层 + 一次重签仪式**（2026-09-01 核实修正）:ledger 为空是 P0-15 台账未建立,**不等于未签发**——实存 7 份 `elecon-official-ncc-1` 签发的 official bundle（5 份随包在 `client/assets/bootstrap/`）+ 已签 catalog（sequence 3）+ revocation。无外部持有者,故 `/1` 路径整体删除、不设双读、不新增 host version gate（旧端由既有 `bundleFormat` 相等判断自动拒载）;但须一次离线 YubiKey 重签（5 adapter + catalog + revocation，随后 `bootstrap:sync` 重派生），**与 ADR-026 §2.7 已预定的「补齐 `masker.json` 后重签」合并为同一次**，并一次补齐 P0-15 台账首批记录。
 9. **暴露面核实**:攻击充要条件 = 「`manifest.json` 字典序同一侧存在 ≥2 个文件且至少一个不按固定路径查找」。现存 7 份 bundle 的 `files` 全为 `[index.js, manifest.json]`,补 `masker.json` 后为三个固定位次 → **均不可利用**;暴露面在第一份**携带运行时资产**的 bundle 出现时打开。故不需紧急吊销,但须在 adapter 开始携带资产前落地。
-10. **未纳入本批**:manifest `trustTier` 的去留。它无运行时消费者,但是 validator 三道签发期闸门（C3、`ssoMint` official-only、masker official-only）的输入,且 ADR-033 §5 明文要求 C3 删除须与 DEPLOY official-only 负例同批、不得抢跑。目标形态是把「意图档位」改为**签发流水线显式入参**（与 ADR-002 §2.2 同构）而非留在 manifest,随 ADR-033 落地一并处理。
+10. **manifest `trustTier`**（2026-09-01 已在 `refactor/intended-tier-as-pipeline-input` 处理）:引入**意图档位**作为校验器与发布流水线的显式入参,三道签发期闸门（C3 / `ssoMint` official-only / masker official-only）改读该入参;`trustTier` 从 `required` 移出、降为过渡期回退（分歧=error 且以入参为准）。**C3 本身保留**——其退役仍须与 DEPLOY official-only 负例同批,不得抢跑（ADR-033 §5）。见 ADR-002 §2.2。
 
 ### 2.10 语法 / 静态检查的方式（展开 §2.2 门 1 CI,复用既有 `tools/`）
 

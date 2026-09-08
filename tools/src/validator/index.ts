@@ -125,7 +125,12 @@ interface LoginDecl {
 
 interface Manifest {
   adapterId: string;
-  trustTier: "official" | "sideload";
+  /**
+   * **意图档位的 claim，不是权威**（ADR-002 §2.2）。权威档位来自签名裁定；本字段只在
+   * 签发流水线未显式给出 `intendedTier` 时作为回退，且回退会产出 warn。见 [resolveIntendedTier]。
+   * 可选：schema 已把它从 required 移出（ADR-002 §2.2，2026-09-01）。
+   */
+  trustTier?: "official" | "sideload";
   /** 运行时声明。stdlibMin=依赖的 elecon:html stdlib 最低版本（ADR-018 §2.4）。可选。 */
   runtime?: { engine?: string; entry?: string; stdlibMin?: string };
   network: { allow: string[] };
@@ -213,11 +218,100 @@ export function loadContract(): Contract {
 
 // ---- C1–C4：manifest 静态检查（纯函数，便于测试）----
 
+/**
+ * 签发流水线声明的**意图档位**。
+ *
+ * 与 manifest 里的 `trustTier` 的区别是**谁说了算**：ADR-002 §2.2 定死「档位由签名流程显式注入，
+ * 不取自 manifest 自报」，但校验器此前一直读 `manifest.trustTier` 来驱动三道敏感能力闸门
+ * （C3 / M5 / RM2）——等于把 claim 当成了判据。本类型把那个输入搬到调用方手里。
+ *
+ * 注意这**不是**信任档：真正的档位仍只由 official 签名裁定，校验器无权授予任何信任。
+ * 这里声明的是「本次校验按哪一档的规则来审」。
+ */
+export type IntendedTier = "official" | "sideload";
+
+export interface IntendedTierResolution {
+  readonly tier: IntendedTier;
+  readonly findings: Finding[];
+}
+
+/**
+ * 定出本次校验使用的意图档位，并报告 claim 与流水线入参之间的分歧。
+ *
+ * | explicit | manifest 声明 | 结果 |
+ * |---|---|---|
+ * | 有 | 相同 | 用 explicit，无 finding |
+ * | 有 | 不同 | **error** `C0_intended_tier_mismatch`，仍用 explicit（流水线赢，claim 永不放宽） |
+ * | 有 | 缺省 | 用 explicit，无 finding |
+ * | 无 | 有 | **warn** `C0_intended_tier_implicit`，回退到 claim（过渡期兼容） |
+ * | 无 | 缺省 | **warn** `C0_intended_tier_defaulted`，取 `sideload`（fail-closed，最小权限） |
+ *
+ * **为何保留「无 explicit 时回退到 claim」**：多 adapter 发现式校验（`npm run validate` 不带
+ * `--adapter=`）一次扫全部 adapter，而档位是**逐 adapter**的，单个全局 flag 表达不了。故过渡期
+ * 保留回退并以 warn 暴露；单 adapter 的签发路径（release 打包、`--adapter=` + `--intended-tier=`）
+ * 必须显式给出。回退的移除随 ADR-033 落地（届时 C3 一并处理）。
+ *
+ * **为何 mismatch 时用 explicit 而非拒绝**：拒绝会让调用方拿不到其余 findings；用 explicit 则
+ * 保证 claim 永远不能把校验放宽到比流水线声明更松，同时 error 已使整体校验失败。
+ */
+export function resolveIntendedTier(
+  explicit: IntendedTier | undefined,
+  declared: unknown,
+): IntendedTierResolution {
+  const claim = declared === "official" || declared === "sideload" ? declared : undefined;
+
+  if (explicit !== undefined) {
+    if (claim !== undefined && claim !== explicit) {
+      return {
+        tier: explicit,
+        findings: [
+          {
+            level: "error",
+            code: "C0_intended_tier_mismatch",
+            message: `manifest.trustTier='${claim}' 与签发流水线声明的意图档位 '${explicit}' 不符：档位由签名流程注入，manifest 自报不作数（ADR-002 §2.2）。按 '${explicit}' 校验`,
+          },
+        ],
+      };
+    }
+    return { tier: explicit, findings: [] };
+  }
+
+  if (claim !== undefined) {
+    return {
+      tier: claim,
+      findings: [
+        {
+          level: "warn",
+          code: "C0_intended_tier_implicit",
+          message: `未给出意图档位，回退到 manifest.trustTier='${claim}'。签发路径须显式传入（ADR-002 §2.2）`,
+        },
+      ],
+    };
+  }
+
+  return {
+    tier: "sideload",
+    findings: [
+      {
+        level: "warn",
+        code: "C0_intended_tier_defaulted",
+        message: "未给出意图档位且 manifest 未声明 trustTier，按最小权限取 'sideload' 校验（fail-closed）",
+      },
+    ],
+  };
+}
+
 export function checkManifest(
   manifest: Manifest,
   contract: Pick<Contract, "manifestValidate" | "registry"> & { stdlibVersion?: string | null },
+  intendedTier?: IntendedTier,
 ): Finding[] {
   const findings: Finding[] = [];
+
+  // C0 意图档位：由调用方声明；未声明时回退到 manifest claim（warn）。三道敏感能力闸门
+  // （C3 / M5 / RM2）此后一律读 `tier`，不再读 manifest.trustTier（ADR-002 §2.2）。
+  const { tier, findings: tierFindings } = resolveIntendedTier(intendedTier, manifest.trustTier);
+  findings.push(...tierFindings);
 
   // C1 schema 合规
   if (!contract.manifestValidate(manifest)) {
@@ -251,7 +345,9 @@ export function checkManifest(
   }
 
   // C3 sideload ⟹ 每个 capability requestGraph=declarative（红线 #5；ADR-022）
-  if (manifest.trustTier === "sideload") {
+  // 读**意图档位**而非 manifest claim（ADR-002 §2.2）。C3 本身保留——其退役须与 DEPLOY
+  // official-only 负例同批落地，不得抢跑（ADR-033 §5）。
+  if (tier === "sideload") {
     for (const cap of manifest.capabilities ?? []) {
       if (cap.requestGraph !== "declarative") {
         findings.push({
@@ -367,7 +463,7 @@ export function checkManifest(
   findings.push(...checkLogin(manifest));
 
   // M1–M7 SSO 静默签票声明检查（ADR-017）。login.ssoMint 可选；缺省即跳过。
-  findings.push(...checkSsoMint(manifest));
+  findings.push(...checkSsoMint(manifest, tier));
 
   // D1–D16 声明式跨请求数据流检查（ADR-023）。bind/compute/inject 可选；缺省即跳过。
   findings.push(...checkDataflow(manifest));
@@ -441,7 +537,8 @@ export function checkLogin(manifest: Pick<Manifest, "login" | "credentials">): F
  * 只做可静态验证的部分——**不碰凭证值、不模拟换票**（红线 #1，实现在核心 + official adapter）。
  */
 export function checkSsoMint(
-  manifest: Pick<Manifest, "login" | "credentials" | "capabilities" | "trustTier">,
+  manifest: Pick<Manifest, "login" | "credentials" | "capabilities">,
+  intendedTier: IntendedTier,
 ): Finding[] {
   const findings: Finding[] = [];
   const login = manifest.login;
@@ -499,11 +596,11 @@ export function checkSsoMint(
     }
     // M5 via ⟹ official + 引用本 manifest 声明的 capability（红线 #1 门禁，类比 C3）
     if (svc.via !== undefined) {
-      if (manifest.trustTier !== "official") {
+      if (intendedTier !== "official") {
         findings.push({
           level: "error",
           code: "M5_via_requires_official",
-          message: `ssoMint.services['${ref}'].via='${svc.via}' 声明了 adapter mint 能力，但 trustTier=${manifest.trustTier}（敏感能力仅 official，红线 #5/#1）`,
+          message: `ssoMint.services['${ref}'].via='${svc.via}' 声明了 adapter mint 能力，但意图档位=${intendedTier}（敏感能力仅 official，红线 #5/#1）`,
         });
       }
       if (!capIds.has(svc.via)) {
@@ -876,7 +973,7 @@ function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Fin
 
 // ---- 编排 ----
 
-export function validateAdapterDir(dir: string, contract: Contract): Finding[] {
+export function validateAdapterDir(dir: string, contract: Contract, intendedTier?: IntendedTier): Finding[] {
   const manifestPath = join(dir, "manifest.json");
   if (!existsSync(manifestPath)) {
     return [{ level: "error", code: "no_manifest", message: `${dir} 下无 manifest.json` }];
@@ -893,9 +990,10 @@ export function validateAdapterDir(dir: string, contract: Contract): Finding[] {
       },
     ];
   }
-  const maskerFindings = checkResponseMaskerFiles(dir, manifest, contract.responseMaskerValidate);
+  const { tier } = resolveIntendedTier(intendedTier, manifest.trustTier);
+  const maskerFindings = checkResponseMaskerFiles(dir, manifest, contract.responseMaskerValidate, tier);
   return [
-    ...checkManifest(manifest, contract),
+    ...checkManifest(manifest, contract, intendedTier),
     ...maskerFindings,
     ...checkBundleSize(dir),
     ...checkFixtures(dir, manifest, contract),
@@ -910,6 +1008,7 @@ function checkResponseMaskerFiles(
   dir: string,
   manifest: Manifest,
   schemaValidate: ValidateFunction,
+  intendedTier: IntendedTier,
 ): Finding[] {
   const found: string[] = [];
   const walk = (current: string): void => {
@@ -954,7 +1053,7 @@ function checkResponseMaskerFiles(
   }
 
   return [
-    ...checkResponseMasker(policy, manifest, schemaValidate),
+    ...checkResponseMasker(policy, manifest, schemaValidate, intendedTier),
     {
       level: "error",
       code: "RM0_host_gate_unavailable",
@@ -993,9 +1092,25 @@ function main(): void {
   const arg = process.argv.find((a) => a.startsWith("--adapter="));
   const contract = loadContract();
 
+  // --intended-tier=official|sideload：签发流水线声明「按哪一档的规则审」（ADR-002 §2.2）。
+  // 不给则逐 adapter 回退到 manifest.trustTier 并产出 warn——档位是逐 adapter 的，
+  // 一个全局 flag 无法表达发现式多 adapter 扫描的意图，故回退在过渡期保留。
+  const tierArg = process.argv.find((a) => a.startsWith("--intended-tier="));
+  const rawTier = tierArg?.slice("--intended-tier=".length);
+  if (rawTier !== undefined && rawTier !== "official" && rawTier !== "sideload") {
+    console.error(`--intended-tier 只接受 official | sideload，得到 '${rawTier}'`);
+    process.exit(2);
+  }
+  const intendedTier = rawTier as IntendedTier | undefined;
+  if (intendedTier !== undefined && !arg) {
+    console.error("--intended-tier 只能与 --adapter= 同用：档位是逐 adapter 的，不能全局施加");
+    process.exit(2);
+  }
+
   const dirs = arg ? [resolve(arg.slice("--adapter=".length))] : discoverAdapters(adaptersRoot);
   console.log(`adapter 扫描根：${arg ? dirname(dirs[0]!) : adaptersRoot}`);
   console.log(`adapter 数量：${dirs.length}`);
+  console.log(`意图档位：${intendedTier ?? "(未声明，逐 adapter 回退到 manifest.trustTier)"}`);
   if (dirs.length === 0) {
     console.error("没有发现任何合法 adapter。");
     process.exit(1);
@@ -1003,7 +1118,7 @@ function main(): void {
 
   let errorCount = 0;
   for (const dir of dirs) {
-    const findings = validateAdapterDir(dir, contract);
+    const findings = validateAdapterDir(dir, contract, intendedTier);
     const errors = findings.filter((f) => f.level === "error");
     const warns = findings.filter((f) => f.level === "warn");
     errorCount += errors.length;

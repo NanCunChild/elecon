@@ -125,7 +125,9 @@ export async function buildRelease(options: ReleaseOptions, backend: SignBackend
 
   const contract = loadContract();
   for (const dir of adapterDirs) {
-    const findings = validateAdapterDir(dir, contract);
+    // release 一律按 official 校验：档位由**本流水线声明**，不向 manifest 提问（ADR-002 §2.2）。
+    // manifest 若声明了别的档位，validateAdapterDir 会给出 C0_intended_tier_mismatch（error）。
+    const findings = validateAdapterDir(dir, contract, "official");
     const errors = findings.filter((finding) => finding.level === "error");
     if (errors.length > 0) {
       throw new Error(
@@ -141,8 +143,14 @@ export async function buildRelease(options: ReleaseOptions, backend: SignBackend
 
   for (const dir of adapterDirs) {
     const manifest = readManifest(dir);
-    if (manifest.trustTier !== "official") {
-      throw new Error(`${manifest.adapterId} 不是 official adapter，禁止进入 release（fail-closed）`);
+    // 档位由流水线注入（下方 signEnvelope 的 "official"），不取自 manifest 自报。此处只核对
+    // claim 不与之冲突——冲突说明作者意图与发布意图不一致，须人工澄清（ADR-002 §2.2）。
+    // 上面的 validateAdapterDir(…, "official") 已用 C0_intended_tier_mismatch 拦下同一情形，
+    // 本检查是发布路径的纵深防御，不依赖校验器被正确调用。
+    if (manifest.trustTier !== undefined && manifest.trustTier !== "official") {
+      throw new Error(
+        `${manifest.adapterId} 的 manifest.trustTier='${manifest.trustTier}' 与 release 的 official 意图冲突，禁止进入 release（fail-closed）`,
+      );
     }
     const envelope = buildEnvelope(dir);
     const signature = await signEnvelope(envelope, "official", backend);

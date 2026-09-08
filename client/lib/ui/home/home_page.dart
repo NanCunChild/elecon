@@ -236,8 +236,17 @@ class GradesCard extends StatelessWidget {
 
   final GradesList data;
 
-  @override
-  Widget build(BuildContext context) {
+  /// GPA 聚合（ADR-001 §3.5「跨校统一的派生 → 本体」）。
+  ///
+  /// **fail-closed**：`gradePointScale` 缺失或不可聚合时返回 null，卡片不展示 GPA。
+  /// 课程级 `gradePoint` 的换算是校本的（adapter 的活），本体只在**知道满分档**
+  /// 时才敢把它们加权平均——否则展示的数没有任何学校意义。
+  ///
+  /// 上游若提供 `gpa.summary`（学校侧汇总）应优先于本方法；该 capability 尚未
+  /// 接入首页快照，接入后此处让位。
+  double? _aggregateGpa() {
+    final scale = data.gradePointScale;
+    if (scale == null || !_aggregatableScales.contains(scale)) return null;
     var weightedPoints = 0.0;
     var totalCredits = 0.0;
     for (final item in data.items) {
@@ -245,16 +254,23 @@ class GradesCard extends StatelessWidget {
       weightedPoints += item.gradePoint! * item.credit;
       totalCredits += item.credit;
     }
-    final calculatedGpa = totalCredits > 0
-        ? weightedPoints / totalCredits
-        : null;
-    final gpa = calculatedGpa != null && calculatedGpa.isFinite
-        ? calculatedGpa
-        : null;
+    if (totalCredits <= 0) return null;
+    final gpa = weightedPoints / totalCredits;
+    return gpa.isFinite ? gpa : null;
+  }
+
+  /// 可聚合的校本绩点尺度（ADR-001 §3.5）。`other` / `unknown` / 缺失都不可聚合：
+  /// 不同满分档的绩点混算出的数不是任何学校意义上的 GPA。
+  static const _aggregatableScales = <String>{'4.0', '4.3', '4.5', '5.0'};
+
+  @override
+  Widget build(BuildContext context) {
+    final gpa = _aggregateGpa();
+    final scale = data.gradePointScale;
     return _SectionCard(
       title: '成绩',
       subtitle:
-          '${data.term}${gpa == null ? '' : ' · GPA ${gpa.toStringAsFixed(2)}'}',
+          '${data.term}${gpa == null ? '' : ' · GPA ${gpa.toStringAsFixed(2)}（$scale 制）'}',
       child: Column(
         children: [
           for (final item in data.items)
@@ -352,7 +368,14 @@ class CourseDetailPage extends StatelessWidget {
         value: item.scoreText.isEmpty ? '未发布' : item.scoreText,
       ),
       if (item.gradePoint != null)
-        _DetailRow(label: '绩点', value: '${item.gradePoint}'),
+        _DetailRow(
+          label: '绩点',
+          // gradePointSource 让「学校给的」与「adapter 按校本规则推算的」可分辨
+          // （ADR-001 §3.5）；缺失即来源未标注，不臆断。
+          value: item.gradePointSource == 'adapter-derived'
+              ? '${item.gradePoint}（推算）'
+              : '${item.gradePoint}',
+        ),
       _DetailRow(label: '状态', value: _statusText(item.status)),
       if (item.teacher != null) _DetailRow(label: '任课教师', value: item.teacher!),
       if (item.offeringUnit != null)

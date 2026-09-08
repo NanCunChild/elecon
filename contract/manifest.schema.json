@@ -4,7 +4,7 @@
   "title": "Capability Manifest Schema",
   "description": "adapter 对核心的声明契约。tools/ 校验器据此验证 manifest 合法性。",
   "type": "object",
-  "required": ["manifestVersion", "adapterId", "adapterVersion", "schoolId", "displayName", "trustTier", "runtime", "network", "capabilities"],
+  "required": ["manifestVersion", "adapterId", "adapterVersion", "schoolId", "displayName", "runtime", "network", "capabilities"],
   "properties": {
     "manifestVersion": { "type": "string", "pattern": "^\\d+\\.\\d+$", "description": "manifest 契约版本，格式为 MAJOR.MINOR。" },
     "adapterId": { "type": "string", "pattern": "^school-\\S+$", "description": "adapter 标识，须以 school- 开头。" },
@@ -13,7 +13,7 @@
     "displayName": { "type": "string", "description": "manifest 的显示名称。" },
     "trustTier": {
       "type": "string",
-      "description": "official | sideload（community 档已于 ADR-002 2026-06-14 修订移除）",
+      "description": "意图档位的 claim，**不是权威**（ADR-002 §2.2）：真正的信任档由 official 签名裁定，校验器与发布流水线以显式 intendedTier 入参为准，本字段仅在未给出该入参时作为过渡期回退并产出 warn。可选（2026-09-01 从 required 移出）。official | sideload；community 档已于 ADR-002 2026-06-14 修订移除。",
       "enum": ["official", "sideload"]
     },
     "runtime": {

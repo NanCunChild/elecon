@@ -1,7 +1,7 @@
 # ADR-002：插件信任模型（签名 / 吊销 / dev 侧载闸门）与能力分档（official / sideload）
 
 - **状态**：已接受（Accepted） 2026-06-13 经人工安全检查清单全项确认后接受。实现仍须按 AGENTS.md §1 人工主导（红线 #1/#4/#5 承重路径）。
-- **日期**：2026-06-11（**修订 2026-06-12**：补 §2.3 签名时档位来源与签名权、公钥轮换搭发版、§2.4 吊销 bootstrap、§2.1 community 取舍——回应人工复核 1–4）（**修订 2026-06-13**：**砍掉 community 档**（社区走 sideload、官方均 official）、§2.3 签名密钥改 **OIDC→AWS KMS 委托签名** + **多公钥预埋分批启用**、§2.5 release 编译期剔除侧载、§2.6 `ctx.fetch` 改"存在但档位校验"——落 #10 评审决策）（**修订 2026-06-13b**：§2.3 **钉死规范化规格**（字典序/LF/UTF-8 NFC/无 trailing newline 篡改）、KMS 硬 deadline = 首次 release 前、dormant 公钥晋升**纯发版**不做热推启用声明）（**修订 2026-06-14**（人工 owner 决策）：① §2.5 **dev/debug build 允许无签名 adapter 跑 fetch**——release 仍 official 独占 fetch，dev 用强警告 + 全占用确认兜底，侧载-fetch 路径编译期从 release 剔除（同步红线 #5 的 dev 例外）；② **community 档从 manifest schema 彻底移除**（不再保留枚举位），契约同步改 `contract/manifest.schema.json` + ADR-001 §5）（**修订 2026-07-15**（**经人工 owner 评审批准**，随 [`adr_018`](./adr_018_adapter_distribution.md) 一并接受）：**§2.3 签名密钥托管由「OIDC→AWS KMS 委托签名」改为「离线硬件密钥（YubiKey）本地签名」**——理由：AWS 连通性/成本对本项目体量不划算，且离线硬件签把私钥彻底移出任何服务器/CI，比 KMS 更贴合 §2.3「私钥永不落盒子 + 签 official=显式人工批准」的意图。签名机制细节与分发/审计管线随 [`adr_018`](./adr_018_adapter_distribution.md) 定；本 ADR 仅同步 §2.3/§3/§4 的对应描述。**验签侧（Ed25519 + 预埋 pin 公钥、fail-closed）与多公钥预埋/晋升机制完全不变。**）（**修订 2026-07-16**（**经人工 owner 评审批准**，真机接线后回填）：① **§2.3 硬件签名由「尚未接线」改为「已接线并经真机核验」**——`YubiKeyPkcs11Signer`（PIV/PKCS#11 `CKM_EDDSA`）出签自检通过，首把 official 密钥 `elecon-official-ncc-1` 已片上生成（YubiKey 5C NFC / 固件 5.7.4 / 槽位 9c / PIN+触碰 ALWAYS），§2.3 硬 deadline 达成；② **§2.3 新增「不使用 X.509 证书」决策**——实测 libykcs11 走 PIV metadata 枚举、无证书亦可出签，故信任锚只有裸 32B Ed25519 公钥，🔒 加载器不碰 X.509（红线 #4 加载器最小化）；③ **§2.3 新增触碰策略静默失效警告**——`touch-policy` 生成时固化、漏设不报错只静默降级，ceremony 须复核；④ **§3 风险 2 补残余风险 (d) 令牌兼作日常随身 GPG、(e)「所见非所签」**；⑤ **§4 声明新依赖 `pkcs11js`（MIT，`optionalDependencies`，仅离线签名机）**（红线 #9）。**验签侧、pin 公钥体系、多公钥预埋/晋升机制仍完全不变。**）
+- **日期**：2026-06-11（**修订 2026-06-12**：补 §2.3 签名时档位来源与签名权、公钥轮换搭发版、§2.4 吊销 bootstrap、§2.1 community 取舍——回应人工复核 1–4）（**修订 2026-06-13**：**砍掉 community 档**（社区走 sideload、官方均 official）、§2.3 签名密钥改 **OIDC→AWS KMS 委托签名** + **多公钥预埋分批启用**、§2.5 release 编译期剔除侧载、§2.6 `ctx.fetch` 改"存在但档位校验"——落 #10 评审决策）（**修订 2026-06-13b**：§2.3 **钉死规范化规格**（字典序/LF/UTF-8 NFC/无 trailing newline 篡改）、KMS 硬 deadline = 首次 release 前、dormant 公钥晋升**纯发版**不做热推启用声明）（**修订 2026-06-14**（人工 owner 决策）：① §2.5 **dev/debug build 允许无签名 adapter 跑 fetch**——release 仍 official 独占 fetch，dev 用强警告 + 全占用确认兜底，侧载-fetch 路径编译期从 release 剔除（同步红线 #5 的 dev 例外）；② **community 档从 manifest schema 彻底移除**（不再保留枚举位），契约同步改 `contract/manifest.schema.json` + ADR-001 §5）（**修订 2026-07-15**（**经人工 owner 评审批准**，随 [`adr_018`](./adr_018_adapter_distribution.md) 一并接受）：**§2.3 签名密钥托管由「OIDC→AWS KMS 委托签名」改为「离线硬件密钥（YubiKey）本地签名」**——理由：AWS 连通性/成本对本项目体量不划算，且离线硬件签把私钥彻底移出任何服务器/CI，比 KMS 更贴合 §2.3「私钥永不落盒子 + 签 official=显式人工批准」的意图。签名机制细节与分发/审计管线随 [`adr_018`](./adr_018_adapter_distribution.md) 定；本 ADR 仅同步 §2.3/§3/§4 的对应描述。**验签侧（Ed25519 + 预埋 pin 公钥、fail-closed）与多公钥预埋/晋升机制完全不变。**）（**修订 2026-07-16**（**经人工 owner 评审批准**，真机接线后回填）：① **§2.3 硬件签名由「尚未接线」改为「已接线并经真机核验」**——`YubiKeyPkcs11Signer`（PIV/PKCS#11 `CKM_EDDSA`）出签自检通过，首把 official 密钥 `elecon-official-ncc-1` 已片上生成（YubiKey 5C NFC / 固件 5.7.4 / 槽位 9c / PIN+触碰 ALWAYS），§2.3 硬 deadline 达成；② **§2.3 新增「不使用 X.509 证书」决策**——实测 libykcs11 走 PIV metadata 枚举、无证书亦可出签，故信任锚只有裸 32B Ed25519 公钥，🔒 加载器不碰 X.509（红线 #4 加载器最小化）；③ **§2.3 新增触碰策略静默失效警告**——`touch-policy` 生成时固化、漏设不报错只静默降级，ceremony 须复核；④ **§3 风险 2 补残余风险 (d) 令牌兼作日常随身 GPG、(e)「所见非所签」**；⑤ **§4 声明新依赖 `pkcs11js`（MIT，`optionalDependencies`，仅离线签名机）**（红线 #9）。**验签侧、pin 公钥体系、多公钥预埋/晋升机制仍完全不变。**）（**修订 2026-09-08**（owner 决策，消歧，🔒 待人工签收）：新增 **§2.1.1「Sideload 的能力面 = 任意 adapter」**——把此前散在 §2.1 表格 / §2.5 / §2.6 三处、且被「C3 待退役」限定语淹没的结论钉成显式不变量：**requestGraph 的声明性不是信任维度**，sideload 内部不按 declarative/imperative 分级；唯一信任维度是「是否通过 official 验签」。§2.1 表格与 §2.6 静态闸门行同步改写，`C3_sideload_must_declarative` 明确降格为**与决策相悖的遗留断言**。**不放松任何 DEPLOY 约束**：红线 #1/#5 不变，C3 的实际移除仍由 ADR-033 §5 同批编排。）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§2.2 可信核心、§3.3 凭证边界、§3.4 传输底座）、[`adr_001_contract.md`](./adr_001_contract.md)（§5.2 信任档字段；community 策略原留给本文细化——本文**决定砍掉**，见 §2.1）
 - **被依赖**：[`adr_009`](./adr_009_fetch_credential.md)（imperative requestGraph 凭证注入，trust tier 由本文裁定）、[`adr_003`](./adr_003_transport.md)（传输底座抽象，仅官方签名可加载）、[`adr_018`](./adr_018_adapter_distribution.md)（adapter 分离/审计/打包/分发 + 解释器版本同步——落地本文 §2.3 的签名管线与 §2.4 的清单分发）；并为 [`adr_010`](./adr_010_ios_appstore.md) 的 App Store 合规论点 (b)「非代码市场」提供支撑（无侧载入口 + 仅签名分发）。
 - **适用范围**：adapter（QuickJS 脚本）与传输底座（原生模块）的**信任建立、能力分档、分发与吊销**。**不含** 凭证注入的具体脱敏机制（另文）、UI 信任（不在此）。
@@ -35,9 +35,20 @@ ADR-000 §2.2 把"签名校验、吊销、dev 侧载闸门"定为可信核心的
 | 档 | 建立方式 | 分发 | 能力上限（DEPLOY） | 能力上限（DEV profile） | 执行落点 |
 |---|---|---|---|---|---|
 | **official** | 一方编写或深度审查 + 项目签名 | DEPLOY（catalog；ADR-033 增加本地文件来源，待落地） | **imperative / declarative requestGraph**、当前正式宿主能力 | 同 DEPLOY | client-direct / campus-relay |
-| **sideload / devSideload** | 开发者本地加载，**无签名** | **仅 DEV-Sideload，不可分发** | —（DEPLOY 不运行此档） | **全能力调试**：imperative / declarative、当前 DEV 宿主已编入能力；须强警告 + 全占用确认 | DEV 专用 |
+| **sideload / devSideload** | 开发者本地加载，**无签名** | **仅 DEV-Sideload，不可分发** | —（DEPLOY 不运行此档） | **任意 adapter**（imperative / declarative 一视同仁，见 §2.1.1）+ 当前 DEV 宿主已编入能力；须强警告 + 全占用确认 | DEV 专用 |
 
 **DEPLOY 下凭证注入（imperative requestGraph；旧称 fetch 模式，见 ADR-022）是 official 独占**——把最高风险面锁死在项目授权代码上。**DEV-Sideload 例外**：无签名 adapter 可调试 imperative 及当前 DEV 宿主能力、可触发开发者测试凭证注入；以多重警告兜底，未签名 grant 与 dev 凭证放行路径编译期不进入 DEPLOY。ADR-033 的 DEPLOY 本地导入即使落地，也只铸造 official grant，不改变此不变量。
+
+#### 2.1.1 Sideload 的能力面：**任意 adapter**（2026-09-08 owner 决策，消歧）
+
+本文此前把这件事分散在 §2.1 表格、§2.5 与 §2.6 三处，且每处都挂着「ADR-033 已决定退役 C3、尚未落地」的限定语，读者无从判断「sideload 只能 declarative」是**当前决策**还是**待改的遗留**。故在此钉死：
+
+> **Sideload 可以加载任意 adapter，declarative 与 imperative 一视同仁。requestGraph 的声明性不是信任维度，从来都不是。**
+
+- **为什么**：sideload 的安全边界是 **profile 隔离 + 用户显式确认**，不是「阉割 adapter 的表达能力」。用 declarative-only 限制 sideload，既拦不住真正的攻击面（declarative 的请求配方一样能打白名单内的任意端点、一样能拿到脱敏后的私密响应），又让 DEV 环境**调试不了 DEPLOY 实际会跑的那份 adapter**——开发环境与生产环境的语义分岔，这本身就是缺陷来源。
+- **真正的信任维度只有一个**：**是否通过 official 验签**。它决定能否在 DEPLOY 运行。DEV-Sideload 是与之正交的全能力开发例外，由编译期 profile 隔离。
+- **不变的部分**：凭证值仍不离核心（红线 #1，DEV 亦然）；侧载产物不可分发；DEPLOY 永不运行未签名 / 非 official adapter（红线 #5）。**本条只澄清 sideload 内部不按 requestGraph 分级，不放松任何 DEPLOY 约束。**
+- **与实现的关系**：validator 的 `C3_sideload_must_declarative` 是**与本决策相悖的遗留断言**，不是当前规则的表述。它的移除由 [`adr_033`](./adr_033_production_sideload.md) §5 统一编排，须与 DEPLOY official-only 负例**同批**落地——**在此之前 C3 仍会开火，那是落地进度，不是决策内容。** 🔒 该批落地触红线 #5，须人工主导 + 安全清单 + ≥1 人工审。
 
 **community 档已砍（2026-06-13 决定）**：原拟的 community 与 sideload 能力上限相同（都 declarative-only），背书签名只买到「能经官方渠道分发」，代价却是**维护者须逐个审查并背书**——正是 ADR-000 要消除的人工瓶颈。权衡后**取消 community 档**：信任模型只剩 **official** 与 **sideload** 两档。社区贡献的 adapter 一律走 **sideload**（贡献者自行 debug 加载，或经审查被收编为 official）；**官方维护 / 深度审查的 adapter 一律 official**。这把维护者从"为可分发性背书"的责任里解放出来，与「最小人力」主线对齐。代价：**没有"已签名可分发但仍由社区维护"的中间态**——可分发即官方背书。核心**无 community 验证路径**，任何自报 community 的包按 sideload 处理（§2.2）。**契约清理（2026-06-14 人工 owner 决策）**：`community` 枚举值**从 `contract/manifest.schema.json` 与 ADR-001 §5 彻底移除**（不再保留枚举位）。这属契约改动（红线 #6），向后兼容性说明：`community` 此前**无任何生效验证路径**（运行时一律按 sideload 处理），移除后自报 `community` 的 manifest 在 `tools/` 静态校验阶段即被拒——行为从"运行时降级"前移为"加载前拒绝"，不放松任何安全约束。
 
@@ -47,6 +58,29 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 
 - 一个侧载包把 `trustTier: "official"` 写进 manifest **不能**提权——核心验不到对应签名；DEPLOY 直接拒绝，DEV 才可按 sideload 本地加载。
 - 签名载荷**覆盖** `adapterId` + `adapterVersion` + 内容哈希 + **裁定档位**（两档制下即 official；无签名 = sideload），使档位不可伪造。核心以"验签得到的档位"为准；与 manifest 自报不符则拒绝加载（fail-closed）。
+
+- **意图档位由签发流水线显式给出，不向 manifest 提问（2026-09-01 修订）。** 上面两条说的是「运行时
+  不信 claim」，但校验与发布**工具链**此前一直在读 `manifest.trustTier` 来驱动三道敏感能力闸门
+  （validator 的 `C3_sideload_must_declarative`、`M5_via_requires_official`、`RM2_official_only`），
+  发布流水线 `release/package.ts` 更是以「manifest 是否自称 official」作为准入判断——**等于把 claim
+  当成了判据**，与 §2.2 的原则自相矛盾。故：
+
+  - 新增**意图档位**（`IntendedTier`）作为校验器与发布流水线的**显式入参**。它不是信任档
+    （信任档仍只由 official 签名裁定），而是「本次校验按哪一档的规则来审」。
+  - 三道闸门一律读该入参。`release/package.ts` 一律以 `"official"` 调用校验，与其
+    `signEnvelope(env, "official", …)` 同源——**发布意图由流水线声明，不由被发布物自述**。
+  - `manifest.trustTier` 从 `required` 移出（保留字段与枚举），降为**过渡期回退**：
+    未给入参时回退到 claim 并产出 warn（`C0_intended_tier_implicit`）；两者皆缺则 fail-closed
+    取 `sideload`（`C0_intended_tier_defaulted`）；**两者分歧则 error**（`C0_intended_tier_mismatch`）
+    且**以入参为准**——claim 永远不能把校验放宽到比流水线声明更松。
+  - **为何保留回退而非直接强制**：档位是**逐 adapter**的，而 `npm run validate` 不带 `--adapter=`
+    时做发现式全量扫描，单个全局 flag 表达不了逐个 adapter 的意图。故 `--intended-tier=` 只允许与
+    `--adapter=` 同用；发现式扫描继续回退并以 warn 暴露。回退的移除随
+    [`adr_033`](./adr_033_production_sideload.md) 落地。
+  - **本次不删 `C3_sideload_must_declarative`**，只改它的输入来源。ADR-033 §5 要求 C3 退役须与
+    DEPLOY official-only 负例同批落地、不得抢跑，该约束不变。
+  - 红线 #6：`contract/manifest.schema.json` 的 `required` 减少一项属**放宽**，既有 manifest 全部
+    继续合法，无迁移。
 
 ### 2.3 签名机制
 
@@ -160,7 +194,7 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 
 | 闸门 | 位置 | 职责 |
 |---|---|---|
-| 静态 | `tools/` 校验器（CI） | 校验 requestGraph 结构、白名单、凭证引用、capability registry 与能力专属规则。当前 C3 仍拒 `sideload + imperative`；ADR-033 已决定退役 C3 使 DEV 素材可完整预检，落地须与 DEPLOY official-only 负例同批，不得只删断言。 |
+| 静态 | `tools/` 校验器（CI） | 校验 requestGraph 结构、白名单、凭证引用、capability registry 与能力专属规则。**`C3_sideload_must_declarative` 是与 §2.1.1 决策相悖的遗留断言**（决策：sideload 可加载任意 adapter），目前仍会开火——移除由 ADR-033 §5 编排，须与 DEPLOY official-only 负例同批，不得只删断言。 |
 | 运行时 | 可信核心 | DEPLOY 无论 catalog / 本地来源都只接受 official 验签 + 身份绑定 + 吊销 + stdlib 门全过的 bundle；本地新增/更新额外要求在线新鲜治理材料。DEV-Sideload 可铸造未签名开发 context，但该路径不进入 DEPLOY。 |
 
 **DEPLOY 中 `ctx.fetch` 的形态（2026-06-13 调整；触发条件 ADR-022 改为 imperative requestGraph）**：`ctx.fetch` 在 imperative 入口对所有档**一律存在**——目的是让错误送入的非 official context 拿到清晰的「权限不足」错误，而不是晦涩的 `TypeError`。但这不削弱 capability-based 保证：

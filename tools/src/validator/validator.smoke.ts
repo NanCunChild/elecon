@@ -18,6 +18,7 @@ import {
   discoverAdapters,
   loadContract,
   MAX_BUNDLE_BYTES,
+  resolveIntendedTier,
   validateAdapterDir,
 } from "./index.js";
 
@@ -1307,6 +1308,90 @@ console.log("  ✓ 禁止头名（Cookie/Host/hop-by-hop/代理认证）作 head
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+// C0) 意图档位由调用方声明，manifest.trustTier 只是 claim（ADR-002 §2.2）
+{
+  const impCap = {
+    id: "grades.list",
+    requestGraph: "imperative" as const,
+    emits: { schema: "elecon.grades.list", schemaVersion: "1.0" },
+  };
+  const base = { adapterId: "school-x", network: { allow: ["https://h/api/*"] }, capabilities: [impCap] };
+
+  // C0-1 纯函数四象限
+  assert.deepEqual(resolveIntendedTier("official", "official"), { tier: "official", findings: [] });
+  assert.deepEqual(resolveIntendedTier("sideload", undefined), { tier: "sideload", findings: [] });
+
+  const mismatch = resolveIntendedTier("official", "sideload");
+  assert.equal(mismatch.tier, "official", "mismatch 时须用流水线入参，claim 永不放宽");
+  assert.deepEqual(codes(mismatch.findings), ["C0_intended_tier_mismatch"]);
+  assert.equal(mismatch.findings[0]?.level, "error", "mismatch 须为 error");
+
+  const implicit = resolveIntendedTier(undefined, "official");
+  assert.equal(implicit.tier, "official", "未给入参时过渡期回退到 claim");
+  assert.deepEqual(codes(implicit.findings), ["C0_intended_tier_implicit"]);
+  assert.equal(implicit.findings[0]?.level, "warn", "回退是 warn 不是 error");
+
+  const defaulted = resolveIntendedTier(undefined, undefined);
+  assert.equal(defaulted.tier, "sideload", "两者皆缺须 fail-closed 取最小权限");
+  assert.deepEqual(codes(defaulted.findings), ["C0_intended_tier_defaulted"]);
+  console.log("  ✓ resolveIntendedTier 四象限（mismatch=error / 回退=warn / 缺省=sideload）");
+
+  // C0-2 claim 说 official，流水线说 sideload → 按 sideload 审，C3 照常开火
+  const claimCannotWiden = checkManifest({ ...base, trustTier: "official" }, contract, "sideload");
+  assert.ok(
+    codes(claimCannotWiden).includes("C3_sideload_must_declarative"),
+    "manifest 自报 official 不得把校验放宽",
+  );
+  assert.ok(codes(claimCannotWiden).includes("C0_intended_tier_mismatch"), "分歧须显式报出");
+  console.log("  ✓ manifest 自报 official 无法放宽校验（C3 照常开火 + C0 mismatch）");
+
+  // C0-3 claim 说 sideload，流水线说 official → 按 official 审，C3 不开火
+  const pipelineWins = checkManifest({ ...base, trustTier: "sideload" }, contract, "official");
+  assert.ok(
+    !codes(pipelineWins).includes("C3_sideload_must_declarative"),
+    "流水线声明 official 时 C3 不应开火",
+  );
+  assert.ok(codes(pipelineWins).includes("C0_intended_tier_mismatch"), "分歧仍须报出");
+  console.log("  ✓ 流水线声明 official 时按 official 审（分歧仍报 C0）");
+
+  // C0-4 manifest 完全不写 trustTier + 不给入参 → 最小权限 sideload，C3 开火
+  const noClaim = checkManifest(base, contract);
+  assert.ok(codes(noClaim).includes("C0_intended_tier_defaulted"), "缺省须报 C0_intended_tier_defaulted");
+  assert.ok(codes(noClaim).includes("C3_sideload_must_declarative"), "缺省档位须按 sideload 收紧");
+  console.log("  ✓ 无 claim 无入参 → 按 sideload 收紧（fail-closed）");
+
+  // C0-5 M5（ssoMint via）读意图档位而非 claim
+  const mintManifest = {
+    ...base,
+    capabilities: [{ ...impCap, id: "grades.list" }],
+    credentials: { ehall: { scope: ["https://h/api/*"], type: "cookie" as const } },
+    login: {
+      url: "https://h/login",
+      navigationAllow: ["https://h/*"],
+      success: { whenUrlMatches: ["https://h/api/*"] },
+      ssoMint: {
+        authEndpoint: "https://h/authserver",
+        services: {
+          ehall: { service: "https://h/api/", success: ["https://h/api/*"], via: "grades.list" },
+        },
+      },
+    },
+  };
+  assert.ok(
+    codes(checkManifest({ ...mintManifest, trustTier: "official" }, contract, "sideload")).includes(
+      "M5_via_requires_official",
+    ),
+    "M5 须读意图档位：claim=official 但流水线=sideload 时应开火",
+  );
+  assert.ok(
+    !codes(checkManifest({ ...mintManifest, trustTier: "sideload" }, contract, "official")).includes(
+      "M5_via_requires_official",
+    ),
+    "M5 须读意图档位：流水线=official 时不应开火",
+  );
+  console.log("  ✓ M5（ssoMint via）读意图档位而非 manifest claim");
 }
 
 console.log("validator smoke 全部通过。");

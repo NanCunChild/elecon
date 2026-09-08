@@ -130,7 +130,7 @@ TS 与 Dart 各写一份叶子编码器并靠 golden 维持一致。这与 ADR-0
 | 1 | envelope 从「容器」降为「清单」：`files[]` 存 `path/size/sha256`，文件字节改由**按内容哈希寻址**的 blob 表承载 | 已写入 ADR-002 §2.3 / ADR-018 §2.9.1 |
 | 2 | envelope 顶层新增 `adapterId/adapterVersion`，身份核对改为**三方一致**（签名载荷 ↔ envelope ↔ manifest） | 同上 |
 | 3 | 三处签名统一加显式域分隔：`contextTag ‖ 0x00 ‖ 被签字节` | 同上（落地清单 #3） |
-| 4 | ~~从 manifest 移除 `trustTier`~~ | **未执行**。它是 validator 三道签发期闸门（C3 / `ssoMint` official-only / masker official-only）的输入，且 ADR-033 §5 明文要求 C3 删除不得抢跑。目标形态改为「意图档位由签发流水线显式入参」，随 ADR-033 一并处理 |
+| 4 | ~~从 manifest 移除 `trustTier`~~ → 改为**意图档位作为签发流水线显式入参** | **已落地**（分支 `refactor/intended-tier-as-pipeline-input`）。直接删字段会静默拿掉 validator 三道签发期闸门（C3 / `ssoMint` official-only / masker official-only）并撞上 ADR-033 §5「C3 不得先删」。改为：三道闸门 + `release/package.ts` 改读显式 `IntendedTier` 入参；`trustTier` 从 `required` 移出、降为过渡期回退（分歧=error 且以入参为准）。**C3 保留**，其退役仍随 ADR-033 |
 | 5 | digest v2 重签仪式与 ADR-026 §2.7 的「补齐 `masker.json` 后重签」合并，一次补齐 P0-15 台账首批 | 已写入两处 ADR |
 
 **descriptor 形态的取舍理由**：① 编码彻底离开信任边界——两端 base64 解码器实测不同（Node 对

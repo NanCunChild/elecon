@@ -20,6 +20,8 @@ export interface GradesList {
   total?: number;
   /** 是否还有下一页成绩；缺失表示来源未提供。 */
   hasNext?: boolean;
+  /** 本次数据中 items[].gradePoint 所用的校本绩点尺度（满分档）：4.0、4.3、4.5、5.0 制，其他制式或未知；缺失表示来源未提供。本体据此判断能否聚合出 GPA，尺度缺失/unknown/other 或跨数据源不一致时不得展示 GPA（ADR-001 §3.5）。 */
+  gradePointScale?: "4.0" | "4.3" | "4.5" | "5.0" | "other" | "unknown";
   /** 成绩条目列表。 */
   items: GradesListItems[];
 }
@@ -64,8 +66,10 @@ export interface GradesListItems {
   courseAverage?: number;
   /** 课程的归一化成绩值及其记分类型。 */
   score: GradesListItemsScore;
-  /** 学校来源直接提供的课程绩点；计分尺度由来源学校定义，缺失表示来源未提供。 */
+  /** 课程绩点；计分尺度由来源学校定义（见列表级 gradePointScale），来源直接给出或由 adapter 按校本换算规则派生（见 gradePointSource），缺失表示既未提供也无法派生。 */
   gradePoint?: number;
+  /** gradePoint 的来源：source 表示学校来源直接给出，adapter-derived 表示 adapter 按校本换算规则派生，unknown 表示无法判断；缺失表示来源未提供该标注。 */
+  gradePointSource?: "source" | "adapter-derived" | "unknown";
   /** 跨校归一化课程类别：必修、选修或未知。 */
   category: "required" | "elective" | "unknown";
   /** 成绩发布状态：最终、暂定或未知。 */

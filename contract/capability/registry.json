@@ -3,7 +3,7 @@
   "capabilities": {
     "grades.list": {
       "description": "获取学期成绩列表",
-      "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
+      "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.1" },
       "params": { "schema": "elecon.params.grades.list", "schemaVersion": "1.0" }
     },
     "schedule.week": {

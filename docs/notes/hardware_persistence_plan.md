@@ -45,7 +45,7 @@
 
 #### Linux / 桌面（Secret Service）
 
-- 非硬件加密——走现有的 M/S 通道（UI 询问用户是否接受 S 档）。若未来硬件支持（TPM via libtss2），另起 PR。
+- 非硬件加密——明确支持 S 档，不提供 H 档。为保持易用性，Linux 不弹强警告；设置页面仅将当前保护等级显示为 S。若未来增加硬件支持（TPM via libtss2），另起 PR。
 
 ### 1.3 统一后端（Dart 侧）
 
@@ -99,7 +99,7 @@ class BackedHardwareKeyStore implements HardwareKeyStore {
 | H | DEK wrap/unwrap 往返、H→S 退级、SE 不可用时的正确拒 | `HardwareSecureStore` |
 | S | AEAD 加解密往返、FileBlobStore flush/load、备份排除**集成**（真机） | `SoftwareSecureStore` + `FileBlobStore` |
 | M | 内存-only、跨进程重启凭证丢失（预期行为） | `InMemorySecureStore` |
-| 分级 | 实际设备上 H→S/M 自动检测 + UI 警告框流程 | e2e |
+| 分级 | 实际设备上 H→S/M 自动检测；Linux 固定显示 S 且不弹强警告 | e2e |
 
 ---
 

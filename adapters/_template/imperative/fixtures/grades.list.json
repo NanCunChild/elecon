@@ -12,6 +12,7 @@
   ],
   "expected": {
     "term": "2025-2026-2",
+    "gradePointScale": "4.0",
     "items": [
       {
         "courseId": "CS101",
@@ -19,6 +20,7 @@
         "credit": 3,
         "score": { "kind": "numeric", "value": 88, "max": 100 },
         "gradePoint": 3.7,
+        "gradePointSource": "source",
         "category": "required",
         "status": "final"
       },

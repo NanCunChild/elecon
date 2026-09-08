@@ -13,6 +13,7 @@ void main() {
     test('解出学期与合法条目；score.value 原样透传', () {
       final out = gradesListFromDynamic({
         'term': '2025-2026-1',
+        'gradePointScale': '4.3',
         'items': [
           {
             'courseId': 'CS101',
@@ -22,15 +23,18 @@ void main() {
             'status': 'passed',
             'score': {'kind': 'numeric', 'value': 92},
             'gradePoint': 4.0,
+            'gradePointSource': 'adapter-derived',
           },
         ],
       });
       expect(out, isNotNull);
       expect(out!.term, '2025-2026-1');
+      expect(out.gradePointScale, '4.3');
       expect(out.items, hasLength(1));
       expect(out.items.first.courseName, '计算机导论');
       expect(out.items.first.score.value, 92);
       expect(out.items.first.score.kind, 'numeric');
+      expect(out.items.first.gradePointSource, 'adapter-derived');
     });
 
     test('通过制 value 为字符串亦透传', () {

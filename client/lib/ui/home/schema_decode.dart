@@ -99,6 +99,7 @@ GradesList? gradesListFromDynamic(Object? raw) {
     updatedAt: map['updatedAt']?.toString(),
     total: _asInt(map['total']),
     hasNext: map['hasNext'] is bool ? map['hasNext'] as bool : null,
+    gradePointScale: map['gradePointScale']?.toString(),
     items: items,
   );
 }
@@ -144,6 +145,7 @@ GradesListItems? _gradeItem(Object? raw) {
         : null,
     score: score,
     gradePoint: map['gradePoint'] is num ? map['gradePoint'] as num : null,
+    gradePointSource: map['gradePointSource']?.toString(),
     category: category,
     status: status,
   );

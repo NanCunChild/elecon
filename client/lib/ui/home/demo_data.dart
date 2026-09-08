@@ -51,6 +51,7 @@ Future<CampusSnapshot> loadDemoCampusSnapshot() async {
     ),
     grades: const GradesList(
       term: '2025-2026-1',
+      gradePointScale: '4.3',
       items: [
         GradesListItems(
           courseId: 'DEMO-MATH-101',
@@ -60,6 +61,7 @@ Future<CampusSnapshot> loadDemoCampusSnapshot() async {
           category: 'required',
           status: 'final',
           gradePoint: 4.1,
+          gradePointSource: 'source',
         ),
         GradesListItems(
           courseId: 'DEMO-CS-100',
@@ -69,6 +71,7 @@ Future<CampusSnapshot> loadDemoCampusSnapshot() async {
           category: 'required',
           status: 'final',
           gradePoint: 4.3,
+          gradePointSource: 'adapter-derived',
         ),
         GradesListItems(
           courseId: 'DEMO-GEN-001',
