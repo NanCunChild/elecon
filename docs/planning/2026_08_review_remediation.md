@@ -36,13 +36,13 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | 待真机签收 | P0-06、P0-07 | iOS 已降级为 S/M 且 H 路径 fail-closed；Android 已用 `KeyInfo` 拒绝 software/unknown；仍需 iOS 升级安装及 Android emulator/TEE/StrongBox 矩阵 |
 | 部分落地，保持开放 | P0-10 | TS 已阻止取消后 Commit；Dart 已有 firewall/commit 原语与严格 UTF-8 状态；生产 wiring 仍依赖已验签 policy loader/matcher、执行级 query harvest 事务、P1-08/P1-09/P1-12 |
 | 待仓库/历史事实 | P0-13、P0-15 | reusable CI、main-only preflight、tag SHA/ancestry、审批 hook、真实验签 ledger 工具已落地；仍需配置 `release` Environment、不可变 `v*` tag 规则，并由 NanCunChild 提供历史 source commit/签署时间/签署人/复核引用 |
-| ADR / 签收阻塞 | P0-01、P0-05、P0-09、P0-14 | P0-05 的 ADR-009 rev-5 与两端实现已起草，待 owner 按专项清单复签；P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；P0-01 保持原前置。**P0-14 于 2026-08-07 改判**：不再是 ADR 阻塞——slice 1–3 已落地且有 Android 产物级证据，剩余门槛是 slice 4 红线措辞（owner）、非 Android 平台产物断言、人工安全签收（见 §3.2）|
+| ADR / 签收阻塞 | P0-01、P0-05、P0-09、P0-14 | P0-05 的 ADR-009 rev-5 与两端实现已起草，待 owner 按专项清单复签；P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；**P0-01 于 2026-09-01 解除 ADR 阻塞**——ADR-002 §2.3 / ADR-018 §2.9.1 已就地修订（digest v2 = 对 envelope 字节整体哈希），缺陷已由 `path-binding.redcase.ts` 复现为可执行验收门（现 2/14 红），实现待 owner 签收 ADR 修订后开工，见 §2.2。**P0-14 于 2026-08-07 改判**：不再是 ADR 阻塞——slice 1–3 已落地且有 Android 产物级证据，剩余门槛是 slice 4 红线措辞（owner）、非 Android 平台产物断言、人工安全签收（见 §3.2）|
 
 本轮自动验证：`npm run lint`、`npm run typecheck`、`npm run smoke:all`（server 26/26、tools 18/18）、`flutter analyze`、`flutter test`（744 项）、全量 scanner、release ledger smoke/validate、release preflight、recorder Python tests、`git diff --check`。自动验证不是安全签收的替代品。
 
 | ID | TODO | 主要位置 | 车道与依据 | 完成条件 |
 |---|---|---|---|---|
-| P0-01 | [ ] 让 bundle digest 同时绑定规范化路径、编码、长度和内容，拒绝重复路径、绝对路径、反斜杠及 `.`/`..` | `tools/src/signer/index.ts`、`tools/src/bundle/envelope.ts` | 慢车道；签名格式，ADR-002/018 | TS/Dart 共用新 golden；只改路径必须验签失败；写明旧 bundle 迁移和 host version gate；人工签收 |
+| P0-01 | [ ] digest 改为对 envelope 序列化字节整体哈希（digest v2），验签先于解析，验签后过路径卫生闸门 | `tools/src/bundle/envelope.ts`、`package.ts`、`tools/src/signer/index.ts`、`client/lib/core/loader/{bundle,verify}.dart` | 慢车道；签名格式，ADR-002 §2.3 / ADR-018 §2.9.1（2026-09-01 已修订，待 owner 签收） | 验收门 = `tools/src/bundle/path-binding.redcase.ts` 全绿（现 2/14）；TS/Dart 共用新 golden（envelopeBytes 形态）；只改路径必须验签失败；**无迁移**（ledger 为空，`/1` 路径整体删除，不新增 host version gate）；人工签收 |
 | P0-02 | [x] 从 UI 会话 API 移除完整 `CredentialStore`，只暴露登录状态、数量、ref、保护等级等元数据 | `client/lib/session/session_controller.dart`、`client/lib/core/credential/` | 慢车道；红线 #1、ADR-012 | UI 包无法取得 `CredentialEntry.value`/`ResolvedCredential.value`；Broker 仍可在核心内解析；边界测试通过；人工签收 |
 | P0-03 | [x] 在每次 transport hop 出网前原子预留全局请求配额，修复并发 `ctx.fetch` 超限 | `server/src/runtime/sandbox.ts`、Dart 对应 runtime | 慢车道；Broker/网络边界，ADR-014/022 | 21/100 并发请求的第 21 个在出网前被拒；并发重定向共用配额；双端测试；人工复核 |
 | P0-04 | [x] 正确建模 host-only Cookie，禁止无 `Domain` Cookie 发往子域 | `server/src/runtime/broker/cookie-jar.ts`、Dart 对应 Broker | 慢车道；红线 #1 | TS/Dart host-only golden 一致；子域负例零出网凭证；人工复核 |
@@ -58,13 +58,103 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | P0-14 | [ ] 完成 ADR-024 DEPLOY profile 接线和产物级证明 | `client/lib/core/trust/`、`client/tool/check_release_gate.sh`、release workflow | 慢车道；红线 #4、ADR-024 | release 产物无侧载符号；DEV applicationId/bundle ID 隔离；水印与构建元数据正确；人工签收 |
 | P0-15 | [ ] 建立 git 跟踪的 adapter 发布台账 | `docs/reference/signing_ceremony.md`、`adapter_release.md`、新 ledger | 慢车道；ADR-002/018 | 每次发布记录 source commit、版本、bundle/policy digest、catalog/revocation sequence、keyId、签署人与复核引用 |
 
+### 2.2 执行状态（2026-09-01 · P0-01 缺陷复现与 ADR 就地修订）
+
+**缺陷已复现，不再是"理论加固"。** 现行 bundle digest = `SHA-256( SHA-256(C₁) ‖ SHA-256(C₂) ‖ … )`，
+文件按相对路径字典序排列——**路径只参与排序、自身从不进哈希**，`encoding`、文件个数与
+`bundleFormat` 亦然。于是任何**保持字典序位次的重命名**都不改变 digest，而加载器恰恰是
+**按路径**取要执行的字节（`manifest.runtime.entry`、ADR-026 的 `masker.json`）：
+
+```
+签名时（受审目录，无害）              伪造后（一个内容字节都没改，只改名）
+────────────────────────              ──────────────────────────────────
+1  assets/theme.css → EVIL            1  index.js      → EVIL   ← 被执行
+2  index.js         → BENIGN          2  index.js0     → BENIGN
+3  manifest.json    → MANIFEST        3  manifest.json → MANIFEST
+```
+
+两侧「按路径排序后的内容序列」都是 `[EVIL, BENIGN, MANIFEST]`，digest 逐字节相同
+（实测 `c3bc2557…ab21`），official 签名验过、身份核对（ADR-002 §2.2）通过、stdlibMin 门通过。
+攻击者 = ADR-018 信任域 A 的社区贡献者或任何能把内容放进受审 bundle 的人；**人工审查看到的
+是无害目录，检出率为零**。直接击穿红线 #4。
+
+**验收门**：`tools/src/bundle/path-binding.redcase.ts`（keyless，只用测试 Ed25519 密钥对）。
+刻意**不叫** `*.smoke.ts`，故不被 `run-smokes.mjs` 发现、`smoke:all` 保持 18/18 绿；
+经 `cd tools && npm run redcase:bundle-path-binding` 显式运行。当前 **2/14**：
+
+| 组 | 断言 | 现状 |
+|---|---|---|
+| A2 | 只改路径、不改内容 → 必须验签失败 | 🔴 |
+| B1 | 含重复路径的 envelope → 即使签名有效也必须拒 | 🔴 |
+| C1–C9 | `..` / 内嵌 `..` / POSIX 绝对 / Windows 盘符 / 反斜杠 / `./` / 空 / 尾随分隔符 / NUL → 必须拒 | 🔴 |
+| D1 | 篡改 `bundleFormat` → 必须验签失败 | 🔴 |
+
+**P0-01 完成的定义 = 本文件全绿**，随后改名为 `path-binding.smoke.ts` 纳入常驻回归。
+
+**ADR 就地修订（未新开 ADR）**：
+
+- **ADR-002 §2.3**：`digest = SHA-256(envelopeBytes)`；原「双层 SHA-256 拼接」规格标注为被取代并
+  保留缺陷说明；LF/NFC 规范化由「哈希前静默改写」降级为**构建期检查、不符即拒签**；
+  列出四条不可分割的配套纪律（不透明字节上线 / 验签先于解析 / 卫生闸门在验签之后 / 全量文件承诺）。
+- **ADR-018 §2.9.1**（新增小节）：上线形态 `gzip(JSON({ envelopeB64, signature }))`、七步验证顺序表、
+  签发侧全量文件承诺、七项落地清单、以及「为何不签压缩包字节」的记录。
+
+**为何不是四元组（path+encoding+length+content）叶子编码**：envelope 本身已是一份确定性序列化
+文档，直接哈希其字节即可让路径 / 编码 / 顺序 / 个数 / `bundleFormat` 全部落入签名范围，无需在
+TS 与 Dart 各写一份叶子编码器并靠 golden 维持一致。这与 ADR-018 §2.5 给 catalog 定的
+「字节精确、不重新规范化序列化」是同一取向——bundle 此前未遵守该结论。Merkle 式逐文件绑定的
+正当收益（部分取用 / 逐文件验证 / 去重 / 增量更新）在 elecon 一条都用不上（整包取用、按 digest
+整包缓存、单包 ≤ 256 KiB）。
+
+**为何不签压缩包字节**：gzip 输出不确定（压缩级别、header 的 OS 字节/mtime、zlib 版本），
+会废掉 ADR-018 §3 风险 (e)「所见非所签」的唯一防线（离线机重算 digest 与审查沙箱产物比对），
+并使 P0-15 台账无法从 source commit 复算 digest。取**未压缩的 envelope 字节**：同样是单段连续
+字节，但可从 git checkout 复现。
+
+**迁移 = 无代码兼容层 + 一次重签仪式（2026-09-01 核实修正）**：`records` 为空是 **P0-15 台账未建立**，
+不等于未签发。实存 **7 份 official 签名 bundle**（`dist-full/` `dist-xidian/` `dist-helloworld/`，其中 5 份
+随包在 `client/assets/bootstrap/`）+ 已签名 catalog（sequence 3）+ revocation，全部由 `elecon-official-ncc-1`
+真机签发。无外部持有者，故仍不设双读、不新增 host version gate；但 `/2` 须伴随一次**离线 YubiKey 重签仪式**
+（5 adapter + catalog + revocation → `bootstrap:sync` 重派生），**与 ADR-026 §2.7 已预定的「补齐
+`masker.json` 后重签」合并为同一次**，并一次补齐 P0-15 台账首批记录。
+
+**暴露面：潜伏但尚未武装**。攻击充要条件 = 「在 `manifest.json` 字典序**同一侧**存在 ≥2 个文件，且至少一个
+不按固定路径查找」——按固定路径查找的文件各钉死一个位次，位次全钉死则重命名无自由度。现存 7 份 bundle 的
+`files` **全为 `[index.js, manifest.json]`** → 不可利用；补 `masker.json` 后三者分居三个固定位次 → 仍不可利用。
+暴露面在**第一份携带运行时资产的 bundle** 出现时打开。**不需紧急吊销**，但须在 adapter 开始携带资产前落地。
+
+**2026-09-01 owner 复核后的五项裁定**：
+
+| # | 裁定 | 状态 |
+|---|---|---|
+| 1 | envelope 从「容器」降为「清单」：`files[]` 存 `path/size/sha256`，文件字节改由**按内容哈希寻址**的 blob 表承载 | 已写入 ADR-002 §2.3 / ADR-018 §2.9.1 |
+| 2 | envelope 顶层新增 `adapterId/adapterVersion`，身份核对改为**三方一致**（签名载荷 ↔ envelope ↔ manifest） | 同上 |
+| 3 | 三处签名统一加显式域分隔：`contextTag ‖ 0x00 ‖ 被签字节` | 同上（落地清单 #3） |
+| 4 | ~~从 manifest 移除 `trustTier`~~ | **未执行**。它是 validator 三道签发期闸门（C3 / `ssoMint` official-only / masker official-only）的输入，且 ADR-033 §5 明文要求 C3 删除不得抢跑。目标形态改为「意图档位由签发流水线显式入参」，随 ADR-033 一并处理 |
+| 5 | digest v2 重签仪式与 ADR-026 §2.7 的「补齐 `masker.json` 后重签」合并，一次补齐 P0-15 台账首批 | 已写入两处 ADR |
+
+**descriptor 形态的取舍理由**：① 编码彻底离开信任边界——两端 base64 解码器实测不同（Node 对
+`Qh==`/`QQ`/含空白宽松接受，Dart 全部抛），内联方案下 base64 文本**就是被签字节**，会签出「某些端
+装不上」的产物；descriptor 方案内容寻址，解码器宽严无关。② 被签对象缩小到可人眼审完，使 ADR-018
+§3 风险 (e)「所见非所签」的唯一防线（离线机重算 digest 比对）从名义存在变为可执行。③ 台账可记录
+envelope 全文。**代价**是新增「blob 集合精确相等」不变量——少一个会被逐文件校验抓到，**多一个不会**，
+必须显式拒绝，四个负例须双端 golden 钉死。
+
+**红用例已扩**：`path-binding.redcase.ts` 末尾列出 descriptor 落地后须补的 E1–E8 断言
+（blob 多/少/哈希不符/长度不符、三方身份两例、域分隔、外层信封多余字段）；当前类型无法表达，
+故以清单形式钉在同一文件，不伪造为通过。
+
+**剩余门槛（🔒 人工）**：① owner 签收上述两处 ADR 修订；② 实现本身触红线 #4，须人工复核，
+AI 不得独自闭环（AGENTS.md §1）；③ 顺带发现、须一并处理的两处不对称：TS
+`verifyBundleSignature` 缺 `bundleFormat` 检查（Dart 有）、`unpackBundle` 现为「先解析后验签」。
+
 ## 3. P1：核心正确性与契约闭环
 
 | ID | TODO | 主要位置 | 前置 | 完成条件 |
 |---|---|---|---|---|
 | P1-01 | [ ] Credential Store 按用户、学校、ref 隔离，或用类型保证 store 单租户 | `client/lib/core/credential/`、`server/src/runtime/credential/` | P0-02 | 两校同名 ref 不覆盖；resolver 绑定执行上下文；迁移旧数据；人工复核 |
-| P1-02 | [ ] 修复 H/S 持久化队列首次失败后永久中毒 | `software_secure_store.dart`、`hardware_secure_store.dart` | 无 | 首写失败后后写可恢复；durability failure 可见；无静默内存成功 |
-| P1-03 | [ ] 登出改为等待 `delete + flush` 的异步事务 | `session_controller.dart`、`settings_page.dart` | P1-02 | 删除未落盘时不得显示完成；失败有安全错误；立即重启不恢复旧凭证 |
+| P1-02 | [x] 修复 H/S 持久化队列首次失败后永久中毒 | `software_secure_store.dart`、`hardware_secure_store.dart` | 无 | 首写失败后后写可恢复；durability failure 可见；无静默内存成功 |
+| P1-03 | [x] 登出改为等待 `delete + flush` 的异步事务 | `session_controller.dart`、`settings_page.dart` | P1-02 | 删除未落盘时不得显示完成；失败有安全错误；立即重启不恢复旧凭证 |
 | P1-04 | [ ] 保留重复响应头的原始多值语义，Masker 基数检查发生在折叠前 | `server/src/runtime/transport/direct.ts`、Dart transport、Masker | P0-09 | 两个同名 token header 触发 ambiguous fail-closed；双端真实 HTTP 测试 |
 | P1-05 | [x] 修复同名不同 Path Cookie 的选择与排序 | `server/src/runtime/broker/cookie-jar.ts`、Dart 对应实现 | P0-04 | `/` 与 `/api` 同名 Cookie 行为符合明确策略/RFC；双端 golden |
 | P1-06 | [x] 补齐 Cookie 的 Secure、Max-Age、Expires 和删除语义 | TS/Dart CookieJar | P0-04 | HTTPS/HTTP、过期、`Max-Age=0`、覆盖删除均有共享 golden |
@@ -224,7 +314,8 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 - P2-04/P2-05：公网 handler 对畸形百分号和非法 UTF-8 返回 400；只服务 catalog、revocation 和 64 位小写 digest bundle，任意 dist 文件、非法名称和超 512 KiB bundle 均拒绝。
 - P2-10：`tsconfig.build.json` 排除 smoke/testutils，production build 每次清空 `dist/` 并机械检查产物；全量 smoke 仍由原 `tsconfig.json` typecheck 和独立 runner 执行。
 - P2-14：测试目录统一为 `XJTU/`，保留发布身份 `school-xjt`；FDU/THU/XIDIAN/XJTU 均记录 schoolId、系统、状态、敏感度和使用情况，ADR 历史证据引用已同步。
-- Linux 构建：默认 lockfile 将 `jni` 从 1.0.2 更新至 1.0.3；clean 后 debug/release bundle 均构建成功，release executable 的 `ldd` 无缺失动态库。该事实只证明可构建，不关闭 P2-12 的可信登录/支持矩阵决策。
+- Linux 构建：默认 lockfile 将 `jni` 从 1.0.2 更新至 1.0.3；clean 后 debug/release bundle 均构建成功，release executable 的 `ldd` 无缺失动态库。已确认 Linux 支持 S 档但不提供 H 档；为保持易用性，设置页面仅显示 S、不弹强警告。该决定只解决保护等级展示，不关闭 P2-12 的可信登录/支持矩阵决策。
+- OHOS 当前不属于正式发版矩阵；`pubspec.ohos.yaml` 与 OHOS probe 保留为独立实验输入，不进入 release 构建或正式能力支持声明，P2-13 的正式清单/CI 处理仍需在未来恢复 OHOS 时另行启动。
 - P2-01 涉及凭证 store bootstrap 失败状态机，按安全规则留待人工协作。P2-11 审计发现约 181 个 UI 字面量位点，需作为独立迁移批次完成，禁止用现有债务 baseline 豁免来伪装静态门。
 
 ## 5. P3：文档、CI、发布与运维
@@ -305,7 +396,7 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 
 顺序：
 
-1. 修订 ADR-002/018，定义 bundle digest v2、路径规范化和兼容策略。
+1. ~~修订 ADR-002/018，定义 bundle digest v2、路径规范化和兼容策略。~~（2026-09-01 已就地修订，待 owner 签收；兼容策略结论 = **无历史产物、不设兼容期**）
 2. 先实现 TS/Dart verifier 与 golden，再实现 signer/packer。
 3. 增加 host version gate，重新签发 bootstrap/catalog/bundle。
 4. 增加 P0-15 发布台账和 release 防回滚检查。

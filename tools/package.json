@@ -33,6 +33,7 @@
     "smoke:adapter-policy": "tsx src/adapter-policy/adapter-policy.smoke.ts",
     "smoke:codegen": "tsx src/codegen/codegen.smoke.ts",
     "smoke:signer": "tsx src/signer/signer.smoke.ts",
+    "redcase:bundle-path-binding": "tsx src/bundle/path-binding.redcase.ts",
     "smoke:all": "node ../scripts/run-smokes.mjs src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "audit": "npm audit --omit=dev"

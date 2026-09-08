@@ -50,15 +50,76 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 
 ### 2.3 签名机制
 
-- **签什么**：adapter bundle 的规范化内容哈希（manifest + entry 源码 + 资产）+ **裁定档位**（§2.2），detached 签名。传输底座二进制同理。
+- **签什么**：adapter bundle 的 **digest v2** = `SHA-256(envelope 序列化字节)`（envelope 定义见 [`adr_018`](./adr_018_adapter_distribution.md) §2.9）+ **裁定档位**（§2.2），detached 签名。传输底座二进制同理。
 - **方案**：**Ed25519**（RFC 8032）签名 over bundle 内容摘要。注意 **Ed25519 内建哈希固定为 SHA-512、不可参数化**——所以"Ed25519 over SHA-256"是范畴错误；这里的 **SHA-256 仅指 bundle 内容摘要**（签什么），与 Ed25519 内部的 SHA-512（怎么签）是两处独立的哈希。
-- **规范化规格（canonicalization，已定）**：bundle 内容摘要前须按以下规则规范化，保证同一 bundle 在任何平台算出相同哈希：
-  1. **文件排列顺序**：参与哈希的文件按**相对路径的 UTF-8 code point 字典序**排列（`manifest.json` < `src/index.js` < …）。
-  2. **换行符**：一律 **LF**（`\n`）；CR/CRLF 在哈希前替换为 LF。
-  3. **编码**：一律 **UTF-8 NFC**（Unicode Normalization Form C）。
-  4. **无 trailing newline**：文件末尾不追加也不剥除 trailing newline——以磁盘字节为准（规范化只管换行符种类和编码，不改内容长度）。
-  5. **二进制资产（图片等）**：不做文本规范化，直接按字节参与哈希。
-  6. **哈希拼接**：`SHA-256(file1_bytes) || SHA-256(file2_bytes) || ...`（按上述顺序拼接各文件哈希后，对拼接结果再做一次 SHA-256 得到 **bundle digest**），Ed25519 签名此 digest + 裁定档位的 payload。
+- **digest v2：envelope 降为「清单」，签其序列化字节（2026-09-01 修订，取代原「双层 SHA-256 拼接」）。**
+
+  **被取代的规格**：原 digest = `SHA-256( SHA-256(file1) ‖ SHA-256(file2) ‖ … )`，文件按相对路径字典序排列。其中**路径只参与排序、自身从不进哈希**，`encoding`、文件个数与 `bundleFormat` 亦然。于是任何**保持字典序位次的重命名**都不改变 digest——而加载器恰恰是**按路径**取要执行的字节（`manifest.runtime.entry`，以及 [`adr_026`](./adr_026_response_masker.md) 的 `masker.json`）。二者合起来使一份合法的 official 签名可以背书「受审时叫 `assets/theme.css`、改名后叫 `index.js`」的内容被执行：人工审查看到的是无害目录，**检出率为零**，身份核对（§2.2）与 stdlibMin 门全部照常通过。这直接击穿红线 #4。可执行证据：`tools/src/bundle/path-binding.redcase.ts` A 组（两侧 digest 逐字节相同）。
+
+  **职责分离（本次修订的核心）**：旧 envelope 一个人干了三件事——**容器**（装文件字节）、**清单**（声明有哪些文件）、**签名对象**。病根是「清单」被「容器」吞掉，唯一没被签的字段恰是 `path`。新规格把容器拆出去，**envelope 只做「清单 + 签名对象」**：
+
+  ```jsonc
+  // envelope —— 签名对象。小、可读、可人眼审完
+  {
+    "bundleFormat": "elecon-bundle/2",
+    "adapterId": "school-xidian",
+    "adapterVersion": "0.3.1",
+    "files": [
+      { "path": "index.js",      "size": 4211, "sha256": "9f2c…" },
+      { "path": "manifest.json", "size":  812, "sha256": "3ab0…" },
+      { "path": "masker.json",   "size":  147, "sha256": "c751…" }
+    ]
+  }
+
+  digest = SHA-256( envelopeBytes )            // envelopeBytes = UTF-8(JSON(envelope))
+  ```
+
+  文件字节改由**按内容哈希寻址**的 blob 表承载（见 [`adr_018`](./adr_018_adapter_distribution.md) §2.9.1 的上线形态）——**不按路径寻址**，故仍是纯 JSON、🔒 加载器零自研归档解析（当初弃 tar 的理由完好）。
+
+  **为何是 descriptor 而不是把内容内联进签名对象**：
+
+  1. **编码离开信任边界（安全论据，非整洁论据）。** 内联方案里 base64 文本**就是被签的字节**，两端各自解码它；而两端解码器行为实测不同——`Qh==`（尾位非零）、`QQ`/`QQ=`（填充错）、含空白的 base64，Node `Buffer.from` 全部宽松接受并产出字节，Dart `base64.decode` 全部抛。一份签名合法的 envelope 会在 Node 侧（validator / 审查沙箱 / 台账提取）被接受并审阅，在 Dart 客户端被拒。方向是 fail-closed 而非提权，但足以签出「某些端装不上」的产物，并迫使契约额外规定「必须规范 base64」。descriptor 方案下内容是**内容寻址**的：解码器无论宽严，产出字节都必须命中 `sha256`，对不上即拒——编码差异从**信任问题**降级为**传输问题**。
+  2. **签名对象变成人可审的小对象。** §3 风险 (e)「所见非所签」的**唯一防线**是维护者在离线签名机上重算 digest 并与审查沙箱产物比对。内联方案下待签对象是几百 KB 夹满 base64 的 JSON，那条防线名义存在、实际无法执行；descriptor 方案下它是上面那十行，签名者可以逐行读完再按触碰。**这是本次修订最实在的收益。**
+  3. **台账可记录 envelope 全文**，P0-15 的 `sourceCommit ↔ bundleDigest` 对账因此落到逐文件粒度。
+
+  取「清单 + 内容寻址」而非 Merkle 树，是因为 elecon 只整包取用、按 digest 整包缓存、单包 ≤ 256 KiB，不需要部分取用 / 增量更新；Merkle 要在 TS 与 Dart 各写一份叶子编码器并靠 golden 维持一致。
+
+  **身份三方一致（§2.2 的加强）**：envelope 顶层新增 `adapterId/adapterVersion`，核对从两方改为**三方**——`签名载荷` ↔ `envelope 顶层` ↔ `manifest.json 内容`，任一不符即 fail-closed。代价是一处冗余，换来「人眼审的那个对象自述它是哪个 adapter」——否则收益 2 被削掉一半。manifest.json 仍是运行时策略（`network.allow` / `credentials` / `runtime.entry`）的唯一权威源，envelope 顶层身份**只用于核对，不用于裁定**。
+
+  **不可分割的配套纪律**（缺一条即退化；实现细则与验证顺序见 [`adr_018`](./adr_018_adapter_distribution.md) §2.9.1）：
+
+  1. **签名对象以不透明字节上线。** on-wire 携带 envelope 的 base64 串，验端哈希**收到的那一串**。任何路径下都不得「解析成对象 → 重新序列化 → 再哈希」——那等于把 canonical JSON 的全部漂移面（键序、Unicode 转义、数字格式、重复键）请回来。这与 JWS 签 `BASE64URL(payload)` 而非签 JSON 对象是同一条理由。
+  2. **验签先于解析。** 有界 gunzip → 取 envelope 字节 → 验签 → **才** `JSON.parse`。验签前允许解析的只有那个三字段的外层信封。
+  3. **卫生闸门在验签之后。** 签名只证明「发布者确实想要这些路径」，**不**证明这些路径安全；哈希再多字节也不会让 `../../` 变安全。重复路径、绝对路径（含 Windows 盘符）、`.`/`..` 段、反斜杠、空路径、尾随分隔符、NUL、非 NFC 路径一律 fail-closed。**重复路径不是纯纵深防御**：Dart `List.sort` 不保证稳定而 TS `Array.sort` 保证，同名条目会造成跨语言分歧（§3 风险 5）。
+  4. **blob 集合精确相等。** descriptor 的 `sha256` 集合与 blob 表的键集合必须**一一对应**：多一个 = 夹带通道，少一个 = 拒。每个 blob 解码后长度须**精确等于** `size`（先用 `size` 界定再解码，防 endless-data，同 TUF 携带 length 的理由），且哈希须命中 descriptor。**这是本方案唯一新增的、可以搞砸的地方**，必须双端 golden 钉死四个负例：多余 blob / 缺失 blob / 哈希不符 / 重复 path。
+  5. **全量文件承诺。** 签发时若 adapter 目录内存在未进 envelope 的文件（`BUNDLE_INCLUDE` 扩展名白名单之外者），**拒签**——取代原先的静默剔除。否则 digest 只承诺「这些文件」，不承诺「只有这些文件」，目录侧路径（DEV-Sideload、[`adr_033`](./adr_033_production_sideload.md) 本地导入）即存在夹带面。
+  6. **`bundleFormat` 严格相等。** 已由 `client/lib/core/loader/verify.dart` 落实；TS 侧 `verifyBundleSignature` 缺同一检查，须补齐（两端对称）。
+
+- **签名域分隔：同一把密钥下的三个签名协议必须显式隔离（2026-09-01 新增）。** 当前 official 密钥同时签三类对象——bundle 载荷、catalog 原始字节、revocation 原始字节——而三者**没有任何显式域分隔**，只靠「JSON 形状恰好互不满足对方 schema」偶然隔开（`serializePayload` 的输出缺 `catalogVersion/sequence`，故过不了 catalog 校验，反之亦然）。这是**偶然的隔离，不是设计出来的**；第四个签名对象出现时（传输底座二进制、policy pack、bootstrap 清单）随时可能撞上。故统一规定：
+
+  ```
+  签名输入 = contextTag ‖ 0x00 ‖ 被签字节
+  ```
+
+  `contextTag` 为固定 ASCII 串，三者各异：`elecon.bundle-payload/2`、`elecon.catalog/1`、`elecon.revocation/1`。**传输对象不变**（前缀只加在签/验的输入上），故「验字节 → 再 parse」的取向不受影响。新增任何签名对象必须同时分配一个新的 `contextTag`，不得复用。
+
+- **为何 bundle 保留「载荷套一层」而 catalog/revocation 直签字节**：catalog / revocation 的全部语义都在其 JSON 里，直签字节即可；bundle 的 `tier`（裁定档位）**不在** envelope 内——它是签名流程注入的、不可由被签内容自述的判定（§2.2），故必须有一个承载它的载荷。该载荷 = `{ context, adapterId, adapterVersion, tier, digest }`，其中 `digest` 是 envelope 字节的哈希。这一层间接是有理由的，保留。
+
+- **构建期规范化（保留规则，但不再是 digest 的一部分）**：以下规则**仍然有效**，位置从「哈希前静默改写」改为 `buildEnvelope` 的**构建期检查——不符即拒绝签发**：
+  1. **文件排列顺序**：`files` 按相对路径的 UTF-8 code point 字典序排列（`manifest.json` < `src/index.js` < …）。顺序现已进签名范围，故它是 envelope 的一部分，而非哈希算法的一个步骤。
+  2. **换行符**：一律 **LF**（`\n`）；出现 CR/CRLF 即拒绝签发。
+  3. **编码**：一律 **UTF-8 NFC**；未规范化即拒绝签发。
+  4. **无 trailing newline 增删**：以磁盘字节为准。
+  5. **二进制资产（图片等）**：不做文本规范化，按字节以 `encoding: "base64"` 入 envelope。
+
+  **为何改判**：原先「签规范化后的字节」使多份不同的磁盘文件映射到同一 digest，签名因此**不唯一标识磁盘上的真实字节**，也迫使 🔒 Dart 加载器必须论证自己为何不做 NFC。改为「拒绝而非改写」后，签名与磁盘字节一一对应，Dart 侧不引入任何 Unicode 规范化实现。
+
+- **可复现性的负担下降（本次修订的附带收益）**：原规格要求 TS 与 Dart **两套实现**共同维持同一哈希算法不变量（排序、拼接、编码解码）；新规格只要求**签端一处**产出确定性字节（显式序列化器：固定键序、无多余空白，由 golden 钉死），验端只做「哈希收到的串」。[`adr_018`](./adr_018_adapter_distribution.md) §3 风险 (e)「所见非所签」的唯一防线——离线签名机上重算 digest 与审查沙箱产物比对——完好保留，且更易做对。
+
+- **迁移：不设代码兼容层，但需要一次重签仪式（2026-09-01 核实修正）。** `release/adapter-release-ledger.json` 的 `records` 为空——但那是 **P0-15 台账尚未建立**，**不等于未签发过**。实际已存在 **7 份 official 签名 bundle**（`dist-full/` `dist-xidian/` `dist-helloworld/` 下的 `bundles/*.json.gz`，其中 5 份随包在 `client/assets/bootstrap/`），全部由 `elecon-official-ncc-1` 真机签发，另有已签名 catalog（sequence 3）与 revocation list。这些产物**无外部持有者**（随 app 二进制分发 + 仓内 dist），故仍**不设双读、不新增 host version gate**（旧端遇 `/2` 由 `verify.dart` 既有 `bundleFormat` 严格相等自动拒载）；但 `/2` 落地必须伴随一次**离线 YubiKey 重签仪式**：5 个 adapter + catalog + revocation 重新签发、`npm run bootstrap:sync` 重新派生随包资产。**该仪式应与 [`adr_026`](./adr_026_response_masker.md) §2.7 已预定的「手工补齐 `masker.json` 并重新签发」合并为同一次**，并借机把 P0-15 台账首批记录一次补齐。
+
+- **现网产物暴露面：潜伏但尚未武装（2026-09-01 核实）。** 攻击可行的**充要条件**是「在 `manifest.json` 的字典序**同一侧**存在 ≥2 个文件，且其中至少一个不按固定路径查找」——因为按固定路径查找的文件（`manifest.json`、`runtime.entry`、`masker.json`）各自钉死一个排序位次，位次全被钉死时重命名无自由度。当前 7 份已签发 bundle 的 `files` **全部恰为 `[index.js, manifest.json]`**，两个槽位都必需 → **不可利用**；补入 `masker.json` 后为 `[index.js, manifest.json, masker.json]`，三者分居三个固定位次 → **仍不可利用**。暴露面在**第一份携带运行时资产的 bundle**（[`adr_018`](./adr_018_adapter_distribution.md) §2.9「+ 运行时资产,若有」）出现时打开。故本项**不需要紧急吊销**，但必须在任何 adapter 开始携带资产之前落地。
+
 - **签名时的档位来源 = 真正的信任根（不可含糊）。** §2.2 说「档位进签名载荷」，那么*签名那一刻*档位从哪来、谁有权签 official，才是整套机制的信任根，必须显式定，不能甩给"CI/release"四个字：
   - **档位不取自待签 bundle 的 manifest 自报**（那是 claim），而由**签名流程的显式决策**注入——即「签 official」是一个**需显式批准的动作**，由项目维护者（release owner）执行。
   - **签名密钥托管：离线硬件密钥（YubiKey）本地签名（2026-07-15 修订，取代原 OIDC→AWS KMS 方案）。** official 私钥**生成并驻留于硬件安全 token（YubiKey，PIV/PKCS#11 槽位，Ed25519）**，**永不导出、绝不入仓、不上任何服务器/CI**。签名是**离线手动一步**：维护者（release owner）在本地机上对 bundle digest（确定性规范化摘要，§2.3 规则）执行 **PIN + 物理触碰**签名，产出 detached `signature.json`。这把「official 签名权」从**一切自动化中彻底移除**——CI/服务器/审查沙箱即便被供应链投毒，也**够不到私钥、无法自动出签**（签名窗口 = 需人在场触碰硬件）。**为何弃 KMS**：AWS 连通性/成本对本项目体量不划算；离线硬件把私钥移出网络与云,较 KMS 的「短 token 委托」更彻底地满足「私钥永不落盒子」。

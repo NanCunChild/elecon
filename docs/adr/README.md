@@ -11,7 +11,7 @@
 |---|---|---|---|---|
 | [000](./adr_000_abstract.md) | Accepted | 顶层约束生效 | 按子 ADR | 总纲 |
 | [001](./adr_001_contract.md) | Accepted | 部分落地 | 契约改动逐项评审 | P1-13/P1-15、P3-04/P3-06 |
-| [002](./adr_002_trust_model.md) | Accepted | 部分落地 | 待人工 | P0-01/P0-14 |
+| [002](./adr_002_trust_model.md) | Accepted | 部分落地；§2.3 digest v2（2026-09-01 修订）未落地 | 待人工（含 digest v2 修订签收） | P0-01/P0-14 |
 | [003](./adr_003_transport.md) | Accepted | 抽象已落地；app-tunnel 未落地 | 待人工 | ADR-032 |
 | [004](./adr_004_ui_sdui.md) | Accepted | typed UI 框架已落地 | 按契约改动 | P4-03/P4-05 |
 | [005](./adr_005_runtime.md) | Accepted | 已落地 | 已有双端回归 | 共享 golden 只覆盖已使用语义 |
@@ -27,7 +27,7 @@
 | [015](./adr_015_manifest_login.md) | Accepted | 已落地 | 已有人工评审；增量另审 | 平台能力见 ADR-016 |
 | [016](./adr_016_complex_login.md) | Accepted | 部分平台落地 | 待真机/人工 | P2-12/P2-13 |
 | [017](./adr_017_sso_master_credential.md) | Accepted | 部分落地 | 待人工 | Xidian mint 闭环计划 |
-| [018](./adr_018_adapter_distribution.md) | Accepted | 部分落地 | 待人工 | P0-01/P0-15、P3-07/P3-08 |
+| [018](./adr_018_adapter_distribution.md) | Accepted | 部分落地；§2.9.1 digest v2 与上线形态（2026-09-01 新增）未落地 | 待人工（含 §2.9.1 签收） | P0-01/P0-15、P3-07/P3-08 |
 | [019](./adr_019_classroom_available.md) | Accepted | 契约与 UI 基线已落地 | 契约已评审 | adapter 签发/真机仍开放 |
 | [020](./adr_020_url_query_credential.md) | Accepted | 已落地 | 已人工复核 | 真机验收仍开放 |
 | 021 | Reserved | 未起草 | 不适用 | P3-05 先决定 Money 领域语义 |
