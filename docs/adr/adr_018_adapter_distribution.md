@@ -227,7 +227,7 @@ elecon-adapters/（public,另一组织）
 
 > **签收**：本小节规格于 **2026-09-09 由 owner NanCunChild 正式签收**（已接受并完成审阅），与 [`adr_002`](./adr_002_trust_model.md) §2.3 同批。P0-01 自此可开工。**签收范围为规格**；下方落地清单每项均触红线 #4，实现仍须人工主导 + 安全清单 + ≥1 人工审，AI 不得独自闭环。
 
-**缺陷**（详见 ADR-002 §2.3「被取代的规格」）:原 digest 只哈希**按路径排序后的内容**,路径自身不进哈希 → **保序重命名**不改 digest,而加载器按路径取入口与 `masker.json` → official 签名可背书受审时无害的资产文件被执行。验收红用例 `tools/src/bundle/path-binding.redcase.ts`（现 2/14，A2/B1/C1–C9/D1 红）。
+**缺陷**（详见 ADR-002 §2.3「被取代的规格」）:原 digest 只哈希**按路径排序后的内容**,路径自身不进哈希 → **保序重命名**不改 digest,而加载器按路径取入口与 `masker.json` → official 签名可背书受审时无害的资产文件被执行。验收红用例 `tools/src/bundle/path-binding.redcase.ts`（曾 2/14）。**2026-09-09 已落地并全绿（26/26）**，据此改名 `tools/src/bundle/path-binding.smoke.ts` 纳入 `smoke:all` 常驻回归。
 
 **修订后的规格**——envelope 从「容器」降为「清单」，文件字节改由按内容哈希寻址的 blob 表承载:
 
@@ -285,18 +285,20 @@ gzip(JSON({
 
 **为何也不签压缩包字节**:见 §2.9「为何也不签压缩包字节」。
 
-**落地清单**（🔒 每项均触红线 #4，须人工复核，AI 不得独自闭环）:
+**落地清单**（🔒 每项均触红线 #4，须人工复核，AI 不得独自闭环）。**第 1–7 与第 11 项已于 2026-09-09 实现，两端 CI 全绿；第 8 项的重签仪式待 owner 执行**（在此之前仓内 7 份 v1 产物一律拒载，这是 item 8「无代码兼容层」的预期行为）:
 
 1. `tools/src/bundle/envelope.ts`:envelope 改 descriptor（`path`/`size`/`sha256` + 顶层身份）;显式确定性序列化器（固定键序、无多余空白）;`digest = SHA-256(envelopeBytes)`;`BUNDLE_FORMAT` → `elecon-bundle/2`。
 2. `tools/src/signer/index.ts`:`serializePayload` 加 `contextTag` 前缀;`computeBundleDigest(dir)` 走 `buildEnvelope(dir)` 同一条 digest;`collectBundleFiles` 增全量文件承诺;`canonicalizeContent` → `assertCanonical`（拒绝而非改写）。
 3. `tools/src/catalog/sign.ts` / `tools/src/signer/revocation.ts`:签/验输入加各自 `contextTag` 前缀（传输对象不变）。
 4. `tools/src/bundle/package.ts`:上线形态改 `{envelopeB64, signature, blobs}`;实现验签先于解析;补 `bundleFormat` 检查、卫生闸门、blob 集合精确相等、逐文件 size/hash 校验、三方身份一致。
 5. `client/lib/core/loader/bundle.dart` / `verify.dart`:同上（Dart 侧只需「哈希收到的串」+ 逐 blob 校验,删除排序与逐文件拼接哈希）。
-6. `contract/golden/bundle/loader.json`:改为 `{ envelopeBytes(hex), blobs, expectedDigest, signature, publicKeyRawHex }` 形态,两端同向量;新增卫生闸门与 blob 集合四负例向量。
-7. `tools/src/bundle/path-binding.redcase.ts`:补 descriptor 形态的负例（见文件末「待实现后可表达」清单）;全绿后改名 `path-binding.smoke.ts` 纳入 `smoke:all`。
+6. `contract/golden/bundle/loader.json`:两端同向量;新增卫生闸门与 blob 集合负例向量。**落地时改判**：向量只给 `packedBundleBase64`（完整线上封套），**不给** `envelopeBytes(hex)` 或解析好的 envelope——给结构等于替 Dart 做完解析,恰好绕过「验签先于解析」与「哈希收到的那串字节」两条纪律。现 19 条向量,且生成器自带自验（每条期望必须是 TS 侧真实产生的行为,否则拒绝写出）。
+7. `tools/src/bundle/path-binding.redcase.ts`:补 descriptor 形态的负例（见文件末「待实现后可表达」清单）;全绿后改名 `path-binding.smoke.ts` 纳入 `smoke:all`。**已完成（26/26）。**
 8. **迁移 = 无代码兼容层 + 一次重签仪式**（2026-09-01 核实修正）:ledger 为空是 P0-15 台账未建立,**不等于未签发**——实存 7 份 `elecon-official-ncc-1` 签发的 official bundle（5 份随包在 `client/assets/bootstrap/`）+ 已签 catalog（sequence 3）+ revocation。无外部持有者,故 `/1` 路径整体删除、不设双读、不新增 host version gate（旧端由既有 `bundleFormat` 相等判断自动拒载）;但须一次离线 YubiKey 重签（5 adapter + catalog + revocation，随后 `bootstrap:sync` 重派生），**与 ADR-026 §2.7 已预定的「补齐 `masker.json` 后重签」合并为同一次**，并一次补齐 P0-15 台账首批记录。
 9. **暴露面核实**:攻击充要条件 = 「`manifest.json` 字典序同一侧存在 ≥2 个文件且至少一个不按固定路径查找」。现存 7 份 bundle 的 `files` 全为 `[index.js, manifest.json]`,补 `masker.json` 后为三个固定位次 → **均不可利用**;暴露面在第一份**携带运行时资产**的 bundle 出现时打开。故不需紧急吊销,但须在 adapter 开始携带资产前落地。
 10. **manifest `trustTier`**（2026-09-01 已在 `refactor/intended-tier-as-pipeline-input` 处理）:引入**意图档位**作为校验器与发布流水线的显式入参,三道签发期闸门（C3 / `ssoMint` official-only / masker official-only）改读该入参;`trustTier` 从 `required` 移出、降为过渡期回退（分歧=error 且以入参为准）。**C3 本身保留**——其退役仍须与 DEPLOY official-only 负例同批,不得抢跑（ADR-033 §5）。见 ADR-002 §2.2。
+
+11. **`*.md` 进显式排除名单（2026-09-09 落地时新增，🔒 待 owner 签收）**：全量文件承诺（纪律 5）一开，**现有每个 adapter 都签不出来**——`README.md` / `COVERAGE.md` 既不在 `BUNDLE_INCLUDE` 也不在 `BUNDLE_EXCLUDE`。按该纪律自身指明的出路处理：**显式排除**，排除名单进版本控制即为其审计记录。排除 ≠ 夹带面（被排除的文件根本不进 bundle，永远到不了客户端）；纳入才是把几十 KB 面向贡献者的文档推给每个终端用户。`elecon-adapters/scripts/build-bundle.mjs` 须保持同一名单（含大小写敏感性）。
 
 ### 2.10 语法 / 静态检查的方式（展开 §2.2 门 1 CI,复用既有 `tools/`）
 

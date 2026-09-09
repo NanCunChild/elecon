@@ -78,18 +78,23 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 攻击者 = ADR-018 信任域 A 的社区贡献者或任何能把内容放进受审 bundle 的人；**人工审查看到的
 是无害目录，检出率为零**。直接击穿红线 #4。
 
-**验收门**：`tools/src/bundle/path-binding.redcase.ts`（keyless，只用测试 Ed25519 密钥对）。
-刻意**不叫** `*.smoke.ts`，故不被 `run-smokes.mjs` 发现、`smoke:all` 保持 18/18 绿；
-经 `cd tools && npm run redcase:bundle-path-binding` 显式运行。当前 **2/14**：
+**验收门**：落地前是 `tools/src/bundle/path-binding.redcase.ts`（keyless，只用测试 Ed25519 密钥对），
+刻意**不叫** `*.smoke.ts` 以免拖红 `smoke:all`，经 `npm run redcase:bundle-path-binding` 显式运行，
+当时 **2/14**（A2 / B1 / C1–C9 / D1 全红）。
 
-| 组 | 断言 | 现状 |
-|---|---|---|
-| A2 | 只改路径、不改内容 → 必须验签失败 | 🔴 |
-| B1 | 含重复路径的 envelope → 即使签名有效也必须拒 | 🔴 |
-| C1–C9 | `..` / 内嵌 `..` / POSIX 绝对 / Windows 盘符 / 反斜杠 / `./` / 空 / 尾随分隔符 / NUL → 必须拒 | 🔴 |
-| D1 | 篡改 `bundleFormat` → 必须验签失败 | 🔴 |
+**2026-09-09 已全绿并改名**为 `tools/src/bundle/path-binding.smoke.ts`，纳入 `smoke:all`（现 19/19）。
+最终 **26/26**，比原计划多出的部分是落地时补的：
 
-**P0-01 完成的定义 = 本文件全绿**，随后改名为 `path-binding.smoke.ts` 纳入常驻回归。
+| 组 | 断言 |
+|---|---|
+| A0/A1/A1b/A2 | 保序重命名：含**两条前提断言**——伪造后入口确实解析到恶意内容、且两侧 blob 集合逐字节相同（排除「靠内容变化侥幸拒掉」）|
+| B1 | 重复路径 → 即使签名有效也必须拒 |
+| C1–C10 | `..` / 内嵌 `..` / POSIX 绝对 / Windows 盘符 / 反斜杠 / `./` / 空 / 尾随分隔符 / NUL / **非 NFC** |
+| D1/D2 | 篡改 `bundleFormat`（用原签名）→ 拒；**重签**的 `elecon-bundle/9`（digest 与签名皆真）→ 第 7 步拒 |
+| E1–E4 | blob 多（夹带通道）/ 少 / 哈希不符（等长替换，与长度检查分离）/ 长度撒谎 |
+| E5–E6 | 三方身份的两条边：envelope 顶层 ≠ manifest、签名载荷 ≠ envelope 顶层 |
+| E7a/E7b | 域分隔：无 `contextTag` 的签名、用 `elecon.catalog/1` 域签的签名 |
+| E8 | 传输封套含多余字段 |
 
 **ADR 就地修订（未新开 ADR）**：
 
@@ -124,9 +129,9 @@ host version gate；但 `/2` 须伴随一次**离线 YubiKey 重签仪式**（5 
 | 4 | ~~从 manifest 移除 `trustTier`~~ → 改为**意图档位作为签发流水线显式入参** | **已落地**（分支 `refactor/intended-tier-as-pipeline-input`）。直接删字段会静默拿掉 validator 三道签发期闸门（C3 / `ssoMint` official-only / masker official-only）并撞上 ADR-033 §5「C3 不得先删」。改为：三道闸门 + `release/package.ts` 改读显式 `IntendedTier` 入参；`trustTier` 从 `required` 移出、降为过渡期回退（分歧=error 且以入参为准）。**C3 保留**，其退役仍随 ADR-033 |
 | 5 | digest v2 重签仪式与 ADR-026 §2.7 的「补齐 `masker.json` 后重签」合并，一次补齐 P0-15 台账首批 | 已写入两处 ADR |
 
-**红用例已扩**：`path-binding.redcase.ts` 末尾列出 descriptor 落地后须补的 E1–E8 断言
-（blob 多/少/哈希不符/长度不符、三方身份两例、域分隔、传输封套多余字段）；当前类型无法表达，
-故以清单形式钉在同一文件，不伪造为通过。
+**红用例已扩**：`path-binding.redcase.ts` 末尾曾以清单形式钉住 descriptor 落地后须补的 E1–E8 断言
+（blob 多/少/哈希不符/长度不符、三方身份两例、域分隔、传输封套多余字段）——当时类型无法表达，
+故不伪造为通过。**2026-09-09 落地时已全部实现并转绿。**
 
 **剩余门槛（🔒 人工）**：
 
@@ -135,7 +140,8 @@ host version gate；但 `/2` 须伴随一次**离线 YubiKey 重签仪式**（5 
   签收范围是**规格**，不含实现——实现落地后仍须按下面 ② 单独人工复核。
 - ② 实现本身触红线 #4，须人工主导 + 安全清单 + ≥1 人工审，**AI 不得独自闭环**（AGENTS.md §1）。
 - ③ 顺带发现、须一并处理的两处不对称：TS `verifyBundleSignature` 缺 `bundleFormat` 检查（Dart 有）、
-  `unpackBundle` 现为「先解析后验签」。
+  `unpackBundle` 现为「先解析后验签」。**已解决**：两端唯一入口都改成收**原始字节**的 `openBundle`，
+  「先解析后验签」在 API 形状上不再可能表达。
 
 ### 2.3 执行状态（2026-09-09 · P0-01 规格签收 / P0-15 早期台账合法留白）
 
@@ -143,6 +149,7 @@ host version gate；但 `/2` 须伴随一次**离线 YubiKey 重签仪式**（5 
 两处状态更新为「已接受并完成审阅」。**P0-01 自此不再受 ADR 阻塞，可以开工。**
 签收范围**仅为规格**；实现触红线 #4，落地后仍须人工主导 + 安全清单 + ≥1 人工审（AGENTS.md §1）。
 验收门不变：`tools/src/bundle/path-binding.redcase.ts` 全绿（现 2/14），全绿后改名纳入 `smoke:all`。
+→ **2026-09-09 已落地，见 §2.4。**
 
 **P0-15 早期台账合法留白（owner 决策 2026-09-09）。** 现存 7 份 official bundle 均为**早期测试阶段**
 产物，其 `sourceCommit` / `signedAt` / `signer` / `reviewReference` 四项人工事实**不予追溯补齐**，
@@ -187,6 +194,71 @@ earlier adapterId+adapterVersion`）——**它是对的**：「版本号唯一�
   checklist 里落为一步（见 `docs/reference/signing_ceremony.md`）。
 - **由该仪式一并了结**：digest v2 重签会给全部 5 份产物新的 digest，届时 helloworld 应
   bump 到 `0.1.1`（或更高），历史歧义随 `/1` 路径整体删除而失效。
+
+---
+
+### 2.4 执行状态（2026-09-09 · P0-01 digest v2 两端落地）
+
+**状态：代码已落地、两端 CI 全绿；🔒 待人工安全复核 + 待重签仪式。**
+
+验收门 `path-binding.smoke.ts` **26/26 全绿**；tools `typecheck` 0 错、`smoke:all` 19/19；
+client `flutter analyze` 0 问题、`flutter test` **856 通过 / 12 skip**。跨语言 golden
+`contract/golden/bundle/loader.json` 现 **19 条向量**，两端跑同一份线上字节。
+
+**外部一致性证据（最强的一条）**：`elecon-adapters/scripts/build-bundle.mjs` 与核心
+`tools/src/bundle/envelope.ts` 是**两份独立实现**，对真实 adapter `school-xidian@0.4.1`
+产出的 envelopeBytes **319 B 逐字节相同**，digest 同为 `6e6f196c…f991`。ADR-002 §3 风险 5
+（跨实现漂移）在签发侧因此有了可复算的实证，而不只是「两边都照 ADR 写了」。
+
+#### 落地时新增的三项决策（🔒 **须 owner 签收**，均超出 2026-09-09 已签收的规格文字）
+
+| # | 决策 | 起因与理由 |
+|---|---|---|
+| A | **路径段字符集收紧为 `[A-Za-z0-9._-]`**，卫生闸门不再依赖 Unicode 规范化 | TS 有 `String.normalize("NFC")`，**Dart 没有内建 NFC**。若 Dart 略过该检查，两端卫生闸门对同一份 bundle 给出**不同判定**，且 Dart 方向是 fail-open——这正是风险 5 的活样本；给 Dart 引入第三方 NFC 实现只是把漂移面换个地方。收紧字符集则从源头消灭该问题：该集合内不存在非 NFC 形式，也不存在同形异码与 RTL override。**代价**：adapter 内文件名不得含非 ASCII（现有全部 adapter 均满足，且这是内部打包路径，与任何面向用户的展示文本无关）。TS 侧保留 NFC 断言作零成本的第二道锁。golden 用例 `non_ascii_path` 钉住两端同判。 |
+| B | **验签层不做档位门，档位门归加载器** | TS `openBundle` 服务于台账提取、签发侧自验等**非加载**场景，那里需要「密码学事实」而不需要「加载策略」；把 official-only 塞进去会逼这些调用方接受一个会拒 sideload 的 API。故 TS 侧 `ok + tier=sideload`，Dart 侧（它**是**加载器）第 12 步拒。golden 用例 `valid_signature_sideload_tier` 带 `loaderMustRefuse` 标记，同时钉住这两件事。**这一项是被 golden 生成器的自验揪出来的**——原先的期望写的是「验签层应拒」，与 TS 实际行为不符。 |
+| C | **`*.md` 进 `BUNDLE_EXCLUDE` 显式排除名单** | 全量文件承诺（纪律 5）一开，**现有每个 adapter 都签不出来**——`README.md`/`COVERAGE.md` 既不在 INCLUDE 也不在 EXCLUDE。按该纪律自身指明的出路处理：显式排除，名单进版本控制即为审计记录。排除 ≠ 夹带面（被排除的文件根本不进 bundle，永远到不了客户端）；纳入才是把几十 KB 无用字节推给每个终端用户。 |
+
+#### 顺带完成的简化（对应「简化心智以提升维护效率」）
+
+- **两端唯一入口都改成收原始字节的 `openBundle`**。v1 的 `verifyBundleSignature(env, sig)`
+  这个签名本身就违反「验签先于解析」——一旦 envelope 已是对象，「验的字节」与「用的字节」
+  就分了家。改成收字节后，这类错误**在 API 形状上不再可能表达**。
+- **`VerifiedBundle` 携带内容**（`envelope` / `envelopeBytes` / `blobs`），`LoadResult` 只存这一个
+  对象、其余字段降为 getter。原先 envelope / identity / digest 三份平行字段可能互相不一致，
+  `adapter_launcher.dart` 为此写过一条「防手工构造的不一致 LoadResult」的冗余检查——现已删除，
+  因为那种不一致构造不出来了。（对应测试也从「伪造 LoadResult」改写为「把 A 的凭据配 B 的内容」，
+  那才是仍然构造得出的错配形态。）
+- **`BundleCache.read` 只返回裸字节**，不再吐 `CachedBundle{envelope, signature}`。缓存层因此
+  不再有第二份解析实现，「未验签的 envelope」这个危险中间态在类型上不存在。
+- **删除 `computeBundleDigest` / `verifyAdapter` / `signAdapter`**：保留「从目录直接算 digest」
+  的旁路等于第二条 digest 实现，必然与 `buildEnvelope` 漂移。CLI `digest` 子命令改走同一条实现。
+- **新增 `client/test/utils/bundle_fixture.dart`**：六个测试文件原先各自手拼 `BundleEnvelope`
+  字面量，每份手拼都是一份可能漂移的影子实现。收敛后测试只描述「这个 bundle 里有哪些文件」。
+- **golden 生成器自带自验**：每条向量的期望必须是 TS 侧**真实产生**的行为，否则拒绝写出——
+  否则 golden 只是一份「我以为会这样」的手写清单，写错了会把 Dart 钉到错误的行为上。
+
+#### 剩余门槛
+
+| # | 事项 | 归属 |
+|---|---|---|
+| 1 | 🔒 **人工安全复核**：本次改动全在签名/验签承重路径，AGENTS.md §1 明令 AI 不得独自闭环 | owner |
+| 2 | 🔒 **签收上表 A/B/C 三项决策** | owner |
+| 3 | **离线 YubiKey 重签仪式**：仓内 7 份 v1 产物在 v2 下一律拒载（item 8「无代码兼容层」的预期行为）。`client/test/school_manifest_test.dart` 的 bootstrap 用例已做**条件跳过**——一旦重签为 v2 自动恢复运行，不依赖任何人记得回来删一行 | owner（物理动作） |
+| 4 | 重签时 bump `school-helloworld` 版本号（§2.3 的 equivocation 流程修正） | owner |
+| 5 | `elecon-adapters` 侧两处规则同步（详见下表） | 与 A 仓同批 |
+
+#### `elecon-adapters` 侧待同步（截至 2026-09-09 比对）
+
+`scripts/build-bundle.mjs` 已自行迁到 v2 且与核心逐字节一致，**只余三处**：
+
+| 处 | 现状 | 应改为 |
+|---|---|---|
+| `assertPathHygiene` | 只有 NFC 检查，**无字符集白名单** | 补 `[A-Za-z0-9._-]` 段白名单（决策 A）。否则本仓能构建出核心**拒签**的 envelope——签发侧比验端宽，是最难查的一类不一致 |
+| `BUNDLE_EXCLUDE` | `\.md$`（大小写敏感） | `\.md$` 加 `i` 标志，与核心一致；否则 `README.MD` 会走到「全量文件承诺失败」而非被排除 |
+| 文件头 / `catalog.mjs` 的 ⚠ 提示 | 「核心 signer / 客户端加载器当前仍在 `elecon-bundle/1`，digest 预检暂不可用，产物暂不可加载」 | **已过时**：核心两端已是 v2，digest 预检自此成立（实证见上）。产物仍不可直接加载，但原因变成「未签名」而非「格式不符」 |
+
+另有一处**先于 digest v2 存在**的红：`grades.list` 的 registry 已到 `1.1`，而 pinned adapters
+仍声明 `1.0` → `C2_emits_mismatch`（`school-thu` / `school-xidian`）。与本次改动无关，随 A 仓同步解决。
 
 ---
 
