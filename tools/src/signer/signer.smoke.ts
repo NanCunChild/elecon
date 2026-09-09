@@ -1,37 +1,92 @@
 /**
- * signer 冒烟测试 —— 仅覆盖**确定性、无密钥**部分：bundle digest 稳定性、
- * revocation 纯判定（kill-switch / 最低版本 / digest / 版本区间）、semver 比较。
+ * signer 冒烟测试 —— 仅覆盖**确定性、无密钥**部分：规范化断言、签名域分隔、
+ * payload 键序、revocation 纯判定（kill-switch / 最低版本 / digest / 版本区间）、semver 比较。
  *
  * 🔒 **有意不包含** Ed25519 sign/verify 往返测试与密钥加载——签名操作是承重路径，
  *    其代码与测试须由维护者人工闭环（AGENTS.md §1，ADR-002 §2.3）。
+ *
+ * digest v2 起，「从目录算 digest」不再是 signer 的职责（`computeBundleDigest` 已删，
+ * 唯一实现是 `bundle/envelope.ts` 的 `buildEnvelope` → `envelopeDigest`）。故此处只测
+ * signer 保留的**无方向性原语**；digest 本身的行为在 `bundle/bundle.smoke.ts` 测。
  *
  *   运行：cd tools && npm run smoke:signer
  */
 
 import { strict as assert } from "node:assert";
-import { fileURLToPath } from "node:url";
-import { requireAdapterDir } from "../test-utils/adapter-path.js";
-import { canonicalizeContent, computeBundleDigest, serializePayload } from "./index.js";
+import {
+  assertCanonical,
+  CONTEXT_TAG_BUNDLE,
+  CONTEXT_TAG_CATALOG,
+  CONTEXT_TAG_REVOCATION,
+  serializePayload,
+  withContext,
+} from "./index.js";
 import { compareSemver, isRevoked, pickNewer, type RevocationList, signRevocation } from "./revocation.js";
 
-const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
-const xidian = requireAdapterDir(repoRoot, "school-xidian");
-
-// ---- digest 确定性 ----
+// ---- 规范化：**断言而非改写**（digest v2 改判，ADR-002 §2.3） ----
 
 {
-  const raw = Buffer.from("e\u0301\r\nline\r\n\n", "utf-8");
-  const normalized = canonicalizeContent(raw).toString("utf-8");
-  assert.strictEqual(normalized, "é\nline\n\n", "规范化应 NFC + LF，但不得剥除末尾 newline");
-  console.log("✓ bundle 内容规范化（NFC/LF/保留末尾 newline）");
+  // 已规范化的文本：LF 换行 + NFC，放行。
+  assert.doesNotThrow(
+    () => assertCanonical("index.js", Buffer.from("é\nline\n\n", "utf-8")),
+    "NFC + LF 文本应放行",
+  );
+
+  // CRLF：拒（不再静默改写成 LF）。
+  assert.throws(
+    () => assertCanonical("index.js", Buffer.from("line\r\n", "utf-8")),
+    /CR\/CRLF/,
+    "CRLF 必须拒签，而非改写",
+  );
+
+  // 非 NFC（e + U+0301 组合重音）：拒。
+  assert.throws(
+    () => assertCanonical("index.js", Buffer.from("e\u0301\n", "utf-8")),
+    /NFC/,
+    "非 NFC 必须拒签，而非改写",
+  );
+
+  // 真二进制（非 UTF-8 可解码）：跳过文本规范化，放行——否则 png/ico 等资产永远签不出去。
+  assert.doesNotThrow(
+    () => assertCanonical("assets/icon.png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe])),
+    "真二进制应跳过文本规范化断言",
+  );
+
+  console.log("✓ assertCanonical：NFC/LF 不符即拒（不改写）、二进制放行");
 }
 
+// ---- 签名域分隔（同一把密钥下多个签名协议必须显式隔离） ----
+
 {
-  const d1 = computeBundleDigest(xidian);
-  const d2 = computeBundleDigest(xidian);
-  assert.strictEqual(d1, d2, "同一 bundle 两次 digest 必须一致");
-  assert.match(d1, /^[0-9a-f]{64}$/, "digest 应为 64 hex（SHA-256）");
-  console.log("✓ bundle digest 确定性");
+  const body = Buffer.from('{"x":1}', "utf-8");
+  const tagged = withContext(CONTEXT_TAG_BUNDLE, body);
+
+  assert.strictEqual(tagged[CONTEXT_TAG_BUNDLE.length], 0x00, "tag 与正文之间须有 0x00 分隔符");
+  assert.ok(
+    tagged.subarray(0, CONTEXT_TAG_BUNDLE.length).toString("utf-8") === CONTEXT_TAG_BUNDLE,
+    "前缀须是 contextTag 本身",
+  );
+  assert.ok(
+    tagged.subarray(CONTEXT_TAG_BUNDLE.length + 1).equals(body),
+    "正文须原样保留在分隔符之后（传输对象不变，前缀只加在签/验输入上）",
+  );
+
+  // 三个域两两不同，且**没有任何一个是另一个的前缀**——否则 0x00 分隔仍可能被绕过。
+  const tags = [CONTEXT_TAG_BUNDLE, CONTEXT_TAG_CATALOG, CONTEXT_TAG_REVOCATION];
+  assert.strictEqual(new Set(tags).size, 3, "三个 contextTag 必须互不相同");
+  for (const a of tags) {
+    for (const b of tags) {
+      if (a === b) continue;
+      assert.ok(!a.startsWith(b), `contextTag ${a} 不得以 ${b} 为前缀`);
+    }
+  }
+
+  // 跨域不可互换：同一份正文在不同域下的待签字节必须不同。
+  assert.ok(
+    !withContext(CONTEXT_TAG_CATALOG, body).equals(tagged),
+    "同一正文在不同域下的待签字节必须不同（否则可跨协议重放）",
+  );
+  console.log("✓ 签名域分隔（tag ‖ 0x00 ‖ bytes，三域互不为前缀、不可互换）");
 }
 
 // ---- payload 序列化键序稳定 ----
@@ -50,7 +105,12 @@ const xidian = requireAdapterDir(repoRoot, "school-xidian");
     adapterId: "school-x",
   } as never);
   assert.ok(a.equals(b), "payload 序列化须与输入键序无关（固定键序）");
-  console.log("✓ payload 序列化键序稳定");
+  // 载荷已带域分隔前缀（digest v2）：验端若忘了加前缀就验不过——这里钉死它确实在。
+  assert.ok(
+    a.subarray(0, CONTEXT_TAG_BUNDLE.length).toString("utf-8") === CONTEXT_TAG_BUNDLE,
+    "serializePayload 产物须以 elecon.bundle-payload/2 域分隔前缀开头",
+  );
+  console.log("✓ payload 序列化键序稳定 + 带 bundle 域分隔前缀");
 }
 
 // ---- semver 比较 ----

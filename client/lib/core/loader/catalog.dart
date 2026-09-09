@@ -27,6 +27,7 @@ import 'package:cryptography/cryptography.dart'
 import 'package:elecon_contract/capability_registry.dart' show kCapabilityIds;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import 'signature.dart' show kContextTagCatalog, withContext;
 import 'trust_anchors.dart';
 import 'verify.dart' show AnchorResolver, VerifyResult;
 
@@ -255,7 +256,9 @@ Future<VerifyResult<VerifiedCatalog>> verifyCatalogWith(
   final bool verified;
   try {
     verified = await Ed25519().verify(
-      Uint8List.fromList(utf8.encode(signed.catalogJson)),
+      // 域分隔（ADR-002 §2.3）：签的是 `elecon.catalog/1 ‖ 0x00 ‖ catalogJson 字节`。
+      // **传输对象不变**——catalogJson 仍原样携带、原样 parse，前缀只加在签/验输入上。
+      withContext(kContextTagCatalog, utf8.encode(signed.catalogJson)),
       signature: Signature(
         sigBytes,
         publicKey:

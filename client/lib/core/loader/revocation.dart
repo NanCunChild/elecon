@@ -24,6 +24,7 @@ import 'package:cryptography/cryptography.dart'
     show Ed25519, KeyPairType, Signature, SimplePublicKey;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import 'signature.dart' show kContextTagRevocation, withContext;
 import 'trust_anchors.dart';
 import 'verify.dart' show AnchorResolver, VerifyResult;
 
@@ -218,11 +219,12 @@ Future<VerifyResult<VerifiedRevocationList>> verifyRevocationWith(
   } on FormatException catch (e) {
     return VerifyResult.fail('revocation 签名字节不合法：${e.message} → fail-closed');
   }
-  // 4. Ed25519 验签 over utf8(listJson)。
+  // 4. Ed25519 验签 over `contextTag ‖ 0x00 ‖ utf8(listJson)`（域分隔）。
   final bool verified;
   try {
     verified = await Ed25519().verify(
-      Uint8List.fromList(utf8.encode(signed.listJson)),
+      // 域分隔（ADR-002 §2.3）：签的是 `elecon.revocation/1 ‖ 0x00 ‖ listJson 字节`。
+      withContext(kContextTagRevocation, utf8.encode(signed.listJson)),
       signature: Signature(
         sigBytes,
         publicKey:

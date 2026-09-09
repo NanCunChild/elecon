@@ -24,10 +24,12 @@
  *         cd tools && npx tsx src/signer/index.ts verify --adapter=../adapters/school-x --pubkey=...
  */
 
-import { createHash, sign as edSign, verify as edVerify, type KeyObject } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { sign as edSign, type KeyObject } from "node:crypto";
+import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+// CLI-only：digest 子命令走 bundle 层唯一那条实现（模块顶层无循环依赖——
+// envelope.ts 只从本模块取无方向性原语，不反向依赖 CLI）。
 
 // ---- 类型 ----
 
@@ -55,11 +57,32 @@ export interface SignatureFile extends SignaturePayload {
 
 /** 应纳入 digest 的文件（排除签名文件自身与无关产物）。可随 ADR 细化。 */
 const BUNDLE_INCLUDE = /\.(json|js|mjs|ts|html?|css|txt|svg|png)$/i;
-const BUNDLE_EXCLUDE = /(^|\/)(signature\.json|node_modules|\.git|fixtures)(\/|$)/;
+
+/**
+ * **显式排除名单**（本身进版本控制，故每次增删都过 code review）。
+ *
+ * `.md`：adapter 目录里的 README / COVERAGE 等文档面向**贡献者与审查者**，运行时从不读取。
+ * 排除 ≠ 夹带面：被排除的文件**根本不进 bundle**，永远到不了客户端；纳入才是把几十 KB
+ * 无用字节推给每个终端用户。与「全量文件承诺」（[CollectOptions.assertFullCommitment]）不冲突——
+ * 该纪律要求的是「目录里的每个文件都被**显式裁决过**」，而非「每个文件都必须被签」。
+ */
+const BUNDLE_EXCLUDE = /(^|\/)(signature\.json|node_modules|\.git|fixtures)(\/|$)|\.md$/i;
+
+export interface CollectOptions {
+  /**
+   * **全量文件承诺**（ADR-002 §2.3 纪律 5，digest v2 起默认要求）：目录内存在既不在
+   * `BUNDLE_INCLUDE` 也不在 `BUNDLE_EXCLUDE` 的文件时**拒签**，取代原先的静默剔除。
+   *
+   * 否则 digest 只承诺「这些文件」，不承诺「**只有**这些文件」——目录侧路径
+   * （DEV-Sideload、ADR-033 本地导入）即存在夹带面：塞一个 `.bin` 进去，签名照过。
+   */
+  assertFullCommitment?: boolean;
+}
 
 /** 递归收集 adapter 目录下参与签名的文件（相对路径），按字典序排序。 */
-export function collectBundleFiles(dir: string): string[] {
+export function collectBundleFiles(dir: string, opts: CollectOptions = {}): string[] {
   const out: string[] = [];
+  const uncommitted: string[] = [];
   const root = realpathSync(dir);
   const walk = (d: string): void => {
     if (lstatSync(d).isSymbolicLink()) {
@@ -77,47 +100,71 @@ export function collectBundleFiles(dir: string): string[] {
       const outside = relative(root, resolved).startsWith("..");
       if (outside) throw new Error(`bundle 路径越界：${p}`);
       if (stat.isDirectory()) walk(p);
-      else if (stat.isFile() && BUNDLE_INCLUDE.test(entry)) out.push(rel);
+      else if (stat.isFile()) {
+        if (BUNDLE_INCLUDE.test(entry)) out.push(rel);
+        else uncommitted.push(rel);
+      }
     }
   };
   walk(dir);
+  if (opts.assertFullCommitment === true && uncommitted.length > 0) {
+    throw new Error(
+      `拒签：目录内存在未进 envelope 的文件（全量文件承诺，ADR-002 §2.3）——` +
+        `${uncommitted.join(", ")}。要么纳入 BUNDLE_INCLUDE，要么按 BUNDLE_EXCLUDE 显式排除` +
+        `（排除名单本身进版本控制）。`,
+    );
+  }
   return out.sort(); // 字典序（§2.3b）
 }
 
-function sha256(buf: Buffer): Buffer {
-  return createHash("sha256").update(buf).digest();
-}
-
 /**
- * 规范化文件内容：UTF-8 NFC + LF 换行；不追加也不剥除文件末尾 newline（ADR-002 §2.3b）。
- * ⚠ 二进制资产（png 等）不做文本规范化——当前 include 名单以文本为主；若纳入二进制，
- *   须人工在 ADR 明确其规范化语义（本骨架暂对非 UTF-8 可解码内容按原字节处理）。
+ * **断言**文件内容已规范化：UTF-8 NFC + LF 换行。**不符即抛（digest v2 起拒绝而非改写）**。
+ *
+ * **为何改判**（原为 `canonicalizeContent`，哈希前静默改写）：改写使多份不同的磁盘文件映射到
+ * 同一 digest，签名因此**不唯一标识磁盘上的真实字节**，也迫使 🔒 Dart 加载器必须论证自己为何
+ * 不做 NFC。改为拒绝后，签名与磁盘字节一一对应，Dart 侧不引入任何 Unicode 规范化实现。
+ *
+ * 二进制资产（png 等）不做文本规范化：非 UTF-8 可解码的内容直接放行。
  */
-export function canonicalizeContent(raw: Buffer): Buffer {
-  // 尝试按 UTF-8 文本规范化；失败（真二进制）则原样。
+export function assertCanonical(rel: string, raw: Buffer): void {
   const text = raw.toString("utf-8");
-  if (Buffer.from(text, "utf-8").equals(raw)) {
-    const normalized = text.normalize("NFC").replace(/\r\n?/g, "\n");
-    return Buffer.from(normalized, "utf-8");
+  if (!Buffer.from(text, "utf-8").equals(raw)) return; // 真二进制，跳过文本规范化断言
+  if (text.includes("\r")) {
+    throw new Error(`拒签：${rel} 含 CR/CRLF 换行，须为 LF（ADR-002 §2.3，构建期检查不改写）`);
   }
-  return raw;
+  if (text.normalize("NFC") !== text) {
+    throw new Error(`拒签：${rel} 非 UTF-8 NFC 规范化（ADR-002 §2.3，构建期检查不改写）`);
+  }
+}
+
+// ---- 签名域分隔（ADR-002 §2.3，2026-09-01 新增） ----
+
+/**
+ * 同一把密钥下的多个签名协议必须**显式隔离**：
+ *
+ *     签名输入 = contextTag ‖ 0x00 ‖ 被签字节
+ *
+ * v2 之前，bundle 载荷 / catalog / revocation 三者只靠「JSON 形状恰好互不满足对方 schema」
+ * **偶然隔开**——第四个签名对象出现时随时可能撞上。**传输对象不变**，前缀只加在签/验输入上，
+ * 故「验字节 → 再 parse」的取向不受影响。
+ *
+ * **新增任何签名对象必须分配一个新 tag，不得复用。**
+ */
+export const CONTEXT_TAG_BUNDLE = "elecon.bundle-payload/2";
+export const CONTEXT_TAG_CATALOG = "elecon.catalog/1";
+export const CONTEXT_TAG_REVOCATION = "elecon.revocation/1";
+
+/** 给待签字节加域分隔前缀。 */
+export function withContext(tag: string, bytes: Buffer): Buffer {
+  return Buffer.concat([Buffer.from(tag, "utf-8"), Buffer.from([0x00]), bytes]);
 }
 
 /**
- * bundle digest：`SHA-256(SHA-256(file1) || SHA-256(file2) || ...)`（§2.3 step 6）。
- * 确定性，无密钥——digest 本身可自由测试。
+ * 规范化签名 payload → **待签字节**（含 `elecon.bundle-payload/2` 域分隔前缀）。
+ *
+ * `digest` 是 envelope 字节的哈希（digest v2）。`tier` 是签名流程注入的裁定档位、
+ * **不在 envelope 内**（故 bundle 保留「载荷套一层」，而 catalog/revocation 直签字节）。
  */
-export function computeBundleDigest(dir: string): string {
-  const files = collectBundleFiles(dir);
-  const parts: Buffer[] = [];
-  for (const rel of files) {
-    const content = canonicalizeContent(readFileSync(join(dir, rel)));
-    parts.push(sha256(content));
-  }
-  return sha256(Buffer.concat(parts)).toString("hex");
-}
-
-/** 规范化签名 payload → 待签字节（稳定序列化，两端一致）。 */
 export function serializePayload(p: SignaturePayload): Buffer {
   // 固定键序，避免 JSON 键序漂移影响签名/验签。
   const canonical = JSON.stringify({
@@ -126,7 +173,7 @@ export function serializePayload(p: SignaturePayload): Buffer {
     digest: p.digest,
     tier: p.tier,
   });
-  return Buffer.from(canonical, "utf-8");
+  return withContext(CONTEXT_TAG_BUNDLE, Buffer.from(canonical, "utf-8"));
 }
 
 // ---- 签名后端（私钥操作接缝；生产 = 离线 YubiKey，🔒 人工闭环） ----
@@ -144,7 +191,7 @@ export interface SignBackend {
 
 /**
  * 硬件签名提供者接缝（PIV/PKCS#11 `CKM_EDDSA`）。私钥驻留 YubiKey、永不出;签名需 PIN+触碰。
- * **返回裸 64 字节 Ed25519 签名**（非 OpenPGP packet 封装），以对齐 verifyAdapter 的 `edVerify`。
+ * **返回裸 64 字节 Ed25519 签名**（非 OpenPGP packet 封装），以对齐验端 `openBundle` 的 Ed25519 验签。
  * 这是"硬件出签"的唯一接触点——把 YubiKeySignBackend 与具体 PKCS#11 实现解耦、便于测试。
  */
 export interface HardwareEd25519Signer {
@@ -230,88 +277,17 @@ export class LocalDevSignBackend implements SignBackend {
  */
 export type VerifyResult<T> = { ok: true; value: T } | { ok: false; reason: string };
 
-/** 读 bundle 内 manifest 的权威身份（adapterId/adapterVersion）。 */
-function readManifestIdentity(dir: string): { adapterId: string; adapterVersion: string } | null {
-  try {
-    const m = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8")) as {
-      adapterId?: string;
-      adapterVersion?: string;
-    };
-    if (!m.adapterId || !m.adapterVersion) return null;
-    return { adapterId: m.adapterId, adapterVersion: m.adapterVersion };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 对 adapter 目录验签：重算 digest → 用 pin 公钥验 Ed25519 → **核对签名身份与 bundle 内 manifest 一致**。
- * 全部通过才返回裁定档位。核心加载前调用（fail-closed）。
- *
- * 身份核对（ADR-002 §2.2「与 manifest 自报不符则拒绝加载」）：digest 只绑定**内容**，签名载荷里的
- * `adapterId/adapterVersion` 是**另一维**——若不核对，一份「内容为 A、身份写 B」的签名仍能验过，
- * 而运行时用的是 bundle 内 manifest（决定 allow/credentials）→ 身份混淆。故此处强制两者一致。
- */
-export function verifyAdapter(dir: string, publicKey: KeyObject): VerifyResult<TrustTier> {
-  const sigPath = join(dir, "signature.json");
-  if (!existsSync(sigPath)) {
-    return { ok: false, reason: "无 signature.json → 按 sideload 处理（release 拒绝加载）。" };
-  }
-  let sig: SignatureFile;
-  try {
-    sig = JSON.parse(readFileSync(sigPath, "utf-8")) as SignatureFile;
-  } catch (err) {
-    return { ok: false, reason: `signature.json 解析失败：${(err as Error).message}` };
-  }
-  if (sig.algorithm !== "ed25519") {
-    return { ok: false, reason: `不支持的签名算法：${sig.algorithm}` };
-  }
-  if (computeBundleDigest(dir) !== sig.digest) {
-    return { ok: false, reason: "bundle digest 与签名不符（内容被篡改或签名过期）→ fail-closed。" };
-  }
-  const identity = readManifestIdentity(dir);
-  if (identity === null) {
-    return { ok: false, reason: "manifest.json 缺失/损坏或无 adapterId/adapterVersion → fail-closed。" };
-  }
-  if (sig.adapterId !== identity.adapterId || sig.adapterVersion !== identity.adapterVersion) {
-    return {
-      ok: false,
-      reason: `签名身份与 bundle 内 manifest 不符（签名 ${sig.adapterId}@${sig.adapterVersion} vs manifest ${identity.adapterId}@${identity.adapterVersion}）→ fail-closed（ADR-002 §2.2）。`,
-    };
-  }
-  if (!edVerify(null, serializePayload(sig), publicKey, Buffer.from(sig.signature, "base64"))) {
-    return { ok: false, reason: "Ed25519 验签失败 → fail-closed。" };
-  }
-  return { ok: true, value: sig.tier };
-}
-
-// ---- 签名流程 ----
-
-/**
- * 对 adapter 目录签名并写 signature.json。
- * tier 是**签名流程显式注入的裁定档位**（§2.2），非取自 manifest 自报。
- * 🔒 「签 official」是需显式人工批准的动作——本函数不做批准，批准由持 YubiKey 的 release owner 之 PIN+触碰承担。
- */
-export async function signAdapter(
-  dir: string,
-  tier: TrustTier,
-  backend: SignBackend,
-): Promise<SignatureFile> {
-  const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8")) as {
-    adapterId: string;
-    adapterVersion: string;
-  };
-  const payload: SignaturePayload = {
-    adapterId: manifest.adapterId,
-    adapterVersion: manifest.adapterVersion,
-    tier,
-    digest: computeBundleDigest(dir),
-  };
-  const signature = await backend.sign(serializePayload(payload));
-  const out: SignatureFile = { ...payload, signature, keyId: backend.keyId, algorithm: "ed25519" };
-  writeFileSync(join(dir, "signature.json"), JSON.stringify(out, null, 2) + "\n");
-  return out;
-}
+// ---- v1 目录式 API 已删除（digest v2） ----
+//
+// `computeBundleDigest(dir)` / `verifyAdapter(dir)` / `signAdapter(dir)` 是 digest v1 的
+// 目录式接口：它们把「收集文件 → 逐个哈希 → 拼接再哈希」写在一起，而 v2 的 digest 是
+// **envelope 序列化字节的哈希**，目录只是构建 envelope 的一个来源。保留一份「从目录直接算
+// digest」的旁路等于**第二条 digest 实现**，必然与 `buildEnvelope` 漂移——正是 §2.5 给 catalog
+// 定「字节精确、不重新规范化序列化」时要消除的那类东西。
+//
+// 替代：`buildEnvelope(dir)`（bundle/envelope.ts）→ `signEnvelope(built, tier, backend)`
+// （bundle/sign.ts）→ `packBundle(bytes, sig, blobs)` / `openBundle(gz, key)`（bundle/package.ts）。
+// 本模块只保留**无方向性的原语**：文件收集、规范化断言、域分隔、payload 序列化、签名后端。
 
 // ---- CLI ----
 
@@ -320,13 +296,21 @@ function argOf(name: string): string | undefined {
   return p?.slice(name.length + 3);
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const cmd = process.argv[2];
   const dir = argOf("adapter");
 
   if (cmd === "digest") {
+    // digest v2 = SHA-256(envelopeBytes)。经 buildEnvelope 走**唯一那条**实现，
+    // 不另开「从目录直接算」的旁路（否则必然漂移）。
+    //
+    // **动态 import**：`bundle/envelope.ts` 依赖本模块的原语（collectBundleFiles /
+    // assertCanonical），本模块若在顶层反向静态 import 它就成了 ESM 循环依赖。依赖方向
+    // 应当是单向的「原语 ← 组装」；这条 CLI 分支是唯一的反向引用，且只在**命令实际被调用时**
+    // 才需要，故以动态 import 隔开，而不是让整个模块图为一个子命令背上环。
     if (!dir) throw new Error("用法：digest --adapter=<dir>");
-    console.log(computeBundleDigest(dir));
+    const { buildEnvelope, envelopeDigest } = await import("../bundle/envelope.js");
+    console.log(envelopeDigest(buildEnvelope(dir).bytes));
     return;
   }
 
@@ -336,16 +320,17 @@ function main(): void {
   console.log("  - `digest` 已可用（确定性 bundle 摘要，无密钥）。");
   console.log("  - 硬件出签：`npx tsx src/signer/pkcs11.ts selftest`（PIN + 触碰）；");
   console.log("    密钥 ceremony 见 docs/reference/signing_ceremony.md（永不自动化）。");
-  console.log(
-    "  - `sign` / `verify` 无 CLI 子命令：请用可编程 API（signAdapter / verifyAdapter）在显式脚本里调，",
-  );
+  console.log("  - `sign` / `verify` 无 CLI 子命令：请在显式脚本里调可编程 API，");
   console.log("    避免「随手一条命令就签出 official」（ADR-002 §2.3，AGENTS.md §1）。");
-  console.log("  - 可编程 API：signAdapter() / verifyAdapter() / computeBundleDigest()。");
+  console.log("  - 可编程 API：buildEnvelope() / signEnvelope() / packBundle() / openBundle()。");
   process.exitCode = 2;
 }
 
 const invokedDirectly =
   process.argv[1] !== undefined && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
-  main();
+  main().catch((err: unknown) => {
+    console.error((err as Error).message);
+    process.exitCode = 1;
+  });
 }

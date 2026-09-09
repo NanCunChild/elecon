@@ -6,7 +6,6 @@
 library;
 
 import 'dart:convert';
-import 'dart:io' show gzip;
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart' show Ed25519, KeyPair;
@@ -16,7 +15,6 @@ import 'package:elecon/core/broker/ports.dart';
 import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/credential/blob_store.dart';
 import 'package:elecon/core/loader/bootstrap.dart';
-import 'package:elecon/core/loader/bundle.dart';
 import 'package:elecon/core/loader/bundle_cache.dart';
 import 'package:elecon/core/loader/catalog.dart';
 import 'package:elecon/core/loader/last_good_store.dart';
@@ -27,6 +25,8 @@ import 'package:elecon/core/loader/trust_anchors.dart';
 import 'package:elecon/core/loader/verify.dart';
 import 'package:elecon/core/trust/trusted_context.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'utils/bundle_fixture.dart';
 
 // ── Ed25519 测试签发 ─────────────────────────────────────────────────────
 String _hex(List<int> b) =>
@@ -111,46 +111,26 @@ Future<_Bundle> _mkBundle(
             },
           },
   };
-  final files = <Map<String, dynamic>>[
-    {'path': 'index.js', 'encoding': 'utf-8', 'content': entrySource},
-    {
-      'path': 'manifest.json',
-      'encoding': 'utf-8',
-      'content': jsonEncode(manifest),
-    },
-  ];
-  final env = BundleEnvelope.fromJson({
-    'bundleFormat': kBundleFormat,
-    'files': files,
-  });
-  final digest = envelopeDigest(env);
+  final built = buildFixtureEnvelope({
+    'index.js': entrySource,
+    'manifest.json': jsonEncode(manifest),
+  }, adapterId: adapterId, adapterVersion: adapterVersion);
   final payload = serializeSignaturePayload(
     adapterId: adapterId,
     adapterVersion: adapterVersion,
     tier: kTierOfficial,
-    digest: digest,
+    digest: built.digest,
   );
-  final sigB64 = await bundleSigner.signB64(payload);
-  final sig = {
+  final packed = packWire(built.bytes, {
     'adapterId': adapterId,
     'adapterVersion': adapterVersion,
     'tier': kTierOfficial,
-    'digest': digest,
-    'signature': sigB64,
+    'digest': built.digest,
+    'signature': await bundleSigner.signB64(payload),
     'keyId': 'k-bundle',
     'algorithm': 'ed25519',
-  };
-  final packed = Uint8List.fromList(
-    gzip.encode(
-      utf8.encode(
-        jsonEncode({
-          'envelope': {'bundleFormat': kBundleFormat, 'files': files},
-          'signature': sig,
-        }),
-      ),
-    ),
-  );
-  return _Bundle(packed, digest, bundleSigner.publicKeyHex);
+  }, built.blobs);
+  return _Bundle(packed, built.digest, bundleSigner.publicKeyHex);
 }
 
 Future<SignedCatalog> _mkCatalog(
@@ -177,7 +157,9 @@ Future<SignedCatalog> _mkCatalog(
   });
   return SignedCatalog(
     catalogJson: json,
-    signature: await s.signB64(utf8.encode(json)),
+    signature: await s.signB64(
+      withContext(kContextTagCatalog, utf8.encode(json)),
+    ),
     keyId: 'test-cat-key',
     algorithm: 'ed25519',
   );
@@ -194,7 +176,9 @@ Future<SignedRevocationList> _mkRevocation(_Signer s) async {
   });
   return SignedRevocationList(
     listJson: json,
-    signature: await s.signB64(utf8.encode(json)),
+    signature: await s.signB64(
+      withContext(kContextTagRevocation, utf8.encode(json)),
+    ),
     keyId: 'test-rev-key',
     algorithm: 'ed25519',
   );
@@ -268,21 +252,18 @@ void main() {
               )
             : null,
       );
-  Future<VerifyResult<VerifiedBundle>> vBundle(
-    BundleEnvelope e,
-    SignatureFile sig,
-  ) => verifyBundleSignatureWith(
-    e,
-    sig,
-    (kid) => kid == sig.keyId
-        ? TrustAnchor(
-            keyId: kid,
-            publicKeyHex: bundleSigner.publicKeyHex,
-            active: true,
-            note: 'test',
-          )
-        : null,
-  );
+  Future<VerifyResult<VerifiedBundle>> vBundle(Uint8List packed) =>
+      openBundleWith(
+        packed,
+        (kid) => kid == 'k-bundle'
+            ? TrustAnchor(
+                keyId: kid,
+                publicKeyHex: bundleSigner.publicKeyHex,
+                active: true,
+                note: 'test',
+              )
+            : null,
+      );
 
   Future<LoadResult> load(_Bundle b) async {
     final loader = AdapterLoader.forTesting(
@@ -409,42 +390,31 @@ void main() {
       );
     });
 
-    test('🔒 source⟷凭据 digest 不符（错配 envelope）→ 抛（评审 E#2）', () async {
-      final b = await _mkBundle(bundleSigner);
-      final r = await load(b);
-      final realTrust = r.trust!;
-      // 另造一份内容不同的 envelope（digest 必不同），与真 official 凭据错配。
-      final wrongEnv = BundleEnvelope.fromJson({
-        'bundleFormat': kBundleFormat,
-        'files': [
-          {'path': 'index.js', 'encoding': 'utf-8', 'content': '// 不同内容'},
-          {
-            'path': 'manifest.json',
-            'encoding': 'utf-8',
-            'content': jsonEncode({
-              'adapterId': 'school-x',
-              'adapterVersion': '1.0.0',
-              'runtime': {'entry': 'index.js', 'stdlibMin': '1.0.0'},
-              'network': {'allow': <String>[]},
-              'capabilities': <String>[],
-            }),
-          },
-        ],
-      });
-      final forged = LoadResult.ok(
-        trust: realTrust,
-        envelope: wrongEnv,
-        identity: const EnvelopeIdentity(
-          adapterId: 'school-x',
-          adapterVersion: '1.0.0',
-        ),
+    test('🔒 source⟷凭据 digest 不符（错配 bundle）→ 抛（评审 E#2）', () async {
+      // 把 **bundle A 的 official 凭据** 与 **bundle B 的已验签内容** 配在一起：
+      // 两者各自都合法，唯独不是同一份东西。这是 digest v2 之后仍然构造得出的错配形态。
+      //
+      // v1 的这条测试是用一个手拼的 `wrongEnv` 伪造 LoadResult。现在伪造不出来了：
+      // `LoadResult.ok` 只收不可伪造的 `VerifiedBundle`，envelope / identity / digest 都从
+      // 它派生，"envelope 与 digest 不一致的 LoadResult"在类型上已不存在（见 loader.dart）。
+      final a = await _mkBundle(bundleSigner);
+      final ra = await load(a);
+      expect(ra.ok, isTrue, reason: ra.reason);
+
+      final b = await _mkBundle(bundleSigner, entrySource: '// 另一份内容\n');
+      final rb = await load(b);
+      expect(rb.ok, isTrue, reason: rb.reason);
+      expect(rb.digest, isNot(ra.digest), reason: '前提：两份 bundle 内容不同');
+
+      final crossed = LoadResult.ok(
+        trust: ra.trust!, // 凭据绑定 A 的 digest
+        verified: rb.verified!, // 内容却是 B
         capabilities: const [],
-        digest: realTrust.digest!,
         catalogIsFresh: true,
         revocationIsFresh: true,
       );
       expect(
-        () => planLaunch(forged),
+        () => planLaunch(crossed),
         throwsA(
           isA<AdapterLaunchException>().having(
             (e) => e.message,
@@ -489,65 +459,42 @@ void main() {
 
     test('capabilities 缺 requestGraph → 抛（无默认 imperative）', () async {
       // 直接构造畸形 manifest（_mkBundle 默认会写 requestGraph）。
-      final files = <Map<String, dynamic>>[
-        {
-          'path': 'index.js',
-          'encoding': 'utf-8',
-          'content': 'export const capabilities = {};',
-        },
-        {
-          'path': 'manifest.json',
-          'encoding': 'utf-8',
-          'content': jsonEncode({
-            'schemaVersion': '1.0',
-            'adapterId': 'school-x',
-            'adapterVersion': '1.0.0',
-            'capabilities': [
-              {
-                'id': 'notice.list',
-                'emits': {
-                  'schema': 'elecon.notice.list',
-                  'schemaVersion': '1.0',
-                },
+      final built = buildFixtureEnvelope({
+        'index.js': 'export const capabilities = {};',
+        'manifest.json': jsonEncode({
+          'schemaVersion': '1.0',
+          'adapterId': 'school-x',
+          'adapterVersion': '1.0.0',
+          'capabilities': [
+            {
+              'id': 'notice.list',
+              'emits': {
+                'schema': 'elecon.notice.list',
+                'schemaVersion': '1.0',
               },
-            ],
-            'runtime': {'stdlibMin': '1.0.0', 'entry': 'index.js'},
-            'network': {
-              'allow': ['https://x.edu/*'],
             },
-          }),
-        },
-      ];
-      final env = BundleEnvelope.fromJson({
-        'bundleFormat': kBundleFormat,
-        'files': files,
+          ],
+          'runtime': {'stdlibMin': '1.0.0', 'entry': 'index.js'},
+          'network': {
+            'allow': ['https://x.edu/*'],
+          },
+        }),
       });
-      final digest = envelopeDigest(env);
-      final payload = serializeSignaturePayload(
-        adapterId: 'school-x',
-        adapterVersion: '1.0.0',
-        tier: kTierOfficial,
-        digest: digest,
-      );
-      final sigB64 = await bundleSigner.signB64(payload);
-      final packed = Uint8List.fromList(
-        gzip.encode(
-          utf8.encode(
-            jsonEncode({
-              'envelope': {'bundleFormat': kBundleFormat, 'files': files},
-              'signature': {
-                'adapterId': 'school-x',
-                'adapterVersion': '1.0.0',
-                'tier': kTierOfficial,
-                'digest': digest,
-                'signature': sigB64,
-                'keyId': 'k-bundle',
-                'algorithm': 'ed25519',
-              },
-            }),
-          ),
-        ),
-      );
+      final digest = built.digest;
+      final packed = packWire(built.bytes, {
+        'adapterId': 'school-x',
+        'adapterVersion': '1.0.0',
+        'tier': kTierOfficial,
+        'digest': digest,
+        'signature': await bundleSigner.signB64(serializeSignaturePayload(
+          adapterId: 'school-x',
+          adapterVersion: '1.0.0',
+          tier: kTierOfficial,
+          digest: digest,
+        )),
+        'keyId': 'k-bundle',
+        'algorithm': 'ed25519',
+      }, built.blobs);
       final b = _Bundle(packed, digest, bundleSigner.publicKeyHex);
       final r = await load(b);
       expect(r.ok, isTrue, reason: r.reason);

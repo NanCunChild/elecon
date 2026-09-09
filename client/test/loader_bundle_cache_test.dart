@@ -8,53 +8,24 @@ import 'dart:typed_data';
 import 'package:elecon/core/credential/blob_store.dart';
 import 'package:elecon/core/loader/bundle.dart';
 import 'package:elecon/core/loader/bundle_cache.dart';
-import 'package:elecon/core/loader/signature.dart';
-import 'package:elecon/core/loader/trust_anchors.dart';
 import 'package:elecon/core/loader/verify.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'utils/test_utils.dart';
-
-Map<String, dynamic> _loaderGolden() =>
-    readJson(repoPath('contract/golden/bundle/loader.json'));
-
-/// 手工打一个 packed bundle（`gzip(JSON({envelope, signature?}))`），供构造"内容寻址不符"的字节。
-Uint8List _pack(Map<String, dynamic> envelopeJson, [Map<String, dynamic>? sig]) =>
-    Uint8List.fromList(gzip.encode(utf8.encode(
-        jsonEncode({'envelope': envelopeJson, 'signature': ?sig}))));
-
-Map<String, dynamic> _envJson(String manifestJson) => {
-      'bundleFormat': kBundleFormat,
-      'files': [
-        {'path': 'manifest.json', 'encoding': 'utf-8', 'content': manifestJson},
-      ],
-    };
+import 'utils/bundle_fixture.dart';
 
 void main() {
-  final golden = _loaderGolden();
-  final valid = (golden['cases'] as List)
-      .cast<Map<String, dynamic>>()
-      .firstWhere((c) => c['name'] == 'valid_official');
-  final expectedDigest = golden['expectedDigest'] as String;
-  final packedGolden =
-      Uint8List.fromList(base64.decode(golden['packedBundleBase64'] as String));
+  late BundleFixture fixture;
+  late VerifiedBundle verified;
+  late String expectedDigest;
 
-  Future<VerifiedBundle> verifiedGolden() async {
-    final sig = SignatureFile.fromJson(valid['signature'] as Map<String, dynamic>);
-    final r = await verifyBundleSignatureWith(
-      BundleEnvelope.fromJson(valid['envelope'] as Map<String, dynamic>),
-      sig,
-      (keyId) => keyId == sig.keyId
-          ? TrustAnchor(
-              keyId: keyId,
-              publicKeyHex: golden['publicKeyRawHex'] as String,
-              active: true,
-              note: 'golden 测试锚（仅测试）')
-          : null,
-    );
-    expect(r.ok, isTrue, reason: r.reason);
-    return r.value!;
-  }
+  setUpAll(() async {
+    fixture = await makeBundle({
+      'manifest.json': manifestJson(adapterId: 'school-cache'),
+      'index.js': 'export const x = 1;\n',
+    });
+    verified = await verifyFixture(fixture);
+    expectedDigest = fixture.digest;
+  });
 
   late InMemoryBlobStore store;
   late BundleCache cache;
@@ -64,41 +35,39 @@ void main() {
   });
 
   group('write — 只收已验签 + 内容寻址自洽', () {
-    test('验签证据 + 匹配 packed → 落地，read 取回 envelope + 签名', () async {
-      final v = await verifiedGolden();
-      await cache.write(v, packedGolden);
-      final cb = await cache.read(expectedDigest);
-      expect(cb, isNotNull);
-      expect(envelopeDigest(cb!.envelope), expectedDigest);
-      // 携签：读回后可据此重跑 verifyBundleSignature（评审 #1）。
-      expect(cb.signature.digest, expectedDigest);
+    test('验签证据 + 匹配 packed → 落地，read 取回**原始字节**', () async {
+      await cache.write(verified, fixture.packed);
+      final bytes = await cache.read(expectedDigest);
+      expect(bytes, isNotNull);
+      // v2 起 read 返回裸字节：调用方除了交给 openBundle 之外做不了别的，
+      // "未验签的 envelope"这个危险中间态在类型上不存在。
+      expect(bytes, fixture.packed);
+      expect(envelopeDigest(readWire(bytes!).envelopeBytes), expectedDigest);
     });
 
-    test('packed digest 匹配但缺 detached 签名 → 拒（评审 #1/#2）', () async {
-      final v = await verifiedGolden();
-      // 打一份**同 envelope**（故 digest 匹配）但不含 signature 的 packed。
-      final noSig = _pack(valid['envelope'] as Map<String, dynamic>);
-      expect(() => cache.write(v, noSig),
+    test('packed 内容寻址与验签证据不符 → 拒（fail-closed）', () async {
+      final other = await makeBundle({
+        'manifest.json': manifestJson(adapterId: 'school-other'),
+      });
+      expect(other.digest, isNot(expectedDigest), reason: '前提：两份内容不同');
+      expect(() => cache.write(verified, other.packed),
           throwsA(isA<BundleFormatException>()));
       expect(await cache.has(expectedDigest), isFalse);
     });
 
-    test('packed 内容寻址与验签证据不符 → 拒（fail-closed）', () async {
-      final v = await verifiedGolden(); // digest = expectedDigest
-      final other = _pack(_envJson(jsonEncode({
-        'adapterId': 'school-other',
-        'adapterVersion': '9.9.9',
-        'runtime': {'stdlibMin': '1.0.0'},
-      })));
-      expect(() => cache.write(v, other),
+    test('packed 的随存签名与验签证据不同 digest → 拒', () async {
+      // envelope 字节对得上（故内容寻址自洽），但签名声明的 digest 被改坏——
+      // 若不拒，缓存里就会躺着「验过内容 A + 无关签名」的组合，读回重验必然失败。
+      final badSig = Map<String, dynamic>.from(fixture.signature)
+        ..['digest'] = 'b' * 64;
+      final packed = packWire(fixture.envelopeBytes, badSig, fixture.blobs);
+      expect(() => cache.write(verified, packed),
           throwsA(isA<BundleFormatException>()));
-      // 且未落地
       expect(await cache.has(expectedDigest), isFalse);
     });
 
     test('packed 是畸形 gzip → BundleFormatException', () async {
-      final v = await verifiedGolden();
-      expect(() => cache.write(v, Uint8List.fromList([1, 2, 3])),
+      expect(() => cache.write(verified, Uint8List.fromList([1, 2, 3])),
           throwsA(isA<BundleFormatException>()));
     });
   });
@@ -115,38 +84,42 @@ void main() {
           Uint8List.fromList([9, 9, 9]));
       expect(await cache.read(expectedDigest), isNull);
     });
-    test('缓存 digest 匹配但缺签名 → null（无法重验，视为未命中）', () async {
-      await store.write('bundles/$expectedDigest.bundle',
-          _pack(valid['envelope'] as Map<String, dynamic>));
+    test('封套含多余字段 → null（read 也走严格封套解析）', () async {
+      final loose = packWire(
+        fixture.envelopeBytes,
+        fixture.signature,
+        fixture.blobs,
+        extraWireFields: const {'extra': 1},
+      );
+      await store.write('bundles/$expectedDigest.bundle', loose);
       expect(await cache.read(expectedDigest), isNull);
     });
     test('存在但内容寻址不符（存到错的 key 名下）→ null', () async {
       // 把合法 packed 存到"另一个 digest"名下：read 重算 digest != key → 丢弃。
       const wrongKey =
           'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
-      await store.write('bundles/$wrongKey.bundle', packedGolden);
+      await store.write('bundles/$wrongKey.bundle', fixture.packed);
       expect(await cache.read(wrongKey), isNull);
     });
   });
 
-  group('解压护栏（评审 #5，unpackBundle 边界）', () {
+  group('解压护栏（评审 #5，readWire 边界）', () {
     test('解压体超上限 → 拒（压缩炸弹护栏）', () {
       // 极高压缩比：小 gz，解压后 > kMaxBundlePayloadBytes。
       final bomb = Uint8List.fromList(
           gzip.encode(utf8.encode('a' * (kMaxBundlePayloadBytes + 1024))));
       expect(bomb.length, lessThan(4096), reason: '构造的 gz 应很小（高压缩比）');
-      expect(() => unpackBundle(bomb), throwsA(isA<BundleFormatException>()));
+      expect(() => readWire(bomb), throwsA(isA<BundleFormatException>()));
     });
     test('压缩输入超上限 → 拒（不进解压）', () {
       final big = Uint8List(kMaxBundleGzBytes + 1);
-      expect(() => unpackBundle(big), throwsA(isA<BundleFormatException>()));
+      expect(() => readWire(big), throwsA(isA<BundleFormatException>()));
     });
   });
 
   group('has / evict', () {
     test('write→has=true；evict→has=false', () async {
-      final v = await verifiedGolden();
-      await cache.write(v, packedGolden);
+      await cache.write(verified, fixture.packed);
       expect(await cache.has(expectedDigest), isTrue);
       await cache.evict(expectedDigest);
       expect(await cache.has(expectedDigest), isFalse);

@@ -1,93 +1,31 @@
 {
-  "_doc": "Node 签端 × Dart 🔒 加载器的跨语言验签 golden。落实 ADR-002 §3 风险 5（规范化规格已钉死，残余风险在跨平台实现一致性）。两端照同一向量跑：envelopeDigest 的双层 SHA-256 与排序、serializePayload 的固定键序、utf-8/base64 解码、Ed25519 验签、以及 ADR-002 §2.2 的身份核对。任一处漂移即 CI 红。**改动本文件触碰红线 #4 验签路径，须人工 + 安全清单复核。**",
+  "_doc": "Node 签端 × Dart 🔒 加载器的跨语言 golden（digest v2，ADR-018 §2.9.1）。落实 ADR-002 §3 风险 5：签名规范化规格已钉死，残余风险在跨平台实现一致性。**每个用例只给 `packedBundleBase64`（完整 `.json.gz` 传输封套）**，两端各自走完 §2.9.1 的 1–11 步——刻意不给解析好的 envelope 对象，否则就替 Dart 做完了解析，恰好绕过「验签先于解析」与「哈希收到的那串字节」两条纪律。**改动本文件触碰红线 #4 验签路径，须人工 + 安全清单复核。**",
   "_generator": "tools/src/bundle/make-loader-golden.ts（确定性；重跑应产出逐字节相同的文件）",
   "_keyNote": "publicKeyRawHex 是**测试**公钥（固定种子派生，Ed25519 确定性）。与生产签名密钥（离线 YubiKey 片上生成、永不导出）无关，**绝不可**出现在客户端预埋 pin 集合里——预埋集见 client/lib/core/loader/trust_anchors.dart。",
+  "_reasonContainsNote": "`reasonContains` 是**中文子串**匹配，钉的是「拒在哪一步」而非具体措辞。两端的失败原因需含该子串；改措辞时请同步两端与本 golden——这正是它该拦住的漂移。",
+  "bundleFormat": "elecon-bundle/2",
   "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
   "otherPublicKeyRawHex": "28eff91a18bd52b47d4c4029f452b20b8e083c6863c793183928b88602add011",
-  "expectedPayloadUtf8": "{\"adapterId\":\"school-golden\",\"adapterVersion\":\"1.2.3\",\"digest\":\"07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2\",\"tier\":\"official\"}",
-  "expectedDigest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
-  "packedBundleBase64": "H4sIAAAAAAAAA4VTy27TQBT9FWu2zctO/EhQFgHUhD4ohYZIjbMYZ66dCfaM45lUaSNLiE0FCxYVAokNX5Adi0jwOaEqK/gExgmEuptuRvI5595z7/HMHAE7g5DHgBpz5E0ZCWGXJxGWqIEghCFnxQ1a1lEB+TQEgRr9OYqxHCkJZQRmpbFQHLAhJ5QFCp1Kv+goSFVLYOtWs5gnUlOAUCeOsUdDKikIran1XcS4pEMohVRIFw0euAylha0HFgKkKFNVXPIoy1t5WIBVy3m1Wp1yOWg2b/eIMKM+CKlG5ey+Yecu0zQXieEIIvwSEkE5c1FDQXqp4qLChsYExxKSJ2RDKTXnYTHgIQF2V3SniVGqbhW3w8j4fgZnRC6TDBz8rUimTNIIMvH8n1hIElLvkP6fM5s0Y1OXpfk8VWMQJTmT9+WwWi6uP16ulu81iPiYar+/fLj69f3zz6u314tvWvdkt+hoPxafbt69WS1f31x+zWwGaQEJGjAsp8n6Tm1jUg1zGSmrfDpKsI5GESqMRH1y36dDikOFEBqo36ewig2eXakblmnZvu5j0HXPqpvDqkOMuoWNGgHDrhGseADHsWumVzeJY3pO1TJtbKDcfGinc8A7VS8Ko8ekNzYrkz1nJCF4tGNPDk+ftwS/8F/EZ/Zk/5l13G71KuykzQ72Z91Z+3RnrzORR8fUnBhPz2HWnRz1qvEF1eFhdvkK6BWcr7ferFtUocuiwrK9w4AnVI6i7GUQwzT1OkrTP6osgDWMAwAA",
+  "expectedPayloadHex": "656c65636f6e2e62756e646c652d7061796c6f61642f32007b22616461707465724964223a227363686f6f6c2d676f6c64656e222c226164617074657256657273696f6e223a22312e322e33222c22646967657374223a2238636133623533613731626365383863346565346165323934376238326538653230666235333365666434616434363932616230356431663636633939346339222c2274696572223a226f6666696369616c227d",
+  "contextTagBundle": "elecon.bundle-payload/2",
+  "expectedEnvelopeUtf8": "{\"bundleFormat\":\"elecon-bundle/2\",\"adapterId\":\"school-golden\",\"adapterVersion\":\"1.2.3\",\"files\":[{\"path\":\"a.txt\",\"size\":7,\"sha256\":\"cf99975aa7995fad86fae7f3b0905143f30a52501944dff26002afc99c3b8419\"},{\"path\":\"assets/icon.bin\",\"size\":4,\"sha256\":\"5e90fe977790507860b03456633c9ad88ea951cd8a6620d3e37ca43c160c15ae\"},{\"path\":\"b.txt\",\"size\":7,\"sha256\":\"cf99975aa7995fad86fae7f3b0905143f30a52501944dff26002afc99c3b8419\"},{\"path\":\"index.js\",\"size\":45,\"sha256\":\"5aad15447ff2fcfaa34585668f9df1a77b759df345cf51b89e47a061bdbe539c\"},{\"path\":\"manifest.json\",\"size\":203,\"sha256\":\"b603d978a4085a729e737d6af482b1669d905ab826f6a27c6adc1c4c59d63c9b\"},{\"path\":\"notes.txt\",\"size\":49,\"sha256\":\"6048e3179e8337ad45a072c643fefdbe295de4d779da91f2378200eaf2439772\"}]}",
+  "expectedDigest": "8ca3b53a71bce88c4ee4ae2947b82e8e20fb533efd4ad4692ab05d1f66c994c9",
   "cases": [
     {
       "name": "valid_official",
-      "_why": "正例：digest 对、身份对、签名对 → 裁定 official",
-      "envelope": {
-        "bundleFormat": "elecon-bundle/1",
-        "files": [
-          {
-            "path": "index.js",
-            "encoding": "utf-8",
-            "content": "export const capabilities = [\"notice.list\"];\n"
-          },
-          {
-            "path": "assets/icon.bin",
-            "encoding": "base64",
-            "content": "AAH//g=="
-          },
-          {
-            "path": "manifest.json",
-            "encoding": "utf-8",
-            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
-          },
-          {
-            "path": "notes.txt",
-            "encoding": "utf-8",
-            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
-          }
-        ]
-      },
-      "signature": {
-        "adapterId": "school-golden",
-        "adapterVersion": "1.2.3",
-        "tier": "official",
-        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
-        "signature": "+HLoH3bmlmDdWj50qJ8htegC+7qMZRAsozfSpv7qKP6QGAW0nTGnLKxUxGZ+JHqtOQi5q2NyexUqOW3pzi1eBg==",
-        "keyId": "golden-test-key",
-        "algorithm": "ed25519"
-      },
+      "_why": "正例：走完 1–11 步 → 裁定 official。含非 ASCII 文本、真二进制 blob、两处引用同一 blob。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VV3ZOiOhb/X3i9PXdCPoB01X2wRekwJqw2islbCCAEUKfVVrk1//sWzt2q7Zndp6RCOL+Pc3LO3065/yi7w7F88bDz7JT3uCky0ubRJspRfJbbZZM0cZdHG5tDfJb7zUVFt24xsGYxjWsVza9FtLm/ZY97g4T1Rw6vZwXpSUWbC2uujcxWtXlddaZTndmLYw5xkzTstrDswu/sxHp1zKPNwOwxL+/xVW5XB2YPjXwjoHxdjjiD3h47Zg/osY9md5HKEc8q25IkNa7MZihJW1f18zYJVS+zNVJWNDxsryKdAQ7lwKOZy+36ytMWiGjVK8sgDyd3mSmbpJ3lkGERzgjbg9MnHlsxqO1qWMBu9OAi++6hy8DOU2/ME9NxX9fcruF4X2RrwiPVJalBYhjxJygJ5VXaySDCNRSWD3LoahXusMpmRKRzq8K6FlbeebQcVMqRhCNnfhP2xfJ0U6u3mC5eT42J5kBPmcd6dilea/CJx/0zDwklSdIWiWxei6ElIlMjJlT9vBNQDtJOCA/XNxGKng8vtUiZy8MZEeGqVb28Czu58n7ey6ElchBNEi5vyW88uouKNnjRH4dPXML1ie3FQabMFQ3zmN3UMlveRLoEAqqe98qqfl7zYekmD0/qPslWPc9mSECGRNq1ynIgMtGLdN4kYdeJsKh5KG+yXzUqXQ9Jxpvq7eaz/UtdRLuxHs4yI0fVb4ZiSr4bSD/lidvJ8Ev9NMJOBhW2KIlmgIc7V6bmnmRrxIeiFf28F+HuLu0MCtu1STpxZcYwt6oX/ewuIIcyW1mecSCHNVGhHPPa/Fo/eU+B2vLf8xW2v3gkryKsOz7MUJKtMR84ktkSiGx2FUNshV0Oqt/0Koo7bltXRWugQoOSbFUn6bznlqMkZFcebWplGeBDi8TAmmrjUufJOTW7vT5f3kvn+W9HF/p4Lt9Z4Tw7J1MfDt2X3aEryr3z9J9vm/L91Bz2zrPj/gn/RM6Tc27Kd+fZOVRVYxrdOU9O0ezK09l5dgKjUU6Q9t3clEFgcFliXUKK/TyAZVBCUOUEobIqsC6wR6HOASncyvMMpdj8ws8J2ff8j5tbbwfsfTvi7ctCLV/j+vb10v9BIbqkGQnTU/Ey28ZuH886gM3q45zEZo3X79er2GWxoF+pii/nGegwyZtpON399Zfz5LTl/aH6p9wv5/J0/tKW91F3tzu8N+e6H/tgAQlxqfPjycm7Q34aPSNaFy7B2K8qWJlKa4RJQDwvqGhRudr3c5/QokKYmIq4eUBL7GvguXmRlwRR4zw7altfcxQDFomPfC/GtTbRvNHZ7VhEXWfuE8rmp0fJ6Ex0i/52NGjZbNPTN+fJISUFVUl936eAAD/wQA4QJp6HkKG6CIJSU+KaItCeB0GBSuQbjZFxPWBcokdnJ5PXr19/OpF7ABXUDzQGAdE+pKWP/MLTFQ5g7noeLSggOg+gV3ka+sbThXENNoQWHjI0H226HnZs+mj7XZ7NM7WNB53RC7OHHbOzC5+y07SZ7Fg/b+X2BahtHKuxbUz/56j4xqaT/zMuJg1/w/eF5c1i8sC0cvtSy7476e3qqLa8SZqX/IE1nfzm33i+ffsZ3+w3lyLqzuMTZK+n8WyM1+X71b18e3A75v2qK8cWcv+H//gfWrV51DVp1v2XPnxlu8OOvYJv1fIwuuoBHJTI9WkZIOTrAhMNfGg8jKqyKvISUlKUuPB9WmjqVhD5AQSg1BXEiPo+dJ4dsmjO5KhfyaJJWLQ55/B4ZP+aVl28+PiI34/tYd+/56fdZrOKFuluRzTceuz7lCyaicdK8E+lm4pS6hOtfUpJpYvAq3TpVygHFBAXowoBTSABLsW4qCroAQB1ZSg1KA+wS51nZxwnpt+0j4g/fvwbc629Oi4IAAA=",
       "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
       "expect": {
         "ok": true,
-        "tier": "official"
+        "tier": "official",
+        "digest": "8ca3b53a71bce88c4ee4ae2947b82e8e20fb533efd4ad4692ab05d1f66c994c9"
       }
     },
     {
-      "name": "tampered_content",
-      "_why": "内容寻址：改一字节即 digest 不符 → 拒（fail-closed）",
-      "envelope": {
-        "bundleFormat": "elecon-bundle/1",
-        "files": [
-          {
-            "path": "index.js",
-            "encoding": "utf-8",
-            "content": "export const capabilities = [\"notice.list\"];\n// tampered\n"
-          },
-          {
-            "path": "assets/icon.bin",
-            "encoding": "base64",
-            "content": "AAH//g=="
-          },
-          {
-            "path": "manifest.json",
-            "encoding": "utf-8",
-            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
-          },
-          {
-            "path": "notes.txt",
-            "encoding": "utf-8",
-            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
-          }
-        ]
-      },
-      "signature": {
-        "adapterId": "school-golden",
-        "adapterVersion": "1.2.3",
-        "tier": "official",
-        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
-        "signature": "+HLoH3bmlmDdWj50qJ8htegC+7qMZRAsozfSpv7qKP6QGAW0nTGnLKxUxGZ+JHqtOQi5q2NyexUqOW3pzi1eBg==",
-        "keyId": "golden-test-key",
-        "algorithm": "ed25519"
-      },
+      "name": "tampered_envelope_bytes",
+      "_why": "改 envelope 里的一个路径字符 → digest 不符。**必须在验签之前**被拒（第 5 步），这是「验的字节 = 要用的字节」的落实。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VV3ZOiOhb/X3i9PXdCPoB01X2wRekwJqw2islbCCAEUKfVVrk1//sWzt2q7Zndp6RCOL+Pc3LO3065/yi7w7F88bDz7JT3uCky0ubRJspRfJbbZZM0cZdHG5tDfJb7zUVFt24xsGYxjWsVza9FtLm/ZY97g4T1Rw6vZwXpSUWbC2uujcxWtXlddaZTndmLYw5xkzTstrDswu/sxHp1zKPNwOwxL+/xVW5XB2YPjXwjoHxdjjiD3h47Zg/osY9md5HKEc8q25IkNa7MZihJW1f18zYJVS+zNVJWNDxsryKdAQ7lwKOZy+36ytMWiGjVK8sgDyd3mSmbpJ3lkGERzgjbg9MnHlsxqO1qWMBu9OAi++6hy8DOU2/ME9NxX9fcruF4X2RrwiPVJalBYhjxJygJ5VXaySDCNRSWD3LoahXusMpmRKRzq8K6FlbeebQcVMqRhCNnfhP2xfJ0U6u3mC5eT42J5kBPmcd6dilea/CJx/0zDwklSdIWiWxei6ElIlMjJlT9vBNQDtJOCA/XNxGKng8vtUiZy8MZEeGqVb28Czu58n7ey6ElchBNEi5vyW88uouKNnjRH/UnLuH6xPbiIFPmioZ5zG5qmS1vIl0CAVXPe2VVP6/5sHSThyd1n2SrnmczJCBDIu1aZTkQmehFOm+SsOtEWNQ8lDfZrxqVrock4031dvPZ/qUuot1YD2eZkaPqN0MxJd8NpJ/yxO1k+KV+GmEngwpblEQzwMOdK1NzT7I14kPRin7ei3B3l3YGhe3aJJ24MmOYW9WLfnYXkEOZrSzPOJDDmqhQjnltfq2fvKdAbfnv+QrbXzySVxHWHR9mKMnWmA8cyWwJRDa7iiG2wi4H1W96FcUdt62rojVQoUFJtqqTdN5zy1ESsiuPNrWyDPChRWJgTbVxqfPknJrdXp8v76Xz/LejC308l++scJ6dk6kPh+7L7tAV5d55+s+3Tfl+ag5759lx/4R/IufJOTflu/PsHKqqMY3unCenaHbl6ew8O4HRKCdI+25uyiAwuCyxLiHFfh7AMighqHKCUFkVWBfYo1DngBRu5XmGUmx+4eeE7Hv+x82ttwP2vh3x9mWhlq9xfft66f+gEF3SjITpqXiZbWO3j2cdwGb1cU5is8br9+tV7LJY0K9UxZfzDHSY5M00nO7++st5ctry/lD9U+6Xc3k6f2nL+6i72x3em3Pdj32wgIS41Pnx5OTdIT+NnhGtC5dg7FcVrEylNcIkIJ4XVLSoXO37uU9oUSFMTEXcPKAl9jXw3LzIS4KocZ4dta2vOYoBi8RHvhfjWpto3ujsdiyirjP3CWXz06NkdCa6RX87GrRstunpm/PkkJKCqqS+71NAgB94IAcIE89DyFBdBEGpKXFNEWjPg6BAJfKNxsi4HjAu0aOzk8nr168/ncg9gArqBxqDgGgf0tJHfuHpCgcwdz2PFhQQnQfQqzwNfePpwrgGG0ILDxmajzZdDzs2fbT9Ls/mmdrGg87ohdnDjtnZhU/ZadpMdqyft3L7AtQ2jtXYNqb/c1R8Y9PJ/xkXk4a/4fvC8mYxeWBauX2pZd+d9HZ1VFveJM1L/sCaTn7zbzzfvv2Mb/abSxF15/EJstfTeDbG6/L96l6+Pbgd837VlWMLuf/Df/wPrdo86po06/5LH76y3WHHXsG3ankYXfUADkrk+rQMEPJ1gYkGPjQeRlVZFXkJKSlKXPg+LTR1K4j8AAJQ6gpiRH0fOs8OWTRnctSvZNEkLNqcc3g8sn9Nqy5efHzE78f2sO/f89Nus1lFi3S3IxpuPfZ9ShbNxGMl+KfSTUUp9YnWPqWk0kXgVbr0K5QDCoiLUYWAJpAAl2JcVBX0AIC6MpQalAfYpc6zM44T02/aR8QfP/4NFqpMMi4IAAA=",
       "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
       "expect": {
         "ok": false,
@@ -95,42 +33,19 @@
       }
     },
     {
+      "name": "tampered_blob_content",
+      "_why": "blob 键不变、内容翻一个 bit（等长）→ 第 10 步内容寻址抓到。等长是为了与 size 检查分开。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VV3ZOiOhb/X3i9PXdCPoB01X2wRekwJqw2islbCCAEUKfVVrk1//sWzt2q7Zndp6RCOL+Pc3LO3065/yi7w7F88bDz7JT3uCky0ubRJspRfJbbZZM0cZdHG5tDfJb7zUVFt24xsGYxjWsVza9FtLm/ZY97g4T1Rw6vZwXpSUWbC2uujcxWtXlddaZTndmLYw5xkzTstrDswu/sxHp1zKPNwOwxL+/xVW5XB2YPjXwjoHxdjjiD3h47Zg/osY9md5HKEc8q25IkNa7MZihJW1f18zYJVS+zNVJWNDxsryKdAQ7lwKOZy+36ytMWiGjVK8sgDyd3mSmbpJ3lkGERzgjbg9MnHlsxqO1qWMBu9OAi++6hy8DOU2/ME9NxX9fcruF4X2RrwiPVJalBYhjxJygJ5VXaySDCNRSWD3LoahXusMpmRKRzq8K6FlbeebQcVMqRhCNnfhP2xfJ0U6u3mC5eT42J5kBPmcd6dilea/CJx/0zDwklSdIWiWxei6ElIlMjJlT9vBNQDtJOCA/XNxGKng8vtUiZy8MZEeGqVb28Czu58n7ey6ElchBNEi5vyW88uouKNnjRH4dPXML1ie3FQabMFQ3zmN3UMlveRLoEAqqe98qqfl7zYekmD0/qPslWPc9mSECGRNq1ynIgMtGLdN4kYdeJsKh5KG+yXzUqXQ9Jxpvq7eaz/UtdRLuxHs4yI0fVb4ZiSr4bSD/lidvJ8Ev9NMJOBhW2KIlmgIc7V6bmnmRrxIeiFf28F+HuLu0MCtu1STpxZcYwt6oX/ewuIIcyW1mecSCHNVGhHPPa/Fo/eU+B2vLf8xW2v3gkryKsOz7MUJKtMR84ktkSiGx2FUNshV0Oqt/0Koo7bltXRWugQoOSbFUn6bznlqMkZFcebWplGeBDi8TAmmrjUufJOTW7vT5f3kvn+W9HF/p4Lt9Z4Tw7J1MfDt2X3aEryr3z9J9vm/L91Bz2zrPj/gn/RM6Tc27Kd+fZOVRVYxrdOU9O0ezK09l5dgKjUU6Q9t3clEFgcFliXUKK/TyAZVBCUOUEobIqsC6wR6HOASncyvMMpdj8ws8J2ff8j5tbbwfsfTvi7ctCLV/j+vb10v9BIbqkGQnTU/Ey28ZuH886gM3q45zEZo3X79er2GWxoF+pii/nGegwyZtpON399Zfz5LTl/aH6p9wv5/J0/tKW91F3tzu8N+e6H/tgAQlxqfPjycm7Q34aPSNaFy7B2K8qWJlKa4RJQDwvqGhRudr3c5/QokKYmIq4eUBL7GvguXmRlwRR4zw76rW+5igGLBIf+V6Ma22ieaOz27GIus7cJ5TNT4+S0ZnoFv3taNCy2aanb86TQ0oKqpL6vk8BAX7ggRwgTDwPIUN1EQSlpsQ1RaA9D4IClcg3GiPjesC4RI/OTiavX7/+dCL3ACqoH2gMAqJ9SEsf+YWnKxzA3PU8WlBAdB5Ar/I09I2nC+MabAgtPGRoPtp0PezY9NH2uzybZ2obDzqjF2YPO2ZnFz5lp2kz2bF+3srtC1DbOFZj25j+z1HxjU0n/2dcTBr+hu8Ly5vF5IFp5falln130tvVUW15kzQv+QNrOvnNv/F8+/YzvtlvLkXUnccnyF5P49kYr8v3q3v59uB2zPtVV44t5P4P//E/tGrzqGvSrPsvffjKdocdewXfquVhdNUDOCiR69MyQMjXBSYa+NB4GFVlVeQlpKQoceH7tNDUrSDyAwhAqSuIEfV96Dw7ZNGcyVG/kkWTsGhzzuHxyP41rbp48fERvx/bw75/z0+7zWYVLdLdjmi49dj3KVk0E4+V4J9KNxWl1Cda+5SSSheBV+nSr1AOKCAuRhUCmkACXIpxUVXQAwDqylBqUB5glzrPzjhOTL9pHxF//Pg3tyUpQC4IAAA=",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "哈希"
+      }
+    },
+    {
       "name": "wrong_public_key",
-      "_why": "非预埋 pin 公钥签的 → 拒",
-      "envelope": {
-        "bundleFormat": "elecon-bundle/1",
-        "files": [
-          {
-            "path": "index.js",
-            "encoding": "utf-8",
-            "content": "export const capabilities = [\"notice.list\"];\n"
-          },
-          {
-            "path": "assets/icon.bin",
-            "encoding": "base64",
-            "content": "AAH//g=="
-          },
-          {
-            "path": "manifest.json",
-            "encoding": "utf-8",
-            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
-          },
-          {
-            "path": "notes.txt",
-            "encoding": "utf-8",
-            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
-          }
-        ]
-      },
-      "signature": {
-        "adapterId": "school-golden",
-        "adapterVersion": "1.2.3",
-        "tier": "official",
-        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
-        "signature": "+HLoH3bmlmDdWj50qJ8htegC+7qMZRAsozfSpv7qKP6QGAW0nTGnLKxUxGZ+JHqtOQi5q2NyexUqOW3pzi1eBg==",
-        "keyId": "golden-test-key",
-        "algorithm": "ed25519"
-      },
+      "_why": "非预埋 pin 公钥签的 → 第 6 步拒。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VV3ZOiOhb/X3i9PXdCPoB01X2wRekwJqw2islbCCAEUKfVVrk1//sWzt2q7Zndp6RCOL+Pc3LO3065/yi7w7F88bDz7JT3uCky0ubRJspRfJbbZZM0cZdHG5tDfJb7zUVFt24xsGYxjWsVza9FtLm/ZY97g4T1Rw6vZwXpSUWbC2uujcxWtXlddaZTndmLYw5xkzTstrDswu/sxHp1zKPNwOwxL+/xVW5XB2YPjXwjoHxdjjiD3h47Zg/osY9md5HKEc8q25IkNa7MZihJW1f18zYJVS+zNVJWNDxsryKdAQ7lwKOZy+36ytMWiGjVK8sgDyd3mSmbpJ3lkGERzgjbg9MnHlsxqO1qWMBu9OAi++6hy8DOU2/ME9NxX9fcruF4X2RrwiPVJalBYhjxJygJ5VXaySDCNRSWD3LoahXusMpmRKRzq8K6FlbeebQcVMqRhCNnfhP2xfJ0U6u3mC5eT42J5kBPmcd6dilea/CJx/0zDwklSdIWiWxei6ElIlMjJlT9vBNQDtJOCA/XNxGKng8vtUiZy8MZEeGqVb28Czu58n7ey6ElchBNEi5vyW88uouKNnjRH4dPXML1ie3FQabMFQ3zmN3UMlveRLoEAqqe98qqfl7zYekmD0/qPslWPc9mSECGRNq1ynIgMtGLdN4kYdeJsKh5KG+yXzUqXQ9Jxpvq7eaz/UtdRLuxHs4yI0fVb4ZiSr4bSD/lidvJ8Ev9NMJOBhW2KIlmgIc7V6bmnmRrxIeiFf28F+HuLu0MCtu1STpxZcYwt6oX/ewuIIcyW1mecSCHNVGhHPPa/Fo/eU+B2vLf8xW2v3gkryKsOz7MUJKtMR84ktkSiGx2FUNshV0Oqt/0Koo7bltXRWugQoOSbFUn6bznlqMkZFcebWplGeBDi8TAmmrjUufJOTW7vT5f3kvn+W9HF/p4Lt9Z4Tw7J1MfDt2X3aEryr3z9J9vm/L91Bz2zrPj/gn/RM6Tc27Kd+fZOVRVYxrdOU9O0ezK09l5dgKjUU6Q9t3clEFgcFliXUKK/TyAZVBCUOUEobIqsC6wR6HOASncyvMMpdj8ws8J2ff8j5tbbwfsfTvi7ctCLV/j+vb10v9BIbqkGQnTU/Ey28ZuH886gM3q45zEZo3X79er2GWxoF+pii/nGegwyZtpON399Zfz5LTl/aH6p9wv5/J0/tKW91F3tzu8N+e6H/tgAQlxqfPjycm7Q34aPSNaFy7B2K8qWJlKa4RJQDwvqGhRudr3c5/QokKYmIq4eUBL7GvguXmRlwRR4zw7altfcxQDFomPfC/GtTbRvNHZ7VhEXWfuE8rmp0fJ6Ex0i/52NGjZbNPTN+fJISUFVUl936eAAD/wQA4QJp6HkKG6CIJSU+KaItCeB0GBSuQbjZFxPWBcokdnJ5PXr19/OpF7ABXUDzQGAdE+pKWP/MLTFQ5g7noeLSggOg+gV3ka+sbThXENNoQWHjI0H226HnZs+mj7XZ7NM7WNB53RC7OHHbOzC5+y07SZ7Fg/b+X2BahtHKuxbUz/56j4xqaT/zMuJg1/w/eF5c1i8sC0cvtSy7476e3qqLa8SZqX/IE1nfzm33i+ffsZ3+w3lyLqzuMTZK+n8WyM1+X71b18e3A75v2qK8cWcv+H//gfWrV51DVp1v2XPnxlu8OOvYJv1fIwuuoBHJTI9WkZIOTrAhMNfGg8jKqyKvISUlKUuPB9WmjqVhD5AQSg1BXEiPo+dJ4dsmjO5KhfyaJJWLQ55/B4ZP+aVl28+PiI34/tYd+/56fdZrOKFuluRzTceuz7lCyaicdK8E+lm4pS6hOtfUpJpYvAq3TpVygHFBAXowoBTSABLsW4qCroAQB1ZSg1KA+wS51nZxwnpt+0j4g/fvwbc629Oi4IAAA=",
       "publicKeyRawHex": "28eff91a18bd52b47d4c4029f452b20b8e083c6863c793183928b88602add011",
       "expect": {
         "ok": false,
@@ -138,42 +53,19 @@
       }
     },
     {
-      "name": "identity_confusion",
-      "_why": "🔒 ADR-002 §2.2：digest 真、Ed25519 真，但签名身份 ≠ envelope 内 manifest。运行时用的是 bundle 内 manifest（定 allow/credentials），不核对即身份混淆 → 必须拒",
-      "envelope": {
-        "bundleFormat": "elecon-bundle/1",
-        "files": [
-          {
-            "path": "index.js",
-            "encoding": "utf-8",
-            "content": "export const capabilities = [\"notice.list\"];\n"
-          },
-          {
-            "path": "assets/icon.bin",
-            "encoding": "base64",
-            "content": "AAH//g=="
-          },
-          {
-            "path": "manifest.json",
-            "encoding": "utf-8",
-            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
-          },
-          {
-            "path": "notes.txt",
-            "encoding": "utf-8",
-            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
-          }
-        ]
-      },
-      "signature": {
-        "adapterId": "school-evil",
-        "adapterVersion": "9.9.9",
-        "tier": "official",
-        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
-        "signature": "4KJDSUpFvq/J822/zifnA59Jft+qmkVJYF8GJspvKJkQMYYIrq/1ONmtyIV2stz0tanYx+/I89AkXOcYbWI7AQ==",
-        "keyId": "golden-test-key",
-        "algorithm": "ed25519"
-      },
+      "name": "identity_confusion_signature",
+      "_why": "🔒 ADR-002 §2.2：digest 真、Ed25519 真，但签名载荷身份 ≠ envelope 顶层。运行时用的是 bundle 内 manifest（定 allow/credentials），不核对即身份混淆 → 必须拒。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VVTZPiOBL9L75u94wsWbZVEXNwYTCikdxQxka6ybKMP8FTQAGe6P8+YWY3Yqt79ySFlMr38mUq8y/LHD9MdxrMq+tYL5Z5rOoiw20epVGOVhex39RxveryKG1y6FzEMb3K6N6tR1qvZ6tKRotbEaWPt+xpNwpYfeTwdpGQnGWUXml9q0W2rfRy2+lOdvrIhxw6dVzT+7qhV/agZ9rLIY/SkTZDbh6rm9hvT7Q51eINA7PcTDij2g8dbU7ouY/mD56ICa+RTYvjRNsim6M4aW3ZL9o4lL3Idkg2vGZhe+PJHDAoRhbNbdbsbixpAY+2vWwoZGHwEJls4qRrGKQOD+eYHsH5E489H+V+O65hN2lwFX33jEvDzpVv1OWzaV9VrNnByZ5nO8wi2cWJRnyc8AMUh+ImmmDk4Q7yho1i7CoZHhyZzTFPFo0Mq4o34sGizSgThgScOLM7b14blqSVfFuR9fJc62gB1Iy6tKfXYlmBTzwen3kIKHCctIhni4qPLeaZnDCh7Bcdh2IUTYBZuLvzkPdsfK14Qm0WzjEPt63sxYM3wY31i16MLRYjr+Nwc49/4dFdZZQ6634YP3EJd2d65CeRUJvX1KVNWolsc+fJBnAoe9bLRvaLio0bO35qUvVxtu1ZNkccUsSTrpUNAzzjPU8WdRx2HQ+LioXiLvptLZPdGGesLt/uHj2+VkV0mOrhIjI8yD4dixn+U0PyKU+sCcaf6qfmTTDKsEVxNAcsPNgi0Y842yE2Fi3vFz0PDw/RzCFvujZOAltk1GGN7Hk/f3DIoMi2DcsYEOMOy1BMea1/rp+8J0Du2a/5CtufNBI3HlYdG+coznYOGxkS2QbwbH7j46rhzWaUfdrLaNWxprVltAMy1CjOtlWcLHrWMBSH9MaitJINBWxsER9pXaY2sb5Y5/pwVJfru7Fe/rJUoYaLeaeF9WKddXU6dV/NR91ZX/5zk5r3c306Wi8W+Y38Nr2/1ObderFOZVnrWk2mRX0w54v1YvlaoRwj5dm5Nr6vHWMcZSBxvNyHxjcQlDlGyJSFowrHJVDlABd26bqaEEf/xM7C1/FV535V02GIArc/DrrEJAlyr6Bg/7YQ6P2+PHmSwvO/kL1dJOdkfp19X38/Z+O323Fl/OPeCct0eehgNgSbd4WG2eaPP6wvVmsez5gPp64wx68Xc758bc1jirs7nN7rS9VPXbCAGNvE+vHFyrtTfp4Uw0oVNnYcryxhqUulkIN97Lp+SYrSVp6Xe5gUJXKwLrGd+8Q4ngKunRe5wYho68WS++qWoxWgEf/Ij3xaKx0tapXdhyLqOv0ICF2cnwWjMt6t+/ug0abeJ+dv1hcLGwJKQzzPIwADz3dBDpCDXRchTVTh+0YRbOvCV64LQYEM8rRykLZdoG2sJmWDYPn774enErkLUEE8XznAx8qDxHjIK1xVOj7MbdclBQFY5T50S1dBT7uq0LZ2NCaFizTJJ5lupwOdPZt+l2eLTO5Xo8rIlTanA23mVzaj51kdHGi/aMX+Fcj9aiWnpjH7n4PiG50F/2dYBDV7cx7rhtXr4InZiP1rJfrurPbbQe5ZHdev+RNrFvyi33S+f/vHvz6m1yLqLtMHpMvzdDb56/Lj9mHentyGvN92Zmogj3/zn96hbZtHXZ1k3X/F59zo4XSgS/Ct3JwmVV3g+AbZHjE+Qp4qHKyAB7XroNKURW4gwYVxCs8jhSJ2CZHnQwCMKqGDiOfBqfrX9QUPaonXdUyj9JLDYaDfZ2W3Wn98rN6H9nTs3/PzIU230To5HLCCe5f+OcPrOnCpAbN/8qtLQoiHlfIIwaUqfLdUxitRDgjAtoNKBBSGGNjEcYqyhC4AUJWaEI1y37GJ9WJNw0T3afv0+OPH3/bTetEsCAAA",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "身份"
+      }
+    },
+    {
+      "name": "identity_confusion_manifest",
+      "_why": "envelope 顶层身份是**核对副本**，manifest.json 才是权威。两者分叉必须拒，绝不可「就近取一个」——取顶层等于让身份脱离被签内容自由声明。",
+      "packedBundleBase64": "H4sIAAAAAAAAA1WT23KjOBCG30W3m0xAiJOrcmFjh8hjYHwIWNzpAFggjGNwHJjKu2/B7lRN7lSt7q//7ur/N8jOH5lqLtnCQmAGsn4tRWJWzI99Zqw7ctzKSK4V8+OSQdSRc3xL/U+1GbDceOtT6r/chR/3+2TKGwg8fTB475ixa9Lj95y4jnsO1QeT2MLl6hZINGB5l2mt2vQYyEh1Nj4vTsIvRtaF1TuVeeY773GLz+Elq99kVE7vhhywHk4cPhCIh2j5hsiBoBCuULisNAJXQzDgIVi+DcFyBYOy6NMyrEiyHaJkqwV1WIfluiSHnQoHVaX+qifJSxnCrUmSQOb7z7+1dCQxL2kdD2LUA93bqJtDZaV7bAXlfNh464H6qz48kDFfhuV8SJeVEfkrLVgWOjnwPkrejGAQVVi/1OGy6Em5gmGpqugw10mCUVCmdViv+hAGkCS7MkgCjQxvZrokAxmUxGdd5NvnZ/AAWlmcaXe7ZmD2G1BBL112xQLMQMtPTaMem+6UXcHDn684u7ayOYMZ0H/AHwZ4AJ3MrmAGmjyXXFIFHoCQRdZ2YAag0JjuUKprjAuXM8OEFnSQbdhIo6ZmaxbMc6ax3LLNHDHHhIbjWKaGHDvjFJnf5YHoQzR5/1FTFX4Or/jYXnf36p9Fnl6bmkrLWZHlqXqPyycnXUBUdU/QdKvSiXKhvxcrwwvWHn/ye+fQ4LbJ9F/VEtbLYtpClfXT0EWjRHZ+7LK2e6yyfpxbFc1Vdqd6PGkBTVN3wdcDYKph7bgy2+DMcEyHWo5NHeQiTg0DGpppaLoFHZgbggrDFQjy3IKcosx2haCQUm4Ll/IRO29GDczSDOHaDkWaY1Ibuplt2MKiOXIg0y3LFa5mUuZAK7cotLlFBdc54qYrLIO7bCTdmwJ7k3cUS16S9LgeaOLecNkUk0883HpyXuD6pSLHhZYe1+vUw9b/NZPfUui2qR+Pd/kTe3NJkt2Jv+4UV6ni5/DCIJKRnMtgj/pNGcjNfOpZkuPiRGrV0uPuMnlQLtjUy5tLVrsaTUK1qT8v3NjKMX7c/8fn5/gmfNWN949f2zE28hQ77/psP2n75t8/TG7sKuYreUjUX/OhOy6aAr9qP/Nt8wy+vv4FyP7Yo5cEAAA=",
       "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
       "expect": {
         "ok": false,
@@ -182,41 +74,8 @@
     },
     {
       "name": "unsupported_algorithm",
-      "_why": "算法降级：非 ed25519 一律拒，不做任何回退",
-      "envelope": {
-        "bundleFormat": "elecon-bundle/1",
-        "files": [
-          {
-            "path": "index.js",
-            "encoding": "utf-8",
-            "content": "export const capabilities = [\"notice.list\"];\n"
-          },
-          {
-            "path": "assets/icon.bin",
-            "encoding": "base64",
-            "content": "AAH//g=="
-          },
-          {
-            "path": "manifest.json",
-            "encoding": "utf-8",
-            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
-          },
-          {
-            "path": "notes.txt",
-            "encoding": "utf-8",
-            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
-          }
-        ]
-      },
-      "signature": {
-        "adapterId": "school-golden",
-        "adapterVersion": "1.2.3",
-        "tier": "official",
-        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
-        "signature": "+HLoH3bmlmDdWj50qJ8htegC+7qMZRAsozfSpv7qKP6QGAW0nTGnLKxUxGZ+JHqtOQi5q2NyexUqOW3pzi1eBg==",
-        "keyId": "golden-test-key",
-        "algorithm": "rsa-sha256"
-      },
+      "_why": "算法降级：非 ed25519 一律拒，不做任何回退/协商（第 4 步）。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VVW7OiOhb+L7ye3adDLkCsOg8qyg5twuhGMXkLAeSq9ka3yqn+71PYZ6pmd888JRXC+i5rZa2/rfz4kbencz5zsDWx8kdYZQlp0mAXpCi8yP26iqqwTYNdnUJ8kcfdVQX3djWwajUPSxUsb1mwe7wlz3uDhOVHCm8XBWmvgt2VVbdKJpvSvG5a06rWHMU5hbiKKnZf1ezKH6xnnTqnwW5g9TnNH+FN7jcnVp8q+UZA/roecQa9P7esPqHnPlg8RCxHvFrVDYliY8tkgaK4sVW3bCJfdTLZIlWLivvNTcQLwKEceLCweb298bgBIth0qmaQ+9OHTFQdxW3NIcPCXxB2BP0nHnsxqP1mWMF29OAqu/apy8DWUW/MEfNxX5a83sLxvki2hAeqjWKDxDDiT1Hky5usp4Pwt1DUfJBDWyr/gFWyICJe1sovS1HLBw/Wg4o5knDkzO+intU83pXqLaSr174ywRLoOXNYx67Zawk+8Xh85iGhJFHcIJEsSzE0RCRqxISqW7YCykHWU8L97V34ouPDrBQxs7m/IMLfNKqTD1FPb7xbdnJoiBxEFfnre/Qbj/aqgh1edefhExd/27OjOMmY2aJiDqt3pUzWdxGvgYCq452qVbcs+bC2o6cnZRclm44nCyQgQyJuG1VzIBLRiXhZRX7bCj8ruS/vsttUKt4OUcKr4u3usuOszILDWA8XmZCz6nZDNiffDaSf8sTr6fBL/VSing7Kb1AULAD3D7aMzSNKtogPWSO6ZSf8w0PWCyjqtoniqS0ThnmtOtEtHgJyKJNNzRMO5LAlypdjXqtf6yftKFB7/nu+/OYXj+RN+GXLhwWKki3mA0cyWQORLG5iCGtRrwfV7ToVhC2vG1sFW6B8g6JkU0bxsuM1R5HPbjzYlapmgA8NEgOrip1NrRerrw5Hfbm+59bkb0tn+nzJ31lmTazelKdT++VwarP8aL3859suf++r09GaWPaf8E9kvViXKn+3JtapKCpT6dZ6sbLqkPcXa2J5RqOUIO3aqck9z+A8xzqHFLupB3Mvh6BICUJ5kWGdYYdCnQKS2YXjGEqx+YWf5bPv6R93u9wP2Pl2xvvZSq1fw/L+9dr9QSG6xgnx4z6bLfah3YWLFmCz+bhEodni7fvtJg5JKOhXqsLrZQFaTNJq7s8Pf/1lvVhN/niq/in3yyXvL1+a/DHqbg+n9+pSdtbEeu/1l77UkDjWjxcrbU9pP9pGtM5sgrFbFLAwhdYIE484jlfQrLC166YuoVmBMDEFsVOP5tjVwLHTLM0JosaaWGpf3lIUAhaIj/QoxrU0wbLSyf2cBW1rHlPKlv2zanQi2lV3Pxu0rvZx/816sUhOQZFT13UpIMD1HJAChInjIGSozjwv15TYJvO040CQoRy5RmNkbAcYm+jR3On09evXn2akDkAZdT2NgUe0C2nuIjdzdIE9mNqOQzMKiE496BSOhq5xdGZsgw2hmYMMTceJcTsd2PzZ+ds0WSZqHw46oVdWnw6sXlz5nPXzanpg3bKR+xlQ+zBUY+eY/89p8Y3Np/9nYkwr/oYfq5pXq+kTs5b7WSm7ttf7zVnteRVVs/SJNZ/+5t94vn/7Gd8cd9csaC/jK2Sv/Xg2xmvT4+aRvz25ndNu0+ZjF3n8w3/8D22aNGirOGn/Sx++scPpwF7Bt2J9Gl11APZyZLs09xBydYaJBi40DkZFXmRpDinJcpy5Ls00tQuIXA8CkOsCYkRdF1oTi6yqCznrV7KqIhbsLik8n9m/5kUbrj4+wvdzczp272l/2O02wSo+HIiGe4d9n5NVNXVYDv4pdlNQSl2itUspKXTmOYXO3QKlgAJiY1QgoAkkwKYYZ0UBHQCgLgylBqUetqk1scaJYrpd84z448e/AbjDdPsxCAAA",
       "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
       "expect": {
         "ok": false,
@@ -225,36 +84,8 @@
     },
     {
       "name": "missing_manifest",
-      "_why": "🔒 envelope 无 manifest.json，但 digest 与 Ed25519 **都真**（对这份 envelope 而言）——故会一路走到身份核对。无权威身份来源时必须拒，**不得**退化为采信签名自报的 adapterId（ADR-002 §2.2）。签端 signEnvelope 本就拒签这种 envelope，此为验端的纵深防御。",
-      "envelope": {
-        "bundleFormat": "elecon-bundle/1",
-        "files": [
-          {
-            "path": "index.js",
-            "encoding": "utf-8",
-            "content": "export const capabilities = [\"notice.list\"];\n"
-          },
-          {
-            "path": "assets/icon.bin",
-            "encoding": "base64",
-            "content": "AAH//g=="
-          },
-          {
-            "path": "notes.txt",
-            "encoding": "utf-8",
-            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
-          }
-        ]
-      },
-      "signature": {
-        "adapterId": "school-golden",
-        "adapterVersion": "1.2.3",
-        "tier": "official",
-        "digest": "40403616a1f8c8b87a6dd61b1ce9b3f5ec84fef63912bb10940b4d6c9efb2b9c",
-        "signature": "toTgt3A2IFOlEo7PkSSS01Bs5m67T19h1Tx1LyxkctBQa9NSbU+/UAtYxJdR7DDsvD23pRmLbUz0ptfVLRkQCw==",
-        "keyId": "golden-test-key",
-        "algorithm": "ed25519"
-      },
+      "_why": "🔒 envelope 无 manifest.json，但 digest 与 Ed25519 **都真**（对这份 envelope 而言）——故会一路走到身份核对。无权威身份来源时必须拒，**不得**退化为采信签名自报的 adapterId。签端本就拒签这种 envelope，此为验端的纵深防御。",
+      "packedBundleBase64": "H4sIAAAAAAAAA1WSWW+bQBSF/8u8xqmYhc1SHtLaxlAPKN4w8zYbZjCLY+PYUOW/V6Sq1L4d6V6de76j+wvo5kNX7Vl/dwiYAt1HRqX2SQT7QOCoyw5vJjFRJYJ9KRDpsmZ/Y8GjWg2hWf2IChYs7irY95v0a2/IUPEh0L1jyL+yYH8Lzd1k6bqQy3UlK1bJJj4LRExiwseqDG+0D69hzc4i2A9heRa6j+7ZYd2GZWt4ap/Y4XjjDR1vDfxwrsKy7b90MO/jbTb6YIpiQ4cjTII5SmaqSGZvdhzEBR1oT4dXSIfXR1yGhNbZwILFiQ7VKZ5FJSuzPkNzi22lzYJ1QetFkQ3qlKSLMmys679ZRO1b7EBvallYI5NElcM2oUO/dFHQcofGPYoiQ+uFycrMZmlkaKnqrGZVXMZlPGRDss36OKCIpRSyLR1oGpJ4tijiNCqTgA4sjUq6/W6SbUjidGfT2RHHfeQfDtYLmICrOTa8u100mP4CXPFzpy+hAlNwlUXbVs/HtlK6AZO/s72+XE3bgCmA39A3DCagM/oCpqDNcyMNr8AEKHPU1w5MAUEYuo5rEUy4lzvYJZZDOPJwLn3oSe77woPQ474lkesIaSnpudIW3IIW8Wz1fz4Qz2/wvV7DJXuVJLvdne49cT6ypXhaHWaIzJ/yrvZOvW0Vj2JRKQjPxpmT+U/YPIkdOxePVbtZp8v33c/NnZpws/PC99n9ZazhpPsv6j+4z52+ds8n3Y/c1bG9mK6ox19WyLahDz4nQFStuI6duVgK7NkedzyXe8QnkmOMsGVjCzrIQzlWXGFfESRzB0lOtOsrxRHn0lU+l6PtaztmwEIgLoTjayGQm4tcO1i6DvYdRKSjpa0xhsIjkNtCehJrIaElfOTZ2rc81x2d3toX8Pn5G2FaeoGEAwAA",
       "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
       "expect": {
         "ok": false,
@@ -263,45 +94,114 @@
     },
     {
       "name": "valid_signature_sideload_tier",
-      "_why": "🔒 tier=sideload 但**签名对同一 envelope、同一密钥有效**——通过 算法/格式/digest/身份/公钥/Ed25519，**只在第 7 步（档位）被拒**。真正验证「验签只裁定 official，远程签名不能自称 sideload 进 dev 档」（ADR-002 §2.5）。与 wrong_public_key 的区别：那个在第 5 步就拒、根本测不到档位语义。",
-      "envelope": {
-        "bundleFormat": "elecon-bundle/1",
-        "files": [
-          {
-            "path": "index.js",
-            "encoding": "utf-8",
-            "content": "export const capabilities = [\"notice.list\"];\n"
-          },
-          {
-            "path": "assets/icon.bin",
-            "encoding": "base64",
-            "content": "AAH//g=="
-          },
-          {
-            "path": "manifest.json",
-            "encoding": "utf-8",
-            "content": "{\n  \"schemaVersion\": \"1.0\",\n  \"adapterId\": \"school-golden\",\n  \"adapterVersion\": \"1.2.3\",\n  \"capabilities\": [\n    \"notice.list\"\n  ],\n  \"runtime\": {\n    \"stdlibMin\": \"1.0.0\"\n  }\n}\n"
-          },
-          {
-            "path": "notes.txt",
-            "encoding": "utf-8",
-            "content": "中文与 emoji 🔒：钉死 UTF-8 字节一致\n"
-          }
-        ]
-      },
-      "signature": {
-        "adapterId": "school-golden",
-        "adapterVersion": "1.2.3",
+      "_why": "🔒 tier=sideload 但签名对同一 envelope、同一密钥有效：验签层应 **ok + tier=sideload**（密码学事实），加载器层**必须拒**（loaderMustRefuse，红线 #4 / ADR-002 §2.5 —— 远程签名不能自称 sideload 进 dev 档）。与 wrong_public_key 的区别：那个在验签步就拒、根本测不到档位语义。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VVzZKjOBJ+F65bPS0kBKgi5uAyNiW3JcYuDJZuAoRBgHGX7bJhot99AvduxFb37gmFSPL7ySTzb0sfP3Tbn/SL61jPlh5WdZHiJguTMEOri9hv6qhetVmYmAw6F3FMrjK8t+uR1uv5qpLh8laEyfCWPuJGAauPDN4uEpKzDJMrrW+1SLdV/rpt81a2+ZGfMujUUU3va0OvbKBn2slTFiYjNadMD6ub2G97avpavGGgXzcTzqj2p5aaHj3O4WLgsZjwjDQNjuLcFukCRXFjy27ZRIHsRLpD0vCaBc2NxwvAoBhZuLCZ2d1Y3AAebjtpKGTBbBCpNFHcGgapw4MFpkdw/sRjz0e5345r2E4eXEXXPnTlsHXlG3X5fDpXFTM7OMXzdIdZKNsozhEfJ/wZigJxE2Y28mAHuWGjGNtKBgdHpgvM46WRQVVxIwYWbkYZMyTgxJnduXkxLE4q+bYi69dznYdLoObUpR29Fq8V+MRj+MxDQIGjuEE8XVZ8bDBP5YQJZbdsORSjMDPMgt2dB7xj40vFY2qzYIF5sG1kJwZuZjfWLTsxNliMvI6CzT36jUd7lWHirLvT+IlLsDvTI+9FTG1eU5eapBLp5s7jDeBQdqyTRnbLio0bO3p4UnVRuu1YukAcUsTjtpGGAZ7yjsfLOgralgdFxQJxF922lvFujFJWl293jx5fqiI8TP1wESk+yS4Zizn+nkPyqU7MzMZf+qfmZjbKoEFRuAAsONgizoco3SE2Fg3vlh0PDoMwC8hN20TxzBYpdZiRHe8WA4cMinRrWMqAGHdYBmKqa/1r/2QdAXLPfq9X0PzikbjxoGrZuEBRunPYyJBIN4CnixsfV4abzSi7pJPhqmWmsWW4AzLIUZRuqyhedswwFAX0xsKkkoYCNjaIj7QuE5tYT9a5PhzV5fquree/LVWo00W/08J6ts551fftl0PfFvpoPf3nXaLfz3V/tJ4t+w/4B7KerEut36f4utBtrwrrySrqgz5frGfLzxXKMFKeneXa93NHa0dpSBwv86H2NQRlhhHSZeGownEJVBnAhV26bk6Ik//Cz3ol33Z2de3+ar467gAOYJ34DY/07d2b3b2PlfjeBXc5XPr+cFHI+XCW8f1ql2WZXWPz8S979yYGuHa/b5lmdFz3PMjL4PDnn9aT1ejhofqn3C8Xfb58afQw6W4P/Xt9qbppDhYQY5tYP56srO2z8+QZVqqwseN4ZQnLvFQKOdjHruuXpCht5XmZh0lRIgfnJbYzn2jHU8C1syLTGJHcerbkvrplaAVoyD+yI5+eVR4ua5XeT0XYtvkwI3R5frSMSnm77u6nHG3qfXz+Zj1ZWBNQauJ5HgEYeL4LMoAc7LoI5UQVvq8VwXZe+Mp1ISiQRl6uHJTbLshtrCZnZ7PXr19/OpG5ABXE85UDfKw8SLSHvMJVpePDzHZdUhCAVeZDt3QV9HJXFbmdOzkmhYtykk023foDnT/Gfpuly1TuV6NKyZWa/kDN4srm9DyvZwfaLRuxfwFyv1rJaWzM/+eq+Ebns/+zLmY1e3OGtWH1evbANGL/UomuPav99iT3rI7ql+yBNZ/95t90v3/7mT8/JtcibC/TL0hfz9PdlK/NjttBvz24nbJu2+pphAz/5j99h7ZNFrZ1nLb/pc+50UN/oK/gW7npJ1dd4Pga2R7RPkKeKhysgAdz10GlLotMQ4IL7RSeRwpF7BIiz4cAaFVCBxHPg9azhdf1BZ/UK17XEQ2TSwZPJ/rXvGxX64+P1fup6Y/de3Y+JMk2XMeHA1Zw79Lvc7yuZy7VYP6zvnlJCPGwUh4huFSF75ZKeyXKAAHYdlCJgMIQA5s4TlGW0AUAqjInJEeZ79jEeramdZJ3SfPI+OPHPxMi1kQuCAAA",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": true,
         "tier": "sideload",
-        "digest": "07eb70926567f1fae11b695c38d296a24de274da656ee88745b95d85b83657a2",
-        "signature": "gjP8QRRv50oMC9YUBOwTd5WFfWet62a8tnrJc7PfP3a75nzZgK0gk5XWTvMG7AsUicCzuqzOQw7T0YaWYSYvBA==",
-        "keyId": "golden-test-key",
-        "algorithm": "ed25519"
-      },
+        "digest": "8ca3b53a71bce88c4ee4ae2947b82e8e20fb533efd4ad4692ab05d1f66c994c9",
+        "loaderMustRefuse": true
+      }
+    },
+    {
+      "name": "extra_blob_smuggling",
+      "_why": "★ blob 表多一个未被任何 descriptor 引用的条目。少一个会被逐文件校验抓到，**多一个不会**——descriptor 全都对得上，多出来的只是「没人引用」。不显式拒即完美夹带通道：签名照过、审查看不见（审查看的是清单），而任何按 sha256 取 blob 的消费方都能取到它。",
+      "packedBundleBase64": "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",
       "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
       "expect": {
         "ok": false,
-        "reasonContains": "档位"
+        "reasonContains": "多出"
+      }
+    },
+    {
+      "name": "missing_blob",
+      "_why": "descriptor 引用了不存在的 blob → 清单承诺的文件没到货，必须拒（第 9 步）。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VVX5OiOh79LrzenjshIUC66j6oKB3HhNJGMXkLAYQQ1NvqKNya776Fs1u1PbP7RCr/zvmd3+HkH6c8fi/t6VxOfc95dcp+2RQZbvN4F+doeRX7dZM0S5vHO5ND7yqOu5uMH3Y10GY1W9YyXtyLeNe/Z899g4D19xzerxKSi4x3N9rcG5Ftav22sdpKq4/8nEOvSRr6WBl6Yz290E6e83g3UHPOy355F/vNiZpTI94xKN/WI86g9mdLzQk9x/G856kY8Yw0LU5S7YpsjpK0dWW3aJNIdiLbIml4w6L2ztM5YFAMLJ67zGzvLG0BjzedNBSyaNKLTJoktYZB6vFojukRXD7x2PNB7jfDCtpRg5vo7LMuDa0v36nPZ+O4rpnZwnE/z7aYxdImqUZ8GPEnKInEXZjJwKMt5IYNYrC1jA6ezOaYpwsjo7rmRvQsXg8yZUjAkTN7cDM1LN3V8n1JVm+XRscLoGbUpx29FW81+MSj/8xDQIGTtEU8W9R8aDHP5IgJZbewHIpBmAlm0fbBI96xYVrzlLosmmMebVrZiZ6byZ11i04MLRYDb5Jo/Uh+42FvMt55q+48fOISbS/0yE8ipS5vqE/NrhbZ+sHTNeBQdqyTRnaLmg1rN3lqUndJtulYNkccUsRT20rDAM94x9NFk0TW8qioWSQeots0Mt0OScaa6v0R0OO0LuLD6IeryPBZdruhmOG/NSSf+sTMZPjFPw03k0FGLUriOWDRwRWp7pNsi9hQtLxbdDw69MLMITe2TdKJKzLqMSM73s17DhkU2cawjAExbLGMxNjX5lf/5B0Bcs9+71fU/qKRuPOotmyYoyTbemxgSGRrwLP5nQ9Lw816kN2uk/HSMtO6Mt4CGWmUZJs6SRcdMwwlEb2zeFdLQwEbWsQH2lQ7lzgvzqU5HNX19lE6r/84qlDna/lBC+fVuej6dLJfDidblEfn5T9ru/Lj0pyOzqvj/gn/RM6Lc23KD+fVOVVVoxtlnRenaA7l5eq8OqFWKMdIBW6uyzDUXll6qoTEC/IQlmEJQZVjhMqq8FTh+QSqHODCrXxfE+LpX/g5Ef07/+Ph1vvB87+dvf10Jddvy/rx9db9QSC6pRmO0ksxne+XbrecW+DpzfdrstRbb/txv/NDtuTkK5HL23UOrIfzZhbNDn/95bw4bdk/q/5Z7pdrebl+act+rNseTh/Nte7GHCwgxi5xfrw4uT3ll1EzrFThYs8LqgpWulIKeTjEvh9WpKhcFQR5gElRIQ/rCrt5SEovUMB38yIvMSLaeXXkvr7naAlozL/nRz5+ax0vGpU9zkVsre4nhC4uT8uojNtV9zhrtG726eWb8+LgkoCqJEEQEIBBEPogB8jDvo+QJqoIw1IR7OoiVL4PQYFKFGjlIe36QLtYjcpOJm9fv/5UIvcBKkgQKg+EWAWQlAEKCl9VXghz1/dJQQBWeQj9ylcw0L4qtKs9jUnhI03yUab76UBnz9i3ebbI5H45qIzcqDkdqJnf2IxeZs3kQLtFK/ZTIPfLpRxjY/Y/n4pvdDb5P8/FpGHvXr8yrFlNnphG7Ke16OxF7TdnuWdN0kzzJ9Zs8pt+4/z+/ef9+ri7FbG9jr8gfbuMc+N9Nj9u+vL9ye2cdxtbjhHS/5v/eA5t2jy2TZrZ/6rPu9PD6UDfwLdqfRpV1RUhJMBKBYTgShWhX6kyqFAOCMCuhyoEFIYYuMTziqqCPgBQVZoQjfLQc4nz6owhrrtd+3Tsjx//Asto65mkBwAA",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "缺"
+      }
+    },
+    {
+      "name": "descriptor_size_lies",
+      "_why": "descriptor 说 N+4096 字节、实际 N（哈希仍命中）→ 必须拒。**先按 size 界定再解码**是 TUF 携带 length 的同一理由：不能等哈希算完才发现来的是 12 MiB。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VTWY+jOBD+L37dnlli7kj9QC7a6ZhMSE843nxAsDGBDZAERv3fV2RmpdmV9tHlqu8o1fcDZJdbpuomW1gGmINs2AoemSX1Tz7Vt10SH8RebBX1T5JCo0supz71H2o3IrFbbovU39y5fxqO0bNvTGBxo/DepdBtU//UI3EXSRQW7C1UTKWKXYKGQkPsBXrsJOrxgFpUpQ31TyOSDc2G7T2JwxrJWpDILNP43JMLnrhGEjcKyVrDq9J4vv31EHwkE5aOYSDweJ7t/TXcr3ixXx3MwA8KPOIBj94Mj94jkMjAVTKm/qbEoyqD1VamMhkSuNbSD2amfljgalMkIy/30Uaii9b+rodGm55EqWL6oSeX4EYFatElaLLqu9hLdMfDXTBYFFh+h1N/IpM7hgczGIsiWHlGEK11LJUKRqynq7RI5cHAFXoEMjHTVXkPoo3YrxBMZVpgyWVQbcpk3MjAx7N9dIAYYjMRWzeOtVfwAlpxvpCuv2Zg/gMQTpouuyIO5qBlRV2rL+da8ewCXv75O2XXVtQXMAezr/CrDl5AJ7IrmIM6zwUTRIEXwMU5azswB5ZBDduBDiOZ4ZLc4nw245yxjOS2mTssZ8w2KXP1zNYJh4wZ1NUYZI7mWppu5f/WB7Tj4xjCm3eVoVV9+9gc39dvxtXQFMXD/Y+wT7w1DsOOmfG4cJPF+MiWOXov/T8bD2m9ktfT0LAbaxAcb8dm3OpXvVt5r9Maymx4uv5p90uXtd2XMhsm3+pcX0VXVNNdc2iaMxd8vgCqatpOO7N1RnXHdIjl2MQxXIMRXYe6ZurazIIOzHVOuO5yA7LcgowYme1yTiAhzOYuYROsV08aqKXp3LUdYmiOSWzoZrZuc4vkhgPpzLJc7momoQ60cotAm1mEsxkzmOlyS2cunZDu9RktnwFSNNpEabwdSeT2SNZnJNc9XqJ2Kbwzmo4iXmhpvN2mS2T9mvlv6N7R0vuf4HkCH41hJ7HYeU9OmcSLIqlUS+KwSWMs9mJBn1xLT9DK1UgUqF31aJh+EFM9Pv7EZ5dTz33VpUdkobd2qk14il7CITs+tTW0ClW2NP9iwy/905weltRX4iNSv/kz7uhcn9Gb9p4f6lfw+fk3fAJAg5wEAAA=",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "长度"
+      }
+    },
+    {
+      "name": "path_traversal",
+      "_why": "签名只证明发布者确实想要这些路径，**不证明路径安全**——哈希再多字节也不会让 `../../` 变安全。闸门位置：验签之后、使用之前（纪律 3）。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3WU246bSBCG34XrSQINzcFSLnxk2jGwthlD912fwA2NIWM8Hojm3Vc4G2mT1V60VKquw/eXVPXDkJc3qdtOLlzHmBly2CqRwZqFp5DZ2x7ne5WorWbhqWLA6fHldCPhu96NSO2W2zMJN3cRnoZj9ogbMTi/MXDvCQiuJDzdkLornB3O/PmguSaaX+KOAUclCr3vKnSLBnRFDelYeBpR1TE5bO84P7SoatVOOW/TIznp2BJ+51PsJe5k86KSaj/ZLU6RFSvkooac45S/R4BonJ7qGJw0qbZ1tOIwqhYqSflAqrUVVZFJVtgiIX6P062OVqUVp3MzCbFD0nODGwziKb8SGjdIFcd3D10WZxGWk76ONQct/8OCfmep+IgBGpPVi4NT7MRg7cSr2sRgPUYjGqPVyxit1iCqyoFUcY2z/ZhkezNq4iauthVODzoedU3C9YCzTRWDPcRZ9CdLjzPYkeY0iokHBI9Zc6BdckRuVM3H3XI70nA9xCme4lVczUeyqu0kXJuTbpzyIcle7GgUddxsmnhVDrhag7jSdZLOLZwhJ6pIEzfrIQYRwNmhirLIxOMLJCs84lErdLFEsf/61Xgyrqq80P72Ko3ZD4MK2vXyFQljZlz5uW31p7LVQl6Mp19/J/l6Ve3FmBnWZ/DZNp6MXslXY2a0RaG4otp4MoQq5bU3Zgb0CmaxwAEOhaa0hcUKB3DAgCOgDTwLWp7NbCq5BQWUrg1FwQQFnuUEnEHf/Z3PKNovdfsXpvFOXb4k33fHedi99tWb93xqLPzti3n34izfx7eOBU0Ac+v7Zl9uBzYQIpPdsRxJuwlGlnbxa5rnTRKkRb+YP8ZQy+Gh+qfcT7289p9qOUy6ddm+qv7cTHsmAIRWYHw8GUy37DrNrKDQs+xCUig8KQsgTC8AJgs8UFgQ2I5woZgsafoQmo5f+NIvWOFCKFxPMmbMDP4sbsvyweHZnNk+9Knre9R3AodT2wa2CW3TcoEPCltQYQfCAbxwAaeO9AIhKKCUeyKgfIKct1Ml5pq2CDyfOqYPqQcC6dmecGnh+IBZrhuIwISU+cAtXAo87lLBLe5wGAjX5sHEJe9tiZaP86BZtslIvh1pFtxQ1ZaoWt+iJbou1bxEzabG+cIk+XZLlsj9J+fPk/INLef/c1bmKjo6w66K1G7+6FnhfHHGjb7S/NCRPFKJWrBHr+VcsSYwaRbrXfPecXuvJn9+/FmfX043Eep+Wif0fJ18Uz3NLodBHh9sv52DXzW5fahZqFWa6X/pc+6obEv0bH4r9u1X4+PjbzdLh596BQAA",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "路径"
+      }
+    },
+    {
+      "name": "non_ascii_path",
+      "_why": "路径段含 [A-Za-z0-9._-] 之外的字符 → 两端必须**同样**拒。Dart 无内建 NFC，故卫生闸门不依赖 Unicode 规范化，而是收紧字符集从源头消灭该问题（ADR-002 §3 风险 5）。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3WUW4+bOhSF/wuvnbZgc43Uh0xIGKexmWSmAfzmCxeDCTkhGQaq/vcj0h6prXTeLNt7rW9t2fu7kZ/ect2d80fXNhZGPm6VTJyGR8eIw+01S/cqVlvNo2PNgX3NTscbjd71bkJqt9pWNNoMMjqOL8n93pSB6o2D4UpB0NPoeENqUFlyqMTTQQtNtTiRMwe2ihV639XohkfUo5aeeXScUH3m+bgdsvTQobpTWUommh6m3YeEv91YWY3OJFsx+04sPWtUd/C+jtYjec1m/5qGmzZLqMaA1ARkA2kziyTHioakxdGhpq/YwdNyyBJSEbC249f1O5maib4KQFvS0BCPZBJOnOCBTEsnS/CITmb/OxdLnIam5Y2d8O8s458sCGJAFJ5KK47WIA5lFYd7h0SkwhMe8bS08LR8JzWycZtNNNo0eNINCbc1rbMxA2uTvgqHRocKt5sqm2QTJ5v6bxaebG4soVrA/Y2dyBtXqEcncs7bbyqu0YDHQQlQVbj+Bu49rbMBg71Dpqoi4dImyRriWmsyYUhDWtF6b+MWvZM6c2jYDCTZqDhEgNa0wrWsSbtpsmlTkwhbcbIHGGAnU9sgTc0vxoPRq/LErrdLbiy+G0yy8zW/IGksjF5UXac/lp2W+cl4+O/smF961Z2MhWF9Ap+g8WBcVX4xFkZXFEoopo0HQ6oy76/GwvBd4ZpO7gloFabv2oWVO9wXLoSWtLlvBpBZwJMWFBA4vm2apmn7Abd9WwaBZdt/8hlOA3fEG09wGeqqtB9D59IoU9vwbX/gZbevigSKD+1zzM0qpCi+0N008m9RdNnt/ezFL8bk8/E5lv7nQ7a1EektmobLL3Mbmny8p/4Z9+M1768fm3ycc+uyu6hr1c5/TQLHsQLjx4PBdcf7uWdCWgUrciiEV5hu4Tg5k7AwpchhAE2TCeYxP7AsL4C55xZCSgg8LwiE6ZkBE8BYGM9PBNDR/7Aq7yweFBz6js9c32O+HdiCQQig6UDTcoEPCiiZhIG0gShcIJide4GUDDAmPBkwMYMuu1mJuyaUgecz2/Qd5oEg96AnXVbYPuCW6wYyMB3GfeAWLgOecJkUlrCFE0gXioDPSkNXotV9TGiebBKabieWBDdUdyWq1ze8Qv1KLUs0P7P00aTpdktXyP1V8/do+YpWy/8ZL0uFX+xxV2O1W9496yx9rLJW9yw9nGmKVawe+d1rtVS8DUyWEL1r388C7tW8n7781Ben401G+kpfkIue+nlv1tP8dBjzlzvbmbcHna+cf8T4i3+ug4eGR1q9Jvq3fPaAyq5ET+bXYt99MX78+BfjRL6RggUAAA==",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "之外的字符"
+      }
+    },
+    {
+      "name": "duplicate_path",
+      "_why": "同名条目：TS `Array.sort` 稳定而 Dart `List.sort` **不保证稳定**，且任一端改用 Map 即成 last-wins 解析差分（ADR-002 §3 风险 5）。必须整体拒，而非依赖「大家都取第一条」。",
+      "packedBundleBase64": "H4sIAAAAAAAAA41UTY+jOBD9L75uzywYYyDSHPLRoZ2OYUgnAXOzwSF2TMg2SRMYzX9fkZmVdkZaaW9Wuaree6Wq9w3I84c0zUXOMAITIPuVKlP3JMJ9KJzVlWWJitXKiHCvBURXdt7f8vBu1gNR6/nqmIfLrgz3/Vv6yBsYPH4I2F1zGLR5uL8R1SmWbo7Fy8YUJjfFOboIiFSsyH2tyY32pCV1fhHhfiD6ImS/6li2aYhuFE/dU55VN36mI9bAs4shuoGPd/jcR1s2YqpIJ12+rSwaknucJkM0VDDSM0WHVc307s7S3T0OExjBjWaQWGxb2fE2P1JtTARXp2hYaZqSnqU7O94SlOvkTs5W+z+4OL9yIVa8mGmq6RDVxKLbWU3T5SlKGWI1uzNNULxNrGhx6qje2fFiajHNbDrsOjbs+mgoUAR3ThTuVR4mNt0uDYXP1u9cRLq88TQ3hZPc+Dn6EIq05BxdZL1TsSYd7TtVwOOR6h0c85lmHYWJGw3HY7SYoih9dh7aB+rki/yY6wTRmtwjzdx8ceqidKniBYG5HmdU6qhentiw1FFI7ThNIIXUZWoVZJn1BTyBVlVnfr29SzD5BnjJL1f5TkowAW1xbBrzqWpMKc/g6Z+/vXxvVXMGE2B/hp8d8ASuSr6DCWgOB1UobsATKFUl2yuYAM+XhwBj7+AWjmUXnu8iIUSABTz40LaEIzEKEIbYx9B1sM19LKHt+UHpl55l41/5Ac236OOrzndvrI235WWb/XmZ/dEiQU1yecWnGcrnp/PX+YuBZchce13Pej+Sc1PO/I5tcANz8cKGvPqq+Rom092N97PuyziGk+wfqn/I/XSV7fXTSfajblM17+p6rMf7KqHr2gH4/gSEaUQ7zkxgZEkfWcIOSsfzMbaEAw/Ctbm0/RJ7ZVEIxH03wBwG0hOlBwtbQC7dAPoHZIMJyGvTF07yCp4A8q0COg4WyLYONi/dgy8OtoB+gBAKLOi6voUEdh3XKlzoeb4nPSRFWbq2LR0+mkABx2N3T/PqoUxgyykDz+fI8l3ujRwcr8T8gHwobIyDMrBcLnyID5hDr8C8LOwCFW5QYqcIxCi7ayoyf9iDEekyzbPVwNPgRnRTEf18o3PSztW0IuOqZTMrz1arfE7wz5rfLeWVzKf/YStTRd9Qv9ZUracPTM2y2ZHVpuXZ5pJnVMVqJh5Y86kSdWDxNDLr+n4pnESN8eztR//ivL+VobnmbwSTl3aMjf2MOG96+fbgdhH1xsi5+1fR/+Q/1jmbkwiN2qbmX/pQR6qmIi/W6yFpvoDv3/8GnySunnoFAAA=",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "重复路径"
+      }
+    },
+    {
+      "name": "unknown_bundle_format",
+      "_why": "重签的 elecon-bundle/9：digest 与签名全真，只有格式标识不同 → 必须严格相等地拒。宽容（如「以 elecon-bundle/ 开头即可」）会在 v3 出现时变成降级面（纪律 6）。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VTWY/iOBD+L37d7lGwcyL1Aw0kmMZhgR5yvPkisXESlnAlo/7vqzCz0uxK+2aVq76jVN8PIOubNM1Jvrs2GAPZLZVInCOL9hFDy0uWbtRaLQ2L9ppB+5LV+2sePcyqP6rVdFnmUXgX0b7bJc++PoPljcH7JYdBm0f7K1Z3lSXbki+2hpvc8Do+MWirtcKPlcZX0uEWV/mJRfse6xOT3fKepdsG60bRxDnmaXGlNRm4epqeDNZN93xH8y7+zAYcRGCsSF+M1tEcrmeiXM82ThzFJelJR/rJiPSTR6yxTaqsz6PwSHpzjGdLneusy+Dcyj+5k0fbklRhmfXiuE5CjWur/V0LS8IrTXLD0eZK6/jGFG5xHZ9k9V2tNb6T7q44LEuiv8OhP9PZncCNE/dlGc8mdpzMEdHGxD1B+Swvc72xSYUfsc6cfHa8x0mo1jMMc52XRAsdV+Ex60MdR2S0TjaQQOJkahmkqfUGXkCrippermcJxj8AFfR0kWcswBi0vGwa81o0RsgavPzzt5fnVjU1GIPRN/gNgRdwUfIMxqA5HBRX1IAXIFQh2wsYAyvwLRS4AeT8QBGESHJ/hALhMGEx6LhMUiEDGrg+tIKD5zrS873ADSzm+xZD1r/1gUNzrW52KMKWbxdNd7eTCHOHz9QfU66rcudsTdHOnPPDscjGaeVy8+ftc+V39ybK1mFffcwXs9Hntg7bSfq48f3iVLFZ8Tas4Si7p+ufdl8vsr28HmU3+DZFc1aXshpuWkDHGQXg6wUw07B22JmHOEO+41PX96hvBzanCEFkOcgaudCHBySoQIGwIT+4kFNbeoEQFFLKPRFQPsBOmkEDcy0kAs+ntuU71IOB9JAnXHqwfchGrhuIwHIo86F7cCn0uEsFH3GbO4FwEQ/YgHRvCjx9hsewJEzydNnTJLhi3RRYz69kitupmhR4OIr03crT5TKfYvfXzH8D94Gnk/8J3USRnd2tNFGryZNTZ+l7mVWmpen2lKdErdU7e3JNJ4pVgUWT2Kyqx4mjjRrq6e4nPq/3VxGZS77DLl60Q23AM6zednL31HZi1dbIqfMX737pH+bQ9sgioz4T85s/+46LpsAL6+Owad7A19ffrY30P5gEAAA=",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "bundleFormat"
+      }
+    },
+    {
+      "name": "wire_extra_field",
+      "_why": "封套是**验签之前唯一被解析的东西**，解析面必须最小：三字段严格封闭。任何「多余字段先忽略着」的宽容都是攻击者在验签前可以自由投喂的输入（第 2 步）。",
+      "packedBundleBase64": "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",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "多余字段"
+      }
+    },
+    {
+      "name": "signature_without_context_tag",
+      "_why": "v2 之前 bundle 载荷 / catalog / revocation 三者只靠「JSON 形状恰好互不满足对方 schema」**偶然**隔开。域分隔落地后，不带 `elecon.bundle-payload/2` 前缀的签名必须验不过（第 6 步）。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VVW5PaNhT+L37NppEly7Z2pg8sBq8IkgNrbKQ3SbbxFSiGBdzJf++YtDPdpH2SRrfvco7O+dPK9+95ezjmL65jPVv5fVFlKW50mIQaLc5iu6qiatHqMKk1dM5in1xkeGuXA62W00Upw/k1C5P7W/o4NwhYvmt4PUtIehkmF1pdK5GuS/O6bk0rW7PnRw2dKqrobVnTC7vTnnbyqMNkoPVR5/fFVWzXB1ofKvGGQf66GnEGtT22tD6gxzyc3XksRrxa1g2OYmOLdIaiuLFlN2+iQHYi3SBZ84oFzZXHM8CgGFg4s1m9ubK4ATxcd7KmkAWTu0hlHcVtzSB1eDDDdA/6Dzy2fJDb9bCE7ejBRXTtQ5eBrSvfqMun47wsWb2B43mebjALZRvFBvFhxJ+gKBBXUU8GHmwgr9kghraUwc6R6QzzeF7LoCx5Le4sXA0yZkjAkTO78fqlZnFSyrcFWb72lQnnQE2pSzt6yV5L8IHH/SMPAQWO4gbxdF7yocE8lSMmlN285VAMop5gFmxuPOAdG15KHlObBTPMg3UjO3Hn9eTKunknhgaLgVdRsLpFv/BoLzJMnGV3HD5wCTY93fODiKnNK+rSOilFurrxeAU4lB3rZC27ecmGlR09PCm7KF13LJ0hDinicdvImgGe8o7H8yoK2pYHWckCcRPdupLxZohSVhVvN4/uX8os3I35cBYpPsouGbIp/sNA8iFOrJ4MP+VPxevJIIMGReEMsGBni9jco3SD2JA1vJt3PNjdRT2DvG6bKJ7YIqUOq2XHu9mdQwZFuq5ZyoAYNlgGYoxr9XP+6I4AuWW/xitofvJIXHlQtmyYoSjdOGxgSKQrwNPZlQ+LmterQXZJJ8NFy+rGluEGyMCgKF2XUTzvWM1QFNArC5NS1hSwoUF8oFWR2MR6svpqt1fnyym3nv+0VKaO5/xEM+vZ6k15OLSfd4c2y/fW0z97SX7qq8Peerbs3+BvyHqyzlV+sp6tQ1FUplKt9WRl1S7vz9az5RuFNEbKs7XJfd84ee6oHBLH0z7M/RyCQmOE8iJzVOa4BCoNcGYXrmsIccxP/KzkYtZfXNs/7LOML+D7+6fT3O+KL6vN/Wb3tyabS+rCMpqX3/an8zU/9ZGG6lN063tdpdXpbaPhJ9omS8m7M/RX5wtuprvff7eerCa/P1T/kPv5nPfnz01+H3W3u8OpOpfdWAcziLFNrO9Plm4Puh89w0plNnYcryhgYQqlkIN97Lp+QbLCVp6nPUyyAjnYFNjWPskdTwHX1pnOMSLGerbktrxqtAA05O96z8exNOG8UuntmIVta+4TQuf9I2VUyttldzsatKq2cf/VerJwTkCRE8/zCMDA812gAXKw6yJkiMp8P1cE2ybzletCkKEceUY5yNguMDZWo7OTyeuXLz+c0C5AGfF85QAfKw+S3ENe5qrC8aG2XZdkBGClfegWroKecVVmbOMYTDIXGaJHm66HHZ0+yn6r03kqt4tBpeRC68OO1rMLm9J+Wk12tJs3YvsC5HaxkGPZmP5nq/hKp5P/aReTir0592XNquXkgVmL7UspurZX2/VRblkVVS/6gTWd/OLfuL59+/G+2SeXLGzP4xekr/24Nr7X6v36nr89uB11t27zsYTc/+Y/3kPrRodtFaftv/Q5V7o77Ogr+FqsDqOrLnD8HNkeyX2EPJU5WAEPGtdBRV5kOocEZ7mTeR7JFLELiDwfApCrAjqIeB60ni28rM74qF7xsopomJw1PB7pt2nRLpbv74vTsTnsu5Pud0myDpfxbocV3Lr0jyleVhOX5uDvTDcFIcTDSnmE4EJlvluo3CuQBgRg20EFAgpDDGziOFlRQBcAqApDiEHad2xiPVtjOzFd8uPvfP/+F/Y5Ac8uCAAA",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "验签"
+      }
+    },
+    {
+      "name": "signature_wrong_context_domain",
+      "_why": "同一把密钥、同一份正文，只是签在 `elecon.catalog/1` 域下 → 在 bundle 这里必须拒。这才是「域分隔」的实义：跨协议重放不成立。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VVX5OiuBb/LrxOz05ICJCu2gdblI5jwmojmLwFEoQA6rTaKlvz3bdw9lbdmbn3KakQzu/POTnnb8fsP0x3OJoX33OeHXNfNDrHbRFncYEWZ7FdNUmz6Io4swX0zmKfXWR865YDbZbTRS3j+VXH2f0tf9wbBKw/Cng9S0hOMs4utLk2Il/X5eu6KzvZlXt+LKDXJA29LS29sDs90V4eizgbqD0W5r64iu36QO2hEW8YmNfViDOo7bGj9oAe+3h256kY8ay0LU7S0hX5DCVp68p+3iaR7EW+QdLyhkXtlaczwKAYWDxzmd1cWdoCHq97aSlk0eQucmmTtLMMUo9HM0z34PQTjy0f5HY9LGE3enARfffQVcLOl2/U59NxX9fMbuB4n+cbzGLZJWmJ+DDiT1ASiauwk4FHG8gtG8TQ1TLaeTKfYZ7OrYzqmltxZ/FqkClDAo6c2Y3bF8vSrJZvC7J8PTVlPAdqSn3a04t+rcFPPO4/8xBQ4CRtEc/nNR9azHM5YkLZzzsOxSDsBLNoc+MR79nwUvOUuiyaYR6tW9mLO7eTK+vnvRhaLAbeJNHqlvzGo7vIOPOW/XH4iUu0OdE9P4iUuryhPrVZLfLVjacrwKHsWS+t7Oc1G1Zu8vCk7pN83bN8hjikiKddKy0DPOc9T+dNEnUdj3TNInET/bqR6WZIctZUb7eA7l9qHe/GejiLHB9lnw16ir+VkPyUJ2Ynwy/103A7GWTUoiSeARbtXJGW9yTfIDbolvfznke7u7AzyG3XJunEFTn1mJU972d3DhkU+dqynAExbLCMxJjX5tf6KXoC5Jb9nq+o/cUjceVR3bFhhpJ847GBIZGvAM9nVz4sLLerQfZZL+NFx2zryngDZFSiJF/XSTrvmWUoieiVxVktLQVsaBEfaFNlLnGenFOz26vz5d04z387Sqvj2bxT7Tw7p7I+HLrPu0Onzd55+s+3zLyfmsPeeXbcP+AfyHlyzo15d56dQ1U1ZaM658nRzc6czs6zE5YKFRipwC1KE4alZ4ynDCReUITQhAaCqsAImUp7Sns+gaoAWLuV75eEeOUv/BxY6y6q2PR8P8P3T8HgapjPhjD6lseLj3WPzQv/Ek2KzXx5zNvzS/hp/skfyCWOh4Wir1U1bfu/7MJd3Hitvb7ZZy9FFK3+/NN5clpzf6j+Iffz2ZzOn1tzH3V3u8N7c677sQ9qiLFLnO9PTtEditPoGVZKu9jzgqqCVVkphTwcYt8PK6IrVwVBEWCiK+ThssJuERLjBQr4bqELgxEpnWdHbutrgRaAxvyj2PNxrct43qj8dtRx15X3CaHz06NkVM67ZX87lmjVbNPTV+fJwYaAypAgCAjAIAh9UADkYd9HqCRKh6FRBLulDpXvQ6CRQUGpPFS6PihdrEZnJ5PXL192DycKHyBNglB5IMQqgMQEKNC+qrwQFq7vE00AVkUI/cpXMCh9pUu39EpMtI9KUow2XQ87On20/a7I57ncLgaVkwu1hx21swub0tO0mexoP2/F9gXI7WIhx7Yx/Z+j4iudTv7PuJg07M27Ly1rlpMHphXbl1r03Ult10e5ZU3SvBQPrOnkN//G8+3bj/jlPrvouDuPT5C+nsazMV5X7Nd38/bgdiz6dWfGFnL/l//4H1q3Rdw1ad79lz7vSneHHX0FX6vVYXTVB15okBsQEyIUKO1hBQJY+h6qTKULAwnWxtNBQLQibgVREEIAjKqgh0gQQOfZwcvmjI/qFS+bhMbZuYDHI/1rWnWL5cfH4v3YHvb9e3HaZdk6Xqa7HVZw69NvU7xsJj41YPojv2VFCAmwUgEhuFI69CtlggoVgADseqhCQGGIgUs8T1cV9AGAqioJKVERei5xnp1xnJR91j4ifv/+D5y5BqYuCAAA",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "验签"
       }
     }
   ]

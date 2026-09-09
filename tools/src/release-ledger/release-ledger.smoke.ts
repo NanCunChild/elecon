@@ -4,9 +4,22 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { type BundleEnvelope, envelopeDigest } from "../bundle/envelope.js";
+import {
+  type BlobTable,
+  BUNDLE_FORMAT,
+  type BundleEnvelope,
+  type EnvelopeFileDescriptor,
+  envelopeDigest,
+  serializeEnvelope,
+  sha256Hex,
+} from "../bundle/envelope.js";
 import { packBundle } from "../bundle/package.js";
-import { serializePayload } from "../signer/index.js";
+import {
+  CONTEXT_TAG_CATALOG,
+  CONTEXT_TAG_REVOCATION,
+  serializePayload,
+  withContext,
+} from "../signer/index.js";
 import { extractLedger, LEDGER_FORMAT, validateLedger } from "./index.js";
 
 const root = mkdtempSync(join(tmpdir(), "elecon-release-ledger-"));
@@ -15,18 +28,25 @@ try {
   mkdirSync(join(dist, "bundles"), { recursive: true });
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const publicKeyHex = publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
+  // digest v2：清单（descriptor）与内容（blob 表）分离；digest 只哈希 envelope 字节。
+  const blobs: BlobTable = {};
+  const files: EnvelopeFileDescriptor[] = [
+    ["manifest.json", JSON.stringify({ adapterId: "school-example", adapterVersion: "1.2.3" })],
+    ["masker.json", "{}"],
+  ].map(([path, content]) => {
+    const raw = Buffer.from(content!, "utf-8");
+    const hash = sha256Hex(raw);
+    blobs[hash] = raw;
+    return { path: path!, size: raw.length, sha256: hash };
+  });
   const envelope: BundleEnvelope = {
-    bundleFormat: "elecon-bundle/1",
-    files: [
-      {
-        path: "manifest.json",
-        encoding: "utf-8",
-        content: JSON.stringify({ adapterId: "school-example", adapterVersion: "1.2.3" }),
-      },
-      { path: "masker.json", encoding: "utf-8", content: "{}" },
-    ],
+    bundleFormat: BUNDLE_FORMAT,
+    adapterId: "school-example",
+    adapterVersion: "1.2.3",
+    files,
   };
-  const digest = envelopeDigest(envelope);
+  const envelopeBytes = serializeEnvelope(envelope);
+  const digest = envelopeDigest(envelopeBytes);
   const signaturePayload = {
     adapterId: "school-example",
     adapterVersion: "1.2.3",
@@ -39,14 +59,18 @@ try {
     keyId: "test-key",
     signature: sign(null, serializePayload(signaturePayload), privateKey).toString("base64"),
   };
-  writeFileSync(join(dist, "bundles", `${digest}.json.gz`), packBundle(envelope, signature));
+  writeFileSync(join(dist, "bundles", `${digest}.json.gz`), packBundle(envelopeBytes, signature, blobs));
   const catalogJson = JSON.stringify({
     sequence: 7,
     entries: [{ adapterId: "school-example", adapterVersion: "1.2.3", digest }],
   });
   const signedCatalog = {
     catalogJson,
-    signature: sign(null, Buffer.from(catalogJson, "utf8"), privateKey).toString("base64"),
+    signature: sign(
+      null,
+      withContext(CONTEXT_TAG_CATALOG, Buffer.from(catalogJson, "utf8")),
+      privateKey,
+    ).toString("base64"),
     keyId: "test-key",
     algorithm: "ed25519",
   };
@@ -54,7 +78,11 @@ try {
   const listJson = JSON.stringify({ sequence: 4 });
   const signedRevocation = {
     listJson,
-    signature: sign(null, Buffer.from(listJson, "utf8"), privateKey).toString("base64"),
+    signature: sign(
+      null,
+      withContext(CONTEXT_TAG_REVOCATION, Buffer.from(listJson, "utf8")),
+      privateKey,
+    ).toString("base64"),
     keyId: "test-key",
     algorithm: "ed25519",
   };
@@ -111,14 +139,17 @@ try {
   );
 
   const forgedSignature = { ...signature, signature: Buffer.alloc(64).toString("base64") };
-  writeFileSync(join(dist, "bundles", `${digest}.json.gz`), packBundle(envelope, forgedSignature));
+  writeFileSync(
+    join(dist, "bundles", `${digest}.json.gz`),
+    packBundle(envelopeBytes, forgedSignature, blobs),
+  );
   assert.throws(() => extractLedger({ dist, keyId: "test-key", publicKeyHex }), /bundle verification failed/);
   assert.throws(
     () => extractLedger({ dist, keyId: "other-key", publicKeyHex }),
     /operator-supplied trusted keyId/,
   );
 
-  writeFileSync(join(dist, "bundles", `${digest}.json.gz`), packBundle(envelope, signature));
+  writeFileSync(join(dist, "bundles", `${digest}.json.gz`), packBundle(envelopeBytes, signature, blobs));
   writeFileSync(
     join(dist, "catalog.json.gz"),
     gzipSync(JSON.stringify({ ...signedCatalog, signature: Buffer.alloc(64).toString("base64") })),

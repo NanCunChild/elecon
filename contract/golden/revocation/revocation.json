@@ -10,7 +10,7 @@
       "_why": "正例：reason 富文本 + adapterId 中文/emoji，验签过 + 解析逐字符保真",
       "signed": {
         "listJson": "{\"sequence\":5,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"minVersions\":{\"school-西电🔒\":\"2.0.0\"},\"killSwitch\":false,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"密钥泄露事件 🔒\\n受影响版本 1.0.0–1.5.0\\n引号\\\" 反斜杠\\\\ 制表\\t NFD é 星平面 𝕏😀\"},{\"adapterId\":\"school-xjt\",\"versionRange\":{\"minInclusive\":\"1.0.0\",\"maxInclusive\":\"1.5.0\"},\"reason\":\"版本区间吊销\"}]}",
-        "signature": "h7SWtnpVHlYxir7AFeVN1FBTQ3Gk0KmrXdxgh0N8innz7Nf/cu0wdmeMzhG/uGggBon5WKecusiycgXghS1DDg==",
+        "signature": "ZzZalFWCYu32wqfZbeLUwJQQVwpa2uwiM7f6LhTucHsEIgclz/1bjzIP5jFP+93OTUsymc9VCMxtWF6bvclJBQ==",
         "keyId": "golden-revocation-key",
         "algorithm": "ed25519"
       },
@@ -26,7 +26,7 @@
       "_why": "字节精确：改一处即 utf8 字节变 → Ed25519 验签失败",
       "signed": {
         "listJson": "{\"sequence\":6,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"minVersions\":{\"school-西电🔒\":\"2.0.0\"},\"killSwitch\":false,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"密钥泄露事件 🔒\\n受影响版本 1.0.0–1.5.0\\n引号\\\" 反斜杠\\\\ 制表\\t NFD é 星平面 𝕏😀\"},{\"adapterId\":\"school-xjt\",\"versionRange\":{\"minInclusive\":\"1.0.0\",\"maxInclusive\":\"1.5.0\"},\"reason\":\"版本区间吊销\"}]}",
-        "signature": "h7SWtnpVHlYxir7AFeVN1FBTQ3Gk0KmrXdxgh0N8innz7Nf/cu0wdmeMzhG/uGggBon5WKecusiycgXghS1DDg==",
+        "signature": "ZzZalFWCYu32wqfZbeLUwJQQVwpa2uwiM7f6LhTucHsEIgclz/1bjzIP5jFP+93OTUsymc9VCMxtWF6bvclJBQ==",
         "keyId": "golden-revocation-key",
         "algorithm": "ed25519"
       },
@@ -41,7 +41,7 @@
       "_why": "非该测试密钥签的 → 拒",
       "signed": {
         "listJson": "{\"sequence\":5,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"minVersions\":{\"school-西电🔒\":\"2.0.0\"},\"killSwitch\":false,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"密钥泄露事件 🔒\\n受影响版本 1.0.0–1.5.0\\n引号\\\" 反斜杠\\\\ 制表\\t NFD é 星平面 𝕏😀\"},{\"adapterId\":\"school-xjt\",\"versionRange\":{\"minInclusive\":\"1.0.0\",\"maxInclusive\":\"1.5.0\"},\"reason\":\"版本区间吊销\"}]}",
-        "signature": "h7SWtnpVHlYxir7AFeVN1FBTQ3Gk0KmrXdxgh0N8innz7Nf/cu0wdmeMzhG/uGggBon5WKecusiycgXghS1DDg==",
+        "signature": "ZzZalFWCYu32wqfZbeLUwJQQVwpa2uwiM7f6LhTucHsEIgclz/1bjzIP5jFP+93OTUsymc9VCMxtWF6bvclJBQ==",
         "keyId": "golden-revocation-key",
         "algorithm": "ed25519"
       },
@@ -56,7 +56,7 @@
       "_why": "算法降级：非 ed25519 一律拒",
       "signed": {
         "listJson": "{\"sequence\":5,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"minVersions\":{\"school-西电🔒\":\"2.0.0\"},\"killSwitch\":false,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reason\":\"密钥泄露事件 🔒\\n受影响版本 1.0.0–1.5.0\\n引号\\\" 反斜杠\\\\ 制表\\t NFD é 星平面 𝕏😀\"},{\"adapterId\":\"school-xjt\",\"versionRange\":{\"minInclusive\":\"1.0.0\",\"maxInclusive\":\"1.5.0\"},\"reason\":\"版本区间吊销\"}]}",
-        "signature": "h7SWtnpVHlYxir7AFeVN1FBTQ3Gk0KmrXdxgh0N8innz7Nf/cu0wdmeMzhG/uGggBon5WKecusiycgXghS1DDg==",
+        "signature": "ZzZalFWCYu32wqfZbeLUwJQQVwpa2uwiM7f6LhTucHsEIgclz/1bjzIP5jFP+93OTUsymc9VCMxtWF6bvclJBQ==",
         "keyId": "golden-revocation-key",
         "algorithm": "rsa"
       },

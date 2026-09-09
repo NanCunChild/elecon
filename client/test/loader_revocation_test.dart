@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:elecon/core/loader/revocation.dart';
 import 'package:elecon/core/loader/trust_anchors.dart';
+import 'package:elecon/core/loader/signature.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _testKeyId = 'test-revocation-key';
@@ -66,7 +67,9 @@ void main() {
   Future<SignedRevocationList> sign(String listJson,
       {String keyId = _testKeyId, String algorithm = 'ed25519'}) async {
     final sig = await Ed25519()
-        .sign(Uint8List.fromList(utf8.encode(listJson)), keyPair: keyPair);
+        // 域分隔（ADR-002 §2.3）：签 `elecon.revocation/1 ‖ 0x00 ‖ listJson 字节`。
+        .sign(withContext(kContextTagRevocation, utf8.encode(listJson)),
+            keyPair: keyPair);
     return SignedRevocationList(
       listJson: listJson,
       signature: base64.encode(sig.bytes),

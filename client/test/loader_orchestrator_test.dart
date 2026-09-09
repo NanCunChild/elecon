@@ -11,7 +11,6 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart' show Ed25519, KeyPair;
 import 'package:elecon/core/credential/blob_store.dart';
 import 'package:elecon/core/loader/bootstrap.dart';
-import 'package:elecon/core/loader/bundle.dart';
 import 'package:elecon/core/loader/bundle_cache.dart';
 import 'package:elecon/core/loader/catalog.dart';
 import 'package:elecon/core/loader/last_good_store.dart';
@@ -50,8 +49,10 @@ class _Signer {
     return _Signer(kp, _hex(pub.bytes));
   }
 
-  Future<String> signB64(String text) async {
-    final sig = await Ed25519().sign(utf8.encode(text), keyPair: keyPair);
+  /// 按域签名（ADR-002 §2.3 域分隔）：签的是 `contextTag ‖ 0x00 ‖ utf8(text)`。
+  Future<String> signB64(String text, String contextTag) async {
+    final sig = await Ed25519()
+        .sign(withContext(contextTag, utf8.encode(text)), keyPair: keyPair);
     return base64.encode(sig.bytes);
   }
 }
@@ -86,7 +87,7 @@ Future<SignedCatalog> _mkCatalog(
   });
   return SignedCatalog(
     catalogJson: json,
-    signature: await s.signB64(json),
+    signature: await s.signB64(json, kContextTagCatalog),
     keyId: 'test-cat-key',
     algorithm: 'ed25519',
   );
@@ -109,7 +110,7 @@ Future<SignedRevocationList> _mkRevocation(
   });
   return SignedRevocationList(
     listJson: json,
-    signature: await s.signB64(json),
+    signature: await s.signB64(json, kContextTagRevocation),
     keyId: 'test-rev-key',
     algorithm: 'ed25519',
   );
@@ -144,13 +145,7 @@ void main() {
   final expectedDigest = golden['expectedDigest'] as String;
   final bundlePubHex = golden['publicKeyRawHex'] as String;
   final packed = Uint8List.fromList(
-    base64.decode(golden['packedBundleBase64'] as String),
-  );
-  final bundleSig = SignatureFile.fromJson(
-    valid['signature'] as Map<String, dynamic>,
-  );
-  final bundleEnv = BundleEnvelope.fromJson(
-    valid['envelope'] as Map<String, dynamic>,
+    base64.decode(valid['packedBundleBase64'] as String),
   );
 
   late _Signer catSigner;
@@ -196,14 +191,11 @@ void main() {
               )
             : null,
       );
-  Future<VerifyResult<VerifiedBundle>> vBundle(
-    BundleEnvelope e,
-    SignatureFile sig,
-  ) => verifyBundleSignatureWith(
-    e,
-    sig,
-    (kid) => kid == sig.keyId
-        ? TrustAnchor(
+  Future<VerifyResult<VerifiedBundle>> vBundle(Uint8List packed) =>
+      openBundleWith(
+        packed,
+        (kid) => kid == 'golden-test-key'
+            ? TrustAnchor(
             keyId: kid,
             publicKeyHex: bundlePubHex,
             active: true,
@@ -252,7 +244,7 @@ void main() {
 
     test('缓存命中路径：bundle 源关掉仍 ok（每次重验）', () async {
       // 先预热缓存（写入已验签 bundle）。
-      final vb = (await vBundle(bundleEnv, bundleSig)).value!;
+      final vb = (await vBundle(packed)).value!;
       await cache.write(vb, packed);
       // 源无 bundle（fetchBundle=null），但 catalog/revocation 仍在。
       final src = _FakeSource(
@@ -360,7 +352,10 @@ void main() {
       );
       final r = await mkLoader(source: src).loadAdapter('school-golden');
       expect(r.ok, isFalse);
-      expect(r.reason, anyOf(contains('内容寻址'), contains('bundle 字节')));
+      // digest v2：内容寻址与 catalog 的锚定移到**验签之后**（`verified.digest == entry.digest`）。
+      // v1 时它在验签前的 `_unpackAndAddress` 里——那等于在信任裁定之外维护第二份解析实现，
+      // 两份实现一旦漂移就是解析差分漏洞。
+      expect(r.reason, contains('与 catalog entry.digest 不符'));
     });
 
     test('entry 指向另一 adapter 的合法 bundle（adapterId 不符）→ 拒（评审 #1）', () async {

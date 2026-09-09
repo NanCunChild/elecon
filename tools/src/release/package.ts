@@ -23,7 +23,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { buildEnvelope } from "../bundle/envelope.js";
-import { packBundle, unpackBundle, verifyBundleIntegrity } from "../bundle/package.js";
+import { inspectBundle, packBundle } from "../bundle/package.js";
 import { signEnvelope } from "../bundle/sign.js";
 import { signCatalog } from "../catalog/sign.js";
 import { type Catalog, checkCatalog, loadCatalogValidator, loadRegistryIds } from "../catalog/validate.js";
@@ -152,14 +152,16 @@ export async function buildRelease(options: ReleaseOptions, backend: SignBackend
         `${manifest.adapterId} 的 manifest.trustTier='${manifest.trustTier}' 与 release 的 official 意图冲突，禁止进入 release（fail-closed）`,
       );
     }
-    const envelope = buildEnvelope(dir);
-    const signature = await signEnvelope(envelope, "official", backend);
-    const packed = packBundle(envelope, signature);
-    const unpacked = unpackBundle(packed);
-    const integrity = verifyBundleIntegrity(unpacked.envelope, signature);
-    if (!integrity.ok) throw new Error(`${manifest.adapterId} bundle 内容寻址复核失败`);
-
-    const digest = integrity.value;
+    const built = buildEnvelope(dir);
+    const signature = await signEnvelope(built, "official", backend);
+    const packed = packBundle(built.bytes, signature, built.blobs);
+    // 签发侧**自验**（keyless，只跳过 Ed25519——签发侧拿不到公钥）：卫生闸门、blob 集合
+    // 精确相等、身份三方一致都在出厂前跑一遍，避免签出一份自己都装不上的产物。
+    const selfCheck = inspectBundle(packed);
+    if (!selfCheck.ok) {
+      throw new Error(`${manifest.adapterId} bundle 签发自验失败：${selfCheck.reason}`);
+    }
+    const digest = selfCheck.value;
     const bundlePath = join(bundlesDir, `${digest}.json.gz`);
     writeFileSync(bundlePath, packed);
     bundleDigests.push(digest);

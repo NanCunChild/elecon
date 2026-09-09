@@ -5,6 +5,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:elecon/core/loader/bundle.dart';
@@ -17,42 +18,46 @@ import 'package:elecon/core/loader/verify.dart';
 import 'package:elecon_contract/stdlib_version.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'utils/bundle_fixture.dart';
 import 'utils/test_utils.dart';
 
 Map<String, dynamic> _loaderGolden() =>
     readJson(repoPath('contract/golden/bundle/loader.json'));
 
-BundleEnvelope _envWithManifest(String manifestJson) => BundleEnvelope(
-  bundleFormat: kBundleFormat,
-  files: [
-    EnvelopeFile(
-      path: 'manifest.json',
-      encoding: 'utf-8',
-      content: manifestJson,
-    ),
-  ],
-);
+/// 造一份只含 `manifest.json` 的**已验签** bundle，取其 (envelope, blobs) 供 readEnvelopeStdlibMin 用。
+///
+/// digest v2 起 manifest 内容在 blob 表里（按内容寻址），故取值需要 envelope + blobs 两者——
+/// 这不是"多一个参数"的麻烦，而是"清单与内容分离"在类型上的体现。
+Future<({BundleEnvelope env, BlobTable blobs})> _withManifest(
+  String manifestJson,
+) async {
+  final f = await makeBundle(
+    {'manifest.json': manifestJson},
+    adapterId: 'school-x',
+    adapterVersion: '1.0.0',
+  );
+  final wire = readWire(f.packed);
+  return (env: parseEnvelope(wire.envelopeBytes).envelope, blobs: wire.blobs);
+}
 
 void main() {
   final golden = _loaderGolden();
   final validOfficial = (golden['cases'] as List)
       .cast<Map<String, dynamic>>()
       .firstWhere((c) => c['name'] == 'valid_official');
-  BundleEnvelope goldenEnv() => BundleEnvelope.fromJson(
-    validOfficial['envelope'] as Map<String, dynamic>,
-  );
 
-  // 用 golden 的**测试**公钥跑生产管线拿 VerifiedBundle（生产预埋集里当然没有它）。
+
+  // 用 golden 的**线上字节**跑生产管线拿 VerifiedBundle（注入 golden 的测试锚）。
   Future<VerifiedBundle> verifiedFromGolden() async {
-    final sig = SignatureFile.fromJson(
-      validOfficial['signature'] as Map<String, dynamic>,
+    final packed = Uint8List.fromList(
+      base64.decode(validOfficial['packedBundleBase64'] as String),
     );
-    final r = await verifyBundleSignatureWith(
-      goldenEnv(),
-      sig,
-      (keyId) => keyId == sig.keyId
+    final keyId = readWire(packed).signatureJson['keyId'] as String;
+    final r = await openBundleWith(
+      packed,
+      (id) => id == keyId
           ? TrustAnchor(
-              keyId: keyId,
+              keyId: id,
               publicKeyHex: golden['publicKeyRawHex'] as String,
               active: true,
               note: 'golden 测试锚（仅测试）',
@@ -64,31 +69,33 @@ void main() {
   }
 
   group('readEnvelopeStdlibMin — 权威取值', () {
-    test('golden manifest → 1.0.0', () {
-      expect(readEnvelopeStdlibMin(goldenEnv()), '1.0.0');
+    test('golden manifest → 1.0.0（取自已验签产物）', () async {
+      final v = await verifiedFromGolden();
+      expect(readEnvelopeStdlibMin(v.envelope, v.blobs), '1.0.0');
+      expect(v.stdlibMin, '1.0.0', reason: '验签时已捕获，两者须一致');
     });
-    test('runtime 空对象（无 stdlibMin）→ null（未声明下限）', () {
-      final env = _envWithManifest(
+    test('runtime 空对象（无 stdlibMin）→ null（未声明下限）', () async {
+      final b = await _withManifest(
         jsonEncode({
           'adapterId': 'school-x',
           'adapterVersion': '1.0.0',
           'runtime': <String, dynamic>{},
         }),
       );
-      expect(readEnvelopeStdlibMin(env), isNull);
+      expect(readEnvelopeStdlibMin(b.env, b.blobs), isNull);
     });
-    test('无 runtime 块 → 拒（fail-closed，对齐 manifest.schema，评审 #2）', () {
-      final env = _envWithManifest(
+    test('无 runtime 块 → 拒（fail-closed，对齐 manifest.schema，评审 #2）', () async {
+      final b = await _withManifest(
         jsonEncode({'adapterId': 'school-x', 'adapterVersion': '1.0.0'}),
       );
       expect(
-        () => readEnvelopeStdlibMin(env),
+        () => readEnvelopeStdlibMin(b.env, b.blobs),
         throwsA(isA<BundleFormatException>()),
       );
     });
-    test('runtime 非对象（数组/字符串）→ 拒（fail-closed，评审 #2）', () {
+    test('runtime 非对象（数组/字符串）→ 拒（fail-closed，评审 #2）', () async {
       for (final bad in <Object>[<dynamic>[], 'x', 42]) {
-        final env = _envWithManifest(
+        final b = await _withManifest(
           jsonEncode({
             'adapterId': 'school-x',
             'adapterVersion': '1.0.0',
@@ -96,14 +103,14 @@ void main() {
           }),
         );
         expect(
-          () => readEnvelopeStdlibMin(env),
+          () => readEnvelopeStdlibMin(b.env, b.blobs),
           throwsA(isA<BundleFormatException>()),
           reason: 'runtime=$bad 应 fail-closed',
         );
       }
     });
-    test('stdlibMin 非 x.y.z → BundleFormatException（fail-closed）', () {
-      final env = _envWithManifest(
+    test('stdlibMin 非 x.y.z → BundleFormatException（fail-closed）', () async {
+      final b = await _withManifest(
         jsonEncode({
           'adapterId': 'school-x',
           'adapterVersion': '1.0.0',
@@ -111,7 +118,7 @@ void main() {
         }),
       );
       expect(
-        () => readEnvelopeStdlibMin(env),
+        () => readEnvelopeStdlibMin(b.env, b.blobs),
         throwsA(isA<BundleFormatException>()),
       );
     });
@@ -159,7 +166,9 @@ void main() {
       'killSwitch': false,
       'entries': <Map<String, dynamic>>[],
     });
-    final sig = await Ed25519().sign(utf8.encode(json), keyPair: kp);
+    // 域分隔（ADR-002 §2.3）：签 `elecon.revocation/1 ‖ 0x00 ‖ listJson 字节`。
+    final sig = await Ed25519()
+        .sign(withContext(kContextTagRevocation, utf8.encode(json)), keyPair: kp);
     final signed = SignedRevocationList(
       listJson: json,
       signature: base64.encode(sig.bytes),
@@ -207,45 +216,17 @@ void main() {
 
   group('stdlibGate — 未声明下限的 bundle（在测试内自签）', () {
     test('stdlibMin == null → 恒放行（连过旧本端也放）', () async {
-      final kp = await Ed25519().newKeyPair();
-      final pubHex = _hex((await kp.extractPublicKey()).bytes);
-      final manifestJson = jsonEncode({
-        'adapterId': 'school-nomin',
-        'adapterVersion': '1.0.0',
-        'runtime': <String, dynamic>{}, // 不声明 stdlibMin
-      });
-      final env = _envWithManifest(manifestJson);
-      final digest = envelopeDigest(env);
-      final payload = serializeSignaturePayload(
-        adapterId: 'school-nomin',
-        adapterVersion: '1.0.0',
-        tier: kTierOfficial,
-        digest: digest,
-      );
-      final sig = await Ed25519().sign(payload, keyPair: kp);
-      final r = await verifyBundleSignatureWith(
-        env,
-        SignatureFile(
+      // 整段自签从二十行收到两行——正是 `utils/bundle_fixture.dart` 存在的理由：
+      // 每份手拼的 envelope 都是一份可能与生产编码漂移的影子实现。
+      final f = await makeBundle({
+        'manifest.json': manifestJson(
           adapterId: 'school-nomin',
-          adapterVersion: '1.0.0',
-          tier: kTierOfficial,
-          digest: digest,
-          signature: base64.encode(sig.bytes),
-          keyId: 'test-bundle-key',
-          algorithm: 'ed25519',
+          stdlibMin: null, // 不声明下限
         ),
-        (keyId) => keyId == 'test-bundle-key'
-            ? TrustAnchor(
-                keyId: keyId,
-                publicKeyHex: pubHex,
-                active: true,
-                note: '测试锚',
-              )
-            : null,
-      );
-      expect(r.ok, isTrue, reason: r.reason);
-      expect(r.value!.stdlibMin, isNull);
-      expect(stdlibGate(r.value!, hostStdlib: '0.0.1').allowed, isTrue);
+      });
+      final v = await verifyFixture(f);
+      expect(v.stdlibMin, isNull);
+      expect(stdlibGate(v, hostStdlib: '0.0.1').allowed, isTrue);
     });
   });
 }

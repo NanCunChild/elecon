@@ -16,6 +16,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:elecon/core/loader/catalog.dart';
 import 'package:elecon/core/loader/trust_anchors.dart';
 import 'package:elecon_contract/capability_registry.dart' show kCapabilityIds;
+import 'package:elecon/core/loader/signature.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'utils/test_utils.dart';
@@ -79,7 +80,9 @@ void main() {
     String algorithm = 'ed25519',
   }) async {
     final sig = await Ed25519()
-        .sign(Uint8List.fromList(utf8.encode(catalogJson)), keyPair: keyPair);
+        // 域分隔（ADR-002 §2.3）：签 `elecon.catalog/1 ‖ 0x00 ‖ catalogJson 字节`。
+        .sign(withContext(kContextTagCatalog, utf8.encode(catalogJson)),
+            keyPair: keyPair);
     return SignedCatalog(
       catalogJson: catalogJson,
       signature: base64.encode(sig.bytes),

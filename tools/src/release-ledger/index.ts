@@ -7,8 +7,8 @@ import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
-import { envelopeDigest, fileBytes, readEnvelopeManifest } from "../bundle/envelope.js";
-import { unpackBundle, verifyBundleSignature } from "../bundle/package.js";
+import { fileBytesByPath } from "../bundle/envelope.js";
+import { openBundle } from "../bundle/package.js";
 import { type SignedCatalog, verifyCatalog } from "../catalog/sign.js";
 import { type SignedRevocationList, verifyRevocation } from "../signer/revocation.js";
 
@@ -231,26 +231,27 @@ export function extractLedger(options: ExtractOptions): ReleaseLedger {
 
   const records = catalog.entries.map((entry): ReleaseLedgerRecord => {
     const bundlePath = resolve(dist, "bundles", `${entry.digest}.json.gz`);
-    const bundle = unpackBundle(readFileSync(bundlePath));
-    if (!bundle.signature) throw new Error(`${entry.adapterId} bundle has no signature metadata`);
-    const identity = readEnvelopeManifest(bundle.envelope);
-    const digest = envelopeDigest(bundle.envelope);
+    const bundle = readFileSync(bundlePath); // 原始 .json.gz 字节；解析全在 openBundle 内（验签先于解析）
+    // digest v2：openBundle 走完 §2.9.1 的 1–11 步（含 Ed25519 验签、卫生闸门、blob 集合
+    // 精确相等、身份三方一致）。台账只记录**验签通过**的产物——这是它作为审计源的前提。
+    const opened = openBundle(bundle, publicKey);
+    if (!opened.ok) {
+      throw new Error(`${entry.adapterId} bundle verification failed: ${opened.reason}`);
+    }
+    const { envelope, blobs, signature: bundleSignature } = opened.value;
+    const digest = bundleSignature.digest;
     if (
       digest !== entry.digest ||
-      bundle.signature.digest !== entry.digest ||
-      identity.adapterId !== entry.adapterId ||
-      identity.adapterVersion !== entry.adapterVersion
+      envelope.adapterId !== entry.adapterId ||
+      envelope.adapterVersion !== entry.adapterVersion
     ) {
       throw new Error(`${entry.adapterId} catalog, bundle identity, or digest differ`);
     }
-    if (bundle.signature.keyId !== catalogOuter.keyId) {
+    if (bundleSignature.keyId !== catalogOuter.keyId) {
       throw new Error(`${entry.adapterId} bundle keyId differs from catalog keyId`);
     }
-    const verifiedBundle = verifyBundleSignature(bundle.envelope, bundle.signature, publicKey);
-    if (!verifiedBundle.ok) {
-      throw new Error(`${entry.adapterId} bundle verification failed: ${verifiedBundle.reason}`);
-    }
-    const policyFile = bundle.envelope.files.find((file) => file.path === "masker.json");
+    const identity = { adapterId: envelope.adapterId, adapterVersion: envelope.adapterVersion };
+    const policyBytes = fileBytesByPath(envelope, blobs, "masker.json");
     const missingFacts = missingFactNames.filter((fact) => options[fact] === undefined);
     return {
       status: missingFacts.length === 0 ? "complete" : "incomplete",
@@ -258,8 +259,8 @@ export function extractLedger(options: ExtractOptions): ReleaseLedger {
       adapterVersion: identity.adapterVersion,
       sourceCommit: options.sourceCommit ?? null,
       bundleDigest: digest,
-      policy: policyFile
-        ? { included: true, digest: createHash("sha256").update(fileBytes(policyFile)).digest("hex") }
+      policy: policyBytes
+        ? { included: true, digest: createHash("sha256").update(policyBytes).digest("hex") }
         : { included: false, digest: null },
       catalogSequence: catalog.sequence,
       revocationSequence: revocation.sequence,

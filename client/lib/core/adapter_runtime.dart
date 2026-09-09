@@ -42,10 +42,11 @@ import 'broker/ports.dart' show CredentialResolver;
 import 'credential/types.dart' show CredentialEntry;
 import 'loader/bundle.dart'
     show
+        BlobTable,
         BundleEnvelope,
         BundleFormatException,
-        EnvelopeFile,
         envelopeDigest,
+        fileBytesByPath,
         readEnvelopeManifestJson;
 import 'loader/loader.dart' show LoadResult;
 import 'declarative_host.dart'
