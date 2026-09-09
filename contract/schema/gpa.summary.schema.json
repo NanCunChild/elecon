@@ -2,14 +2,47 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "elecon.gpa.summary",
   "title": "绩点汇总",
+  "description": "学校侧给出的绩点汇总。这是**学校的官方数字**（成绩单上那个），由 adapter 从学校来源读取、不由任何一侧重算——重修取最高/取最后、学位课加权、体育与公选是否计入等规则是校本的且常无公开文档，学校之外算不出同一个数。与本体基于 grades.list 的交互式聚合是两个数，优先级见 ADR-001 §3.5。",
   "type": "object",
   "properties": {
-    "gpa": { "type": "number" },
-    "earnedCredits": { "type": "number", "minimum": 0 },
-    "attemptedCredits": { "type": "number", "minimum": 0 },
-    "rank": { "type": "integer", "minimum": 1 },
-    "rankTotal": { "type": "integer", "minimum": 1 },
-    "window": { "type": "string" },
-    "updatedAt": { "type": "string", "format": "date-time", "description": "汇总数据更新时间，RFC3339/UTC；缺失表示来源未提供。" }
+    "gpa": {
+      "type": "number",
+      "description": "学校官方绩点。其量纲由 gradePointScale 界定；缺失表示来源未提供。"
+    },
+    "gradePointScale": {
+      "type": "string",
+      "enum": ["4.0", "4.3", "4.5", "5.0", "other", "unknown"],
+      "description": "gpa 所用的校本绩点尺度（满分档），取值与 elecon.grades.list 的同名字段一致。缺失/unknown/other 时本体不得把该数当作绩点展示（无量纲的绩点无法判读，ADR-001 §3.5）。注意本字段只界定量纲，**不保证同制式的数可跨校比较**——换算表本身是校本的。",
+      "$comment": "与 elecon.grades.list.gradePointScale 同枚举；ADR-021 引入 $defs 后应合并为共享定义。"
+    },
+    "earnedCredits": {
+      "type": "number",
+      "minimum": 0,
+      "description": "已获得学分（通过课程的学分和）；缺失表示来源未提供。"
+    },
+    "attemptedCredits": {
+      "type": "number",
+      "minimum": 0,
+      "description": "已修读学分（含未通过）；缺失表示来源未提供。"
+    },
+    "rank": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "学校给出的排名，从 1 起；缺失表示来源未提供或学校不公布。"
+    },
+    "rankTotal": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "排名的总人数基数；缺失表示来源未提供。与 rank 配对解读，单独出现无意义。"
+    },
+    "window": {
+      "type": "string",
+      "description": "本汇总覆盖的范围，由来源定义（如某学期标识、\"全部\"、\"主修\"）；缺失表示来源未限定范围。本体不解析其语义，原样展示。"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "汇总数据更新时间，RFC3339/UTC；缺失表示来源未提供。"
+    }
   }
 }

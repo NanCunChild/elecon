@@ -1,7 +1,10 @@
 # ADR-002：插件信任模型（签名 / 吊销 / dev 侧载闸门）与能力分档（official / sideload）
 
 - **状态**：已接受（Accepted） 2026-06-13 经人工安全检查清单全项确认后接受。实现仍须按 AGENTS.md §1 人工主导（红线 #1/#4/#5 承重路径）。
-- **日期**：2026-06-11（**修订 2026-06-12**：补 §2.3 签名时档位来源与签名权、公钥轮换搭发版、§2.4 吊销 bootstrap、§2.1 community 取舍——回应人工复核 1–4）（**修订 2026-06-13**：**砍掉 community 档**（社区走 sideload、官方均 official）、§2.3 签名密钥改 **OIDC→AWS KMS 委托签名** + **多公钥预埋分批启用**、§2.5 release 编译期剔除侧载、§2.6 `ctx.fetch` 改"存在但档位校验"——落 #10 评审决策）（**修订 2026-06-13b**：§2.3 **钉死规范化规格**（字典序/LF/UTF-8 NFC/无 trailing newline 篡改）、KMS 硬 deadline = 首次 release 前、dormant 公钥晋升**纯发版**不做热推启用声明）（**修订 2026-06-14**（人工 owner 决策）：① §2.5 **dev/debug build 允许无签名 adapter 跑 fetch**——release 仍 official 独占 fetch，dev 用强警告 + 全占用确认兜底，侧载-fetch 路径编译期从 release 剔除（同步红线 #5 的 dev 例外）；② **community 档从 manifest schema 彻底移除**（不再保留枚举位），契约同步改 `contract/manifest.schema.json` + ADR-001 §5）（**修订 2026-07-15**（**经人工 owner 评审批准**，随 [`adr_018`](./adr_018_adapter_distribution.md) 一并接受）：**§2.3 签名密钥托管由「OIDC→AWS KMS 委托签名」改为「离线硬件密钥（YubiKey）本地签名」**——理由：AWS 连通性/成本对本项目体量不划算，且离线硬件签把私钥彻底移出任何服务器/CI，比 KMS 更贴合 §2.3「私钥永不落盒子 + 签 official=显式人工批准」的意图。签名机制细节与分发/审计管线随 [`adr_018`](./adr_018_adapter_distribution.md) 定；本 ADR 仅同步 §2.3/§3/§4 的对应描述。**验签侧（Ed25519 + 预埋 pin 公钥、fail-closed）与多公钥预埋/晋升机制完全不变。**）（**修订 2026-07-16**（**经人工 owner 评审批准**，真机接线后回填）：① **§2.3 硬件签名由「尚未接线」改为「已接线并经真机核验」**——`YubiKeyPkcs11Signer`（PIV/PKCS#11 `CKM_EDDSA`）出签自检通过，首把 official 密钥 `elecon-official-ncc-1` 已片上生成（YubiKey 5C NFC / 固件 5.7.4 / 槽位 9c / PIN+触碰 ALWAYS），§2.3 硬 deadline 达成；② **§2.3 新增「不使用 X.509 证书」决策**——实测 libykcs11 走 PIV metadata 枚举、无证书亦可出签，故信任锚只有裸 32B Ed25519 公钥，🔒 加载器不碰 X.509（红线 #4 加载器最小化）；③ **§2.3 新增触碰策略静默失效警告**——`touch-policy` 生成时固化、漏设不报错只静默降级，ceremony 须复核；④ **§3 风险 2 补残余风险 (d) 令牌兼作日常随身 GPG、(e)「所见非所签」**；⑤ **§4 声明新依赖 `pkcs11js`（MIT，`optionalDependencies`，仅离线签名机）**（红线 #9）。**验签侧、pin 公钥体系、多公钥预埋/晋升机制仍完全不变。**）（**修订 2026-09-08**（owner 决策，消歧，🔒 待人工签收）：新增 **§2.1.1「Sideload 的能力面 = 任意 adapter」**——把此前散在 §2.1 表格 / §2.5 / §2.6 三处、且被「C3 待退役」限定语淹没的结论钉成显式不变量：**requestGraph 的声明性不是信任维度**，sideload 内部不按 declarative/imperative 分级；唯一信任维度是「是否通过 official 验签」。§2.1 表格与 §2.6 静态闸门行同步改写，`C3_sideload_must_declarative` 明确降格为**与决策相悖的遗留断言**。**不放松任何 DEPLOY 约束**：红线 #1/#5 不变，C3 的实际移除仍由 ADR-033 §5 同批编排。）
+- **日期**：2026-06-11（历次修订 2026-06-12 · 06-13 · 06-13b · 06-14 · 07-15 · 07-16 · 09-08 · 09-09）
+- **签收**：**§2.3 digest v2 规格于 2026-09-09 由 owner NanCunChild 正式签收**（已接受并完成审阅）。签收范围为规格；实现触红线 #4，落地后仍须单独人工复核。
+- **修订流水**：各次修订的动机、取舍与**人工批准记录**已迁至 [`docs/archive/adr_002_revision_log.md`](../archive/adr_002_revision_log.md)；本文正文只承载**当前生效的决策**。
+- **状态源约定**：本文只承载决策；**落地与安全签收**的待办态一律只存在于 [`README.md`](./README.md) 索引表与 [`2026_08_review_remediation.md`](../planning/2026_08_review_remediation.md)，正文不重复记录（同 ADR-001 约定）。
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§2.2 可信核心、§3.3 凭证边界、§3.4 传输底座）、[`adr_001_contract.md`](./adr_001_contract.md)（§5.2 信任档字段；community 策略原留给本文细化——本文**决定砍掉**，见 §2.1）
 - **被依赖**：[`adr_009`](./adr_009_fetch_credential.md)（imperative requestGraph 凭证注入，trust tier 由本文裁定）、[`adr_003`](./adr_003_transport.md)（传输底座抽象，仅官方签名可加载）、[`adr_018`](./adr_018_adapter_distribution.md)（adapter 分离/审计/打包/分发 + 解释器版本同步——落地本文 §2.3 的签名管线与 §2.4 的清单分发）；并为 [`adr_010`](./adr_010_ios_appstore.md) 的 App Store 合规论点 (b)「非代码市场」提供支撑（无侧载入口 + 仅签名分发）。
 - **适用范围**：adapter（QuickJS 脚本）与传输底座（原生模块）的**信任建立、能力分档、分发与吊销**。**不含** 凭证注入的具体脱敏机制（另文）、UI 信任（不在此）。
@@ -21,7 +24,7 @@ ADR-000 §2.2 把"签名校验、吊销、dev 侧载闸门"定为可信核心的
 
 ---
 
-## 2. 决策（Decision，草案）
+## 2. 决策（Decision）
 
 > 以下为**待审议**取向，非既定事实。每条都需安全审阅确认。
 
@@ -84,13 +87,15 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 
 ### 2.3 签名机制
 
-- **签什么**：adapter bundle 的 **digest v2** = `SHA-256(envelope 序列化字节)`（envelope 定义见 [`adr_018`](./adr_018_adapter_distribution.md) §2.9）+ **裁定档位**（§2.2），detached 签名。传输底座二进制同理。
+> **作用域声明（ADR-000 §2.3.1）**：**本节所称 envelope / 信封，一律指「bundle 信封」**——adapter 包的清单 + 签名对象（[`adr_018`](./adr_018_adapter_distribution.md) §2.9.1）。与运行期的 **数据信封**（`elecon.envelope`，[`adr_001`](./adr_001_contract.md) §3.3）、与 [`adr_012`](./adr_012_credential_store.md) §2.8 的 **信封加密** 无关，只是撞名。承载它上线的三字段外层对象称 **传输封套**，不叫信封。
+
+- **签什么**：adapter bundle 的 **digest v2** = `SHA-256(bundle 信封序列化字节)`（定义见 [`adr_018`](./adr_018_adapter_distribution.md) §2.9.1）+ **裁定档位**（§2.2），detached 签名。传输底座二进制同理。
 - **方案**：**Ed25519**（RFC 8032）签名 over bundle 内容摘要。注意 **Ed25519 内建哈希固定为 SHA-512、不可参数化**——所以"Ed25519 over SHA-256"是范畴错误；这里的 **SHA-256 仅指 bundle 内容摘要**（签什么），与 Ed25519 内部的 SHA-512（怎么签）是两处独立的哈希。
 - **digest v2：envelope 降为「清单」，签其序列化字节（2026-09-01 修订，取代原「双层 SHA-256 拼接」）。**
 
-  **被取代的规格**：原 digest = `SHA-256( SHA-256(file1) ‖ SHA-256(file2) ‖ … )`，文件按相对路径字典序排列。其中**路径只参与排序、自身从不进哈希**，`encoding`、文件个数与 `bundleFormat` 亦然。于是任何**保持字典序位次的重命名**都不改变 digest——而加载器恰恰是**按路径**取要执行的字节（`manifest.runtime.entry`，以及 [`adr_026`](./adr_026_response_masker.md) 的 `masker.json`）。二者合起来使一份合法的 official 签名可以背书「受审时叫 `assets/theme.css`、改名后叫 `index.js`」的内容被执行：人工审查看到的是无害目录，**检出率为零**，身份核对（§2.2）与 stdlibMin 门全部照常通过。这直接击穿红线 #4。可执行证据：`tools/src/bundle/path-binding.redcase.ts` A 组（两侧 digest 逐字节相同）。
+  **为什么改**：v1 的 digest 只哈希「按路径排序后的内容」，**路径自身从不进哈希**，而加载器按路径取要执行的字节 → **保序重命名**可让 official 签名背书「受审时叫 `assets/theme.css`、改名后叫 `index.js`」的内容被执行，检出率为零，直接击穿红线 #4。病根是 envelope 同时当**容器**和**清单**，唯一没被签的字段恰是 `path`。v2 把容器拆出去，**envelope 只做「清单 + 签名对象」**：
 
-  **职责分离（本次修订的核心）**：旧 envelope 一个人干了三件事——**容器**（装文件字节）、**清单**（声明有哪些文件）、**签名对象**。病根是「清单」被「容器」吞掉，唯一没被签的字段恰是 `path`。新规格把容器拆出去，**envelope 只做「清单 + 签名对象」**：
+  > v1 规格全文、攻击复现、以及四种被否方案（四元组叶子编码 / Merkle / 签压缩包字节 / 内联 base64）的论证，见 [`归档：digest v1 与决策过程`](../archive/bundle_digest_v1_superseded.md)。可执行证据：`tools/src/bundle/path-binding.redcase.ts` A 组。
 
   ```jsonc
   // envelope —— 签名对象。小、可读、可人眼审完
@@ -110,26 +115,33 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 
   文件字节改由**按内容哈希寻址**的 blob 表承载（见 [`adr_018`](./adr_018_adapter_distribution.md) §2.9.1 的上线形态）——**不按路径寻址**，故仍是纯 JSON、🔒 加载器零自研归档解析（当初弃 tar 的理由完好）。
 
-  **为何是 descriptor 而不是把内容内联进签名对象**：
+  **descriptor 形态换来的三件事**（论证见归档 §2.4）：① **编码离开信任边界**——内容按 `sha256` 内容寻址，两端 base64 解码器的宽严差异从**信任问题**降级为**传输问题**；② **签名对象小到人可审完**——这使 §3 风险 (e)「所见非所签」的唯一防线（离线机重算 digest 比对）从名义存在变为可执行，**这是本次修订最实在的收益**；③ 台账可记录 envelope 全文，P0-15 对账落到逐文件粒度。
 
-  1. **编码离开信任边界（安全论据，非整洁论据）。** 内联方案里 base64 文本**就是被签的字节**，两端各自解码它；而两端解码器行为实测不同——`Qh==`（尾位非零）、`QQ`/`QQ=`（填充错）、含空白的 base64，Node `Buffer.from` 全部宽松接受并产出字节，Dart `base64.decode` 全部抛。一份签名合法的 envelope 会在 Node 侧（validator / 审查沙箱 / 台账提取）被接受并审阅，在 Dart 客户端被拒。方向是 fail-closed 而非提权，但足以签出「某些端装不上」的产物，并迫使契约额外规定「必须规范 base64」。descriptor 方案下内容是**内容寻址**的：解码器无论宽严，产出字节都必须命中 `sha256`，对不上即拒——编码差异从**信任问题**降级为**传输问题**。
-  2. **签名对象变成人可审的小对象。** §3 风险 (e)「所见非所签」的**唯一防线**是维护者在离线签名机上重算 digest 并与审查沙箱产物比对。内联方案下待签对象是几百 KB 夹满 base64 的 JSON，那条防线名义存在、实际无法执行；descriptor 方案下它是上面那十行，签名者可以逐行读完再按触碰。**这是本次修订最实在的收益。**
-  3. **台账可记录 envelope 全文**，P0-15 的 `sourceCommit ↔ bundleDigest` 对账因此落到逐文件粒度。
-
-  取「清单 + 内容寻址」而非 Merkle 树，是因为 elecon 只整包取用、按 digest 整包缓存、单包 ≤ 256 KiB，不需要部分取用 / 增量更新；Merkle 要在 TS 与 Dart 各写一份叶子编码器并靠 golden 维持一致。
-
-  **身份三方一致（§2.2 的加强）**：envelope 顶层新增 `adapterId/adapterVersion`，核对从两方改为**三方**——`签名载荷` ↔ `envelope 顶层` ↔ `manifest.json 内容`，任一不符即 fail-closed。代价是一处冗余，换来「人眼审的那个对象自述它是哪个 adapter」——否则收益 2 被削掉一半。manifest.json 仍是运行时策略（`network.allow` / `credentials` / `runtime.entry`）的唯一权威源，envelope 顶层身份**只用于核对，不用于裁定**。
+  **身份三方一致（§2.2 的加强）**：envelope 顶层新增 `adapterId/adapterVersion`，核对从两方改为**三方**——`签名载荷` ↔ `envelope 顶层` ↔ `manifest.json 内容`，任一不符即 fail-closed。`manifest.json` 仍是运行时策略（`network.allow` / `credentials` / `runtime.entry`）的唯一权威源，envelope 顶层身份**只用于核对，不用于裁定**。
 
   **不可分割的配套纪律**（缺一条即退化；实现细则与验证顺序见 [`adr_018`](./adr_018_adapter_distribution.md) §2.9.1）：
 
   1. **签名对象以不透明字节上线。** on-wire 携带 envelope 的 base64 串，验端哈希**收到的那一串**。任何路径下都不得「解析成对象 → 重新序列化 → 再哈希」——那等于把 canonical JSON 的全部漂移面（键序、Unicode 转义、数字格式、重复键）请回来。这与 JWS 签 `BASE64URL(payload)` 而非签 JSON 对象是同一条理由。
-  2. **验签先于解析。** 有界 gunzip → 取 envelope 字节 → 验签 → **才** `JSON.parse`。验签前允许解析的只有那个三字段的外层信封。
+  2. **验签先于解析。** 有界 gunzip → 取 envelope 字节 → 验签 → **才** `JSON.parse`。验签前允许解析的只有那个三字段的**传输封套**（ADR-018 §2.9.1）。
   3. **卫生闸门在验签之后。** 签名只证明「发布者确实想要这些路径」，**不**证明这些路径安全；哈希再多字节也不会让 `../../` 变安全。重复路径、绝对路径（含 Windows 盘符）、`.`/`..` 段、反斜杠、空路径、尾随分隔符、NUL、非 NFC 路径一律 fail-closed。**重复路径不是纯纵深防御**：Dart `List.sort` 不保证稳定而 TS `Array.sort` 保证，同名条目会造成跨语言分歧（§3 风险 5）。
   4. **blob 集合精确相等。** descriptor 的 `sha256` 集合与 blob 表的键集合必须**一一对应**：多一个 = 夹带通道，少一个 = 拒。每个 blob 解码后长度须**精确等于** `size`（先用 `size` 界定再解码，防 endless-data，同 TUF 携带 length 的理由），且哈希须命中 descriptor。**这是本方案唯一新增的、可以搞砸的地方**，必须双端 golden 钉死四个负例：多余 blob / 缺失 blob / 哈希不符 / 重复 path。
   5. **全量文件承诺。** 签发时若 adapter 目录内存在未进 envelope 的文件（`BUNDLE_INCLUDE` 扩展名白名单之外者），**拒签**——取代原先的静默剔除。否则 digest 只承诺「这些文件」，不承诺「只有这些文件」，目录侧路径（DEV-Sideload、[`adr_033`](./adr_033_production_sideload.md) 本地导入）即存在夹带面。
   6. **`bundleFormat` 严格相等。** 已由 `client/lib/core/loader/verify.dart` 落实；TS 侧 `verifyBundleSignature` 缺同一检查，须补齐（两端对称）。
 
-- **签名域分隔：同一把密钥下的三个签名协议必须显式隔离（2026-09-01 新增）。** 当前 official 密钥同时签三类对象——bundle 载荷、catalog 原始字节、revocation 原始字节——而三者**没有任何显式域分隔**，只靠「JSON 形状恰好互不满足对方 schema」偶然隔开（`serializePayload` 的输出缺 `catalogVersion/sequence`，故过不了 catalog 校验，反之亦然）。这是**偶然的隔离，不是设计出来的**；第四个签名对象出现时（传输底座二进制、policy pack、bootstrap 清单）随时可能撞上。故统一规定：
+- **不为性能放宽任何验签步骤（2026-09-09 owner 决策，实测支撑）。** 「每次加载都重新验签」（ADR-018 §2.6）是否有性能代价可换——**实测结论是没有可换的东西**。用 5 份真实 official bootstrap bundle 走真实代码路径（`unpackBundle` → `envelopeDigest` → `verifyBundleSignature`），200 次均值（桌面 x86）：
+
+  | bundle | gz | unpack | **digest** | verify（含内部 digest） | 单次合计 |
+  |---|---|---|---|---|---|
+  | 最大 `56056b26` | 6791 B | 398 µs | **226 µs** | 2555 µs | **≈3.2 ms** |
+  | 最小 `8a6ab755` | 758 B | 37 µs | **15 µs** | 1853 µs | ≈1.9 ms |
+
+  - **可放宽的不值钱**：哈希重算在最大的真实 bundle 上是 **226 µs，占单次加载 7%**；全部放掉换来的是丢失内容寻址保证。
+  - **值钱的不能放宽**：成本主体是 **Ed25519 验签 ≈1.8 ms，且与体积无关**（758 B 的包也要 1.85 ms）——而它正是红线 #4 的执行点（official 独占、档位裁定、公钥 pin）。
+  - **digest 在缓存命中路径上算两次**（`bundle_cache.read` 一次、`verify.dart` 步 3 一次）是**故意的纵深防御**，成本 226 µs，**保留**。
+  - digest v2 落地后此项再降一个数量级（改为哈希 ~1 KB 的清单，不再是全部文件字节）。
+  - 若将来真成瓶颈，正确动作是换平台加速 Ed25519（现为纯 Dart `cryptography` 2.9.0），**不是放宽验证**；但那要在验签路径引入新原生依赖（红线 #9 + 🔒 审查），为 ~2 ms 不划算。**当前此线无待办。**
+
+- **签名域分隔：同一把密钥下的多个签名协议必须显式隔离（2026-09-01 新增）。** official 密钥同时签 bundle 载荷 / catalog / revocation 三类对象，v2 之前三者只靠「JSON 形状恰好互不满足对方 schema」**偶然隔开**（现状记录见归档 §4），第四个签名对象出现时随时可能撞上。故统一规定：
 
   ```
   签名输入 = contextTag ‖ 0x00 ‖ 被签字节
@@ -146,7 +158,7 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
   4. **无 trailing newline 增删**：以磁盘字节为准。
   5. **二进制资产（图片等）**：不做文本规范化，按字节以 `encoding: "base64"` 入 envelope。
 
-  **为何改判**：原先「签规范化后的字节」使多份不同的磁盘文件映射到同一 digest，签名因此**不唯一标识磁盘上的真实字节**，也迫使 🔒 Dart 加载器必须论证自己为何不做 NFC。改为「拒绝而非改写」后，签名与磁盘字节一一对应，Dart 侧不引入任何 Unicode 规范化实现。
+  **为何改判**：改为「拒绝而非改写」后签名与磁盘字节一一对应，Dart 加载器不引入任何 Unicode 规范化实现（详见归档 §3.1）。
 
 - **可复现性的负担下降（本次修订的附带收益）**：原规格要求 TS 与 Dart **两套实现**共同维持同一哈希算法不变量（排序、拼接、编码解码）；新规格只要求**签端一处**产出确定性字节（显式序列化器：固定键序、无多余空白，由 golden 钉死），验端只做「哈希收到的串」。[`adr_018`](./adr_018_adapter_distribution.md) §3 风险 (e)「所见非所签」的唯一防线——离线签名机上重算 digest 与审查沙箱产物比对——完好保留，且更易做对。
 
@@ -206,19 +218,22 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 
 ---
 
-## 3. 已知约束与风险（Consequences，草案）
+## 3. 已知约束与风险（Consequences）
 
 1. **最高敏感路径（红线 #1/#4）。** 实现与测试**不得 AI 独自闭环**；需安全检查清单 + 人工审阅（git.md §3、testing.md）。
 2. **密钥管理是单点，已多重缓解。** 私钥泄露 = 信任根失守。缓解：① 私钥托管 **离线硬件 token（YubiKey）、永不导出、PIN+触碰本地签名**（§2.3，2026-07-15 修订）——失陷面从"偷走密钥"降为"物理窃取 token 且破 PIN"，且签名不在任何网络/CI 上、无远程出签面；② **多公钥预埋 + 分批启用**（§2.3）应对丢失（晋升备用）与泄漏（吊销收窄）——每把 YubiKey 各持独立密钥、全部公钥预埋，丢一把即晋升 dormant；③ kill-switch（§2.4）。残余风险：(a) 放大信任方向（晋升 dormant 公钥）**一律随发版**（不做热推启用声明），恢复速度受应用商店审核节奏制约；(b) 无云端逐次签名审计，改用 git 台账（§2.3）+ 人工纪律；(c) 单人持 token 是发布瓶颈/SPOF——用 ≥2 把 token（各自密钥、均预埋）+ 物理异地备份缓解；**(d) 首把 official 令牌 `elecon-official-ncc-1` 兼作维护者日常 GPG 签名令牌、日常随身携带**（2026-07-16 owner 决策），物理失窃暴露面高于专用离线令牌——缓解：窃得令牌者仍须破 PIN（3 次重试即锁）且**每签必须物理触碰**（`touch-policy=ALWAYS`），失陷后走吊销 + 晋升 dormant。**若日后引入专用离线令牌，应优先将其设为 active、把本把降为 dormant**；**(e)「所见非所签」**——§2.3 的「离线」指**不在任何自动化 / 云上**，签名本就发生在维护者**本地机**（非气隙），故被攻陷的本机可在触碰的瞬间替换待签载荷。`touch-policy=ALWAYS` 只保证「每一签都有人在场」，**不保证「签的是你以为的那个东西」**。这是本方案的**结构性残余风险**（KMS 方案同样有，只是换成"被攻陷的 CI 提交错载荷"）。缓解只能靠 ceremony 纪律：签前在**即将触碰的这台机器上**重算 digest 并与 CI 产出的 unsigned bundle 比对（§4 工作流），不可只看 CI 的输出。急性事件靠 kill-switch + 吊销兜。后续若需更快恢复可另起 ADR。
 3. **community 档已砍（§2.1）。** 信任模型简化为 **official + sideload** 两档，维护者不再为"可分发性"背书，去掉了审查瓶颈。代价：社区贡献者要么自行 debug 侧载、要么经审查被收编为 official，**没有"已签名可分发但仍由社区维护"的中间态**。`community` 枚举值已于 2026-06-14 修订**从 `contract/manifest.schema.json` 与 ADR-001 §5 移除**（契约改动，红线 #6；向后兼容性见 §2.1——此前无生效验证路径，移除不放松约束）。`tools/scanner` 的 PII/危险 API 静态筛查仍对"收编 official 前的审查"有用，保留。
 4. **离线/陈旧吊销的可用性权衡。** fail-closed 与"拉不到清单时仍可用上次良好状态"之间的策略已在 §2.4 定调（last-good 回退 + bundle 预置初始清单解全新安装的两难），避免吊销机制本身成为 DoS 面。残余权衡：预置清单的新鲜度受发版节奏限制，急性吊销仍依赖联网拉取 + kill-switch。
-5. **签名规范化（canonicalization）已钉死规格（§2.3），残余风险在跨平台实现一致性。** 规则已固定（字典序/LF/UTF-8 NFC/二进制资产不变/Merkle-like 双层 SHA-256），但 Dart/Node/Wasm 三端的 NFC 归一化、路径排序（locale 无关排序）需跨平台 golden test 保证。
+5. **签名规范化（canonicalization）已钉死规格（§2.3），残余风险在跨平台实现一致性。** 规则已固定（字典序 / LF / UTF-8 NFC / 二进制资产不变；**digest v2 起改为哈希 envelope 序列化字节，双层 SHA-256 拼接已被取代**），但 Dart/Node/Wasm 三端的路径排序（locale 无关）需跨平台 golden test 保证；NFC 自 v2 起由「哈希前静默改写」改为**构建期拒签**，故加载器侧不再需要实现 Unicode 规范化。
 6. **与契约的边界。** `trustTier` 的 `community` 枚举清理已于 2026-06-14 修订**随本 ADR 一并落地**（§2.1，红线 #6，向后兼容）——这是经人工 owner 批准的契约改动，非"顺手改"。若日后需在 manifest 增签名/背书相关字段，仍另起独立 ADR。
 7. **`ctx.fetch`"存在但档位校验"需下游一致性更新（§2.6）。** 此取向改了运行时 ctx 形态——[`adr_009`](./adr_009_fetch_credential.md) §2 决策 7、[`adr_008`](./adr_008_client_runtime.md) 客户端运行时及 declarative ctx 实现须一致。DEPLOY 非 official 仍 fail-closed；DEV-Sideload 全能力例外由编译期 profile 隔离。
 
 ---
 
-## 4. 落地清单（待 ADR 接受后，拆成可审查的小 PR）
+## 4. 落地清单（拆成可审查的小 PR）
+
+> 本 ADR 已接受（见头部状态），本节不是「待接受后再做」的预案，而是**已授权的落地清单**；
+> 各项的落地与签收状态见 [`README.md`](./README.md) 与 [`2026_08_review_remediation.md`](../planning/2026_08_review_remediation.md)，本文不重复记录。
 
 > 安全敏感项标（人工主导、AI 仅辅助）：
 

@@ -127,7 +127,25 @@ ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端
 > - `gradePointScale`（列表级，可选）：声明本次数据里 `gradePoint` 所用的校本尺度（`4.0` / `4.3` / `4.5` / `5.0` / `other` / `unknown`）。缺失 = 来源未提供（§3.4 缺失语义）。
 > - `gradePointSource`（item 级，可选）：`source`（学校来源直接给出）/ `adapter-derived`（adapter 按校本规则派生）/ `unknown`。
 >
-> **本体侧的对应义务（GPA 展示 fail-closed）**：`gpa.summary` 存在时优先采用学校侧汇总；否则本体自行计算，且**当 `gradePointScale` 缺失、为 `unknown`/`other`，或跨数据源尺度不一致时不得展示 GPA**——宁可不显示，也不显示一个尺度不明的数。
+> **两个 GPA，两个所有者，互不替代（2026-09-09 修订）**：
+>
+> | | **学校官方 GPA** | **交互式聚合 GPA** |
+> |---|---|---|
+> | 是什么 | 成绩单上那个数 | 「本学期」「只看专业课」「排除体育」 |
+> | 谁能产 | **只有 adapter**（读学校来源） | **只有本体**（依赖用户当下的筛选） |
+> | 能否重算 | **不能** | 必须能 |
+> | 契约位置 | `elecon.gpa.summary` | `elecon.grades.list` + 本体聚合 |
+>
+> 官方 GPA **不可重算**：重修取最高还是取最后、学位课是否加权、体育与公选是否计入、缓考清考怎么算——这些规则是校本的且常无公开文档，学校之外算不出同一个数。故 adapter **只读不算**；本体拿到后原样展示，**不得用自算值覆盖或"修正"它**。
+> 交互式聚合 **不可由 adapter 产**：adapter 永远不知道用户此刻筛了什么。
+>
+> **优先级规则（硬约束）**：
+>
+> 1. `gpa.summary` 可用时，它是**权威**，作为该学期/范围的 GPA 展示。
+> 2. 本体自算值**只在**下列情形出现：(a) 没有 `gpa.summary`；或 (b) 用户施加了筛选，使官方数不再对应当前视图。
+> 3. 两者同时可见时**必须用不同标签**（如官方「GPA」vs 本机「均绩（本机计算）」）。**绝不允许两个不同的数都叫 GPA**——那比不显示更糟。
+>
+> **本体侧的 fail-closed 义务**：无论哪一路，**`gradePointScale` 缺失、为 `unknown`/`other`，或跨数据源尺度不一致时不得展示绩点数**——宁可不显示，也不显示一个尺度不明的数。该字段**只界定量纲，不保证跨校可比**（换算表本身是校本的），故**不得据此做跨校比较或排名**。
 
 首批落地的域（其余按需经 ADR 扩展）：`grades`、`schedule`、`card`、`library`、`notice`，外加通用兜底域 `generic`（见 §3.6）。
 
@@ -351,7 +369,7 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
 - **manifest 版本**：`manifestVersion` 独立演进；宿主拒绝不认识的大版本。
 - **adapter 版本**：参与 ADR-000 的 `max(本地, 服务端)` 解析，与数据新鲜度无关。
 - **契约变更须走 ADR**：新增/修改 capability id、新增域 schema、破坏性变更，均属慢车道（呼应 AGENTS.md 红线 #6 与 feature-workflow）。**红线 #6 的「默认保持向后兼容」在契约高频校准期按本节豁免**——豁免的是兼容义务，不是 ADR 义务与上面的放行条件。
-- **每次契约变更必须在 [`contract/CHANGELOG.md`](../../contract/CHANGELOG.md) 留一条记录，且记录中必须引用一个 ADR 编号。** 记录的存在即证明该变更「先有 ADR」，使红线 #6 从人工约定变成**可 CI 校验的引用闭合**（无 ADR 引用的条目视为违规）。变更流水不再写在本 ADR 正文里——它是持续增长的时序事实，与本 ADR 这一份决策不是同一类东西；混放会让 ADR 正文被流水淹没，也让别的 ADR（如 ADR-019）的契约变更错记在本文名下。
+- **每次契约变更必须在 [`contract/CHANGELOG.md`](../../contract/CHANGELOG.md) 留一条记录，且记录中必须引用一个 ADR 编号。** 记录的存在即证明该变更「先有 ADR」，使红线 #6 从人工约定变成**可 CI 校验的引用闭合**（无 ADR 引用的条目视为违规）。**该校验已落地**：`scripts/check-contract-changelog.mjs`（CI `tools` job，`npm run check:contract-changelog -w tools`）——改动触及 `contract/schema/` / `contract/capability/` / `contract/manifest.schema.json` 而 CHANGELOG 无新增记录、或新增记录里没有任何 ADR 编号，即拒。它**不判断内容对不对**（那是人的活），只保证「改了契约却什么都没记」这一形态过不去。变更流水不再写在本 ADR 正文里——它是持续增长的时序事实，与本 ADR 这一份决策不是同一类东西；混放会让 ADR 正文被流水淹没，也让别的 ADR（如 ADR-019）的契约变更错记在本文名下。
 - **`tools/` 强制校验**：manifest 合法性、requestGraph 结构、白名单越界、凭证引用、capability id、能力专属规则与双端夹具一致性均做成 CI 闸门。当前另有 `C3_sideload_must_declarative`；ADR-033 已决定退役 C3 以支持 DEV-Sideload 全能力调试，落地须与负例同批。
 
 ---

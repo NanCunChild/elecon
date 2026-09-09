@@ -123,7 +123,8 @@ class _EleconHomePageState extends State<EleconHomePage> {
                         _SnapshotHeader(snapshot: data),
                         const SizedBox(height: 12),
                         if (data.schedule != null) ScheduleCard(data.schedule!),
-                        if (data.grades != null) GradesCard(data.grades!),
+                        if (data.grades != null)
+                          GradesCard(data.grades!, summary: data.gpaSummary),
                         if (data.notices != null) NoticeCard(data.notices!),
                         for (final section in data.genericSections)
                           GenericSectionCard(section),
@@ -232,18 +233,22 @@ class ScheduleCard extends StatelessWidget {
 }
 
 class GradesCard extends StatelessWidget {
-  const GradesCard(this.data, {super.key});
+  const GradesCard(this.data, {this.summary, super.key});
 
   final GradesList data;
 
-  /// GPA 聚合（ADR-001 §3.5「跨校统一的派生 → 本体」）。
+  /// 学校官方绩点汇总（`gpa.summary`）。**存在即权威**——本体不得用自算值覆盖
+  /// 或"修正"它（ADR-001 §3.5 优先级规则第 1 条）。null 表示该校未提供或未取到。
+  final GpaSummary? summary;
+
+  /// 本机聚合（ADR-001 §3.5「跨校统一的派生 → 本体」）。
   ///
-  /// **fail-closed**：`gradePointScale` 缺失或不可聚合时返回 null，卡片不展示 GPA。
+  /// **只在没有官方汇总、或用户施加了筛选时才用**（优先级规则第 2 条），且展示时
+  /// **必须与官方数用不同标签**（第 3 条）——两个不同的数都叫 GPA 比不显示更糟。
+  ///
+  /// **fail-closed**：`gradePointScale` 缺失或不可聚合时返回 null，卡片不展示。
   /// 课程级 `gradePoint` 的换算是校本的（adapter 的活），本体只在**知道满分档**
   /// 时才敢把它们加权平均——否则展示的数没有任何学校意义。
-  ///
-  /// 上游若提供 `gpa.summary`（学校侧汇总）应优先于本方法；该 capability 尚未
-  /// 接入首页快照，接入后此处让位。
   double? _aggregateGpa() {
     final scale = data.gradePointScale;
     if (scale == null || !_aggregatableScales.contains(scale)) return null;
@@ -263,14 +268,33 @@ class GradesCard extends StatelessWidget {
   /// 不同满分档的绩点混算出的数不是任何学校意义上的 GPA。
   static const _aggregatableScales = <String>{'4.0', '4.3', '4.5', '5.0'};
 
+  /// 副标题的绩点段。**官方数优先**；没有官方数才退到本机聚合，且换标签。
+  ///
+  /// 两路都对 `gradePointScale` fail-closed：尺度缺失 / `unknown` / `other` 一律不展示
+  /// （ADR-001 §3.5）。官方数的尺度取自 `gpa.summary` 自身，不借用 `grades.list` 的——
+  /// 两者可能覆盖不同范围，混用尺度等于给一个数贴错量纲。
+  String? _gradePointText() {
+    final official = summary?.gpa;
+    final officialScale = summary?.gradePointScale;
+    if (official != null &&
+        officialScale != null &&
+        _aggregatableScales.contains(officialScale)) {
+      return 'GPA ${official.toStringAsFixed(2)}（$officialScale 制）';
+    }
+    final local = _aggregateGpa();
+    if (local == null) return null;
+    // 标签必须与官方「GPA」可分（优先级规则第 3 条）。
+    return '均绩 ${local.toStringAsFixed(2)}'
+        '（${data.gradePointScale} 制 · 本机计算）';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final gpa = _aggregateGpa();
-    final scale = data.gradePointScale;
+    final gradePointText = _gradePointText();
     return _SectionCard(
       title: '成绩',
       subtitle:
-          '${data.term}${gpa == null ? '' : ' · GPA ${gpa.toStringAsFixed(2)}（$scale 制）'}',
+          '${data.term}${gradePointText == null ? '' : ' · $gradePointText'}',
       child: Column(
         children: [
           for (final item in data.items)

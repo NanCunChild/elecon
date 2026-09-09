@@ -20,7 +20,7 @@
     "gradePointScale": {
       "type": "string",
       "enum": ["4.0", "4.3", "4.5", "5.0", "other", "unknown"],
-      "description": "本次数据中 items[].gradePoint 所用的校本绩点尺度（满分档）：4.0、4.3、4.5、5.0 制，其他制式或未知；缺失表示来源未提供。本体据此判断能否聚合出 GPA，尺度缺失/unknown/other 或跨数据源不一致时不得展示 GPA（ADR-001 §3.5）。"
+      "description": "本次数据中 items[].gradePoint 所用的校本绩点尺度（满分档）。本体据此判断能否聚合，缺失/unknown/other 时不得展示聚合值（fail-closed，ADR-001 §3.5）。**只界定量纲，不保证跨校可比**：两所同称 4.0 制的学校，分数→绩点的换算表可能完全不同，故不得据此做跨校比较或排名。**other 与 unknown 含义不同**：other = adapter 知道制式但不在本枚举内（应视为扩枚举的信号）；unknown = adapter 无法判断（应视为该 adapter 待改进的信号）。**数据横跨学校改制时**（如部分课程 4.0、部分 4.3）不得任选其一，应声明 other 让本体降级。"
     },
     "items": {
       "type": "array",

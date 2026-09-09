@@ -15,6 +15,7 @@
   },
   "scripts": {
     "validate": "tsx src/validator/index.ts",
+    "check:contract-changelog": "node ../scripts/check-contract-changelog.mjs",
     "codegen": "tsx src/codegen/index.ts",
     "sign": "tsx src/signer/index.ts",
     "release:package": "tsx src/release/package.ts",

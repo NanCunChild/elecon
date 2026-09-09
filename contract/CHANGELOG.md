@@ -9,6 +9,20 @@
 
 ---
 
+- **2026-09-09 · `elecon.gpa.summary` 1.0 → 1.1：绩点尺度 + 全字段 description（ADR-001 §3.5 优先级规则）**
+  - **改动**：
+    1. `elecon.gpa.summary` 新增可选 `gradePointScale`（枚举同 `elecon.grades.list`）——**官方 GPA 此前没有量纲**：只有一个 `gpa: number`，UI 无从判断 3.71 是 4.0 制还是 5.0 制的。
+    2. 该 schema 原本除 `updatedAt` 外**全部字段无 description**，本次补齐 8 处（顺带削减 description gate 的 367 处欠账）。
+    3. `elecon.grades.list` 的 `gradePointScale` description 改写（内容语义不变，见下）。
+    4. registry 级联 `gpa.summary` 的 `emits.schemaVersion` → `1.1`；codegen Dart/TS 重跑；schema golden 增 `gradePointScale` 正例与 enum 负例。
+  - **为何**：ADR-001 §3.5 此前只写了一句「`gpa.summary` 存在时优先」，没有说清**为什么有两个 GPA**、以及两者同时可见时怎么办。本次把它展开为显式规则：**学校官方 GPA（`gpa.summary`，adapter 只读不算）** 与 **交互式聚合 GPA（本体按当前筛选算）** 是两个数、两个所有者、互不替代；官方数存在即权威，本体不得覆盖；两者同现必须用**不同标签**。既然官方数要独立展示，它就必须自带量纲——故补 `gradePointScale`。
+  - **为何是 MINOR**：仅新增一个可选字段 + 补 description，不删字段、不改既有类型、不收紧约束；旧 1.0 数据在 1.1 下仍合法。
+  - **description 改写（`grades.list.gradePointScale`，非结构变更）**：补三条此前隐含未言明的约束——① 该字段**只界定量纲、不保证跨校可比**（同称 4.0 制的两校换算表可能完全不同），故不得据此做跨校排名；② `other`（知道制式但不在枚举内）与 `unknown`（无法判断）**信号不同**，前者提示扩枚举、后者提示 adapter 待改进；③ 数据横跨学校改制时**不得任选其一**，应声明 `other` 让本体降级。
+  - **消费方新增义务（本体侧）**：`gpa.summary` 可用即作为权威展示；本体自算值只在「无官方数」或「用户施加了筛选」时出现，且**必须换标签**（绝不允许两个不同的数都叫 GPA）。两路都对 `gradePointScale` fail-closed。官方数的尺度取自 `gpa.summary` 自身，**不得借用** `grades.list` 的——两者可能覆盖不同范围。
+  - **依据**：ADR-001 §3.5（2026-09-09 修订，新增优先级规则表）。
+  - **本仓内已同批完成**：schema、registry、codegen、schema golden 正负例、客户端（`GpaSummary` 解码 / `CampusSnapshot.gpaSummary` / `GradesCard` 官方优先 + 本机聚合改标签「均绩 … 本机计算」/ `GradesSection` 取 `gpa.summary` 作可选增强，失败不影响成绩单）、3 个新增 widget 测试锁死优先级与 fail-closed。
+  - **未同批（外部仓）**：`elecon-adapters` 目前**无任何 adapter 声明 `gpa.summary`**，故本次无阻塞性外部联动。将来实现该能力的 adapter 须直接按 `1.1` 声明并给出 `gradePointScale`。
+
 - **2026-09-08 · `elecon.grades.list` 1.0 → 1.1：绩点尺度与派生来源（ADR-001 §3.5 修订）**
   - **改动**：
     1. 列表级新增可选 `gradePointScale`（枚举 `4.0` / `4.3` / `4.5` / `5.0` / `other` / `unknown`）——声明本次成绩里 `gradePoint` 所用的**校本计分尺度**。

@@ -9,6 +9,7 @@
 ///  - 展示辅助扩展（[GradesScoreText] / [NoticePublishedAt]）：视图格式化，非契约。
 library;
 
+import 'package:elecon_contract/gpa_summary.dart';
 import 'package:elecon_contract/grades_list.dart';
 import 'package:elecon_contract/notice_list.dart';
 import 'package:elecon_contract/schedule_week.dart' show ScheduleWeek;
@@ -18,6 +19,7 @@ export 'package:elecon_contract/classroom_buildings.dart';
 export 'package:elecon_contract/card_balance.dart';
 export 'package:elecon_contract/card_transactions.dart';
 export 'package:elecon_contract/exam_list.dart';
+export 'package:elecon_contract/gpa_summary.dart';
 export 'package:elecon_contract/grades_list.dart';
 export 'package:elecon_contract/library_loans.dart';
 export 'package:elecon_contract/notice_list.dart';
@@ -28,6 +30,7 @@ class CampusSnapshot {
     required this.schoolName,
     required this.updatedAt,
     this.grades,
+    this.gpaSummary,
     this.schedule,
     this.notices,
     this.genericSections = const [],
@@ -37,6 +40,10 @@ class CampusSnapshot {
   final String schoolName;
   final DateTime updatedAt;
   final GradesList? grades;
+
+  /// 学校官方绩点汇总（`gpa.summary`）。存在即权威，本体不得用自算值覆盖
+  /// （ADR-001 §3.5）。null = 该校未提供或未取到，卡片退到本机聚合并换标签。
+  final GpaSummary? gpaSummary;
   final ScheduleWeek? schedule;
   final NoticeList? notices;
   final List<GenericSection> genericSections;

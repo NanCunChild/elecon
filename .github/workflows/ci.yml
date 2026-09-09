@@ -87,6 +87,10 @@ jobs:
       # 红线 #8：提交的 adapter 与 fixture 不得包含真实学生数据或凭证等价物。
       - run: npm run scan -w tools
       - run: npm run validate -w tools
+      # ADR-001 §8 放行条件②的机器校验：改了 contract/ 就必须在
+      # contract/CHANGELOG.md 留一条引用了 ADR 编号的记录（红线 #6「先有 ADR」）。
+      - name: Contract changelog reference gate
+        run: npm run check:contract-changelog -w tools
       # codegen 漂移闸门（仿 stdlib bundle 闸门）：入库生成物必须等于按当前
       # contract/schema 重新生成的产物——schema 改了、生成物没跟上即 fail。
       # 生成物已被消费（client elecon_contract 包 / server 类型化 smoke），漂移会伤下游。

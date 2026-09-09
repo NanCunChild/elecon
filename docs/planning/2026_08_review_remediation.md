@@ -35,8 +35,8 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | owner 已签收 | P0-02、P0-03、P0-04、P0-08、P0-11、P0-12 | 实现与自动化测试已完成；NanCunChild 于 2026-08-06 完成人工复核并授权关闭 |
 | 待真机签收 | P0-06、P0-07 | iOS 已降级为 S/M 且 H 路径 fail-closed；Android 已用 `KeyInfo` 拒绝 software/unknown；仍需 iOS 升级安装及 Android emulator/TEE/StrongBox 矩阵 |
 | 部分落地，保持开放 | P0-10 | TS 已阻止取消后 Commit；Dart 已有 firewall/commit 原语与严格 UTF-8 状态；生产 wiring 仍依赖已验签 policy loader/matcher、执行级 query harvest 事务、P1-08/P1-09/P1-12 |
-| 待仓库/历史事实 | P0-13、P0-15 | reusable CI、main-only preflight、tag SHA/ancestry、审批 hook、真实验签 ledger 工具已落地；仍需配置 `release` Environment、不可变 `v*` tag 规则，并由 NanCunChild 提供历史 source commit/签署时间/签署人/复核引用 |
-| ADR / 签收阻塞 | P0-01、P0-05、P0-09、P0-14 | P0-05 的 ADR-009 rev-5 与两端实现已起草，待 owner 按专项清单复签；P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；**P0-01 于 2026-09-01 解除 ADR 阻塞**——ADR-002 §2.3 / ADR-018 §2.9.1 已就地修订（digest v2 = 对 envelope 字节整体哈希），缺陷已由 `path-binding.redcase.ts` 复现为可执行验收门（现 2/14 红），实现待 owner 签收 ADR 修订后开工，见 §2.2。**P0-14 于 2026-08-07 改判**：不再是 ADR 阻塞——slice 1–3 已落地且有 Android 产物级证据，剩余门槛是 slice 4 红线措辞（owner）、非 Android 平台产物断言、人工安全签收（见 §3.2）|
+| 待仓库/历史事实 | P0-13、P0-15 | reusable CI、main-only preflight、tag SHA/ancestry、审批 hook、真实验签 ledger 工具已落地；仍需配置 `release` Environment、不可变 `v*` tag 规则。**P0-15 的历史人工事实已于 2026-09-09 由 owner 裁定为「合法留白」**，不再等待补齐——见 §2.3 |
+| ADR / 签收阻塞 | ~~P0-01~~（**2026-09-09 规格已签收，改为「可开工，待实现」**）、P0-05、P0-09、P0-14 | P0-05 的 ADR-009 rev-5 与两端实现已起草，待 owner 按专项清单复签；P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；**P0-01 于 2026-09-01 解除 ADR 阻塞**——ADR-002 §2.3 / ADR-018 §2.9.1 已就地修订（digest v2 = 对 envelope 字节整体哈希），缺陷已由 `path-binding.redcase.ts` 复现为可执行验收门（现 2/14 红），**owner 已于 2026-09-09 签收该修订，实现可开工**（签收范围为规格，实现仍须人工复核），见 §2.2。**P0-14 于 2026-08-07 改判**：不再是 ADR 阻塞——slice 1–3 已落地且有 Android 产物级证据，剩余门槛是 slice 4 红线措辞（owner）、非 Android 平台产物断言、人工安全签收（见 §3.2）|
 
 本轮自动验证：`npm run lint`、`npm run typecheck`、`npm run smoke:all`（server 26/26、tools 18/18）、`flutter analyze`、`flutter test`（744 项）、全量 scanner、release ledger smoke/validate、release preflight、recorder Python tests、`git diff --check`。自动验证不是安全签收的替代品。
 
@@ -56,7 +56,7 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | P0-12 | [x] 修复 fixture recorder 和探针的凭证落盘/日志风险 | `adapters_tests/XJTU/dean/record_fixtures.py`、`XIDIAN/ids/login.py`、`XIDIAN/energy/meter.py` | 慢车道；红线 #1/#8 | 删除全部 Cookie/Set-Cookie；raw 只能写 `.private-probes/`；不打印 ticket URL/真实 NodeID；scanner 作为写后硬门 |
 | P0-13 | [x] 让 release workflow 复用完整 CI，不允许 tag 发布绕过 server/tools/contract/adapter/release gate | `.github/workflows/ci.yml`、`release.yml` | 慢车道；发布与信任链 | reusable workflow 覆盖 lint、typecheck、smoke、validator、scanner、codegen、Flutter、bootstrap、trust profile；tag ancestry 和环境审批有机械验证 |
 | P0-14 | [ ] 完成 ADR-024 DEPLOY profile 接线和产物级证明 | `client/lib/core/trust/`、`client/tool/check_release_gate.sh`、release workflow | 慢车道；红线 #4、ADR-024 | release 产物无侧载符号；DEV applicationId/bundle ID 隔离；水印与构建元数据正确；人工签收 |
-| P0-15 | [ ] 建立 git 跟踪的 adapter 发布台账 | `docs/reference/signing_ceremony.md`、`adapter_release.md`、新 ledger | 慢车道；ADR-002/018 | 每次发布记录 source commit、版本、bundle/policy digest、catalog/revocation sequence、keyId、签署人与复核引用 |
+| P0-15 | [ ] 建立 git 跟踪的 adapter 发布台账 | `docs/reference/signing_ceremony.md`、`adapter_release.md`、`release/adapter-release-ledger.json` | 慢车道；ADR-002/018 | 每次发布记录 source commit、版本、bundle/policy digest、catalog/revocation sequence、keyId、签署人与复核引用。**早期测试期产物按 §2.3 显式留白**（`incomplete` 记录 + `missingFacts`），**不要求补齐历史人工事实** |
 
 ### 2.2 执行状态（2026-09-01 · P0-01 缺陷复现与 ADR 就地修订）
 
@@ -96,32 +96,23 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 - **ADR-002 §2.3**：`digest = SHA-256(envelopeBytes)`；原「双层 SHA-256 拼接」规格标注为被取代并
   保留缺陷说明；LF/NFC 规范化由「哈希前静默改写」降级为**构建期检查、不符即拒签**；
   列出四条不可分割的配套纪律（不透明字节上线 / 验签先于解析 / 卫生闸门在验签之后 / 全量文件承诺）。
-- **ADR-018 §2.9.1**（新增小节）：上线形态 `gzip(JSON({ envelopeB64, signature }))`、七步验证顺序表、
-  签发侧全量文件承诺、七项落地清单、以及「为何不签压缩包字节」的记录。
+- **ADR-018 §2.9.1**（新增小节）：上线形态 = **传输封套** `gzip(JSON({ envelopeB64, signature, blobs }))`、
+  12 步验证顺序表、签发侧全量文件承诺、10 项落地清单、以及「为何不签压缩包字节」的记录。
 
-**为何不是四元组（path+encoding+length+content）叶子编码**：envelope 本身已是一份确定性序列化
-文档，直接哈希其字节即可让路径 / 编码 / 顺序 / 个数 / `bundleFormat` 全部落入签名范围，无需在
-TS 与 Dart 各写一份叶子编码器并靠 golden 维持一致。这与 ADR-018 §2.5 给 catalog 定的
-「字节精确、不重新规范化序列化」是同一取向——bundle 此前未遵守该结论。Merkle 式逐文件绑定的
-正当收益（部分取用 / 逐文件验证 / 去重 / 增量更新）在 elecon 一条都用不上（整包取用、按 digest
-整包缓存、单包 ≤ 256 KiB）。
+**方案论证与被否备选**（四元组叶子编码 / Merkle / 签压缩包字节 / 内联 base64，以及规范化改判、
+身份三方一致的理由）已抽出至 [`docs/archive/bundle_digest_v1_superseded.md`](../archive/bundle_digest_v1_superseded.md)，
+本文不复述——避免第二份会漂移的转述（2026-09-09 已发生过一次：本节曾把上线形态记成两字段、
+验证顺序记成七步）。
 
-**为何不签压缩包字节**：gzip 输出不确定（压缩级别、header 的 OS 字节/mtime、zlib 版本），
-会废掉 ADR-018 §3 风险 (e)「所见非所签」的唯一防线（离线机重算 digest 与审查沙箱产物比对），
-并使 P0-15 台账无法从 source commit 复算 digest。取**未压缩的 envelope 字节**：同样是单段连续
-字节，但可从 git checkout 复现。
+**迁移 = 无代码兼容层 + 一次重签仪式**：`records` 为空是 P0-15 台账未建立，不等于未签发——实存
+**7 份 official bundle** + 已签 catalog（sequence 3）+ revocation。无外部持有者，故不设双读、不新增
+host version gate；但 `/2` 须伴随一次**离线 YubiKey 重签仪式**（5 adapter + catalog + revocation →
+`bootstrap:sync` 重派生），**与 ADR-026 §2.7 的「补齐 `masker.json` 后重签」合并为同一次**，并一次
+补齐 P0-15 台账首批记录。核实细节见归档 §5。
 
-**迁移 = 无代码兼容层 + 一次重签仪式（2026-09-01 核实修正）**：`records` 为空是 **P0-15 台账未建立**，
-不等于未签发。实存 **7 份 official 签名 bundle**（`dist-full/` `dist-xidian/` `dist-helloworld/`，其中 5 份
-随包在 `client/assets/bootstrap/`）+ 已签名 catalog（sequence 3）+ revocation，全部由 `elecon-official-ncc-1`
-真机签发。无外部持有者，故仍不设双读、不新增 host version gate；但 `/2` 须伴随一次**离线 YubiKey 重签仪式**
-（5 adapter + catalog + revocation → `bootstrap:sync` 重派生），**与 ADR-026 §2.7 已预定的「补齐
-`masker.json` 后重签」合并为同一次**，并一次补齐 P0-15 台账首批记录。
-
-**暴露面：潜伏但尚未武装**。攻击充要条件 = 「在 `manifest.json` 字典序**同一侧**存在 ≥2 个文件，且至少一个
-不按固定路径查找」——按固定路径查找的文件各钉死一个位次，位次全钉死则重命名无自由度。现存 7 份 bundle 的
-`files` **全为 `[index.js, manifest.json]`** → 不可利用；补 `masker.json` 后三者分居三个固定位次 → 仍不可利用。
-暴露面在**第一份携带运行时资产的 bundle** 出现时打开。**不需紧急吊销**，但须在 adapter 开始携带资产前落地。
+**暴露面：潜伏但尚未武装**。现存 7 份 bundle 的 `files` 全为 `[index.js, manifest.json]` → 不可利用；
+补 `masker.json` 后三者分居三个固定位次 → 仍不可利用。**暴露面在第一份携带运行时资产的 bundle
+出现时打开**，故不需紧急吊销，但须在 adapter 开始携带资产前落地（充要条件见归档 §5）。
 
 **2026-09-01 owner 复核后的五项裁定**：
 
@@ -133,20 +124,71 @@ TS 与 Dart 各写一份叶子编码器并靠 golden 维持一致。这与 ADR-0
 | 4 | ~~从 manifest 移除 `trustTier`~~ → 改为**意图档位作为签发流水线显式入参** | **已落地**（分支 `refactor/intended-tier-as-pipeline-input`）。直接删字段会静默拿掉 validator 三道签发期闸门（C3 / `ssoMint` official-only / masker official-only）并撞上 ADR-033 §5「C3 不得先删」。改为：三道闸门 + `release/package.ts` 改读显式 `IntendedTier` 入参；`trustTier` 从 `required` 移出、降为过渡期回退（分歧=error 且以入参为准）。**C3 保留**，其退役仍随 ADR-033 |
 | 5 | digest v2 重签仪式与 ADR-026 §2.7 的「补齐 `masker.json` 后重签」合并，一次补齐 P0-15 台账首批 | 已写入两处 ADR |
 
-**descriptor 形态的取舍理由**：① 编码彻底离开信任边界——两端 base64 解码器实测不同（Node 对
-`Qh==`/`QQ`/含空白宽松接受，Dart 全部抛），内联方案下 base64 文本**就是被签字节**，会签出「某些端
-装不上」的产物；descriptor 方案内容寻址，解码器宽严无关。② 被签对象缩小到可人眼审完，使 ADR-018
-§3 风险 (e)「所见非所签」的唯一防线（离线机重算 digest 比对）从名义存在变为可执行。③ 台账可记录
-envelope 全文。**代价**是新增「blob 集合精确相等」不变量——少一个会被逐文件校验抓到，**多一个不会**，
-必须显式拒绝，四个负例须双端 golden 钉死。
-
 **红用例已扩**：`path-binding.redcase.ts` 末尾列出 descriptor 落地后须补的 E1–E8 断言
-（blob 多/少/哈希不符/长度不符、三方身份两例、域分隔、外层信封多余字段）；当前类型无法表达，
+（blob 多/少/哈希不符/长度不符、三方身份两例、域分隔、传输封套多余字段）；当前类型无法表达，
 故以清单形式钉在同一文件，不伪造为通过。
 
-**剩余门槛（🔒 人工）**：① owner 签收上述两处 ADR 修订；② 实现本身触红线 #4，须人工复核，
-AI 不得独自闭环（AGENTS.md §1）；③ 顺带发现、须一并处理的两处不对称：TS
-`verifyBundleSignature` 缺 `bundleFormat` 检查（Dart 有）、`unpackBundle` 现为「先解析后验签」。
+**剩余门槛（🔒 人工）**：
+
+- ~~① owner 签收上述两处 ADR 修订~~ → **已完成：owner NanCunChild 于 2026-09-09 正式签收
+  ADR-002 §2.3 与 ADR-018 §2.9.1，两处规格状态为「已接受并完成审阅」。P0-01 自此可开工。**
+  签收范围是**规格**，不含实现——实现落地后仍须按下面 ② 单独人工复核。
+- ② 实现本身触红线 #4，须人工主导 + 安全清单 + ≥1 人工审，**AI 不得独自闭环**（AGENTS.md §1）。
+- ③ 顺带发现、须一并处理的两处不对称：TS `verifyBundleSignature` 缺 `bundleFormat` 检查（Dart 有）、
+  `unpackBundle` 现为「先解析后验签」。
+
+### 2.3 执行状态（2026-09-09 · P0-01 规格签收 / P0-15 早期台账合法留白）
+
+**P0-01 规格签收。** owner NanCunChild 于 **2026-09-09** 正式签收 ADR-002 §2.3 与 ADR-018 §2.9.1，
+两处状态更新为「已接受并完成审阅」。**P0-01 自此不再受 ADR 阻塞，可以开工。**
+签收范围**仅为规格**；实现触红线 #4，落地后仍须人工主导 + 安全清单 + ≥1 人工审（AGENTS.md §1）。
+验收门不变：`tools/src/bundle/path-binding.redcase.ts` 全绿（现 2/14），全绿后改名纳入 `smoke:all`。
+
+**P0-15 早期台账合法留白（owner 决策 2026-09-09）。** 现存 7 份 official bundle 均为**早期测试阶段**
+产物，其 `sourceCommit` / `signedAt` / `signer` / `reviewReference` 四项人工事实**不予追溯补齐**，
+按「合法留白」处理。
+
+- **留白的形式不是「空台账」。** `release/adapter-release-ledger.json` 现为 `records: []`，
+  即「什么都没说」——这与「说清楚了哪些不知道」是两回事，后者才可审计。ledger 工具**本就为此而建**：
+  记录支持 `status: "incomplete"` + `missingFacts: []`，校验器对 incomplete 记录**不报错**，
+  只如实输出 `historical completeness: incomplete (N of M)`。
+- **机器事实必须齐全。** `ledger:extract` 对 catalog / revocation / 每份 bundle 做**预埋公钥 Ed25519
+  验签**后才产出记录，故 `adapterId` / `adapterVersion` / `bundleDigest` / `keyId` /
+  `catalogSequence` / `revocationSequence` 全部有密码学依据，**不是人填的**。留白的只有四项人工事实。
+- **台账从 digest v2 重签仪式起转为 complete。** 那次仪式（5 adapter + catalog + revocation，
+  与 ADR-026 §2.7 的 `masker.json` 重签合并）是**首批四项人工事实齐全**的发布，此后每次发布均须 complete。
+- **P0-15 的完成条件据此改判**：不再是「补齐历史事实」，而是「**台账已建立且结构有效；早期产物以
+  incomplete 显式留白；重签仪式起的记录 complete**」。§2.1 表格中「由 NanCunChild 提供历史
+  source commit/签署时间/签署人/复核引用」一项**作废**。
+
+**已执行（2026-09-09）**：对三份 dist 跑 `ledger:extract`（预埋公钥
+`elecon-official-ncc-1` / `d09437aa…2687`）→ **7 条**验签通过的记录，独立印证了
+「实存 7 份 official bundle」的核实结论。台账现有 **6 条** incomplete 记录，
+`historical completeness: incomplete (6 of 6)`。
+
+**🔴 提取时发现一处真实异常：`school-helloworld@0.1.0` 被签发了两次，字节不同。**
+
+| catalog seq | digest | manifest 差异 |
+|---|---|---|
+| 1（已被取代） | `e3bf71af…` | 含 `"mode": "fetch"` |
+| 3（当前在役） | `8a6ab755…` | 无 `mode`，改为 capability 级 `"requestGraph": "imperative"` |
+
+即 **ADR-022 的 `mode` → `requestGraph` 迁移后重签了产物，但版本号没动**。
+`ledger:validate` 的 equivocation 检查据此拒收（`records[3] duplicates or equivocates an
+earlier adapterId+adapterVersion`）——**它是对的**：「版本号唯一标识一份字节」是台账的硬不变量，
+两份不同字节共用 `0.1.0` 违反它。
+
+- **实际影响：低。** 两份都经 official 验签；bundle 缓存按 digest 寻址、取哪份由 catalog 决定，
+  故运行时不会混淆；helloworld 是演示 adapter，不碰真实数据。
+- **但不能静默处理。** 台账入库时**显式剔除**了 seq 1 那条（已被取代），本节即该剔除的记录——
+  「合法留白」的前提是留白**被写下来**，而不是让它消失。
+- **流程修正**：**契约迁移后重签必须 bump 版本号。** 重签改变了字节即改变了那个版本的含义，
+  沿用旧版本号会让台账、缓存与吊销推理同时失去锚点。此条应在 digest v2 重签仪式的
+  checklist 里落为一步（见 `docs/reference/signing_ceremony.md`）。
+- **由该仪式一并了结**：digest v2 重签会给全部 5 份产物新的 digest，届时 helloworld 应
+  bump 到 `0.1.1`（或更高），历史歧义随 `/1` 路径整体删除而失效。
+
+---
 
 ## 3. P1：核心正确性与契约闭环
 

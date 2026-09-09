@@ -77,6 +77,30 @@ List<NoticeListItemsAttachments>? _attachments(Object? raw) {
 }
 
 // ---------------------------------------------------------------------------
+// gpa.summary（学校官方汇总；本体只读不算，ADR-001 §3.5）
+// ---------------------------------------------------------------------------
+
+/// 解码 `gpa.summary`。**全字段可选**，故不设必填门；整体非对象才判失败。
+///
+/// 这是**学校的官方数字**，本体不得重算或"修正"（ADR-001 §3.5）。量纲由
+/// [GpaSummary.gradePointScale] 界定，缺失/`unknown`/`other` 时调用方须 fail-closed。
+GpaSummary? gpaSummaryFromDynamic(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null) return null;
+  return GpaSummary(
+    gpa: map['gpa'] is num ? map['gpa'] as num : null,
+    gradePointScale: map['gradePointScale']?.toString(),
+    earnedCredits: map['earnedCredits'] is num ? map['earnedCredits'] as num : null,
+    attemptedCredits:
+        map['attemptedCredits'] is num ? map['attemptedCredits'] as num : null,
+    rank: _asInt(map['rank']),
+    rankTotal: _asInt(map['rankTotal']),
+    window: map['window']?.toString(),
+    updatedAt: map['updatedAt']?.toString(),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // grades.list（ehall-session；App 内成绩单）
 // ---------------------------------------------------------------------------
 

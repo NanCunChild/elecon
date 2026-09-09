@@ -437,8 +437,18 @@ const cases: Record<string, SchemaGolden> = {
     ],
   },
   "elecon.gpa.summary": {
-    valid: { gpa: 3.8, earnedCredits: 60, attemptedCredits: 64, rank: 1, rankTotal: 100 },
-    invalid: [{ behavior: "rank starts at one", value: { gpa: 3.8, rank: 0 } }],
+    valid: {
+      gpa: 3.8,
+      gradePointScale: "4.3",
+      earnedCredits: 60,
+      attemptedCredits: 64,
+      rank: 1,
+      rankTotal: 100,
+    },
+    invalid: [
+      { behavior: "rank starts at one", value: { gpa: 3.8, rank: 0 } },
+      { behavior: "gradePointScale enum", value: { gpa: 3.8, gradePointScale: "4" } },
+    ],
   },
   "elecon.notice.detail": {
     valid: {
