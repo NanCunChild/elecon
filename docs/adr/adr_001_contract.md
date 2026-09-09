@@ -25,7 +25,7 @@ ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端
 
 1. **schema 的规范语言用 JSON Schema（Draft 2020-12）**，作为唯一事实来源（single source of truth），向 Dart / Go 生成类型，向 JS 提供运行期校验依据。
 2. **校验发生在宿主侧的信任边界**（客户端核心 Dart / 服务端 TS，见 [`adr_005`](./adr_005_runtime.md)），不在 adapter 内部——QuickJS 不背校验器。
-3. **一切归一化结果都包在统一 envelope 里**，携带来源、新鲜度、schema 版本等元数据。
+3. **一切归一化结果都包在统一数据信封（data envelope）里**，携带来源、新鲜度、schema 版本等元数据。
 4. **capability 是契约的基本单元**：`<domain>.<action>`，每个 capability 绑定一个输出 schema 与一段网络作用域。
 5. **manifest 声明能力 + 网络白名单**；每 capability 声明 `requestGraph`（`declarative` | `imperative`；ADR-022）。
 6. **错误也是契约**：统一的归一化错误模型，让 UI/同步层对失败有一致反应。
@@ -51,12 +51,14 @@ ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端
 
 - 数据域：`elecon.grades.list`、`elecon.schedule.week`、`elecon.card.balance` …
 - 入参：`elecon.params.<capability>`，如 `elecon.params.grades.list`
-- 信封：`elecon.envelope`
+- 数据信封：`elecon.envelope`（**不是** bundle 信封，见 §3.3 作用域声明）
 - 错误：`elecon.error`
 
-### 3.3 统一 Envelope
+### 3.3 统一数据信封（data envelope）
 
-每一份跨越 adapter↔宿主 边界的归一化数据都用 envelope 包裹。**数据的新鲜度由此承载（TTL），与代码版本无关**（呼应 ADR-000 §2.4）。
+> **作用域声明（ADR-000 §2.3.1）**：**本文全文所称 envelope / 信封，一律指本节定义的「数据信封」**——运行期包裹归一化数据的外层对象，schema id `elecon.envelope`。它与 adapter 分发用的 **bundle 信封**（签名对象，[`adr_018`](./adr_018_adapter_distribution.md) §2.9）、与凭证存储用的 **信封加密**（[`adr_012`](./adr_012_credential_store.md) §2.8）**是三样无关的东西**，只是撞名。本文不涉及后两者。
+
+每一份跨越 adapter↔宿主 边界的归一化数据都用数据信封包裹。**数据的新鲜度由此承载（TTL），与代码版本无关**（呼应 ADR-000 §2.4）。
 
 ```json
 {
@@ -360,7 +362,7 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
 **收益**
 - adapter 与 UI 彻底解耦，UI 不含任何学校逻辑；新学校只写 adapter + manifest。
 - 网络白名单 + per-capability `requestGraph` 把 adapter 的能力声明变成机制约束。DEV-Sideload 需要完整调试 imperative，故 ADR-033 已决定退役按 trustTier 一刀切的 declarative C3；DEPLOY 则在更外层只铸造 official grant，本地导入不产生低信任运行档。
-- 统一 envelope/错误模型让同步层、缓存、降级有一致依据。
+- 统一数据信封/错误模型让同步层、缓存、降级有一致依据。
 
 **代价 / 已知约束**
 - JSON Schema 类型表达力有限，依赖 codegen 与边界校验补强；增加 `tools/` 的维护面。
@@ -372,7 +374,7 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
 
 ## 10. 落地清单（指向 `contract/` 骨架）
 
-- `contract/schema/`：`envelope`、`error`、`grades.list`、`schedule.week`、`card.balance`、`library.loans`、`notice.list`、`generic.section` 的 JSON Schema 与对应 `params.*`。
+- `contract/schema/`：`envelope`（数据信封）、`error`、`grades.list`、`schedule.week`、`card.balance`、`library.loans`、`notice.list`、`generic.section` 的 JSON Schema 与对应 `params.*`。
 - `contract/capability/registry.json`：首批 capability id 注册表。
 - `contract/CHANGELOG.md`：契约变更的 dated 流水（§8 治理规则的落点；每条须引用 ADR 编号）。
 - `contract/manifest.schema.json`：manifest 自身的 JSON Schema（供 `tools/` 校验 manifest；无顶层 `mode`，每 cap 强制 `requestGraph`，ADR-022）。

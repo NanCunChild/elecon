@@ -152,7 +152,7 @@ ADR-003 §2.1 要求 transport 有 `init/connect/disconnect/dispose` 生命周�
 - **split-tunnel（按域名分流）**。ADR-003 §3.6 已判「放大私密流量裸奔风险，留待单独评估」。
 - **always-on 隧道**。形态 B 后台被挂起；elecon 的 on-demand 取数模型不需要。
 - **campus relay**。`server/src/campus` 的 501 blocker 写的是「等 ADR-003 定案」，而 ADR-003 早已接受——该 blocker 已过时，但 relay 的凭证落点属独立议题（见整改清单 P3-16），本文不代为决策。
-- **envelope `source.origin` 增 transport 维度**。ADR-003 §4 提到，属契约改动，需要时单独小 ADR。
+- **数据信封（data envelope，ADR-001 §3.3）`source.origin` 增 transport 维度**。ADR-003 §4 提到，属契约改动，需要时单独小 ADR。
 
 ---
 

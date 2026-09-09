@@ -88,7 +88,7 @@ DEV-Sideload 的职责是调试 adapter，而不是模拟低信任生产沙箱�
 DEPLOY 设置页可让用户显式选择本地 bundle 文件。导入必须按以下顺序 fail-closed：
 
 1. **只接受显式文件选择**：无 deep link 自动导入、无文件关联自动执行、无任意 URL 下载框、无后台扫描目录；
-2. **解析上限与格式校验**：在验签前限制压缩包字节数、单文件与累计解压字节数、文件数和嵌套深度；拒绝绝对路径、`..`、重复路径、规范化后碰撞、链接及 envelope 允许集之外文件；再做 schema/version 检查。任一超限/畸形立即拒绝，解压不得无界落盘；
+2. **解析上限与格式校验**：在验签前限制压缩包字节数、单文件与累计解压字节数、文件数和嵌套深度；拒绝绝对路径、`..`、重复路径、规范化后碰撞、链接及 bundle 信封允许集之外文件；再做 schema/version 检查。任一超限/畸形立即拒绝，解压不得无界落盘；
 3. **official 验签**：使用内置 active official pin 验证签名、digest、adapterId/version 与裁定档位；非 official、未签名、自报 official 或 dormant/未知 key 一律拒绝；
 4. **在线刷新远端治理材料**：从固定官方端点拉取 catalog 以及 revocation，验证签名、TTL 与 sequence 单调性；网络失败、签名失败、回滚、过期、同 sequence 不同字节（equivocation）或无法确认新鲜度时，本次导入失败，**不得仅凭本地 last-good 完成新导入**；
 5. **治理高水位独立提交**：一旦新 catalog/revocation 通过签名、TTL、sequence/equivocation 校验，须在检查候选 bundle 前分别原子持久化其原始签名字节与 sequence 高水位。即使候选随后因吊销/版本不符被拒，也不得丢弃已见的新治理状态；后续旧 sequence 永远拒绝。治理 last-good 与 adapter last-good 是两个事务，禁止共用“候选失败则全部回滚”的语义；
@@ -177,7 +177,7 @@ DEV 入口可更直接，但必须保留不可关闭的 DEV 身份提示与风�
 
 1. iOS 本地 official 导入是否足以维持 DPLA §3.3.2(b)“非代码市场”论证，是否需要平台例外？本文倾向全平台一致，但须人工合规复核。
 2. official 签名但尚未进入 catalog 的 bundle 是否允许导入；本文规定允许，但必须通过最新 revocation，且不得降级当前已安装版本。
-3. 本地导入文件格式是否直接复用 ADR-018 envelope，是否需要单文件封装；实现前须固定路径/大小上限。
+3. 本地导入文件格式是否直接复用 ADR-018 bundle 信封，是否需要单文件封装；实现前须固定路径/大小上限。
 4. 新 gate 如何机械证明 DEPLOY 不含 `devSideload` grant 铸造与未签名执行路径，而不是只检查一个可绕过的哨兵字符串。
 
 ---

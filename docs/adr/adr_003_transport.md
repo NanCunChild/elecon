@@ -152,5 +152,5 @@ ADR-000 §3.4 把**传输底座**（原生、长生命周期、有状态、**承
 - **`direct` / `system-vpn` 两档先行**：`direct` = OS 网络；`system-vpn` 经 `NEVPNManager`(iOS)/`VpnService`(Android) 引导 + 可达性检测 + 降级。
 - **三件套探针（atrust）**：许可证 / 协议模式 / iOS 可行性，产出 go/no-go 文档，未过不进实现。
 - **许可证隔离（若上 `app-tunnel`）**：进程/独立分发边界 + IPC 规格；GPLv3 §6 源码合规；按 §2.5 平台分发矩阵执行。
-- **契约（如需，独立 ADR）**：envelope `source.origin` 增 transport 维度（如 `client-direct` 经 direct/tunnel），与 ADR-001/009 协调、向后兼容。
+- **契约（如需，独立 ADR）**：数据信封（data envelope，ADR-001 §3.3）`source.origin` 增 transport 维度（如 `client-direct` 经 direct/tunnel），与 ADR-001/009 协调、向后兼容。
 - **测试**：transport 状态机/降级链单测；**TLS-不终止**断言；签名/吊销正反例；不在 UI 线程阻塞（红线 #7 同源精神，原生侧勿阻塞主线程）。

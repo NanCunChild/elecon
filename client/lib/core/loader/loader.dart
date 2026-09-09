@@ -84,7 +84,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 /// 每个方法**离线/失败可返回 null 或抛**——编排器一律当「本源不可用」处理并退化到 last-good/bootstrap，
 /// 绝不因网络错误 fail-open。实现须自带超时/大小上限（同 catalog/bundle 的规模护栏精神）。
 abstract interface class DistributionSource {
-  /// 拉取线上 `catalog.json`（已解 gzip 的 [SignedCatalog] 外层信封）；无/失败 → null。
+  /// 拉取线上 `catalog.json`（已解 gzip 的 [SignedCatalog] 传输封套）；无/失败 → null。
   Future<SignedCatalog?> fetchCatalog();
 
   /// 拉取线上 `revocation.json`；无/失败 → null。

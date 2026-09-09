@@ -257,7 +257,7 @@ console.log(
     "  E5 envelope 顶层 adapterId/Version ≠ manifest.json 内容 → 必须拒（三方一致，第 11 步）",
     "  E6 envelope 顶层身份 ≠ 签名载荷身份 → 必须拒",
     "  E7 签名载荷缺 contextTag 或用了别的域（如 elecon.catalog/1）→ 必须拒（域分隔）",
-    "  E8 外层信封含多余字段 → 必须拒（验签前解析面最小化）",
+    "  E8 传输封套含多余字段 → 必须拒（验签前解析面最小化）",
   ].join("\n"),
 );
 process.exit(1);

@@ -1,7 +1,7 @@
 # ADR-000：总体架构路线（Abstract）
 
 - **状态**：已接受（Accepted）
-- **日期**：2026-06-07
+- **日期**：2026-06-07（修订 2026-09-09：新增 §2.3.1 envelope 术语消歧，纯术语约定，不改变任何既有决策）
 - **适用范围**：整个项目的顶层技术路线。本文是"总纲"，后续按 `adr_001`、`adr_002` … 拆分单点决策，凡与本文冲突者以更晚的、显式声明覆盖本文的 ADR 为准。
 - **项目代号**：Elecron
 
@@ -67,6 +67,26 @@
 
 - **标准数据 schema**：adapter 与 UI 之间唯一的耦合面。adapter 负责"某校特有格式 → 标准 schema"的归一化；UI 只认标准 schema，与学校无关。
 - **Capability Manifest**：adapter 声明"我能提供什么数据 / 我需要访问哪些域名"；UI 声明"我渲染什么卡片"；核心据此撮合，并据 manifest 的域名白名单做凭证注入。
+
+#### 2.3.1 术语消歧：仓内有**三个** envelope / 信封，彼此无关
+
+「envelope」在本仓被三处独立复用，指三样毫不相干的东西。本节是**唯一术语源**，各 ADR 只在本节基础上就地声明其局部含义，不再各自定义。
+
+| 术语 | 定义于 | 是什么 | 边界 |
+|---|---|---|---|
+| **数据信封**（data envelope） | [`adr_001`](./adr_001_contract.md) §3.3，schema id `elecon.envelope` | **运行期**跨 adapter↔宿主边界的**归一化数据外包装**：`{ schema, schemaVersion, source, freshness, data }`。承载数据来路与 TTL/新鲜度。 | 与签名、分发、加密全无关。每次取数产生一个，用完即弃，不落签名范围。 |
+| **bundle 信封**（bundle envelope） | [`adr_018`](./adr_018_adapter_distribution.md) §2.9 / §2.9.1，`bundleFormat: elecon-bundle/N` | **签发期**的 **adapter 包清单 + 签名对象**：声明「这个 bundle 由哪些文件、各自多大、哈希是多少」。`digest = SHA-256(envelopeBytes)`，Ed25519 签的就是它。 | 不含数据、不含凭证。一个 adapter 版本一个，长期存在于 catalog 与台账。 |
+| **信封加密**（envelope encryption） | [`adr_012`](./adr_012_credential_store.md) §2.8 | 密码学**行业通名**：用 DEK 加密数据、再用 KEK 包装 DEK 的两层密钥模型，用于凭证落盘。 | 与上面两者只是**撞名**，没有任何结构或流程关系。**它是密钥管理术语，不是数据格式。** |
+
+**写作约定**（适用于 `docs/adr/`、`contract/` 与面向外部贡献者的文档；`docs/notes/`、`docs/archive/` 等工作稿从上下文继承，不追溯）：
+
+1. 文档或章节**首次**出现「envelope / 信封」处，须限定是哪一个（「数据信封」/「bundle 信封」/「信封加密」），或在开头写一句作用域声明；已声明后方可裸用 `envelope`。
+2. **禁止**在同一段落里裸用两个不同含义的 envelope。
+3. 承载 bundle 信封上线的三字段外层对象（`{ envelopeB64, signature, blobs }`）一律称 **传输封套（wire wrapper）**，**不叫信封**——否则「外层信封里装着信封」（[`adr_018`](./adr_018_adapter_distribution.md) §2.9.1）。catalog / revocation 的同构外层对象同名。
+
+**为什么不改名**：`elecon.envelope` 是已发布的 schema `$id`、`envelope encryption` 是无法改的行业通名、`bundleFormat` 已进签名范围——三处改名的代价都远大于收益。改名解决不了的，用**限定词 + 单一术语源**解决。
+
+---
 
 ### 2.4 版本与时效（易踩坑，单列）
 

@@ -313,7 +313,7 @@ void main() {
         contains: 'url'));
   });
 
-  group('SignedCatalog.fromJson — 外层信封', () {
+  group('SignedCatalog.fromJson — 传输封套', () {
     test('完整字段 → 解析', () {
       final s = SignedCatalog.fromJson({
         'catalogJson': '{}',

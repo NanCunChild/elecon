@@ -93,6 +93,12 @@ interface EnvelopeFreshness {
   stale: boolean;
 }
 
+/**
+ * 数据信封（data envelope，`elecon.envelope`，ADR-001 §3.3）——运行期包裹归一化数据的外层对象。
+ *
+ * 与 adapter 分发用的 **bundle 信封**（签名对象，ADR-018 §2.9.1）无关，只是撞名；
+ * 三个同名概念的消歧见 ADR-000 §2.3.1。
+ */
 interface Envelope<T> {
   schema: string;
   schemaVersion: string;

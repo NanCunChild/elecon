@@ -4,7 +4,7 @@
 
 - **状态**：已接受（Accepted） 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，经人工 review（PR #23）+ 安全检查清单审阅后接受。
 - **日期**：2026-06-11（修订历史见末尾 [§附录 A](#附录-a修订记录)）
-- **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 分层）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / envelope）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端沙箱）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端运行时）
+- **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 分层）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / 数据信封）、[`adr_005_runtime.md`](./adr_005_runtime.md)（服务端沙箱）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端运行时）
 - **相关 issue**：[#3](https://github.com/NanCunChild/elecon/issues/3)（实现任务）、[#4](https://github.com/NanCunChild/elecon/issues/4)（iOS 2.5.2 合规）
 - **适用范围**：imperative capability 的网络出口（`ctx.fetch`）语义、可信核心的凭证注入与响应脱敏、两端（client-direct / campus-relay）执行落点。**不含** declarative requestGraph（已由 ADR-005/008 落地）。
 
@@ -42,7 +42,7 @@ ADR-005/008 已落地 **declarative requestGraph**（旧称 parser 模式）：�
 
 8. **imperative handler 是异步的（返回 Promise）**，与 declarative 的"必须同步"相反。运行时需 pump job queue 并 await。限额（**数值为临时占位，2026-06-14：尚无实测依据，待真实多步握手 adapter 上线后校准——多步反爬流程可能吃掉请求数预算，需实践验证 20 是否够用**）：墙钟/内存对齐 `DEFAULT_LIMITS`；**单请求超时 ~10s**；**累计网络超时 ~30s**；**单次执行最大请求数 ~20**（防 DDoS / 资源耗尽）。**单次响应 body 大小设宿主侧独立上限**（rev-4 修订，见 §2.9——**推翻 rev-2 的"不设独立上限、靠 QuickJS OOM 兜底"**：宿主在字节进 QuickJS 之前已把整个 body 读进宿主堆，OOM 覆盖不到宿主 transport 阶段）。最终数值随实测在落地清单的运行时 PR 内固定。**校准承诺**：首个 imperative adapter 上线前，须以真实多步握手流程（至少覆盖一个含反爬挑战的学校）实测校准上述占位值（含 §2.9 body 上限），并更新本节为正式数值。
 
-9. **执行落点：client-direct 或 campus-relay，永不 public。** 客户端用设备本地保管的凭证直连；校外私密数据走 `server/src/campus` 校内授权中继。`server/src/public` 哑服务**永不**参与 imperative 凭证注入（红线 #2：公网零凭证）。envelope `source.origin` 据此标 `client-direct` / `campus-relay`。
+9. **执行落点：client-direct 或 campus-relay，永不 public。** 客户端用设备本地保管的凭证直连；校外私密数据走 `server/src/campus` 校内授权中继。`server/src/public` 哑服务**永不**参与 imperative 凭证注入（红线 #2：公网零凭证）。数据信封（data envelope，ADR-001 §3.3）`source.origin` 据此标 `client-direct` / `campus-relay`。
 
 10. **宿主主动取消 in-flight transport 请求（rev-4 新增，rev-5 补强顺序，见 §2.5/§2.9）。** 单请求超时 / 累计网络超时 / 请求数超限 / body 超限 / 执行级 fatal 任一触发时，宿主**主动中止**对应的上游请求（不只是竞速丢弃 Promise），并取消该次执行所有仍在飞行的 transport 请求。transport 即使竞态晚到响应，宿主也必须在任何 cookie/query/raw/firewall 副作用与 redirect 下一跳之前重新检查 cancellation，已取消即稳定拒绝。这封堵 rev-2 的隐患——"超时只是 race，上游请求未必被取消"（[`adr_014`](./adr_014_client_host_fn.md) §4.7 已列为后续项，本修订认领）。
 
@@ -199,7 +199,7 @@ setEphemeralCookie(name: string, value: string, opts: { domain: string; path?: s
 ## 3. 已知约束与风险（Consequences，草案）
 
 1. **这是最高风险路径（红线 #1）。** 实现与测试**不得由 AI 独自闭环**；需安全检查清单 + 至少 1 名人工审阅（git.md §3 分级审查）。
-2. **脱敏覆盖面：请求头/响应头已闭合，正常 deliver 响应体为已接受风险 + 后置审计计划。** 出站请求头（§2.3）和响应头（决策点 5）均走 allowlist、默认丢弃；重定向由核心跟随不暴露（§2.5：max 5 跳 + 每跳白名单校验，security-blocked 响应完全不交付）。**正常 deliver 响应体透传是已接受的风险**：body 格式不统一，通用脱敏不可行；缓解靠仅官方签名 + 人工代码审查。**后续计划 pattern-based 后置审计**：对 adapter 的最终产出（归一化后的 envelope）做 token-pattern 扫描（正则匹配已知凭证格式），**告警但不阻断**——发现可疑泄露后触发人工复查，不影响正常执行。需维护一份"已知泄露向量"清单并随实现增补。
+2. **脱敏覆盖面：请求头/响应头已闭合，正常 deliver 响应体为已接受风险 + 后置审计计划。** 出站请求头（§2.3）和响应头（决策点 5）均走 allowlist、默认丢弃；重定向由核心跟随不暴露（§2.5：max 5 跳 + 每跳白名单校验，security-blocked 响应完全不交付）。**正常 deliver 响应体透传是已接受的风险**：body 格式不统一，通用脱敏不可行；缓解靠仅官方签名 + 人工代码审查。**后续计划 pattern-based 后置审计**：对 adapter 的最终产出（归一化后的数据信封）做 token-pattern 扫描（正则匹配已知凭证格式），**告警但不阻断**——发现可疑泄露后触发人工复查，不影响正常执行。需维护一份"已知泄露向量"清单并随实现增补。
 3. **恶意/被攻破 adapter 的数据外泄面。** adapter 能读解析前私密响应；DEPLOY 缓解靠：①出口白名单 fail-closed（§2.4）②出站请求头净化（§2.3）③ official grant（ADR-002 §2.5/§2.6）④人工审查⑤出口审计。DEV-Sideload 的扩大风险由开发者警告承接。
 4. **请求 body 外泄向量（已接受风险）。** adapter 控制 `ctx.fetch` body，理论上可把私密响应编码后发往白名单内 passthrough 端点。DEPLOY 缓解：端点受签名、CI 和人工 review；imperative 只对 official grant 放行（ADR-002 §2.5/§2.6）；后续可审计出站 body token。DEV-Sideload 是显式全能力开发例外。
 5. **契约影响（红线 #6）。** imperative 需声明凭证作用域（§2.3 草图），涉及**扩展 manifest schema** → 属契约改动，须与 ADR-001 协调、走独立 ADR 且保持向后兼容，**不在本 ADR 内落地**。
