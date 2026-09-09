@@ -40,7 +40,7 @@ digest = SHA-256( SHA-256(file1) ‖ SHA-256(file2) ‖ … )      // 文件按�
 攻击者 = ADR-018 信任域 A 的社区贡献者或任何能把内容放进受审 bundle 的人；**人工审查看到的是
 无害目录，检出率为零**。直接击穿红线 #4。
 
-可执行证据：`tools/src/bundle/path-binding.redcase.ts` A 组（两侧 digest 逐字节相同）。
+可执行证据：`tools/src/bundle/path-binding.smoke.ts` A 组（v1 下两侧 digest 逐字节相同；v2 落地后该组转为「必须拒」并全绿）。
 
 **病根**：旧 envelope 一个人干了三件事——**容器**（装文件字节）、**清单**（声明有哪些文件）、
 **签名对象**。「清单」被「容器」吞掉，唯一没被签的字段恰是 `path`。v2 的全部动作就是把容器拆出去，
