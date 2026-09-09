@@ -32,7 +32,7 @@ ADR-003 已接受，定义了 transport 的窄接口、三档传输、降级链�
 
 zju-connect 的角色**限定为逐行对照的参考实现**（Hermes 文档中的 L1 级证据），不作为依赖、不引入其 AGPLv3。
 
-**放行条件**：Hermes 仓补 `LICENSE` 文件（当前仅 `Cargo.toml` 一行声明，不构成分发许可，红线 #9）。
+**放行条件**：Hermes 仓补 `LICENSE` 文件（原仅 `Cargo.toml` 一行声明，不构成分发许可，红线 #9）。**✅ 已满足（2026-09-09 核实）**：仓内已有 MIT 全文，`Cargo.toml` 亦声明 `license = "MIT"`。
 
 ### 2.2 嵌入形态（ADR-003 §2.6 开放问题 2）
 
@@ -138,7 +138,7 @@ ADR-003 §2.1 要求 transport 有 `init/connect/disconnect/dispose` 生命周�
 | **iOS** | ❌ 不编入 | 非因 GPL（已不适用），而是指南 5.2.2 未评估（Probe-002 §3） |
 | **OHOS / 桌面** | ❌ 不编入 | 优先级，非阻塞 |
 
-**信任（红线 #4）**：`app-tunnel` 是最高信任档，**仅官方签名加载，DEPLOY/DEV 均无 transport 本地导入或侧载入口**。ADR-033 只涉及 adapter，不扩散到 transport。原生 `.so` 的完整性由「编入官方包 + APK 签名」承担——**这与 ADR-002 现有的 adapter bundle 验签体系不是同一条链路**，本文明确记录该边界：ADR-002 §2.3/§2.4 的 Ed25519 bundle 验签**不覆盖**原生库。补偿手段是 **kill-switch**：隧道档纳入 ADR-002 §2.4 吊销清单，可远端禁用某版本，核心据此降级到 `direct`/`system-vpn`（fail-safe）。
+**信任（2026-09-09 修订）**：`app-tunnel` 是最高信任档。**~~仅官方签名加载~~ 已作废**——transport 编译期编入，无加载门（[`adr_003`](./adr_003_transport.md) §2.3；AGENTS.md 红线 #4 中的 transport 部分同日作废）。保留的是：**DEPLOY/DEV 均无 transport 本地导入或侧载入口**。ADR-033 只涉及 adapter，不扩散到 transport。原生 `.so` 的完整性由「编入官方包 + APK 签名」承担——**这与 ADR-002 现有的 adapter bundle 验签体系不是同一条链路**，本文明确记录该边界：ADR-002 §2.3/§2.4 的 Ed25519 bundle 验签**不覆盖**原生库。补偿手段是**远程开关**：隧道档纳入 ADR-002 §2.4 的远端治理面，可在不发版的前提下**禁用或启用**该档，核心据此降级到 `direct`/`system-vpn`（fail-safe）。这是**策略开关不是代码吊销**——被禁用的代码仍在二进制里，只是不被使用。
 
 ---
 

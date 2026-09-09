@@ -22,4 +22,5 @@
 |---|---|---|
 | [`bundle_digest_v1_superseded.md`](./bundle_digest_v1_superseded.md) | bundle digest v1 规格、保序重命名攻击复现、v1→v2 四种被否方案的论证 | ADR-002 §2.3 / ADR-018 §2.9.1 |
 | [`adr_002_revision_log.md`](./adr_002_revision_log.md) | ADR-002 历次修订的动机、取舍与人工批准记录 | ADR-002 |
+| [`adr_003_gpl_isolation_superseded.md`](./adr_003_gpl_isolation_superseded.md) | GPLv3 链接传染 / 商店分发不相容的分平台隔离矩阵与三条出路（标的改为 MIT 后不再适用） | ADR-003 §2.5 / ADR-032 §2.1 |
 | [`architecture_2026-07_request_graph_snapshot.md`](./architecture_2026-07_request_graph_snapshot.md) | 2026-07 requestGraph 迁移期的代码观察快照 | ADR-022 |

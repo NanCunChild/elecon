@@ -195,7 +195,7 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 - **渠道不等于信任档**：DEPLOY 本地文件若通过 official 验签与治理门，仍按 official 运行；`devSideload` 只在 DEV profile 可铸造。
 - **当前运行基线**：ADR-033 已接受但尚未落地，故 ADR-024 的 DEPLOY 零本地导入实现与 gate 目前仍原样生效——这是实现进度，不是 ADR 状态。
 - **落地后的 DEPLOY**：设置内保留低频本地导入，只接受 official 签名；每次新增/更新必须在线刷新并验证 catalog/revocation，网络失败、陈旧、回滚、吊销或身份不符均拒绝。入口低可达性不替代安全门禁。
-- dev 传输底座同样**仅 debug build**存在（红线 #4）。
+- dev 传输底座同样**仅 debug build**存在（编译期门控；transport 的签名/加载门已于 2026-09-09 作废，见 [`adr_003`](./adr_003_transport.md) §2.3）。
 - **DEV-Sideload 全部允许**：无签名 adapter 可用 declarative / imperative，并调试登录、收割、ssoMint、dataflow、action 等当前 DEV 宿主已编入能力；可触发开发者测试凭证注入，但凭证值仍不离核心。DEV 可以是优化的 `--release` build，必须使用独立 applicationId、启动警告且不可分发。**风险以多重警告兜底，不以 declarative 阉割兜底**：
   - **DEV 启动即提示**：进入 DEV profile 时持久提示「当前为开发版；未审查 adapter 可驱动核心使用开发者测试凭证、读取脱敏后的私密响应并在声明白名单内发请求」。不得表述成 adapter 能看到凭证值；红线 #1 在 DEV 仍成立。
   - **侧载 imperative adapter 时全占用确认**：加载含 `requestGraph: imperative` 的无签名 adapter 前，弹**全占用模态框**逐条列明风险（该 adapter 未经签名/审查、将获得凭证注入能力、可读取私密响应），用户须显式确认方可继续。

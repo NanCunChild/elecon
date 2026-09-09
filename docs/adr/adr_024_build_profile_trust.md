@@ -56,7 +56,7 @@ if (kSideloadEnabled) { /* 侧载加载 + dev 凭证注入分支 */ }       // d
 
 ### 2.4 传输底座仍 `kDebugMode`-only（profile flag 只管 adapter 侧载）
 
-红线 #4 第二句「dev 传输只在 debug build 存在」**保持不变**：本 flag **只解绑 adapter 侧载**。dev 传输底座看**全部流量**，风险量级远高于单个 adapter，应保留最强天然摩擦（卡 = debug）。即：**DEV profile 可跑未签名 adapter，但不启用未签名传输底座**——后者恒 `kDebugMode`-only。
+「dev 传输只在 debug build 存在」**保持不变**：本 flag **只解绑 adapter 侧载**。（该句原属红线 #4；2026-09-09 红线 #4 中的 transport 部分作废后，本约束下沉为 [`adr_003`](./adr_003_transport.md) §2.3 的编译期门控，**实质不变**。）dev 传输底座看**全部流量**，风险量级远高于单个 adapter，应保留最强天然摩擦（卡 = debug）。即：**DEV profile 可跑未签名 adapter，但不启用未签名传输底座**——后者恒 `kDebugMode`-only。
 
 ### 2.5 红线 #4 措辞同步（拟）
 
