@@ -22,8 +22,14 @@ const WATCHED = ["contract/schema/", "contract/capability/", "contract/manifest.
 const CHANGELOG = "contract/CHANGELOG.md";
 const ADR_REF = /\b(?:ADR[-_ ]?\d{3}|adr_\d{3})\b/i;
 
+// 所有 git 调用都锚在仓库根：pathspec 是**相对 cwd** 解析的，
+// 从 tools/ 跑 `git diff -- contract/CHANGELOG.md` 会匹配不到任何东西 → 假阴性放行。
+const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+  encoding: "utf8",
+}).trim();
+
 function git(args) {
-  return execFileSync("git", args, { encoding: "utf8" }).trim();
+  return execFileSync("git", ["-C", repoRoot, ...args], { encoding: "utf8" }).trim();
 }
 
 function resolveBase(explicit) {
