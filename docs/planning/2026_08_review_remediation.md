@@ -338,7 +338,7 @@ npm run ledger:validate                # 应不再是 incomplete (6 of 6)
 
 | 红项 | 根因 | 处置 |
 |---|---|---|
-| server `smoke:all` 27/28（`adapters-xidian.card.imperative`） | `adapters.pin` = `49ae7f5` 早于 A 仓 card 支持（A 仓 main 早已有 `card.*`），核心从未 bump pin | pin bump → ``737d885``（含 card.*、grades.list 1.1、bundle/2） |
+| server `smoke:all` 27/28（`adapters-xidian.card.imperative`） | `adapters.pin` = `49ae7f5` 早于 A 仓 card 支持（A 仓 main 早已有 `card.*`），核心从未 bump pin | pin bump → `ba7f190`（含 card.*、grades.list 1.1、bundle/2） |
 | tools `validate`（推送后必红） | grades.list 契约 1.1 在未推送提交里；A 仓修复 `76ce7fc` 未推 | A 仓 4 个提交已合并 bot 镜像后推到 ncc-devlab main；同上 pin |
 | `client-android-emulator` | runner 无 `/dev/kvm` 权限（日志 `ProbeKVM ... doesn't have permissions`），x86_64 模拟器无加速 → adb 永不可达。**非代码问题** | `ci.yml` 加 android-emulator-runner 官方要求的 Enable KVM 步骤（udev 规则） |
 
