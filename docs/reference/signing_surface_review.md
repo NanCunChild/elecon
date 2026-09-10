@@ -6,8 +6,9 @@
 > 本文只把「谁签了什么字节、元数据落在哪、谁裁定」摊平成一张可对照的表，并记录复盘发现的五个问题。
 > 🔒 全文涉及红线 #4 承重路径；任何据此的改动须人工 + 安全清单复核，AI 不得独自闭环。
 
-本文写于 P0-01（digest v2）**修订已定、实现未落地**的时点。凡标 `【v2 后】` 的行描述的是修订后的
-目标形态，不是当前代码。
+本文写于 P0-01（digest v2）**修订已定、实现未落地**的时点。**digest v2 已于 2026-09-09 两端落地、
+CI 全绿**（本行记于 2026-09-10），故凡标 `【v2 后】` 的行**现已是当前代码**，不再是目标形态。
+仍未发生的只有重签仪式：仓内 7 份产物仍是 v1 签名。
 
 ---
 
@@ -41,7 +42,7 @@ JSON 里，直签字节即可；bundle 的 `tier`（裁定档位）**不在** en
 | `credentials` | `manifest.json` | ✓ | 注入 scope 与方式（**只有 ref，无值**，红线 #1） | credential store |
 | `capabilities` | `manifest.json` | ✓ | 能力声明 | validator K1 |
 | `login` | `manifest.json` | ✓ | WebView 登录起点与导航闭锁 | ADR-015 |
-| masker 规则 | `masker.json` | ✓（mandatory，**未落地**，受 P0-01 阻塞） | 响应凭证收割策略 | ADR-026 |
+| masker 规则 | `masker.json` | ✓（mandatory，**未落地**；P0-01 前置已解除，剩 P1-04 与装配重签，见 ADR-026 §2.7.1） | 响应凭证收割策略 | ADR-026 |
 | `digest` / `tier` / `keyId` / `algorithm` | `signature.json` | ✗ detached | 内容寻址 + 档位 + 选锚 | `verify.dart` |
 | stdlib `html.bundle.js` | **不在 bundle 内** | ✗ | 宿主注入，版本经 `stdlibMin` 协商 | B-host |
 | `fixtures/` / `README` / `FLOW.md` | 目录内**被剔除** | ✗ | 开发期产物 | — |

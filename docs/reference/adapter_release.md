@@ -61,14 +61,19 @@ npm run catalog   # 本地 unsigned 索引；不是线上 signed catalog
 cat dist/bundles/school-xidian-<version>.sha256
 ```
 
-产物（**不要**直接当端点 D 内容上传）：
+产物（**不要**直接当端点 D 内容上传）——**2026-09-09 digest v2 后文件名已变**：
 
 ```text
-dist/bundles/school-xidian-<version>.json
-dist/bundles/school-xidian-<version>.json.gz
-dist/bundles/school-xidian-<version>.sha256
+dist/bundles/school-xidian-<version>.envelope.json      # 被签的那串字节本身
+dist/bundles/school-xidian-<version>.unsigned.json.gz   # {envelopeB64, blobs}，缺 signature
+dist/bundles/school-xidian-<version>.sha256             # = SHA-256(envelope.json)
 dist/catalog.json
 ```
+
+> **`.envelope.json` 是被签对象、不是可加载产物**：v2 的 digest 覆盖的就是这串字节，故 A 域**只写
+> 这一份**，不再另出 pretty-print 版本——同时存在「好看的一份」和「被签的一份」正是 ADR-018 §3
+> 风险 (e)「所见非所签」的温床。`.unsigned.json.gz` 是**未签名交接物**（传输封套缺 `signature`
+> 一项），补上签名后才是可加载的封套。
 
 ---
 
@@ -279,6 +284,9 @@ author、文档作者或 `issuedAt` 补猜。普通 `ledger:validate` 分别报�
 ---
 
 ## 8. 实例：school-xidian@0.3.0（2026-07-21）
+
+> ⚠ **这是 `elecon-bundle/1` 时代的记录，留作流程范例**。命令与参数在 digest v2 下**未变**，
+> 但其中的 digest（`4a1031df…`）是 v1 算法产物，**在 v2 下不可复现**；A 域产物文件名亦已变（§2）。
 
 | 项 | 值 |
 |---|---|
