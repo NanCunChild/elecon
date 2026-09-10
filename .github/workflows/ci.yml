@@ -71,6 +71,10 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
+          # 契约 changelog 门要对 base（origin/main）做 merge-base diff；默认 fetch-depth=1 的浅克隆
+          # 没有 origin/main → 门在 PR 上直接报「找不到 base ref」而红（push 到 main 时 base==HEAD、
+          # 零差异假绿）。全历史让该门在 PR 上真正生效。
+          fetch-depth: 0
       # 按需拉取 elecon-adapters（ADR-018 §2.11.1）；脚本导出的 ELECON_ADAPTERS_ROOT
       # 让 validate 对 pinned checkout 的 adapters/ 做全量静态校验。
       - name: Fetch pinned elecon-adapters
