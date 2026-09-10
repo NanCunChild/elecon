@@ -29,7 +29,7 @@
  *   A 保序重命名（v1 的原病灶）        D 格式标识绑定（纪律 6）
  *   B 重复路径（跨端解析差分）          E1–E4 blob 表纪律（纪律 4）
  *   C 路径卫生闸门（纪律 3）            E5–E6 身份三方一致
- *                                       E7 签名域分隔  E8 封套解析面最小化
+ *                                       E7 签名域分隔  E8 封套解析面最小化  E9 非规范 base64
  *
  * 🔒 承重路径（红线 #4）。本文件 keyless（只用测试 Ed25519 密钥对，不碰 YubiKey 后端），
  *    可自动化；但 P0-01 的**实现**与本文件转绿的判定须人工复核，不得 AI 独自闭环（AGENTS.md §1）。
@@ -498,6 +498,57 @@ console.log("\n━━ E. blob 表 / 身份 / 域分隔 / 封套（digest v2 新�
     "ok=false（验签前解析面最小化，第 2 步）",
     r.ok ? "ok=true（验签前解析面可被任意扩展）" : `拒了但原因不对：${r.reason}`,
   );
+}
+
+// E9 非规范 base64 → 必须拒（§2.9.1 第 3 步）。
+//    Buffer.from(s, "base64") 宽松：忽略空白 / 字母表外字符、接受 URL-safe 字母表。只要解码字节命中
+//    digest 就会被放行——内容寻址让这没有信任面影响，但 Dart 是严格的，两端必须同判（风险 5）。
+{
+  const wireOf = (envelopeB64: string, blobs: Record<string, string>) =>
+    gzipSync(Buffer.from(JSON.stringify({ envelopeB64, signature: sigHonest, blobs }), "utf-8"));
+  const envB64 = honest.bytes.toString("base64");
+  const blobsB64 = Object.fromEntries(
+    Object.entries(honest.blobs).map(([h, b]) => [h, b.toString("base64")]),
+  );
+  const [firstBlobHash, firstBlobB64] = Object.entries(blobsB64)[0]!;
+  const variants: Array<[string, string, Record<string, string>]> = [
+    ["E9a ★ envelopeB64 内嵌空白", `${envB64.slice(0, 8)} \n${envB64.slice(8)}`, blobsB64],
+    ["E9b ★ envelopeB64 尾部追加字母表外字符", `${envB64}!!!`, blobsB64],
+    (() => {
+      // URL-safe 变体只对含 `+`/`/` 的串有意义：优先 envelope，否则找一个 blob；都没有则用例自身无效（前提断言会红）。
+      const toUrlSafe = (x: string) => x.replace(/\+/g, "-").replace(/\//g, "_");
+      if (/[+/]/.test(envB64)) return ["E9c ★ envelopeB64 用 URL-safe 字母表", toUrlSafe(envB64), blobsB64];
+      const hit = Object.entries(blobsB64).find(([, b]) => /[+/]/.test(b));
+      return hit
+        ? ["E9c ★ blob 用 URL-safe 字母表", envB64, { ...blobsB64, [hit[0]]: toUrlSafe(hit[1]) }]
+        : ["E9c ★ URL-safe 字母表（无可替换字符，用例无效）", "", blobsB64];
+    })() as [string, string, Record<string, string>],
+    [
+      "E9d ★ blob 内嵌空白",
+      envB64,
+      { ...blobsB64, [firstBlobHash]: `${firstBlobB64.slice(0, 4)} ${firstBlobB64.slice(4)}` },
+    ],
+  ];
+  // 前提：宽松解码下这些变体确实解出同一份字节（否则「拒」可能只是碰巧撞上 digest 不符）。
+  expect(
+    "E9 前提：变体在宽松解码下与诚实字节相同，且每个变体确实与规范形不同",
+    variants.every(
+      ([, e, b]) => Buffer.from(e, "base64").equals(honest.bytes) && (e !== envB64 || b !== blobsB64),
+    ) &&
+      Object.entries(variants[3]![2]).every(([h, b]) => Buffer.from(b, "base64").equals(honest.blobs[h]!)) &&
+      Object.entries(variants[2]![2]).every(([h, b]) => Buffer.from(b, "base64").equals(honest.blobs[h]!)),
+    "宽松解码后逐字节相同",
+    "变体在宽松解码下已不同（测试自身无效）",
+  );
+  for (const [id, e, b] of variants) {
+    const r = openBundle(wireOf(e, b), publicKey);
+    expect(
+      id,
+      !r.ok && /非规范 base64/.test(r.reason),
+      "ok=false（第 3 步：非规范 base64 拒）",
+      r.ok ? "ok=true（宽松解码放行）" : `拒了但原因不对：${r.reason}`,
+    );
+  }
 }
 
 // ── 汇总 ────────────────────────────────────────────────────────────────────

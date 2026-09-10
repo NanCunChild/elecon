@@ -77,6 +77,25 @@ export interface OpenedBundle {
 }
 
 /** 步骤 1–3：有界 gunzip → 解析传输封套 → 解码 envelopeBytes。**不做任何信任裁定。** */
+/**
+ * 🔒 严格（规范）base64 解码（§2.9.1 第 3 步「非规范 base64 拒」）。
+ *
+ * `Buffer.from(s, "base64")` 是**宽松**的：忽略空白、忽略字母表外字符、接受 URL-safe 字母表、
+ * 接受填充位不为零的尾字节——只要解码字节命中 digest 就会被放行。内容寻址让这类差异没有信任面
+ * 影响（归档 §2.4），但 Dart `base64.decode` 是严格的，两端对同一份封套必须**同判**（ADR-002 §3
+ * 风险 5）。规范形 = 标准字母表、正确填充、且 re-encode 逐字等于原串。
+ */
+function decodeCanonicalBase64(label: string, s: string): Buffer {
+  if (s.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(s)) {
+    throw new Error(`${label} 非规范 base64（fail-closed）`);
+  }
+  const bytes = Buffer.from(s, "base64");
+  if (bytes.toString("base64") !== s) {
+    throw new Error(`${label} 非规范 base64（fail-closed）`);
+  }
+  return bytes;
+}
+
 function readWire(gz: Buffer): { wire: WireWrapper; envelopeBytes: Buffer; blobs: BlobTable } {
   if (gz.length > MAX_BUNDLE_GZ_BYTES) {
     throw new Error(`压缩体 ${gz.length} 字节超上限 ${MAX_BUNDLE_GZ_BYTES}（fail-closed）`);
@@ -105,7 +124,7 @@ function readWire(gz: Buffer): { wire: WireWrapper; envelopeBytes: Buffer; blobs
   if (typeof o.blobs !== "object" || o.blobs === null || Array.isArray(o.blobs)) {
     throw new Error("传输封套缺 blobs（fail-closed）");
   }
-  const envelopeBytes = Buffer.from(o.envelopeB64, "base64");
+  const envelopeBytes = decodeCanonicalBase64("envelopeB64", o.envelopeB64);
   if (envelopeBytes.length === 0) throw new Error("envelopeBytes 为空（fail-closed）");
   if (envelopeBytes.length > MAX_BUNDLE_PAYLOAD_BYTES) {
     throw new Error(`envelopeBytes 超上限（fail-closed）`);
@@ -113,7 +132,7 @@ function readWire(gz: Buffer): { wire: WireWrapper; envelopeBytes: Buffer; blobs
   const blobs: BlobTable = {};
   for (const [h, v] of Object.entries(o.blobs as Record<string, unknown>)) {
     if (typeof v !== "string") throw new Error(`blob ${h} 非 base64 字符串（fail-closed）`);
-    blobs[h] = Buffer.from(v, "base64");
+    blobs[h] = decodeCanonicalBase64(`blob ${h}`, v);
   }
   return { wire: o as unknown as WireWrapper, envelopeBytes, blobs };
 }
@@ -155,7 +174,7 @@ export function openBundle(gz: Buffer, publicKey: KeyObject): VerifyResult<Opene
   });
   let sigBytes: Buffer;
   try {
-    sigBytes = Buffer.from(signature.signature, "base64");
+    sigBytes = decodeCanonicalBase64("signature", signature.signature);
   } catch {
     return { ok: false, reason: "签名字段非 base64（fail-closed）" };
   }

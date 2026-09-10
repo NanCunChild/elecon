@@ -491,6 +491,40 @@ push(
   );
 }
 
+// 19. / 20. 非规范 base64（第 3 步）——两端必须同判
+//     Buffer.from(s,"base64") 宽松（忽略空白、接受 URL-safe 字母表）；Dart base64.decode 拒空白但
+//     **接受 URL-safe**。内容寻址让这没有信任面影响，但「同一份封套两端不同判」正是风险 5 的形状。
+{
+  const envB64 = good.bytes.toString("base64");
+  const blobsB64 = Object.fromEntries(Object.entries(good.blobs).map(([h, b]) => [h, b.toString("base64")]));
+  const wireOf = (e: string, b: Record<string, string>) =>
+    gzipSync(Buffer.from(JSON.stringify({ envelopeB64: e, signature: goodSig, blobs: b }), "utf-8"));
+  push(
+    "envelope_base64_whitespace",
+    "envelopeB64 内嵌空白：宽松解码仍得到同一份被签字节，但规范形要求 re-encode 逐字等于原串（第 3 步）。",
+    wireOf(`${envB64.slice(0, 8)}\n${envB64.slice(8)}`, blobsB64),
+    { ok: false, reasonContains: "base64" },
+  );
+  // URL-safe 变体只对含 `+`/`/` 的串有意义；在 envelope 与 blobs 里找一个，找不到即生成器自身失效。
+  const toUrlSafe = (x: string) => x.replace(/\+/g, "-").replace(/\//g, "_");
+  let urlSafeWire: Buffer | null = null;
+  if (/[+/]/.test(envB64)) {
+    urlSafeWire = wireOf(toUrlSafe(envB64), blobsB64);
+  } else {
+    const hit = Object.entries(blobsB64).find(([, b]) => /[+/]/.test(b));
+    if (hit) urlSafeWire = wireOf(envB64, { ...blobsB64, [hit[0]]: toUrlSafe(hit[1]) });
+  }
+  if (!urlSafeWire)
+    throw new Error("golden 生成器：envelope 与 blobs 的 base64 均不含 +// ，URL-safe 用例无法表达");
+  push(
+    "base64_urlsafe_alphabet",
+    "URL-safe 字母表（`-`/`_`）：Node 与 Dart 的宽松解码都接受，但传输封套只认标准字母表；" +
+      "Dart 侧靠 re-encode 比对拒，TS 侧靠字母表正则拒——两端同判。",
+    urlSafeWire,
+    { ok: false, reasonContains: "base64" },
+  );
+}
+
 // ---- 自验：golden 里的每条期望都必须是 TS 侧**真实产生**的行为 ----
 //
 // 没有这一步，golden 就只是「我以为会这样」的一份手写清单：写错了 Dart 会被钉到错误的行为上，

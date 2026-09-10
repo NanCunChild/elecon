@@ -203,6 +203,26 @@
         "ok": false,
         "reasonContains": "验签"
       }
+    },
+    {
+      "name": "envelope_base64_whitespace",
+      "_why": "envelopeB64 内嵌空白：宽松解码仍得到同一份被签字节，但规范形要求 re-encode 逐字等于原串（第 3 步）。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VV3ZOiuBb/X3jdnp2QDyBdtQ+2KB3GhNVGMan7EgIIAdRptVW25n+/hbO3amdm71NSIZzfxzk55y+n3H+U3eFYvnjYeXbKe9wUGWn/s8+jTZSj+Cy3yyZp4i6PNjaH+Cz3m4uKbt1iYM1iGtcqml+LaHN/yx73BgnrjxxezwrSk4o2F9ZcG5mtavO66kynOrMXxxziJmnYbWHZhd/ZifXqmEebgdljXt7jq9yuDsweGvlGQPm6HHEGvT12zB7QYx/N7iKVI55VtiVJalyZzVCStq7q520Sql5ma6SsaHjYXkU6AxzKgUczl9v1lactENGqV5ZBHk7uMlM2STvLIcMinBG2B6cfeGzFoLarYQG70YOL7LuHLgM7T70xT0zHfV1zu4bjfZGtCY9Ul6QGiWHEn6AklFdpJ4MI11BYPsihq1W4wyqbEZHOrQrrWlh559FyUClHEo6c+U3YF8vTTa3eYrp4PTUmmgM9ZR7r2aV4rcEPPO4/8pBQkiRtkcjmtRhaIjI1YkLVzzsB5SDthPBwfROh6PnwUouUuTycERGuWtXLu7CTK+/nvRxaIgfRJOHylvzCo7uoaIMX/XH4gUu4PrG9OMiUuaJhHrObWmbLm0iXQEDV815Z1c9rPizd5OFJ3SfZqufZDAnIkEi7VlkORCZ6kc6bJOw6ERY1D+VN9qtGpeshyXhTvd18tn+pi2g31sNZZuSo+s1QTMlXA+kPeeJ2MvxUP42wk0GFLUqiGeDhzpWpuSfZGvGhaEU/70W4u0s7g8J2bZJOXJkxzK3qRT+7C8ihzFaWZxzIYU1UKMe8Nj/XT95ToLb813yF7U8eyasI644PM5Rka8wHjmS2BCKbXcUQW2GXg+o3vYrijtvWVdEaqNCgJFvVSTrvueUoCdmVR5taWQb40CIxsKbauNR5ck7Nbq/Pl/fSef7L0YU+nst3VjjPzsnUh0P3aXfoinLvPP3v26Z8PzWHvfPsuL/D35Hz5Jyb8t15dg5V1ZhGd86TUzS78nR2np3AaJQTpH03N2UQGFyWWJeQYj8PYBmUEFQ5QaisCqwL7FGoc0AKt/I8Qyk2P/FzQvY1/+3m1tsBe1+OePuyUMvXuL59vvS/UYguaUbC9FS8zLax28ezDmCz+jgnsVnj9fv1KnZZLOhnquLLeQY6TPJmGk53f/zhPDlteX+o/i7307k8nT+15X3U3e0O78257sdOWEBCXOp8e3Ly7pCfRs+I1oVLMParClam0hphEhDPCypaVK72/dwntKgQJqYibh7QEvsaeG5e5CVB1DjPjtrW1xzFgEXiI9+Lca1NNG90djsWUdeZ+4Sy+elRMjoT3aK/HQ1aNtv09MV5ckhJQVVS3/cpIMAPPJADhInnIWSoLoKg1JS4pgi050FQoBL5RmNkXA8Yl+jR2cnk9fPn707kHkAF9QONQUC0D2npI7/wdIUDmLueRwsKiM4D6FWehr7xdGFcgw2hhYcMzUebrocdmz7afpdn80xt40Fn9MLsYcfs7MKn7DRtJjvWz1u5fQFqG8dqbBvTfx0VX9h08n/GxaThb/i+sLxZTB6YVm5fatl3J71dHdWWN0nzkj+wppNf/BvPt2/f45v95lJE3Xl8guz1NJ6N8bp8v7qXbw9ux7xfdeXYQu5/8x//Q6s2j7omzbp/6MNXtjvs2Cv4Ui0Po6sewEGJXJ+WAUK+LjDRwIfGw6gqqyIvISVFiQvfp4WmbgWRH0AASl1BjKjvQ+fZIYvmTI76lSyahEWbcw6PR/bntOrixcdH/H5sD/v+PT/tNptVtEh3O6Lh1mNfp2TRTDxWgr8r3VSUUp9o7VNKKl0EXqVLv0I5oIC4GFUIaAIJcCnGRVVBDwCoK0OpQXmAXeo8O+M4Mf2mfUT89u2/AKcS8TAIAAA=",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "base64"
+      }
+    },
+    {
+      "name": "base64_urlsafe_alphabet",
+      "_why": "URL-safe 字母表（`-`/`_`）：Node 与 Dart 的宽松解码都接受，但传输封套只认标准字母表；Dart 侧靠 re-encode 比对拒，TS 侧靠字母表正则拒——两端同判。",
+      "packedBundleBase64": "H4sIAAAAAAAAA3VV3ZOiuBb/X3jdnt2QDyBdtQ+2KB3GhKuNYvKyFQIIAdRptVW25n+/hbO36vbMvU9JhXB+H+fknL+dcv9Rdodj+eJh59kp73FTZKTNo02Uo/gst8smaeIujzY2h/gs95uLim7dYmDNYhrXKppfi2hzf8se9wYJ648cXs8K0pOKNhfWXBuZrWrzuupMpzqzF8cc4iZp2G1h2YXf2Yn16phHm4HZY17e46vcrg7MHhr5RkD5uhxxBr09dswe0GMfze4ilSOeVbYlSWpcmc1Qkrau6udtEqpeZmukrGh42F5FOgMcyoFHM5fb9ZWnLRDRqleWQR5O7jJTNkk7yyHDIpwRtgenTzy2YlDb1bCA3ejBRfbdQ5eBnafemCem476uuV3D8b7I1oRHqktSg8Qw4k9QEsqrtJNBhGsoLB/k0NUq3GGVzYhI51aFdS2svPNoOaiUIwlHzvwm7Ivl6aZWbzFdvJ4aE82BnjKP9exSvNbgE4/7Zx4SSpKkLRLZvBZDS0SmRkyo+nknoByknRAerm8iFD0fXmqRMpeHMyLCVat6eRd2cuX9vJdDS+QgmiRc3pJfeHQXFW3woj8On7iE6xPbi4NMmSsa5jG7qWW2vIl0CQRUPe+VVf285sPSTR6e1H2SrXqezZCADIm0a5XlQGSiF+m8ScKuE2FR81DeZL9qVLoekow31dvNZ/uXuoh2Yz2cZUaOqt8MxZR8M5B+yhO3k+Gn+mmEnQwqbFESzQAPd65MzT3J1ogPRSv6eS/C3V3aGRS2a5N04sqMYW5VL/rZXUAOZbayPONADmuiQjnmtfm5fvKeArXlv+YrbH/ySF5FWHd8mKEkW2M+cCSzJRDZ7CqG2Aq7HFS/6VUUd9y2rorWQIUGJdmqTtJ5zy1HSciuPNrUyjLAhxaJgTXVxqXOk3Nqdnt9vryXzvPfji708Vy+s8J5dk6mPhy6L7tDV5R75+k/3zbl+6k57J1nx/0d/o6cJ+fclO/Os3OoqsY0unOenKLZlaez8+wERqOcIO27uSmDwOCyxLqEFPt5AMughKDKCUJlVWBdYI9CnQNSuJXnGUqx+YmfE7Jv+W83t94O2Pt6xNuXhVq+xvXtj0v/G4XokmYkTE/Fy2wbu3086wA2q49zEps1Xr9fr2KXxYL+QVV8Oc9Ah0neTMPp7s8/nSenLe8P1T/kfjmXp/OXtryPurvd4b051/3YBwtIiEud709O3h3y0+gZ0bpwCcZ+VcHKVFojTALieUFFi8rVvp/7hBYVwsRUxM0DWmJfA8/Ni7wkiBrn2VHb+pqjGLBIfOR7Ma61ieaNzm7HIuo6c59QNj89SkZnolv0t6NBy2abnr46Tw4pKahK6vs+BQT4gQdygDDxPIQM1UUQlJoS1xSB9jwIClQi32iMjOsB4xI9OjuZvP711w8ncg+ggvqBxiAg2oe09JFfeLrCAcxdz6MFBUTnAfQqT0PfeLowrsGG0MJDhuajTdfDjk0fbb/Ls3mmtvGgM3ph9rBjdnbhU3aaNpMd6+et3L4AtY1jNbaN6f8cFV/ZdPJ/xsWk4W/4vrC8WUwemFZuX2rZdye9XR3VljdJ85I/sKaTX/wbz7dvP+Kb/eZSRN15fILs9TSejfG6fL+6l28Pbse8X3Xl2ELu//Af/0OrNo+6Js26/9KHr2x32LFX8LVaHkZXPYCDErk+LQOEfF1gooEPjYdRVVZFXkJKihIXvk8LTd0KIj+AAJS6ghhR34fOs0MWzZkc9StZNAmLNuccHo/sX9OqixcfH/H7sT3s+/f8tNtsVtEi3e2IhluPfZuSRTPxWAn+qXRTUUp9orVPKal0EXiVLv0K5YAC4mJUIaAJJMClGBdVBT0AoK4MpQblAXap8+yM48T0m/YR8fv3fwOejBQXLggAAA==",
+      "publicKeyRawHex": "c474dc93aad15b9c68dc15ce7ee96e1e720510cd22837215293ff0f40dc73032",
+      "expect": {
+        "ok": false,
+        "reasonContains": "base64"
+      }
     }
   ]
 }

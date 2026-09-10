@@ -232,9 +232,9 @@ WireParts readWire(Uint8List gz) {
 
   final Uint8List envelopeBytes;
   try {
-    envelopeBytes = Uint8List.fromList(base64.decode(envB64));
+    envelopeBytes = decodeCanonicalBase64(envB64);
   } on FormatException catch (e) {
-    throw BundleFormatException('envelopeB64 非合法 base64：$e（fail-closed）');
+    throw BundleFormatException('envelopeB64 非规范 base64：$e（fail-closed）');
   }
   if (envelopeBytes.isEmpty) {
     throw const BundleFormatException('envelopeBytes 为空（fail-closed）');
@@ -250,9 +250,9 @@ WireParts readWire(Uint8List gz) {
       throw BundleFormatException('blob ${entry.key} 非 base64 字符串（fail-closed）');
     }
     try {
-      blobs[entry.key] = Uint8List.fromList(base64.decode(v));
+      blobs[entry.key] = decodeCanonicalBase64(v);
     } on FormatException catch (e) {
-      throw BundleFormatException('blob ${entry.key} 的 base64 非法：$e（fail-closed）');
+      throw BundleFormatException('blob ${entry.key} 非规范 base64：$e（fail-closed）');
     }
   }
 
@@ -561,3 +561,17 @@ Map<String, dynamic> readEnvelopeManifestJson(
 }
 
 String _short(String d) => d.length <= 12 ? d : '${d.substring(0, 12)}…';
+
+/// 🔒 严格（规范）base64 解码（ADR-018 §2.9.1 第 3 步「非规范 base64 拒」）。
+///
+/// Dart 的 [base64.decode] 已拒空白、字母表外字符、错误填充，但**同时接受 URL-safe 字母表**
+/// （`-`/`_`）；TS 端 `decodeCanonicalBase64` 只认标准字母表。两端对同一份封套必须同判
+/// （ADR-002 §3 风险 5），故此处再要求 re-encode 逐字等于原串——这一条把 URL-safe 与任何
+/// 非规范形一并拒掉。
+Uint8List decodeCanonicalBase64(String s) {
+  final bytes = Uint8List.fromList(base64.decode(s));
+  if (base64.encode(bytes) != s) {
+    throw const FormatException('re-encode 与原串不等（非规范形）');
+  }
+  return bytes;
+}

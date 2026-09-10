@@ -5,6 +5,7 @@ library;
 
 import 'dart:convert';
 import 'dart:typed_data';
+import 'bundle.dart' show decodeCanonicalBase64;
 
 /// 宿主裁定档位在签名里的线上取值。与 `TrustTier`（TS）同值。
 ///
@@ -71,7 +72,7 @@ class SignatureFile {
   Uint8List signatureBytes() {
     final Uint8List raw;
     try {
-      raw = Uint8List.fromList(base64.decode(signature));
+      raw = decodeCanonicalBase64(signature);
     } on FormatException catch (e) {
       throw FormatException('signature 非合法 base64：$e（fail-closed）');
     }

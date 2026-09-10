@@ -3,7 +3,7 @@
  *
  * envelope digest === signer 目录式 digest（见 envelope.ts 不变量），故签 envelope 得到的签名
  * 与签目录**互通**。tier 由**签名流程显式注入**（§2.2），非 manifest 自报。配对验签见
- * `package.ts` 的 `verifyBundleSignature`。
+ * `package.ts` 的 `openBundle`（收原始字节，验签先于解析）。
  *
  * **身份不取自调用方**：adapterId/adapterVersion 一律从 envelope 内 `manifest.json` 读取
  * （`readEnvelopeManifest`）——manifest.json 在 digest 覆盖内，故「签名身份」与「被签内容」

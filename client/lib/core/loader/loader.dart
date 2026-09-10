@@ -30,7 +30,7 @@
 /// [LoadResult.fail]，绝不向上抛未包装异常。
 ///
 /// **验签接缝**：三个 verifier 以 typedef 注入，默认生产实现（`verifyCatalog`/`verifyRevocation`/
-/// `verifyBundleSignature`，用**预埋真实 pin**）；测试注入 golden 测试锚版本。这样生产代码不触
+/// `openBundle`，用**预埋真实 pin**）；测试注入 golden 测试锚版本。这样生产代码不触
 /// `@visibleForTesting` 的 `*With` 变体，而测试仍能跑同一条编排链。
 ///
 /// 🔒 红线 #1/#4 承重件：改动须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
@@ -84,7 +84,7 @@ abstract interface class DistributionSource {
   /// 拉取线上 `revocation.json`；无/失败 → null。
   Future<SignedRevocationList?> fetchRevocation();
 
-  /// 按 catalog entry 的 url 拉取 packed bundle 字节（`gzip(JSON({envelope,signature}))`）；无/失败 → null。
+  /// 按 catalog entry 的 url 拉取 packed bundle 字节（传输封套 `gzip(JSON({envelopeB64,signature,blobs}))`）；无/失败 → null。
   Future<Uint8List?> fetchBundle(String url);
 }
 

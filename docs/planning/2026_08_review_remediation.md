@@ -360,6 +360,10 @@ pin bump 到 `ba7f190` 后复跑：server smoke **28/28**（card 项转绿）、
 仅余 C0 意图档位 warn）、tools smoke 19/19、`flutter test` DEPLOY 856 通过 / 12 skip（skip 仍为等重签的
 `school_manifest_test` 条件跳过）。
 
+**owner 首轮复核（2026-09-11）**：4 条意见，1 条实质偏差——TS 端 base64 宽松解码与 §2.9.1 第 3 步矛盾。
+已修为两端统一的规范形解码（并顺带关掉 Dart 接受 URL-safe 字母表的反向不对称），红用例 E9a–E9d、
+golden +2（现 21 条）。其余为清单措辞与过期注释，已改。记录见签收清单 §6。
+
 **待办（本节落地后）**：① 🔒 owner 按签收清单复核；② 仪式前在 A 仓 bump `school-fudan/thu/xjt/helloworld`
 `adapterVersion` 0.1.0 → 0.1.1（`school-xidian` 已是未签发过的 0.4.1，不动）并把 pin 移到该提交；
 ③ 举行 §2.5 所列参数的仪式；④ 合并后 `git branch -f main origin/main`，本地 main 不再领先。
