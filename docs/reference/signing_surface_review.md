@@ -6,8 +6,9 @@
 > 本文只把「谁签了什么字节、元数据落在哪、谁裁定」摊平成一张可对照的表，并记录复盘发现的五个问题。
 > 🔒 全文涉及红线 #4 承重路径；任何据此的改动须人工 + 安全清单复核，AI 不得独自闭环。
 
-本文写于 P0-01（digest v2）**修订已定、实现未落地**的时点。凡标 `【v2 后】` 的行描述的是修订后的
-目标形态，不是当前代码。
+本文写于 P0-01（digest v2）**修订已定、实现未落地**的时点。**digest v2 已于 2026-09-09 两端落地、
+CI 全绿**（本行记于 2026-09-10），故凡标 `【v2 后】` 的行**现已是当前代码**，不再是目标形态。
+仍未发生的只有重签仪式：仓内 7 份产物仍是 v1 签名。
 
 ---
 
@@ -41,7 +42,7 @@ JSON 里，直签字节即可；bundle 的 `tier`（裁定档位）**不在** en
 | `credentials` | `manifest.json` | ✓ | 注入 scope 与方式（**只有 ref，无值**，红线 #1） | credential store |
 | `capabilities` | `manifest.json` | ✓ | 能力声明 | validator K1 |
 | `login` | `manifest.json` | ✓ | WebView 登录起点与导航闭锁 | ADR-015 |
-| masker 规则 | `masker.json` | ✓（mandatory，**未落地**，受 P0-01 阻塞） | 响应凭证收割策略 | ADR-026 |
+| masker 规则 | `masker.json` | ✓（mandatory，**未落地**；P0-01 前置已解除，剩 P1-04 与装配重签，见 ADR-026 §2.7.1） | 响应凭证收割策略 | ADR-026 |
 | `digest` / `tier` / `keyId` / `algorithm` | `signature.json` | ✗ detached | 内容寻址 + 档位 + 选锚 | `verify.dart` |
 | stdlib `html.bundle.js` | **不在 bundle 内** | ✗ | 宿主注入，版本经 `stdlibMin` 协商 | B-host |
 | `fixtures/` / `README` / `FLOW.md` | 目录内**被剔除** | ✗ | 开发期产物 | — |
@@ -98,8 +99,15 @@ tools/src/validator/response-masker.ts:146  masker 规则仅 official
 且 [`adr_033`](../adr/adr_033_production_sideload.md) §5 明文要求：不删除 `trustTier: sideload` 枚举，
 C3 删除须与 DEPLOY official-only 负例同批、不得抢跑。
 
-**处理：本批不动。** 目标形态是把「意图档位」改为**签发流水线显式入参**（与 ADR-002 §2.2
-「档位由签名流程注入，不取自 manifest 自报」同构）而非留在 manifest，随 ADR-033 落地一并处理。
+**处理（2026-09-01 已落地，分支 `refactor/intended-tier-as-pipeline-input`）**：引入**意图档位**
+（`IntendedTier`）作为校验器与发布流水线的**显式入参**，三道闸门改读该入参；`manifest.trustTier`
+从 `required` 移出、降为过渡期回退（未给入参→warn 回退；两者皆缺→fail-closed 取 `sideload`；
+分歧→error 且**以入参为准**，claim 永不放宽）。`release/package.ts` 改为一律以 `"official"` 调用
+校验，与其 `signEnvelope(…, "official", …)` 同源。**C3 本身保留**，其退役仍随 ADR-033。
+详见 ADR-002 §2.2。
+
+> 复盘还发现第四个消费者，且是最关键的一个：`release/package.ts:144` 原本以「manifest 是否
+> 自称 official」作为 release 准入判断——**发布流水线在向被发布物提问**。现已倒置。
 
 ---
 

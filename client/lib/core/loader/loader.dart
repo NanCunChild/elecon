@@ -30,7 +30,7 @@
 /// [LoadResult.fail]，绝不向上抛未包装异常。
 ///
 /// **验签接缝**：三个 verifier 以 typedef 注入，默认生产实现（`verifyCatalog`/`verifyRevocation`/
-/// `verifyBundleSignature`，用**预埋真实 pin**）；测试注入 golden 测试锚版本。这样生产代码不触
+/// `openBundle`，用**预埋真实 pin**）；测试注入 golden 测试锚版本。这样生产代码不触
 /// `@visibleForTesting` 的 `*With` 变体，而测试仍能跑同一条编排链。
 ///
 /// 🔒 红线 #1/#4 承重件：改动须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
@@ -49,13 +49,8 @@ import 'dart:typed_data';
 import '../trust/trusted_context.dart' show TrustedAdapterContext;
 import 'bootstrap.dart' show BootstrapBaseline;
 import 'bundle.dart'
-    show
-        BundleEnvelope,
-        BundleFormatException,
-        EnvelopeIdentity,
-        envelopeDigest,
-        unpackBundle;
-import 'bundle_cache.dart' show BundleCache, CachedBundle;
+    show BlobTable, BundleEnvelope, EnvelopeIdentity;
+import 'bundle_cache.dart' show BundleCache;
 import 'catalog.dart'
     show
         CatalogEntry,
@@ -74,8 +69,7 @@ import 'revocation.dart'
         pickNewerRevocation,
         revocationFresh,
         verifyRevocation;
-import 'signature.dart' show SignatureFile;
-import 'verify.dart' show VerifiedBundle, VerifyResult, verifyBundleSignature;
+import 'verify.dart' show openBundle, VerifiedBundle, VerifyResult;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
@@ -84,13 +78,13 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 /// 每个方法**离线/失败可返回 null 或抛**——编排器一律当「本源不可用」处理并退化到 last-good/bootstrap，
 /// 绝不因网络错误 fail-open。实现须自带超时/大小上限（同 catalog/bundle 的规模护栏精神）。
 abstract interface class DistributionSource {
-  /// 拉取线上 `catalog.json`（已解 gzip 的 [SignedCatalog] 外层信封）；无/失败 → null。
+  /// 拉取线上 `catalog.json`（已解 gzip 的 [SignedCatalog] 传输封套）；无/失败 → null。
   Future<SignedCatalog?> fetchCatalog();
 
   /// 拉取线上 `revocation.json`；无/失败 → null。
   Future<SignedRevocationList?> fetchRevocation();
 
-  /// 按 catalog entry 的 url 拉取 packed bundle 字节（`gzip(JSON({envelope,signature}))`）；无/失败 → null。
+  /// 按 catalog entry 的 url 拉取 packed bundle 字节（传输封套 `gzip(JSON({envelopeB64,signature,blobs}))`）；无/失败 → null。
   Future<Uint8List?> fetchBundle(String url);
 }
 
@@ -101,47 +95,56 @@ typedef RevocationVerifier =
     Future<VerifyResult<VerifiedRevocationList>> Function(
       SignedRevocationList signed,
     );
+/// digest v2：验签器收**原始 packed 字节**，不收已解析的 envelope。
+///
+/// v1 的签名是 `(BundleEnvelope, SignatureFile)`——调用方**先解析再验签**，这本身就违反
+/// 「验签先于解析」（ADR-018 §2.9.1 纪律 2）：一旦 envelope 已成对象，"验的字节"与"用的
+/// 字节"就分了家。改收字节后，解析只发生在 `openBundle` 内部、且只在验签之后。
 typedef BundleVerifier =
-    Future<VerifyResult<VerifiedBundle>> Function(
-      BundleEnvelope env,
-      SignatureFile signature,
-    );
+    Future<VerifyResult<VerifiedBundle>> Function(Uint8List packedBytes);
 
 /// 加载结果。失败恒带 [reason]；成功携带 official 凭据 + 已验证的 envelope/身份/能力/digest。
 class LoadResult {
   const LoadResult.ok({
     required TrustedAdapterContext this.trust,
-    required BundleEnvelope this.envelope,
-    required EnvelopeIdentity this.identity,
+    required VerifiedBundle this.verified,
     required List<String> this.capabilities,
-    required String this.digest,
     required this.catalogIsFresh,
     required this.revocationIsFresh,
   }) : reason = null;
 
   const LoadResult.fail(String this.reason)
     : trust = null,
-      envelope = null,
-      identity = null,
+      verified = null,
       capabilities = null,
-      digest = null,
       catalogIsFresh = null,
       revocationIsFresh = null;
 
   /// official 运行时凭据（喂 `runImperativeAdapter`）。
   final TrustedAdapterContext? trust;
 
+  /// 🔒 **不可伪造的验签证据**，携带已校验的 envelope / blob / 身份 / digest。
+  ///
+  /// **v2 起只存这一个对象**，而非把 envelope、identity、digest 三份平行地摊在 [LoadResult]
+  /// 上。平行字段意味着它们**可能互相不一致**——`adapter_launcher.dart` 当初正是为此写了一条
+  /// 「冗余但 fail-closed：LoadResult 内 digest 亦须与凭据一致（防手工构造的不一致 LoadResult）」
+  /// 的防御。改成单一来源后，那种不一致在类型上就构造不出来了。
+  final VerifiedBundle? verified;
+
   /// 已验签 bundle 的 envelope（上层据此取 adapter 源码 / manifest / 资源）。
-  final BundleEnvelope? envelope;
+  BundleEnvelope? get envelope => verified?.envelope;
+
+  /// 已校验的内容（按 sha256 寻址）。配合 [envelope] 用 `fileBytesByPath` 取文件。
+  BlobTable? get blobs => verified?.blobs;
 
   /// 权威身份（取自签名覆盖的 manifest）。
-  final EnvelopeIdentity? identity;
+  EnvelopeIdentity? get identity => verified?.identity;
+
+  /// 已验证的内容寻址 digest。
+  String? get digest => verified?.digest;
 
   /// catalog 声明的能力集（已在验签时校验 ⊆ registry）。
   final List<String>? capabilities;
-
-  /// 已验证的内容寻址 digest。
-  final String? digest;
 
   /// 采纳的 catalog / revocation 是否 TTL 内新鲜（遥测/上层决策用；不新鲜**不**阻断加载，见文件头政策注）。
   final bool? catalogIsFresh;
@@ -155,7 +158,7 @@ class LoadResult {
 /// 🔒 加载编排器。构造注入存储原语 + 可选网络源 + 时钟。
 ///
 /// **生产构造器 [AdapterLoader.new] 不暴露 verifier**（评审 P0-2）：三个验签器**固定为生产实现**
-/// （`verifyCatalog`/`verifyRevocation`/`verifyBundleSignature`，用预埋真实 pin），杜绝生产调用方注入
+/// （`verifyCatalog`/`verifyRevocation`/`openBundle`，用预埋真实 pin），杜绝生产调用方注入
 /// 一个「恒返回成功」的 verifier 绕过签名验证。本端 stdlib 版本亦不经此层（固定在 `mintOfficialGrant`
 /// 内读 `kHostStdlibVersion`，评审 P1）。测试注入 golden 测试锚请用 [AdapterLoader.forTesting]。
 class AdapterLoader {
@@ -178,7 +181,7 @@ class AdapterLoader {
          onDiagnostic: onDiagnostic,
          verifyCatalog: verifyCatalog,
          verifyRevocation: verifyRevocation,
-         verifyBundle: verifyBundleSignature,
+         verifyBundle: openBundle,
        );
 
   /// 🔒 **仅测试**：注入 golden 测试锚 verifier 跑同一条编排链（生产禁用；[visibleForTesting] lint
@@ -324,9 +327,8 @@ class AdapterLoader {
       return LoadResult.fail('catalog 无此 adapter：$adapterId');
     }
 
-    // 步 3/4：取 bundle 字节并还原 envelope+签名（内容寻址锚定到 entry.digest）。
-    final BundleEnvelope env;
-    final SignatureFile sig;
+    // 步 3/4：取 bundle 的**原始字节**。不在此解析——解析是验签之后的事（纪律 2）。
+    final Uint8List packedBytes;
     Uint8List? packedToCache; // 非 null 时（来自 bootstrap/网络）在验签后写缓存。
 
     // cache 读取经 [_readOrNull]：存储故障（IOException）视为未命中并继续回退，绝不打断（评审 P1）。
@@ -335,9 +337,9 @@ class AdapterLoader {
       () => _cache.read(entry.digest),
     );
     if (cached != null) {
-      // cache.read 已保证「内容寻址 == entry.digest 且携带形状合法签名」。仍每次重验（下方步 5）。
-      env = cached.envelope;
-      sig = cached.signature;
+      // cache.read 已保证「内容寻址 == entry.digest」。仍每次重验（下方步 5）——
+      // 磁盘在写入与读回之间是不可信的（ADR-018 §2.6：每次加载都验）。
+      packedBytes = cached;
     } else {
       final packed = await _fetchPacked(entry);
       if (packed == null) {
@@ -350,17 +352,13 @@ class AdapterLoader {
           '无法获取 bundle 字节（cache/bootstrap/网络均无）：$adapterId',
         );
       }
-      final CachedBundle? unpacked = _unpackAndAddress(packed, entry.digest);
-      if (unpacked == null) {
-        return LoadResult.fail('bundle 内容寻址与 catalog 不符或缺签名/畸形：$adapterId');
-      }
-      env = unpacked.envelope;
-      sig = unpacked.signature;
+      packedBytes = packed;
       packedToCache = packed;
     }
 
-    // 步 5：Ed25519 验签 → 不可伪造 VerifiedBundle。
-    final vr = await _verifyBundle(env, sig);
+    // 步 5：走完 §2.9.1 的 1–12 步（有界解压 → 封套 → digest → 验签 → 解析 → 卫生 → blob →
+    // 身份三方一致 → 档位）→ 不可伪造 VerifiedBundle。**内容寻址锚定到 entry.digest 在其后。**
+    final vr = await _verifyBundle(packedBytes);
     if (!vr.ok) {
       _diagnose(
         AdapterDiagnosticKind.signature,
@@ -370,7 +368,8 @@ class AdapterLoader {
       return LoadResult.fail('bundle 验签失败：${vr.reason}');
     }
     final verified = vr.value!;
-    // 双保险：验签内部已核 sig.digest==envelopeDigest；此处再确认 == entry.digest（内容寻址锚定）。
+    // 双保险：验签内部已核 signature.digest == SHA-256(envelopeBytes)；此处再确认 == entry.digest
+    // （把「catalog 承诺的那份」与「实际验过的那份」锚在一起）。
     if (verified.digest != entry.digest) {
       _diagnose(
         AdapterDiagnosticKind.contentAddress,
@@ -431,11 +430,9 @@ class AdapterLoader {
 
     return LoadResult.ok(
       trust: trust,
-      envelope: env,
-      // 身份用**验签产物的权威身份**（`verified.identity`，已与 entry 核对一致），不再重新解析 envelope。
-      identity: verified.identity,
+      // envelope / blobs / 身份 / digest 全部取自这一个**已验签**产物，不另存平行副本。
+      verified: verified,
       capabilities: entry.capabilities,
-      digest: verified.digest,
       catalogIsFresh: catalogFresh(catalog, nowMs: _nowMs()),
       revocationIsFresh: revocationFresh(revocation, nowMs: _nowMs()),
     );
@@ -478,25 +475,10 @@ class AdapterLoader {
     }
   }
 
-  /// 解包 + 内容寻址比对 + 取 detached 签名；不符/缺签名/畸形 → null（视为不可用）。
-  CachedBundle? _unpackAndAddress(Uint8List packed, String expectedDigest) {
-    try {
-      final up = unpackBundle(packed);
-      if (envelopeDigest(up.envelope) != expectedDigest) return null;
-      final sigJson = up.signature;
-      if (sigJson == null) return null; // 缺 detached 签名无法验签
-      return CachedBundle(
-        envelope: up.envelope,
-        signature: SignatureFile.fromJson(sigJson),
-      );
-    } on BundleFormatException catch (e) {
-      _diagnose(AdapterDiagnosticKind.decompression, 'bundle', '解包失败：$e');
-      return null;
-    } on FormatException catch (e) {
-      _diagnose(AdapterDiagnosticKind.parse, 'bundle', '签名字段解析失败：$e');
-      return null; // 签名字段畸形
-    }
-  }
+  // `_unpackAndAddress` 已删除（digest v2）：它做的「解包 + 内容寻址比对 + 取 detached 签名」
+  // 现在整体是 `openBundle` 的第 1–5 步，且在那里做才对——它做在验签**之前**，等于在信任裁定
+  // 之外维护了第二份解析实现，两份实现一旦漂移就是解析差分漏洞。内容寻址与 catalog 的锚定
+  // 改在验签**之后**用 `verified.digest == entry.digest` 完成（见 [loadAdapter] 步 5）。
 
   /// 解析当前 catalog：三源各自验签，取最高 sequence（防回滚）；采纳的若为网络份则持久化 last-good。
   ///

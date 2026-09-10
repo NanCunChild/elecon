@@ -27,6 +27,7 @@ import 'package:cryptography/cryptography.dart'
 import 'package:elecon_contract/capability_registry.dart' show kCapabilityIds;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import 'signature.dart' show kContextTagCatalog, withContext;
 import 'trust_anchors.dart';
 import 'verify.dart' show AnchorResolver, VerifyResult;
 
@@ -181,7 +182,7 @@ class CatalogEntry {
   final String adapterId;
   final String adapterVersion;
 
-  /// bundle envelope 规范化双层 SHA-256（64 位小写 hex）。客户端下载后须重算比对（编排器做）。
+  /// bundle digest = `SHA-256(envelopeBytes)`（digest v2，64 位小写 hex）。客户端下载后须重算比对（编排器做）。
   final String digest;
 
   /// signed bundle（`.json.gz`）下载地址。解析时强制 **https**、无 userinfo（分发边界，红线 #2）。
@@ -213,7 +214,7 @@ class VerifiedCatalog {
 Future<VerifyResult<VerifiedCatalog>> verifyCatalog(SignedCatalog signed) =>
     verifyCatalogWith(signed, activeAnchorByKeyId);
 
-/// 验签管线本体，公钥来源经 [resolveAnchor] 注入（同 `verifyBundleSignatureWith` 的接缝理由：
+/// 验签管线本体，公钥来源经 [resolveAnchor] 注入（同 `openBundleWith` 的接缝理由：
 /// 信任根是编译期常量集合，收 resolver 而非裸公钥以保留"keyId 须命中预埋 active 锚"语义）。
 /// 生产唯一实参为 [activeAnchorByKeyId]。[visibleForTesting]：测试用测试密钥跑同一条管线。
 /// **生产代码不得调用本函数**——请用 [verifyCatalog]。
@@ -255,7 +256,9 @@ Future<VerifyResult<VerifiedCatalog>> verifyCatalogWith(
   final bool verified;
   try {
     verified = await Ed25519().verify(
-      Uint8List.fromList(utf8.encode(signed.catalogJson)),
+      // 域分隔（ADR-002 §2.3）：签的是 `elecon.catalog/1 ‖ 0x00 ‖ catalogJson 字节`。
+      // **传输对象不变**——catalogJson 仍原样携带、原样 parse，前缀只加在签/验输入上。
+      withContext(kContextTagCatalog, utf8.encode(signed.catalogJson)),
       signature: Signature(
         sigBytes,
         publicKey:

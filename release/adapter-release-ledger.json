@@ -1,4 +1,143 @@
 {
   "format": "elecon-adapter-release-ledger/v1",
-  "records": []
+  "records": [
+    {
+      "status": "incomplete",
+      "adapterId": "school-xidian",
+      "adapterVersion": "0.3.0",
+      "sourceCommit": null,
+      "bundleDigest": "4a1031df1dd87ec7afbc038c10f16ae8464e22754a773b32d6bfda0699cbe90a",
+      "policy": {
+        "included": false,
+        "digest": null
+      },
+      "catalogSequence": 2,
+      "revocationSequence": 1,
+      "keyId": "elecon-official-ncc-1",
+      "signedAt": null,
+      "signer": null,
+      "reviewReference": null,
+      "missingFacts": [
+        "sourceCommit",
+        "signedAt",
+        "signer",
+        "reviewReference"
+      ]
+    },
+    {
+      "status": "incomplete",
+      "adapterId": "school-fudan",
+      "adapterVersion": "0.1.0",
+      "sourceCommit": null,
+      "bundleDigest": "dc4ef82e3bd6cfcd10c4dfb11f3fd7a0459b5f7c29f7eda72a4f451d11e55662",
+      "policy": {
+        "included": false,
+        "digest": null
+      },
+      "catalogSequence": 3,
+      "revocationSequence": 1,
+      "keyId": "elecon-official-ncc-1",
+      "signedAt": null,
+      "signer": null,
+      "reviewReference": null,
+      "missingFacts": [
+        "sourceCommit",
+        "signedAt",
+        "signer",
+        "reviewReference"
+      ]
+    },
+    {
+      "status": "incomplete",
+      "adapterId": "school-helloworld",
+      "adapterVersion": "0.1.0",
+      "sourceCommit": null,
+      "bundleDigest": "8a6ab755e5c3c3ef8aa5d5a380c9dfc2e3deaa2050e87bd4d15acf9aeeb42346",
+      "policy": {
+        "included": false,
+        "digest": null
+      },
+      "catalogSequence": 3,
+      "revocationSequence": 1,
+      "keyId": "elecon-official-ncc-1",
+      "signedAt": null,
+      "signer": null,
+      "reviewReference": null,
+      "missingFacts": [
+        "sourceCommit",
+        "signedAt",
+        "signer",
+        "reviewReference"
+      ]
+    },
+    {
+      "status": "incomplete",
+      "adapterId": "school-thu",
+      "adapterVersion": "0.1.0",
+      "sourceCommit": null,
+      "bundleDigest": "5f46709f9ec12c6acd5ed52acd2ec1645c71914a736ac0cc1d73f6badf87f218",
+      "policy": {
+        "included": false,
+        "digest": null
+      },
+      "catalogSequence": 3,
+      "revocationSequence": 1,
+      "keyId": "elecon-official-ncc-1",
+      "signedAt": null,
+      "signer": null,
+      "reviewReference": null,
+      "missingFacts": [
+        "sourceCommit",
+        "signedAt",
+        "signer",
+        "reviewReference"
+      ]
+    },
+    {
+      "status": "incomplete",
+      "adapterId": "school-xidian",
+      "adapterVersion": "0.3.1",
+      "sourceCommit": null,
+      "bundleDigest": "56056b260c54bb74d6b4c7e238783c374190b5d7cdcf4e44142c0e6db9e3bfc7",
+      "policy": {
+        "included": false,
+        "digest": null
+      },
+      "catalogSequence": 3,
+      "revocationSequence": 1,
+      "keyId": "elecon-official-ncc-1",
+      "signedAt": null,
+      "signer": null,
+      "reviewReference": null,
+      "missingFacts": [
+        "sourceCommit",
+        "signedAt",
+        "signer",
+        "reviewReference"
+      ]
+    },
+    {
+      "status": "incomplete",
+      "adapterId": "school-xjt",
+      "adapterVersion": "0.1.0",
+      "sourceCommit": null,
+      "bundleDigest": "7377d235fc967909e4f241460698640ceac6663dd78ffb9b8656b3d8fa9763e0",
+      "policy": {
+        "included": false,
+        "digest": null
+      },
+      "catalogSequence": 3,
+      "revocationSequence": 1,
+      "keyId": "elecon-official-ncc-1",
+      "signedAt": null,
+      "signer": null,
+      "reviewReference": null,
+      "missingFacts": [
+        "sourceCommit",
+        "signedAt",
+        "signer",
+        "reviewReference"
+      ]
+    }
+  ]
 }

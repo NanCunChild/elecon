@@ -32,11 +32,11 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 
 | 状态 | 项目 | 结果 / 剩余门槛 |
 |---|---|---|
-| owner 已签收 | P0-02、P0-03、P0-04、P0-08、P0-11、P0-12 | 实现与自动化测试已完成；NanCunChild 于 2026-08-06 完成人工复核并授权关闭 |
+| owner 已签收 | P0-02、P0-03、P0-04、P0-08、P0-11、P0-12、**P0-05** | 实现与自动化测试已完成；NanCunChild 于 2026-08-06 完成人工复核并授权关闭。**P0-05 的 ADR-009 rev-5 与两端实现已于 2026-09-10 由 owner 复签**，自此不再是签收阻塞项 |
 | 待真机签收 | P0-06、P0-07 | iOS 已降级为 S/M 且 H 路径 fail-closed；Android 已用 `KeyInfo` 拒绝 software/unknown；仍需 iOS 升级安装及 Android emulator/TEE/StrongBox 矩阵 |
 | 部分落地，保持开放 | P0-10 | TS 已阻止取消后 Commit；Dart 已有 firewall/commit 原语与严格 UTF-8 状态；生产 wiring 仍依赖已验签 policy loader/matcher、执行级 query harvest 事务、P1-08/P1-09/P1-12 |
-| 待仓库/历史事实 | P0-13、P0-15 | reusable CI、main-only preflight、tag SHA/ancestry、审批 hook、真实验签 ledger 工具已落地；仍需配置 `release` Environment、不可变 `v*` tag 规则，并由 NanCunChild 提供历史 source commit/签署时间/签署人/复核引用 |
-| ADR / 签收阻塞 | P0-01、P0-05、P0-09、P0-14 | P0-05 的 ADR-009 rev-5 与两端实现已起草，待 owner 按专项清单复签；P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；**P0-01 于 2026-09-01 解除 ADR 阻塞**——ADR-002 §2.3 / ADR-018 §2.9.1 已就地修订（digest v2 = 对 envelope 字节整体哈希），缺陷已由 `path-binding.redcase.ts` 复现为可执行验收门（现 2/14 红），实现待 owner 签收 ADR 修订后开工，见 §2.2。**P0-14 于 2026-08-07 改判**：不再是 ADR 阻塞——slice 1–3 已落地且有 Android 产物级证据，剩余门槛是 slice 4 红线措辞（owner）、非 Android 平台产物断言、人工安全签收（见 §3.2）|
+| 待仓库/历史事实 | P0-13、P0-15 | reusable CI、main-only preflight、tag SHA/ancestry、审批 hook、真实验签 ledger 工具已落地； `release` Environment、不可变 `v*` tag 规则配置完成。**P0-15 的历史人工事实已于 2026-09-09 由 owner 裁定为「合法留白」**，不再等待补齐——见 §2.3 |
+| ADR / 签收阻塞 | ~~P0-01~~（**2026-09-09 规格已签收，改为「可开工，待实现」**）、P0-09、P0-14 | P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；**P0-01 于 2026-09-01 解除 ADR 阻塞**——ADR-002 §2.3 / ADR-018 §2.9.1 已就地修订（digest v2 = 对 envelope 字节整体哈希），缺陷已由 `path-binding.redcase.ts` 复现为可执行验收门（现 2/14 红），**owner 已于 2026-09-09 签收该修订，实现可开工**（签收范围为规格，实现仍须人工复核），见 §2.2。**P0-14 于 2026-08-07 改判**：不再是 ADR 阻塞——slice 1–3 已落地且有 Android 产物级证据，剩余门槛是 slice 4 红线措辞（owner）、非 Android 平台产物断言、人工安全签收（见 §3.2）|
 
 本轮自动验证：`npm run lint`、`npm run typecheck`、`npm run smoke:all`（server 26/26、tools 18/18）、`flutter analyze`、`flutter test`（744 项）、全量 scanner、release ledger smoke/validate、release preflight、recorder Python tests、`git diff --check`。自动验证不是安全签收的替代品。
 
@@ -56,7 +56,7 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | P0-12 | [x] 修复 fixture recorder 和探针的凭证落盘/日志风险 | `adapters_tests/XJTU/dean/record_fixtures.py`、`XIDIAN/ids/login.py`、`XIDIAN/energy/meter.py` | 慢车道；红线 #1/#8 | 删除全部 Cookie/Set-Cookie；raw 只能写 `.private-probes/`；不打印 ticket URL/真实 NodeID；scanner 作为写后硬门 |
 | P0-13 | [x] 让 release workflow 复用完整 CI，不允许 tag 发布绕过 server/tools/contract/adapter/release gate | `.github/workflows/ci.yml`、`release.yml` | 慢车道；发布与信任链 | reusable workflow 覆盖 lint、typecheck、smoke、validator、scanner、codegen、Flutter、bootstrap、trust profile；tag ancestry 和环境审批有机械验证 |
 | P0-14 | [ ] 完成 ADR-024 DEPLOY profile 接线和产物级证明 | `client/lib/core/trust/`、`client/tool/check_release_gate.sh`、release workflow | 慢车道；红线 #4、ADR-024 | release 产物无侧载符号；DEV applicationId/bundle ID 隔离；水印与构建元数据正确；人工签收 |
-| P0-15 | [ ] 建立 git 跟踪的 adapter 发布台账 | `docs/reference/signing_ceremony.md`、`adapter_release.md`、新 ledger | 慢车道；ADR-002/018 | 每次发布记录 source commit、版本、bundle/policy digest、catalog/revocation sequence、keyId、签署人与复核引用 |
+| P0-15 | [ ] 建立 git 跟踪的 adapter 发布台账 | `docs/reference/signing_ceremony.md`、`adapter_release.md`、`release/adapter-release-ledger.json` | 慢车道；ADR-002/018 | 每次发布记录 source commit、版本、bundle/policy digest、catalog/revocation sequence、keyId、签署人与复核引用。**早期测试期产物按 §2.3 显式留白**（`incomplete` 记录 + `missingFacts`），**不要求补齐历史人工事实** |
 
 ### 2.2 执行状态（2026-09-01 · P0-01 缺陷复现与 ADR 就地修订）
 
@@ -78,50 +78,46 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 攻击者 = ADR-018 信任域 A 的社区贡献者或任何能把内容放进受审 bundle 的人；**人工审查看到的
 是无害目录，检出率为零**。直接击穿红线 #4。
 
-**验收门**：`tools/src/bundle/path-binding.redcase.ts`（keyless，只用测试 Ed25519 密钥对）。
-刻意**不叫** `*.smoke.ts`，故不被 `run-smokes.mjs` 发现、`smoke:all` 保持 18/18 绿；
-经 `cd tools && npm run redcase:bundle-path-binding` 显式运行。当前 **2/14**：
+**验收门**：落地前是 `tools/src/bundle/path-binding.redcase.ts`（keyless，只用测试 Ed25519 密钥对），
+刻意**不叫** `*.smoke.ts` 以免拖红 `smoke:all`，经 `npm run redcase:bundle-path-binding` 显式运行，
+当时 **2/14**（A2 / B1 / C1–C9 / D1 全红）。
 
-| 组 | 断言 | 现状 |
-|---|---|---|
-| A2 | 只改路径、不改内容 → 必须验签失败 | 🔴 |
-| B1 | 含重复路径的 envelope → 即使签名有效也必须拒 | 🔴 |
-| C1–C9 | `..` / 内嵌 `..` / POSIX 绝对 / Windows 盘符 / 反斜杠 / `./` / 空 / 尾随分隔符 / NUL → 必须拒 | 🔴 |
-| D1 | 篡改 `bundleFormat` → 必须验签失败 | 🔴 |
+**2026-09-09 已全绿并改名**为 `tools/src/bundle/path-binding.smoke.ts`，纳入 `smoke:all`（现 19/19）。
+最终 **26/26**，比原计划多出的部分是落地时补的：
 
-**P0-01 完成的定义 = 本文件全绿**，随后改名为 `path-binding.smoke.ts` 纳入常驻回归。
+| 组 | 断言 |
+|---|---|
+| A0/A1/A1b/A2 | 保序重命名：含**两条前提断言**——伪造后入口确实解析到恶意内容、且两侧 blob 集合逐字节相同（排除「靠内容变化侥幸拒掉」）|
+| B1 | 重复路径 → 即使签名有效也必须拒 |
+| C1–C10 | `..` / 内嵌 `..` / POSIX 绝对 / Windows 盘符 / 反斜杠 / `./` / 空 / 尾随分隔符 / NUL / **非 NFC** |
+| D1/D2 | 篡改 `bundleFormat`（用原签名）→ 拒；**重签**的 `elecon-bundle/9`（digest 与签名皆真）→ 第 7 步拒 |
+| E1–E4 | blob 多（夹带通道）/ 少 / 哈希不符（等长替换，与长度检查分离）/ 长度撒谎 |
+| E5–E6 | 三方身份的两条边：envelope 顶层 ≠ manifest、签名载荷 ≠ envelope 顶层 |
+| E7a/E7b | 域分隔：无 `contextTag` 的签名、用 `elecon.catalog/1` 域签的签名 |
+| E8 | 传输封套含多余字段 |
 
 **ADR 就地修订（未新开 ADR）**：
 
 - **ADR-002 §2.3**：`digest = SHA-256(envelopeBytes)`；原「双层 SHA-256 拼接」规格标注为被取代并
   保留缺陷说明；LF/NFC 规范化由「哈希前静默改写」降级为**构建期检查、不符即拒签**；
   列出四条不可分割的配套纪律（不透明字节上线 / 验签先于解析 / 卫生闸门在验签之后 / 全量文件承诺）。
-- **ADR-018 §2.9.1**（新增小节）：上线形态 `gzip(JSON({ envelopeB64, signature }))`、七步验证顺序表、
-  签发侧全量文件承诺、七项落地清单、以及「为何不签压缩包字节」的记录。
+- **ADR-018 §2.9.1**（新增小节）：上线形态 = **传输封套** `gzip(JSON({ envelopeB64, signature, blobs }))`、
+  12 步验证顺序表、签发侧全量文件承诺、10 项落地清单、以及「为何不签压缩包字节」的记录。
 
-**为何不是四元组（path+encoding+length+content）叶子编码**：envelope 本身已是一份确定性序列化
-文档，直接哈希其字节即可让路径 / 编码 / 顺序 / 个数 / `bundleFormat` 全部落入签名范围，无需在
-TS 与 Dart 各写一份叶子编码器并靠 golden 维持一致。这与 ADR-018 §2.5 给 catalog 定的
-「字节精确、不重新规范化序列化」是同一取向——bundle 此前未遵守该结论。Merkle 式逐文件绑定的
-正当收益（部分取用 / 逐文件验证 / 去重 / 增量更新）在 elecon 一条都用不上（整包取用、按 digest
-整包缓存、单包 ≤ 256 KiB）。
+**方案论证与被否备选**（四元组叶子编码 / Merkle / 签压缩包字节 / 内联 base64，以及规范化改判、
+身份三方一致的理由）已抽出至 [`docs/archive/bundle_digest_v1_superseded.md`](../archive/bundle_digest_v1_superseded.md)，
+本文不复述——避免第二份会漂移的转述（2026-09-09 已发生过一次：本节曾把上线形态记成两字段、
+验证顺序记成七步）。
 
-**为何不签压缩包字节**：gzip 输出不确定（压缩级别、header 的 OS 字节/mtime、zlib 版本），
-会废掉 ADR-018 §3 风险 (e)「所见非所签」的唯一防线（离线机重算 digest 与审查沙箱产物比对），
-并使 P0-15 台账无法从 source commit 复算 digest。取**未压缩的 envelope 字节**：同样是单段连续
-字节，但可从 git checkout 复现。
+**迁移 = 无代码兼容层 + 一次重签仪式**：`records` 为空是 P0-15 台账未建立，不等于未签发——实存
+**7 份 official bundle** + 已签 catalog（sequence 3）+ revocation。无外部持有者，故不设双读、不新增
+host version gate；但 `/2` 须伴随一次**离线 YubiKey 重签仪式**（5 adapter + catalog + revocation →
+`bootstrap:sync` 重派生），**与 ADR-026 §2.7 的「补齐 `masker.json` 后重签」合并为同一次**，并一次
+补齐 P0-15 台账首批记录。核实细节见归档 §5。
 
-**迁移 = 无代码兼容层 + 一次重签仪式（2026-09-01 核实修正）**：`records` 为空是 **P0-15 台账未建立**，
-不等于未签发。实存 **7 份 official 签名 bundle**（`dist-full/` `dist-xidian/` `dist-helloworld/`，其中 5 份
-随包在 `client/assets/bootstrap/`）+ 已签名 catalog（sequence 3）+ revocation，全部由 `elecon-official-ncc-1`
-真机签发。无外部持有者，故仍不设双读、不新增 host version gate；但 `/2` 须伴随一次**离线 YubiKey 重签仪式**
-（5 adapter + catalog + revocation → `bootstrap:sync` 重派生），**与 ADR-026 §2.7 已预定的「补齐
-`masker.json` 后重签」合并为同一次**，并一次补齐 P0-15 台账首批记录。
-
-**暴露面：潜伏但尚未武装**。攻击充要条件 = 「在 `manifest.json` 字典序**同一侧**存在 ≥2 个文件，且至少一个
-不按固定路径查找」——按固定路径查找的文件各钉死一个位次，位次全钉死则重命名无自由度。现存 7 份 bundle 的
-`files` **全为 `[index.js, manifest.json]`** → 不可利用；补 `masker.json` 后三者分居三个固定位次 → 仍不可利用。
-暴露面在**第一份携带运行时资产的 bundle** 出现时打开。**不需紧急吊销**，但须在 adapter 开始携带资产前落地。
+**暴露面：潜伏但尚未武装**。现存 7 份 bundle 的 `files` 全为 `[index.js, manifest.json]` → 不可利用；
+补 `masker.json` 后三者分居三个固定位次 → 仍不可利用。**暴露面在第一份携带运行时资产的 bundle
+出现时打开**，故不需紧急吊销，但须在 adapter 开始携带资产前落地（充要条件见归档 §5）。
 
 **2026-09-01 owner 复核后的五项裁定**：
 
@@ -130,23 +126,250 @@ TS 与 Dart 各写一份叶子编码器并靠 golden 维持一致。这与 ADR-0
 | 1 | envelope 从「容器」降为「清单」：`files[]` 存 `path/size/sha256`，文件字节改由**按内容哈希寻址**的 blob 表承载 | 已写入 ADR-002 §2.3 / ADR-018 §2.9.1 |
 | 2 | envelope 顶层新增 `adapterId/adapterVersion`，身份核对改为**三方一致**（签名载荷 ↔ envelope ↔ manifest） | 同上 |
 | 3 | 三处签名统一加显式域分隔：`contextTag ‖ 0x00 ‖ 被签字节` | 同上（落地清单 #3） |
-| 4 | ~~从 manifest 移除 `trustTier`~~ | **未执行**。它是 validator 三道签发期闸门（C3 / `ssoMint` official-only / masker official-only）的输入，且 ADR-033 §5 明文要求 C3 删除不得抢跑。目标形态改为「意图档位由签发流水线显式入参」，随 ADR-033 一并处理 |
+| 4 | ~~从 manifest 移除 `trustTier`~~ → 改为**意图档位作为签发流水线显式入参** | **已落地**（分支 `refactor/intended-tier-as-pipeline-input`）。直接删字段会静默拿掉 validator 三道签发期闸门（C3 / `ssoMint` official-only / masker official-only）并撞上 ADR-033 §5「C3 不得先删」。改为：三道闸门 + `release/package.ts` 改读显式 `IntendedTier` 入参；`trustTier` 从 `required` 移出、降为过渡期回退（分歧=error 且以入参为准）。**C3 保留**，其退役仍随 ADR-033 |
 | 5 | digest v2 重签仪式与 ADR-026 §2.7 的「补齐 `masker.json` 后重签」合并，一次补齐 P0-15 台账首批 | 已写入两处 ADR |
 
-**descriptor 形态的取舍理由**：① 编码彻底离开信任边界——两端 base64 解码器实测不同（Node 对
-`Qh==`/`QQ`/含空白宽松接受，Dart 全部抛），内联方案下 base64 文本**就是被签字节**，会签出「某些端
-装不上」的产物；descriptor 方案内容寻址，解码器宽严无关。② 被签对象缩小到可人眼审完，使 ADR-018
-§3 风险 (e)「所见非所签」的唯一防线（离线机重算 digest 比对）从名义存在变为可执行。③ 台账可记录
-envelope 全文。**代价**是新增「blob 集合精确相等」不变量——少一个会被逐文件校验抓到，**多一个不会**，
-必须显式拒绝，四个负例须双端 golden 钉死。
+**红用例已扩**：`path-binding.redcase.ts` 末尾曾以清单形式钉住 descriptor 落地后须补的 E1–E8 断言
+（blob 多/少/哈希不符/长度不符、三方身份两例、域分隔、传输封套多余字段）——当时类型无法表达，
+故不伪造为通过。**2026-09-09 落地时已全部实现并转绿。**
 
-**红用例已扩**：`path-binding.redcase.ts` 末尾列出 descriptor 落地后须补的 E1–E8 断言
-（blob 多/少/哈希不符/长度不符、三方身份两例、域分隔、外层信封多余字段）；当前类型无法表达，
-故以清单形式钉在同一文件，不伪造为通过。
+**剩余门槛（🔒 人工）**：
 
-**剩余门槛（🔒 人工）**：① owner 签收上述两处 ADR 修订；② 实现本身触红线 #4，须人工复核，
-AI 不得独自闭环（AGENTS.md §1）；③ 顺带发现、须一并处理的两处不对称：TS
-`verifyBundleSignature` 缺 `bundleFormat` 检查（Dart 有）、`unpackBundle` 现为「先解析后验签」。
+- ~~① owner 签收上述两处 ADR 修订~~ → **已完成：owner NanCunChild 于 2026-09-09 正式签收
+  ADR-002 §2.3 与 ADR-018 §2.9.1，两处规格状态为「已接受并完成审阅」。P0-01 自此可开工。**
+  签收范围是**规格**，不含实现——实现落地后仍须按下面 ② 单独人工复核。
+- ② 实现本身触红线 #4，须人工主导 + 安全清单 + ≥1 人工审，**AI 不得独自闭环**（AGENTS.md §1）。
+- ③ 顺带发现、须一并处理的两处不对称：TS `verifyBundleSignature` 缺 `bundleFormat` 检查（Dart 有）、
+  `unpackBundle` 现为「先解析后验签」。**已解决**：两端唯一入口都改成收**原始字节**的 `openBundle`，
+  「先解析后验签」在 API 形状上不再可能表达。
+
+### 2.3 执行状态（2026-09-09 · P0-01 规格签收 / P0-15 早期台账合法留白）
+
+**P0-01 规格签收。** owner NanCunChild 于 **2026-09-09** 正式签收 ADR-002 §2.3 与 ADR-018 §2.9.1，
+两处状态更新为「已接受并完成审阅」。**P0-01 自此不再受 ADR 阻塞，可以开工。**
+签收范围**仅为规格**；实现触红线 #4，落地后仍须人工主导 + 安全清单 + ≥1 人工审（AGENTS.md §1）。
+验收门不变：`tools/src/bundle/path-binding.redcase.ts` 全绿（现 2/14），全绿后改名纳入 `smoke:all`。
+→ **2026-09-09 已落地，见 §2.4。**
+
+**P0-15 早期台账合法留白（owner 决策 2026-09-09）。** 现存 7 份 official bundle 均为**早期测试阶段**
+产物，其 `sourceCommit` / `signedAt` / `signer` / `reviewReference` 四项人工事实**不予追溯补齐**，
+按「合法留白」处理。
+
+- **留白的形式不是「空台账」。** `release/adapter-release-ledger.json` 现为 `records: []`，
+  即「什么都没说」——这与「说清楚了哪些不知道」是两回事，后者才可审计。ledger 工具**本就为此而建**：
+  记录支持 `status: "incomplete"` + `missingFacts: []`，校验器对 incomplete 记录**不报错**，
+  只如实输出 `historical completeness: incomplete (N of M)`。
+- **机器事实必须齐全。** `ledger:extract` 对 catalog / revocation / 每份 bundle 做**预埋公钥 Ed25519
+  验签**后才产出记录，故 `adapterId` / `adapterVersion` / `bundleDigest` / `keyId` /
+  `catalogSequence` / `revocationSequence` 全部有密码学依据，**不是人填的**。留白的只有四项人工事实。
+- **台账从 digest v2 重签仪式起转为 complete。** 那次仪式（5 adapter + catalog + revocation，
+  与 ADR-026 §2.7 的 `masker.json` 重签合并）是**首批四项人工事实齐全**的发布，此后每次发布均须 complete。
+- **P0-15 的完成条件据此改判**：不再是「补齐历史事实」，而是「**台账已建立且结构有效；早期产物以
+  incomplete 显式留白；重签仪式起的记录 complete**」。§2.1 表格中「由 NanCunChild 提供历史
+  source commit/签署时间/签署人/复核引用」一项**作废**。
+
+**已执行（2026-09-09）**：对三份 dist 跑 `ledger:extract`（预埋公钥
+`elecon-official-ncc-1` / `d09437aa…2687`）→ **7 条**验签通过的记录，独立印证了
+「实存 7 份 official bundle」的核实结论。台账现有 **6 条** incomplete 记录，
+`historical completeness: incomplete (6 of 6)`。
+
+**🔴 提取时发现一处真实异常：`school-helloworld@0.1.0` 被签发了两次，字节不同。**
+
+| catalog seq | digest | manifest 差异 |
+|---|---|---|
+| 1（已被取代） | `e3bf71af…` | 含 `"mode": "fetch"` |
+| 3（当前在役） | `8a6ab755…` | 无 `mode`，改为 capability 级 `"requestGraph": "imperative"` |
+
+即 **ADR-022 的 `mode` → `requestGraph` 迁移后重签了产物，但版本号没动**。
+`ledger:validate` 的 equivocation 检查据此拒收（`records[3] duplicates or equivocates an
+earlier adapterId+adapterVersion`）——**它是对的**：「版本号唯一标识一份字节」是台账的硬不变量，
+两份不同字节共用 `0.1.0` 违反它。
+
+- **实际影响：低。** 两份都经 official 验签；bundle 缓存按 digest 寻址、取哪份由 catalog 决定，
+  故运行时不会混淆；helloworld 是演示 adapter，不碰真实数据。
+- **但不能静默处理。** 台账入库时**显式剔除**了 seq 1 那条（已被取代），本节即该剔除的记录——
+  「合法留白」的前提是留白**被写下来**，而不是让它消失。
+- **流程修正**：**契约迁移后重签必须 bump 版本号。** 重签改变了字节即改变了那个版本的含义，
+  沿用旧版本号会让台账、缓存与吊销推理同时失去锚点。此条应在 digest v2 重签仪式的
+  checklist 里落为一步（见 `docs/reference/signing_ceremony.md`）。
+- **由该仪式一并了结**：digest v2 重签会给全部 5 份产物新的 digest，届时 helloworld 应
+  bump 到 `0.1.1`（或更高），历史歧义随 `/1` 路径整体删除而失效。
+
+---
+
+### 2.4 执行状态（2026-09-09 · P0-01 digest v2 两端落地）
+
+**状态：代码已落地、两端 CI 全绿；🔒 待人工安全复核 + 待重签仪式。**
+
+验收门 `path-binding.smoke.ts` **26/26 全绿**；tools `typecheck` 0 错、`smoke:all` 19/19；
+client `flutter analyze` 0 问题、`flutter test` **856 通过 / 12 skip**。跨语言 golden
+`contract/golden/bundle/loader.json` 现 **19 条向量**，两端跑同一份线上字节。
+
+**外部一致性证据（最强的一条）**：`elecon-adapters/scripts/build-bundle.mjs` 与核心
+`tools/src/bundle/envelope.ts` 是**两份独立实现**，对真实 adapter `school-xidian@0.4.1`
+产出的 envelopeBytes **319 B 逐字节相同**，digest 同为 `6e6f196c…f991`。ADR-002 §3 风险 5
+（跨实现漂移）在签发侧因此有了可复算的实证，而不只是「两边都照 ADR 写了」。
+
+#### 落地时新增的三项决策（🔒 **须 owner 签收**，均超出 2026-09-09 已签收的规格文字）
+
+| # | 决策 | 起因与理由 |
+|---|---|---|
+| A | **路径段字符集收紧为 `[A-Za-z0-9._-]`**，卫生闸门不再依赖 Unicode 规范化 | TS 有 `String.normalize("NFC")`，**Dart 没有内建 NFC**。若 Dart 略过该检查，两端卫生闸门对同一份 bundle 给出**不同判定**，且 Dart 方向是 fail-open——这正是风险 5 的活样本；给 Dart 引入第三方 NFC 实现只是把漂移面换个地方。收紧字符集则从源头消灭该问题：该集合内不存在非 NFC 形式，也不存在同形异码与 RTL override。**代价**：adapter 内文件名不得含非 ASCII（现有全部 adapter 均满足，且这是内部打包路径，与任何面向用户的展示文本无关）。TS 侧保留 NFC 断言作零成本的第二道锁。golden 用例 `non_ascii_path` 钉住两端同判。 |
+| B | **验签层不做档位门，档位门归加载器** | TS `openBundle` 服务于台账提取、签发侧自验等**非加载**场景，那里需要「密码学事实」而不需要「加载策略」；把 official-only 塞进去会逼这些调用方接受一个会拒 sideload 的 API。故 TS 侧 `ok + tier=sideload`，Dart 侧（它**是**加载器）第 12 步拒。golden 用例 `valid_signature_sideload_tier` 带 `loaderMustRefuse` 标记，同时钉住这两件事。**这一项是被 golden 生成器的自验揪出来的**——原先的期望写的是「验签层应拒」，与 TS 实际行为不符。 |
+| C | **`*.md` 进 `BUNDLE_EXCLUDE` 显式排除名单** | 全量文件承诺（纪律 5）一开，**现有每个 adapter 都签不出来**——`README.md`/`COVERAGE.md` 既不在 INCLUDE 也不在 EXCLUDE。按该纪律自身指明的出路处理：显式排除，名单进版本控制即为审计记录。排除 ≠ 夹带面（被排除的文件根本不进 bundle，永远到不了客户端）；纳入才是把几十 KB 无用字节推给每个终端用户。 |
+
+#### 顺带完成的简化（对应「简化心智以提升维护效率」）
+
+- **两端唯一入口都改成收原始字节的 `openBundle`**。v1 的 `verifyBundleSignature(env, sig)`
+  这个签名本身就违反「验签先于解析」——一旦 envelope 已是对象，「验的字节」与「用的字节」
+  就分了家。改成收字节后，这类错误**在 API 形状上不再可能表达**。
+- **`VerifiedBundle` 携带内容**（`envelope` / `envelopeBytes` / `blobs`），`LoadResult` 只存这一个
+  对象、其余字段降为 getter。原先 envelope / identity / digest 三份平行字段可能互相不一致，
+  `adapter_launcher.dart` 为此写过一条「防手工构造的不一致 LoadResult」的冗余检查——现已删除，
+  因为那种不一致构造不出来了。（对应测试也从「伪造 LoadResult」改写为「把 A 的凭据配 B 的内容」，
+  那才是仍然构造得出的错配形态。）
+- **`BundleCache.read` 只返回裸字节**，不再吐 `CachedBundle{envelope, signature}`。缓存层因此
+  不再有第二份解析实现，「未验签的 envelope」这个危险中间态在类型上不存在。
+- **删除 `computeBundleDigest` / `verifyAdapter` / `signAdapter`**：保留「从目录直接算 digest」
+  的旁路等于第二条 digest 实现，必然与 `buildEnvelope` 漂移。CLI `digest` 子命令改走同一条实现。
+- **新增 `client/test/utils/bundle_fixture.dart`**：六个测试文件原先各自手拼 `BundleEnvelope`
+  字面量，每份手拼都是一份可能漂移的影子实现。收敛后测试只描述「这个 bundle 里有哪些文件」。
+- **golden 生成器自带自验**：每条向量的期望必须是 TS 侧**真实产生**的行为，否则拒绝写出——
+  否则 golden 只是一份「我以为会这样」的手写清单，写错了会把 Dart 钉到错误的行为上。
+
+#### 剩余门槛
+
+| # | 事项 | 归属 |
+|---|---|---|
+| 1 | 🔒 **人工安全复核**：本次改动全在签名/验签承重路径，AGENTS.md §1 明令 AI 不得独自闭环 | owner |
+| 2 | 🔒 **签收上表 A/B/C 三项决策** | owner |
+| 3 | **离线 YubiKey 重签仪式**：仓内 7 份 v1 产物在 v2 下一律拒载（item 8「无代码兼容层」的预期行为）。`client/test/school_manifest_test.dart` 的 bootstrap 用例已做**条件跳过**——一旦重签为 v2 自动恢复运行，不依赖任何人记得回来删一行 | owner（物理动作） |
+| 4 | 重签时 bump `school-helloworld` 版本号（§2.3 的 equivocation 流程修正） | owner |
+| 5 | `elecon-adapters` 侧两处规则同步（详见下表） | 与 A 仓同批 |
+
+#### `elecon-adapters` 侧待同步（截至 2026-09-09 比对）
+
+`scripts/build-bundle.mjs` 已自行迁到 v2 且与核心逐字节一致，**只余三处**：
+
+| 处 | 现状 | 应改为 |
+|---|---|---|
+| `assertPathHygiene` | 只有 NFC 检查，**无字符集白名单** | 补 `[A-Za-z0-9._-]` 段白名单（决策 A）。否则本仓能构建出核心**拒签**的 envelope——签发侧比验端宽，是最难查的一类不一致 |
+| `BUNDLE_EXCLUDE` | `\.md$`（大小写敏感） | `\.md$` 加 `i` 标志，与核心一致；否则 `README.MD` 会走到「全量文件承诺失败」而非被排除 |
+| 文件头 / `catalog.mjs` 的 ⚠ 提示 | 「核心 signer / 客户端加载器当前仍在 `elecon-bundle/1`，digest 预检暂不可用，产物暂不可加载」 | **已过时**：核心两端已是 v2，digest 预检自此成立（实证见上）。产物仍不可直接加载，但原因变成「未签名」而非「格式不符」 |
+
+另有一处**先于 digest v2 存在**的红：`grades.list` 的 registry 已到 `1.1`，而 pinned adapters
+仍声明 `1.0` → `C2_emits_mismatch`（`school-thu` / `school-xidian`）。与本次改动无关，随 A 仓同步解决
+（**2026-09-10 已在 A 仓修复**，见 §2.5）。
+
+---
+
+### 2.5 执行状态（2026-09-10 · 重签仪式前置核查）
+
+**结论：仪式此刻做不了。** 落地后对「拿起 YubiKey 之前还差什么」做了一次实测核查，查出 **3 个硬阻塞
++ 2 处现有文档低估的事实**。本节是仪式的前置清单，全部清空之前不要开始。
+
+#### 硬阻塞
+
+| # | 阻塞 | 证据 | 归属 |
+|---|---|---|---|
+| 1 | **5 个 official adapter 里 2 个过不了 validator** | `--intended-tier=official` 逐个实跑：`school-fudan` ✓、`school-xjt` ✓、`school-helloworld` ✓；`school-thu` ✗、`school-xidian` ✗ 均为 `C2_emits_mismatch`（manifest `elecon.grades.list@1.0` vs registry `@1.1`） | A 仓 —— **2026-09-10 已修**（两份 manifest bump 到 `1.1`；见下「已解决」） |
+| 2 | **带 `masker.json` 的 bundle 签不出来** | `tools/src/validator/index.ts` 的 `RM0_host_gate_unavailable` 是**无条件 error**：只要 adapter 根有 `masker.json`，即使策略合法也拒绝签发 | 已由 **ADR-026 §2.7.1（2026-09-10 owner 决策）** 定出路：gate = `bundleFormat` 断代到 `/3`，与移除 RM0、loader 接线同批。**故本次仪式不带 `masker.json`**，见下「排期后果」 |
+| 3 | 🔒 **人工安全复核必须排在仪式之前** | 仪式是拿 official 私钥为这套验签实现背书；复核未做即签 = 用未复核代码铸造正式信任 | owner，顺序不可换 |
+
+#### 两处现有文档低估的事实
+
+- **🔴 五个 adapter 全部都要 bump 版本号，不只 `school-helloworld`。** §2.3 只写了 bump helloworld
+  （equivocation 修正）。但台账的硬不变量是「**版本号唯一标识一份字节**」，而 v1→v2 重签会改**每一份**
+  产物的字节：`school-fudan@0.1.0` 若沿用旧号，`ledger:validate` 会和 helloworld 那次一样判
+  equivocation。**结论：`school-fudan` / `school-thu` / `school-xidian` / `school-xjt` /
+  `school-helloworld` 五份的 `adapterVersion` 全部必须 bump。**
+- **🟠 `release/revocation.json` 早已过期。** 现为 `sequence: 1`、`issuedAt: 2026-07-19`、
+  `ttlSeconds: 604800`（7 天）→ **2026-07-26 即过期**。P3-08 的新鲜度门一上线就会拒。
+  仪式时须 bump 到 `sequence: 2` 并更新 `issuedAt`。
+
+#### 排期后果（ADR-026 §2.7.1 决策的直接推论）
+
+本次仪式**不带 `masker.json`**（RM0 未移除、loader 未接线）。因此存在一个**会随时间关闭的窗口**：
+
+> `/2` 的 `bundleFormat` 严格相等挡得住 v1 host，**挡不住「懂 `/2`、但没有 masker 运行时门」的 host**。
+> 这种 host 现在一个都不存在（v2 代码尚未发版）。
+
+§2.7.1 的断代决策把这个窗口换成了常量——masker 强制那一跳一律断到 `/3`，故**即使本次仪式后发布了
+v2 客户端，安全性也不依赖排期**。代价是 masker 落地时需要**第二次重签仪式**，这是已知且已接受的。
+
+#### 仪式当天的参数（核查所得）
+
+| 项 | 值 | 依据 |
+|---|---|---|
+| `--sequence=` | **4** | 线上 catalog 现为 3（`dist-full/catalog.json.gz` 实读） |
+| revocation | bump 到 `sequence: 2` + 刷新 `issuedAt` | 见上，现值已过期 |
+| `--adapters=` | 指向**含全部 5 个 official 目录的同一个根** | `adapter_release.md` §4 注意：只传单个目录时线上 catalog 会被缩成单条。而 `school-helloworld` 在核心仓 `adapters/`、另 4 个在 `.adapters-cache/`，**须先拼一个「全集 release 根」** |
+| 签前 digest 重算 | 不可跳过 | `adapter_release.md` §3——「所见非所签」的唯一防线，必须在**即将触碰的那台机器**上算 |
+
+#### 仪式后的收口
+
+```bash
+npm run bootstrap:sync                 # 重派生 client/assets/bootstrap/
+cd ../client && flutter test           # school_manifest_test 的条件跳过应自动恢复
+cd ../tools && npm run ledger:extract  # 补 4 项人工事实 → status: complete
+npm run ledger:validate                # 应不再是 incomplete (6 of 6)
+```
+
+→ **P0-15 可关闭**；**P0-01 可关闭**（前提：上表阻塞 3 的人工复核已签）。R2 退出条件同时满足。
+
+#### 已解决（2026-09-10）
+
+- **A 仓 `grades.list` 1.0 → 1.1**：`school-thu` / `school-xidian` 两份 manifest 的
+  `emits.schemaVersion` 已 bump，两者现均通过 `--intended-tier=official` 校验。依据
+  `contract/CHANGELOG.md`（2026-09-08 条目）与
+  [`gradepoint_ownership_landing.md`](../reference/gradepoint_ownership_landing.md) §4.1 —— 该升级是
+  **MINOR**（仅新增两个可选字段），旧 1.0 数据在 1.1 下仍合法，故无须改 `index.js` 或 fixture。
+  - **未同批（非阻塞，须人工事实）**：§4.1 的「同批建议」——这两个 adapter 在产出里加
+    `gradePointScale`（西电为 4.3 制**需人工确认**、清华**需确认**）并对来源直接给出的绩点标
+    `gradePointSource: "source"`。**不做则客户端 GPA 按 fail-closed 不显示**（尺度不明不展示）。
+    这不阻塞签发，但会让 GPA 在重签后仍然空着。
+
+---
+
+### 2.6 执行状态（2026-09-11 · CI 恢复 + 仪式前置收口）
+
+**起因**：main 的 CI 自 2026-08-27 起持续红（两次 run 同型失败），且本地 main 与 origin/main 分叉
+（origin 有 PR #110 的合并提交，本地领先 9 个提交含 digest v2 全部代码），A 仓另有 4 个提交未推。
+
+| 红项 | 根因 | 处置 |
+|---|---|---|
+| server `smoke:all` 27/28（`adapters-xidian.card.imperative`） | `adapters.pin` = `49ae7f5` 早于 A 仓 card 支持（A 仓 main 早已有 `card.*`），核心从未 bump pin | pin bump → `ba7f190`（含 card.*、grades.list 1.1、bundle/2） |
+| tools `validate`（推送后必红） | grades.list 契约 1.1 在未推送提交里；A 仓修复 `76ce7fc` 未推 | A 仓 4 个提交已合并 bot 镜像后推到 ncc-devlab main；同上 pin |
+| tools `check:contract-changelog`（PR 上红） | tools job 浅克隆无 `origin/main`，门报「找不到 base ref」；push 到 main 时 base==HEAD 零差异假绿，故此前从未在 PR 上真正生效 | tools job checkout `fetch-depth: 0` |
+| `client-android-emulator` | runner 无 `/dev/kvm` 权限（日志 `ProbeKVM ... doesn't have permissions`），x86_64 模拟器无加速 → adb 永不可达。**非代码问题** | `ci.yml` 加 android-emulator-runner 官方要求的 Enable KVM 步骤（udev 规则） |
+
+**签发侧跨实现一致性（ADR-002 §3 风险 5）扩到全部 5 份**：A 仓 `npm run bundle` 与核心 `signer digest`
+对 `school-fudan/helloworld/thu/xidian/xjt` 的 sha256 **逐一相同**（此前只核过 xidian 一份）。
+
+**P0-13 剩余门槛已核实为事实（待 owner 勾选关闭）**：GitHub API 实读——`release` Environment 存在且带
+`required_reviewers` + `branch_policy`；tag ruleset 对 `refs/tags/v*` 启用 `creation`/`update`/`deletion`
+三条规则（不可变 tag）。§2.1「仍需配置 `release` Environment、不可变 `v*` tag 规则」一项据此**作废**。
+
+**复核入口**：digest v2 实现的人工安全复核清单已建为
+[`bundle_digest_v2_signoff_checklist.md`](../reference/bundle_digest_v2_signoff_checklist.md)
+（逐文件 / 攻击场景 ↔ 红用例 / 决策 A/B/C）。签完即 §2.5 阻塞 3 解除。
+
+**本轮自动验证**（HEAD + 工作树）：biome / typecheck / `git diff --check`、tools smoke 19/19、
+ledger:validate、scan、codegen 漂移、bootstrap:check、changelog 门、validate-dist 全过；
+`flutter analyze` 0；`flutter test` DEPLOY 856 通过 / 12 skip、DEV 865 通过 / 3 skip。
+pin bump 到 `ba7f190` 后复跑：server smoke **28/28**（card 项转绿）、tools validate **校验通过**（C2 消失，
+仅余 C0 意图档位 warn）、tools smoke 19/19、`flutter test` DEPLOY 856 通过 / 12 skip（skip 仍为等重签的
+`school_manifest_test` 条件跳过）。
+
+**owner 首轮复核（2026-09-11）**：4 条意见，1 条实质偏差——TS 端 base64 宽松解码与 §2.9.1 第 3 步矛盾。
+已修为两端统一的规范形解码（并顺带关掉 Dart 接受 URL-safe 字母表的反向不对称），红用例 E9a–E9d、
+golden +2（现 21 条）。其余为清单措辞与过期注释，已改。记录见签收清单 §6。
+
+**待办（本节落地后）**：① 🔒 owner 按签收清单复核；② 仪式前在 A 仓 bump `school-fudan/thu/xjt/helloworld`
+`adapterVersion` 0.1.0 → 0.1.1（`school-xidian` 已是未签发过的 0.4.1，不动）并把 pin 移到该提交；
+③ 举行 §2.5 所列参数的仪式；④ 合并后 `git branch -f main origin/main`，本地 main 不再领先。
+
+---
 
 ## 3. P1：核心正确性与契约闭环
 
@@ -396,9 +619,9 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 
 顺序：
 
-1. ~~修订 ADR-002/018，定义 bundle digest v2、路径规范化和兼容策略。~~（2026-09-01 已就地修订，待 owner 签收；兼容策略结论 = **无历史产物、不设兼容期**）
-2. 先实现 TS/Dart verifier 与 golden，再实现 signer/packer。
-3. 增加 host version gate，重新签发 bootstrap/catalog/bundle。
+1. ~~修订 ADR-002/018，定义 bundle digest v2、路径规范化和兼容策略。~~（2026-09-01 就地修订，**2026-09-09 owner 签收规格**；兼容策略结论 = **无历史产物、不设兼容期**）
+2. ~~先实现 TS/Dart verifier 与 golden，再实现 signer/packer。~~（**2026-09-09 两端落地、CI 全绿**，见 §2.4）
+3. ~~增加 host version gate~~（**已改判：不新增**——`bundleFormat` 严格相等本身即断代拒载，见 ADR-002 §2.3 / ADR-018 §2.9.1 第 8 项；将来 masker 强制那一跳的 gate 亦复用同一机制断代到 `/3`，见 ADR-026 §2.7.1），**重新签发 bootstrap/catalog/bundle** —— 即重签仪式，**未执行**，前置见 §2.5。
 4. 增加 P0-15 发布台账和 release 防回滚检查。
 5. 由非实现者完成人工安全复核和迁移演练。
 

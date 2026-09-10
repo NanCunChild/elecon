@@ -15,6 +15,7 @@
   },
   "scripts": {
     "validate": "tsx src/validator/index.ts",
+    "check:contract-changelog": "node ../scripts/check-contract-changelog.mjs",
     "codegen": "tsx src/codegen/index.ts",
     "sign": "tsx src/signer/index.ts",
     "release:package": "tsx src/release/package.ts",
@@ -33,7 +34,7 @@
     "smoke:adapter-policy": "tsx src/adapter-policy/adapter-policy.smoke.ts",
     "smoke:codegen": "tsx src/codegen/codegen.smoke.ts",
     "smoke:signer": "tsx src/signer/signer.smoke.ts",
-    "redcase:bundle-path-binding": "tsx src/bundle/path-binding.redcase.ts",
+    "smoke:bundle-path-binding": "tsx src/bundle/path-binding.smoke.ts",
     "smoke:all": "node ../scripts/run-smokes.mjs src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "audit": "npm audit --omit=dev"

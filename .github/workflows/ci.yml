@@ -71,6 +71,10 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
+          # 契约 changelog 门要对 base（origin/main）做 merge-base diff；默认 fetch-depth=1 的浅克隆
+          # 没有 origin/main → 门在 PR 上直接报「找不到 base ref」而红（push 到 main 时 base==HEAD、
+          # 零差异假绿）。全历史让该门在 PR 上真正生效。
+          fetch-depth: 0
       # 按需拉取 elecon-adapters（ADR-018 §2.11.1）；脚本导出的 ELECON_ADAPTERS_ROOT
       # 让 validate 对 pinned checkout 的 adapters/ 做全量静态校验。
       - name: Fetch pinned elecon-adapters
@@ -87,6 +91,10 @@ jobs:
       # 红线 #8：提交的 adapter 与 fixture 不得包含真实学生数据或凭证等价物。
       - run: npm run scan -w tools
       - run: npm run validate -w tools
+      # ADR-001 §8 放行条件②的机器校验：改了 contract/ 就必须在
+      # contract/CHANGELOG.md 留一条引用了 ADR 编号的记录（红线 #6「先有 ADR」）。
+      - name: Contract changelog reference gate
+        run: npm run check:contract-changelog -w tools
       # codegen 漂移闸门（仿 stdlib bundle 闸门）：入库生成物必须等于按当前
       # contract/schema 重新生成的产物——schema 改了、生成物没跟上即 fail。
       # 生成物已被消费（client elecon_contract 包 / server 类型化 smoke），漂移会伤下游。
@@ -211,6 +219,14 @@ jobs:
       - run: flutter pub get
       - name: Build the real app flow harness
         run: flutter build apk --debug --target tool/android_emulator_flow_app.dart
+      # ubuntu-latest runner 默认不给当前用户 /dev/kvm 权限（日志：ProbeKVM ... doesn't have
+      # permissions），x86_64 模拟器无硬件加速 → adb 永远连不上（2026-08-27 起 main 持续红）。
+      # 这是 android-emulator-runner 官方 README 要求的前置步骤。
+      - name: Enable KVM group permissions
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Run startup, school, login, and home error flow
         uses: ReactiveCircus/android-emulator-runner@v2
         with:

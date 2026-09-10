@@ -137,7 +137,7 @@ class AdapterService {
     final load = await _loader.loadAdapter(adapterId);
     if (!load.ok || load.envelope == null) return null;
     try {
-      final manifest = readEnvelopeManifestJson(load.envelope!);
+      final manifest = readEnvelopeManifestJson(load.envelope!, load.blobs!);
       final descriptor = SchoolDescriptor.fromVerifiedManifest(manifest);
       return descriptor.adapterId == adapterId ? descriptor : null;
     } on FormatException {

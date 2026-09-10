@@ -107,12 +107,15 @@ const cases: Record<string, SchemaGolden> = {
   "elecon.grades.list": {
     valid: {
       term: "2025-2026-2",
+      gradePointScale: "4.0",
       items: [
         {
           courseId: "COURSE-001",
           courseName: "示例课程",
           credit: 2,
           score: { kind: "numeric", value: 90 },
+          gradePoint: 3.7,
+          gradePointSource: "adapter-derived",
           category: "required",
           status: "final",
         },
@@ -129,6 +132,41 @@ const cases: Record<string, SchemaGolden> = {
               courseName: "示例课程",
               credit: 2,
               score: { value: 90 },
+              category: "required",
+              status: "final",
+            },
+          ],
+        },
+      },
+      {
+        behavior: "gradePointScale enum",
+        value: {
+          term: "2025-2026-2",
+          gradePointScale: "4",
+          items: [
+            {
+              courseId: "COURSE-001",
+              courseName: "示例课程",
+              credit: 2,
+              score: { kind: "numeric", value: 90 },
+              category: "required",
+              status: "final",
+            },
+          ],
+        },
+      },
+      {
+        behavior: "gradePointSource enum",
+        value: {
+          term: "2025-2026-2",
+          items: [
+            {
+              courseId: "COURSE-001",
+              courseName: "示例课程",
+              credit: 2,
+              score: { kind: "numeric", value: 90 },
+              gradePoint: 3.7,
+              gradePointSource: "derived",
               category: "required",
               status: "final",
             },
@@ -399,8 +437,18 @@ const cases: Record<string, SchemaGolden> = {
     ],
   },
   "elecon.gpa.summary": {
-    valid: { gpa: 3.8, earnedCredits: 60, attemptedCredits: 64, rank: 1, rankTotal: 100 },
-    invalid: [{ behavior: "rank starts at one", value: { gpa: 3.8, rank: 0 } }],
+    valid: {
+      gpa: 3.8,
+      gradePointScale: "4.3",
+      earnedCredits: 60,
+      attemptedCredits: 64,
+      rank: 1,
+      rankTotal: 100,
+    },
+    invalid: [
+      { behavior: "rank starts at one", value: { gpa: 3.8, rank: 0 } },
+      { behavior: "gradePointScale enum", value: { gpa: 3.8, gradePointScale: "4" } },
+    ],
   },
   "elecon.notice.detail": {
     valid: {

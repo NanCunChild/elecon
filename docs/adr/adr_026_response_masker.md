@@ -129,7 +129,7 @@ selector miss 还扩大了一项明确接受的字段漂移残余风险：学校
 
 不保留“缺文件等价空规则”的旧 bundle 兼容。owner 确认现有 official adapter 数量有限，将在新 host gate 启用前手工补齐 `masker.json` 并重新签发；未迁移 bundle 由新 host 拒载，旧 host 则由最低 host/version gate 阻止采纳新 bundle。
 
-运行时加载 official adapter 时，policy、delivery sink、Credential Store 或 host/version gate 任一缺失，adapter 均须拒载；空规则不放宽这些依赖。该 loader 接线目前仍受 **P0-01 bundle digest 路径绑定**阻塞：在 digest 能把已验签 `masker.json` 唯一绑定到实际加载路径前，不得实现旁路加载或宣称运行时门已闭合。本文只记录门禁决策，本次纯引擎 / 契约改动不修改 bundle loader 或 signer。
+运行时加载 official adapter 时，policy、delivery sink、Credential Store 或 host/version gate 任一缺失，adapter 均须拒载；空规则不放宽这些依赖。**P0-01 digest 路径绑定已于 2026-09-09 两端落地**，该项前置解除（digest 覆盖 `path`/`size`/`sha256`、拒绝重复路径、blob 集合精确相等，签名已能证明被加载字节确属 `masker.json`）；剩余前置为 **P1-04**（响应头原始基数）与 **masker 装配重签**。本文只记录门禁决策，本次纯引擎 / 契约改动不修改 bundle loader 或 signer。
 
 发布门必须验证：
 
@@ -141,6 +141,27 @@ selector miss 还扩大了一项明确接受的字段漂移残余风险：学校
 - 已确认泄漏或不兼容的旧版本通过 revocation / `minVersion` 禁止回退。
 
 签名保证代码与策略不可被分开篡改；validator、policy diff 和人工签署清单保证“应有规则不能无声消失”。
+
+#### 2.7.1 「最低 host/version gate」的实现形式 = `bundleFormat` 断代（2026-09-10 owner 决策）
+
+本节此前反复引用的「最低 host/version gate」一直**没有实现形式**，validator 因此挂着一条无条件阻断
+`RM0_host_gate_unavailable`：只要 adapter 根存在 `masker.json`，即使策略本身合法也拒绝签发，理由是
+「当前尚无旧 host 可理解的拒载字段」。
+
+**digest v2 落地后该理由不再成立**——那个字段存在，它就是 `bundleFormat`，两端都做**严格相等**判定。
+故 owner 裁定：**该 gate 不另行发明，就用 `bundleFormat` 断代表达**。
+
+- **`masker.json` 转为强制的那一跳，`bundleFormat` 从 `elecon-bundle/2` 断代到 `elecon-bundle/3`**，
+  与移除 `RM0_host_gate_unavailable`、接线 loader/runtime 门**同批落地，不得拆开**。
+- 断代之后，任何不认识 `/3` 的 host（含**懂 v2 但不认 masker** 的 host）一律拒载，
+  「旧 host 采纳新 bundle 却忽略 `masker.json`」在结构上不可能发生。
+- **为何非断代不可**：`/2` 的严格相等只挡得住 v1 host，挡不住「懂 `/2`、但没有 masker 运行时门」的 host。
+  这种 host 现在**一个都不存在**（v2 代码尚未发版），但第一次 v2 发版后就会存在——断代把这个
+  **随时间关闭的窗口**换成一个**常量**，不必再靠排期保证安全。
+- **代价**：一次格式断代。按 ADR-002 §2.3 / ADR-018 §2.9.1 第 8 项的同一论证（无外部持有者、
+  不设双读、不新增兼容层），代价 = 一次重签仪式；且本项目仍处「前期可破坏性更新」阶段（红线 #6 放宽）。
+- 契约改动（`bundleFormat` 是 ADR-018 §2.9.1 的签名覆盖字段），须在 [`contract/CHANGELOG.md`](../../contract/CHANGELOG.md)
+  记一条，并同批更新 ADR-018 §2.9.1 与两端常量。**本次只记录决策，不改任何常量。**
 
 ### 2.8 封闭 selector 与动作
 
@@ -264,11 +285,11 @@ ADR-023 当前“中间值从不进 adapter”的叙述与源响应交付实现�
 - raw Transport -> Broker -> adapter replay；
 - adapter 全量迁移与发布安全清单。
 
-旧客户端遇到要求 Masker 的 bundle 时必须经 host/version gate 拒载，不能忽略 `masker.json` 后继续运行。official adapter 即使无规则也必须携带 `masker.json`；policy / sink / store / host gate 任一缺失均拒载。实际接线仍受 §2.7 所述 P0-01 digest 路径绑定阻塞。
+旧客户端遇到要求 Masker 的 bundle 时必须经 host/version gate 拒载，不能忽略 `masker.json` 后继续运行。official adapter 即使无规则也必须携带 `masker.json`；policy / sink / store / host gate 任一缺失均拒载。**实际 loader 接线尚未完成**（剩余前置：P1-04 与 masker 装配重签）；「最低 host/version gate」的实现形式已定为 `bundleFormat` 断代到 `elecon-bundle/3`，见 §2.7.1。
 
 ## 7. 实施阶段必须落实
 
-1. mandatory `masker.json` schema（空 `rules` 合法）与 bundle 最低 host/version gate；实际 loader 接线须等待 P0-01 digest 路径绑定。
+1. mandatory `masker.json` schema（空 `rules` 合法）与 bundle 最低 host/version gate——后者的实现形式 = **`bundleFormat` 从 `elecon-bundle/2` 断代到 `/3`**（§2.7.1），须与移除 validator 的 `RM0_host_gate_unavailable` 阻断、loader/runtime 接线同批落地。
 2. `credential` capture 的覆盖、过期、撤销、来源和原子提交语义。
 3. `handle` 与 ADR-023 bind 的统一或映射方式，及源响应投影修订。
 4. selector miss / mixed / all-miss、类型不匹配、多次命中、非法 body、字符编码和实体头清理语义。

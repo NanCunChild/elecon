@@ -84,7 +84,7 @@
 2. 源站只认壁钟/时段 → 可只填 item 级 `occupied`/`status`，**省略** `sections`（缺失 = 该校不提供分节，ADR-001 §3.4）。
 3. `date` 与 `week` 同时出现：以 **源站主轴** 为准（西电用 date 推周次；清华用 week）；响应须 **回显** 实际采用的 `date` 和/或 `week`/`term`，避免缓存键歧义。
 
-**与 ADR-001 时间约定的关系**：envelope/`*At` 仍是 RFC3339 UTC；本域的 `date` 是**日历日**，`start`/`end`/`timeStart`/`timeEnd` 是**墙钟（推荐 `HH:mm`）或节次标签**，与 `schedule.week` 的 slot 先例对齐，**不**强制 `date-time`。
+**与 ADR-001 时间约定的关系**：数据信封（data envelope）/`*At` 仍是 RFC3339 UTC；本域的 `date` 是**日历日**，`start`/`end`/`timeStart`/`timeEnd` 是**墙钟（推荐 `HH:mm`）或节次标签**，与 `schedule.week` 的 slot 先例对齐，**不**强制 `date-time`。
 
 **墙钟时区 `timeZone`（人工评审 2026-07-22 钉死）**：
 
@@ -349,7 +349,7 @@ params: { roomId: "<classroom>", week: 12, term: "..." }
 6. ADR-001 §8.1 增记本条（MINOR 理由：纯增可选字段 + 枚举扩展 + 新 capability）。
 7. 旧 `1.0` 响应仍可被新宿主消费；新字段缺失按 §3.4。发版 adapter 的 manifest 声明 `1.1` 后方可产出 `sections`/`partial` 等。
 
-**不**做 1.0/1.1 双写长期兼容层：宿主按 envelope `schemaVersion` 解读即可；字段均为可选，1.1 阅读器可读 1.0 数据。
+**不**做 1.0/1.1 双写长期兼容层：宿主按数据信封 `schemaVersion` 解读即可；字段均为可选，1.1 阅读器可读 1.0 数据。
 
 ---
 

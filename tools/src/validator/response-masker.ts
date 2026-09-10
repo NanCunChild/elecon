@@ -53,7 +53,8 @@ interface MaskerCapability {
 }
 
 export interface ResponseMaskerManifest {
-  trustTier: "official" | "sideload";
+  /** claim，不是权威（ADR-002 §2.2）；仅在调用方未给出 `intendedTier` 时作为回退。 */
+  trustTier?: "official" | "sideload";
   network: { allow: string[] };
   credentials?: Record<string, { scope: string[]; type: string }>;
   capabilities: MaskerCapability[];
@@ -133,6 +134,8 @@ export function checkResponseMasker(
   policy: unknown,
   manifest: ResponseMaskerManifest,
   schemaValidate: ValidateFunction,
+  /** 调用方声明的意图档位（ADR-002 §2.2）；缺省时过渡期回退到 `manifest.trustTier`。 */
+  intendedTier?: "official" | "sideload",
 ): Finding[] {
   if (!schemaValidate(policy)) {
     return (schemaValidate.errors ?? []).map((schemaError) =>
@@ -143,7 +146,9 @@ export function checkResponseMasker(
   const typed = policy as ResponseMaskerPolicy;
   const findings: Finding[] = [];
 
-  if (manifest.trustTier !== "official") {
+  // 读**意图档位**（调用方声明）而非 manifest claim；未给出时过渡期回退到 claim（ADR-002 §2.2）。
+  const tier = intendedTier ?? manifest.trustTier;
+  if (tier !== "official") {
     findings.push(error("RM2_official_only", "masker.json 只允许 official 签名 adapter 声明"));
   }
 

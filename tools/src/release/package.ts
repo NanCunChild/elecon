@@ -23,7 +23,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { buildEnvelope } from "../bundle/envelope.js";
-import { packBundle, unpackBundle, verifyBundleIntegrity } from "../bundle/package.js";
+import { inspectBundle, packBundle } from "../bundle/package.js";
 import { signEnvelope } from "../bundle/sign.js";
 import { signCatalog } from "../catalog/sign.js";
 import { type Catalog, checkCatalog, loadCatalogValidator, loadRegistryIds } from "../catalog/validate.js";
@@ -125,7 +125,9 @@ export async function buildRelease(options: ReleaseOptions, backend: SignBackend
 
   const contract = loadContract();
   for (const dir of adapterDirs) {
-    const findings = validateAdapterDir(dir, contract);
+    // release 一律按 official 校验：档位由**本流水线声明**，不向 manifest 提问（ADR-002 §2.2）。
+    // manifest 若声明了别的档位，validateAdapterDir 会给出 C0_intended_tier_mismatch（error）。
+    const findings = validateAdapterDir(dir, contract, "official");
     const errors = findings.filter((finding) => finding.level === "error");
     if (errors.length > 0) {
       throw new Error(
@@ -141,17 +143,25 @@ export async function buildRelease(options: ReleaseOptions, backend: SignBackend
 
   for (const dir of adapterDirs) {
     const manifest = readManifest(dir);
-    if (manifest.trustTier !== "official") {
-      throw new Error(`${manifest.adapterId} 不是 official adapter，禁止进入 release（fail-closed）`);
+    // 档位由流水线注入（下方 signEnvelope 的 "official"），不取自 manifest 自报。此处只核对
+    // claim 不与之冲突——冲突说明作者意图与发布意图不一致，须人工澄清（ADR-002 §2.2）。
+    // 上面的 validateAdapterDir(…, "official") 已用 C0_intended_tier_mismatch 拦下同一情形，
+    // 本检查是发布路径的纵深防御，不依赖校验器被正确调用。
+    if (manifest.trustTier !== undefined && manifest.trustTier !== "official") {
+      throw new Error(
+        `${manifest.adapterId} 的 manifest.trustTier='${manifest.trustTier}' 与 release 的 official 意图冲突，禁止进入 release（fail-closed）`,
+      );
     }
-    const envelope = buildEnvelope(dir);
-    const signature = await signEnvelope(envelope, "official", backend);
-    const packed = packBundle(envelope, signature);
-    const unpacked = unpackBundle(packed);
-    const integrity = verifyBundleIntegrity(unpacked.envelope, signature);
-    if (!integrity.ok) throw new Error(`${manifest.adapterId} bundle 内容寻址复核失败`);
-
-    const digest = integrity.value;
+    const built = buildEnvelope(dir);
+    const signature = await signEnvelope(built, "official", backend);
+    const packed = packBundle(built.bytes, signature, built.blobs);
+    // 签发侧**自验**（keyless，只跳过 Ed25519——签发侧拿不到公钥）：卫生闸门、blob 集合
+    // 精确相等、身份三方一致都在出厂前跑一遍，避免签出一份自己都装不上的产物。
+    const selfCheck = inspectBundle(packed);
+    if (!selfCheck.ok) {
+      throw new Error(`${manifest.adapterId} bundle 签发自验失败：${selfCheck.reason}`);
+    }
+    const digest = selfCheck.value;
     const bundlePath = join(bundlesDir, `${digest}.json.gz`);
     writeFileSync(bundlePath, packed);
     bundleDigests.push(digest);

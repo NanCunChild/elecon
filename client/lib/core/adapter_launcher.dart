@@ -108,42 +108,36 @@ LaunchPlan planLaunch(LoadResult result) {
       '仅 official 档走此接线（收到 ${trust.tier.name}）——dev 侧载另有 debug-only 路径',
     );
   }
-  final env = result.envelope!;
+  final verified = result.verified!;
+  final env = verified.envelope;
   final boundDigest = trust.digest;
   if (boundDigest == null || boundDigest.isEmpty) {
     throw const AdapterLaunchException('official 凭据缺绑定 digest（fail-closed）');
   }
 
-  // 🔒 source⟷凭据绑定（评审 E#2 的 enforcement 点）：重算 envelope digest 复核 == 凭据 digest。
-  final String actualDigest;
-  try {
-    actualDigest = envelopeDigest(env);
-  } on BundleFormatException catch (e) {
-    throw AdapterLaunchException(
-      'envelope 无法计算 digest：${e.message}（fail-closed）',
-    );
-  }
+  // 🔒 source⟷凭据绑定（评审 E#2 的 enforcement 点）：重算 **被签字节**的 digest 复核 == 凭据 digest。
+  //
+  // digest v2 起哈希的是 `verified.envelopeBytes`（即验签时验的那一串），**不是**把
+  // `env` 重新序列化一遍——后者会引入 canonical JSON 的全部漂移面（ADR-018 §2.9.1 纪律 1）。
+  final actualDigest = envelopeDigest(verified.envelopeBytes);
   if (actualDigest != boundDigest) {
     throw AdapterLaunchException(
       '将执行的源字节 digest 与凭据绑定 digest 不符 '
       '(${_short(actualDigest)} vs ${_short(boundDigest)}) → fail-closed（评审 E#2）',
     );
   }
-  // 冗余但 fail-closed：LoadResult 内 digest 亦须与凭据一致（防手工构造的不一致 LoadResult）。
-  if (result.digest != boundDigest) {
-    throw const AdapterLaunchException(
-      'LoadResult.digest 与凭据 digest 不符（fail-closed）',
-    );
-  }
+  // 注：v1 此处还有一条「LoadResult.digest 亦须与凭据一致」的冗余检查，用于防手工构造的
+  // 不一致 LoadResult。digest v2 起 LoadResult 只存**一个** VerifiedBundle，envelope 与 digest
+  // 同源，那种不一致在类型上已构造不出来，故该检查随之删除（见 loader.dart 的 `verified` 字段）。
 
   final Map<String, dynamic> manifest;
   try {
-    manifest = readEnvelopeManifestJson(env);
+    manifest = readEnvelopeManifestJson(env, verified.blobs);
   } on BundleFormatException catch (e) {
     throw AdapterLaunchException('manifest 读取失败：${e.message}（fail-closed）');
   }
 
-  final source = _entrySource(env, manifest);
+  final source = _entrySource(env, verified.blobs, manifest);
   final view = _viewFromManifest(manifest);
   final capabilities = _capabilities(manifest);
   final capabilityRequestGraphs = _capabilityRequestGraphs(manifest);
@@ -293,7 +287,16 @@ dynamic _validateAdapterOutput(
 }
 
 /// 取 `runtime.entry` 指向的 **utf-8** 入口源码；缺失 / 非 utf-8 / 不在 bundle → fail-closed。
-String _entrySource(BundleEnvelope env, Map<String, dynamic> manifest) {
+///
+/// **这正是 P0-01 攻击的落点**：加载器按 `path` 取要执行的字节。digest v2 之前 `path` 不进
+/// 签名范围，保序重命名即可让 official 签名背书「审查时无害的资产文件」在此被取出执行
+/// （见 `docs/archive/bundle_digest_v1_superseded.md`）。现在 path 在被哈希的字节里，
+/// 且本函数拿到的 `env`/`blobs` 只能来自 [VerifiedBundle]。
+String _entrySource(
+  BundleEnvelope env,
+  BlobTable blobs,
+  Map<String, dynamic> manifest,
+) {
   final runtime = manifest['runtime'];
   if (runtime is! Map) {
     throw const AdapterLaunchException('manifest 缺 runtime（fail-closed）');
@@ -304,23 +307,16 @@ String _entrySource(BundleEnvelope env, Map<String, dynamic> manifest) {
       'manifest.runtime.entry 缺失或非法（fail-closed）',
     );
   }
-  EnvelopeFile? file;
-  for (final f in env.files) {
-    if (f.path == entry) {
-      file = f;
-      break;
-    }
-  }
-  if (file == null) {
+  final bytes = fileBytesByPath(env, blobs, entry);
+  if (bytes == null) {
     throw AdapterLaunchException('入口文件 $entry 不在 bundle（fail-closed）');
   }
-  if (file.encoding != 'utf-8') {
-    throw AdapterLaunchException('入口文件 $entry 非 utf-8 文本（fail-closed）');
-  }
+  // v2 的 descriptor 不带 `encoding` 字段——blob 一律是原始字节，编码是**使用方**的解释。
+  // 入口必须是 utf-8 源码，故在此严格解码；非 utf-8 即拒（不做替换字符兜底）。
   try {
-    return utf8.decode(file.bytes());
+    return utf8.decode(bytes);
   } on FormatException catch (e) {
-    throw AdapterLaunchException('入口文件 $entry 解码失败：$e（fail-closed）');
+    throw AdapterLaunchException('入口文件 $entry 非 utf-8 文本：$e（fail-closed）');
   }
 }
 

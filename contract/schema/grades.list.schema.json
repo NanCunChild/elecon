@@ -17,6 +17,11 @@
     "cursor": { "type": "string", "description": "分页游标；缺失表示未采用游标分页或来源未提供。" },
     "total": { "type": "integer", "minimum": 0, "description": "符合查询条件的成绩条目总数；缺失表示来源未提供。" },
     "hasNext": { "type": "boolean", "description": "是否还有下一页成绩；缺失表示来源未提供。" },
+    "gradePointScale": {
+      "type": "string",
+      "enum": ["4.0", "4.3", "4.5", "5.0", "other", "unknown"],
+      "description": "本次数据中 items[].gradePoint 所用的校本绩点尺度（满分档）。本体据此判断能否聚合，缺失/unknown/other 时不得展示聚合值（fail-closed，ADR-001 §3.5）。**只界定量纲，不保证跨校可比**：两所同称 4.0 制的学校，分数→绩点的换算表可能完全不同，故不得据此做跨校比较或排名。**other 与 unknown 含义不同**：other = adapter 知道制式但不在本枚举内（应视为扩枚举的信号）；unknown = adapter 无法判断（应视为该 adapter 待改进的信号）。**数据横跨学校改制时**（如部分课程 4.0、部分 4.3）不得任选其一，应声明 other 让本体降级。"
+    },
     "items": {
       "type": "array",
       "description": "成绩条目列表。",
@@ -67,7 +72,12 @@
               "max": { "type": "number", "description": "数值成绩的满分值；缺失表示来源未提供。" }
             }
           },
-          "gradePoint": { "type": "number", "description": "学校来源直接提供的课程绩点；计分尺度由来源学校定义，缺失表示来源未提供。" },
+          "gradePoint": { "type": "number", "description": "课程绩点；计分尺度由来源学校定义（见列表级 gradePointScale），来源直接给出或由 adapter 按校本换算规则派生（见 gradePointSource），缺失表示既未提供也无法派生。" },
+          "gradePointSource": {
+            "type": "string",
+            "enum": ["source", "adapter-derived", "unknown"],
+            "description": "gradePoint 的来源：source 表示学校来源直接给出，adapter-derived 表示 adapter 按校本换算规则派生，unknown 表示无法判断；缺失表示来源未提供该标注。"
+          },
           "category": {
             "type": "string",
             "enum": ["required", "elective", "unknown"],

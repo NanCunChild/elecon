@@ -91,6 +91,7 @@ class GradesSection extends StatefulWidget {
 class _GradesSectionState extends State<GradesSection> {
   _Phase _phase = _Phase.idle;
   GradesList? _data;
+  GpaSummary? _summary;
   String? _error;
 
   Future<void> _load() async {
@@ -101,6 +102,12 @@ class _GradesSectionState extends State<GradesSection> {
       'grades.list',
       decode: gradesListFromDynamic,
     );
+    // 学校官方绩点汇总：**可选增强**，取不到不影响成绩单本身（ADR-001 §3.5——
+    // 官方数存在时权威，不存在时卡片退到本机聚合并换标签）。故失败一律吞掉，
+    // 不把它的 needLogin/error 冒泡成整个成绩区的失败态。
+    final summary = outcome.data == null
+        ? null
+        : await _loadGpaSummary(session);
     if (!mounted) return;
     setState(() {
       if (outcome.needLogin) {
@@ -111,8 +118,23 @@ class _GradesSectionState extends State<GradesSection> {
       } else {
         _phase = _Phase.loaded;
         _data = outcome.data;
+        _summary = summary;
       }
     });
+  }
+
+  /// 取 `gpa.summary`；任何失败都返回 null（见 [_load] 中的理由）。
+  Future<GpaSummary?> _loadGpaSummary(SessionController session) async {
+    try {
+      final run = await _runDecoded<GpaSummary>(
+        session,
+        'gpa.summary',
+        decode: gpaSummaryFromDynamic,
+      );
+      return run.data;
+    } on Object {
+      return null;
+    }
   }
 
   Future<void> _login() async {
@@ -126,7 +148,7 @@ class _GradesSectionState extends State<GradesSection> {
   @override
   Widget build(BuildContext context) {
     if (_phase == _Phase.loaded && _data != null) {
-      return GradesCard(_data!);
+      return GradesCard(_data!, summary: _summary);
     }
     return _PromptCard(
       title: '成绩',

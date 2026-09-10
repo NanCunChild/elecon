@@ -7,7 +7,6 @@
 library;
 
 import 'dart:convert';
-import 'dart:io' show gzip;
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart' show Ed25519, KeyPair;
@@ -17,7 +16,6 @@ import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/broker/ports.dart';
 import 'package:elecon/core/credential/blob_store.dart';
 import 'package:elecon/core/loader/bootstrap.dart';
-import 'package:elecon/core/loader/bundle.dart';
 import 'package:elecon/core/loader/bundle_cache.dart';
 import 'package:elecon/core/loader/catalog.dart';
 import 'package:elecon/core/loader/last_good_store.dart';
@@ -28,6 +26,8 @@ import 'package:elecon/core/loader/trust_anchors.dart';
 import 'package:elecon/core/loader/verify.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'utils/bundle_fixture.dart';
 
 import 'support/school_fixture.dart';
 
@@ -99,19 +99,11 @@ Future<_Bundle> _mkBundle(
       'allow': ['https://x.edu/*'],
     },
   };
-  final files = <Map<String, dynamic>>[
-    {'path': 'index.js', 'encoding': 'utf-8', 'content': source},
-    {
-      'path': 'manifest.json',
-      'encoding': 'utf-8',
-      'content': jsonEncode(manifest),
-    },
-  ];
-  final env = BundleEnvelope.fromJson({
-    'bundleFormat': kBundleFormat,
-    'files': files,
-  });
-  final digest = envelopeDigest(env);
+  final built = buildFixtureEnvelope({
+    'index.js': source,
+    'manifest.json': jsonEncode(manifest),
+  }, adapterId: adapterId, adapterVersion: adapterVersion);
+  final digest = built.digest;
   final sigB64 = await bundleSigner.signB64(
     serializeSignaturePayload(
       adapterId: adapterId,
@@ -120,24 +112,15 @@ Future<_Bundle> _mkBundle(
       digest: digest,
     ),
   );
-  final packed = Uint8List.fromList(
-    gzip.encode(
-      utf8.encode(
-        jsonEncode({
-          'envelope': {'bundleFormat': kBundleFormat, 'files': files},
-          'signature': {
-            'adapterId': adapterId,
-            'adapterVersion': adapterVersion,
-            'tier': kTierOfficial,
-            'digest': digest,
-            'signature': sigB64,
-            'keyId': 'k-bundle',
-            'algorithm': 'ed25519',
-          },
-        }),
-      ),
-    ),
-  );
+  final packed = packWire(built.bytes, {
+    'adapterId': adapterId,
+    'adapterVersion': adapterVersion,
+    'tier': kTierOfficial,
+    'digest': digest,
+    'signature': sigB64,
+    'keyId': 'k-bundle',
+    'algorithm': 'ed25519',
+  }, built.blobs);
   return _Bundle(packed, digest);
 }
 
@@ -165,7 +148,9 @@ Future<SignedCatalog> _mkCatalog(
   });
   return SignedCatalog(
     catalogJson: json,
-    signature: await s.signB64(utf8.encode(json)),
+    signature: await s.signB64(
+      withContext(kContextTagCatalog, utf8.encode(json)),
+    ),
     keyId: 'test-cat-key',
     algorithm: 'ed25519',
   );
@@ -182,7 +167,9 @@ Future<SignedRevocationList> _mkRevocation(_Signer s) async {
   });
   return SignedRevocationList(
     listJson: json,
-    signature: await s.signB64(utf8.encode(json)),
+    signature: await s.signB64(
+      withContext(kContextTagRevocation, utf8.encode(json)),
+    ),
     keyId: 'test-rev-key',
     algorithm: 'ed25519',
   );
@@ -256,21 +243,18 @@ void main() {
               )
             : null,
       );
-  Future<VerifyResult<VerifiedBundle>> vBundle(
-    BundleEnvelope e,
-    SignatureFile sig,
-  ) => verifyBundleSignatureWith(
-    e,
-    sig,
-    (kid) => kid == sig.keyId
-        ? TrustAnchor(
-            keyId: kid,
-            publicKeyHex: bundleSigner.publicKeyHex,
-            active: true,
-            note: 'test',
-          )
-        : null,
-  );
+  Future<VerifyResult<VerifiedBundle>> vBundle(Uint8List packed) =>
+      openBundleWith(
+        packed,
+        (kid) => kid == 'k-bundle'
+            ? TrustAnchor(
+                keyId: kid,
+                publicKeyHex: bundleSigner.publicKeyHex,
+                active: true,
+                note: 'test',
+              )
+            : null,
+      );
 
   // 用现签 bundle 装一个测试 AdapterService（forTesting 加载器 + 抛错 transport）。
   Future<AdapterService> serviceFor(

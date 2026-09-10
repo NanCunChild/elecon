@@ -15,6 +15,7 @@ void main() {
             updatedAt: DateTime.utc(2026, 7, 6, 8, 30),
             grades: const GradesList(
               term: '2025-2026-1',
+              gradePointScale: '4.0',
               items: [
                 GradesListItems(
                   courseId: 'TEST-101',
@@ -78,6 +79,7 @@ void main() {
             updatedAt: DateTime.utc(2026, 7, 6, 8, 30),
             grades: const GradesList(
               term: '2025-2026-1',
+              gradePointScale: '4.0',
               items: [
                 GradesListItems(
                   courseId: 'TEST-101',
@@ -213,6 +215,7 @@ void main() {
             updatedAt: DateTime.utc(2026, 8, 6),
             grades: const GradesList(
               term: '2025-2026-2',
+              gradePointScale: '4.0',
               items: [
                 GradesListItems(
                   courseId: 'ZERO',
@@ -245,6 +248,191 @@ void main() {
     expect(find.textContaining('Infinity'), findsNothing);
     expect(find.text('零学分课程'), findsOneWidget);
     expect(find.text('负学分课程'), findsOneWidget);
+  });
+
+  // ADR-001 §3.5：课程级 gradePoint 的换算尺度是校本的，本体只在知道满分档时
+  // 才敢聚合。以下三例锁住这道门。
+  testWidgets('GPA is withheld when gradePointScale is absent', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EleconHomePage(
+          loadSnapshot: () async => CampusSnapshot(
+            schoolName: '测试大学',
+            updatedAt: DateTime.utc(2026, 9, 8),
+            grades: const GradesList(
+              term: '2025-2026-2',
+              items: [
+                GradesListItems(
+                  courseId: 'NOSCALE',
+                  courseName: '无尺度课程',
+                  credit: 3,
+                  score: GradesListItemsScore(kind: 'numeric', value: 90),
+                  category: 'required',
+                  status: 'final',
+                  gradePoint: 4,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('GPA'), findsNothing);
+    expect(find.text('无尺度课程'), findsOneWidget);
+  });
+
+  testWidgets('GPA is withheld when gradePointScale is not aggregatable', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EleconHomePage(
+          loadSnapshot: () async => CampusSnapshot(
+            schoolName: '测试大学',
+            updatedAt: DateTime.utc(2026, 9, 8),
+            grades: const GradesList(
+              term: '2025-2026-2',
+              gradePointScale: 'other',
+              items: [
+                GradesListItems(
+                  courseId: 'OTHER',
+                  courseName: '异制课程',
+                  credit: 3,
+                  score: GradesListItemsScore(kind: 'numeric', value: 90),
+                  category: 'required',
+                  status: 'final',
+                  gradePoint: 4,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('GPA'), findsNothing);
+    expect(find.text('异制课程'), findsOneWidget);
+  });
+
+  testWidgets('local aggregate renders with its scale and a distinct label', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EleconHomePage(
+          loadSnapshot: () async => CampusSnapshot(
+            schoolName: '测试大学',
+            updatedAt: DateTime.utc(2026, 9, 8),
+            grades: const GradesList(
+              term: '2025-2026-2',
+              gradePointScale: '4.3',
+              items: [
+                GradesListItems(
+                  courseId: 'SCALED',
+                  courseName: '有尺度课程',
+                  credit: 2,
+                  score: GradesListItemsScore(kind: 'numeric', value: 95),
+                  category: 'required',
+                  status: 'final',
+                  gradePoint: 4.3,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 本机聚合**不叫 GPA**——官方数与自算值同名是 ADR-001 §3.5 优先级规则第 3 条
+    // 明令禁止的形态。
+    expect(
+      find.textContaining('均绩 4.30（4.3 制 · 本机计算）'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('GPA'), findsNothing);
+  });
+
+  // ADR-001 §3.5 优先级规则：gpa.summary 存在即权威，本体不得用自算值覆盖。
+  testWidgets('official gpa.summary wins over the local aggregate', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EleconHomePage(
+          loadSnapshot: () async => CampusSnapshot(
+            schoolName: '测试大学',
+            updatedAt: DateTime.utc(2026, 9, 9),
+            // 学校官方数 3.71，与本机按 4.3 聚合出的 4.30 **刻意不同**——
+            // 断言展示的是官方数，才证明没有被自算值覆盖。
+            gpaSummary: const GpaSummary(gpa: 3.71, gradePointScale: '4.3'),
+            grades: const GradesList(
+              term: '2025-2026-2',
+              gradePointScale: '4.3',
+              items: [
+                GradesListItems(
+                  courseId: 'SCALED',
+                  courseName: '有尺度课程',
+                  credit: 2,
+                  score: GradesListItemsScore(kind: 'numeric', value: 95),
+                  category: 'required',
+                  status: 'final',
+                  gradePoint: 4.3,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('GPA 3.71（4.3 制）'), findsOneWidget);
+    expect(find.textContaining('4.30'), findsNothing);
+    expect(find.textContaining('本机计算'), findsNothing);
+  });
+
+  testWidgets('official gpa without an aggregatable scale falls back to local', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EleconHomePage(
+          loadSnapshot: () async => CampusSnapshot(
+            schoolName: '测试大学',
+            updatedAt: DateTime.utc(2026, 9, 9),
+            // 官方数存在但尺度不可判读 → 不得当绩点展示（fail-closed），
+            // 退回本机聚合（它有自己的、可判读的尺度）。
+            gpaSummary: const GpaSummary(gpa: 3.71, gradePointScale: 'other'),
+            grades: const GradesList(
+              term: '2025-2026-2',
+              gradePointScale: '4.3',
+              items: [
+                GradesListItems(
+                  courseId: 'SCALED',
+                  courseName: '有尺度课程',
+                  credit: 2,
+                  score: GradesListItemsScore(kind: 'numeric', value: 95),
+                  category: 'required',
+                  status: 'final',
+                  gradePoint: 4.3,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('3.71'), findsNothing);
+    expect(
+      find.textContaining('均绩 4.30（4.3 制 · 本机计算）'),
+      findsOneWidget,
+    );
   });
 }
 

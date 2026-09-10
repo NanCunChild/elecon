@@ -1,7 +1,10 @@
 # ADR-001：标准数据 schema 与 Capability Manifest 规范
 
 - **状态**：已接受（Accepted）
-- **日期**：2026-06-08（**修订 2026-06-16，🔒 待人工复核**：§8 增记 `elecon.notice.list` 1.0→1.1 —— 将 `publishedAt` 由 required 放宽为可选，使其与本文 §3.4「缺失语义」对齐。触发自首个 imperative adapter（school-xjt 教务通知）实测：源站日期偶有不可解析格式，旧实现回退空串违反 `date-time` 校验。）
+- **日期**：2026-06-08（修订 2026-06-16 · 2026-07-22 · 2026-09-08）
+- **人工复核**：2026-06-16 两条契约变更已于 **2026-08-22** 由 owner 完成人工复核。
+- **变更流水**：历次契约新增/变更的 dated 记录已迁至 [`contract/CHANGELOG.md`](../../contract/CHANGELOG.md)；本文 §8 只留治理规则。
+- **状态源约定**：本文只承载**决策**；**落地与安全签收**的待办态一律只存在于 [`docs/adr/README.md`](./README.md) 索引表与 [`2026_08_review_remediation.md`](../planning/2026_08_review_remediation.md)，正文不重复记录，避免多处状态源互相漂移。
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)
 - **适用范围**：`contract/` 目录的全部内容，即 adapter↔UI、adapter↔核心之间的所有契约。本文一动，两端都受影响——改动须遵循本文 §7 的治理规则。
 
@@ -22,7 +25,7 @@ ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端
 
 1. **schema 的规范语言用 JSON Schema（Draft 2020-12）**，作为唯一事实来源（single source of truth），向 Dart / Go 生成类型，向 JS 提供运行期校验依据。
 2. **校验发生在宿主侧的信任边界**（客户端核心 Dart / 服务端 TS，见 [`adr_005`](./adr_005_runtime.md)），不在 adapter 内部——QuickJS 不背校验器。
-3. **一切归一化结果都包在统一 envelope 里**，携带来源、新鲜度、schema 版本等元数据。
+3. **一切归一化结果都包在统一数据信封（data envelope）里**，携带来源、新鲜度、schema 版本等元数据。
 4. **capability 是契约的基本单元**：`<domain>.<action>`，每个 capability 绑定一个输出 schema 与一段网络作用域。
 5. **manifest 声明能力 + 网络白名单**；每 capability 声明 `requestGraph`（`declarative` | `imperative`；ADR-022）。
 6. **错误也是契约**：统一的归一化错误模型，让 UI/同步层对失败有一致反应。
@@ -48,12 +51,14 @@ ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端
 
 - 数据域：`elecon.grades.list`、`elecon.schedule.week`、`elecon.card.balance` …
 - 入参：`elecon.params.<capability>`，如 `elecon.params.grades.list`
-- 信封：`elecon.envelope`
+- 数据信封：`elecon.envelope`（**不是** bundle 信封，见 §3.3 作用域声明）
 - 错误：`elecon.error`
 
-### 3.3 统一 Envelope
+### 3.3 统一数据信封（data envelope）
 
-每一份跨越 adapter↔宿主 边界的归一化数据都用 envelope 包裹。**数据的新鲜度由此承载（TTL），与代码版本无关**（呼应 ADR-000 §2.4）。
+> **作用域声明（ADR-000 §2.3.1）**：**本文全文所称 envelope / 信封，一律指本节定义的「数据信封」**——运行期包裹归一化数据的外层对象，schema id `elecon.envelope`。它与 adapter 分发用的 **bundle 信封**（签名对象，[`adr_018`](./adr_018_adapter_distribution.md) §2.9）、与凭证存储用的 **信封加密**（[`adr_012`](./adr_012_credential_store.md) §2.8）**是三样无关的东西**，只是撞名。本文不涉及后两者。
+
+每一份跨越 adapter↔宿主 边界的归一化数据都用数据信封包裹。**数据的新鲜度由此承载（TTL），与代码版本无关**（呼应 ADR-000 §2.4）。
 
 ```json
 {
@@ -90,6 +95,7 @@ ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端
 ```json
 {
   "term": "2025-2026-2",
+  "gradePointScale": "4.0",         // 校本绩点尺度，缺失=来源未提供
   "items": [
     {
       "courseId": "CS101",
@@ -97,6 +103,7 @@ ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端
       "credit": 3.0,
       "score": { "kind": "numeric", "value": 88, "max": 100 },
       "gradePoint": 3.7,
+      "gradePointSource": "source",  // source | adapter-derived | unknown
       "category": "required",        // required | elective | unknown
       "status": "final"              // final | provisional | unknown
     }
@@ -104,7 +111,41 @@ ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端
 }
 ```
 
-> 说明：`score.kind` 支持 `numeric` / `letter` / `passfail`，以容纳不同学校的记分制；`gradePoint` 等派生值若学校不直接给出，**由 UI/视图层计算，adapter 不擅自推算**——注意这**不是**因为"adapter 要薄"（那是能力面的安全口号，见 [`adr_000`](./adr_000_abstract.md) §3.1「两个轴」），而是因为 GPA 这类**跨校统一、本体要自己施加智能（排序 / 聚合 / 算法一致性）的派生语义**归本体所有。**反向的一类必须分清**：**校本特有的派生（如脏日期格式归一化、从校历推当前教学周、单位换算、多接口拼装）是 adapter 的重活**，应尽量吸收进 adapter，不上抛核心/UI——本体不该知道每所学校的校历。判据一句话：**跨校统一的派生 → 本体；校本特有的派生 → adapter（尽量重）。**
+> 说明：`score.kind` 支持 `numeric` / `letter` / `passfail`，以容纳不同学校的记分制。
+>
+> **派生值归属的判据（2026-09-08 修订，见 [`contract/CHANGELOG.md`](../../contract/CHANGELOG.md)）**：**跨校统一的派生 → 本体；校本特有的派生 → adapter（尽量重）。** 这**不是**因为"adapter 要薄"（那是能力面的安全口号，见 [`adr_000`](./adr_000_abstract.md) §3.1「两个轴」）——功能轴上 adapter 越重越好。**校本特有的派生（脏日期格式归一化、从校历推当前教学周、单位换算、多接口拼装）是 adapter 的重活**，应尽量吸收进 adapter，不上抛核心/UI——本体不该知道每所学校的校历。
+>
+> **「绩点」必须拆成两个词，否则判据会被误用**（本 ADR 早期版本正是在此自相矛盾：先给出上面的判据，又把 `gradePoint` 判给 UI 计算）：
+>
+> | 概念 | 归属 | 理由 |
+> |---|---|---|
+> | **课程级 `gradePoint`**（分数 → 绩点的换算） | **adapter** | 换算表是校本的：各校甚至各院系不同，尺度有 4.0 / 4.3 / 4.5 / 5.0。属"校本特有派生"。 |
+> | **GPA 聚合**（加权平均、排序、跨学期 / 跨校对比） | **本体** | 跨校统一，算法一致性由本体保证。属"跨校统一派生"。 |
+>
+> 因此 adapter 在学校不直接给出绩点时**可以**按校本规则派生——但派生不是"擅自推算"，而是**可声明、可审计**的交付物：
+>
+> - `gradePointScale`（列表级，可选）：声明本次数据里 `gradePoint` 所用的校本尺度（`4.0` / `4.3` / `4.5` / `5.0` / `other` / `unknown`）。缺失 = 来源未提供（§3.4 缺失语义）。
+> - `gradePointSource`（item 级，可选）：`source`（学校来源直接给出）/ `adapter-derived`（adapter 按校本规则派生）/ `unknown`。
+>
+> **两个 GPA，两个所有者，互不替代（2026-09-09 修订）**：
+>
+> | | **学校官方 GPA** | **交互式聚合 GPA** |
+> |---|---|---|
+> | 是什么 | 成绩单上那个数 | 「本学期」「只看专业课」「排除体育」 |
+> | 谁能产 | **只有 adapter**（读学校来源） | **只有本体**（依赖用户当下的筛选） |
+> | 能否重算 | **不能** | 必须能 |
+> | 契约位置 | `elecon.gpa.summary` | `elecon.grades.list` + 本体聚合 |
+>
+> 官方 GPA **不可重算**：重修取最高还是取最后、学位课是否加权、体育与公选是否计入、缓考清考怎么算——这些规则是校本的且常无公开文档，学校之外算不出同一个数。故 adapter **只读不算**；本体拿到后原样展示，**不得用自算值覆盖或"修正"它**。
+> 交互式聚合 **不可由 adapter 产**：adapter 永远不知道用户此刻筛了什么。
+>
+> **优先级规则（硬约束）**：
+>
+> 1. `gpa.summary` 可用时，它是**权威**，作为该学期/范围的 GPA 展示。
+> 2. 本体自算值**只在**下列情形出现：(a) 没有 `gpa.summary`；或 (b) 用户施加了筛选，使官方数不再对应当前视图。
+> 3. 两者同时可见时**必须用不同标签**（如官方「GPA」vs 本机「均绩（本机计算）」）。**绝不允许两个不同的数都叫 GPA**——那比不显示更糟。
+>
+> **本体侧的 fail-closed 义务**：无论哪一路，**`gradePointScale` 缺失、为 `unknown`/`other`，或跨数据源尺度不一致时不得展示绩点数**——宁可不显示，也不显示一个尺度不明的数。该字段**只界定量纲，不保证跨校可比**（换算表本身是校本的），故**不得据此做跨校比较或排名**。
 
 首批落地的域（其余按需经 ADR 扩展）：`grades`、`schedule`、`card`、`library`、`notice`，外加通用兜底域 `generic`（见 §3.6）。
 
@@ -192,7 +233,7 @@ manifest 是 adapter 对核心的契约，JSON 格式，供宿主与 `tools/` �
 ### 5.2 信任档与 requestGraph 约束
 
 - `trustTier: official` → 每 capability 可用 `requestGraph: imperative` 和/或 `declarative`（DEPLOY 下凭证注入资格仍由宿主验签裁定的 trust tier 决定；ADR-022）。
-- `trustTier: sideload` → 表示 DEV 未签名素材，不是 DEPLOY 运行档。**DEV-Sideload 全部允许**：每个 capability 可选 `declarative` 或 `imperative`，并可调试当前 DEV 宿主已编入的敏感能力；凭证值仍不离核心。ADR-033（已接受）决定退役 `C3_sideload_must_declarative`，改由 requestGraph 结构、白名单、凭证引用与能力专属规则逐项校验。**该退役尚未落地：现有 C3 实现仍在 validator 内，删除须与 DEPLOY official-only 负例同批。**
+- `trustTier: sideload` → 表示 DEV 未签名素材，不是 DEPLOY 运行档。**Sideload 可加载任意 adapter**：每个 capability 可选 `declarative` 或 `imperative`，两者一视同仁——**requestGraph 的声明性不是信任维度**（[`adr_002`](./adr_002_trust_model.md) §2.1.1）；并可调试当前 DEV 宿主已编入的敏感能力；凭证值仍不离核心。ADR-033（已接受）决定退役 `C3_sideload_must_declarative`，改由 requestGraph 结构、白名单、凭证引用与能力专属规则逐项校验。**该退役尚未落地：现有 C3 实现仍在 validator 内，删除须与 DEPLOY official-only 负例同批。**
 - DEPLOY 本地导入的 bundle 不按 `sideload` 档运行：只有 official 验签、身份绑定、在线吊销治理与兼容门全过后，才能铸造既有 official grant（ADR-033，已接受待落地）。
 - **`community` 档已移除**（ADR-002 2026-06-14 修订）：信任模型只剩 official + sideload，`trustTier` 枚举不再含 `community`（见 [`adr_002`](./adr_002_trust_model.md) §2.1）。
 - **无 adapter 级 `mode`**：取数图声明性 per-capability，见 §6 / [`adr_022`](./adr_022_request_graph.md)。
@@ -313,43 +354,23 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
 
 ## 8. 版本与兼容（治理）
 
-- **schema 版本**：`MAJOR.MINOR`。新增可选字段 → MINOR；删除/改义/改类型/收紧约束 → MAJOR，且 ADR 须给出迁移方案与并存策略。宿主以 envelope 的 `schemaVersion` 判断如何解读。
+**只保护最新版本（2026-09-08 owner 决策）。** 契约面**不做多版本并存**：`capability/registry.json` 记的版本就是唯一在役版本，codegen 只为它生成 validator，宿主按 `schema + schemaVersion` 精确查表——旧版本查不到 validator 即 fail-closed（`contract/generated/dart/lib/output_validator_registry.dart`）。这是**已实现的行为**，本节把它从事实提升为决策，不再声称支持新旧并存。
+
+**允许且推荐破坏性更新。** 项目处于契约高频校准期，用真实学校接口反复修正 schema 的收益，远大于维持向后兼容的收益；为兼容而堆积的兼容层本身就是要消除的心智负担。因此**破坏性更新不需要论证「为什么不能兼容」**，但须满足下面二选一的放行条件。
+
+**放行条件（二选一，必须满足其一）：**
+
+1. **同批全面升级**：仓内所有引用点在同一 PR 内改完——schema、`registry.json`、受影响 manifest、codegen 产物、夹具/golden、两端运行时与消费方 UI。CI 门（validator C2 + schema golden + 双端 smoke）即此条件的机器校验。
+2. **提供联动升级文档**：当引用点在本仓之外（典型：`elecon-adapters`）而无法同批改完时，须在 `docs/reference/` 留一份联动升级文档，写明**改了什么、预期结果、外层须做的逐项改动、不改的后果**，并从 `contract/CHANGELOG.md` 的对应条目链接过去。样例：[`gradepoint_ownership_landing.md`](../reference/gradepoint_ownership_landing.md)。
+
+**两条都不满足的破坏性变更不得合并。** 「先改契约，联动以后再说」是本节唯一禁止的形态——它会让外部 adapter 在无预警下 fail-closed。
+
+- **版本号是信号，不是闸门**：`MAJOR.MINOR` 仍照旧标注（新增可选字段 → MINOR；删除/改义/改类型/收紧约束 → MAJOR），用途是让读者一眼看出下游要做多少活。放行与否由上面的条件决定，不由 MAJOR/MINOR 决定。
 - **manifest 版本**：`manifestVersion` 独立演进；宿主拒绝不认识的大版本。
 - **adapter 版本**：参与 ADR-000 的 `max(本地, 服务端)` 解析，与数据新鲜度无关。
-- **契约变更须走 ADR**：新增/修改 capability id、新增域 schema、破坏性变更，均属慢车道，默认保持向后兼容（呼应 AGENTS.md 红线 #6 与 feature-workflow）。
+- **契约变更须走 ADR**：新增/修改 capability id、新增域 schema、破坏性变更，均属慢车道（呼应 AGENTS.md 红线 #6 与 feature-workflow）。**红线 #6 的「默认保持向后兼容」在契约高频校准期按本节豁免**——豁免的是兼容义务，不是 ADR 义务与上面的放行条件。
+- **每次契约变更必须在 [`contract/CHANGELOG.md`](../../contract/CHANGELOG.md) 留一条记录，且记录中必须引用一个 ADR 编号。** 记录的存在即证明该变更「先有 ADR」，使红线 #6 从人工约定变成**可 CI 校验的引用闭合**（无 ADR 引用的条目视为违规）。**该校验已落地**：`scripts/check-contract-changelog.mjs`（CI `tools` job，`npm run check:contract-changelog -w tools`）——改动触及 `contract/schema/` / `contract/capability/` / `contract/manifest.schema.json` 而 CHANGELOG 无新增记录、或新增记录里没有任何 ADR 编号，即拒。它**不判断内容对不对**（那是人的活），只保证「改了契约却什么都没记」这一形态过不去。变更流水不再写在本 ADR 正文里——它是持续增长的时序事实，与本 ADR 这一份决策不是同一类东西；混放会让 ADR 正文被流水淹没，也让别的 ADR（如 ADR-019）的契约变更错记在本文名下。
 - **`tools/` 强制校验**：manifest 合法性、requestGraph 结构、白名单越界、凭证引用、capability id、能力专属规则与双端夹具一致性均做成 CI 闸门。当前另有 `C3_sideload_must_declarative`；ADR-033 已决定退役 C3 以支持 DEV-Sideload 全能力调试，落地须与负例同批。
-
-### 8.1 变更记录（dated）
-
-> 本节是契约新增/变更的 dated 流水（呼应红线 #6「契约变更须走 ADR」）。每条记录立项即满足"先有 ADR"。
-
-- **2026-06-16 · `elecon.notice.list` 1.0 → 1.1（🔒 待人工复核）**
-  - **改动**：`publishedAt` 由 `required` 移出，成为可选字段（schema 内容不变，仅放宽必填约束）。级联 `capability/registry.json` 与 emit 它的 manifest（school-xidian / school-xjt）的 `emits.schemaVersion` 同步至 `1.1`。
-  - **为何是 MINOR 而非 MAJOR**：§8 把"收紧约束"列为破坏性，本改动是其**反向（放宽）**。§3.4「缺失语义」本就要求消费方普遍处理"字段缺失 = 该校不提供"，故把 `publishedAt` 改为可选**不超出消费方既有义务**，旧数据（含 `publishedAt`）在 1.1 下仍合法 → 向后兼容，记 MINOR。
-  - **本次遇到的情况**：首个 imperative adapter（school-xjt 教务通知）逆向中，源站通知日期偶为不可解析格式；旧 `normalizeDate` 不可解析时回退空串 `""`，而 `""` 不是合法 `date-time`，会被 ajv 拒。改为不可解析时**省略 `publishedAt`**（语义 = 该条目未提供可信日期），与 §3.4 一致。
-  - **是否可能引入未知问题（风险）**：
-    1. **消费方（UI/SDUI）**：若某处实现假设 `publishedAt` 必存（如直接排序/格式化），缺失时可能报错或排序错位。缓解：UI 须遵 §3.4 处理缺失；按时间排序时对无日期项定义稳定兜底位次。
-    2. **新旧版本并存**：1.0 与 1.1 同时在网（不同 adapter/缓存）时，宿主以 envelope `schemaVersion` 解读；1.1 消费方需容忍缺省，1.0 数据天然满足。
-    3. **一致性外溢**：其他域 schema 可能存在同类"过紧 required"（如把可能缺失的字段标必填），本次只动 notice.list，未做全面审计——留作后续核对，不在本改动范围。
-    4. **校验盲区**：`tools/` 校验器目前不对 params schema 做加载校验，emits 版本一致性（C2）已覆盖本次级联；fixtures 仍含 `publishedAt`，1.1 下照常通过。
-
-- **2026-06-16 · 新增 `elecon.card.transactions` emits schema + 5 个 `params.*` 草案 schema（补 registry 悬空引用，🔒 待人工复核）**
-  - **改动**：补齐 `capability/registry.json` 早已声明却**无定义文件**的 schema——
-    1. **`elecon.card.transactions@1.0`（emits，稳定面）**：money 模型镜像 `card.balance`（`amountMinor` + `currency`），增 `direction`（debit/credit）区分收支；`amountMinor` 加 `minimum:0`（交易额恒非负，收支由 `direction` 表达，区别于 `card.balance` 可为负的余额，已在 schema `$comment` 注明）。
-    2. **5 个 `params.*` 草案 schema**：`grades.list` / `schedule.week` / `card.transactions` / `notice.list` / `generic.section`，消除 registry 悬空 `params` 引用。均带 `$comment: 草案`。
-  - **范围**：仅新增 `contract/schema/` 文件；未改 `registry.json`、未新增/改 capability id、未改任何既有 schema 语义。registry 的 `$schema` 错误指向已拆至 #48 单独修复。
-  - **草案（draft）状态约定**：上述 5 个 `params.*` 在经本 ADR **正式确认（"转正"）前不属稳定契约面**——adapter / UI 不得将其当稳定依赖。**草案期内其形状可自由调整（增删字段、改约束）而不触发 §8 的 MAJOR/MINOR 版本治理**；版本治理仅自该 schema 转正后生效。此约定为契约早期高频迭代（按真实接口反复校准）留出空间，同时不削弱红线 #6——草案明标、不被依赖、转正须在本节补记。
-  - **待人工确认的设计点（草案期跟进，非阻塞本次补齐）**：
-    1. `params.schedule.week.week` 设为 `required` 是否需核心侧配套「当前教学周」能力（否则消费方无从得知传第几周）；
-     2. `params.card.transactions` 的 `from`/`to` 与 `page`/`size`：已知学校（XIDIAN）流水接口仅支持分页（`pageNo`/`pageSize`）、不支持日期范围，故 `from`/`to` 设可选以适配跨校差异，由 adapter 归一化映射。
-
-- **2026-07-22 · `classroom.available` 1.0 → 1.1 + 新增 `classroom.buildings`（ADR-019）**
-  - **改动**：
-    1. **`elecon.params.classroom.available` / `elecon.classroom.available` → 1.1**：双时间轴（`date`/`week`/`term`/`weekday` + 节次 `sectionStart`/`sectionEnd` + 墙钟 `start`/`end`）；楼/室过滤 `building`/`buildingId`/`room`/`roomId`；`onlyAvailable`；emits 增 `sections[]`（`maxItems:24`）、`status` 枚举追加 `partial`、`timeZone`（IANA，adapter 声明）、`floor` 等。`items[].building`+`room` 仍 required 且 `minLength:1`，未知填 `"-"`。
-    2. **新增伴生 capability `classroom.buildings@1.0`**（discovery）：params 可选 `campus`/`term`；emits `items[]` required `building`。
-    3. registry 级联 `schemaVersion`；codegen Dart/TS 同步。
-  - **为何是 MINOR**：仅新增可选字段 + 枚举扩展（放宽消费方须按 §3.4 对未知枚举兜底 `unknown`）+ 新 capability；不删字段、不改既有类型；旧 1.0 数据在 1.1 下仍合法。
-  - **依据**：[ADR-019](./adr_019_classroom_available.md)（2026-07-22 Accepted）。
 
 ---
 
@@ -359,7 +380,7 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
 **收益**
 - adapter 与 UI 彻底解耦，UI 不含任何学校逻辑；新学校只写 adapter + manifest。
 - 网络白名单 + per-capability `requestGraph` 把 adapter 的能力声明变成机制约束。DEV-Sideload 需要完整调试 imperative，故 ADR-033 已决定退役按 trustTier 一刀切的 declarative C3；DEPLOY 则在更外层只铸造 official grant，本地导入不产生低信任运行档。
-- 统一 envelope/错误模型让同步层、缓存、降级有一致依据。
+- 统一数据信封/错误模型让同步层、缓存、降级有一致依据。
 
 **代价 / 已知约束**
 - JSON Schema 类型表达力有限，依赖 codegen 与边界校验补强；增加 `tools/` 的维护面。
@@ -371,8 +392,9 @@ adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反
 
 ## 10. 落地清单（指向 `contract/` 骨架）
 
-- `contract/schema/`：`envelope`、`error`、`grades.list`、`schedule.week`、`card.balance`、`library.loans`、`notice.list`、`generic.section` 的 JSON Schema 与对应 `params.*`。
+- `contract/schema/`：`envelope`（数据信封）、`error`、`grades.list`、`schedule.week`、`card.balance`、`library.loans`、`notice.list`、`generic.section` 的 JSON Schema 与对应 `params.*`。
 - `contract/capability/registry.json`：首批 capability id 注册表。
+- `contract/CHANGELOG.md`：契约变更的 dated 流水（§8 治理规则的落点；每条须引用 ADR 编号）。
 - `contract/manifest.schema.json`：manifest 自身的 JSON Schema（供 `tools/` 校验 manifest；无顶层 `mode`，每 cap 强制 `requestGraph`，ADR-022）。
 - `contract/adapter-sdk/`：`ctx` 与 capability handler 的类型声明（`CtxDeclarative` / `CtxImperative` 两种签名）。
 - `adapters/_template/{declarative,imperative}/`：两种 requestGraph 的脚手架样例。

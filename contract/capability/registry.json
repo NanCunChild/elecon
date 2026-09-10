@@ -3,7 +3,7 @@
   "capabilities": {
     "grades.list": {
       "description": "获取学期成绩列表",
-      "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
+      "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.1" },
       "params": { "schema": "elecon.params.grades.list", "schemaVersion": "1.0" }
     },
     "schedule.week": {
@@ -46,7 +46,7 @@
     "energy.usage": { "description": "获取水电用量", "emits": { "schema": "elecon.energy.usage", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.energy.usage", "schemaVersion": "1.0" } },
     "course.catalog": { "description": "检索课程目录", "emits": { "schema": "elecon.course.catalog", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.course.catalog", "schemaVersion": "1.0" } },
     "course.selection": { "description": "获取选课状态", "emits": { "schema": "elecon.course.selection", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.course.selection", "schemaVersion": "1.0" } },
-    "gpa.summary": { "description": "获取绩点汇总", "emits": { "schema": "elecon.gpa.summary", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.gpa.summary", "schemaVersion": "1.0" } }
+    "gpa.summary": { "description": "获取绩点汇总", "emits": { "schema": "elecon.gpa.summary", "schemaVersion": "1.1" }, "params": { "schema": "elecon.params.gpa.summary", "schemaVersion": "1.0" } }
     ,"notice.detail": { "description": "获取通知详情", "emits": { "schema": "elecon.notice.detail", "schemaVersion": "1.0" } }
     ,"dorm.health": { "description": "获取宿舍健康数据", "emits": { "schema": "elecon.dorm.health", "schemaVersion": "1.0" } }
     ,"dorm.service": { "description": "获取宿舍服务状态", "emits": { "schema": "elecon.dorm.service", "schemaVersion": "1.0" } }

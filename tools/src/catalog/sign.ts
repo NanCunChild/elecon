@@ -17,7 +17,7 @@
  */
 
 import { verify as edVerify, type KeyObject } from "node:crypto";
-import type { SignBackend, VerifyResult } from "../signer/index.js";
+import { CONTEXT_TAG_CATALOG, type SignBackend, type VerifyResult, withContext } from "../signer/index.js";
 import type { Catalog } from "./validate.js";
 
 export interface SignedCatalog {
@@ -32,7 +32,9 @@ export interface SignedCatalog {
 /** 🔒 对 catalog 签名 → SignedCatalog（序列化**恰好一次**，此后只用这份字节）。 */
 export async function signCatalog(catalog: Catalog, backend: SignBackend): Promise<SignedCatalog> {
   const catalogJson = JSON.stringify(catalog);
-  const signature = await backend.sign(Buffer.from(catalogJson, "utf-8"));
+  // 域分隔（ADR-002 §2.3）：签的是 `elecon.catalog/1 ‖ 0x00 ‖ catalogJson 字节`。
+  // **传输对象不变**——`catalogJson` 仍原样携带，前缀只加在签/验输入上。
+  const signature = await backend.sign(withContext(CONTEXT_TAG_CATALOG, Buffer.from(catalogJson, "utf-8")));
   return { catalogJson, signature, keyId: backend.keyId, algorithm: "ed25519" };
 }
 
@@ -44,7 +46,7 @@ export function verifyCatalog(signed: SignedCatalog, publicKey: KeyObject): Veri
   if (signed.algorithm !== "ed25519") {
     return { ok: false, reason: `不支持的签名算法：${signed.algorithm}` };
   }
-  const bytes = Buffer.from(signed.catalogJson, "utf-8");
+  const bytes = withContext(CONTEXT_TAG_CATALOG, Buffer.from(signed.catalogJson, "utf-8"));
   if (!edVerify(null, bytes, publicKey, Buffer.from(signed.signature, "base64"))) {
     return { ok: false, reason: "Ed25519 验签失败 → fail-closed。" };
   }

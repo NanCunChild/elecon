@@ -16,6 +16,7 @@
   },
   "expected": {
     "term": "2025-2026-2",
+    "gradePointScale": "4.0",
     "items": [
       {
         "courseId": "CS101",
@@ -23,6 +24,7 @@
         "credit": 3,
         "score": { "kind": "numeric", "value": 88, "max": 100 },
         "gradePoint": 3.7,
+        "gradePointSource": "source",
         "category": "required",
         "status": "final"
       },
@@ -32,6 +34,7 @@
         "credit": 4,
         "score": { "kind": "numeric", "value": 91, "max": 100 },
         "gradePoint": 4.0,
+        "gradePointSource": "source",
         "category": "required",
         "status": "final"
       },
@@ -41,6 +44,7 @@
         "credit": 1,
         "score": { "kind": "numeric", "value": 75, "max": 100 },
         "gradePoint": 2.0,
+        "gradePointSource": "source",
         "category": "elective",
         "status": "final"
       },

@@ -4,8 +4,8 @@
 /// 只做**匿名 GET** 三类静态产物，交回编排器 `loader.dart`（片 E）做全部信任裁定：
 ///   - `catalog.json.gz`（gzip(JSON) 签名清单）→ [SignedCatalog]；gzip 不在签名范围内；
 ///   - `revocation.json`（明文 JSON 签名清单）→ [SignedRevocationList]；
-///   - catalog entry 指定 url 的 packed bundle（`gzip(JSON({envelope,signature}))`，`.json.gz`）→ 原始字节
-///     （**不在此解 gzip/解包**——loader 的 `unpackBundle` 带压缩炸弹护栏，本层只搬字节）。
+///   - catalog entry 指定 url 的 packed bundle（传输封套 `gzip(JSON({envelopeB64,signature,blobs}))`，`.json.gz`）→ 原始字节
+///     （**不在此解 gzip/解包**——loader 的 `openBundle` 带压缩炸弹护栏，本层只搬字节）。
 ///
 /// **本层零信任裁定**：返回的 Signed* / 字节**均未验签**；验签 + 防回滚 + 吊销 + stdlibMin 全在
 /// loader（每次加载重跑）。本层职责仅「安全地把公网字节取回来」。
@@ -17,7 +17,7 @@
 ///     「取哪份字节」交给中间人（内容寻址 + 验签仍兜底，但宁可 fail-closed 不给中间人腾挪空间）。
 ///   - **不关 TLS 校验**：用 OS/Dart TLS 栈正常校验（ADR-009：禁 verify=False）。
 ///   - **大小上限 + 超时**：清单 ≤ [kMaxDistributionManifestBytes]、bundle ≤ [kMaxDistributionBundleBytes]
-///     （对齐 loader `unpackBundle` 的 gz 输入上限 512KiB），边下边计数超限即弃；每请求 [timeout] 墙钟。
+///     （对齐 loader `openBundle` 的 gz 输入上限 512KiB），边下边计数超限即弃；每请求 [timeout] 墙钟。
 ///
 /// **失败即「本源不可用」**：任何网络错误 / 非 2xx / 超限 / 解析失败一律返回 null（记 [_onWarning] 遥测），
 /// **绝不抛给 loader**——loader 据此退化到 last-good / bootstrap，永不 fail-open（同 [DistributionSource] 合约）。

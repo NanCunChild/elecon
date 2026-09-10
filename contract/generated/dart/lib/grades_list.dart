@@ -14,6 +14,7 @@ class GradesList {
     this.cursor,
     this.total,
     this.hasNext,
+    this.gradePointScale,
     required this.items,
   });
 
@@ -35,6 +36,8 @@ class GradesList {
   final int? total;
   /// 是否还有下一页成绩；缺失表示来源未提供。
   final bool? hasNext;
+  /// 本次数据中 items[].gradePoint 所用的校本绩点尺度（满分档）。本体据此判断能否聚合，缺失/unknown/other 时不得展示聚合值（fail-closed，ADR-001 §3.5）。**只界定量纲，不保证跨校可比**：两所同称 4.0 制的学校，分数→绩点的换算表可能完全不同，故不得据此做跨校比较或排名。**other 与 unknown 含义不同**：other = adapter 知道制式但不在本枚举内（应视为扩枚举的信号）；unknown = adapter 无法判断（应视为该 adapter 待改进的信号）。**数据横跨学校改制时**（如部分课程 4.0、部分 4.3）不得任选其一，应声明 other 让本体降级。
+  final String? gradePointScale;
   /// 成绩条目列表。
   final List<GradesListItems> items;
 }
@@ -62,6 +65,7 @@ class GradesListItems {
     this.courseAverage,
     required this.score,
     this.gradePoint,
+    this.gradePointSource,
     required this.category,
     required this.status,
   });
@@ -105,8 +109,10 @@ class GradesListItems {
   final num? courseAverage;
   /// 课程的归一化成绩值及其记分类型。
   final GradesListItemsScore score;
-  /// 学校来源直接提供的课程绩点；计分尺度由来源学校定义，缺失表示来源未提供。
+  /// 课程绩点；计分尺度由来源学校定义（见列表级 gradePointScale），来源直接给出或由 adapter 按校本换算规则派生（见 gradePointSource），缺失表示既未提供也无法派生。
   final num? gradePoint;
+  /// gradePoint 的来源：source 表示学校来源直接给出，adapter-derived 表示 adapter 按校本换算规则派生，unknown 表示无法判断；缺失表示来源未提供该标注。
+  final String? gradePointSource;
   /// 跨校归一化课程类别：必修、选修或未知。
   final String category;
   /// 成绩发布状态：最终、暂定或未知。
