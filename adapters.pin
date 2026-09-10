@@ -5,4 +5,4 @@
 # 拉取由 scripts/fetch-adapters.sh 执行（CI 与本地共用）。
 #
 # 格式：非注释、非空的第一行 = 一个 commit SHA 或 tag。
-49ae7f53c380eb40bd283b8dc36ccda1c2a26774
+ba7f1904d7f46c94649fe88c3a8fd0f344df990b
