@@ -405,6 +405,33 @@ pubspec 按目录打包，否则会随 app 发布）；`dist-helloworld/`、`dis
 **关闭**：P0-01、P0-15（§2.1 打勾）。**仍开**：上传 `dist-full/` 到端点 D（运维动作，线上 catalog 仍为 3）；
 masker 落地时第二次仪式（`/3`，ADR-026 §2.7.1）；P3-08 发版门（本次第一趟即其反例）。
 
+### 2.8 执行状态（2026-09-11 · catalog 去端点化 + bootstrap 单源 + 文档收敛）
+
+**背景**：公网端点暂不可用，bundle 加载测试只能本地跑；而 catalog 把 `--base-url` 签进了字节，
+真机无法指向本地端点，换域名 / 镜像也都要重签。owner 当日四项决策（详见 ADR-018 §2.5.1）：
+
+1. **catalog 只描述文件、不描述端点**：entry `url` 弃用（schema 留可选兼容 seq ≤ 8，下次仪式后删）；
+   `release:package` 移除 `--base-url`；客户端 `fetchBundle(digest)` 按 `base/bundles/<digest>.json.gz` 拉取，
+   digest 形态门 + 解析时整段忽略 `url`。契约改动记 `contract/CHANGELOG.md`（2026-09-11 条）。
+2. **client 自持 base URL**（`kDistributionBaseUrl`）；**仅 DEV-Sideload** 可 `--dart-define=ELECON_DISTRIBUTION_BASE_URL=`
+   覆盖（允许 http，供本地 nginx / `npm run start:public` 冒烟）；DEPLOY 编译期折叠无覆盖路径。
+3. **dist 树不入库，只有 bootstrap 跟随**：`git rm --cached dist-full`，`.gitignore` 加 `/dist/`、`/dist-*/`；
+   `bootstrap.ts` 新增 `--verify`（CI 门，替代原 `bootstrap:check`）与 `--export-dist=`（上传前反向导出；
+   bundle / revocation / 内层 catalogJson 逐字节等于仪式产物，gzip 外壳不在签名范围内）。P3-07 关闭。
+4. **文档心智收敛**：AGENTS 红线 #4/#5 精简为不变量本身（transport 历史留在 `docs/archive/adr_003_revision_log.md`）；
+   README 传输底座措辞对齐 09-09 决策、路线状态改为「只认两处」指针；`docs/notes/` 三份 7 月草稿、7 月路线图、
+   根目录 `TODOList_schema_extend.md` 归档到 `docs/archive/`（未完项并入 §6.2）；`adapter_bundle_primer.md`
+   改为常设文档；新增 `docs/glossary.md` 术语索引。
+
+**验证**：tools `typecheck` + smoke 19/19（含新增 bootstrap verify/export 往返与负例、catalog K3、release 无 url 断言）；
+`bootstrap:verify` 对入库 bootstrap（seq 8）通过；client `flutter analyze` 零问题，`flutter test` DEPLOY 859 / DEV-Sideload 868 通过
+（含 `fetchBundle(digest)` 拼路径、畸形 digest 拒、http base 仅 `allowInsecureHttp` 放行、历史 `url` 忽略）；`biome ci` 通过。
+
+**🔒 待人工**：本批触红线 #4（loader / distribution 路径）与 #6（catalog schema），实现须 owner 复核签收；
+DEV 覆盖开关的 http 放行需在签收时确认「仅 DEV profile 可达」（`kDistributionOverrideActive` 为编译期常量，
+ADR-024 release gate 另断言 DEPLOY 无 DEV profile）。**仍开**：上传端点 D（现由 `npm run dist:export -w tools` 导出后上传）；
+第二次仪式后从 schema / 客户端删除 `url`。
+
 ---
 
 ## 3. P1：核心正确性与契约闭环
@@ -587,7 +614,7 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 | P3-04 | [ ] 为 35 处 schema 字段补 description，并把 `--require-descriptions` 设为 CI 硬门 | codegen check 零缺失；时间、金额、窗口和缺失语义有文档 |
 | P3-05 | [ ] 统一 Money 字段语义，确认哪些域允许负数 | 非负金额有 `minimum:0`；例外有领域说明；ADR-021 状态明确 |
 | P3-06 | [x] 将 schema behavior golden 从 7/48 扩展到所有 registry emits/params | 覆盖嵌套 required、enum、format、null/缺失、金额、URI 和 params 边界 |
-| P3-07 | [ ] 明确 canonical dist，消除 `dist-full`、`dist-xidian`、bootstrap 和 release 多事实源 | CI 检查实际发布 dist 与 bootstrap 字节一致；不再依赖人工记忆 |
+| P3-07 | [x] 明确 canonical dist，消除 `dist-full`、`dist-xidian`、bootstrap 和 release 多事实源 | **2026-09-11 关闭（§2.8）**：`client/assets/bootstrap/` 是唯一入库的签名产物，dist 树不入库（`.gitignore` `/dist-*/`），上传前 `dist:export` 反向导出；CI `bootstrap:verify` 校验 catalog ↔ bundles ↔ envelope digest 自洽 |
 | P3-08 | [ ] 在发版门检查 revocation 新鲜度与 catalog/revocation sequence 单调性 | 过期或倒退时禁止 release；急性吊销流程可演练 |
 | P3-09 | [x] 修复应用内版本注入 | release tag 与 About 页面一致；构建命令传入 `ELECON_VERSION` 或改用可靠平台版本源 |
 | P3-10 | [x] 固定 release Flutter 版本，与普通 CI 使用同一 SDK | release 不再使用浮动 `stable`；升级单独评审 |
@@ -625,6 +652,17 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 
 - P4-03 部分推进，保持开放：在既有 `exam.list` 与 `library.loans` 契约内新增 schema 驱动的按需 UI、严格解码和空/加载/认证/错误状态；连同已有成绩、课表、空教室和一卡通，六类 typed UI 均已有客户端入口。`stale` 与显式 `unsupported` 仍依赖 P4-05 产品语义，对应 adapter 正式签发和真机验收也未完成，因此不关闭 P4-03。
 - P4-01/P4-02/P4-04/P4-05/P4-06/P4-07 均受 P0/P1、独立 ADR、隐私政策、正式 adapter 或部署安全评审约束，本轮未越过前置实现。
+
+### 6.2 契约演进待办（2026-09-11 自 `TODOList_schema_extend.md` 并入，原文已归档）
+
+均为「有真实需求再立、先 ADR」项，不设编号、不进优先级表：
+
+- 字段级「不支持 / 未返回 / 空 / 脱敏」四态若要在数据信封统一表达，开小 ADR 后再改 schema（与 P4-05 freshness 语义相邻）。
+- 增量同步（课表变更、成绩更新、通知撤回）的版本 / 游标约定——有真实校需再立。
+- 声明式过期 / 升级判据（`expiredWhenUrlMatches` 等，ADR-017 rev-2 §2.9）。
+- WebVPN、多跳统一认证、验证码、会话过期的**宿主侧**能力面（adapter 不存凭证）；XIDIAN mint 闭环见 `docs/reference/xidian_mint_closed_loop_plan.md`。
+- 文档：学校原始字段 → 标准字段映射指南（adapter 作者向）；契约版本升级与 vendor 兼容性检查清单固化到 `docs/rules/`。
+- 已有编号的不重复列：body 凭证注入 = P1-11（ADR-029）、空调 actuator = P1-12（ADR-030）。
 
 ## 7. 推荐修改路线
 

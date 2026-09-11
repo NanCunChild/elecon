@@ -65,7 +65,7 @@ jobs:
       fail-fast: false
       # OHOS/HAP 刻意不在发版矩阵内：主线依赖已迁 flutter_qjs_next，OHOS 旁路仍用
       # 旧 flutter_qjs fork（pubspec.ohos.yaml），需单独验证后再纳入，见
-      # docs/notes/build_blockers.md §2。
+      # docs/archive/notes/build_blockers.md §2。
       matrix:
         include:
           - name: android-v7a
