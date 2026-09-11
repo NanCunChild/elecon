@@ -12,6 +12,11 @@ on:
         description: Exact commit SHA to verify; release callers must provide the preflight SHA
         required: false
         type: string
+      release_gate:
+        description: true = 发版门（P3-08）按 release 语义硬失败（revocation 过期即拒）；PR CI 缺省只告警
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -104,6 +109,11 @@ jobs:
       # 门：catalog ↔ bundles ↔ envelope digest 自洽，且无游离字节随 app 发布。
       - name: Bootstrap assets must be self-consistent
         run: npm run bootstrap:verify -w tools
+      # 发版门（P3-08）：bootstrap 的 catalog/revocation 以客户端预埋锚真实验签、sequence 不得低于台账、
+      # 每个 entry 必须入账、下次 revocation 输入不得倒退或改内容未 bump、kill-switch 不得随包。
+      # PR CI 里 revocation 过期只告警（免得每个 PR 被 7 天 TTL 打红）；release 工作流传 release_gate=true 硬失败。
+      - name: Release gate（sequence 单调 / 新鲜度 / 台账）
+        run: npm run release:gate -w tools -- --stale-revocation=${{ inputs.release_gate && 'error' || 'warn' }}
 
   # stdlib：vendored html.bundle.js 可复现性闸门（#16）。在干净环境按锁定依赖重建，
   # 与入库 bundle 做 git diff 比对——不一致即 fail。bundle 是两端 QuickJS 实际加载的

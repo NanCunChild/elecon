@@ -44,6 +44,8 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       checkout_ref: ${{ needs.preflight.outputs.sha }}
+      # P3-08：发版时发版门按 release 语义硬失败（revocation 过期 / sequence 倒退 / 未入台账均拒）。
+      release_gate: true
     permissions:
       contents: read
 

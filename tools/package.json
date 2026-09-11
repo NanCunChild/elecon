@@ -23,6 +23,7 @@
     "bootstrap:check": "tsx src/release/bootstrap.ts --check",
     "bootstrap:verify": "tsx src/release/bootstrap.ts --verify",
     "dist:export": "tsx src/release/bootstrap.ts --export-dist=../dist-export",
+    "release:gate": "tsx src/release/gate.ts",
     "ledger:validate": "tsx src/release-ledger/index.ts validate",
     "ledger:extract": "tsx src/release-ledger/index.ts extract",
     "smoke:release": "tsx src/release/package.smoke.ts",
