@@ -1,5 +1,10 @@
 # Schema / Capability 扩展 —— 残留清单
 
+> **归档（2026-09-11）**：本文是 2026-08 前的 schema / capability 扩展残留清单；其「仍待做」项已并入整改清单 §6.2，已停止维护、**不是权威**。当前决策看 `docs/adr/`，
+> 执行与签收状态看 [`docs/planning/2026_08_review_remediation.md`](../planning/2026_08_review_remediation.md)。
+> 文内提到的版本号、序号与「仍待做」项以那两处为准。
+
+
 > **2026-07-20 清理**：原「字段缺口 + P0/P1/P2 注册 + 主仓库行动」大部已由契约扩展落地
 > （registry 已含 profile/term/exam/classroom/…；`notice.list` / `grades.list` / `schedule.week` /
 > `card.*` / `library.loans` / `generic.section` 等 schema 已扩；分页/时间/金额/状态/来源等公共约定已进 schema）。

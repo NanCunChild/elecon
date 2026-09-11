@@ -14,7 +14,7 @@
 | Windows x64 | `.zip` | 未签名（OV 证书暂缺，SmartScreen 会告警） |
 | iOS | 未签名 `.app`（zip） | 未签名，**不能直接安装或提交 App Store** |
 
-> **OHOS/HAP 不在发版矩阵内。** 主线依赖已迁 `flutter_qjs_next`，OHOS 旁路仍用旧 `flutter_qjs` fork（`pubspec.ohos.yaml`），需单独验证后再纳入。见 `docs/notes/build_blockers.md` §2。
+> **OHOS/HAP 不在发版矩阵内。** 主线依赖已迁 `flutter_qjs_next`，OHOS 旁路仍用旧 `flutter_qjs` fork（`pubspec.ohos.yaml`），需单独验证后再纳入。见 `docs/archive/notes/build_blockers.md` §2。
 
 > 仓库只提交了 `android/ios/linux` 平台目录；`macos/windows` runner 未入库，流水线在构建前按需 `flutter create` 脚手架。
 

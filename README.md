@@ -20,7 +20,7 @@
                        │
         可信核心 Core —— 凭证保管 · Capability Broker · 插件信任 · 版本/时效
             │                                   │
-   数据 adapter（QuickJS 脚本，热替换）    传输底座（原生，仅官方签名）
+   数据 adapter（QuickJS 脚本，热替换）    传输底座（原生，编译进应用）
             │                                   │
    ┌────────┴─────────┐                ┌────────┴─────────┐
    │ 校内授权中继 campus │                │  公网哑服务 public │
@@ -49,6 +49,7 @@ adapters_tests/  各校抓包探针与脱敏夹具（红线 #8：不含真实学
 client/     Flutter 客户端（iOS / Android / HarmonyOS / 桌面）
 server/     Node/TS 服务端：public（公网哑服务）+ campus（校内授权中继，当前 501 stub），adapter 用 QuickJS-wasm 执行
 tools/      Node/TS 工具链：签名（PKCS#11 / YubiKey）/ 吊销 / adapter 校验 / 契约一致性 / codegen
+client/assets/bootstrap/  唯一入库的签名分发产物（catalog + revocation + bundles）；端点 D 的 dist 树由它导出，不入库
 docs/       ADR、规则细则（docs/rules/）与工程结构说明
 ```
 
@@ -106,24 +107,18 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 
 - **客户端直连为基线**：私密、认证相关的数据走客户端直连或校内授权中继，**不经公网服务器**。
 - **凭证零泄露给插件**：cookie/token 只存于可信核心，adapter 通过受限方法访问数据，拿不到凭证的值，也拿不到任何等价于凭证的东西（带 token 的 URL、`Set-Cookie`、重定向中间 token 等均不暴露）。
-- **传输底座最高门槛**：能看到全部流量的传输底座仅接受官方签名，DEPLOY/DEV 均无 transport 侧载；dev transport 仍仅存在于 debug build。adapter 本地导入不放宽 transport。
+- **传输底座不是插件**：能看到全部流量的传输底座编译进应用二进制，完整性由平台应用签名承担，运行时受远程开关管控；不存在 transport 侧载入口（ADR-003 §2.3、ADR-032）。
 - **显式知情同意**：启用能看到全部流量的隧道时，提供独立且更重的告知与授权流。
 
-> 涉及第三方协议复刻（如校园 VPN）的接入，需先完成"许可证 + 协议模式 + iOS 可行性"评估，并以可热替换的传输底座形式接入，不焊死在客户端。
+> 涉及第三方协议复刻（如校园 VPN）的接入，需先完成"许可证 + 协议模式 + iOS 可行性"评估（ADR-003 §2.4、ADR-032）。
 
 ---
 
 ## 路线状态
 
-架构的 Decision 与 Landing 是两个独立维度，不能用 `Accepted` 推断 `Implemented`。当前处于**基础设施型 Alpha / 0.1**：承重链路已成形但仍有开放安全项，产品能力面仍薄。逐项状态见 [`docs/adr/README.md`](docs/adr/README.md)，最新整改盘点见 [`docs/planning/2026_08_review_remediation.md`](docs/planning/2026_08_review_remediation.md)。
+架构的 **Decision** 与 **Landing** 是两个维度，`Accepted` 不等于已实现。当前处于**基础设施型 Alpha / 0.1**：签名分发、Broker、凭证存储、WebView 登录等承重链路已成形，仍有开放安全签收项；产品能力面仍薄（首页主要消费 `notice.list`），campus relay 是 501 stub。
 
-- **已落地**：Broker 核心零件 B1–B6 两端（TS + Dart）镜像实现，照 `contract/golden/` 向量逐字节双跑；声明式跨请求数据流 ADR-023 MVP；真实 OS keystore 凭证存储（硬件 keystore + 软件回退）；官方签名分发 / 吊销 / bootstrap 与签名工具链（PKCS#11 / YubiKey）；WebView 登录 + SSO 换票收割；ADR-020 URL query 凭证（一卡通 `openid`）端到端；adapter 按需拉取（`adapters.pin`，取代子模块）。Xidian 公开通知（`notice.list`）已产品闭环。
-- **进行中**：一卡通 OpenID 真机验收；capability 级 `credentialRefs` 最小权限 ADR；图书馆 body 凭证注入；课表、成绩、考试、空教室、一卡通和图书借阅均已有 schema 驱动 UI，仍缺 freshness/unsupported 统一语义、对应 adapter 正式签发和真机验收。
-- **待补齐**：campus relay（当前 501 stub）；iOS 正式签名 / App Store 合规（首版 declarative-only）；OHOS 与多校正式目录；备用签名密钥；首页数据闭环（目前仍主要消费 `notice.list`）。
-
-> 状态提示：主仓旧 Xidian adapter、已签名 bootstrap、外部仓开发态三者版本不同，发布流程中需分别对待（见 roadmap §1）。
-
-细分决策与取舍见 `docs/adr/` 索引；规则细则见 `docs/rules/`；实现计划见 `docs/reference/` 与 `docs/planning/`。
+状态只认两处：决策状态看 [`docs/adr/README.md`](docs/adr/README.md)，执行与签收状态看 [`docs/planning/2026_08_review_remediation.md`](docs/planning/2026_08_review_remediation.md)。术语速查见 [`docs/glossary.md`](docs/glossary.md)。
 
 ---
 

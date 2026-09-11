@@ -5,7 +5,9 @@ adapter 源、无状态、零凭证**（红线 #2）。完整性由**客户端**
 （ADR-002 §2.3/§2.6，ADR-018 §2.9）——**端点被投毒也无法提权**：篡改的 bundle/catalog 在
 客户端验签 fail-closed。故本端点可无差别替换为任意静态托管 / CDN / 对象存储。
 
-> 任意贡献者都能自建镜像端点：因为它只是"发一棵静态目录"，无任何私密/状态。
+> 任意贡献者都能自建镜像端点：因为它只是"发一棵静态目录"，无任何私密/状态；且 catalog **不含端点 URL**
+> （ADR-018 §2.5.1，客户端按自持 base 拼 `bundles/<digest>.json.gz`），镜像无需重签、原样托管即可。
+> dist 树由入库的 bootstrap 导出：`cd tools && npm run dist:export`。
 
 ## 分发结构（`dist/` 静态根）
 
@@ -17,7 +19,7 @@ dist/
     <digest>.json.gz         内容寻址签名 bundle（gzip-JSON；§2.9）        —— immutable 长缓存
 ```
 
-- `<digest>` = bundle 规范化双层 SHA-256（catalog 的 `entry.digest` / `entry.url` 指向此文件）。
+- `<digest>` = bundle 信封字节的 SHA-256（digest v2）；catalog 的 `entry.digest` 即文件名，路径固定、无 URL 字段。
 - **不含公钥**：pin 公钥预埋在 app 内，绝不由端点下发（ADR-002 §2.3）。
 - **零状态 / 零凭证**：只读 `dist/`；忽略且不记录 Cookie/Authorization。
 - `dist/` 由**核心签名管线**产出（🔒，在核心侧，另行落地）——端点不参与生成。

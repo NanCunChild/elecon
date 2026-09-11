@@ -23,7 +23,6 @@ function baseEntry(over: Partial<Catalog["entries"][number]> = {}): Catalog["ent
     adapterId: "school-xidian",
     adapterVersion: "0.1.0",
     digest: DIGEST,
-    url: "https://cdn.example.org/adapters/school-xidian/0.1.0.json.gz",
     capabilities: ["notice.list"],
     ...over,
   };
@@ -89,6 +88,17 @@ function base(entries: Catalog["entries"]): Catalog {
   const f = checkCatalog(base([baseEntry({ evil: 1 } as never)]), deps);
   assert.ok(codes(f).includes("K0_catalog_schema"), "entry 额外字段应触发 K0");
   console.log("  ✓ entry 额外字段被拒（K0）");
+}
+
+// 6b) 历史 catalog 携带已弃用 url → K3 warn（非 error：sequence ≤ 8 的已签 catalog 仍须能过）
+{
+  const f = checkCatalog(
+    base([baseEntry({ url: "https://cdn.example.org/adapters/bundles/x.json.gz" })]),
+    deps,
+  );
+  assert.ok(codes(f).includes("K3_deprecated_url"), "已弃用 url 应触发 K3");
+  assert.equal(f.filter((x) => x.level === "error").length, 0, "已弃用 url 应为 warn 而非 error");
+  console.log("  ✓ 已弃用 url 仅告警（K3 warn）");
 }
 
 // 7) signCatalog → verifyCatalog 往返 + 篡改拒（dev backend）

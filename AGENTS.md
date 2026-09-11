@@ -15,9 +15,8 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 1. **凭证永不离开核心。** cookie / token 只存于可信核心；adapter、UI、公网服务端永远拿不到凭证的值，也拿不到任何等价物（带 token 的 URL、`Set-Cookie`、重定向中间 token）。
 2. **公网服务端零凭证、无状态。** 不得为公网哑服务（`server/src/public`）添加任何凭证存储或私密数据持久化。
 3. **私密数据不经公网。** 私密 / 认证数据只走客户端直连或校内授权中继（`server/src/campus`）。
-4. **DEPLOY 仅运行官方签名 adapter。** DEPLOY 无论 bundle 来自 catalog 还是本地文件，**都只运行通过 official 验签、身份绑定与吊销门禁的 adapter**；不得存在未签名 / 非 official 的加载路径。DEV-Sideload 可本地加载未签名 adapter、可使用优化 build，但不可分发。DEPLOY 本地 official 导入见 [`adr_033`](docs/adr/adr_033_production_sideload.md)（已接受，尚未落地）——落地后本地文件仅作 official bundle 的字节来源，仍须过同一验签与吊销门禁。
-   > **本条原标题为「传输底座仅官方签名加载」，其中关于 transport 的部分已于 2026-09-09 作废**（owner 决策）：transport 是**应用二进制的一部分**（编译期编入，[`adr_032`](docs/adr/adr_032_app_tunnel_embedding.md) §2.2 进程内 FFI），不存在加载期决策，因此没有可设的加载门——其完整性由平台的应用签名承担，运行时管控改为**远程开关**（见 [`adr_003`](docs/adr/adr_003_transport.md) §2.3）。**本条正文自始只约束 adapter，故编号与内容保留不变**（全仓 90+ 处引用指的都是这条）。
-5. **adapter 能力面越薄越好（安全口号，非工程口号）。**「越薄」约束的是**能力 / 信任面**，不是功能复杂度——**工程上 adapter 是吸收对端混乱的 shim，功能上越重越好**（归一化、校本派生尽量压进这层；分工线与「两个轴」见 [`adr_000`](docs/adr/adr_000_abstract.md) §3.1）。能力面的硬约束不变：**DEPLOY 永不运行未签名 / 非 official adapter**；本地导入不是低信任档，导入成功后仍须铸造既有 official grant。**DEV-Sideload 是全能力开发环境**：可加载未签名 declarative / imperative adapter，并调试当前 DEV 宿主已编入的能力；须经强警告 + 全占用确认，凭证值仍不离核心。`C3_sideload_must_declarative` 退役与 DEPLOY official 本地导入由 [`adr_033`](docs/adr/adr_033_production_sideload.md) 决定（已接受，尚未落地）；须按其 §5 清单同批落地，不得单项抢跑。详见 [`adr_002`](docs/adr/adr_002_trust_model.md) §2.5 / [`adr_022`](docs/adr/adr_022_request_graph.md)。
+4. **DEPLOY 仅运行官方签名 adapter。** 无论 bundle 来自 catalog 还是本地文件，都只运行通过 official 验签、身份绑定与吊销门禁的 adapter；不得存在未签名 / 非 official 的加载路径。DEV-Sideload 可本地加载未签名 adapter，但不可分发。（本地 official 导入见 [`adr_033`](docs/adr/adr_033_production_sideload.md)，已接受未落地；本条历史上曾涵盖 transport，2026-09-09 起 transport 编译进二进制、不再是加载物，见 [`adr_003`](docs/adr/adr_003_transport.md) §2.3 与归档流水。）
+5. **adapter 能力面越薄越好——这是安全口号，不是工程口号。** 「薄」约束的是能力 / 信任面；工程上 adapter 是吸收对端混乱的 shim，归一化与校本派生应尽量压进这层。DEV-Sideload 是全能力开发环境，须经强警告 + 全占用确认，凭证值仍不离核心。分工线见 [`adr_000`](docs/adr/adr_000_abstract.md) §3.1，信任档见 [`adr_002`](docs/adr/adr_002_trust_model.md) §2.5。
 6. **契约即承重墙。** 改动 `contract/`（schema、manifest）必须先有 ADR，在现阶段可以出现破坏性更新，在公测阶段完成且版本号稳定后，由人工决定是否应当修改为兼容考虑。
 7. **adapter 不在 UI 线程同步执行。** 一律背景 isolate，UI 永远异步。
 8. **不提交真实学生数据。** 测试夹具必须脱敏。
@@ -44,3 +43,6 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 | [`docs/rules/testing.md`](docs/rules/testing.md) | 测试原则：信任越高测试越严、夹具驱动 |
 | [`docs/rules/ai_coding.md`](docs/rules/ai_coding.md) | AI 编程纪律与产出前自检清单 |
 | [`docs/rules/ui_ai_generation.md`](docs/rules/ui_ai_generation.md) | AI 生成 Flutter UI 的边界（ADR-004 框内、Material 3） |
+| [`docs/glossary.md`](docs/glossary.md) | 术语与编号速查（信任域 A–D、P0–P4、三种 envelope、DEPLOY/DEV-Sideload…） |
+
+**状态只认两处**：决策状态看 [`docs/adr/README.md`](docs/adr/README.md)，执行 / 签收状态看 [`docs/planning/2026_08_review_remediation.md`](docs/planning/2026_08_review_remediation.md)。其它文档里的进度描述一律是快照，冲突时以这两处为准。

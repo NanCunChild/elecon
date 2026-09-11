@@ -18,7 +18,15 @@
  */
 import { execFileSync } from "node:child_process";
 
-const WATCHED = ["contract/schema/", "contract/capability/", "contract/manifest.schema.json"];
+// contract/ 顶层的每个 *.schema.json 都是承重契约（manifest / catalog / response-masker …），
+// 此前只盯 manifest.schema.json，catalog.schema.json 的改动曾被静默放行（2026-09-11 发现）。
+const WATCHED = [
+  "contract/schema/",
+  "contract/capability/",
+  "contract/manifest.schema.json",
+  "contract/catalog.schema.json",
+  "contract/response-masker.schema.json",
+];
 const CHANGELOG = "contract/CHANGELOG.md";
 const ADR_REF = /\b(?:ADR[-_ ]?\d{3}|adr_\d{3})\b/i;
 

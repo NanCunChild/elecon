@@ -10,9 +10,9 @@
 /// **凭证解析器由调用方注入**（session 的 `CredentialStore`，它 `implements CredentialResolver`）——
 /// 本层不持有凭证，只搬「哪个 adapter、跑哪个 capability」（红线 #1：凭证仍只在核心闭包侧注入）。
 ///
-/// **未闭合的最后一跳（发布前门禁）**：真实签名 `assets/bootstrap/*` 与已部署的端点 D + 已发布签名
-/// catalog/bundle 尚未就位（阻塞于运营部署）。本层是**代码路径**，端点内容就位后即可点亮；
-/// [kDistributionBaseUrl] 指向小范围测试分发端点。
+/// **分发 base URL 由客户端自持**（ADR-018 §2.5.1）：catalog 只描述文件，三类产物的路径全部相对
+/// [kDistributionBaseUrl]。端点内容未就位或不可达时加载器退化到 last-good / bootstrap（fail-closed）。
+/// DEV-Sideload 可用 `--dart-define=ELECON_DISTRIBUTION_BASE_URL=…` 覆盖 base（见 [effectiveDistributionBaseUrl]）。
 ///
 /// 🔒 红线 #1/#4 承重件：改动须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
 library;
@@ -41,10 +41,29 @@ import 'loader/last_good_store.dart' show LastGoodStore;
 import 'loader/diagnostics.dart' show AdapterDiagnostic;
 import 'loader/loader.dart' show AdapterLoader;
 import 'transport/direct.dart' show DirectTransport;
+import 'trust/trust_profile.dart' show kSideloadEnabled;
 
-/// 小范围测试分发 base URL。端点只提供公开、已签名的静态产物；内容未就位时加载器仍退化到
-/// last-good/bootstrap（fail-closed，不 fail-open）。
+/// 官方分发 base URL（端点 D）。端点只提供公开、已签名的静态产物；内容未就位时加载器仍退化到
+/// last-good/bootstrap（fail-closed，不 fail-open）。DEPLOY **恒用此值**。
 const String kDistributionBaseUrl = 'https://elecon.xidian.one/adapters/';
+
+/// DEV 覆盖值（`--dart-define=ELECON_DISTRIBUTION_BASE_URL=…`）。缺省空串 = 不覆盖。
+const String kDistributionBaseUrlOverride = String.fromEnvironment(
+  'ELECON_DISTRIBUTION_BASE_URL',
+);
+
+/// 覆盖是否生效：**仅 DEV-Sideload profile** 且给了非空 dart-define。两者皆编译期常量，
+/// DEPLOY 构建中本值折叠为 false、覆盖路径被整体裁掉（ADR-024 release gate 另断言 DEPLOY 无 DEV profile）。
+/// 覆盖只改变「从哪拉字节」——digest 重算 / Ed25519 验签 / 吊销门一步不少，来源不影响信任裁定。
+const bool kDistributionOverrideActive =
+    kSideloadEnabled && kDistributionBaseUrlOverride != '';
+
+/// 生效的分发 base URL：DEPLOY = [kDistributionBaseUrl]；DEV 覆盖生效时 = 覆盖值。
+/// 覆盖值畸形（非绝对 URL）时**不回退到官方端点**而是照样交给 [HttpDistributionSource]，
+/// 由它拒拉 + 遥测——DEV 里给错参数应当可见，而不是静默连到线上。
+Uri get effectiveDistributionBaseUrl => Uri.parse(
+  kDistributionOverrideActive ? kDistributionBaseUrlOverride : kDistributionBaseUrl,
+);
 
 /// 一次 capability 执行的结果：成功携产出；失败分档（加载 / 接线 / 运行 / 认证）供 UI 分流。
 enum CapabilityFailureKind {
@@ -103,18 +122,24 @@ class AdapterService {
   ///
   /// [supportDir] 由 wiring 层用 path_provider 提供（同凭证库落盘），adapter 缓存落其下独立子目录
   /// （公开签名内容，无需备份排除，区别于凭证密文）。[fetcher] 仅供测试替身；生产用 [IoHttpByteFetcher]。
+  /// [allowInsecureHttp] 只应传 [kDistributionOverrideActive]（DEV 覆盖 base 时允许本地 http 端点）。
   factory AdapterService.production({
     required Directory supportDir,
     required Uri distributionBaseUrl,
+    bool allowInsecureHttp = false,
     HttpByteFetcher? fetcher,
     void Function(String message)? onWarning,
   }) {
     final blobs = FileBlobStore(Directory('${supportDir.path}/adapters'));
     void Function(AdapterDiagnostic)? reportDiagnostic;
     late AdapterLoader loader;
+    if (allowInsecureHttp) {
+      onWarning?.call('DEV：分发 base 已被 dart-define 覆盖为 $distributionBaseUrl（允许 http；验签门不变）');
+    }
     final source = HttpDistributionSource(
       baseUrl: distributionBaseUrl,
       fetcher: fetcher ?? IoHttpByteFetcher(),
+      allowInsecureHttp: allowInsecureHttp,
       onWarning: onWarning,
       onDiagnostic: (diagnostic) => reportDiagnostic?.call(diagnostic),
     );

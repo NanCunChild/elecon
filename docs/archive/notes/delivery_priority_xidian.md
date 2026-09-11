@@ -1,5 +1,10 @@
 # 优先交付清单：XIDIAN 单校 Android 竖切
 
+> **归档（2026-09-11）**：本文是 2026-07 西电单校竖切交付清单，已停止维护、**不是权威**。当前决策看 `docs/adr/`，
+> 执行与签收状态看 [`docs/planning/2026_08_review_remediation.md`](../../planning/2026_08_review_remediation.md)。
+> 文内提到的版本号、序号与「仍待做」项以那两处为准。
+
+
 > 状态：**执行笔记（非 ADR）**。目标是尽快做出「打开 App → 选西电 → 登录 → 看到真数据」的可演示闭环。  
 > 约束（已对齐）：只维护自有 adapter → **允许破坏性契约/字段变更**；先 Android，iOS/OHOS 后置；基座硬改（flutterOHOS 等）非本阶段。  
 > 关联：`docs/reference/xidian_mint_closed_loop_plan.md`、ADR-000/009/012/016/017/018、`AGENTS.md` 红线。

@@ -5,7 +5,7 @@
 ///
 ///   1. 取 catalog → **验签 + sequence 不回滚**（[_resolveCatalog]：fetch/last-good/bootstrap
 ///      三源各自验签，按 `pickNewerCatalog` 取最高 sequence，成功采纳则持久化 last-good）。
-///   2. 在 catalog 定位目标 adapterId 的 entry（含 url / digest / capabilities）。
+///   2. 在 catalog 定位目标 adapterId 的 entry（含 digest / capabilities；**无端点信息**，ADR-018 §2.5.1）。
 ///   3. 取 bundle 字节：**cache → bootstrap → 网络**（内容寻址，来源不影响安全，只影响可用性）。
 ///   4. 解包 + **重算 envelope digest == catalog entry.digest**（内容寻址锚定「要用的就是 catalog 指的」）。
 ///   5. **Ed25519 验签**（active pin 公钥）→ 不可伪造 [VerifiedBundle]；再核 digest==entry.digest
@@ -84,8 +84,9 @@ abstract interface class DistributionSource {
   /// 拉取线上 `revocation.json`；无/失败 → null。
   Future<SignedRevocationList?> fetchRevocation();
 
-  /// 按 catalog entry 的 url 拉取 packed bundle 字节（传输封套 `gzip(JSON({envelopeB64,signature,blobs}))`）；无/失败 → null。
-  Future<Uint8List?> fetchBundle(String url);
+  /// 按 catalog entry 的 [digest] 拉取 packed bundle 字节（传输封套 `gzip(JSON({envelopeB64,signature,blobs}))`）；
+  /// 路径恒为 `bundles/<digest>.json.gz`、相对实现自持的 base（catalog 不描述端点，ADR-018 §2.5.1）；无/失败 → null。
+  Future<Uint8List?> fetchBundle(String digest);
 }
 
 // 生产默认 verifier（真实预埋 pin）。测试注入 golden 测试锚版本。
@@ -447,7 +448,7 @@ class AdapterLoader {
       () => _bootstrap.bundleByDigest(entry.digest),
     );
     if (baseline != null) return baseline;
-    return _tryFetch((src) => src.fetchBundle(entry.url));
+    return _tryFetch((src) => src.fetchBundle(entry.digest));
   }
 
   /// 在已验签 catalog 内按 adapterId 定位 entry（解析期已拒重复，故至多一条）；无 → null。

@@ -2,9 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "elecon.catalog",
   "title": "Signed Adapter Distribution Catalog",
-  "description": "公网分发清单（ADR-018 §2.5）。核心生成并**签名**;客户端加载器验签 + 防回滚（sequence）+ TTL/last-good 后消费。本 schema 只覆盖被签名的 list 载荷;外层签名信封（signature/keyId/algorithm，同 revocation SignedRevocationList 模式）不在此。硬约束:catalog 不得引入新 capability id——每个 entry.capabilities 须 ∈ contract/capability/registry.json（validator K1，守 ADR-010 §3.3.2(a)）。",
+  "description": "公网分发清单（ADR-018 §2.5 / §2.5.1）。核心生成并**签名**;客户端加载器验签 + 防回滚（sequence）+ TTL/last-good 后消费。本 schema 只覆盖被签名的 list 载荷;外层签名信封（signature/keyId/algorithm，同 revocation SignedRevocationList 模式）不在此。**catalog 只描述文件、不描述端点**：entry 以 digest 内容寻址，bundle 固定住 `bundles/<digest>.json.gz`，相对客户端自持的分发 base URL 解析；同一份 catalog 可被任意镜像端点原样托管。硬约束:catalog 不得引入新 capability id——每个 entry.capabilities 须 ∈ contract/capability/registry.json（validator K1，守 ADR-010 §3.3.2(a)）。",
   "type": "object",
-  "required": ["catalogVersion", "sequence", "issuedAt", "ttlSeconds", "entries"],
+  "required": [
+    "catalogVersion",
+    "sequence",
+    "issuedAt",
+    "ttlSeconds",
+    "entries"
+  ],
   "additionalProperties": false,
   "properties": {
     "catalogVersion": {
@@ -29,10 +35,15 @@
     },
     "entries": {
       "type": "array",
-      "description": "可加载 adapter 条目。以 digest 内容寻址。",
+      "description": "可加载 adapter 条目。以 digest 内容寻址：bundle 路径恒为 `bundles/<digest>.json.gz`（相对客户端自持 base URL）。",
       "items": {
         "type": "object",
-        "required": ["adapterId", "adapterVersion", "digest", "url", "capabilities"],
+        "required": [
+          "adapterId",
+          "adapterVersion",
+          "digest",
+          "capabilities"
+        ],
         "additionalProperties": false,
         "properties": {
           "adapterId": {
@@ -40,16 +51,18 @@
             "pattern": "^school-\\S+$",
             "description": "与 manifest.adapterId 一致。"
           },
-          "adapterVersion": { "type": "string", "description": "semver（与 manifest.adapterVersion 一致）。" },
+          "adapterVersion": {
+            "type": "string",
+            "description": "semver（与 manifest.adapterVersion 一致）。"
+          },
           "digest": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$",
-            "description": "bundle（JSON envelope）规范化双层 SHA-256 hex（ADR-002 §2.3 / ADR-018 §2.9）。内容寻址主键;客户端下载后须重算比对。"
+            "description": "bundle 信封字节的 SHA-256 hex（digest v2，ADR-002 §2.3 / ADR-018 §2.9.1）。内容寻址主键：客户端按 `bundles/<digest>.json.gz` 拉取并重算比对。"
           },
           "url": {
             "type": "string",
-            "format": "uri",
-            "description": "signed bundle（gzip-JSON 传输封装 `.json.gz`,ADR-018 §2.9）的下载地址;由公网哑服务/CDN 提供（红线 #2）。"
+            "description": "**已弃用（2026-09-11，ADR-018 §2.5.1）**：catalog 不再描述端点，客户端忽略本字段、按 digest 自行拼路径。仅为兼容 sequence ≤ 8 的已签 catalog 而保留为可选；打包器不再写入，下一次签名仪式后从 schema 移除。"
           },
           "stdlibMin": {
             "type": "string",
@@ -59,7 +72,9 @@
           "capabilities": {
             "type": "array",
             "minItems": 1,
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "该 adapter 提供的 capability id;每个须 ∈ registry（validator K1;catalog 不得引入新能力,ADR-010 §2.1）。"
           }
         }

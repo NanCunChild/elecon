@@ -1,23 +1,24 @@
 /**
- * 🔒 从已签名的 endpoint-D dist 树派生客户端 bootstrap 基线资产（ADR-010 / ADR-018 §2.6）。
+ * 🔒 客户端 bootstrap 基线资产（ADR-010 / ADR-018 §2.6）与 endpoint-D dist 树的互转。
  *
- * dist（`release/package.ts` 的产物）是**单一真值源**：bootstrap 资产是它的纯字节派生。本命令取代
- * 「dist 与 client/assets/bootstrap 两处手工复制」，消除易漂移的孪生副本（评审：重复逻辑）。
+ * **git 里只跟踪 bootstrap**（`client/assets/bootstrap/`，2026-09-11 决策）：签名仪式产出的 dist 树
+ * 不入库，仪式后立即 `sync` 成 bootstrap 提交；上传端点 D 时再从 bootstrap `export` 回 dist 树。
+ * 两个方向都是**纯字节搬运**（无签名、无信任裁定；客户端 loader 仍对 bootstrap 重跑验签 + 各门）：
  *
- * 派生规则（**无签名、无信任裁定，仅搬字节**——bootstrap 与线上产物同格式，客户端 loader 仍对其
- * 重跑验签 + 各门后才采用）：
- *   catalog.json        = gunzip(dist/catalog.json.gz)     —— app 内以明文 SignedCatalog 读取
- *   revocation.json     = 复制 dist/revocation.json
- *   bundles/<digest>.bundle = 复制 dist/bundles/<digest>.json.gz（内容寻址文件名，仅换扩展名）
- *
- * `--check` 只校验不写：任一派生文件与 dist 不一致即非零退出（CI 防漂移守卫）。本命令不签名、不改动
- * dist。
+ *   sync   （dist → assets）  catalog.json = gunzip(catalog.json.gz)；revocation.json 复制；
+ *                             bundles/<digest>.json.gz → bundles/<digest>.bundle（仅换扩展名）
+ *   export （assets → dist）  逆向；catalog.json.gz 的 gzip 字节不必与仪式产物逐字节相同——
+ *                             gzip 不在签名范围内，被签的是内层 catalogJson，逐字节不变
+ *   verify （assets 自洽）    CI 门：catalog 可解析、每个 entry.digest 都有对应 bundle、无游离 bundle、
+ *                             每个 bundle 的文件名 == inspectBundle 重算出的 envelope digest
+ *   check  （assets vs dist） 仅当本地有 dist 树时可用（仪式当天核对）
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gunzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
+import { inspectBundle } from "../bundle/package.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -91,15 +92,128 @@ export function syncBootstrap(options: SyncBootstrapOptions): SyncBootstrapResul
   return { written, drift };
 }
 
+const BOOTSTRAP_BUNDLE_SUFFIX = ".bundle";
+
+/**
+ * bootstrap 资产自洽校验（CI 门；不验签、不裁定信任）。返回问题列表，空 = 通过。
+ * 只证「入库的这棵树内部一致」：catalog 指到的每个 digest 都在、没有多余字节随 app 发布、
+ * 每个 bundle 文件名就是其 envelope 的真实 digest（inspectBundle 重算，keyless）。
+ */
+export function verifyBootstrapAssets(assetsDir: string): string[] {
+  const dir = resolve(assetsDir);
+  const problems: string[] = [];
+  const catalogPath = join(dir, "catalog.json");
+  const revocationPath = join(dir, "revocation.json");
+  if (!existsSync(catalogPath)) return [`缺 catalog.json：${catalogPath}`];
+  if (!existsSync(revocationPath)) problems.push(`缺 revocation.json：${revocationPath}`);
+
+  let digests: string[] = [];
+  try {
+    const outer = JSON.parse(readFileSync(catalogPath, "utf8")) as { catalogJson?: unknown };
+    if (typeof outer.catalogJson !== "string") throw new Error("缺 catalogJson 字段");
+    const catalog = JSON.parse(outer.catalogJson) as { entries?: Array<{ digest?: unknown }> };
+    digests = (catalog.entries ?? []).map((e) => {
+      if (typeof e.digest !== "string" || !DIGEST_RE.test(e.digest))
+        throw new Error(`entry.digest 非法：${String(e.digest)}`);
+      return e.digest;
+    });
+  } catch (error: unknown) {
+    problems.push(`catalog.json 不可解析：${error instanceof Error ? error.message : String(error)}`);
+    return problems;
+  }
+  if (existsSync(revocationPath)) {
+    try {
+      const outer = JSON.parse(readFileSync(revocationPath, "utf8")) as { listJson?: unknown };
+      if (typeof outer.listJson !== "string") throw new Error("缺 listJson 字段");
+    } catch (error: unknown) {
+      problems.push(`revocation.json 不可解析：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const bundlesDir = join(dir, "bundles");
+  const present = new Set<string>();
+  for (const name of existsSync(bundlesDir) ? readdirSync(bundlesDir).sort() : []) {
+    if (!name.endsWith(BOOTSTRAP_BUNDLE_SUFFIX)) {
+      problems.push(`bundles/ 含非 .bundle 文件：${name}`);
+      continue;
+    }
+    const digest = name.slice(0, -BOOTSTRAP_BUNDLE_SUFFIX.length);
+    if (!DIGEST_RE.test(digest)) {
+      problems.push(`bundle 文件名非 digest：${name}`);
+      continue;
+    }
+    present.add(digest);
+    const inspected = inspectBundle(readFileSync(join(bundlesDir, name)));
+    if (!inspected.ok) {
+      problems.push(`bundle ${name} 自检失败：${inspected.reason}`);
+    } else if (inspected.value !== digest) {
+      problems.push(`bundle ${name} 文件名与 envelope digest 不符（实为 ${inspected.value}）`);
+    }
+  }
+  for (const d of digests) {
+    if (!present.has(d)) problems.push(`catalog entry 指向的 bundle 缺失：bundles/${d}.bundle`);
+  }
+  const referenced = new Set(digests);
+  for (const d of present) {
+    if (!referenced.has(d))
+      problems.push(`游离 bundle（catalog 未引用，却会随 app 发布）：bundles/${d}.bundle`);
+  }
+  return problems;
+}
+
+/**
+ * 从 bootstrap 资产反向导出 endpoint-D dist 树（上传用）。先过 [verifyBootstrapAssets]，不自洽即拒。
+ * 返回写出的相对路径。
+ */
+export function exportDist(options: { assetsDir: string; distDir: string }): string[] {
+  const assetsDir = resolve(options.assetsDir);
+  const distDir = resolve(options.distDir);
+  const problems = verifyBootstrapAssets(assetsDir);
+  if (problems.length > 0) {
+    throw new Error(`bootstrap 资产不自洽，拒绝导出：\n  ${problems.join("\n  ")}`);
+  }
+  const written: string[] = [];
+  const put = (rel: string, bytes: Buffer): void => {
+    const dest = join(distDir, rel);
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, bytes);
+    written.push(rel);
+  };
+  put("catalog.json.gz", gzipSync(readFileSync(join(assetsDir, "catalog.json"))));
+  put("revocation.json", readFileSync(join(assetsDir, "revocation.json")));
+  for (const name of readdirSync(join(assetsDir, "bundles")).sort()) {
+    const digest = name.slice(0, -BOOTSTRAP_BUNDLE_SUFFIX.length);
+    put(join("bundles", `${digest}${BUNDLE_SUFFIX}`), readFileSync(join(assetsDir, "bundles", name)));
+  }
+  return written;
+}
+
 function arg(name: string): string | undefined {
   return process.argv.find((value) => value.startsWith(`--${name}=`))?.slice(name.length + 3);
 }
 
 function main(): void {
-  const distDir = arg("dist") ?? join(repoRoot, "dist-full");
   const assetsDir = arg("assets") ?? join(repoRoot, "client/assets/bootstrap");
-  const check = process.argv.includes("--check");
+  const verify = process.argv.includes("--verify");
+  const exportTo = arg("export-dist");
   try {
+    if (verify) {
+      const problems = verifyBootstrapAssets(assetsDir);
+      if (problems.length > 0) {
+        console.error(`bootstrap 资产不自洽：\n  ${problems.join("\n  ")}`);
+        process.exitCode = 1;
+      } else {
+        console.log("bootstrap 资产自洽（catalog ↔ bundles ↔ envelope digest 一致）");
+      }
+      return;
+    }
+    if (exportTo !== undefined) {
+      const written = exportDist({ assetsDir, distDir: exportTo });
+      console.log(`dist 树已从 bootstrap 导出（${written.length} 个文件）：${resolve(exportTo)}`);
+      return;
+    }
+    const distDir = arg("dist") ?? join(repoRoot, "dist-full");
+    const check = process.argv.includes("--check");
     const result = syncBootstrap({ distDir, assetsDir, check });
     if (check) {
       if (result.drift.length > 0) {

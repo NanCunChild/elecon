@@ -4,14 +4,20 @@
 /// 只做**匿名 GET** 三类静态产物，交回编排器 `loader.dart`（片 E）做全部信任裁定：
 ///   - `catalog.json.gz`（gzip(JSON) 签名清单）→ [SignedCatalog]；gzip 不在签名范围内；
 ///   - `revocation.json`（明文 JSON 签名清单）→ [SignedRevocationList]；
-///   - catalog entry 指定 url 的 packed bundle（传输封套 `gzip(JSON({envelopeB64,signature,blobs}))`，`.json.gz`）→ 原始字节
+///   - `bundles/<digest>.json.gz`（packed bundle，传输封套 `gzip(JSON({envelopeB64,signature,blobs}))`）→ 原始字节
 ///     （**不在此解 gzip/解包**——loader 的 `openBundle` 带压缩炸弹护栏，本层只搬字节）。
+///     路径由 catalog entry 的 digest 拼出、相对**本实现自持的 base URL**——catalog 不描述端点
+///     （ADR-018 §2.5.1），同一份签名 dist 可托管在官方端点、镜像或本地冒烟服务器。
 ///
 /// **本层零信任裁定**：返回的 Signed* / 字节**均未验签**；验签 + 防回滚 + 吊销 + stdlibMin 全在
 /// loader（每次加载重跑）。本层职责仅「安全地把公网字节取回来」。
 ///
 /// **安全护栏（红线 #2 + DoS）**：
 ///   - **仅 https、无 userinfo**：拒 `http://` 与 `https://user:pass@…`（凭证绝不上网，且防明文降级）。
+///     唯一例外是 [allowInsecureHttp]——**只在 DEV-Sideload profile 用 dart-define 覆盖 base 时**由装配层
+///     打开（本地 http 端点冒烟）；DEPLOY 编译期折叠为 false。来源只影响可用性、不影响信任裁定：
+///     字节仍须过 loader 的 digest 重算 + Ed25519 验签 + 吊销门。
+///   - **digest 形态门**：bundle 路径只接受 64 位小写 hex（防路径穿越 / 任意路径拼接）。
 ///   - **零凭证**：不带 cookie、不设 Authorization/自定义身份头（端点 D 根本不认凭证）。
 ///   - **不跟随重定向**：`followRedirects=false`，3xx 视为不可用——静态产物住固定 URL；跟随重定向会把
 ///     「取哪份字节」交给中间人（内容寻址 + 验签仍兜底，但宁可 fail-closed 不给中间人腾挪空间）。
@@ -195,7 +201,12 @@ class IoHttpByteFetcher implements HttpByteFetcher {
   void close() => _client.close(force: true);
 }
 
-/// 端点 D 的 [DistributionSource] 实现。构造注入 base URL（catalog/revocation 所在目录）+ 取字节接缝。
+/// 内容寻址 digest 形态 = 64 位小写 hex（同 catalog.dart / bootstrap.dart）。
+final RegExp _reDigest = RegExp(r'^[0-9a-f]{64}$');
+
+/// 端点 D 的 [DistributionSource] 实现。构造注入 base URL（catalog/revocation/bundles 所在目录）+ 取字节接缝。
+///
+/// 三类产物的路径全部相对 [baseUrl]：`catalog.json.gz`、`revocation.json`、`bundles/<digest>.json.gz`。
 class HttpDistributionSource implements DistributionSource {
   HttpDistributionSource({
     required Uri baseUrl,
@@ -203,6 +214,7 @@ class HttpDistributionSource implements DistributionSource {
     Duration timeout = kDefaultDistributionTimeout,
     int maxManifestBytes = kMaxDistributionManifestBytes,
     int maxBundleBytes = kMaxDistributionBundleBytes,
+    bool allowInsecureHttp = false,
     void Function(String message)? onWarning,
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) : _base = baseUrl,
@@ -210,11 +222,14 @@ class HttpDistributionSource implements DistributionSource {
        _timeout = timeout,
        _maxManifestBytes = maxManifestBytes,
        _maxBundleBytes = maxBundleBytes,
+       _allowInsecureHttp = allowInsecureHttp,
        _onWarning = onWarning,
        _onDiagnostic = onDiagnostic;
 
   final Uri _base;
   final HttpByteFetcher _fetcher;
+  /// 见文件头「安全护栏」：仅 DEV 覆盖 base 时为 true。
+  final bool _allowInsecureHttp;
   final Duration _timeout;
   final int _maxManifestBytes;
   final int _maxBundleBytes;
@@ -248,13 +263,22 @@ class HttpDistributionSource implements DistributionSource {
       _fetchManifest('revocation.json', SignedRevocationList.fromJson);
 
   @override
-  Future<Uint8List?> fetchBundle(String url) async {
-    final u = _httpsUri(url);
+  Future<Uint8List?> fetchBundle(String digest) async {
+    // digest 形态门：路径的唯一变量就是它，畸形值绝不进 URL（防 `../` 之类拼接）。
+    if (!_reDigest.hasMatch(digest)) {
+      _diagnose(
+        AdapterDiagnosticKind.invalidUrl,
+        'bundle',
+        'digest 非 64 位小写 hex，拒拉：$digest',
+      );
+      return null;
+    }
+    final u = _allowedUri(_base.resolve('bundles/$digest.json.gz').toString());
     if (u == null) {
       _diagnose(
         AdapterDiagnosticKind.invalidUrl,
         'bundle',
-        'URL 非 https 或畸形，拒拉：$url',
+        '分发 base URL 非 https 或畸形，拒拉：$_base',
       );
       return null;
     }
@@ -285,7 +309,7 @@ class HttpDistributionSource implements DistributionSource {
       _diagnose(
         AdapterDiagnosticKind.sizeLimit,
         'bundle',
-        '响应超大小上限，弃：$url',
+        '响应超大小上限，弃：$digest',
         uri: u,
       );
       return null;
@@ -298,7 +322,7 @@ class HttpDistributionSource implements DistributionSource {
     String name,
     T Function(Map<String, dynamic>) parse,
   ) async {
-    final u = _httpsUri(_base.resolve(name).toString());
+    final u = _allowedUri(_base.resolve(name).toString());
     if (u == null) {
       _diagnose(
         AdapterDiagnosticKind.invalidUrl,
@@ -366,15 +390,18 @@ class HttpDistributionSource implements DistributionSource {
     }
   }
 
-  /// 仅接受 https 且无 userinfo 的 URL（同 catalog.dart 对 entry.url 的立场：防明文降级 + 防凭证入 URL）。
-  static Uri? _httpsUri(String raw) {
+  /// 仅接受 https 且无 userinfo 的 URL（防明文降级 + 防凭证入 URL）。[_allowInsecureHttp] 为 true
+  /// 时额外放行 http（仅 DEV 覆盖 base 的本地冒烟；DEPLOY 恒 false）。
+  Uri? _allowedUri(String raw) {
     final Uri u;
     try {
       u = Uri.parse(raw);
     } on FormatException {
       return null;
     }
-    if (u.scheme != 'https') return null;
+    if (u.scheme != 'https' && !(_allowInsecureHttp && u.scheme == 'http')) {
+      return null;
+    }
     if (u.userInfo.isNotEmpty) return null;
     if (u.host.isEmpty) return null;
     return u;

@@ -140,7 +140,6 @@ Future<SignedCatalog> _mkCatalog(
         'adapterId': adapterId,
         'adapterVersion': '1.0.0',
         'digest': digest,
-        'url': 'https://dist.example.edu/$adapterId.json.gz',
         'stdlibMin': '1.0.0',
         'capabilities': capabilities,
       },
@@ -185,7 +184,7 @@ class _FakeSource implements DistributionSource {
   @override
   Future<SignedRevocationList?> fetchRevocation() async => revocation;
   @override
-  Future<Uint8List?> fetchBundle(String url) async => bundle;
+  Future<Uint8List?> fetchBundle(String digest) async => bundle;
 }
 
 class _EmptyAssets implements AssetSource {

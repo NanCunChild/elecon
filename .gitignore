@@ -36,3 +36,8 @@ server/dist/
 # 而信任锚的权威副本是 App 内预埋的 pin——散落的 .pem 只会和作废密钥混淆（2026-07-16 即发生过）。
 # 私钥不可能出现在此：它片上生成、永不导出。
 *.pem
+
+# 签名仪式 / dist:export 产出的端点 D dist 树：不入库（2026-09-11 决策）。
+# git 只跟踪它的派生物 client/assets/bootstrap/（bootstrap:sync），上传前用 dist:export 反向导出。
+/dist/
+/dist-*/
