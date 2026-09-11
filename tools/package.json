@@ -21,6 +21,8 @@
     "release:package": "tsx src/release/package.ts",
     "bootstrap:sync": "tsx src/release/bootstrap.ts",
     "bootstrap:check": "tsx src/release/bootstrap.ts --check",
+    "bootstrap:verify": "tsx src/release/bootstrap.ts --verify",
+    "dist:export": "tsx src/release/bootstrap.ts --export-dist=../dist-export",
     "ledger:validate": "tsx src/release-ledger/index.ts validate",
     "ledger:extract": "tsx src/release-ledger/index.ts extract",
     "smoke:release": "tsx src/release/package.smoke.ts",
