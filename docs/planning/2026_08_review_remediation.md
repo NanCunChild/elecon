@@ -615,7 +615,7 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 | P3-05 | [ ] 统一 Money 字段语义，确认哪些域允许负数 | 非负金额有 `minimum:0`；例外有领域说明；ADR-021 状态明确 |
 | P3-06 | [x] 将 schema behavior golden 从 7/48 扩展到所有 registry emits/params | 覆盖嵌套 required、enum、format、null/缺失、金额、URI 和 params 边界 |
 | P3-07 | [x] 明确 canonical dist，消除 `dist-full`、`dist-xidian`、bootstrap 和 release 多事实源 | **2026-09-11 关闭（§2.8）**：`client/assets/bootstrap/` 是唯一入库的签名产物，dist 树不入库（`.gitignore` `/dist-*/`），上传前 `dist:export` 反向导出；CI `bootstrap:verify` 校验 catalog ↔ bundles ↔ envelope digest 自洽 |
-| P3-08 | [ ] 在发版门检查 revocation 新鲜度与 catalog/revocation sequence 单调性 | 过期或倒退时禁止 release；急性吊销流程可演练 |
+| P3-08 | [x] 在发版门检查 revocation 新鲜度与 catalog/revocation sequence 单调性 | **2026-09-11 关闭（§2.9）**：`release:gate` G1–G6 + `release:package` 签名前基线守卫；PR CI 告警、release 工作流硬失败；吊销演练步骤见 `adapter_release.md` §10.2 |
 | P3-09 | [x] 修复应用内版本注入 | release tag 与 About 页面一致；构建命令传入 `ELECON_VERSION` 或改用可靠平台版本源 |
 | P3-10 | [x] 固定 release Flutter 版本，与普通 CI 使用同一 SDK | release 不再使用浮动 `stable`；升级单独评审 |
 | P3-11 | [ ] 提交并审查 Windows/macOS 平台工程，禁止 release 临时 `flutter create` | runner、标识、entitlement 可复现且进入代码审查 |
@@ -652,6 +652,21 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 
 - P4-03 部分推进，保持开放：在既有 `exam.list` 与 `library.loans` 契约内新增 schema 驱动的按需 UI、严格解码和空/加载/认证/错误状态；连同已有成绩、课表、空教室和一卡通，六类 typed UI 均已有客户端入口。`stale` 与显式 `unsupported` 仍依赖 P4-05 产品语义，对应 adapter 正式签发和真机验收也未完成，因此不关闭 P4-03。
 - P4-01/P4-02/P4-04/P4-05/P4-06/P4-07 均受 P0/P1、独立 ADR、隐私政策、正式 adapter 或部署安全评审约束，本轮未越过前置实现。
+
+### 2.9 执行状态（2026-09-11 · P3-08 发版门落地）
+
+**门本体** `tools/src/release/gate.ts`（`npm run release:gate`），检查对象是入库 bootstrap：
+G1 keyId 须命中客户端 `trust_anchors.dart` 的 active 锚并真实验签（直接解析 Dart 源，tools 不另存公钥）；
+G2 revocation 在 TTL 内且不超前，catalog 过 TTL 只 warn；G3 killSwitch 不得随包（`--allow-kill-switch` 显式放行）；
+G4 每个 entry 入台账且 digest / sequence 一致、台账最大序号 ≤ bootstrap；G5 `release/revocation.json` 不倒退、
+同序号不得改内容（§2.7 第一趟的错误自此在签名前和门上各拦一次）；G6 `--online-base=` 时 bootstrap ≥ 线上。
+**打包器**：`release:package` 以入库 bootstrap 为基线，签名前拒 catalog 序号不严格递增 / revocation 倒退 /
+同序号改内容（`--no-baseline` 仅首次发布）。**接线**：ci.yml 每个 PR 跑（G2 降 warn，免 7 天 TTL 把 PR 打红）；
+release.yml 经 `release_gate: true` 硬失败。**演练**：`adapter_release.md` §10.2。
+
+验证：gate smoke（正例 + G1–G6 各负例 + 真实 trust_anchors.dart 解析）与 package smoke 基线负例全绿；
+对真实仓：seq 8/2 通过，`--now=2026-09-20` strict 拒 / warn 放行。**当前 revocation 2026-09-18T06:31Z 到期**，
+到期后 release 须先重签 revocation。**关闭**：P3-08。
 
 ### 6.2 契约演进待办（2026-09-11 自 `TODOList_schema_extend.md` 并入，原文已归档）
 
@@ -696,7 +711,7 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 1. ~~修订 ADR-002/018，定义 bundle digest v2、路径规范化和兼容策略。~~（2026-09-01 就地修订，**2026-09-09 owner 签收规格**；兼容策略结论 = **无历史产物、不设兼容期**）
 2. ~~先实现 TS/Dart verifier 与 golden，再实现 signer/packer。~~（**2026-09-09 两端落地、CI 全绿**，见 §2.4）
 3. ~~增加 host version gate~~（**已改判：不新增**——`bundleFormat` 严格相等本身即断代拒载，见 ADR-002 §2.3 / ADR-018 §2.9.1 第 8 项；将来 masker 强制那一跳的 gate 亦复用同一机制断代到 `/3`，见 ADR-026 §2.7.1），**重新签发 bootstrap/catalog/bundle** —— 即重签仪式，**已于 2026-09-11 执行**（§2.7）。
-4. ~~增加 P0-15 发布台账~~（2026-09-11 首批 5 条 complete 记录入账）和 release 防回滚 / 新鲜度检查（P3-08，仍开）。
+4. ~~增加 P0-15 发布台账~~（2026-09-11 首批 5 条 complete 记录入账）~~和 release 防回滚 / 新鲜度检查（P3-08）~~（2026-09-11 关闭，§2.9）。
 5. 由非实现者完成人工安全复核和迁移演练。
 
 退出条件：P0-01、P0-15 关闭；旧产物处理方式明确；只改路径必然验签失败。

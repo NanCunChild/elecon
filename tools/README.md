@@ -63,6 +63,19 @@ npm run bootstrap:check -- --dist=../dist-full  # 仅本地有 dist 时可用：
 均不签名、不裁定信任；bootstrap 与线上产物同格式，客户端 loader 仍对其重跑验签 + 各门后才采用。
 `dist:export` 出来的 `catalog.json.gz` gzip 外壳可与仪式产物不同，被签的内层 `catalogJson` 逐字节相同。
 
+## Release Gate（P3-08）
+
+```bash
+npm run release:gate                                   # 读入库 bootstrap + 台账 + trust_anchors.dart；error 即非零
+npm run release:gate -- --stale-revocation=warn        # PR CI 用：revocation 过期只告警
+npm run release:gate -- --online-base=https://…/adapters/   # 另比对线上 sequence（拉不到即 error）
+npm run release:gate -- --now=2026-09-20T00:00:00Z     # 演练：模拟未来时点
+```
+
+G1 锚 + 验签 / G2 新鲜度 / G3 kill-switch / G4 台账 / G5 下次 revocation 输入 / G6 线上，判据见
+`docs/reference/adapter_release.md` §10。`release:package` 亦以入库 bootstrap 为基线在签名前拒绝序号倒退
+（首次发布用 `--no-baseline`）。
+
 ## Hardware Signing Setup
 
 `pkcs11js` 是可选的原生依赖：普通开发、校验、扫描、smoke 和验签不需要它；只有实际使用

@@ -24,6 +24,7 @@
 | **传输封套** | 上线三字段对象 `{envelopeB64, signature, blobs}`；catalog / revocation 的外层同构 | ADR-018 §2.9.1 |
 | **digest v2** | 对 bundle 信封字节整体哈希（v1 只哈希内容、不覆盖路径，已被保序重命名攻击击穿） | ADR-002 §2.3、`docs/archive/bundle_digest_v1_superseded.md` |
 | **sequence** | catalog / revocation 的单调序号，防回滚；线上现为 catalog 8 / revocation 2 | ADR-018 §2.5、整改清单 §2.7 |
+| **发版门（release gate）** | `release:gate` G1–G6：以客户端锚验签 bootstrap、sequence 不倒退、revocation 未过期、每个 entry 入台账；release 工作流硬失败 | P3-08、`adapter_release.md` §10 |
 | **台账（ledger）** | `release/adapter-release-ledger.json`：每次 official 签发的 source commit / digest / sequence / 签署人 | P0-15、`adapter_release.md` §7 |
 
 ## 运行时

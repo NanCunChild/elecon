@@ -138,7 +138,8 @@ npm run release:package -- \
 | `--out=` | dist 输出目录（不入仓）；随后 `bootstrap:sync` 进仓 |
 | ~~`--base-url=`~~ | **已移除**（2026-09-11，ADR-018 §2.5.1）：catalog 不再描述端点，传了会报错 |
 | `--revocation=` | **未签名**输入 JSON（`release/revocation.json`）；输出为已签 `revocation.json` |
-| `--sequence=` | catalog **单调递增**（防回滚）；同端点更新必须 `> last published` |
+| `--sequence=` | catalog **单调递增**（防回滚）；打包器以入库 bootstrap 为基线强制 `> 已签发`，revocation 同序号改内容也拒（P3-08） |
+| `--baseline=` / `--no-baseline` | 基线目录缺省 `client/assets/bootstrap`；**仅首次发布**可 `--no-baseline` |
 | `--key-id=` / `--serial=` / `--pkcs11-module=` | 硬件签身份；默认 keyId `elecon-official-ncc-1` |
 | `--pin-provider=tty` | 无 GUI pinentry 时改用终端 PIN |
 
@@ -343,5 +344,43 @@ npm run bootstrap:sync -- --dist=../dist-xidian --assets=../client/assets/bootst
 | 文档 | 内容 |
 |---|---|
 | [`signing_ceremony.md`](./signing_ceremony.md) | **密钥生成/PIN/触碰策略/公钥导出**；一次性或换钥 |
-| **本文** | **每次 adapter 发版**：unsigned → digest 比对 → `release:package` → `bootstrap:sync` 入仓 + 台账 → `dist:export` 上传 D |
+| **本文** | **每次 adapter 发版**：unsigned → digest 比对 → `release:package` → `bootstrap:sync` 入仓 + 台账 → `release:gate` → `dist:export` 上传 D；§10 发版门与吊销演练 |
 | [`tools/README.md`](../../tools/README.md) | 工具入口、helloworld 试发布示例 |
+
+---
+
+## 10. 发版门与急性吊销演练（P3-08）
+
+### 10.1 发版门
+
+`npm run release:gate -w tools` 只读检查**入库的** `client/assets/bootstrap/`（随 app 打包、也是上传源）：
+
+| 项 | 判据 | 结果 |
+|---|---|---|
+| G1 | catalog / revocation 的 keyId ∈ 客户端 `trust_anchors.dart` 的 active 锚，且以该公钥真实验签 | error |
+| G2 | revocation 在 TTL 内、issuedAt 不超前 >5 分钟 | error（PR CI 降为 warn）；catalog 过 TTL 只 warn |
+| G3 | revocation.killSwitch 为 false | error，`--allow-kill-switch` 放行 |
+| G4 | 每个 catalog entry 在台账有记录且 digest / catalog / revocation sequence 一致；台账最大序号 ≤ bootstrap | error |
+| G5 | `release/revocation.json` sequence ≥ 已签；相等时内容逐字段相同 | error |
+| G6 | `--online-base=` 给出时，bootstrap sequence ≥ 线上 | error；拉不到也 error |
+
+接线：PR CI 每次跑（G2 过期只告警）；`release.yml` 经 `release_gate: true` 让 G2 硬失败。
+打包器 `release:package` 另在**签名前**按基线拒绝 catalog 序号不严格递增、revocation 倒退或同序号改内容（§4）。
+
+> **注意 TTL**：当前签发的 revocation `ttlSeconds=604800`（7 天，到期 2026-09-18T06:31Z）。到期后任何 release
+> 都会被 G2 挡下，须重签 revocation（走 §4，只改 `release/revocation.json` 的 `issuedAt` 并 bump `sequence`）。
+> 这是有意为之：发出去的 app 不应携带一份已过期的基线吊销清单。
+
+### 10.2 急性吊销演练（无需真事故，建议每次换钥或季度做一次）
+
+目标：从「决定吊销」到「线上 + 仓内都生效」走完整条链，并让发版门证明中间没有一步被跳过。
+
+1. 改 `release/revocation.json`：`sequence` +1，`issuedAt` 改为现在，按需加 `entries[]`（按 digest 或版本区间）、
+   `minVersions`，或在密钥泄露事件下置 `killSwitch: true`。
+2. **先跑门看它拒什么**：`npm run release:gate -w tools` 此时应报 G5「内容已改但 sequence 未 bump」——
+   若你漏了第 1 步的 bump；bump 后应通过（输入领先已签是合法的「已准备」状态）。
+3. `release:package`（§4，需 YubiKey；catalog `--sequence` 亦 +1）→ `bootstrap:sync` → `bootstrap:verify`。
+4. `release:gate`：G4 此时应报「未入台账」——补台账（§7 `ledger:extract`）后再跑，应通过；
+   若置了 killSwitch，门会 G3 拒，须 `--allow-kill-switch` 明确放行。
+5. `dist:export` → 上传 → `release:gate --online-base=<base>`：线上与 bootstrap 一致即通过。
+6. 演练结束若是假吊销，再走一遍 1–5 把它撤回（sequence 继续递增，**不回滚**）。

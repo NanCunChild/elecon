@@ -47,6 +47,15 @@ writeFileSync(
 );
 writeFileSync(join(adapter, "index.js"), "export const capabilities = {};\n");
 
+const revocation4 = {
+  sequence: 4,
+  issuedAt: "2026-07-19T00:00:00Z",
+  ttlSeconds: 86400,
+  minVersions: {},
+  killSwitch: false,
+  entries: [],
+};
+
 try {
   const result = await buildRelease(
     {
@@ -55,14 +64,7 @@ try {
       sequence: 4,
       issuedAt: "2026-07-19T00:00:00Z",
       ttlSeconds: 86400,
-      revocation: {
-        sequence: 4,
-        issuedAt: "2026-07-19T00:00:00Z",
-        ttlSeconds: 86400,
-        minVersions: {},
-        killSwitch: false,
-        entries: [],
-      },
+      revocation: revocation4,
     },
     new FakeBackend(),
   );
@@ -84,6 +86,27 @@ try {
     listJson: string;
   };
   assert.equal(JSON.parse(revocationOuter.listJson).sequence, 4);
+
+  // P3-08 单调性基线：catalog 不严格大于 / revocation 倒退 / 同序号改内容 → 拒签（签名前就拒，不触碰 backend）。
+  const baseline = { catalogSequence: 4, revocation: { ...JSON.parse(JSON.stringify(revocation4)) } };
+  const withBaseline = (over: { sequence?: number; revocation?: typeof revocation4 }) =>
+    buildRelease(
+      {
+        adaptersRoot: adapters,
+        outputDir: join(root, "dist-baseline"),
+        sequence: over.sequence ?? 5,
+        issuedAt: "2026-07-19T00:00:00Z",
+        ttlSeconds: 86400,
+        revocation: over.revocation ?? revocation4,
+        baseline,
+      },
+      new FakeBackend(),
+    );
+  await assert.rejects(() => withBaseline({ sequence: 4 }), /严格大于/);
+  await assert.rejects(() => withBaseline({ revocation: { ...revocation4, sequence: 3 } }), /倒退/);
+  await assert.rejects(() => withBaseline({ revocation: { ...revocation4, killSwitch: true } }), /必须 bump/);
+  await withBaseline({}); // 合法：catalog 5 > 4，revocation 同序号同内容
+  await withBaseline({ revocation: { ...revocation4, sequence: 5, killSwitch: true } }); // bump 后可改
 
   writeFileSync(join(root, "outside.txt"), "must not be signed\n");
   symlinkSync(join(root, "outside.txt"), join(adapter, "asset.txt"));
