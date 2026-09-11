@@ -138,6 +138,96 @@
         "signer",
         "reviewReference"
       ]
+    },
+    {
+      "status": "complete",
+      "adapterId": "school-fudan",
+      "adapterVersion": "0.1.1",
+      "sourceCommit": "444b92c35c413ba0dccee2cceded4e2f64f4b1c8",
+      "bundleDigest": "59c632d58996c5c5759a70d15644a189b9cc730944dd0a66695138dbc550dabf",
+      "policy": {
+        "included": false,
+        "digest": null
+      },
+      "catalogSequence": 8,
+      "revocationSequence": 2,
+      "keyId": "elecon-official-ncc-1",
+      "signedAt": "2026-09-11T06:34:22Z",
+      "signer": "NanCunChild",
+      "reviewReference": "PR #111 + docs/reference/bundle_digest_v2_signoff_checklist.md §5（owner 2026-09-11 签收）",
+      "missingFacts": []
+    },
+    {
+      "status": "complete",
+      "adapterId": "school-helloworld",
+      "adapterVersion": "0.1.1",
+      "sourceCommit": "444b92c35c413ba0dccee2cceded4e2f64f4b1c8",
+      "bundleDigest": "ebc14c0306dee2a95c279e3238134f6fc60fae4584c77c30791ca06e077eda6c",
+      "policy": {
+        "included": false,
+        "digest": null
+      },
+      "catalogSequence": 8,
+      "revocationSequence": 2,
+      "keyId": "elecon-official-ncc-1",
+      "signedAt": "2026-09-11T06:34:22Z",
+      "signer": "NanCunChild",
+      "reviewReference": "PR #111 + docs/reference/bundle_digest_v2_signoff_checklist.md §5（owner 2026-09-11 签收）",
+      "missingFacts": []
+    },
+    {
+      "status": "complete",
+      "adapterId": "school-thu",
+      "adapterVersion": "0.1.1",
+      "sourceCommit": "444b92c35c413ba0dccee2cceded4e2f64f4b1c8",
+      "bundleDigest": "cba878ad987c0adf30a705093254a82a9d3986f026fdc894d33fce6565f03f6a",
+      "policy": {
+        "included": false,
+        "digest": null
+      },
+      "catalogSequence": 8,
+      "revocationSequence": 2,
+      "keyId": "elecon-official-ncc-1",
+      "signedAt": "2026-09-11T06:34:22Z",
+      "signer": "NanCunChild",
+      "reviewReference": "PR #111 + docs/reference/bundle_digest_v2_signoff_checklist.md §5（owner 2026-09-11 签收）",
+      "missingFacts": []
+    },
+    {
+      "status": "complete",
+      "adapterId": "school-xidian",
+      "adapterVersion": "0.4.1",
+      "sourceCommit": "444b92c35c413ba0dccee2cceded4e2f64f4b1c8",
+      "bundleDigest": "6e6f196c049c30ffd100058d84f43557ee4a47509aef83c612df2f2e3440f991",
+      "policy": {
+        "included": false,
+        "digest": null
+      },
+      "catalogSequence": 8,
+      "revocationSequence": 2,
+      "keyId": "elecon-official-ncc-1",
+      "signedAt": "2026-09-11T06:34:22Z",
+      "signer": "NanCunChild",
+      "reviewReference": "PR #111 + docs/reference/bundle_digest_v2_signoff_checklist.md §5（owner 2026-09-11 签收）",
+      "missingFacts": []
+    },
+    {
+      "status": "complete",
+      "adapterId": "school-xjt",
+      "adapterVersion": "0.1.1",
+      "sourceCommit": "444b92c35c413ba0dccee2cceded4e2f64f4b1c8",
+      "bundleDigest": "64fde67426d615d61ee56d4585ef60443be4493823f68f3257218da5c95965a0",
+      "policy": {
+        "included": false,
+        "digest": null
+      },
+      "catalogSequence": 8,
+      "revocationSequence": 2,
+      "keyId": "elecon-official-ncc-1",
+      "signedAt": "2026-09-11T06:34:22Z",
+      "signer": "NanCunChild",
+      "reviewReference": "PR #111 + docs/reference/bundle_digest_v2_signoff_checklist.md §5（owner 2026-09-11 签收）",
+      "missingFacts": []
     }
   ]
 }

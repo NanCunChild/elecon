@@ -37,7 +37,7 @@ https://elecon.xidian.one/adapters/
 | 核心仓 vendored 副本 | `elecon/adapters/school-<id>/`（可能滞后；**签哪份以 A 或你确认的源为准**） |
 | 签名/打包工具 | `elecon/tools/` |
 | 未签吊销输入 | `elecon/release/revocation.json` |
-| 出签后 dist（不入仓，上传用） | 例如 `elecon/dist-xidian/` |
+| 出签后 dist（不入仓，上传用） | 例如 `elecon/dist-full/` |
 | App 内 bootstrap 基线 | `elecon/client/assets/bootstrap/`（从 dist **派生**，`npm run bootstrap:sync`） |
 
 发布前确认：
@@ -117,8 +117,8 @@ npx tsx src/signer/pkcs11.ts selftest \
 cd ~/projects/elecon/tools
 
 npm run release:package -- \
-  --adapters=../../elecon-adapters/adapters/school-xidian \
-  --out=../dist-xidian \
+  --adapters=../../elecon-adapters/adapters \
+  --out=../dist-full \
   --base-url=https://elecon.xidian.one/adapters \
   --revocation=../release/revocation.json \
   --sequence=<线上 sequence + 1> \
@@ -142,7 +142,7 @@ npm run release:package -- \
 成功输出示例：
 
 ```text
-dist-xidian/
+dist-full/
   catalog.json.gz
   revocation.json
   bundles/
@@ -154,7 +154,7 @@ dist-xidian/
 ```bash
 python3 - <<'PY'
 import gzip, json
-sc = json.load(gzip.open("../dist-xidian/catalog.json.gz"))
+sc = json.load(gzip.open("../dist-full/catalog.json.gz"))
 cat = json.loads(sc["catalogJson"])
 print("sequence", cat["sequence"], "keyId", sc["keyId"])
 for e in cat["entries"]:
@@ -188,13 +188,13 @@ PY
 ```bash
 # rsync（路径按运维实际改）
 rsync -av --delete \
-  ~/projects/elecon/dist-xidian/ \
+  ~/projects/elecon/dist-full/ \
   user@host:/var/www/elecon/adapters/
 
 # 本地 Docker 冒烟
 docker build -t elecon-endpoint ~/projects/elecon/deploy/public-endpoint
 docker run --rm -p 8080:80 \
-  -v ~/projects/elecon/dist-xidian:/srv/dist:ro elecon-endpoint
+  -v ~/projects/elecon/dist-full:/srv/dist:ro elecon-endpoint
 curl -sI http://localhost:8080/catalog.json.gz
 
 # 生产
@@ -213,11 +213,11 @@ bootstrap 是 dist 的**纯字节派生**，不是第二份手工副本。出签
 ```bash
 cd ~/projects/elecon/tools
 npm run bootstrap:sync -- \
-  --dist=../dist-xidian \
+  --dist=../dist-full \
   --assets=../client/assets/bootstrap
 
 # CI / 提交前只校验不写盘
-npm run bootstrap:check -- --dist=../dist-xidian --assets=../client/assets/bootstrap
+npm run bootstrap:check -- --dist=../dist-full --assets=../client/assets/bootstrap
 ```
 
 客户端对 bootstrap 仍走完整验签门。派生后的 `client/assets/bootstrap/**` 可随 app 提交；**`dist-*/` 本身通常不入核心仓**（只作上传工件）。
@@ -249,7 +249,7 @@ catalog、revocation 和每个 bundle 的 `keyId` 与 operator 提供值比较�
 ```bash
 cd ~/projects/elecon
 npm run ledger:extract -w tools -- \
-  --dist=dist-xidian \
+  --dist=dist-full \
   --key-id=<operator-selected-trusted-key-id> \
   --public-key-hex=<matching-32-byte-ed25519-public-key-hex> \
   > /tmp/ledger-draft.json
@@ -259,7 +259,7 @@ release owner 从已审源码仓取得 commit，并提供实际 ceremony / 复�
 
 ```bash
 npm run ledger:extract -w tools -- \
-  --dist=dist-xidian \
+  --dist=dist-full \
   --key-id=<operator-selected-trusted-key-id> \
   --public-key-hex=<matching-32-byte-ed25519-public-key-hex> \
   --source-commit=<40-hex-source-commit> \

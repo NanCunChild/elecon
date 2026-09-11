@@ -53,7 +53,7 @@ npm run release:package -- \
 新 dist 后运行下面命令重新派生，避免两处漂移：
 
 ```bash
-npm run bootstrap:sync                 # 默认 dist-helloworld → client/assets/bootstrap
+npm run bootstrap:sync                 # 默认 dist-full → client/assets/bootstrap
 npm run bootstrap:sync -- --dist=../dist --assets=../client/assets/bootstrap
 ```
 
@@ -109,7 +109,7 @@ npx tsx src/signer/pkcs11.ts selftest \
 cd tools
 npm run release:package -- \
   --adapters=../adapters/school-helloworld \
-  --out=../dist-helloworld \
+  --out=../dist-full \
   --base-url=https://elecon.xidian.one/adapters \
   --revocation=../release/revocation.json \
   --sequence=1 \
@@ -120,5 +120,5 @@ npm run release:package -- \
 ```
 
 命令会生成 `catalog.json.gz`、签名 `revocation.json` 和 `bundles/<digest>.json.gz`。上传时将
-`dist-helloworld/` 内的内容直接放到远端 `/adapters/` 目录，不要上传原始 adapter 源码、私钥或
+`dist-full/` 内的内容直接放到远端 `/adapters/` 目录，不要上传原始 adapter 源码、私钥或
 输入用的未签名 `release/revocation.json`。
