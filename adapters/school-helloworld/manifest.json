@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.0",
   "adapterId": "school-helloworld",
-  "adapterVersion": "0.1.0",
+  "adapterVersion": "0.1.1",
   "schoolId": "test-helloworld",
   "displayName": "HelloWorld 通路测试",
   "trustTier": "official",

@@ -35,8 +35,9 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | owner 已签收 | P0-02、P0-03、P0-04、P0-08、P0-11、P0-12、**P0-05** | 实现与自动化测试已完成；NanCunChild 于 2026-08-06 完成人工复核并授权关闭。**P0-05 的 ADR-009 rev-5 与两端实现已于 2026-09-10 由 owner 复签**，自此不再是签收阻塞项 |
 | 待真机签收 | P0-06、P0-07 | iOS 已降级为 S/M 且 H 路径 fail-closed；Android 已用 `KeyInfo` 拒绝 software/unknown；仍需 iOS 升级安装及 Android emulator/TEE/StrongBox 矩阵 |
 | 部分落地，保持开放 | P0-10 | TS 已阻止取消后 Commit；Dart 已有 firewall/commit 原语与严格 UTF-8 状态；生产 wiring 仍依赖已验签 policy loader/matcher、执行级 query harvest 事务、P1-08/P1-09/P1-12 |
-| 待仓库/历史事实 | P0-13、P0-15 | reusable CI、main-only preflight、tag SHA/ancestry、审批 hook、真实验签 ledger 工具已落地； `release` Environment、不可变 `v*` tag 规则配置完成。**P0-15 的历史人工事实已于 2026-09-09 由 owner 裁定为「合法留白」**，不再等待补齐——见 §2.3 |
-| ADR / 签收阻塞 | ~~P0-01~~（**2026-09-09 规格已签收，改为「可开工，待实现」**）、P0-09、P0-14 | P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；**P0-01 于 2026-09-01 解除 ADR 阻塞**——ADR-002 §2.3 / ADR-018 §2.9.1 已就地修订（digest v2 = 对 envelope 字节整体哈希），缺陷已由 `path-binding.redcase.ts` 复现为可执行验收门（现 2/14 红），**owner 已于 2026-09-09 签收该修订，实现可开工**（签收范围为规格，实现仍须人工复核），见 §2.2。**P0-14 于 2026-08-07 改判**：不再是 ADR 阻塞——slice 1–3 已落地且有 Android 产物级证据，剩余门槛是 slice 4 红线措辞（owner）、非 Android 平台产物断言、人工安全签收（见 §3.2）|
+| owner 已签收（2026-09-11） | **P0-13** | reusable CI、main-only preflight、tag SHA/ancestry、审批 hook 已落地；`release` Environment（required_reviewers + branch_policy）与 `refs/tags/v*` ruleset（creation/update/deletion）经 GitHub API 核实存在（§2.6），owner 2026-09-11 勾选关闭 |
+| 待重签仪式 | P0-01、P0-15 | **P0-01 实现已落地且人工安全复核已签收（2026-09-11，PR #111）**；P0-15 台账工具已落地、历史人工事实 2026-09-09 裁定「合法留白」（§2.3）。两项同随 digest v2 重签仪式关闭（§2.5） |
+| ADR / 签收阻塞 | P0-09、P0-14 | P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；**P0-01 于 2026-09-01 解除 ADR 阻塞**——ADR-002 §2.3 / ADR-018 §2.9.1 已就地修订（digest v2 = 对 envelope 字节整体哈希），缺陷已由 `path-binding.redcase.ts` 复现为可执行验收门（现 2/14 红），**owner 已于 2026-09-09 签收该修订，实现可开工**（签收范围为规格，实现仍须人工复核），见 §2.2。**P0-14 于 2026-08-07 改判**：不再是 ADR 阻塞——slice 1–3 已落地且有 Android 产物级证据，剩余门槛是 slice 4 红线措辞（owner）、非 Android 平台产物断言、人工安全签收（见 §3.2）|
 
 本轮自动验证：`npm run lint`、`npm run typecheck`、`npm run smoke:all`（server 26/26、tools 18/18）、`flutter analyze`、`flutter test`（744 项）、全量 scanner、release ledger smoke/validate、release preflight、recorder Python tests、`git diff --check`。自动验证不是安全签收的替代品。
 
@@ -199,7 +200,7 @@ earlier adapterId+adapterVersion`）——**它是对的**：「版本号唯一�
 
 ### 2.4 执行状态（2026-09-09 · P0-01 digest v2 两端落地）
 
-**状态：代码已落地、两端 CI 全绿；🔒 待人工安全复核 + 待重签仪式。**
+**状态：代码已落地、两端 CI 全绿；人工安全复核已签收（2026-09-11，PR #111，见 §2.6）；待重签仪式。**
 
 验收门 `path-binding.smoke.ts` **26/26 全绿**；tools `typecheck` 0 错、`smoke:all` 19/19；
 client `flutter analyze` 0 问题、`flutter test` **856 通过 / 12 skip**。跨语言 golden
@@ -210,7 +211,7 @@ client `flutter analyze` 0 问题、`flutter test` **856 通过 / 12 skip**。�
 产出的 envelopeBytes **319 B 逐字节相同**，digest 同为 `6e6f196c…f991`。ADR-002 §3 风险 5
 （跨实现漂移）在签发侧因此有了可复算的实证，而不只是「两边都照 ADR 写了」。
 
-#### 落地时新增的三项决策（🔒 **须 owner 签收**，均超出 2026-09-09 已签收的规格文字）
+#### 落地时新增的三项决策（均超出 2026-09-09 已签收的规格文字；**owner 已于 2026-09-11 逐项签收**）
 
 | # | 决策 | 起因与理由 |
 |---|---|---|
@@ -241,10 +242,10 @@ client `flutter analyze` 0 问题、`flutter test` **856 通过 / 12 skip**。�
 
 | # | 事项 | 归属 |
 |---|---|---|
-| 1 | 🔒 **人工安全复核**：本次改动全在签名/验签承重路径，AGENTS.md §1 明令 AI 不得独自闭环 | owner |
-| 2 | 🔒 **签收上表 A/B/C 三项决策** | owner |
+| 1 | ~~🔒 人工安全复核~~ **已完成（2026-09-11）**：owner 按 [`bundle_digest_v2_signoff_checklist.md`](../reference/bundle_digest_v2_signoff_checklist.md) 逐文件 / 攻击场景复核，首轮 4 条意见修复后复签，随 PR #111 合并 | owner |
+| 2 | ~~🔒 签收上表 A/B/C 三项决策~~ **已签收（2026-09-11）** | owner |
 | 3 | **离线 YubiKey 重签仪式**：仓内 7 份 v1 产物在 v2 下一律拒载（item 8「无代码兼容层」的预期行为）。`client/test/school_manifest_test.dart` 的 bootstrap 用例已做**条件跳过**——一旦重签为 v2 自动恢复运行，不依赖任何人记得回来删一行 | owner（物理动作） |
-| 4 | 重签时 bump `school-helloworld` 版本号（§2.3 的 equivocation 流程修正） | owner |
+| 4 | 重签时 bump 版本号——**不只 helloworld，全部 5 份**（§2.5 核实）；2026-09-11 已在 A 仓 bump fudan/thu/xjt/helloworld 0.1.0 → 0.1.1，xidian 0.4.1 未签发过不动 | 已做 |
 | 5 | `elecon-adapters` 侧两处规则同步（详见下表） | 与 A 仓同批 |
 
 #### `elecon-adapters` 侧待同步（截至 2026-09-09 比对）
@@ -274,7 +275,7 @@ client `flutter analyze` 0 问题、`flutter test` **856 通过 / 12 skip**。�
 |---|---|---|---|
 | 1 | **5 个 official adapter 里 2 个过不了 validator** | `--intended-tier=official` 逐个实跑：`school-fudan` ✓、`school-xjt` ✓、`school-helloworld` ✓；`school-thu` ✗、`school-xidian` ✗ 均为 `C2_emits_mismatch`（manifest `elecon.grades.list@1.0` vs registry `@1.1`） | A 仓 —— **2026-09-10 已修**（两份 manifest bump 到 `1.1`；见下「已解决」） |
 | 2 | **带 `masker.json` 的 bundle 签不出来** | `tools/src/validator/index.ts` 的 `RM0_host_gate_unavailable` 是**无条件 error**：只要 adapter 根有 `masker.json`，即使策略合法也拒绝签发 | 已由 **ADR-026 §2.7.1（2026-09-10 owner 决策）** 定出路：gate = `bundleFormat` 断代到 `/3`，与移除 RM0、loader 接线同批。**故本次仪式不带 `masker.json`**，见下「排期后果」 |
-| 3 | 🔒 **人工安全复核必须排在仪式之前** | 仪式是拿 official 私钥为这套验签实现背书；复核未做即签 = 用未复核代码铸造正式信任 | owner，顺序不可换 |
+| 3 | ~~🔒 人工安全复核必须排在仪式之前~~ **已解除（2026-09-11 签收）** | 仪式是拿 official 私钥为这套验签实现背书；复核未做即签 = 用未复核代码铸造正式信任 | owner，顺序不可换 |
 
 #### 两处现有文档低估的事实
 
@@ -346,7 +347,7 @@ npm run ledger:validate                # 应不再是 incomplete (6 of 6)
 **签发侧跨实现一致性（ADR-002 §3 风险 5）扩到全部 5 份**：A 仓 `npm run bundle` 与核心 `signer digest`
 对 `school-fudan/helloworld/thu/xidian/xjt` 的 sha256 **逐一相同**（此前只核过 xidian 一份）。
 
-**P0-13 剩余门槛已核实为事实（待 owner 勾选关闭）**：GitHub API 实读——`release` Environment 存在且带
+**P0-13 剩余门槛已核实为事实（owner 2026-09-11 勾选关闭）**：GitHub API 实读——`release` Environment 存在且带
 `required_reviewers` + `branch_policy`；tag ruleset 对 `refs/tags/v*` 启用 `creation`/`update`/`deletion`
 三条规则（不可变 tag）。§2.1「仍需配置 `release` Environment、不可变 `v*` tag 规则」一项据此**作废**。
 
@@ -365,9 +366,9 @@ pin bump 到 `ba7f190` 后复跑：server smoke **28/28**（card 项转绿）、
 已修为两端统一的规范形解码（并顺带关掉 Dart 接受 URL-safe 字母表的反向不对称），红用例 E9a–E9d、
 golden +2（现 21 条）。其余为清单措辞与过期注释，已改。记录见签收清单 §6。
 
-**待办（本节落地后）**：① 🔒 owner 按签收清单复核；② 仪式前在 A 仓 bump `school-fudan/thu/xjt/helloworld`
-`adapterVersion` 0.1.0 → 0.1.1（`school-xidian` 已是未签发过的 0.4.1，不动）并把 pin 移到该提交；
-③ 举行 §2.5 所列参数的仪式；④ 合并后 `git branch -f main origin/main`，本地 main 不再领先。
+**待办（本节落地后）**：~~① owner 按签收清单复核~~（2026-09-11 已签，PR #111 合并）；~~② 仪式前在 A 仓 bump `school-fudan/thu/xjt/helloworld`
+`adapterVersion` 0.1.0 → 0.1.1（`school-xidian` 已是未签发过的 0.4.1，不动）~~（2026-09-11 已做，核心 `adapters/school-helloworld` 副本同步）并把 pin 移到该提交（`444b92c`，已做）；
+③ 举行 §2.5 所列参数的仪式；~~④ 合并后 `git branch -f main origin/main`~~（已做）。
 
 ---
 
