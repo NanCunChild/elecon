@@ -11,7 +11,7 @@
 |---|---|---|---|---|
 | [000](./adr_000_abstract.md) | Accepted | 顶层约束生效 | 按子 ADR | 总纲 |
 | [001](./adr_001_contract.md) | Accepted | 部分落地 | 契约改动逐项评审 | P1-13/P1-15、P3-04/P3-06 |
-| [002](./adr_002_trust_model.md) | Accepted；**§2.3 digest v2 已签收（owner NanCunChild 2026-09-09）** | §2.3 digest v2 **实现已落地、两端 CI 全绿（2026-09-09）**；第 8 项重签仪式未执行，仓内 7 份 v1 产物在 v2 下拒载；§2.1.1 Sideload 消歧（2026-09-08）**未落地**（`C3_sideload_must_declarative` 仍开火，移除随 ADR-033 §5） | **§2.3 规格签收完成（2026-09-09）；实现人工安全复核已签收（owner NanCunChild 2026-09-11，PR #111，清单 [`bundle_digest_v2_signoff_checklist.md`](../reference/bundle_digest_v2_signoff_checklist.md)）**；§2.1.1 待人工 | P0-01/P0-14 |
+| [002](./adr_002_trust_model.md) | Accepted；**§2.3 digest v2 已签收（owner NanCunChild 2026-09-09）** | §2.3 digest v2 **实现已落地、两端 CI 全绿（2026-09-09）**；第 8 项重签仪式已执行（2026-09-11：catalog seq 8 / revocation seq 2，台账首批 5 条 complete）；§2.1.1 Sideload 消歧（2026-09-08）**未落地**（`C3_sideload_must_declarative` 仍开火，移除随 ADR-033 §5） | **§2.3 规格签收完成（2026-09-09）；实现人工安全复核已签收（owner NanCunChild 2026-09-11，PR #111，清单 [`bundle_digest_v2_signoff_checklist.md`](../reference/bundle_digest_v2_signoff_checklist.md)）**；§2.1.1 待人工 | P0-01/P0-14 |
 | [003](./adr_003_transport.md) | Accepted | 抽象已落地；app-tunnel 未落地 | 待人工 | ADR-032 |
 | [004](./adr_004_ui_sdui.md) | Accepted | typed UI 框架已落地 | 按契约改动 | P4-03/P4-05 |
 | [005](./adr_005_runtime.md) | Accepted | 已落地 | 已有双端回归 | 共享 golden 只覆盖已使用语义 |
@@ -27,7 +27,7 @@
 | [015](./adr_015_manifest_login.md) | Accepted | 已落地 | 已有人工评审；增量另审 | 平台能力见 ADR-016 |
 | [016](./adr_016_complex_login.md) | Accepted | 部分平台落地 | 待真机/人工 | P2-12/P2-13 |
 | [017](./adr_017_sso_master_credential.md) | Accepted | 部分落地 | 待人工 | Xidian mint 闭环计划 |
-| [018](./adr_018_adapter_distribution.md) | Accepted；**§2.9.1 digest v2 已签收（owner NanCunChild 2026-09-09）** | §2.9.1 **落地清单 1–7、11 项已实现、两端 CI 全绿（2026-09-09）**；第 8 项重签仪式未执行 | **§2.9.1 规格签收完成（2026-09-09）；实现人工安全复核 + 落地决策 A/B/C 已签收（owner NanCunChild 2026-09-11，PR #111）** | P0-01/P0-15、P3-07/P3-08 |
+| [018](./adr_018_adapter_distribution.md) | Accepted；**§2.9.1 digest v2 已签收（owner NanCunChild 2026-09-09）**；**§2.5.1 catalog 去端点化（owner 决策 2026-09-11）** | §2.9.1 **落地清单 1–7、11 项已实现、两端 CI 全绿（2026-09-09）**；第 8 项重签仪式已执行（2026-09-11）；§2.5.1 **已落地**（契约/工具/客户端同批，`url` 暂留可选待下次仪式后删） | **§2.9.1 规格签收完成（2026-09-09）；实现人工安全复核 + 落地决策 A/B/C 已签收（owner NanCunChild 2026-09-11，PR #111）**；§2.5.1 实现待人工复核 | P0-01/P0-15；P3-07 / P3-08 已关（bootstrap 单源 + 发版门） |
 | [019](./adr_019_classroom_available.md) | Accepted | 契约与 UI 基线已落地 | 契约已评审 | adapter 签发/真机仍开放 |
 | [020](./adr_020_url_query_credential.md) | Accepted | 已落地 | 已人工复核 | 真机验收仍开放 |
 | 021 | Reserved | 未起草 | 不适用 | P3-05 先决定 Money 领域语义 |

@@ -1,7 +1,7 @@
 # ADR-018：adapter 仓库分离 · 分级审计 · 打包与签名途径 · 解释器版本同步
 
 - **状态**：**已接受（Accepted） 2026-07-15 经人工评审批准。** 触碰红线 #4（仅官方签名加载）/#5（adapter 越薄）/#6（契约承重墙）/#2（公网零凭证）/#1（凭证）。**决策已定，可据以实现;但实现层仍受 [AGENTS.md](../../AGENTS.md) §1 约束**——签名/加载/分发/凭证等价物检测属安全敏感承重路径，**AI 不得独自闭环**（实现与测试须人工主导 + 安全清单 + ≥1 人工审），此约束不因 ADR 已接受而解除。
-- **日期**：2026-07-15（**修订 2026-07-16**（**经人工 owner 评审批准**，真机接线后回填）：§2.3 硬件签名由「待接线」改为**已接线并经真机核验**（`YubiKeyPkcs11Signer`，`CKM_EDDSA`，首把密钥 `elecon-official-ncc-1`）+ 补**密钥形态**（片上生成 / 槽位 9c / PIN+触碰 ALWAYS / **不放 X.509 证书** / 固件 ≥5.7.0）+ §4 勾掉 signer 项并声明新依赖 `pkcs11js`（MIT）。**四信任域、流水线、catalog/bundle 格式、加载器设计均未变**;ADR-002 §2.3/§3/§4 同步修订。）
+- **日期**：2026-07-15（**修订 2026-09-11**：新增 §2.5.1「catalog 只描述文件，不描述端点」——entry `url` 弃用、客户端自持 base URL、DEV 可 dart-define 覆盖；契约改动同批落地，见 `contract/CHANGELOG.md`）（**修订 2026-07-16**（**经人工 owner 评审批准**，真机接线后回填）：§2.3 硬件签名由「待接线」改为**已接线并经真机核验**（`YubiKeyPkcs11Signer`，`CKM_EDDSA`，首把密钥 `elecon-official-ncc-1`）+ 补**密钥形态**（片上生成 / 槽位 9c / PIN+触碰 ALWAYS / **不放 X.509 证书** / 固件 ≥5.7.0）+ §4 勾掉 signer 项并声明新依赖 `pkcs11js`（MIT）。**四信任域、流水线、catalog/bundle 格式、加载器设计均未变**;ADR-002 §2.3/§3/§4 同步修订。）
 - **依赖**：
   - [`adr_000_abstract.md`](./adr_000_abstract.md)（§2.1 公网哑服务无状态、§2.2 可信核心、§2.4 推 adapter 不发版的边界、§3.3 凭证边界、§3.4 传输底座）
   - [`adr_001_contract.md`](./adr_001_contract.md)（manifest / capability registry 契约、schemaVersion）
@@ -116,7 +116,7 @@ adapter 依赖两层宿主运行时:**QuickJS 引擎**（ADR-005，双端同引�
 
 客户端需要一份索引才知道有哪些 adapter、版本、digest、下载地址 = **catalog**。它被**可信核心验签消费、fail-closed**，与 manifest schema 同等承重,故**作为契约新增**:
 
-- 新增 `contract/catalog.schema.json`（catalog 条目:`adapterId / adapterVersion / digest / url / stdlibMin / capabilities[]`）+ validator + golden。红线 #6，由本 ADR 引入。
+- 新增 `contract/catalog.schema.json`（catalog 条目:`adapterId / adapterVersion / digest / stdlibMin / capabilities[]`；`url` 已于 2026-09-11 弃用，见 §2.5.1）+ validator + golden。红线 #6，由本 ADR 引入。
 - **catalog 本身须签名**（**2026-07-15 确认:与 adapter bundle 同一 Ed25519 / YubiKey pin 公钥集**）+ 带 `sequence` **防回滚** + TTL + last-good 回退——与 revocation list **共用同一「signed distribution manifest」模式**（复用 `tools/src/signer/revocation.ts` 的 `sequence`/`pickNewer`/TTL 机器）。未签名/可回滚的 catalog 可被 CDN 中间人替换成"指向旧的有漏洞版本"。
 - **硬约束:catalog 不得引入新 capability id。** validator 对着 `contract/capability/registry.json` 强制:catalog 里每个 capability 必须已在 registry（既有能力集内）。新 capability/新卡片类型**只能随 app 发版改 registry**（ADR-010 §2.1，守住 §3.3.2(a) 立论）。
 - **签名对象 = catalog 的原始 JSON 字节（byte-exact，2026-07-15 定）。** 线上格式:
@@ -126,10 +126,37 @@ adapter 依赖两层宿主运行时:**QuickJS 引擎**（ADR-005，双端同引�
 
 > **身份绑定（与 §2.9 联动，2026-07-15 定）**:bundle 签名载荷里的 `adapterId/adapterVersion` 与 digest 是**两个维度**——digest 只绑定内容。故 ① **签端**身份一律取自 envelope 内 `manifest.json`（不接受调用方传入）;② **验端**须核对签名身份 == bundle 内 manifest 身份，不符即 fail-closed。否则「digest 覆盖内容 A、载荷却写身份 B」的签名仍可验过，而运行时用的是 bundle 内 manifest（决定 allow/credentials/scope）→ **身份混淆**。这落实 ADR-002 §2.2「与 manifest 自报不符则拒绝加载」。
 
+#### 2.5.1 catalog 只描述文件，不描述端点（2026-09-11 修订，owner 决策）
+
+**决策**：catalog entry **不再携带 `url`**。bundle 以 `digest` 内容寻址，路径恒为 `bundles/<digest>.json.gz`，
+**相对客户端自持的分发 base URL** 解析；catalog、revocation、bundles 三类产物共用同一个 base。
+
+**为什么改**：原设计把 `--base-url` 写进每个 entry 的 `url`，而 `url` 在签名字节里——于是：
+① 换域名 / 迁 CDN = 用 YubiKey 重签 catalog；② `deploy/public-endpoint` 承诺「任意贡献者可自建镜像端点」
+落空——镜像发出的 catalog 仍指回官方域名；③ 公网端点不可用期间无法把真机指向本地端点做 bundle 冒烟。
+三者都不是安全问题，是可用性被无谓地绑在了签名上。**来源本来就不影响信任裁定**：字节从哪来只影响可用性，
+digest 重算 + Ed25519 验签 + 吊销门才是锚（§2.6「缓存/基线非信任源」同理）。
+
+**规则**：
+- `contract/catalog.schema.json`：`url` 从 required 移除、标记弃用；`additionalProperties:false` 不变。
+  **保留为可选仅为兼容 sequence ≤ 8 的已签 catalog**（重签 catalog 只为删一个字段不值一次仪式）；
+  打包器（`release:package`）不再写入、`--base-url` 参数移除；validator 见到即 `K3_deprecated_url` warn。
+  **下一次签名仪式后**（已预定：masker `/3` 断代，catalog ≥ 9）`url` 从 schema 与客户端容忍集中删除。
+- 客户端：解析时**整段忽略** `url`（不校验、不暴露）；`DistributionSource.fetchBundle(digest)` 只收 digest，
+  形态门 `^[0-9a-f]{64}$` 后拼 `base/bundles/<digest>.json.gz`。
+- **客户端自持 base URL**（`kDistributionBaseUrl`）；DEPLOY 恒用官方端点。**DEV-Sideload profile** 可用
+  `--dart-define=ELECON_DISTRIBUTION_BASE_URL=…` 覆盖（可为 http，供本地端点冒烟）；两者皆编译期常量，
+  DEPLOY 构建中覆盖路径被整体折叠掉（ADR-024 release gate 另断言 DEPLOY 无 DEV profile）。覆盖只改
+  「从哪拉字节」，验签门一步不少。
+- 端点 D 的 dist 树因此**端点无关**：同一份签名产物可放官方端点、镜像、或本地 nginx，无需重签。
+
+**不变的**：签名对象仍是 catalog 原始字节（§2.5）；fail-closed 顺序（§2.6）；catalog 不得引入新 capability。
+
 ### 2.6 客户端加载器设计
 
 - **fail-closed 顺序（不可改）**:取 catalog → **验 catalog 签名 + sequence 不回滚** → 下载 bundle → **重算 digest 比对** → **Ed25519 验签（active pin 公钥）** → **查 revocation**（TTL / last-good / kill-switch / minVersion）→ **校验 `stdlibMin` ≤ 本端 stdlib** → 由签名裁定档位 → 交 QuickJS。任一步失败即拒、不加载。
 - **内容寻址缓存**:以 `digest` 为缓存 key——天然抗篡改、去重、支持回滚校验。**不得"验一次缓存永久信任"**:每次加载以内容寻址保证加载的就是验过的字节。
+- **取字节的来源只影响可用性**（§2.5.1）:bundle 按 `base/bundles/<digest>.json.gz` 拉取，base 由客户端自持（DEV 可覆盖）;cache / bootstrap / 网络三源安全等价，编排器只按可用性排序（bootstrap → 网络）。
 - **原子更新**:下载须先验签再落地，杜绝加载半个 bundle。
 - **bundle 预置基线（ADR-010 硬要求）**:app 内打包一组**已签名 baseline adapter + 初始 catalog + 初始 revocation list**,首启/离线可用;远程拉取仅用于"更新/新增数据源"。审核员在提交 build 上即可走通核心功能。
 - **平台节奏（2026-07-15 定）**:**两端都先建好基础设施**（bundle 格式 / catalog / 加载器 / 端点 D）。**远程拉取 Android 先行**;**iOS 基础设施同样建好,但远程拉取功能与 2.5.2(a) 自检押后**再开（与 ADR-016 平台门禁同思路）——差异只在"何时开拉取开关",不在"是否建"。
@@ -285,7 +312,7 @@ gzip(JSON({
 
 **为何也不签压缩包字节**:见 §2.9「为何也不签压缩包字节」。
 
-**落地清单**（🔒 每项均触红线 #4，须人工复核，AI 不得独自闭环）。**第 1–7 与第 11 项已于 2026-09-09 实现，两端 CI 全绿；第 8 项的重签仪式待 owner 执行**（在此之前仓内 7 份 v1 产物一律拒载，这是 item 8「无代码兼容层」的预期行为）:
+**落地清单**（🔒 每项均触红线 #4，须人工复核，AI 不得独自闭环）。**第 1–7 与第 11 项已于 2026-09-09 实现，两端 CI 全绿；第 8 项的重签仪式已于 2026-09-11 执行**（catalog sequence 8 / revocation sequence 2，5 份 adapter 全部 bump 版本号，台账首批 5 条 complete；masker 未随此次，第二次仪式随 §2.7.1 断代到 `/3`；记录见整改清单 §2.7）:
 
 1. `tools/src/bundle/envelope.ts`:envelope 改 descriptor（`path`/`size`/`sha256` + 顶层身份）;显式确定性序列化器（固定键序、无多余空白）;`digest = SHA-256(envelopeBytes)`;`BUNDLE_FORMAT` → `elecon-bundle/2`。
 2. `tools/src/signer/index.ts`:`serializePayload` 加 `contextTag` 前缀;`computeBundleDigest(dir)` 走 `buildEnvelope(dir)` 同一条 digest;`collectBundleFiles` 增全量文件承诺;`canonicalizeContent` → `assertCanonical`（拒绝而非改写）。

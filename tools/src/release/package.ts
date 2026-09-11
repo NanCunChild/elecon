@@ -4,6 +4,10 @@
  * This command produces the complete static dist tree consumed by endpoint D:
  *   catalog.json.gz, revocation.json, and bundles/<digest>.json.gz.
  *
+ * The dist tree is endpoint-agnostic (ADR-018 §2.5.1): the catalog only lists
+ * digests, never URLs, so the same signed tree can be hosted at any base URL
+ * (official endpoint, mirrors, a local smoke server). The client owns the base.
+ *
  * It never stores credentials and never signs automatically with a local key.
  * The CLI obtains a YubiKey PIN interactively and every signature remains gated
  * by the hardware touch policy. Tests use the exported buildRelease function
@@ -35,14 +39,27 @@ import { loadContract, validateAdapterDir } from "../validator/index.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
+export interface ReleaseBaseline {
+  /** 当前已签发（入库 bootstrap）的 catalog sequence。 */
+  catalogSequence: number;
+  /** 当前已签发的 revocation 清单（已解析）。 */
+  revocation: RevocationList;
+}
+
 export interface ReleaseOptions {
   adaptersRoot: string;
   outputDir: string;
-  baseUrl: string;
   sequence: number;
   issuedAt: string;
   ttlSeconds: number;
   revocation: RevocationList;
+  /**
+   * 单调性基线（P3-08）：给出时强制 `sequence > baseline.catalogSequence`、
+   * `revocation.sequence ≥ baseline.revocation.sequence`，且序号相等时内容必须逐字段相同
+   * （内容变了没 bump = 签出「同序号不同内容」，2026-09-11 第一趟仪式即此错误）。
+   * 省略 = 首次发布或调用方明确放弃基线（CLI 须 --no-baseline）。
+   */
+  baseline?: ReleaseBaseline;
 }
 
 export interface ReleaseResult {
@@ -86,14 +103,6 @@ function readManifest(dir: string): AdapterManifest {
   return JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as AdapterManifest;
 }
 
-function requireHttpsBase(raw: string): string {
-  const url = new URL(raw);
-  if (url.protocol !== "https:" || url.username || url.password || !url.hostname) {
-    throw new Error("release base URL 必须是无 userinfo 的 https URL（fail-closed）");
-  }
-  return url.toString().replace(/\/$/, "");
-}
-
 function capabilityIds(manifest: AdapterManifest): string[] {
   if (!Array.isArray(manifest.capabilities)) {
     throw new Error(`${manifest.adapterId} manifest.capabilities 非数组（fail-closed）`);
@@ -117,8 +126,41 @@ function writeJson(path: string, value: unknown): void {
  * The caller must supply the signing backend explicitly. The function validates
  * the adapter set and catalog before any signed catalog is written.
  */
+function assertMonotonic(options: ReleaseOptions): void {
+  const b = options.baseline;
+  if (!b) return;
+  if (options.sequence <= b.catalogSequence) {
+    throw new Error(
+      `catalog --sequence=${options.sequence} 须严格大于已签发的 ${b.catalogSequence}（防回滚，fail-closed）`,
+    );
+  }
+  const r = options.revocation;
+  if (r.sequence < b.revocation.sequence) {
+    throw new Error(`revocation sequence ${r.sequence} 倒退（已签发 ${b.revocation.sequence}），拒绝签名`);
+  }
+  if (r.sequence === b.revocation.sequence && JSON.stringify(r) !== JSON.stringify(b.revocation)) {
+    throw new Error(
+      `revocation 内容已改但 sequence 仍为 ${r.sequence}：内容变了必须 bump（否则签出同序号不同内容）`,
+    );
+  }
+}
+
+/** 从入库 bootstrap 读单调性基线（keyless：只取序号与内容，验签是发版门 gate.ts 的事）。 */
+export function readBaseline(assetsDir: string): ReleaseBaseline {
+  const catalogOuter = JSON.parse(readFileSync(join(assetsDir, "catalog.json"), "utf8")) as {
+    catalogJson: string;
+  };
+  const revocationOuter = JSON.parse(readFileSync(join(assetsDir, "revocation.json"), "utf8")) as {
+    listJson: string;
+  };
+  return {
+    catalogSequence: (JSON.parse(catalogOuter.catalogJson) as { sequence: number }).sequence,
+    revocation: JSON.parse(revocationOuter.listJson) as RevocationList,
+  };
+}
+
 export async function buildRelease(options: ReleaseOptions, backend: SignBackend): Promise<ReleaseResult> {
-  const baseUrl = requireHttpsBase(options.baseUrl);
+  assertMonotonic(options);
   const outputDir = resolve(options.outputDir);
   const adapterDirs = discoverAdapters(options.adaptersRoot);
   if (adapterDirs.length === 0) throw new Error("没有发现可发布 adapter（fail-closed）");
@@ -169,7 +211,6 @@ export async function buildRelease(options: ReleaseOptions, backend: SignBackend
       adapterId: manifest.adapterId,
       adapterVersion: manifest.adapterVersion,
       digest,
-      url: `${baseUrl}/bundles/${digest}.json.gz`,
       ...(manifest.runtime?.stdlibMin ? { stdlibMin: manifest.runtime.stdlibMin } : {}),
       capabilities: capabilityIds(manifest),
     });
@@ -217,7 +258,12 @@ function main(): void {
     const ttlSeconds = Number(arg("ttl-seconds") ?? "86400");
     const issuedAt = arg("issued-at") ?? new Date().toISOString();
     const revocationPath = requiredArg("revocation");
-    const baseUrl = requiredArg("base-url");
+    if (arg("base-url") !== undefined) {
+      throw new Error("--base-url 已移除：catalog 不再描述端点（ADR-018 §2.5.1），base URL 由客户端自持");
+    }
+    // 单调性基线默认取入库 bootstrap；首次发布须显式 --no-baseline。
+    const baselineDir = arg("baseline") ?? join(repoRoot, "client/assets/bootstrap");
+    const baseline = process.argv.includes("--no-baseline") ? undefined : readBaseline(baselineDir);
     const keyId = arg("key-id") ?? "elecon-official-ncc-1";
     const pinProvider =
       arg("pin-provider") === "tty"
@@ -234,11 +280,11 @@ function main(): void {
         {
           adaptersRoot,
           outputDir,
-          baseUrl,
           sequence,
           issuedAt,
           ttlSeconds,
           revocation,
+          baseline,
         },
         backend,
       );

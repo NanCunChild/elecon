@@ -1,7 +1,12 @@
 # 构建解环执行草案（build unblock plan）
 
+> **归档（2026-09-11）**：本文是 2026-07 构建解环执行草案，已停止维护、**不是权威**。当前决策看 `docs/adr/`，
+> 执行与签收状态看 [`docs/planning/2026_08_review_remediation.md`](../../planning/2026_08_review_remediation.md)。
+> 文内提到的版本号、序号与「仍待做」项以那两处为准。
+
+
 > 状态：**草案（draft）**，非 ADR。由 AI 起草供维护者评审。触 ADR-008/014 承重依赖，**须人工主导执行**。
-> 关联：`docs/notes/build_blockers.md`（现状）、`AGENTS.md` 红线 #4/#5、ADR-008 §3、ADR-014。
+> 关联：`docs/archive/notes/build_blockers.md`（现状）、`AGENTS.md` 红线 #4/#5、ADR-008 §3、ADR-014。
 > 环境约束：本草案在**无网络**（libsecret 挂起）环境无法执行验证，仅提供可评审的步骤与 diff。
 > 2026-07-16 更新：主线已迁移到 pub.dev `flutter_qjs_next: 1.0.2`，本草案关于旧
 > `flutter_qjs` Git/KGP/ffi 阻塞的执行步骤已被取代，仅作为历史记录保留。当前现状以

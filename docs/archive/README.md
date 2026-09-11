@@ -24,3 +24,7 @@
 | [`adr_002_revision_log.md`](./adr_002_revision_log.md) | ADR-002 历次修订的动机、取舍与人工批准记录 | ADR-002 |
 | [`adr_003_gpl_isolation_superseded.md`](./adr_003_gpl_isolation_superseded.md) | GPLv3 链接传染 / 商店分发不相容的分平台隔离矩阵与三条出路（标的改为 MIT 后不再适用） | ADR-003 §2.5 / ADR-032 §2.1 |
 | [`architecture_2026-07_request_graph_snapshot.md`](./architecture_2026-07_request_graph_snapshot.md) | 2026-07 requestGraph 迁移期的代码观察快照 | ADR-022 |
+| [`2026_07_capability_roadmap.md`](./2026_07_capability_roadmap.md) | 2026-07-27 能力接入路线图快照（一卡通 / 图书馆 / 空调 / C8 推进顺序）；状态已被整改清单取代 | ADR-020/029/030 |
+| [`todolist_schema_extend_2026-08.md`](./todolist_schema_extend_2026-08.md) | schema / capability 扩展残留清单；未完项已并入整改清单 §6.2 | ADR-001 |
+| [`notes/build_blockers.md`](./notes/build_blockers.md) · [`notes/build_unblock_plan.md`](./notes/build_unblock_plan.md) | 2026-07 flutter_qjs 依赖解环的阻塞记录与执行草案（主线已迁 `flutter_qjs_next`；OHOS 旁路结论仍被 `docs/release.md` 引用） | ADR-008 |
+| [`notes/delivery_priority_xidian.md`](./notes/delivery_priority_xidian.md) | 2026-07 西电单校 Android 竖切 MVP-A/B/C 交付清单 | — |

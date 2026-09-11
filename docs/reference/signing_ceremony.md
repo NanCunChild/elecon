@@ -213,7 +213,8 @@ ADR-002 §4：CI / 审查沙箱只产出 **unsigned bundle + digest**，签名�
    > 这一步是对「本机被攻陷 → 触碰瞬间替换载荷（所见非所签）」的唯一防线（ADR-002 §3 风险 2）。
    > 别跳过，也别只看 CI 的输出——要在你**即将触碰的这台机器上**算一遍。
 3. PIN + 触碰：`tools` 下 `npm run release:package -- …` → 签 bundle + catalog + revocation，写出 dist 树。
-4. 上传 dist 到端点 D（`https://elecon.xidian.one/adapters/`）；可选 `bootstrap:sync`。
+4. `bootstrap:sync` 把 dist 派生进 `client/assets/bootstrap/`（唯一入库产物）+ `bootstrap:verify`；dist 本身不入仓。
+   上传端点 D 时用 `dist:export` 导出（dist 树端点无关，ADR-018 §2.5.1）。
 5. 从 signed dist 提取台账草稿，人工补入本次 source commit / 签署 / 复核事实并验证（§7）→ 提交。
 
 ---

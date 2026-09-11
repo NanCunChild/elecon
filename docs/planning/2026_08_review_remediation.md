@@ -36,14 +36,14 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | 待真机签收 | P0-06、P0-07 | iOS 已降级为 S/M 且 H 路径 fail-closed；Android 已用 `KeyInfo` 拒绝 software/unknown；仍需 iOS 升级安装及 Android emulator/TEE/StrongBox 矩阵 |
 | 部分落地，保持开放 | P0-10 | TS 已阻止取消后 Commit；Dart 已有 firewall/commit 原语与严格 UTF-8 状态；生产 wiring 仍依赖已验签 policy loader/matcher、执行级 query harvest 事务、P1-08/P1-09/P1-12 |
 | owner 已签收（2026-09-11） | **P0-13** | reusable CI、main-only preflight、tag SHA/ancestry、审批 hook 已落地；`release` Environment（required_reviewers + branch_policy）与 `refs/tags/v*` ruleset（creation/update/deletion）经 GitHub API 核实存在（§2.6），owner 2026-09-11 勾选关闭 |
-| 待重签仪式 | P0-01、P0-15 | **P0-01 实现已落地且人工安全复核已签收（2026-09-11，PR #111）**；P0-15 台账工具已落地、历史人工事实 2026-09-09 裁定「合法留白」（§2.3）。两项同随 digest v2 重签仪式关闭（§2.5） |
+| 已关闭（2026-09-11 重签仪式） | P0-01、P0-15 | **P0-01 实现已落地且人工安全复核已签收（2026-09-11，PR #111）**；P0-15 台账工具已落地、历史人工事实 2026-09-09 裁定「合法留白」（§2.3）。两项随 2026-09-11 digest v2 重签仪式关闭（§2.7：catalog seq 8 / revocation seq 2，台账首批 5 条 complete） |
 | ADR / 签收阻塞 | P0-09、P0-14 | P0-09 的 miss 决策与纯引擎已落，mandatory loader/runtime gate 仍受 P0-01/P1-04 与生产装配阻塞；**P0-01 于 2026-09-01 解除 ADR 阻塞**——ADR-002 §2.3 / ADR-018 §2.9.1 已就地修订（digest v2 = 对 envelope 字节整体哈希），缺陷已由 `path-binding.redcase.ts` 复现为可执行验收门（现 2/14 红），**owner 已于 2026-09-09 签收该修订，实现可开工**（签收范围为规格，实现仍须人工复核），见 §2.2。**P0-14 于 2026-08-07 改判**：不再是 ADR 阻塞——slice 1–3 已落地且有 Android 产物级证据，剩余门槛是 slice 4 红线措辞（owner）、非 Android 平台产物断言、人工安全签收（见 §3.2）|
 
 本轮自动验证：`npm run lint`、`npm run typecheck`、`npm run smoke:all`（server 26/26、tools 18/18）、`flutter analyze`、`flutter test`（744 项）、全量 scanner、release ledger smoke/validate、release preflight、recorder Python tests、`git diff --check`。自动验证不是安全签收的替代品。
 
 | ID | TODO | 主要位置 | 车道与依据 | 完成条件 |
 |---|---|---|---|---|
-| P0-01 | [ ] digest 改为对 envelope 序列化字节整体哈希（digest v2），验签先于解析，验签后过路径卫生闸门 | `tools/src/bundle/envelope.ts`、`package.ts`、`tools/src/signer/index.ts`、`client/lib/core/loader/{bundle,verify}.dart` | 慢车道；签名格式，ADR-002 §2.3 / ADR-018 §2.9.1（2026-09-01 已修订，待 owner 签收） | 验收门 = `tools/src/bundle/path-binding.redcase.ts` 全绿（现 2/14）；TS/Dart 共用新 golden（envelopeBytes 形态）；只改路径必须验签失败；**无迁移**（ledger 为空，`/1` 路径整体删除，不新增 host version gate）；人工签收 |
+| P0-01 | [x] digest 改为对 envelope 序列化字节整体哈希（digest v2），验签先于解析，验签后过路径卫生闸门 | `tools/src/bundle/envelope.ts`、`package.ts`、`tools/src/signer/index.ts`、`client/lib/core/loader/{bundle,verify}.dart` | 慢车道；签名格式，ADR-002 §2.3 / ADR-018 §2.9.1（2026-09-01 已修订，待 owner 签收） | 验收门 = `tools/src/bundle/path-binding.redcase.ts` 全绿（现 2/14）；TS/Dart 共用新 golden（envelopeBytes 形态）；只改路径必须验签失败；**无迁移**（ledger 为空，`/1` 路径整体删除，不新增 host version gate）；人工签收 |
 | P0-02 | [x] 从 UI 会话 API 移除完整 `CredentialStore`，只暴露登录状态、数量、ref、保护等级等元数据 | `client/lib/session/session_controller.dart`、`client/lib/core/credential/` | 慢车道；红线 #1、ADR-012 | UI 包无法取得 `CredentialEntry.value`/`ResolvedCredential.value`；Broker 仍可在核心内解析；边界测试通过；人工签收 |
 | P0-03 | [x] 在每次 transport hop 出网前原子预留全局请求配额，修复并发 `ctx.fetch` 超限 | `server/src/runtime/sandbox.ts`、Dart 对应 runtime | 慢车道；Broker/网络边界，ADR-014/022 | 21/100 并发请求的第 21 个在出网前被拒；并发重定向共用配额；双端测试；人工复核 |
 | P0-04 | [x] 正确建模 host-only Cookie，禁止无 `Domain` Cookie 发往子域 | `server/src/runtime/broker/cookie-jar.ts`、Dart 对应 Broker | 慢车道；红线 #1 | TS/Dart host-only golden 一致；子域负例零出网凭证；人工复核 |
@@ -57,7 +57,7 @@ P0 整改 owner：**NanCunChild**。2026-08-05 执行分组如下；“跳过”
 | P0-12 | [x] 修复 fixture recorder 和探针的凭证落盘/日志风险 | `adapters_tests/XJTU/dean/record_fixtures.py`、`XIDIAN/ids/login.py`、`XIDIAN/energy/meter.py` | 慢车道；红线 #1/#8 | 删除全部 Cookie/Set-Cookie；raw 只能写 `.private-probes/`；不打印 ticket URL/真实 NodeID；scanner 作为写后硬门 |
 | P0-13 | [x] 让 release workflow 复用完整 CI，不允许 tag 发布绕过 server/tools/contract/adapter/release gate | `.github/workflows/ci.yml`、`release.yml` | 慢车道；发布与信任链 | reusable workflow 覆盖 lint、typecheck、smoke、validator、scanner、codegen、Flutter、bootstrap、trust profile；tag ancestry 和环境审批有机械验证 |
 | P0-14 | [ ] 完成 ADR-024 DEPLOY profile 接线和产物级证明 | `client/lib/core/trust/`、`client/tool/check_release_gate.sh`、release workflow | 慢车道；红线 #4、ADR-024 | release 产物无侧载符号；DEV applicationId/bundle ID 隔离；水印与构建元数据正确；人工签收 |
-| P0-15 | [ ] 建立 git 跟踪的 adapter 发布台账 | `docs/reference/signing_ceremony.md`、`adapter_release.md`、`release/adapter-release-ledger.json` | 慢车道；ADR-002/018 | 每次发布记录 source commit、版本、bundle/policy digest、catalog/revocation sequence、keyId、签署人与复核引用。**早期测试期产物按 §2.3 显式留白**（`incomplete` 记录 + `missingFacts`），**不要求补齐历史人工事实** |
+| P0-15 | [x] 建立 git 跟踪的 adapter 发布台账 | `docs/reference/signing_ceremony.md`、`adapter_release.md`、`release/adapter-release-ledger.json` | 慢车道；ADR-002/018 | 每次发布记录 source commit、版本、bundle/policy digest、catalog/revocation sequence、keyId、签署人与复核引用。**早期测试期产物按 §2.3 显式留白**（`incomplete` 记录 + `missingFacts`），**不要求补齐历史人工事实** |
 
 ### 2.2 执行状态（2026-09-01 · P0-01 缺陷复现与 ADR 就地修订）
 
@@ -200,7 +200,7 @@ earlier adapterId+adapterVersion`）——**它是对的**：「版本号唯一�
 
 ### 2.4 执行状态（2026-09-09 · P0-01 digest v2 两端落地）
 
-**状态：代码已落地、两端 CI 全绿；人工安全复核已签收（2026-09-11，PR #111，见 §2.6）；待重签仪式。**
+**状态：代码已落地、两端 CI 全绿；人工安全复核已签收（2026-09-11，PR #111，见 §2.6）；重签仪式已于 2026-09-11 执行（§2.7）。**
 
 验收门 `path-binding.smoke.ts` **26/26 全绿**；tools `typecheck` 0 错、`smoke:all` 19/19；
 client `flutter analyze` 0 问题、`flutter test` **856 通过 / 12 skip**。跨语言 golden
@@ -244,7 +244,7 @@ client `flutter analyze` 0 问题、`flutter test` **856 通过 / 12 skip**。�
 |---|---|---|
 | 1 | ~~🔒 人工安全复核~~ **已完成（2026-09-11）**：owner 按 [`bundle_digest_v2_signoff_checklist.md`](../reference/bundle_digest_v2_signoff_checklist.md) 逐文件 / 攻击场景复核，首轮 4 条意见修复后复签，随 PR #111 合并 | owner |
 | 2 | ~~🔒 签收上表 A/B/C 三项决策~~ **已签收（2026-09-11）** | owner |
-| 3 | **离线 YubiKey 重签仪式**：仓内 7 份 v1 产物在 v2 下一律拒载（item 8「无代码兼容层」的预期行为）。`client/test/school_manifest_test.dart` 的 bootstrap 用例已做**条件跳过**——一旦重签为 v2 自动恢复运行，不依赖任何人记得回来删一行 | owner（物理动作） |
+| 3 | ~~**离线 YubiKey 重签仪式**~~ **已执行（2026-09-11，§2.7）**：仓内 7 份 v1 产物在 v2 下一律拒载（item 8「无代码兼容层」的预期行为）。`client/test/school_manifest_test.dart` 的 bootstrap 用例已做**条件跳过**——一旦重签为 v2 自动恢复运行，不依赖任何人记得回来删一行 | owner（物理动作） |
 | 4 | 重签时 bump 版本号——**不只 helloworld，全部 5 份**（§2.5 核实）；2026-09-11 已在 A 仓 bump fudan/thu/xjt/helloworld 0.1.0 → 0.1.1，xidian 0.4.1 未签发过不动 | 已做 |
 | 5 | `elecon-adapters` 侧两处规则同步（详见下表） | 与 A 仓同批 |
 
@@ -368,7 +368,69 @@ golden +2（现 21 条）。其余为清单措辞与过期注释，已改。记�
 
 **待办（本节落地后）**：~~① owner 按签收清单复核~~（2026-09-11 已签，PR #111 合并）；~~② 仪式前在 A 仓 bump `school-fudan/thu/xjt/helloworld`
 `adapterVersion` 0.1.0 → 0.1.1（`school-xidian` 已是未签发过的 0.4.1，不动）~~（2026-09-11 已做，核心 `adapters/school-helloworld` 副本同步）并把 pin 移到该提交（`444b92c`，已做）；
-③ 举行 §2.5 所列参数的仪式；~~④ 合并后 `git branch -f main origin/main`~~（已做）。
+~~③ 举行 §2.5 所列参数的仪式~~（2026-09-11 已执行，见 §2.7）；~~④ 合并后 `git branch -f main origin/main`~~（已做）。
+
+### 2.7 执行状态（2026-09-11 · digest v2 重签仪式执行，P0-01 / P0-15 关闭）
+
+**仪式跑了两趟。** 第一趟由 owner 自行执行（catalog issuedAt 06:28Z）：`--sequence=7` 而非 §2.5
+预定的 4——7 **合法**（客户端 `pickNewer` 与台账 validator 都只要求严格大于上一份 3，允许跳号），
+但 `release/revocation.json` 未按 §2.5 参数表刷新（仍是 sequence 1、issuedAt 2026-07-19，2026-07-26 即过期，
+仅签名字节变了）。加载器对过期 revocation 只做遥测不硬拒（`loader.dart` 文件头政策），所以不影响加载，
+但这正是 P3-08 要挡的情形。第二趟（06:34Z，AI 起草参数、owner 触碰）：revocation 改为 **sequence 2 /
+issuedAt 2026-09-11T06:31:00Z**，以 `--sequence=8` 重签全部产物；bundle digest 不变（签名在 envelope 之外），
+只有签名字节变。**线上有效序号自此为 catalog 8 / revocation 2；下次发布 catalog 须 ≥ 9。**
+
+| adapterId | adapterVersion | digest | 源 |
+|---|---|---|---|
+| school-fudan | 0.1.1 | `59c632d58996c5c5759a70d15644a189b9cc730944dd0a66695138dbc550dabf` | A 仓 `444b92c` |
+| school-helloworld | 0.1.1 | `ebc14c0306dee2a95c279e3238134f6fc60fae4584c77c30791ca06e077eda6c` | 同上 |
+| school-thu | 0.1.1 | `cba878ad987c0adf30a705093254a82a9d3986f026fdc894d33fce6565f03f6a` | 同上 |
+| school-xidian | 0.4.1 | `6e6f196c049c30ffd100058d84f43557ee4a47509aef83c612df2f2e3440f991` | 同上 |
+| school-xjt | 0.1.1 | `64fde67426d615d61ee56d4585ef60443be4493823f68f3257218da5c95965a0` | 同上 |
+
+**核验**：签前 digest 在签名机重算 5/5 与 A 仓 `dist/bundles/*.sha256` 相同（§3「所见即所签」）；
+`ledger:extract` 以预埋公钥对 catalog、revocation、5 份 bundle **真实验签通过**；`bootstrap:sync` 派生 7 文件、
+`bootstrap:check` 一致。**P0-15 台账**：5 条新记录 `complete`（sourceCommit `444b92c…`、signedAt
+`2026-09-11T06:34:22Z`＝最后一次触碰、signer NanCunChild、reviewReference = PR #111 + 签收清单 §5），
+6 条历史记录按 §2.3 保持 `incomplete`；`ledger:validate` 结构有效。
+
+**顺带清理**：`client/assets/bootstrap/bundles/` 里 5 份旧 v1 bundle 删除（`bootstrap:sync` 不清理多余文件，
+pubspec 按目录打包，否则会随 app 发布）；`dist-helloworld/`、`dist-xidian/` 删除，**`dist-full/` 为唯一 dist**
+（P3-07 方向；`adapter_release.md` §0–§7 与 `tools/README.md` 已改指，§8 保留为 v1 时代范例）。
+
+**本轮自动验证**：`flutter test` DEPLOY **859 通过 / 11 skip**（skip 全为 DEV profile 专属组；
+`school_manifest_test` 条件跳过已自动恢复）、tools smoke 19/19、server smoke 28/28、tools validate 通过、
+`git diff --check` 干净。
+
+**关闭**：P0-01、P0-15（§2.1 打勾）。**仍开**：上传 `dist-full/` 到端点 D（运维动作，线上 catalog 仍为 3）；
+masker 落地时第二次仪式（`/3`，ADR-026 §2.7.1）；P3-08 发版门（本次第一趟即其反例）。
+
+### 2.8 执行状态（2026-09-11 · catalog 去端点化 + bootstrap 单源 + 文档收敛）
+
+**背景**：公网端点暂不可用，bundle 加载测试只能本地跑；而 catalog 把 `--base-url` 签进了字节，
+真机无法指向本地端点，换域名 / 镜像也都要重签。owner 当日四项决策（详见 ADR-018 §2.5.1）：
+
+1. **catalog 只描述文件、不描述端点**：entry `url` 弃用（schema 留可选兼容 seq ≤ 8，下次仪式后删）；
+   `release:package` 移除 `--base-url`；客户端 `fetchBundle(digest)` 按 `base/bundles/<digest>.json.gz` 拉取，
+   digest 形态门 + 解析时整段忽略 `url`。契约改动记 `contract/CHANGELOG.md`（2026-09-11 条）。
+2. **client 自持 base URL**（`kDistributionBaseUrl`）；**仅 DEV-Sideload** 可 `--dart-define=ELECON_DISTRIBUTION_BASE_URL=`
+   覆盖（允许 http，供本地 nginx / `npm run start:public` 冒烟）；DEPLOY 编译期折叠无覆盖路径。
+3. **dist 树不入库，只有 bootstrap 跟随**：`git rm --cached dist-full`，`.gitignore` 加 `/dist/`、`/dist-*/`；
+   `bootstrap.ts` 新增 `--verify`（CI 门，替代原 `bootstrap:check`）与 `--export-dist=`（上传前反向导出；
+   bundle / revocation / 内层 catalogJson 逐字节等于仪式产物，gzip 外壳不在签名范围内）。P3-07 关闭。
+4. **文档心智收敛**：AGENTS 红线 #4/#5 精简为不变量本身（transport 历史留在 `docs/archive/adr_003_revision_log.md`）；
+   README 传输底座措辞对齐 09-09 决策、路线状态改为「只认两处」指针；`docs/notes/` 三份 7 月草稿、7 月路线图、
+   根目录 `TODOList_schema_extend.md` 归档到 `docs/archive/`（未完项并入 §6.2）；`adapter_bundle_primer.md`
+   改为常设文档；新增 `docs/glossary.md` 术语索引。
+
+**验证**：tools `typecheck` + smoke 19/19（含新增 bootstrap verify/export 往返与负例、catalog K3、release 无 url 断言）；
+`bootstrap:verify` 对入库 bootstrap（seq 8）通过；client `flutter analyze` 零问题，`flutter test` DEPLOY 859 / DEV-Sideload 868 通过
+（含 `fetchBundle(digest)` 拼路径、畸形 digest 拒、http base 仅 `allowInsecureHttp` 放行、历史 `url` 忽略）；`biome ci` 通过。
+
+**🔒 待人工**：本批触红线 #4（loader / distribution 路径）与 #6（catalog schema），实现须 owner 复核签收；
+DEV 覆盖开关的 http 放行需在签收时确认「仅 DEV profile 可达」（`kDistributionOverrideActive` 为编译期常量，
+ADR-024 release gate 另断言 DEPLOY 无 DEV profile）。**仍开**：上传端点 D（现由 `npm run dist:export -w tools` 导出后上传）；
+第二次仪式后从 schema / 客户端删除 `url`。
 
 ---
 
@@ -552,8 +614,8 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 | P3-04 | [ ] 为 35 处 schema 字段补 description，并把 `--require-descriptions` 设为 CI 硬门 | codegen check 零缺失；时间、金额、窗口和缺失语义有文档 |
 | P3-05 | [ ] 统一 Money 字段语义，确认哪些域允许负数 | 非负金额有 `minimum:0`；例外有领域说明；ADR-021 状态明确 |
 | P3-06 | [x] 将 schema behavior golden 从 7/48 扩展到所有 registry emits/params | 覆盖嵌套 required、enum、format、null/缺失、金额、URI 和 params 边界 |
-| P3-07 | [ ] 明确 canonical dist，消除 `dist-full`、`dist-xidian`、bootstrap 和 release 多事实源 | CI 检查实际发布 dist 与 bootstrap 字节一致；不再依赖人工记忆 |
-| P3-08 | [ ] 在发版门检查 revocation 新鲜度与 catalog/revocation sequence 单调性 | 过期或倒退时禁止 release；急性吊销流程可演练 |
+| P3-07 | [x] 明确 canonical dist，消除 `dist-full`、`dist-xidian`、bootstrap 和 release 多事实源 | **2026-09-11 关闭（§2.8）**：`client/assets/bootstrap/` 是唯一入库的签名产物，dist 树不入库（`.gitignore` `/dist-*/`），上传前 `dist:export` 反向导出；CI `bootstrap:verify` 校验 catalog ↔ bundles ↔ envelope digest 自洽 |
+| P3-08 | [x] 在发版门检查 revocation 新鲜度与 catalog/revocation sequence 单调性 | **2026-09-11 关闭（§2.9）**：`release:gate` G1–G6 + `release:package` 签名前基线守卫；PR CI 告警、release 工作流硬失败；吊销演练步骤见 `adapter_release.md` §10.2 |
 | P3-09 | [x] 修复应用内版本注入 | release tag 与 About 页面一致；构建命令传入 `ELECON_VERSION` 或改用可靠平台版本源 |
 | P3-10 | [x] 固定 release Flutter 版本，与普通 CI 使用同一 SDK | release 不再使用浮动 `stable`；升级单独评审 |
 | P3-11 | [ ] 提交并审查 Windows/macOS 平台工程，禁止 release 临时 `flutter create` | runner、标识、entitlement 可复现且进入代码审查 |
@@ -591,6 +653,32 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 - P4-03 部分推进，保持开放：在既有 `exam.list` 与 `library.loans` 契约内新增 schema 驱动的按需 UI、严格解码和空/加载/认证/错误状态；连同已有成绩、课表、空教室和一卡通，六类 typed UI 均已有客户端入口。`stale` 与显式 `unsupported` 仍依赖 P4-05 产品语义，对应 adapter 正式签发和真机验收也未完成，因此不关闭 P4-03。
 - P4-01/P4-02/P4-04/P4-05/P4-06/P4-07 均受 P0/P1、独立 ADR、隐私政策、正式 adapter 或部署安全评审约束，本轮未越过前置实现。
 
+### 2.9 执行状态（2026-09-11 · P3-08 发版门落地）
+
+**门本体** `tools/src/release/gate.ts`（`npm run release:gate`），检查对象是入库 bootstrap：
+G1 keyId 须命中客户端 `trust_anchors.dart` 的 active 锚并真实验签（直接解析 Dart 源，tools 不另存公钥）；
+G2 revocation 在 TTL 内且不超前，catalog 过 TTL 只 warn；G3 killSwitch 不得随包（`--allow-kill-switch` 显式放行）；
+G4 每个 entry 入台账且 digest / sequence 一致、台账最大序号 ≤ bootstrap；G5 `release/revocation.json` 不倒退、
+同序号不得改内容（§2.7 第一趟的错误自此在签名前和门上各拦一次）；G6 `--online-base=` 时 bootstrap ≥ 线上。
+**打包器**：`release:package` 以入库 bootstrap 为基线，签名前拒 catalog 序号不严格递增 / revocation 倒退 /
+同序号改内容（`--no-baseline` 仅首次发布）。**接线**：ci.yml 每个 PR 跑（G2 降 warn，免 7 天 TTL 把 PR 打红）；
+release.yml 经 `release_gate: true` 硬失败。**演练**：`adapter_release.md` §10.2。
+
+验证：gate smoke（正例 + G1–G6 各负例 + 真实 trust_anchors.dart 解析）与 package smoke 基线负例全绿；
+对真实仓：seq 8/2 通过，`--now=2026-09-20` strict 拒 / warn 放行。**当前 revocation 2026-09-18T06:31Z 到期**，
+到期后 release 须先重签 revocation。**关闭**：P3-08。
+
+### 6.2 契约演进待办（2026-09-11 自 `TODOList_schema_extend.md` 并入，原文已归档）
+
+均为「有真实需求再立、先 ADR」项，不设编号、不进优先级表：
+
+- 字段级「不支持 / 未返回 / 空 / 脱敏」四态若要在数据信封统一表达，开小 ADR 后再改 schema（与 P4-05 freshness 语义相邻）。
+- 增量同步（课表变更、成绩更新、通知撤回）的版本 / 游标约定——有真实校需再立。
+- 声明式过期 / 升级判据（`expiredWhenUrlMatches` 等，ADR-017 rev-2 §2.9）。
+- WebVPN、多跳统一认证、验证码、会话过期的**宿主侧**能力面（adapter 不存凭证）；XIDIAN mint 闭环见 `docs/reference/xidian_mint_closed_loop_plan.md`。
+- 文档：学校原始字段 → 标准字段映射指南（adapter 作者向）；契约版本升级与 vendor 兼容性检查清单固化到 `docs/rules/`。
+- 已有编号的不重复列：body 凭证注入 = P1-11（ADR-029）、空调 actuator = P1-12（ADR-030）。
+
 ## 7. 推荐修改路线
 
 ### 阶段 R0：冻结与基线（1 个 PR）
@@ -622,8 +710,8 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 
 1. ~~修订 ADR-002/018，定义 bundle digest v2、路径规范化和兼容策略。~~（2026-09-01 就地修订，**2026-09-09 owner 签收规格**；兼容策略结论 = **无历史产物、不设兼容期**）
 2. ~~先实现 TS/Dart verifier 与 golden，再实现 signer/packer。~~（**2026-09-09 两端落地、CI 全绿**，见 §2.4）
-3. ~~增加 host version gate~~（**已改判：不新增**——`bundleFormat` 严格相等本身即断代拒载，见 ADR-002 §2.3 / ADR-018 §2.9.1 第 8 项；将来 masker 强制那一跳的 gate 亦复用同一机制断代到 `/3`，见 ADR-026 §2.7.1），**重新签发 bootstrap/catalog/bundle** —— 即重签仪式，**未执行**，前置见 §2.5。
-4. 增加 P0-15 发布台账和 release 防回滚检查。
+3. ~~增加 host version gate~~（**已改判：不新增**——`bundleFormat` 严格相等本身即断代拒载，见 ADR-002 §2.3 / ADR-018 §2.9.1 第 8 项；将来 masker 强制那一跳的 gate 亦复用同一机制断代到 `/3`，见 ADR-026 §2.7.1），**重新签发 bootstrap/catalog/bundle** —— 即重签仪式，**已于 2026-09-11 执行**（§2.7）。
+4. ~~增加 P0-15 发布台账~~（2026-09-11 首批 5 条 complete 记录入账）~~和 release 防回滚 / 新鲜度检查（P3-08）~~（2026-09-11 关闭，§2.9）。
 5. 由非实现者完成人工安全复核和迁移演练。
 
 退出条件：P0-01、P0-15 关闭；旧产物处理方式明确；只改路径必然验签失败。

@@ -47,23 +47,24 @@ writeFileSync(
 );
 writeFileSync(join(adapter, "index.js"), "export const capabilities = {};\n");
 
+const revocation4 = {
+  sequence: 4,
+  issuedAt: "2026-07-19T00:00:00Z",
+  ttlSeconds: 86400,
+  minVersions: {},
+  killSwitch: false,
+  entries: [],
+};
+
 try {
   const result = await buildRelease(
     {
       adaptersRoot: adapters,
       outputDir: out,
-      baseUrl: "https://dist.example.edu/",
       sequence: 4,
       issuedAt: "2026-07-19T00:00:00Z",
       ttlSeconds: 86400,
-      revocation: {
-        sequence: 4,
-        issuedAt: "2026-07-19T00:00:00Z",
-        ttlSeconds: 86400,
-        minVersions: {},
-        killSwitch: false,
-        entries: [],
-      },
+      revocation: revocation4,
     },
     new FakeBackend(),
   );
@@ -73,9 +74,11 @@ try {
     gunzipSync(readFileSync(join(out, "catalog.json.gz"))).toString("utf8"),
   ) as { catalogJson: string; signature: string; keyId: string; algorithm: string };
   const catalog = JSON.parse(catalogOuter.catalogJson) as {
-    entries: Array<{ digest: string; url: string; capabilities: string[] }>;
+    entries: Array<{ digest: string; url?: string; capabilities: string[] }>;
   };
   assert.equal(catalogOuter.keyId, "test-release-key");
+  // ADR-018 §2.5.1：catalog 只描述文件——entry 不得再携带端点 URL。
+  assert.equal(catalog.entries[0]?.url, undefined, "catalog entry 不得含 url");
   assert.equal(catalogOuter.algorithm, "ed25519");
   assert.deepEqual(catalog.entries[0]?.capabilities, ["notice.list"]);
   assert.equal(readFileSync(join(out, "bundles", `${catalog.entries[0]?.digest}.json.gz`))[0], 0x1f);
@@ -83,6 +86,27 @@ try {
     listJson: string;
   };
   assert.equal(JSON.parse(revocationOuter.listJson).sequence, 4);
+
+  // P3-08 单调性基线：catalog 不严格大于 / revocation 倒退 / 同序号改内容 → 拒签（签名前就拒，不触碰 backend）。
+  const baseline = { catalogSequence: 4, revocation: { ...JSON.parse(JSON.stringify(revocation4)) } };
+  const withBaseline = (over: { sequence?: number; revocation?: typeof revocation4 }) =>
+    buildRelease(
+      {
+        adaptersRoot: adapters,
+        outputDir: join(root, "dist-baseline"),
+        sequence: over.sequence ?? 5,
+        issuedAt: "2026-07-19T00:00:00Z",
+        ttlSeconds: 86400,
+        revocation: over.revocation ?? revocation4,
+        baseline,
+      },
+      new FakeBackend(),
+    );
+  await assert.rejects(() => withBaseline({ sequence: 4 }), /严格大于/);
+  await assert.rejects(() => withBaseline({ revocation: { ...revocation4, sequence: 3 } }), /倒退/);
+  await assert.rejects(() => withBaseline({ revocation: { ...revocation4, killSwitch: true } }), /必须 bump/);
+  await withBaseline({}); // 合法：catalog 5 > 4，revocation 同序号同内容
+  await withBaseline({ revocation: { ...revocation4, sequence: 5, killSwitch: true } }); // bump 后可改
 
   writeFileSync(join(root, "outside.txt"), "must not be signed\n");
   symlinkSync(join(root, "outside.txt"), join(adapter, "asset.txt"));
@@ -92,7 +116,6 @@ try {
         {
           adaptersRoot: adapters,
           outputDir: join(root, "dist-symlink"),
-          baseUrl: "https://dist.example.edu/",
           sequence: 5,
           issuedAt: "2026-07-19T00:00:00Z",
           ttlSeconds: 86400,
