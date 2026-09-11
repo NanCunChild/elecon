@@ -9,6 +9,19 @@
 
 ---
 
+- **2026-09-11 · `catalog.schema.json`：entry `url` 弃用（从 required 移除），catalog 只描述文件、不描述端点（ADR-018 §2.5.1）**
+  - **改动**：`entries[].url` 从 `required` 移除并标记弃用（description 注明）；`additionalProperties:false` 不变，字段暂留为可选。
+    顶层与 `entries` / `digest` 的 description 改写为「以 digest 内容寻址，路径恒为 `bundles/<digest>.json.gz`、相对客户端自持 base」。
+  - **为何**：`url` 在签名字节里，把端点域名绑进了 catalog——换域名/上镜像/指向本地端点都要重签，而字节来源本不参与信任裁定
+    （digest 重算 + Ed25519 验签才是锚）。ADR-018 §2.5.1 决定 catalog 不再描述端点，base URL 由客户端自持。
+  - **为何暂留可选而非直接删除**：线上/bootstrap 的 catalog（sequence 8）已签且含 `url`；删字段会令其不合 schema，只为此重签不值一次
+    YubiKey 仪式。留可选 = 旧 catalog 仍合法、新 catalog 不再写入。**下一次仪式（已预定 masker `/3` 断代，catalog ≥ 9）后删除**。
+  - **同批落地**：`tools/src/catalog/validate.ts`（`url?` + K3 弃用 warn）、`tools/src/release/package.ts`（不写 url、移除 `--base-url`）、
+    catalog golden 重生成（entries 无 url）、`client/lib/core/loader/catalog.dart`（解析时忽略 url）、`loader.dart` / `distribution_http.dart`
+    （`fetchBundle(digest)`，按 digest 拼路径 + 形态门）、`adapter_service.dart`（自持 base + DEV `ELECON_DISTRIBUTION_BASE_URL` 覆盖）。
+    tools smoke 19/19、client `flutter test` DEPLOY 859 / DEV 868 通过。
+  - **依据**：ADR-018 §2.5.1（2026-09-11 修订）。🔒 触红线 #4 加载路径与 #6 契约，实现须人工复核签收。
+
 - **2026-09-09 · `elecon.gpa.summary` 1.0 → 1.1：绩点尺度 + 全字段 description（ADR-001 §3.5 优先级规则）**
   - **改动**：
     1. `elecon.gpa.summary` 新增可选 `gradePointScale`（枚举同 `elecon.grades.list`）——**官方 GPA 此前没有量纲**：只有一个 `gpa: number`，UI 无从判断 3.71 是 4.0 制还是 5.0 制的。

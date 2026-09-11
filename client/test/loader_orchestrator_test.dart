@@ -79,7 +79,6 @@ Future<SignedCatalog> _mkCatalog(
         'adapterId': adapterId,
         'adapterVersion': adapterVersion,
         'digest': digest,
-        'url': 'https://dist.example.edu/$adapterId.json.gz',
         'stdlibMin': '1.0.0',
         'capabilities': ['notice.list'],
       },
@@ -128,7 +127,7 @@ class _FakeSource implements DistributionSource {
   @override
   Future<SignedRevocationList?> fetchRevocation() async => revocation;
   @override
-  Future<Uint8List?> fetchBundle(String url) async => bundle;
+  Future<Uint8List?> fetchBundle(String digest) async => bundle;
 }
 
 /// 空 asset 源（无 bootstrap 基线）。

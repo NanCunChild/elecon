@@ -51,8 +51,8 @@
       "name": "valid_multibyte_identity",
       "_why": "正例：adapterId 含中文+emoji，验签过 + 解析保真（证 Node utf8 签 == Dart utf8 验）",
       "signed": {
-        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":7,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"url\":\"https://cdn.example/bundles/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"url\":\"https://cdn.example/bundles/xjt.json.gz\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
-        "signature": "H1hwTMFJ5WzqUhy/hNxg3o1XMFniNmSxHEjXpU1wkTV59TM65WHWyAS3lsXzxzCzSH8IC2JlR+/KCST8dk2JBg==",
+        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":7,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
+        "signature": "MCkYoc98ozhsdnjWl66hvPnD//7naYK8TKW3EMoKu1PWUnWovnUxR9Bs8rb7hRvagzPuj48OnxvZe+/Aszn+CQ==",
         "keyId": "golden-catalog-key",
         "algorithm": "ed25519"
       },
@@ -66,8 +66,8 @@
       "name": "tampered_catalog_json",
       "_why": "字节精确：改一处即 utf8 字节变 → Ed25519 验签失败（fail-closed）",
       "signed": {
-        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":8,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"url\":\"https://cdn.example/bundles/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"url\":\"https://cdn.example/bundles/xjt.json.gz\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
-        "signature": "H1hwTMFJ5WzqUhy/hNxg3o1XMFniNmSxHEjXpU1wkTV59TM65WHWyAS3lsXzxzCzSH8IC2JlR+/KCST8dk2JBg==",
+        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":8,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
+        "signature": "MCkYoc98ozhsdnjWl66hvPnD//7naYK8TKW3EMoKu1PWUnWovnUxR9Bs8rb7hRvagzPuj48OnxvZe+/Aszn+CQ==",
         "keyId": "golden-catalog-key",
         "algorithm": "ed25519"
       },
@@ -81,8 +81,8 @@
       "name": "wrong_public_key",
       "_why": "非该测试密钥签的（换成另一把公钥）→ 拒",
       "signed": {
-        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":7,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"url\":\"https://cdn.example/bundles/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"url\":\"https://cdn.example/bundles/xjt.json.gz\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
-        "signature": "H1hwTMFJ5WzqUhy/hNxg3o1XMFniNmSxHEjXpU1wkTV59TM65WHWyAS3lsXzxzCzSH8IC2JlR+/KCST8dk2JBg==",
+        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":7,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
+        "signature": "MCkYoc98ozhsdnjWl66hvPnD//7naYK8TKW3EMoKu1PWUnWovnUxR9Bs8rb7hRvagzPuj48OnxvZe+/Aszn+CQ==",
         "keyId": "golden-catalog-key",
         "algorithm": "ed25519"
       },
@@ -96,8 +96,8 @@
       "name": "unsupported_algorithm",
       "_why": "算法降级：非 ed25519 一律拒，不回退",
       "signed": {
-        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":7,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"url\":\"https://cdn.example/bundles/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"url\":\"https://cdn.example/bundles/xjt.json.gz\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
-        "signature": "H1hwTMFJ5WzqUhy/hNxg3o1XMFniNmSxHEjXpU1wkTV59TM65WHWyAS3lsXzxzCzSH8IC2JlR+/KCST8dk2JBg==",
+        "catalogJson": "{\"catalogVersion\":\"1.0\",\"sequence\":7,\"issuedAt\":\"2026-07-17T00:00:00Z\",\"ttlSeconds\":3600,\"entries\":[{\"adapterId\":\"school-西电🔒\",\"adapterVersion\":\"1.2.0\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"capabilities\":[\"notice.list\"]},{\"adapterId\":\"school-xjt\",\"adapterVersion\":\"0.9.1\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"stdlibMin\":\"1.0.0\",\"capabilities\":[\"notice.list\",\"grades.list\"]}]}",
+        "signature": "MCkYoc98ozhsdnjWl66hvPnD//7naYK8TKW3EMoKu1PWUnWovnUxR9Bs8rb7hRvagzPuj48OnxvZe+/Aszn+CQ==",
         "keyId": "golden-catalog-key",
         "algorithm": "rsa"
       },

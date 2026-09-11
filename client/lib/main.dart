@@ -56,13 +56,15 @@ Future<BlobStore?> _blobStoreProvider() async {
   return store;
 }
 
-/// adapter 运行时装配：app 私有目录（bundle 缓存/last-good）+ 测试端点 D 拉取。
-/// 端点内容尚未部署时在线拉取会失败，加载器退化到 last-good/bootstrap（fail-closed）。
+/// adapter 运行时装配：app 私有目录（bundle 缓存/last-good）+ 端点 D 拉取。
+/// 端点不可达时在线拉取失败，加载器退化到 last-good/bootstrap（fail-closed）。
+/// base URL 由客户端自持（DEV 可 dart-define 覆盖，见 `effectiveDistributionBaseUrl`）。
 Future<AdapterService?> _adapterServiceProvider() async {
   final dir = await getApplicationSupportDirectory();
   return AdapterService.production(
     supportDir: dir,
-    distributionBaseUrl: Uri.parse(kDistributionBaseUrl),
+    distributionBaseUrl: effectiveDistributionBaseUrl,
+    allowInsecureHttp: kDistributionOverrideActive,
   );
 }
 

@@ -45,7 +45,6 @@ const int kMaxCatalogJsonChars = 1 << 20; // ~1M 码元；正常 catalog 远小�
 const int kMaxCatalogEntries = 4096;
 const int kMaxCapabilitiesPerEntry = 64;
 const int kMaxAdapterIdChars = 128;
-const int kMaxUrlChars = 2048;
 const int kMaxVersionChars = 64;
 
 final RegExp _reCatalogVersion = RegExp(r'^\d+\.\d+$');
@@ -75,6 +74,8 @@ const Set<String> _entryKeys = {
   'adapterId',
   'adapterVersion',
   'digest',
+  // `url` 已弃用（ADR-018 §2.5.1）：catalog 只描述文件、不描述端点。仅为兼容 sequence ≤ 8 的
+  // 已签 catalog 而容忍其存在——**解析时整段忽略**（不校验、不暴露），bundle 路径由 digest 拼出。
   'url',
   'stdlibMin',
   'capabilities',
@@ -168,13 +169,14 @@ class Catalog {
   final List<CatalogEntry> entries;
 }
 
-/// 一条可加载 adapter 条目。构造器库私有（见 [Catalog]）。以 [digest] 内容寻址。
+/// 一条可加载 adapter 条目。构造器库私有（见 [Catalog]）。以 [digest] 内容寻址：
+/// bundle 固定住 `bundles/<digest>.json.gz`，相对客户端**自持**的分发 base URL 解析
+/// （ADR-018 §2.5.1）——catalog 里没有、也不再需要任何端点信息。
 class CatalogEntry {
   const CatalogEntry._({
     required this.adapterId,
     required this.adapterVersion,
     required this.digest,
-    required this.url,
     required this.capabilities,
     this.stdlibMin,
   });
@@ -182,11 +184,9 @@ class CatalogEntry {
   final String adapterId;
   final String adapterVersion;
 
-  /// bundle digest = `SHA-256(envelopeBytes)`（digest v2，64 位小写 hex）。客户端下载后须重算比对（编排器做）。
+  /// bundle digest = `SHA-256(envelopeBytes)`（digest v2，64 位小写 hex）。既是内容寻址键，也是
+  /// 下载路径 `bundles/<digest>.json.gz` 的唯一变量；客户端下载后须重算比对（编排器做）。
   final String digest;
-
-  /// signed bundle（`.json.gz`）下载地址。解析时强制 **https**、无 userinfo（分发边界，红线 #2）。
-  final String url;
 
   /// 该 adapter 依赖的 elecon:html 最低版本（可选，semver）。
   final String? stdlibMin;
@@ -294,7 +294,7 @@ Future<VerifyResult<VerifiedCatalog>> verifyCatalogWith(
 /// 严格解析 + 语义校验 catalog 载荷。任一约束不满足即抛 [FormatException]（由验签管线落地为 fail）。
 ///
 /// 客户端在运行时复核契约约束（不只依赖签发侧 `validate.ts`）：签名只证"签了这些内容"，
-/// 结构/语义仍须校验——尤其 digest / URL scheme / 身份 / capability 会被加载器直接使用。
+/// 结构/语义仍须校验——尤其 digest / 身份 / capability 会被加载器直接使用。
 Catalog _parseCatalog(Map<String, dynamic> json) {
   _rejectUnknownKeys(json, _catalogKeys, 'catalog');
 
@@ -370,10 +370,7 @@ CatalogEntry _parseEntry(Map<String, dynamic> json) {
   if (digest is! String || !_reDigest.hasMatch(digest)) {
     throw const FormatException('catalog entry.digest 非法（须 64 位小写 hex）');
   }
-  final url = json['url'];
-  if (url is! String || url.length > kMaxUrlChars || !_isValidBundleUrl(url)) {
-    throw const FormatException('catalog entry.url 非法（须 https、无 userinfo、含 host、不超长）');
-  }
+  // `url`（若有）整段忽略：它已不参与任何决策（见 _entryKeys 注释）。
   final stdlibMin = json['stdlibMin'];
   if (stdlibMin != null &&
       (stdlibMin is! String || !_reStdlibVersion.hasMatch(stdlibMin))) {
@@ -401,18 +398,9 @@ CatalogEntry _parseEntry(Map<String, dynamic> json) {
     adapterId: adapterId,
     adapterVersion: adapterVersion,
     digest: digest,
-    url: url,
     stdlibMin: stdlibMin as String?,
     capabilities: capabilities,
   );
-}
-
-/// bundle 下载 URL 约束（分发边界，红线 #2）：仅 https、须含 host、禁 userinfo（防
-/// `https://user:pass@evil/...` 之类伪装）。
-bool _isValidBundleUrl(String url) {
-  final uri = Uri.tryParse(url);
-  if (uri == null) return false;
-  return uri.scheme == 'https' && uri.hasAuthority && uri.host.isNotEmpty && uri.userInfo.isEmpty;
 }
 
 /// 真实日历日校验：[rfc3339] 已过 [_reRfc3339]（故 YYYY-MM-DD 位置固定）。构造 [DateTime.utc]

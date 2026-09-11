@@ -52,7 +52,6 @@ try {
     {
       adaptersRoot: adapters,
       outputDir: out,
-      baseUrl: "https://dist.example.edu/",
       sequence: 4,
       issuedAt: "2026-07-19T00:00:00Z",
       ttlSeconds: 86400,
@@ -73,9 +72,11 @@ try {
     gunzipSync(readFileSync(join(out, "catalog.json.gz"))).toString("utf8"),
   ) as { catalogJson: string; signature: string; keyId: string; algorithm: string };
   const catalog = JSON.parse(catalogOuter.catalogJson) as {
-    entries: Array<{ digest: string; url: string; capabilities: string[] }>;
+    entries: Array<{ digest: string; url?: string; capabilities: string[] }>;
   };
   assert.equal(catalogOuter.keyId, "test-release-key");
+  // ADR-018 §2.5.1：catalog 只描述文件——entry 不得再携带端点 URL。
+  assert.equal(catalog.entries[0]?.url, undefined, "catalog entry 不得含 url");
   assert.equal(catalogOuter.algorithm, "ed25519");
   assert.deepEqual(catalog.entries[0]?.capabilities, ["notice.list"]);
   assert.equal(readFileSync(join(out, "bundles", `${catalog.entries[0]?.digest}.json.gz`))[0], 0x1f);
@@ -92,7 +93,6 @@ try {
         {
           adaptersRoot: adapters,
           outputDir: join(root, "dist-symlink"),
-          baseUrl: "https://dist.example.edu/",
           sequence: 5,
           issuedAt: "2026-07-19T00:00:00Z",
           ttlSeconds: 86400,
