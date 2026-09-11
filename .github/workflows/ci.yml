@@ -28,7 +28,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: actions/setup-node@v7
@@ -48,7 +48,7 @@ jobs:
   server:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
       # 按需拉取公开仓 elecon-adapters 的 adapters/（ADR-018 §2.11.1，取代 git 子模块）。
@@ -73,7 +73,7 @@ jobs:
   tools:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
           # 契约 changelog 门要对 base（origin/main）做 merge-base diff；默认 fetch-depth=1 的浅克隆
@@ -124,7 +124,7 @@ jobs:
       run:
         working-directory: adapters/_stdlib
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: actions/setup-node@v7
@@ -145,7 +145,7 @@ jobs:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
       # 按需拉取 elecon-adapters（ADR-018 §2.11.1）；flutter test 双跑用其 school-* fixtures。
@@ -191,7 +191,7 @@ jobs:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: actions/setup-java@v6
@@ -216,7 +216,7 @@ jobs:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: actions/setup-java@v6

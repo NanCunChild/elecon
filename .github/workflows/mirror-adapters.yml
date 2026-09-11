@@ -37,12 +37,12 @@ jobs:
     environment: ADAPTERS_MIRROR_TOKEN
     steps:
       - name: Checkout core（本仓库）
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: core
 
       - name: Checkout 公开 adapters 仓
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ncc-devlab/elecon-adapters
           token: ${{ secrets.ADAPTERS_MIRROR_TOKEN }}
