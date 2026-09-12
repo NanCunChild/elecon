@@ -92,16 +92,24 @@ class MaskerRawResponse {
     required this.status,
     required this.headers,
     required this.body,
+    this.repeatedHeaders = const [],
   });
   final int status;
   final Map<String, String> headers;
   final String body;
+
+  /// **P1-04 原始基数**：线上出现 ≥2 次的响应头名（小写）。[headers] 是传输层按 HTTP 语义
+  /// 折叠后的单值视图，无法证明原始基数；传输层在折叠**前**记录重复名，header 源命中此集合即
+  /// `capture_ambiguous` fail-closed（schema `exactly: 1`）。缺省 `const []` = 无重复。
+  final List<String> repeatedHeaders;
 
   static MaskerRawResponse fromJson(Map<String, dynamic> j) =>
       MaskerRawResponse(
         status: j['status'] as int,
         headers: (j['headers'] as Map).cast<String, String>(),
         body: j['body'] as String,
+        repeatedHeaders:
+            (j['repeatedHeaders'] as List?)?.cast<String>() ?? const [],
       );
 }
 
@@ -204,6 +212,15 @@ String _capValue(String value) {
 /// 从**脱敏前**响应头收割一个值。0 命中由事务层解释为 rule miss；多命中 / 超限 fail-closed。
 String captureHeader(String name, MaskerRawResponse raw) {
   final wanted = name.toLowerCase();
+  // P1-04：传输层在折叠前记录的原始重复名——两个同名 token 头即歧义，绝不取折叠后的合并值。
+  for (final repeated in raw.repeatedHeaders) {
+    if (repeated.toLowerCase() == wanted) {
+      throw const MaskerException(
+        'capture_ambiguous',
+        '响应头在线上出现多次（须恰 1，P1-04 原始基数）',
+      );
+    }
+  }
   final matches = <String>[];
   raw.headers.forEach((key, value) {
     if (key.toLowerCase() == wanted) {
@@ -689,6 +706,8 @@ MaskerRawResponse _projectResponse(
     headers = _stripEntityHeaders(headers);
   }
 
+  // 投影产物不携带 repeatedHeaders：命中头已被删除，且 TS `projectResponseWithIndex` 同样
+  // 只回 status/headers/body——两端形状保持逐字对齐（ADR-002 §3 风险 5）。
   return MaskerRawResponse(status: raw.status, headers: headers, body: body);
 }
 

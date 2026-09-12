@@ -129,7 +129,7 @@ selector miss 还扩大了一项明确接受的字段漂移残余风险：学校
 
 不保留“缺文件等价空规则”的旧 bundle 兼容。owner 确认现有 official adapter 数量有限，将在新 host gate 启用前手工补齐 `masker.json` 并重新签发；未迁移 bundle 由新 host 拒载，旧 host 则由最低 host/version gate 阻止采纳新 bundle。
 
-运行时加载 official adapter 时，policy、delivery sink、Credential Store 或 host/version gate 任一缺失，adapter 均须拒载；空规则不放宽这些依赖。**P0-01 digest 路径绑定已于 2026-09-09 两端落地**，该项前置解除（digest 覆盖 `path`/`size`/`sha256`、拒绝重复路径、blob 集合精确相等，签名已能证明被加载字节确属 `masker.json`）；剩余前置为 **P1-04**（响应头原始基数）与 **masker 装配重签**。本文只记录门禁决策，本次纯引擎 / 契约改动不修改 bundle loader 或 signer。
+运行时加载 official adapter 时，policy、delivery sink、Credential Store 或 host/version gate 任一缺失，adapter 均须拒载；空规则不放宽这些依赖。**P0-01 digest 路径绑定已于 2026-09-09 两端落地**（digest 覆盖 `path`/`size`/`sha256`、拒绝重复路径、blob 集合精确相等，签名已能证明被加载字节确属 `masker.json`）；**P1-04 已于 2026-09-12 落地**（§2.7.2）。**门禁本身已于 2026-09-12 接线**（§2.7.1 落地表），剩余前置只余**一次 `/3` 重签仪式**——在那之前入库 bootstrap 仍是 `/2`，新 host 拒载它，这正是断代的预期代价。
 
 发布门必须验证：
 
@@ -142,7 +142,7 @@ selector miss 还扩大了一项明确接受的字段漂移残余风险：学校
 
 签名保证代码与策略不可被分开篡改；validator、policy diff 和人工签署清单保证“应有规则不能无声消失”。
 
-#### 2.7.1 「最低 host/version gate」的实现形式 = `bundleFormat` 断代（2026-09-10 owner 决策）
+#### 2.7.1 「最低 host/version gate」的实现形式 = `bundleFormat` 断代（2026-09-10 owner 决策；**2026-09-12 已落地**）
 
 本节此前反复引用的「最低 host/version gate」一直**没有实现形式**，validator 因此挂着一条无条件阻断
 `RM0_host_gate_unavailable`：只要 adapter 根存在 `masker.json`，即使策略本身合法也拒绝签发，理由是
@@ -161,7 +161,47 @@ selector miss 还扩大了一项明确接受的字段漂移残余风险：学校
 - **代价**：一次格式断代。按 ADR-002 §2.3 / ADR-018 §2.9.1 第 8 项的同一论证（无外部持有者、
   不设双读、不新增兼容层），代价 = 一次重签仪式；且本项目仍处「前期可破坏性更新」阶段（红线 #6 放宽）。
 - 契约改动（`bundleFormat` 是 ADR-018 §2.9.1 的签名覆盖字段），须在 [`contract/CHANGELOG.md`](../../contract/CHANGELOG.md)
-  记一条，并同批更新 ADR-018 §2.9.1 与两端常量。**本次只记录决策，不改任何常量。**
+  记一条，并同批更新 ADR-018 §2.9.1 与两端常量。
+
+**落地（2026-09-12，同一批次，未拆开）**：
+
+| 项 | 落点 |
+|---|---|
+| `bundleFormat` → `elecon-bundle/3` | `tools/src/bundle/envelope.ts`、`client/lib/core/loader/bundle.dart`、A 仓 `scripts/build-bundle.mjs`、`contract/golden/bundle/loader.json`（重生成） |
+| 移除无条件阻断 | validator 的 `RM0_host_gate_unavailable` 退役；改为 **`RM0_policy_missing`**——official 缺根目录 `masker.json` 即 error（`rules: []` 合法，缺文件 ≠ 空规则） |
+| 策略装配（② Policy 匹配） | 新 `masker-policy.ts` / `masker_policy.dart`：已验签 `masker.json` 的严格解析 + 按 (capability, method, 最终 URL, requestKey) 选规则；由 `contract/golden/broker/masker-policy.json` 双端钉死 |
+| loader / runtime 门 | 客户端 `planLaunch` 从已验签 blob 读 `masker.json`（缺失 / 不可解析即拒载），`runLoadedAdapter` 再守落库 sink；服务端 `runImperativeAdapter` 对 official 缺装配报 `masker_policy_missing` |
+| firewall 接线 | **客户端 `proxyFetch` 的交付出口由裸 `processResponse` 改为 `deliverThroughFirewall`**（此前只有服务端接了），imperative 与 declarative 两入口共用同一 choke point |
+| P1-04 原始头基数 | 见下方「§2.7.2」 |
+
+仍**不在**本次：actuator 入口接线（随 ADR-030 / P1-12）、handle 目标的 Commit 事务（P1-08）、
+Credential Store 真实原子性 / generation swap（C2）。
+
+**handle 目标的过渡门（2026-09-12 复核补记）**：handle 规则的**投影义务**（§3）在 P1-08 前没有
+运行时执行方（dataflow `bind` 只提取、不投影）。为避免「签名策略被静默跳过」的 fail-open，两端
+装配处（客户端 `planLaunch`、服务端 `runImperativeAdapter`）对含 handle 规则的策略**拒载**，
+validator 以 **`RM17_handle_target_unsupported`（error）禁签**；`selectMaskerRules` 仍按契约
+不把 handle 规则交给纯引擎。P1-08 落地后，本门与 RM17 同批解除（改为 bind 单次执行 + staged
+handle + 投影响应）。
+
+#### 2.7.2 响应头原始基数（P1-04）与两端能力差（2026-09-12）
+
+`capture.exactly: 1` 要求「该头在响应里恰好出现一次」。但两端的 HTTP 栈都会在 Masker 读到之前
+把同名头**折叠**成 `"a, b"`——于是「两个 token 头」与「一个含逗号的头」不可区分，把折叠值当单值
+凭证收割就是在歧义上开口（checklist B4）。故基数改由**传输层证明**：
+
+- `TransportResponse.repeatedHeaders`：折叠**前**记录的、出现 ≥2 次的头名；
+- `TransportResponse.headerCardinalityAttested`：传输层**能否**证明基数。
+
+判定分两层：纯引擎判「已知重复」→ `capture_ambiguous`；firewall 判「无从得知」→
+`header_cardinality_unattested`。两者都 fail-closed，都不落库。
+
+**两端能力差（已知、已记录）**：客户端 Dart `HttpHeaders.forEach` 逐名给出 `List<String>`，
+**可证明**（`attested = true`）；服务端 WHATWG `fetch` 的 `Headers` 除 `getSetCookie()` 外没有原始
+多值出口，**不可证明**（恒 `false`），故 header 源规则在服务端运行时一律 fail-closed。
+这不是漂移而是**显式的能力声明**：两端对同一份 `repeatedHeaders` 的判定逐字一致，差的只是谁能
+提供它。要让服务端也能跑 header 源规则，须换传输实现（ADR-003 范畴）或引入可读原始头的 HTTP
+客户端（红线 #9），**届时另开 ADR**；在那之前服务端 runtime 只跑 json 源规则。
 
 ### 2.8 封闭 selector 与动作
 
@@ -183,12 +223,15 @@ body 命中值使用核心固定 sentinel，建议为 `__ELECON_MASKED__`。body
 
 **实施决议（2026-08-05 owner 拍板，随 C1 firewall 接线落实）：**
 
-- **Policy 匹配契约（§2.4 ② 步细化，就近修订本 ADR 而非新增 ADR）**：`masker.json` 顶层为**响应策略条目数组**，每条含一个 `match` 块与其 `rules`。`match` 按下列封闭维度选出适用规则集，**全部为 AND**、缺省即不约束该维度：
-  - `urlPattern`：与 `network.allow` 同形的 glob（对本响应的**请求 URL**匹配，经重定向后为最终跳 URL）；
-  - `status`：整数或整数数组（HTTP 状态码）；
-  - `contentType`：大小写不敏感的 MIME 前缀（如 `application/json`），只比 `;` 前的媒体类型、不解析参数。
+- **Policy 匹配契约（§2.4 ② 步细化，就近修订本 ADR 而非新增 ADR；2026-09-12 校正为实现口径）**：
+  `masker.json` 顶层为 `{schemaVersion, rules[]}`，**每条规则自带 `match` 块**（不是「顶层条目数组 + 每条的 rules」）。
+  `match` 按下列封闭维度选出适用规则集，**全部为 AND**，`capability` / `method` / `urlScope` 必填，`requestKey` 可选：
+  - `capability`：manifest 权威能力集内的 capability id；
+  - `method`：`GET | POST`，比较时大写归一；
+  - `urlScope`：与 `network.allow` 同形的 glob，对本响应的**最终跳 URL**匹配（须为 `network.allow` 子集，validator RM5）；
+  - `requestKey`：declarative 逻辑请求 key；imperative `ctx.fetch` 无 key，带此维度的规则在 imperative 入口永不命中。
 
-  匹配由 **Broker（firewall ② 步）** 解析裁定，**纯引擎 `applyResponseMasker` 只吃已选定的 `rules[]`**、绝不含 match 判定（保持引擎无 I/O、可跨端 golden）。多条 `match` 命中时其 `rules` **并集**后交引擎，规则内既有的数量 / 目标 / overlap 校验不变。match 维度、glob 语义与并集次序须由共享 golden 跨端钉死；`match` 语法进 `masker.json` schema + validator（step 2 契约），受 host/version gate 约束。**首期只接 imperative 入口**（`fetch-proxy` 每次 `ctx.fetch` 已强制经 firewall，见 checklist C1）；match 解析与 declarative/actuator 入口的接线为后续人工主导步。
+  匹配由 **Broker（firewall ② 步）** 解析裁定，**纯引擎 `applyResponseMasker` 只吃已选定的 `rules[]`**、绝不含 match 判定（保持引擎无 I/O、可跨端 golden）。命中的规则按策略序取并集后交引擎，规则内既有的数量 / 目标 / overlap 校验不变。match 维度、glob 语义与并集次序由共享 golden 跨端钉死（`contract/golden/broker/masker-policy.json`）；`match` 语法进 `masker.json` schema + validator（step 2 契约），受 host/version gate 约束。**首期只接 imperative 入口**（`fetch-proxy` 每次 `ctx.fetch` 已强制经 firewall，见 checklist C1）；客户端 declarative 入口已接入，actuator 入口的接线为后续人工主导步。**`handle` 目标规则不进纯引擎**（由 ADR-023 dataflow bind 承接）；**P1-08 落地前**两端装配处对含 handle 规则的策略 fail-closed 拒载（无投影执行方，见 §3），validator 以 `RM17` 禁签——不得静默跳过投影义务。
 
 - **注入凭证回显 = 不做反射检测，交 Masker 承担**：Broker 注入的凭证若被 origin 回显进响应，**不**在 firewall 做「注入值 → 全 body 反射扫描剥离」（`stripEchoes` 式 blanket sweep）——短密文误报 + 大 body 成本，与 B1-a「不做运行期全 body sweep」同理。回显位置由 **adapter 作者显式声明 `redact` 规则**、经 Masker 投影兜底；发布前主捕获同样靠 D3 replay + D6 门 + 人审。**[ADR-023](./adr_023_declarative_dataflow.md) §2.5 已相应修订（2026-08-05）**：原「注入值回显必做剥离」推翻为「靠 Masker `redact` 声明式承接」，并新增残余风险 #3（作者漏声明 redact → 读回，接受）。**尚待（代码，人工主导）**：firewall ⑦ 的 `injectedValues` / `stripEchoes` blanket 剥离退役 —— 属红线 #1 承重代码移除，与其测试一并须人工审，暂保留不破坏现有 smoke。
 
@@ -285,11 +328,11 @@ ADR-023 当前“中间值从不进 adapter”的叙述与源响应交付实现�
 - raw Transport -> Broker -> adapter replay；
 - adapter 全量迁移与发布安全清单。
 
-旧客户端遇到要求 Masker 的 bundle 时必须经 host/version gate 拒载，不能忽略 `masker.json` 后继续运行。official adapter 即使无规则也必须携带 `masker.json`；policy / sink / store / host gate 任一缺失均拒载。**实际 loader 接线尚未完成**（剩余前置：P1-04 与 masker 装配重签）；「最低 host/version gate」的实现形式已定为 `bundleFormat` 断代到 `elecon-bundle/3`，见 §2.7.1。
+旧客户端遇到要求 Masker 的 bundle 时必须经 host/version gate 拒载，不能忽略 `masker.json` 后继续运行。official adapter 即使无规则也必须携带 `masker.json`；policy / sink / store / host gate 任一缺失均拒载。**loader 接线已于 2026-09-12 完成**（§2.7.1 落地表，含 P1-04 §2.7.2）；「最低 host/version gate」的实现形式 = `bundleFormat` 断代到 `elecon-bundle/3`。**剩余唯一前置是一次 `/3` 重签仪式**（YubiKey，owner）。
 
 ## 7. 实施阶段必须落实
 
-1. mandatory `masker.json` schema（空 `rules` 合法）与 bundle 最低 host/version gate——后者的实现形式 = **`bundleFormat` 从 `elecon-bundle/2` 断代到 `/3`**（§2.7.1），须与移除 validator 的 `RM0_host_gate_unavailable` 阻断、loader/runtime 接线同批落地。
+1. ~~mandatory `masker.json` schema（空 `rules` 合法）与 bundle 最低 host/version gate~~ —— **2026-09-12 已落地**：`bundleFormat` 从 `elecon-bundle/2` 断代到 `/3`（§2.7.1），与移除 `RM0_host_gate_unavailable`（改为 `RM0_policy_missing`）、两端 loader/runtime/firewall 接线同批。**余一次重签仪式**。
 2. `credential` capture 的覆盖、过期、撤销、来源和原子提交语义。
 3. `handle` 与 ADR-023 bind 的统一或映射方式，及源响应投影修订。
 4. selector miss / mixed / all-miss、类型不匹配、多次命中、非法 body、字符编码和实体头清理语义。

@@ -36,8 +36,8 @@ import {
 import { decideHarvest, type HarvestSink, harvestInto } from "./broker/harvest.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 import type { MaskerCommitContext, MaskerCommitSink } from "./broker/masker-commit.js";
+import { hasHandleTargetRules, type MaskerPolicy } from "./broker/masker-policy.js";
 import type { CredentialResolver } from "./broker/ports.js";
-import type { MaskerRule } from "./broker/response-masker.js";
 import {
   isThenable,
   isThenableHandle,
@@ -236,12 +236,14 @@ export interface ImperativeAdapterDeps {
   transport: Transport;
   harvest?: { sink: HarvestSink; schoolId: string };
   /**
-   * ⑦ Response Masker 交付策略（C1 firewall，ADR-026）。每次 `ctx.fetch` 交回 adapter 的响应
-   * 强制经 firewall；此处提供命中规则 + 落库目标。**seam（人工主导）**：`rules` 由签名
-   * `masker.json` 的 match 块按响应解析选出（本层不含匹配逻辑）、`sink`/`ctx` 接真实 Store。
-   * 缺省 = 无策略：仍经 firewall（空规则 no-op），无旁路。🔒 装配须人工、不得 AI 独自闭环。
+   * ⑦ Response Masker 交付策略（C1 firewall + ② Policy 匹配，ADR-026 §2.7.1 落地）。每次 `ctx.fetch`
+   * 交回 adapter 的响应强制经 firewall；`policy` = 已验签 `masker.json` 的严格解析（`parseMaskerPolicy`），
+   * 逐响应由 `fetch-proxy` 按 (capability, method, 最终 URL) 选规则；`sink`/`ctx` = 落库目标。
+   * **official 档位必填**：缺省即入口 `masker_policy_missing` 拒载（policy / sink 任一缺失均拒，
+   * 空规则不放宽，§2.7）；devSideload 缺省 = 无策略、仍经 firewall（空规则 no-op）、无旁路。
+   * 🔒 装配（含真实 Store）须人工、不得 AI 独自闭环。
    */
-  masker?: { rules: readonly MaskerRule[]; sink: MaskerCommitSink; ctx: MaskerCommitContext };
+  masker?: { policy: MaskerPolicy; sink: MaskerCommitSink; ctx: MaskerCommitContext };
 }
 
 /** imperative 执行内状态。 */
@@ -386,7 +388,7 @@ function buildImperativeCtx(
                   },
                 }
               : {}),
-            ...(deps.masker ? { masker: deps.masker } : {}),
+            ...(deps.masker ? { masker: { ...deps.masker, capability: input.capability } } : {}),
           }),
           fetchLimits.perRequestTimeoutMs,
           () => {
@@ -539,6 +541,24 @@ export async function runImperativeAdapter(
       "trust_rejected",
       `非 official adapter 无 imperative（ctx.fetch）权限（档位 ${deps.trust.tier}，生产环境）——ADR-002 §2.6 结构化权限错误，凭证注入路径不可达`,
     );
+  }
+  // Masker 装配门（ADR-026 §2.7 / §2.7.1）：official 必须带已验签 policy + 落库 sink；任一缺失即拒载，
+  // 在触达引擎之前 fail-closed。空规则（`rules: []`）合法，但缺文件 / 缺装配不等价空规则。
+  if (deps.trust.tier === "official") {
+    if (deps.masker === undefined) {
+      throw new SandboxError(
+        "masker_policy_missing",
+        "official adapter 缺 Response Masker 装配（policy / sink / ctx）——ADR-026 §2.7 任一缺失即拒载",
+      );
+    }
+    // handle 目标规则的投影义务（ADR-026 §3）在 P1-08 前没有执行方（dataflow bind 只提取、
+    // 不投影）。静默跳过 = 已签策略不被执行 = fail-open，故拒载而非忽略。
+    if (hasHandleTargetRules(deps.masker.policy)) {
+      throw new SandboxError(
+        "masker_handle_unsupported",
+        "masker.json 含 handle 目标规则：P1-08 前运行时尚无投影执行方，静默跳过即 fail-open，故拒载（ADR-026 §3）",
+      );
+    }
   }
 
   const { runtime, ctx, deadline } = await createRuntime(limits);

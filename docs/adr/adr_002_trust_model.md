@@ -102,7 +102,7 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
   ```jsonc
   // envelope —— 签名对象。小、可读、可人眼审完
   {
-    "bundleFormat": "elecon-bundle/2",
+    "bundleFormat": "elecon-bundle/3",   // 2026-09-12 起（ADR-026 §2.7.1 masker 断代）
     "adapterId": "school-xidian",
     "adapterVersion": "0.3.1",
     "files": [

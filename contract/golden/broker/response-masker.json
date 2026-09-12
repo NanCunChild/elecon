@@ -78,6 +78,53 @@
         "body": ""
       },
       "error": "capture_ambiguous"
+    },
+    {
+      "name": "header_repeated_on_wire_fail_closed",
+      "_note": "P1-04：传输层折叠前记录到同名头出现 ≥2 次（repeatedHeaders），即使折叠视图只有一个 key 也 fail-closed",
+      "headerName": "X-Auth",
+      "response": {
+        "status": 200,
+        "headers": {
+          "X-Auth": "a, b"
+        },
+        "body": "",
+        "repeatedHeaders": [
+          "x-auth"
+        ]
+      },
+      "error": "capture_ambiguous"
+    },
+    {
+      "name": "header_repeated_other_name_does_not_affect",
+      "headerName": "X-Auth",
+      "response": {
+        "status": 200,
+        "headers": {
+          "X-Auth": "tok-1",
+          "X-Other": "a, b"
+        },
+        "body": "",
+        "repeatedHeaders": [
+          "x-other"
+        ]
+      },
+      "expected": "tok-1"
+    },
+    {
+      "name": "header_repeated_name_compared_case_insensitive",
+      "headerName": "x-auth",
+      "response": {
+        "status": 200,
+        "headers": {
+          "X-Auth": "a, b"
+        },
+        "body": "",
+        "repeatedHeaders": [
+          "X-AUTH"
+        ]
+      },
+      "error": "capture_ambiguous"
     }
   ],
   "captureJson": [

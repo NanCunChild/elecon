@@ -35,7 +35,7 @@
 | [023](./adr_023_declarative_dataflow.md) | Accepted | MVP 已落地 | 2026-07-24 owner 签收 | [落地清单](../reference/declarative_dataflow_migration.md) |
 | [024](./adr_024_build_profile_trust.md) | Accepted | 零入口 slice 0–4 已落地（Android 有产物证据）；gate 待随 ADR-033 落地重做 | 待人工签收（新 gate 落地后一并签） | P0-14、[落地清单](../reference/adr_024_landing.md) |
 | [025](./adr_025_item_link.md) | Accepted | 契约/UI 基线已落地 | 外跳路径增量另审 | ADR 正文 §2.7 |
-| [026](./adr_026_response_masker.md) | Accepted | 部分落地 | 待人工 | P0-09/P0-10、P1-08/P1-09 |
+| [026](./adr_026_response_masker.md) | Accepted；**§2.7.1 `bundleFormat` 断代 owner 决策 2026-09-10** | **§2.7.1 / §2.7.2 已落地（2026-09-12）**：`elecon-bundle/3`、`RM0_host_gate_unavailable` → `RM0_policy_missing`、两端 `masker-policy` 装配、**客户端 firewall 接线**、P1-04 原始头基数；同日复核补丁：handle 过渡门（两端装配拒载 + `RM17`）、`requestKey: null` 双端对齐、`RM18`、§2.8 文本校正；**余一次 `/3` 重签仪式**（在此之前入库 bootstrap 仍 `/2`，硬门 `bootstrap:verify` 必红） | 🔒 **待人工**（清单 [`response_masker_signoff_checklist.md`](../reference/response_masker_signoff_checklist.md)） | P0-09/P0-10、P1-08/P1-09；P1-04 已关 |
 | [027](./adr_027_url_session_param_stripping.md) | Accepted | 实现已提交 | 待人工 | 纳入 P0-10 firewall 总签收 |
 | [028](./adr_028_declarative_crypto_ops.md) | Accepted | 双端实现与 golden 已完成 | 待 owner | [安全清单](../reference/declarative_dataflow_security_checklist.md) |
 | [029](./adr_029_named_and_body_credentials.md) | Accepted | named header 已落地；body 未落地 | 待人工 | P1-11 |

@@ -16,12 +16,17 @@
 /// 🔒 红线 #1 凭证注入 + 出网承重路径：AI 起草，须人工 + 安全清单复核，不得 AI 独自闭环（AGENTS.md §1）。
 library;
 
+import '../credential/types.dart';
 import 'assemble.dart';
 import 'cookie_jar.dart';
+import 'delivery_firewall.dart';
 import 'harvest.dart';
 import 'inject_policy.dart';
+import 'masker_commit.dart';
+import 'masker_policy.dart';
 import 'ports.dart';
 import 'redirect.dart';
+import 'response_masker.dart';
 
 /// 统一 transport seam（复用 B3 RedirectFetcher 思路）。真实出网属 ADR-003，另件注入；测试用 fake。
 class TransportRequest {
@@ -50,6 +55,8 @@ class TransportResponse {
     this.location,
     this.body,
     this.decodeOk,
+    this.repeatedHeaders = const [],
+    this.headerCardinalityAttested = false,
   });
 
   final int status;
@@ -65,6 +72,22 @@ class TransportResponse {
   /// ADR-026 §2.8 A3：传输层是否确认 body 为 UTF-8 明文。生产 transport 必须给出真值；
   /// `false` 的响应只可进入 delivery firewall 并 fail-closed，不得交给 Masker 或 adapter。
   final bool? decodeOk;
+
+  /// **P1-04 原始基数**：线上出现 ≥2 次的响应头名（小写，不含 `Set-Cookie`——它单独走
+  /// [setCookie]）。[headers] 是按 HTTP 语义折叠后的单值视图，折叠会抹掉「两个同名 token 头」
+  /// 这一歧义证据，故传输层须在折叠**前**记录。仅当 [headerCardinalityAttested] 为 true 时有意义。
+  final List<String> repeatedHeaders;
+
+  /// **P1-04 基数可证明性**：传输层能否证明每个响应头名在线上出现的次数。
+  ///
+  /// `true` → [repeatedHeaders] 是完整的重复名集合（空 = 无重复）。
+  /// `false`（缺省）→ **无法证明**，delivery firewall 对任何 header 源 Masker 规则 fail-closed
+  /// （`header_cardinality_unattested`），绝不把折叠后的合并值当单值凭证收割。
+  ///
+  /// 平台现状：Dart `HttpHeaders.forEach` 逐名给出 `List<String>`，[DirectTransport] 可证明；
+  /// 服务端 WHATWG `fetch` 的 `Headers` 在读到之前已折叠且无原始出口，故 TS `DirectTransport`
+  /// 恒 `false`（见 `server/src/runtime/transport/direct.ts` 同名字段注）。
+  final bool headerCardinalityAttested;
 }
 
 abstract interface class Transport {
@@ -139,6 +162,7 @@ class FetchProxyDeps {
     this.tryReserveRequest,
     this.onRawResponse,
     this.brokerInjectHeaders,
+    this.masker,
   });
 
   final BrokerManifestView view;
@@ -178,7 +202,47 @@ class FetchProxyDeps {
   /// [_brokerInjectHeaderForbidden] 运行期护栏（纵深防御 validator D16）：凭证头一律 fail-closed。
   /// 缺省 null=无 header 注入。
   final Map<String, String>? brokerInjectHeaders;
+
+  /// ⑦ Response Masker 交付事务（C1 firewall + ② Policy 匹配，ADR-026 §2.7.1）。
+  ///
+  /// **三件套同在**（`policy`/`sink`/`context`，见 [FetchProxyMasker]）以防「有规则无落点」漏收割。
+  /// **缺省 = 无策略**：响应仍强制经 firewall（空规则 no-op + header 脱敏），与旧裸
+  /// `processResponse` 逐字节等价、结构上无旁路；**official 装配缺省即由入口拒载**
+  /// （`adapter_runtime` / `declarative_host`，ADR-026 §2.7）。
+  /// 🔒 红线 #1：装配（含真实 Store）须人工主导、不得 AI 独自闭环。
+  final FetchProxyMasker? masker;
 }
+
+/// [FetchProxyDeps.masker] 三件套 + 选规则上下文（ADR-026 §2.7.1）。
+class FetchProxyMasker {
+  const FetchProxyMasker({
+    required this.policy,
+    required this.capability,
+    required this.sink,
+    required this.context,
+    this.requestKey,
+  });
+
+  /// 已验签 `masker.json` 的严格解析结果（`parseMaskerPolicy`）。
+  final MaskerPolicy policy;
+
+  /// 本次执行的 capability（manifest 权威能力集内）。
+  final String capability;
+
+  /// declarative 逻辑请求 key；imperative `ctx.fetch` 缺省（带 requestKey 的规则永不命中）。
+  final String? requestKey;
+
+  /// ⑥ Commit 落库目标（`CredentialStore.put` 满足之）。
+  final MaskerCommitSink sink;
+
+  /// ⑥ Commit 执行上下文（schoolId + 冻结时钟）。
+  final MaskerCommitContext context;
+}
+
+/// 缺省（无 Masker 策略）交付的占位落点：空规则 → `applyResponseMasker` 无收割，故本 sink
+/// **永不被调用**；传占位仅为满足 firewall 交付事务签名。**绝不**以此承接真实收割——真实
+/// 策略必经 [FetchProxyDeps.masker] 三件套一并注入。
+void _noopMaskerSink(CredentialEntry _) {}
 
 /// 🔒 broker header 注入的运行期护栏（纵深防御，红线 #1）：凭证头 / 逐跳头不得由数据流注入。
 /// 与 validator D16（声明期）+ header_sanitize denylist（出站净化）三重设防；此处任一命中 →
@@ -331,18 +395,44 @@ Future<FetchProxyOutcome> proxyFetch(
       // 🔒 核心专用：脱敏**前**回传原始响应给核心，供数据流 bind 抽取（header 源须在
       // allowlist 脱敏前读）。adapter 拿不到本回调；交回 adapter 的仍是下方脱敏后响应。
       deps.onRawResponse?.call(resp.status, resp.headers, resp.body);
-      // ⑦ 脱敏后交回 adapter。
-      final processed = processResponse(
-        RawResponse(
+      // ⑦ 经统一 delivery firewall choke point 交回 adapter（ADR-026 §2.4，C1）。
+      // ② Policy 匹配：按最终 URL（重定向后最后一跳）+ 最后一跳 method 选规则（§2.8）。
+      // 无 deps.masker → 空规则透明交付，与旧裸 processResponse 逐字节等价、**无旁路**。
+      final masker = deps.masker;
+      final rules = masker == null
+          ? const <MaskerRule>[]
+          : selectMaskerRules(
+              masker.policy,
+              MaskerSelectContext(
+                capability: masker.capability,
+                method: method,
+                finalUrl: currentUrl,
+                requestKey: masker.requestKey,
+              ),
+            );
+      final delivered = deliverThroughFirewall(
+        raw: MaskerRawResponse(
           status: resp.status,
           headers: resp.headers,
-          body: resp.body,
+          body: resp.body ?? '',
+          repeatedHeaders: resp.repeatedHeaders,
         ),
+        // A3：真实判定由传输层给出；缺省（fake transport / 无信号）按 true。
+        transportDecodeOk: resp.decodeOk ?? true,
+        headerCardinalityAttested: resp.headerCardinalityAttested,
+        rules: rules,
+        view: deps.view,
+        sink: masker?.sink ?? _noopMaskerSink,
+        context:
+            masker?.context ??
+            MaskerCommitContext(schoolId: '', now: () => 0),
+        isCancelled: () => deps.cancelToken?.isCancelled ?? false,
       );
       return FetchProxyOutcome(
-        status: processed.status,
-        headers: processed.headers,
-        body: processed.body,
+        status: delivered.response.status,
+        headers: delivered.response.headers,
+        // body 缺省（204/HEAD）时保持 null，不因 firewall 的空串喂入而变成 ''。
+        body: resp.body == null ? null : delivered.response.body,
         requestCount: requestCount,
       );
     }

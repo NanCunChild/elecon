@@ -78,6 +78,11 @@ Future<_Bundle> _mkBundle(
 
   /// capability id → declarative `requests[]`（可选）。
   Map<String, List<Map<String, dynamic>>> capabilityRequests = const {},
+
+  /// bundle 根的 `masker.json` 文本；`elecon-bundle/3` 起 official 必带（ADR-026 §2.7.1）。
+  /// 传 null 构造「缺 masker.json」负例。
+  String? maskerJson = '{"schemaVersion":1,"rules":[]}',
+  String schoolId = 'x',
 }) async {
   final runtime = <String, dynamic>{'stdlibMin': '1.0.0'};
   if (includeEntry) runtime['entry'] = 'index.js';
@@ -85,6 +90,7 @@ Future<_Bundle> _mkBundle(
     'schemaVersion': '1.0',
     'adapterId': adapterId,
     'adapterVersion': adapterVersion,
+    'schoolId': schoolId,
     'capabilities': [
       for (final id in capabilities)
         {
@@ -114,6 +120,7 @@ Future<_Bundle> _mkBundle(
   final built = buildFixtureEnvelope({
     'index.js': entrySource,
     'manifest.json': jsonEncode(manifest),
+    'masker.json': ?maskerJson,
   }, adapterId: adapterId, adapterVersion: adapterVersion);
   final payload = serializeSignaturePayload(
     adapterId: adapterId,
@@ -526,6 +533,110 @@ void main() {
             (e) => e.message,
             'message',
             contains('未声明能力'),
+          ),
+        ),
+      );
+    });
+  });
+
+  // 🔒 ADR-026 §2.7 / §2.7.1：mandatory masker policy 的加载侧门。
+  // 「缺文件 ≠ 空规则」是这组用例的全部要点——若缺文件被当成空规则放行，Masker 就退化成
+  // fail-open 的可选过滤器，作者漏带策略与作者声明无策略不可区分。
+  group('runLoadedAdapter / planLaunch 的 Masker 装配门', () {
+    test('official bundle 缺 masker.json → planLaunch 拒载', () async {
+      final b = await _mkBundle(bundleSigner, maskerJson: null);
+      final r = await load(b);
+      expect(r.ok, isTrue, reason: r.reason);
+      expect(
+        () => planLaunch(r),
+        throwsA(
+          isA<AdapterLaunchException>().having(
+            (e) => e.message,
+            'message',
+            contains('缺 masker.json'),
+          ),
+        ),
+      );
+    });
+
+    test('masker.json 空规则合法 → planLaunch 通过，policy 为空规则', () async {
+      final b = await _mkBundle(bundleSigner);
+      final r = await load(b);
+      final plan = planLaunch(r);
+      expect(plan.maskerPolicy.rules, isEmpty);
+      expect(plan.schoolId, 'x');
+    });
+
+    test('masker.json 形状非法 → planLaunch 拒载（不静默降级为空规则）', () async {
+      final b = await _mkBundle(
+        bundleSigner,
+        maskerJson: '{"schemaVersion":2,"rules":[]}',
+      );
+      final r = await load(b);
+      expect(
+        () => planLaunch(r),
+        throwsA(
+          isA<AdapterLaunchException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('masker.json 解析失败'), contains('policy_bad_shape')),
+          ),
+        ),
+      );
+    });
+
+    test('masker.json 非 JSON → planLaunch 拒载', () async {
+      final b = await _mkBundle(bundleSigner, maskerJson: 'not-json');
+      final r = await load(b);
+      expect(
+        () => planLaunch(r),
+        throwsA(
+          isA<AdapterLaunchException>().having(
+            (e) => e.message,
+            'message',
+            contains('policy_bad_json'),
+          ),
+        ),
+      );
+    });
+
+    test('policy 齐备但缺落库 sink → runLoadedAdapter 拒载（有规则无落点比不收割更坏）', () async {
+      final b = await _mkBundle(bundleSigner);
+      final r = await load(b);
+      expect(
+        () => runLoadedAdapter(
+          result: r,
+          capability: 'notice.list',
+          resolver: _StubResolver(),
+          transport: _StubTransport(),
+          // maskerSink 故意不传
+        ),
+        throwsA(
+          isA<AdapterLaunchException>().having(
+            (e) => e.message,
+            'message',
+            contains('缺 Masker 落库 sink'),
+          ),
+        ),
+      );
+    });
+
+    test('masker.json 含 handle 目标规则 → planLaunch 拒载（P1-08 前无投影执行方）', () async {
+      const handlePolicy =
+          '{"schemaVersion":1,"rules":[{"id":"csrf","match":'
+          '{"capability":"notice.list","method":"GET","urlScope":"https://x.edu/page"},'
+          '"capture":{"exactly":1,"destination":{"kind":"handle","ref":"csrf"}},'
+          '"project":"replace"}]}';
+      final b = await _mkBundle(bundleSigner, maskerJson: handlePolicy);
+      final r = await load(b);
+      expect(r.ok, isTrue, reason: r.reason);
+      expect(
+        () => planLaunch(r),
+        throwsA(
+          isA<AdapterLaunchException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('handle 目标规则'), contains('csrf')),
           ),
         ),
       );

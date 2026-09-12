@@ -9,6 +9,38 @@
 
 ---
 
+- **2026-09-12 · masker 复核补丁：handle 过渡门 + `requestKey: null` 双端对齐 + validator RM17/RM18（ADR-026 §2.8/§2.7.1/§3）**
+  - **改动**：`contract/golden/broker/masker-policy.json` 新增 parse 向量 `match_request_key_null_rejected`
+    （显式 `null` ≠ 缺省，双端一致 fail-closed）。`response-masker.schema.json` 本身**未改**——schema 一直
+    把 `requestKey` 定为 string，本次只是让 Dart 运行时解析器与 TS/schema 对齐。
+  - **为何**：复核发现 Dart 解析器把 `requestKey: null` 当缺省接受（与 TS 分叉）；且 handle 目标规则在
+    P1-08 前被运行时静默跳过（投影义务无执行方），属 fail-open。
+  - **同批落地**：两端装配处对含 handle 规则的策略拒载（客户端 `planLaunch`、服务端 `runImperativeAdapter`
+    → `masker_handle_unsupported`）；validator `RM17_handle_target_unsupported`（error）禁签、
+    `RM18_header_source_server_unattested`（warn，服务端 header 源规则不可执行）；ADR-026 §2.8 文本
+    校正为 `capability/method/urlScope` + 可选 `requestKey` 的实现口径。
+  - **依据**：ADR-026 §2.8 / §2.7.1 / §3。🔒 触红线 #6；handle 过渡门随 P1-08 同批解除。
+
+- **2026-09-12 · `bundleFormat` 断代 `elecon-bundle/2` → `/3`，`masker.json` 转为 official 强制（ADR-026 §2.7.1）**
+  - **改动**：`contract/golden/bundle/loader.json` 重生成（`bundleFormat` = `elecon-bundle/3`，含真实 Ed25519 测试签名）；
+    `contract/golden/broker/response-masker.json` 新增 3 例 P1-04 原始头基数向量；**新增**
+    `contract/golden/broker/masker-policy.json`（`masker.json` 严格解析 26 例 + firewall ② 步选规则 11 例，两端双跑）。
+    `response-masker.schema.json` 本身**未改**——断代表达的是「必须有这份文件」，不是「文件形状变了」。
+  - **为何**：ADR-026 §2.7 要求 official bundle 必带 `masker.json` 且 host 加载时接入 delivery firewall；
+    在此之前 validator 挂着无条件阻断 `RM0_host_gate_unavailable`，理由是「没有旧 host 可理解的拒载字段」。
+    digest v2 落地后那个字段存在——就是 `bundleFormat`，两端严格相等。断代把「懂 `/2` 但没有 Masker
+    运行时门的 host 会忽略 masker.json」这个**随时间关闭的窗口**换成一个常量。
+  - **同批落地**：validator `RM0_host_gate_unavailable` 退役 → `RM0_policy_missing`（official 缺文件即 error，
+    `rules: []` 合法）；两端新增 `masker-policy.ts` / `masker_policy.dart`；**客户端 `proxyFetch` 交付出口
+    由裸 `processResponse` 改接 `deliverThroughFirewall`**；`planLaunch` 从已验签 blob 读取并解析 `masker.json`
+    （缺失即拒载）；P1-04 响应头原始基数经传输层证明（ADR-026 §2.7.2，服务端 WHATWG fetch 不可证明 →
+    header 源规则 fail-closed）。A 仓 5 份 adapter 补空规则 `masker.json` 并 bump 版本。
+  - **依据**：ADR-026 §2.7.1（2026-09-10 owner 决策）、§2.7.2（P1-04）；ADR-018 §2.9.1 签名覆盖字段。
+    🔒 触红线 #4/#6；破坏性 = 一次重签仪式（无外部持有者，不设双读，红线 #6 前期放宽）。
+  - **仪式前的已知红**：入库 bootstrap 仍是 `/2`，故 `npm run bootstrap:verify -w tools` 在 `/3` 仪式完成前
+    **必然失败**——这是断代的预期代价，也是「不忘记仪式」的硬门。客户端 `school_manifest_test` 改为
+    显式 skip（它测的是已解析 manifest 与 policy 一致，不可解析的产物没有可测对象），不重复同一信号。
+
 - **2026-09-12 · `catalog.schema.json`：entry `url` 删除（ADR-018 §2.5.1 第二步）**
   - **改动**：`entries[].url` 从 schema 移除；`additionalProperties:false` 下再出现即 K0 拒绝。
   - **为何现在**：2026-09-11 条目预告「下一次仪式后删除」。seq 9 仪式已于 2026-09-12 签出不含 `url` 的 catalog 并入库

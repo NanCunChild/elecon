@@ -52,7 +52,7 @@ adapters/school-yourschool/
 ```jsonc
 // envelope —— 被签名的对象。小、可读，签名者可以逐行读完再按下硬件令牌
 {
-  "bundleFormat": "elecon-bundle/2",
+  "bundleFormat": "elecon-bundle/3",
   "adapterId": "school-yourschool",
   "adapterVersion": "0.1.0",
   "files": [

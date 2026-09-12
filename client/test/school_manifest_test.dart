@@ -163,9 +163,11 @@ void main() {
     //
     // 故此处做**条件跳过**而非硬 `skip:`：一旦 bootstrap 被重签为 v2，本测试自动恢复运行，
     // 不依赖任何人记得回来删一行。若它长期显示 skip，说明重签仪式还没做。
-    if (!_isBundleV2(packed!)) {
+    if (!_isCurrentBundleFormat(packed!)) {
       markTestSkipped(
-        '仓内 bootstrap 产物仍是 digest v1，待 owner 离线 YubiKey 重签为 v2 后本测试自动恢复',
+        '仓内 bootstrap 产物不是当前 $kBundleFormat（ADR-026 §2.7.1 masker 断代后为 /3），'
+        '待 owner 离线 YubiKey 重签后本测试自动恢复。'
+        '**硬门在 `npm run bootstrap:verify -w tools`**——它会红，本条只是没有可测对象。',
       );
       return;
     }
@@ -190,10 +192,14 @@ void main() {
   });
 }
 
-/// 这份 packed 字节是否已是 digest v2（封套为严格三字段）。
-bool _isBundleV2(Uint8List packed) {
+/// 这份 packed 字节是否是**当前在役**的 bundle 格式（封套三字段 + envelope `bundleFormat` 相等）。
+///
+/// 断代期间（新 host 已切、入库 bootstrap 尚未重签）本函数返回 false，上面的用例据此 skip：
+/// 它要测的是「已解析 manifest 与核心 policy 是否一致」，而不可解析的产物根本没有可测对象。
+/// **不忘记仪式的保证不在这里**，在 `tools` 的 `bootstrap:verify`（CI 硬门，会红）。
+bool _isCurrentBundleFormat(Uint8List packed) {
   try {
-    readWire(packed);
+    parseEnvelope(readWire(packed).envelopeBytes);
     return true;
   } on BundleFormatException {
     return false;

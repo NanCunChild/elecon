@@ -32,8 +32,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { assertCanonical, collectBundleFiles } from "../signer/index.js";
 
-/** 当前唯一在役的 bundle 格式标识。v1（`elecon-bundle/1`）路径已整体删除，不设双读。 */
-export const BUNDLE_FORMAT = "elecon-bundle/2";
+/**
+ * 当前唯一在役的 bundle 格式标识。v1（`elecon-bundle/1`）路径已整体删除，不设双读。
+ *
+ * **`/3`（2026-09-12，ADR-026 §2.7.1）**：与 `/2` 的 envelope 结构**完全相同**，断代只表达一件事——
+ * official bundle 自此**必须**携带根目录 `masker.json`（`rules: []` 合法），且 host 加载时须把它接入
+ * delivery firewall。任何只懂 `/2`（含懂 v2 但无 masker 运行时门）的 host 因严格相等自动拒载，
+ * 「旧 host 采纳新 bundle 却忽略 `masker.json`」在结构上不可能发生。与 validator 移除
+ * `RM0_host_gate_unavailable`、两端 loader 接线同批落地，不得拆开。
+ */
+export const BUNDLE_FORMAT = "elecon-bundle/3";
 
 /** 单个文件在清单里的**描述符**——不含内容，内容由 blob 表按 `sha256` 寻址。 */
 export interface EnvelopeFileDescriptor {

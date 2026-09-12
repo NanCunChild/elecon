@@ -176,4 +176,63 @@ void main() {
       );
     },
   );
+
+  test(
+    'P1-04：基数不可证明时 header 源规则 fail-closed，json 源不受影响',
+    () {
+      final writes = <CredentialEntry>[];
+      const headerRule = MaskerRule(
+        id: 'r-header',
+        capture: MaskerCaptureDecl(
+          source: 'header',
+          name: 'x-session-secret',
+          destinationKind: 'credential',
+          destinationRef: 'session',
+        ),
+        project: 'delete',
+      );
+      expect(
+        () => deliverThroughFirewall(
+          raw: const MaskerRawResponse(
+            status: 200,
+            headers: {
+              'content-type': 'text/plain',
+              'x-session-secret': 'HEADER_FIXTURE_SECRET',
+            },
+            body: 'business payload',
+          ),
+          transportDecodeOk: true,
+          // headerCardinalityAttested 缺省 = false（传输层不可证明）→ header 源规则拒交付。
+          rules: const [headerRule],
+          view: _view,
+          sink: writes.add,
+          context: MaskerCommitContext(schoolId: 'demo', now: () => 1),
+        ),
+        throwsA(
+          isA<DeliveryFirewallException>().having(
+            (error) => error.code,
+            'code',
+            'header_cardinality_unattested',
+          ),
+        ),
+      );
+      expect(writes, isEmpty, reason: '拒交付时绝不落库');
+
+      // 同一响应下 json 源规则不受基数门影响（门只约束 header 源）。
+      final jsonOutcome = deliverThroughFirewall(
+        raw: const MaskerRawResponse(
+          status: 200,
+          headers: {'content-type': 'application/json'},
+          body: '{"token":"JSON_FIXTURE"}',
+        ),
+        transportDecodeOk: true,
+        rules: const [_rule],
+        view: _view,
+        sink: writes.add,
+        context: MaskerCommitContext(schoolId: 'demo', now: () => 2),
+      );
+      expect(jsonOutcome.response.body, contains(maskerSentinel));
+      expect(writes.single.value, 'JSON_FIXTURE');
+    },
+  );
 }

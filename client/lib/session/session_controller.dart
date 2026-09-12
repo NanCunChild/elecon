@@ -529,6 +529,9 @@ class SessionController extends ChangeNotifier {
       adapterId: adapterId,
       capability: capability,
       resolver: _store,
+      // 🔒 Response Masker 落库端（ADR-026 §2.7）：与 [resolver] 同一个会话私有 store。
+      // 收割到的原值只经此进核心存储，adapter 侧只见投影后的 sentinel（红线 #1）。
+      maskerSink: _store.put,
       params: params,
       htmlStdlib: stdlib,
       onLog: (level, message) {

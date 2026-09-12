@@ -253,13 +253,18 @@ async function driverTests(): Promise<number> {
           },
           // 若误入 firewall，此 malformed poison body 会触发 MaskerError。
           masker: {
-            rules: [
-              {
-                id: "poison-guard",
-                capture: { source: "json", path: "$.token", destination: { kind: "redact" } },
-                project: "delete",
-              },
-            ],
+            policy: {
+              schemaVersion: 1,
+              rules: [
+                {
+                  id: "poison-guard",
+                  match: { capability: "notice.list", method: "GET", urlScope: "https://evil.example.com/*" },
+                  capture: { source: "json", path: "$.token", destination: { kind: "redact" } },
+                  project: "delete",
+                },
+              ],
+            },
+            capability: "notice.list",
             sink: { put() {} },
             ctx: { schoolId: "school", now: () => 1 },
           },

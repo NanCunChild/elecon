@@ -1,16 +1,19 @@
 /** 通用 imperative fixture 回放器（ADR-022）：固定响应队列，禁止测试访问真实学校接口。 */
 
 import { strict as assert } from "node:assert";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import type { BrokerManifestView } from "../broker/inject-policy.js";
+import { parseMaskerPolicy } from "../broker/masker-policy.js";
+import { CredentialStore } from "../credential/store.js";
 import { runImperativeAdapter } from "../sandbox.js";
 import { TrustedAdapterContext } from "../trusted-context.js";
 import { FakeTransport, noResolver, resolveRepoRoot } from "./smoke-utils.js";
 
 interface Manifest {
+  schoolId?: string;
   network: { allow: string[] };
   capabilities: Array<{ id: string; emits: { schema: string } }>;
 }
@@ -89,9 +92,25 @@ export async function replayImperativeFixture(
   const transport = new FakeTransport(responses);
   const view: BrokerManifestView = { allow: manifest.network.allow };
   const source = readFileSync(join(adapterDir, "index.js"), "utf8");
+  // 与生产装配同形：adapter 根若带 masker.json（/3 起 official 必带），按 §2.7.1 严格解析后接入 firewall；
+  // 收割落点用独立 store（replay 只验产出，不验落库）。缺文件时 devSideload 走无策略透明交付。
+  const maskerPath = join(adapterDir, "masker.json");
+  const masker = existsSync(maskerPath)
+    ? {
+        policy: parseMaskerPolicy(readFileSync(maskerPath, "utf8")),
+        sink: new CredentialStore(undefined, () => 1_700_000_000_000),
+        ctx: { schoolId: manifest.schoolId ?? "", now: () => 1_700_000_000_000 },
+      }
+    : undefined;
   const { data } = await runImperativeAdapter(
     { source, capability: fixture.capability, params: fixture.params ?? {}, nowMs: 1_700_000_000_000 },
-    { trust: TrustedAdapterContext.devSideload(), view, resolver: noResolver, transport },
+    {
+      trust: TrustedAdapterContext.devSideload(),
+      view,
+      resolver: noResolver,
+      transport,
+      ...(masker === undefined ? {} : { masker }),
+    },
   );
 
   assert.deepStrictEqual(data, fixture.expected, `${fixtureName} 产出与 expected 不一致`);

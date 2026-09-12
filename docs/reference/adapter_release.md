@@ -245,7 +245,7 @@ git add ../client/assets/bootstrap && git commit …   # 连同 §7 台账一起
 | `adapterId` / `adapterVersion` | 取自 bundle 内 manifest |
 | `sourceCommit` | 已审 adapter 源的完整 40 位 commit SHA |
 | `bundleDigest` | 规范化 envelope digest（64 位小写 hex） |
-| `policy` | bundle 是否含 `masker.json`；若含，记录签名 envelope 内该文件字节的 SHA-256 |
+| `policy` | official bundle 自 `elecon-bundle/3` 起**必含** `masker.json`；记录签名 envelope 内该文件字节的 SHA-256 |
 | `catalogSequence` / `revocationSequence` | signed catalog / revocation 内的 sequence |
 | `keyId` / `signedAt` | 出签 token 与实际签署时间 |
 | `signer` / `reviewReference` | 实际触碰人和独立复核记录引用 |

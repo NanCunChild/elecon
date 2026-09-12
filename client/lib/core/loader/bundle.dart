@@ -38,7 +38,7 @@ import 'package:cryptography/dart.dart' show DartSha256;
 /// envelope 格式标识。与 `tools/src/bundle/envelope.ts` 的 `BUNDLE_FORMAT` 同值。
 ///
 /// **严格相等**（非前缀匹配）：宽容会在 v3 出现时变成降级面（纪律 6）。
-const String kBundleFormat = 'elecon-bundle/2';
+const String kBundleFormat = 'elecon-bundle/3';
 
 /// 压缩输入上限（粗闸门）：合法 bundle 压缩后远小于此；超限直接拒，不进解压。
 const int kMaxBundleGzBytes = 512 * 1024;

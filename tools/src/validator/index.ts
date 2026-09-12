@@ -1001,8 +1001,14 @@ export function validateAdapterDir(dir: string, contract: Contract, intendedTier
 }
 
 /**
- * `masker.json` 必须位于 adapter 根目录且唯一。当前尚无旧 host 可理解的拒载字段，
- * 因此即使策略本身有效也阻断发布；host gate 落地后再移除 RM0（ADR-026 §2.7）。
+ * `masker.json`（ADR-026 §2.7 / §2.7.1）：
+ *  - **official 档位必须**在 adapter 根目录**恰有一份**（`rules: []` 合法；缺文件 ≠ 空规则，
+ *    `RM0_policy_missing` error）——host 侧同一条件由 loader 拒载（bundleFormat `/3` 断代）。
+ *  - 非根目录 / 多份 → `RM0_policy_location`；超限 → `RM0_policy_too_large`；不可解析 → `RM0_policy_unparseable`。
+ *  - sideload 档位带 `masker.json` 由 `checkResponseMasker` 的 RM2 拒（只允许 official 声明）；缺则不报。
+ *
+ * 历史：`RM0_host_gate_unavailable`（无条件阻断带 masker 的发布）于 2026-09-12 随 `bundleFormat`
+ * 断代到 `elecon-bundle/3` 退役——那个「旧 host 可理解的拒载字段」就是 `bundleFormat` 严格相等。
  */
 function checkResponseMaskerFiles(
   dir: string,
@@ -1024,7 +1030,17 @@ function checkResponseMaskerFiles(
   };
   walk(dir);
 
-  if (found.length === 0) return [];
+  if (found.length === 0) {
+    if (intendedTier !== "official") return [];
+    return [
+      {
+        level: "error",
+        code: "RM0_policy_missing",
+        message:
+          'official adapter 必须在根目录携带 masker.json（无规则写 {"schemaVersion":1,"rules":[]}；缺文件不等价空规则，ADR-026 §2.7）',
+      },
+    ];
+  }
   const rootPolicyPath = join(dir, "masker.json");
   if (found.length !== 1 || found[0] !== rootPolicyPath) {
     return [
@@ -1052,14 +1068,33 @@ function checkResponseMaskerFiles(
     return [{ level: "error", code: "RM0_policy_unparseable", message: "masker.json 解析失败" }];
   }
 
-  return [
-    ...checkResponseMasker(policy, manifest, schemaValidate, intendedTier),
-    {
+  const findings = checkResponseMasker(policy, manifest, schemaValidate, intendedTier);
+  const rules = Array.isArray(policy.rules) ? policy.rules : [];
+
+  // RM17（error）：handle 目标规则的投影义务（ADR-026 §3）在 P1-08 前**没有运行时执行方**
+  // （dataflow bind 只提取、不投影）。签发这种策略 = 签出一个运行时必拒载的 bundle，故发布门
+  // 直接拦下；P1-08 落地后与两端装配门同批解除。
+  const handleRules = rules.filter((rule) => rule?.capture?.destination?.kind === "handle");
+  if (handleRules.length > 0) {
+    findings.push({
       level: "error",
-      code: "RM0_host_gate_unavailable",
-      message: "当前 host 尚无可供旧客户端识别的 Response Masker 最低版本门，禁止发布 masker bundle",
-    },
-  ];
+      code: "RM17_handle_target_unsupported",
+      message: `masker.json 含 ${handleRules.length} 条 handle 目标规则（如 '${handleRules[0]?.id}'）：P1-08 前运行时无投影执行方，装配处必拒载（ADR-026 §3 / §2.7.1）`,
+    });
+  }
+
+  // RM18（warn）：header 源规则只在客户端可执行。服务端 WHATWG fetch 无法证明响应头原始基数，
+  // 运行时一律 fail-closed（ADR-026 §2.7.2）——签发不拦，但提醒该规则在服务端不会生效。
+  const headerRules = rules.filter((rule) => rule?.capture?.source === "header");
+  if (headerRules.length > 0) {
+    findings.push({
+      level: "warn",
+      code: "RM18_header_source_server_unattested",
+      message: `masker.json 含 ${headerRules.length} 条 header 源规则：服务端传输无法证明原始头基数，运行时一律 fail-closed（ADR-026 §2.7.2），仅客户端可执行`,
+    });
+  }
+
+  return findings;
 }
 
 /**

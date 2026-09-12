@@ -1,6 +1,11 @@
 # Response Masker 安全签收与收尾清单（ADR-026）
 
-> 状态：**纯 Capture/Project 引擎（工程说明 §9.2 step 3）已落地并双端双跑绿**；2026-08-07 owner 已裁定 selector miss、mandatory policy 与空规则语义，代码与契约已实现、**待 owner 逐行安全复签**。mandatory loader/runtime gate 的 **P0-01 前置已于 2026-09-09 解除**（digest v2 两端落地），仍受 **P1-04** 与生产装配阻塞。
+> 状态（2026-09-12 更新）：**mandatory loader/runtime gate 已落地**——`bundleFormat` 断代到 `elecon-bundle/3`、
+> validator `RM0_host_gate_unavailable` 退役为 `RM0_policy_missing`、两端 `masker-policy` 装配、**客户端 firewall
+> 接线**、**P1-04 关闭**（ADR-026 §2.7.1 / §2.7.2，整改清单 §2.11）。前置 P0-01（2026-09-09）与 P1-04（2026-09-12）
+> 均已解除。**同日复核补丁**：handle 目标过渡门（两端装配拒载 + validator `RM17`）、`requestKey: null` 双端对齐、
+> validator `RM18`（header 源服务端不可执行 warn）、ADR §2.8 文本校正（整改清单 §2.11「复核修正」）。
+> **剩余：一次 `/3` 重签仪式 + owner 逐行安全复签**（P0-09 / P0-10 据此关闭）。
 > 🔒 触红线 #1/#5/#6/#10。凭证 / Broker / 契约 / 签名路径的实现与测试须人工主导，AI 不得独自闭环（AGENTS.md §1）。
 
 已落地文件：`server/src/runtime/broker/response-masker.ts`、`client/lib/core/broker/response_masker.dart`、`contract/golden/broker/response-masker.json`（57 例）、两端 smoke/test。契约+validator（step 2）见 `contract/response-masker.schema.json`、`tools/src/validator/response-masker.ts`。**B2–B6 与 B1 方案 A 基线已由 owner 于 2026-08-05 签收；B1 方案 B 与 2026-08-07 miss 增量须复签**；C/D 组生产接线与发布控制仍独立阻塞。
@@ -13,7 +18,7 @@
 |---|---|---|
 | A1 | `redact` = **仅投影、不托管、不注入**；用例应少于 `handle`；规范推荐 adapter 作者「能 redact 就不 handle」以减少接触面 | 引擎行为已符合；ADR §2.3 已记推荐；**待落入 adapter 贡献规范（见 D8）** |
 | A2 | 只剥「因 body 改写而失真」的实体头（`Content-Length`/`Content-Encoding`/`ETag`），保留 `Content-Type`；**仅 header 删除、body 未改写时不 strip** | 引擎已实现（strip 仅在有 json 改写时触发）；golden 已含正反例；ADR §2.8 已记 |
-| A3 | Masker 只在**传输层解码后的 UTF-8 明文** body 上运行，**绝不猜测编码**；非法 / 非 UTF-8 在传输层→Broker 边界 **fail-closed 拒交付** | 已写入 ADR §2.8/§2.10 与两端引擎头注释；**运行期已接入（2026-08-05，🔒 待人审）**：`transport/direct.ts` 按 charset + `fatal` UTF-8 解码产出 `TransportResponse.decodeOk`，`false`→firewall `body_not_plaintext` fail-closed（transport smoke 8/8、imperative A3 e2e 绿）。**待**：Dart transport 镜像 + charset golden |
+| A3 | Masker 只在**传输层解码后的 UTF-8 明文** body 上运行，**绝不猜测编码**；非法 / 非 UTF-8 在传输层→Broker 边界 **fail-closed 拒交付** | 已写入 ADR §2.8 与两端引擎头注释；**运行期已接入（2026-08-05，🔒 待人审）**：`transport/direct.ts` 按 charset + `fatal` UTF-8 解码产出 `TransportResponse.decodeOk`，`false`→firewall `body_not_plaintext` fail-closed（transport smoke 8/8、imperative A3 e2e 绿）。**待**：Dart transport 镜像 + charset golden |
 | A4 | sentinel 固定为 `__ELECON_MASKED__`（不再是「建议」） | 引擎常量 + golden + ADR §2.8 已定死 |
 | A5 | capture **不做数值语义，只做区间文本**（数字/布尔取源码字面量、字符串仅反转义），凭证逐字节保真；接受与 dataflow 数值策略的有意分歧 | 引擎已实现；两端头注释已记；**本行即安全清单声明** |
 | A6 | 接受「单响应单持久 credential」由 validator(RM15)/firewall 分层保证；接线时（C1/C2）加运行期 assert `captured.length ≤ 1` | **待 C1/C2 落实**（自然位置：`applyResponseMasker` 或 firewall 提交前） |
@@ -49,7 +54,14 @@
 - [x] **B3 字符串反转义 / 下标漂移（owner 签收 2026-08-05）**：以平台 JSON 反转义单 token；UTF-16 码元下标假设是剪接承重前提。**golden 补齐**：`json_surrogate_pair_value`（代理对→非 BMP）、`json_trailing_backslash_value`（末尾 `\\`）、`json_escaped_quote_value`（`\"`）、project `replace_json_after_non_bmp_preserves_bytes`（**非 BMP 前置 → span 下标 parity**）、`replace_json_value_with_escaped_quote`；两端双跑绿。
   - **finding 2（数组下标安全整数已修）**：超 2^53−1 下标两端漂移（TS 丢精 `capture_not_found` vs Dart `int.parse` 抛逃逸）→ 两端 tokenizer + validator `validJsonPath` 统一判**不支持语法**（runtime `capture_bad_jsonpath` / 发布期 `RM14_bad_jsonpath`）。golden `json_array_index_unsafe_fail_closed` + validator `bad-jsonpath-unsafe-index` 双锁。
   - **孤立/错序代理对（建议 #8）**：**不入 shared golden**——lone high / lone low / 错序代理对的 capture 结果含孤立代理码元，无法在 UTF-8 golden 的 `expected` 里表达；归入 finding 1 之外的**差分/属性测试**（建议 #10）另行覆盖。
-- [ ] **B4 header 大小写 / 原始基数（2026-08-07 重开）**：owner 最新决策要求多次命中 fail-closed，覆盖真实 HTTP 同名 header，而不只手工 map 的大小写歧义。当前 server WHATWG `Headers` 与 Dart `HttpHeaders` 会在 Masker 前折叠同名值，无法证明原始基数。须按 P1-04 在折叠前保留 cardinality，并用真实 TS/Dart HTTP 测试证明两个同名 token header 拒绝；完成前 P0-09 不得关闭。
+- [ ] **B4 header 大小写 / 原始基数（2026-09-12 已实现，🔒 待复签）**：基数改由**传输层证明**——
+  `TransportResponse.repeatedHeaders`（折叠前记录的重复头名）+ `headerCardinalityAttested`（能否证明）。
+  纯引擎判「已知重复」→ `capture_ambiguous`（golden 新增 3 例，两端双跑）；firewall 判「无从得知」→
+  `header_cardinality_unattested`。真实 HTTP 负例两端各一：TS `transport/direct.smoke.ts` 例 9（服务器真发两个
+  `x-session-secret`）、Dart `transport_direct_test.dart`。**两端能力差（须一并复签）**：Dart `HttpHeaders.forEach`
+  逐名给 `List<String>`，可证明；服务端 WHATWG `fetch` 除 `getSetCookie()` 外无原始多值出口，**恒不可证明**，
+  故 header 源规则在服务端运行时一律 fail-closed（ADR-026 §2.7.2）。要让服务端也能跑 header 源规则须换传输
+  实现或引入可读原始头的 HTTP 客户端（红线 #9），届时另开 ADR。P1-04 据此关闭。
 - [x] **B5 日志 / 诊断纪律（引擎层 owner 签收 2026-08-05）**：`capture_*` / `project_overlap` / `capture_duplicate_key` / `capture_too_deep` / `capture_budget_exceeded` 全 fail-closed；消息**不含原值/命中片段/敏感 URL**（ADR §2.4）。C1 的 DEV/DEPLOY 发射接线仍独立待审。
   - **B5 契约（owner 拍板 2026-08-04，决议已落，发射挂 C1）**：对宿主诊断的**稳定契约 = §3.3 结构化字段**（`code`/`ruleId`/`source`/`path`\|`headerName`/重复键 `key`），**非 message 文案**；DEPLOY 丢 message、留稳定 `code`。发射由 C1 firewall 上层 catch 在 **ADR-024 DEV profile** 决定（`ruleId`/`path` 上下文只在规则层可得）。ADR-024 前若临时挂 `kDebugMode` 须标注为临时通道。C1 接线后扫上层 catch / 遥测。
   - **finding 3（引擎携带 `key`）**：重复 sibling 键名只在引擎层可得，故 `MaskerError.detail.key` / `MaskerException.key` 在 `capture_duplicate_key` 时携带（golden `errorKey` 双端校验）；只含键名。至此 §3.3 白名单里引擎层可得字段（`code`+`key`）已可兑现，规则层字段（`ruleId`/`path`）由 C1 补。
@@ -76,11 +88,28 @@
 - [ ] **C0 前置：修 ADR-023 源响应投影缺口**（ADR §3）：「中间值从不进 adapter」叙述与「源响应仍交付」之间有缺口，step 5 前必须人工修订并测试。
   - **进度（2026-08-03，🔒 待人工确认）**：**文档修订已落**——ADR-023 §4 加「精确边界」（从不进 adapter 严格成立于 broker 内部句柄 + 下游回显剥离；credential-sensitive `bind` 源响应由 ADR-026 firewall 投影兜底）、§3 落地步骤加 ⑦「源响应投影后交付」；ADR-026 §3 记 C0 处置。**「测试」随 C1 落地**：delivery firewall 交付事务须含「源响应投影后再交付」raw→delivered 用例（firewall 骨架已标该 seam）。
 - [ ] **C1 统一 delivery firewall（step 4）**：证明 declarative / imperative / actuator 三入口不可绕过；生产侧无直接构造 adapter-visible 响应的旁路。**并入 A3**：传输层→Broker 边界对非法 / 非 UTF-8 body fail-closed。**并入 A6**：提交前 assert `captured.length ≤ 1`。
-  - **接线进度（2026-08-05，🔒 待人工审）**：**imperative 入口已接线**——`fetch-proxy.ts` `proxyFetch` 每次 `ctx.fetch` 交回 adapter 的响应改为**强制经 `deliverThroughFirewall`**（原末尾裸 `processResponse` 已移除）；无 Masker 策略 → 空规则透明交付，与旧行为逐字节等价（现有 imperative/all smoke 26/26 全绿证行为保持）、**结构上无旁路**。sandbox `ImperativeAdapterDeps.masker`（三件套 `rules`/`sink`/`ctx`，缺省无策略）为注入点；`deps.masker` → `proxyFetch` → firewall 端到端 smoke 证「命中值投影 sentinel 后交付、原值只落核心 store」（`sandbox.imperative.smoke.ts` test 7）。**owner 决议（2026-08-05）已处置**：**A3 真实判定已接入**——`transport/direct.ts` 按 charset + `fatal` UTF-8 解码产出 `TransportResponse.decodeOk`，proxyFetch 以 `resp.decodeOk ?? true` 传入 firewall（`false`→`body_not_plaintext` fail-closed；transport smoke 8/8 + imperative A3 e2e test 8 绿）；**注入凭证回显 = 不做反射检测**（owner 拍板：短字符反射误报，交 Masker `redact` 承担），故 imperative 维持不 strip、firewall ⑦ `injectedValues` blanket 剥离**待退役**（与 ADR-023 §2.5 冲突，改写 + 代码移除待 owner 签收）；**三入口统一收口已确认**（ADR-030 已接受）。**Policy 匹配契约已就近修订 ADR-026 §2.10**（`match{urlPattern/status/contentType}`→rules 并集，Broker firewall ② 解析、纯引擎只吃选定 rules）。**仍待人工主导**：① **declarative + actuator** 两入口接线（actuator 入口代码待随 ADR-030 落）；② Policy 匹配的 **schema/validator + 解析实现 + store 装配**（§2.10 契约已定，实现未落）；③ 真实 Store 原子性（C2）；④ A3 的 Dart transport 镜像 + charset golden；⑤ firewall ⑦ 退役 + ADR-023 §2.5 改写。
+  - **接线进度（2026-09-12 更新）**：**客户端 `proxyFetch` 的交付出口已由裸 `processResponse` 改为
+    `deliverThroughFirewall`**——此前只有服务端接了 firewall，客户端（真正的凭证路径）还在裸交付；
+    imperative 与 declarative 两入口现共用同一 choke point，无策略时空规则透明交付、行为等价。
+    **② Policy 匹配不再是 seam**：`masker-policy.ts` / `masker_policy.dart` 双端落地并由 golden 钉死。
+    **仍待**：actuator 入口（随 ADR-030 / P1-12）、Store 真实原子性（C2）、firewall ⑦ 退役收尾。
+  - **复核补记（2026-09-12，🔒 待复签）**：① **Masker 失败不置 fatal**——`DeliveryFirewallException` /
+    `MaskerException` 与 fetch 限额不同，adapter 可 catch 后继续；响应未交付、值不泄漏，但「策略执行失败」
+    对 adapter 与网络失败不可区分。按现状记录为**接受行为**；若要升级为 fatal 须单独评审。② 签发侧对
+    header 源规则发 `RM18_header_source_server_unattested`（warn）——服务端传输无法证明原始头基数，
+    该规则在服务端运行时一律 fail-closed（ADR-026 §2.7.2），仅客户端可执行。
+  - **接线进度（2026-08-05，🔒 待人工审）**：**imperative 入口已接线**——`fetch-proxy.ts` `proxyFetch` 每次 `ctx.fetch` 交回 adapter 的响应改为**强制经 `deliverThroughFirewall`**（原末尾裸 `processResponse` 已移除）；无 Masker 策略 → 空规则透明交付，与旧行为逐字节等价（现有 imperative/all smoke 26/26 全绿证行为保持）、**结构上无旁路**。sandbox `ImperativeAdapterDeps.masker`（三件套 `rules`/`sink`/`ctx`，缺省无策略）为注入点；`deps.masker` → `proxyFetch` → firewall 端到端 smoke 证「命中值投影 sentinel 后交付、原值只落核心 store」（`sandbox.imperative.smoke.ts` test 7）。**owner 决议（2026-08-05）已处置**：**A3 真实判定已接入**——`transport/direct.ts` 按 charset + `fatal` UTF-8 解码产出 `TransportResponse.decodeOk`，proxyFetch 以 `resp.decodeOk ?? true` 传入 firewall（`false`→`body_not_plaintext` fail-closed；transport smoke 8/8 + imperative A3 e2e test 8 绿）；**注入凭证回显 = 不做反射检测**（owner 拍板：短字符反射误报，交 Masker `redact` 承担），故 imperative 维持不 strip、firewall ⑦ `injectedValues` blanket 剥离**待退役**（与 ADR-023 §2.5 冲突，改写 + 代码移除待 owner 签收）；**三入口统一收口已确认**（ADR-030 已接受）。**Policy 匹配契约已就近修订 ADR-026 §2.8**（`match{capability/method/urlScope}` + 可选 `requestKey`，每条规则自带 match，Broker firewall ② 解析、纯引擎只吃选定 rules）。**仍待人工主导**：① **declarative + actuator** 两入口接线（actuator 入口代码待随 ADR-030 落）；② Policy 匹配的 **schema/validator + 解析实现 + store 装配**（§2.8 契约已定，实现未落）；③ 真实 Store 原子性（C2）；④ A3 的 Dart transport 镜像 + charset golden；⑤ firewall ⑦ 退役 + ADR-023 §2.5 改写。
   - **进度（2026-08-03，🔒 待人工审）**：骨架已起草 `server/src/runtime/broker/delivery-firewall.ts`——单 choke point `deliverThroughFirewall`，按 ADR-026 §2.4 次序编织已落地零件：① **A3** 明文边界断言（`transportDecodeOk=false → body_not_plaintext` fail-closed）→ ②→⑤ `applyResponseMasker`（Capture/Validate/Project，含 **C0 源响应投影**）→ ⑥ `commitMaskerCaptured`（**A6** 在此，未声明 ref fail-closed）→ ⑦ `stripEchoes` 下游回显剥离 → ⑧ `processResponse` header allowlist 脱敏。**交付事务 fail-closed**：任一步抛错绝不交付原响应、绝不半提交。smoke `delivery-firewall.smoke.ts` 7 组绿（含 **C0 raw→delivered 源投影 + 落库闭环**、编码二进制文本投影、header 源删除、A3 fail-closed、事务不半提交、无策略仍经 choke point、回显剥离）；dataflow shared golden 另含 bytes→base64/base64url text→后续 compute/inject 两条双端 pipeline。**seam（待接线，人工主导）**：② Policy 匹配（`masker.json` match→rules，现由调用方传入）、① A3 真实 UTF-8 判定（传输层职责）、⑥ Credential Store 原子性 / generation swap（真实 SecureStore）；**替换三入口现有直接交付**（如 `fetch-proxy` 末尾 `processResponse`）+ 无旁路证明是接线主步。
 - [ ] **C2 Commit 接线（step 5）**：Credential Store 原子提交（§2.4 单持久 ref + generation swap + 崩溃语义）；ADR-023 opaque handle staging；handle 源投影（§3：同次 raw 提取执行 bind 一次，产出 staged handle + 投影响应，不重复计量）。
+  - **过渡门（2026-09-12 复核补记，🔒 待复签）**：P1-08 前 handle 规则的投影义务**没有运行时执行方**。两端装配处
+    （客户端 `planLaunch`、服务端 `runImperativeAdapter`）对含 handle 规则的策略**拒载**，validator `RM17_handle_target_unsupported`（error）禁签；防止「签名策略被静默跳过」的 fail-open。P1-08 落地时本门与 RM17 同批解除。
   - **进度（🔒 待人工审，未接入 live 路径）**：落库中段已起草 `server/src/runtime/broker/masker-commit.ts`（`planMaskerCommit` 纯编排 + `commitMaskerCaptured` 薄桥接到 `CredentialStore.put`，与 `harvest.ts` 同构）。含 **A6** 运行期 assert（`captured.length ≤ 1` → `commit_multiple_credentials` fail-closed）、未声明 ref → `commit_ref_undeclared` fail-closed（已收割敏感值绝不静默丢，异于 harvest 的防御性跳过）；type/scope 取自 manifest decl（ADR-012 §2.4）。smoke `masker-commit.smoke.ts` 5 组绿（含 Capture→Commit→`get(ref)` 闭环，via=header 供命名头注入）。**仍缺**：原子性 / generation swap / 崩溃语义（走真实 store 落地，非本原型桥接）；接入 live 交付路径 = C1 firewall 无旁路证明 + C0 源投影缺口前置（下）。Dart 侧镜像随客户端核心（同 harvest 目前 TS-only 原型）。
-- [ ] **C3 mandatory policy + host/version gate**：official bundle 必须恰有一个 `masker.json`，`rules: []` 合法；policy、sink、store 或 host gate 任一缺失均拒载。**P0-01 已于 2026-09-09 落地**：digest 覆盖 `path`/`size`/`sha256`、拒绝重复路径、blob 集合精确相等，签名已能证明被加载字节确属 `masker.json`——该前置解除，剩余前置为 P1-04 与生产装配。移除 validator `RM0_host_gate_unavailable` 阻断须与 **`bundleFormat` 断代到 `elecon-bundle/3`** 同批（ADR-026 §2.7.1），旧 host 遇新 bundle 由格式严格相等自动拒载。
+- [ ] **C3 mandatory policy + host/version gate（2026-09-12 已实现，🔒 待复签）**：断代到 `elecon-bundle/3` 与
+  移除 `RM0_host_gate_unavailable` **同批落地**（ADR-026 §2.7.1）。签发侧：`RM0_policy_missing`（official 缺文件即
+  error，`rules: []` 合法）。加载侧：客户端 `planLaunch` 按 envelope 路径从已验签 blob 读 `masker.json`，缺失 /
+  非 UTF-8 / 不可解析均拒载；`runLoadedAdapter` 再守落库 sink（缺 sink 拒载）；服务端 `runImperativeAdapter`
+  对 official 缺装配报 `masker_policy_missing`。**待复签重点**：① 缺文件 ≠ 空规则的两处判定；② sink 缺失亦拒载
+  （「有规则无落点」比不收割更坏）；③ `schoolId` 取自已验签 manifest 而非调用方。
 - [ ] **C4 §7.4 尚缺项**：charset / 压缩 / 非法编码语义（呼应 A3，多数属传输层）由 golden 钉死。
 - [ ] **C5 §10 发布/吊销门**：observation→rule→destination→replay 闭合；raw canary 不出现在 delivered fixture；policy diff / 删除 waiver；旧漏洞版本 revocation / `minVersion`；review fixtures 不进 bundle；签名台账加 `maskerDigest`。
 - [ ] **C6 §2.6 adapter-side 提取 scanner**：token/session/cookie、认证 header、跨请求值传递、高危正则作**人工审查触发器**（非自动裁定）。
@@ -92,7 +121,10 @@
 
 > adapters 在 `ncc-devlab`、合并后自动镜像；客户端按需拉取（`adapters.pin` + `fetch-adapters.sh`）；per-capability 门 `check-adapters.mjs` 仍 DRAFT。
 
-- [ ] **D1 bundle 内 mandatory `masker.json`**（schema v1，adapter 根，空 `rules` 合法，进 digest + 官方签名）；确保按需拉取/镜像链路一并带上。旧 adapter 由 owner 手工迁移，不保留缺文件兼容。
+- [x] **D1 bundle 内 mandatory `masker.json`**（2026-09-12）：A 仓 5 份 adapter 各补一份空规则 `masker.json`
+  （`{"schemaVersion":1,"rules":[]}`），随 `BUNDLE_INCLUDE` 进 digest 与官方签名；`adapterVersion` 同批 bump
+  （fudan/helloworld/thu/xjt 0.1.1 → 0.2.0、xidian 0.4.1 → 0.5.0）。5 份 digest 经核心 `signer digest` 逐字复核一致。
+  **不保留缺文件兼容**：新 host 对缺文件的 official bundle 拒载。**仍待**：`/3` 重签仪式把它们签出来。
 - [ ] **D2 manifest 声明 credential ref**：`credential` 目标引用的 ref 须在 manifest 已声明（validator RM8），形态依赖 **ADR-029**。**ADR-029 已接受（2026-07-31）**，§2.1 命名 header 的契约、validator、Broker 纯函数/拼装、客户端两个生产 manifest parser、双端 runtime CH1–CH3 与共享 golden 已落地；verified manifest→Broker view 及 Dart policy→resolver→transport 集成测试已补（🔒 待人工逐行安全签收）。**进度**：Masker Commit → Credential Store 写入该 ref 的落库中段已起草（见 C2 进度：`masker-commit.ts`，smoke 含 `aircon-session`→`x-access-token` 闭环，🔒 待人工审、未接 live）；`aircon-session` 等 ref 正式声明随首例（D7）落。**仍待**：接入 live 交付路径（C1/C0）。
 - [ ] **D3 审查材料 `review/`**（`fixtures/raw`、`fixtures/delivered`、`security-observations.json`）放仓库但**不进发布 bundle**；CI 校验不被打包。
 - [ ] **D4 迁移盘点（§9.1）**：逐个扫 adapter/probe 对 header/body/URL 的正则/JSONPath/切片提取 `token/session/code/openid/client_id`、cookie value 来源（`setEphemeralCookie`）、跨请求值流；逐项人工分类，不按变量名批改。

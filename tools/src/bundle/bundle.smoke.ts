@@ -41,7 +41,7 @@ const backend = new LocalDevSignBackend(privateKey, "dev-local");
 // ① 从目录构建：descriptor + blob 表
 const built = buildEnvelope(dir);
 {
-  assert.equal(built.envelope.bundleFormat, "elecon-bundle/2", "应是 v2 格式");
+  assert.equal(built.envelope.bundleFormat, "elecon-bundle/3", "应是 v3 格式（masker 断代，ADR-026 §2.7.1）");
   assert.equal(built.envelope.adapterId, "school-xidian", "身份应取自 manifest.json，非调用方");
   assert.ok(built.envelope.adapterVersion.length > 0, "envelope 顶层应带 adapterVersion");
 

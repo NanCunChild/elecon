@@ -34,10 +34,14 @@ import 'broker/fetch_proxy.dart'
         Transport,
         TransportBodyLimitException,
         TransportCancelToken,
+        FetchProxyMasker,
         proxyFetch;
 import 'broker/harvest.dart'
     show QueryHarvestTarget, decideHarvest, harvestInto;
 import 'broker/inject_policy.dart' show BrokerManifestView, CredentialDecl;
+import 'broker/masker_commit.dart' show MaskerCommitContext, MaskerCommitSink;
+import 'broker/masker_policy.dart'
+    show MaskerPolicy, MaskerPolicyException, parseMaskerPolicy;
 import 'broker/ports.dart' show CredentialResolver;
 import 'credential/types.dart' show CredentialEntry;
 import 'loader/bundle.dart'
@@ -47,6 +51,7 @@ import 'loader/bundle.dart'
         BundleFormatException,
         envelopeDigest,
         fileBytesByPath,
+        kBundleFormat,
         readEnvelopeManifestJson;
 import 'loader/loader.dart' show LoadResult;
 import 'declarative_host.dart'
@@ -335,6 +340,7 @@ Future<dynamic> runImperativeAdapterForTesting({
   Map<String, dynamic>? params,
   CookieJar? jar,
   HarvestTarget? harvest,
+  FetchProxyMasker? masker,
   String? htmlStdlib,
   int nowMs = 0,
   int memoryBytes = _defaultMemoryBytes,
@@ -350,6 +356,7 @@ Future<dynamic> runImperativeAdapterForTesting({
   params: params,
   jar: jar,
   harvest: harvest,
+  masker: masker,
   htmlStdlib: htmlStdlib,
   nowMs: nowMs,
   memoryBytes: memoryBytes,
@@ -388,6 +395,7 @@ Future<dynamic> _runImperativeAdapter({
   Map<String, dynamic>? params,
   CookieJar? jar,
   HarvestTarget? harvest,
+  FetchProxyMasker? masker,
   String? htmlStdlib,
   int nowMs = 0,
   int memoryBytes = _defaultMemoryBytes,
@@ -459,6 +467,9 @@ Future<dynamic> _runImperativeAdapter({
       transport: deps.transport,
       maxHops: deps.maxHops,
       cancelToken: cancelToken,
+      // ⑦ Masker 交付事务（C1 firewall + ② Policy 匹配）。imperative 的 `ctx.fetch` 无逻辑
+      // 请求 key，故带 requestKey 的规则在此永不命中（与 TS sandbox 同口径）。
+      masker: masker,
       queryHarvest: harvest == null
           ? null
           : QueryHarvestTarget(

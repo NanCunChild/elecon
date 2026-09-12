@@ -45,6 +45,8 @@ function writeAdapter(dir: string, id: string): void {
     }),
   );
   writeFileSync(join(dir, "index.js"), "export const capabilities = {};\n");
+  // official bundle 自 `elecon-bundle/3` 起必须携带 masker.json（ADR-026 §2.7.1）。
+  writeFileSync(join(dir, "masker.json"), '{"schemaVersion":1,"rules":[]}\n');
 }
 
 const { publicKey, privateKey } = generateKeyPairSync("ed25519");

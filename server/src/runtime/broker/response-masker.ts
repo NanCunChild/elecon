@@ -84,6 +84,12 @@ export interface MaskerRawResponse {
   status: number;
   headers: Record<string, string>;
   body: string;
+  /**
+   * **P1-04 原始基数**：线上出现 ≥2 次的响应头名（小写）。`headers` 是传输层按 HTTP 语义折叠后的
+   * 单值视图，无法证明原始基数；传输层在折叠**前**记录重复名，Masker header 源命中此集合即
+   * `capture_ambiguous` fail-closed（schema `exactly: 1`）。缺省 = 无重复（fake transport / 旧向量）。
+   */
+  repeatedHeaders?: readonly string[];
 }
 
 /** 单条规则的 capture 声明（引擎只用 header / json 源；handle 源由 dataflow bind 承接）。 */
@@ -155,6 +161,10 @@ function capValue(value: string): string {
 /** 从**脱敏前**响应头收割一个值。0 命中由事务层解释为 rule miss；多命中 / 超限 fail-closed。 */
 export function captureHeader(name: string, raw: MaskerRawResponse): string {
   const wanted = name.toLowerCase();
+  // P1-04：传输层在折叠前记录的原始重复名——两个同名 token 头即歧义，绝不取折叠后的合并值。
+  if (raw.repeatedHeaders?.some((h) => h.toLowerCase() === wanted)) {
+    throw new MaskerError("capture_ambiguous", "响应头在线上出现多次（须恰 1，P1-04 原始基数）");
+  }
   const matches: string[] = [];
   for (const [key, value] of Object.entries(raw.headers)) {
     if (key.toLowerCase() === wanted) {

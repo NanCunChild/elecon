@@ -72,7 +72,7 @@ review/
 
 `masker.json` 已可被现有 signer 的 `.json` include 规则纳入 digest；新增工作是 schema、唯一文件名、验签后加载、host/version gate、validator、policy diff 和 runtime 执行，而不是扩展 digest 文件后缀。
 
-ADR-026 已要求同步修订 ADR-018 的 bundle 内容说明，把 `masker.json` 列为可选签名运行时文件；旧 host 必须通过版本门拒绝依赖该文件的新 bundle，不能验完 digest 后忽略未知策略继续加载。版本门落地前，validator 以 `RM0_host_gate_unavailable` 阻断任何 masker bundle 发布。
+ADR-026 已要求同步修订 ADR-018 的 bundle 内容说明，把 `masker.json` 列为可选签名运行时文件；旧 host 必须通过版本门拒绝依赖该文件的新 bundle，不能验完 digest 后忽略未知策略继续加载。**版本门已于 2026-09-12 落地**：实现形式 = `bundleFormat` 断代到 `elecon-bundle/3`（ADR-026 §2.7.1），`RM0_host_gate_unavailable` 随之退役、改为 `RM0_policy_missing`（official 缺 `masker.json` 即拒签；`rules: []` 合法）。
 
 V1 规则示例（规范以 [`contract/response-masker.schema.json`](../../contract/response-masker.schema.json) 与组合 validator 为准）：
 
