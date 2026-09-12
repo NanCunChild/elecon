@@ -62,6 +62,8 @@ export interface FirewallRawResponse {
   headers: HeaderMap;
   /** 传输层解码后的明文 body；无 body（如 204 / HEAD）时缺省。 */
   body?: string;
+  /** P1-04：传输层折叠前记录的重复响应头名（小写）；Masker header 源命中即 `capture_ambiguous`。 */
+  repeatedHeaders?: readonly string[];
 }
 
 export interface DeliveryFirewallInput {
@@ -72,6 +74,13 @@ export interface DeliveryFirewallInput {
    * **seam**：真实判定在传输层（`fetch-proxy`/`transport`），本层作边界断言（纵深防御）。
    */
   transportDecodeOk: boolean;
+  /**
+   * **P1-04 基数可证明性**：传输层能否证明每个响应头名在线上出现的次数（见
+   * `TransportResponse.headerCardinalityAttested`）。`false` 时任何 header 源 Masker 规则
+   * fail-closed（`header_cardinality_unattested`）——折叠后的 `"a, b"` 与单值 `"a, b"` 不可区分，
+   * 把它当凭证收割等于在歧义上开口。缺省按 `false`（**不可证明**）处理。
+   */
+  headerCardinalityAttested?: boolean;
   /**
    * ② Response Credential Policy 匹配结果：本次响应适用的 Masker 规则。
    * **seam**：调用方从签名 `masker.json` 的 match 块（url/status/content-type）解析选出后传入；
@@ -113,6 +122,15 @@ export function deliverThroughFirewall(input: DeliveryFirewallInput): DeliveryOu
     );
   }
 
+  // ①b P1-04 原始基数边界：传输层不能证明基数时，header 源规则一律拒（纵深防御，与纯引擎
+  // 的 `capture_ambiguous` 分工：引擎判「已知重复」，本层判「无从得知」）。
+  if (input.headerCardinalityAttested !== true && rules.some((r) => r.capture.source === "header")) {
+    throw new DeliveryFirewallError(
+      "header_cardinality_unattested",
+      "传输层无法证明响应头原始基数（P1-04）——header 源 Masker 规则拒交付，绝不收割折叠后的合并值",
+    );
+  }
+
   // 取消可能发生在 transport 已 resolve、但响应尚未进入交付事务的窗口。
   assertDeliveryActive(input.signal);
 
@@ -124,6 +142,7 @@ export function deliverThroughFirewall(input: DeliveryFirewallInput): DeliveryOu
     status: raw.status,
     headers: raw.headers,
     body: raw.body ?? "",
+    ...(raw.repeatedHeaders !== undefined ? { repeatedHeaders: raw.repeatedHeaders } : {}),
   };
   const { captured, projected } = applyResponseMasker(rules as MaskerRule[], maskerRaw);
 

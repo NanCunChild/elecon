@@ -107,7 +107,7 @@ for (const testCase of golden.cases) {
   console.log("  ✓ 畸形 manifest 不导致 Masker validator 崩溃");
 }
 
-// 旧 host 尚不能理解 Masker 最低版本门时，目录级发布校验必须 fail-closed。
+// bundleFormat `/3` 断代后（ADR-026 §2.7.1）：合法 masker bundle 放行、缺 masker.json 的 official 拒、sideload 不要求。
 {
   const dir = mkdtempSync(join(tmpdir(), "elecon-masker-validator-"));
   try {
@@ -152,8 +152,44 @@ for (const testCase of golden.cases) {
     writeFileSync(join(dir, "masker.json"), JSON.stringify(policy));
     writeFileSync(join(dir, "index.js"), "export function notice_list() {}\n");
     const codes = validateAdapterDir(dir, loadContract()).map((finding) => finding.code);
-    assert.ok(codes.includes("RM0_host_gate_unavailable"));
-    console.log("  ✓ host gate 未落地时 masker bundle 被阻断");
+    assert.ok(!codes.includes("RM0_host_gate_unavailable"), "RM0_host_gate_unavailable 已随 /3 断代退役");
+    assert.ok(
+      !codes.some((code) => code.startsWith("RM")),
+      `合法 masker bundle 不应有 RM* finding：${codes.join(",")}`,
+    );
+    console.log("  ✓ /3 断代后合法 masker bundle 放行（无 RM* finding）");
+
+    // official 缺 masker.json → RM0_policy_missing（缺文件 ≠ 空规则）。
+    rmSync(join(dir, "masker.json"));
+    const missing = validateAdapterDir(dir, loadContract()).map((finding) => finding.code);
+    assert.ok(
+      missing.includes("RM0_policy_missing"),
+      `official 缺 masker.json 须 RM0_policy_missing：${missing.join(",")}`,
+    );
+    console.log("  ✓ official 缺 masker.json → RM0_policy_missing");
+
+    // 空规则合法：{"schemaVersion":1,"rules":[]} 放行。
+    writeFileSync(join(dir, "masker.json"), JSON.stringify({ schemaVersion: 1, rules: [] }));
+    const empty = validateAdapterDir(dir, loadContract()).map((finding) => finding.code);
+    assert.ok(!empty.some((code) => code.startsWith("RM")), `空规则 masker.json 应放行：${empty.join(",")}`);
+    console.log("  ✓ official 空规则 masker.json 放行");
+
+    // sideload 不要求 masker.json（缺则无 RM0），带了则 RM2 拒。
+    rmSync(join(dir, "masker.json"));
+    writeFileSync(join(dir, "manifest.json"), JSON.stringify({ ...manifest, trustTier: "sideload" }));
+    const sideloadMissing = validateAdapterDir(dir, loadContract(), "sideload").map(
+      (finding) => finding.code,
+    );
+    assert.ok(
+      !sideloadMissing.includes("RM0_policy_missing"),
+      "sideload 缺 masker.json 不报 RM0_policy_missing",
+    );
+    writeFileSync(join(dir, "masker.json"), JSON.stringify(policy));
+    const sideloadPresent = validateAdapterDir(dir, loadContract(), "sideload").map(
+      (finding) => finding.code,
+    );
+    assert.ok(sideloadPresent.includes("RM2_official_only"), "sideload 带 masker.json 须 RM2_official_only");
+    console.log("  ✓ sideload：缺 masker.json 不报、带则 RM2 拒");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

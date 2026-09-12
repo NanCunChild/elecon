@@ -46,6 +46,8 @@ writeFileSync(
   }),
 );
 writeFileSync(join(adapter, "index.js"), "export const capabilities = {};\n");
+// official bundle 自 `elecon-bundle/3` 起必须携带 masker.json（ADR-026 §2.7.1）。
+writeFileSync(join(adapter, "masker.json"), '{"schemaVersion":1,"rules":[]}\n');
 
 const revocation4 = {
   sequence: 4,

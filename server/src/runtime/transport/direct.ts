@@ -14,6 +14,9 @@
  *    证书校验、不注入根证书（ADR-009：禁 verify=False）。
  *  - **暴露原始 Set-Cookie / Location**：交回宿主 jar（B4）与重定向逻辑（B3）；响应脱敏
  *    （B2 allowlist）由 broker 在交回 adapter 前完成，不在 transport。
+ *  - **不能证明响应头原始基数（P1-04 已知边界）**：WHATWG `Headers` 折叠同名头且无原始出口，
+ *    故 `headerCardinalityAttested: false`——Masker 的 header 源规则在服务端运行时一律
+ *    fail-closed。客户端 Dart 传输可证明（`HttpHeaders.forEach` 给 `List<String>`）。
  *
  * 运行环境：服务端 campus / public 缓存填充路径（红线 #2：public 不持凭证、不执行 adapter；
  * 本 transport 用于 campus 授权中继代取或 public 缓存公开数据）。Node ≥20 的全局 `fetch`（undici）。
@@ -48,6 +51,7 @@ export class DirectTransport implements Transport {
     const resp = await fetch(req.url, init);
 
     // 原始 Set-Cookie（多条）单独交回——由 B4 jar 捕获，绝不并入普通头、绝不交 adapter。
+    // `getSetCookie()` 是 WHATWG Headers 唯一保留多值的出口；其余头在读到之前已被折叠。
     const setCookie = resp.headers.getSetCookie();
     const headers: HeaderMap = {};
     resp.headers.forEach((value, name) => {
@@ -68,6 +72,12 @@ export class DirectTransport implements Transport {
       location: resp.headers.get("location"),
       body,
       decodeOk,
+      // **P1-04：服务端无法证明原始基数**。WHATWG `Headers` 在本代码读到之前就已把同名头
+      // 折叠为 `"a, b"`，且不提供 `getSetCookie()` 之外的原始多值出口——于是「两个 token 头」
+      // 与「一个含逗号的头」在此不可区分。故恒 `false`，由 firewall 对 header 源规则
+      // fail-closed（`header_cardinality_unattested`）。客户端 Dart `HttpHeaders.forEach`
+      // 逐名给出 `List<String>`，可证明，两端据此分别判定（本文件头注「关键约束」同步）。
+      headerCardinalityAttested: false,
     };
   }
 }

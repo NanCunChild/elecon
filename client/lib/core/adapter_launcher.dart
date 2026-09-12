@@ -41,6 +41,8 @@ class LaunchPlan {
     required this.capabilityRequestGraphs,
     required this.capabilityRequests,
     required this.capabilityEmits,
+    required this.maskerPolicy,
+    required this.schoolId,
     this.capabilityDataflow = const {},
   });
 
@@ -71,6 +73,17 @@ class LaunchPlan {
   /// capability id → 声明式跨请求数据流（ADR-023 `bind`/`compute`/`inject`）。
   /// 仅 declarative 用；缺省即无数据流（退化为平铺代取）。校验器 D1–D16 已在提交期把关。
   final Map<String, CapabilityDataflow> capabilityDataflow;
+
+  /// 🔒 已验签 `masker.json` 的解析结果（ADR-026 §2.7 mandatory policy）。
+  ///
+  /// **official 恒非空**：`elecon-bundle/3` 起 official bundle 必须携带根目录 `masker.json`
+  /// （`rules: []` 合法），缺文件 → [planLaunch] fail-closed；签名覆盖 `path`/`size`/`sha256`，
+  /// 故「被加载的这串字节确属 masker.json」由 digest v2 证明（P0-01）。
+  final MaskerPolicy maskerPolicy;
+
+  /// 已验签 manifest 的 `schoolId`（ADR-012 §2.4 权威）。Masker Commit 落库时写入
+  /// `CredentialEntry.schoolId`，使多校共存时的删除 / 过滤不会波及他校凭证。
+  final String schoolId;
 }
 
 class AdapterEmits {
@@ -144,6 +157,11 @@ LaunchPlan planLaunch(LoadResult result) {
   final capabilityRequests = _capabilityRequests(manifest);
   final capabilityEmits = _capabilityEmits(manifest);
   final capabilityDataflow = _capabilityDataflow(manifest);
+  final maskerPolicy = _maskerPolicy(env, verified.blobs);
+  final schoolId = manifest['schoolId'];
+  if (schoolId is! String || schoolId.isEmpty) {
+    throw const AdapterLaunchException('manifest 缺 schoolId（fail-closed）');
+  }
 
   return LaunchPlan(
     source: source,
@@ -155,7 +173,40 @@ LaunchPlan planLaunch(LoadResult result) {
     capabilityRequests: capabilityRequests,
     capabilityEmits: capabilityEmits,
     capabilityDataflow: capabilityDataflow,
+    maskerPolicy: maskerPolicy,
+    schoolId: schoolId,
   );
+}
+
+/// 🔒 读取并严格解析 bundle 根目录的 `masker.json`（ADR-026 §2.7 / §2.7.1）。
+///
+/// **缺文件 ≠ 空规则**：`elecon-bundle/3` 起 official bundle 必须携带一份（`rules: []` 合法），
+/// 缺失即 fail-closed——否则「作者漏带策略」与「作者声明无策略」不可区分，Masker 就退化成
+/// fail-open 的可选过滤器。本函数只在 official 路径上被调用（[planLaunch] 入口已挡非 official）。
+///
+/// 字节取自已验签 blob 表并按 envelope 里的 `path` 寻址，故 digest v2 的路径绑定保证了
+/// 「读到的就是签名时那一份 masker.json」（ADR-018 §2.9.1，P0-01）。
+MaskerPolicy _maskerPolicy(BundleEnvelope env, BlobTable blobs) {
+  final bytes = fileBytesByPath(env, blobs, 'masker.json');
+  if (bytes == null) {
+    throw const AdapterLaunchException(
+      'official bundle 缺 masker.json（$kBundleFormat 起强制；无规则写 {"schemaVersion":1,"rules":[]}）'
+      '——ADR-026 §2.7 fail-closed，缺文件不等价空规则',
+    );
+  }
+  final String text;
+  try {
+    text = utf8.decode(bytes);
+  } on FormatException catch (e) {
+    throw AdapterLaunchException('masker.json 非 utf-8 文本：$e（fail-closed）');
+  }
+  try {
+    return parseMaskerPolicy(text);
+  } on MaskerPolicyException catch (e) {
+    throw AdapterLaunchException(
+      'masker.json 解析失败：[${e.code}] ${e.message}（fail-closed）',
+    );
+  }
 }
 
 /// 🔒 薄尾：[planLaunch] 后执行 adapter。session 注入 resolver / transport / jar / harvest 等运行时依赖
@@ -172,6 +223,7 @@ Future<dynamic> runLoadedAdapter({
   Map<String, dynamic>? params,
   CookieJar? jar,
   HarvestTarget? harvest,
+  MaskerCommitSink? maskerSink,
   String? htmlStdlib,
   int nowMs = 0,
   int memoryBytes = _defaultMemoryBytes,
@@ -184,6 +236,21 @@ Future<dynamic> runLoadedAdapter({
       'adapter 未声明能力 $capability（manifest 权威能力集：${plan.capabilities}）→ fail-closed',
     );
   }
+
+  // 🔒 Masker 装配门（ADR-026 §2.7）：policy / sink / store 任一缺失即拒载，空规则不放宽。
+  // policy 由 planLaunch 保证非空（缺 masker.json 已 fail-closed）；此处守落库端——
+  // 「有规则无落点」会让收割静默丢失，比不收割更坏。
+  if (maskerSink == null) {
+    throw const AdapterLaunchException(
+      'official adapter 缺 Masker 落库 sink（Credential Store）——ADR-026 §2.7 任一缺失即拒载',
+    );
+  }
+  final maskerTarget = FetchProxyMasker(
+    policy: plan.maskerPolicy,
+    capability: capability,
+    sink: maskerSink,
+    context: MaskerCommitContext(schoolId: plan.schoolId, now: () => nowMs),
+  );
 
   final requestGraph = plan.capabilityRequestGraphs[capability];
   if (requestGraph == null) {
@@ -213,6 +280,7 @@ Future<dynamic> runLoadedAdapter({
                 schoolId: harvest.schoolId,
                 now: () => nowMs,
               ),
+        masker: maskerTarget,
         maxRequests: fetchLimits.maxRequests,
         nowMs: nowMs,
         binds: dataflow.binds,
@@ -249,6 +317,7 @@ Future<dynamic> runLoadedAdapter({
     params: params,
     jar: jar,
     harvest: harvest,
+    masker: maskerTarget,
     htmlStdlib: htmlStdlib,
     nowMs: nowMs,
     memoryBytes: memoryBytes,

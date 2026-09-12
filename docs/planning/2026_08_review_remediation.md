@@ -441,7 +441,7 @@ ADR-024 release gate 另断言 DEPLOY 无 DEV profile）。**仍开**：上传�
 | P1-01 | [ ] Credential Store 按用户、学校、ref 隔离，或用类型保证 store 单租户 | `client/lib/core/credential/`、`server/src/runtime/credential/` | P0-02 | 两校同名 ref 不覆盖；resolver 绑定执行上下文；迁移旧数据；人工复核 |
 | P1-02 | [x] 修复 H/S 持久化队列首次失败后永久中毒 | `software_secure_store.dart`、`hardware_secure_store.dart` | 无 | 首写失败后后写可恢复；durability failure 可见；无静默内存成功 |
 | P1-03 | [x] 登出改为等待 `delete + flush` 的异步事务 | `session_controller.dart`、`settings_page.dart` | P1-02 | 删除未落盘时不得显示完成；失败有安全错误；立即重启不恢复旧凭证 |
-| P1-04 | [ ] 保留重复响应头的原始多值语义，Masker 基数检查发生在折叠前 | `server/src/runtime/transport/direct.ts`、Dart transport、Masker | P0-09 | 两个同名 token header 触发 ambiguous fail-closed；双端真实 HTTP 测试 |
+| P1-04 | [x] 保留重复响应头的原始多值语义，Masker 基数检查发生在折叠前（2026-09-12，§2.11；服务端不可证明 → header 源规则 fail-closed，ADR-026 §2.7.2） | `server/src/runtime/transport/direct.ts`、Dart transport、Masker | P0-09 | 两个同名 token header 触发 ambiguous fail-closed；双端真实 HTTP 测试 |
 | P1-05 | [x] 修复同名不同 Path Cookie 的选择与排序 | `server/src/runtime/broker/cookie-jar.ts`、Dart 对应实现 | P0-04 | `/` 与 `/api` 同名 Cookie 行为符合明确策略/RFC；双端 golden |
 | P1-06 | [x] 补齐 Cookie 的 Secure、Max-Age、Expires 和删除语义 | TS/Dart CookieJar | P0-04 | HTTPS/HTTP、过期、`Max-Age=0`、覆盖删除均有共享 golden |
 | P1-07 | [ ] Transport 解压 body 后清理或重算 `Content-Encoding/Content-Length` | `server/src/runtime/transport/direct.ts`、Dart transport | 无 | gzip/br 响应交给 adapter 时 body 与实体头一致；双端测试 |
@@ -693,6 +693,55 @@ catalog / revocation 的签发本身只体现在入库 bootstrap 的 git 历史�
 **删 `url`（同日随后 PR，触红线 #6，ADR-018 §2.5.1 已预告）**：schema 移除字段、`catalog.dart` 容忍集去 `url`（测试改为拒绝用例）、
 validator K3 退役（smoke 6b 改 K0 拒）、`contract/CHANGELOG.md` 2026-09-12 条。A 仓 vendor 由 `mirror-adapters.yml` 自动跟随，
 镜像提交出现后 bump `adapters.pin`。**关闭**：本节无新编号项；**仍开**：pin 跟随镜像、端点 D 上传 + G6（2026-09-25 后）。
+
+### 2.11 执行状态（2026-09-12 · ADR-026 masker 落地：`bundleFormat` 断代 `/3` + 两端 firewall 接线 + P1-04）
+
+ADR-026 §2.7.1 要求「断代 + 移除 RM0 + loader/runtime 接线」**同批落地、不得拆开**，本次即那一批。
+
+**契约与格式**：`bundleFormat` `elecon-bundle/2` → **`/3`**（`tools/src/bundle/envelope.ts`、
+`client/lib/core/loader/bundle.dart`、A 仓 `scripts/build-bundle.mjs` 三处常量 + `loader.json` golden 重生成）。
+envelope 结构不变——断代只表达「official 必带根目录 `masker.json`」。`contract/CHANGELOG.md` 已记一条（红线 #6）。
+
+**签发门**：validator 的无条件阻断 `RM0_host_gate_unavailable` **退役**，改为 `RM0_policy_missing`——official
+缺根目录 `masker.json` 即 error，`rules: []` 合法（缺文件 ≠ 空规则）；sideload 不要求、带了仍由 RM2 拒。
+
+**策略装配（②Policy 匹配，此前是 seam）**：新增 `server/src/runtime/broker/masker-policy.ts` 与
+`client/lib/core/broker/masker_policy.dart`——已验签 `masker.json` 的严格解析（形状与 schema 逐字对齐）
++ 按 (capability, method, 最终 URL, requestKey) 选规则；`contract/golden/broker/masker-policy.json`
+（parse 26 + select 11）双端钉死。handle 目标不进纯引擎（由 ADR-023 bind 承接）。
+
+**loader / runtime 门**：客户端 `planLaunch` 从已验签 blob 按路径读 `masker.json`（缺失 / 非 UTF-8 /
+不可解析均拒载），`runLoadedAdapter` 再守落库 sink（`session_controller` 注入会话 `CredentialStore.put`，
+`schoolId` 取自已验签 manifest）；服务端 `runImperativeAdapter` 对 official 缺装配报 `masker_policy_missing`。
+
+**firewall 接线（C1 客户端半边，此前只有服务端有）**：**`client` 的 `proxyFetch` 交付出口由裸
+`processResponse` 改为 `deliverThroughFirewall`**，imperative 与 declarative 两入口共用同一 choke point；
+无策略时空规则透明交付、与旧行为等价，**无旁路成为结构保证**。
+
+**P1-04（关闭）**：响应头原始基数改由传输层证明——`TransportResponse.repeatedHeaders` +
+`headerCardinalityAttested`。纯引擎判「已知重复」→ `capture_ambiguous`；firewall 判「无从得知」→
+`header_cardinality_unattested`。**两端能力差已显式记录（ADR-026 §2.7.2）**：Dart `HttpHeaders.forEach`
+可证明；服务端 WHATWG `fetch` 折叠同名头且无原始出口，恒不可证明，故 header 源规则在服务端运行时
+一律 fail-closed。真实 HTTP 负例两端各一（TS `direct.smoke.ts` 9/9、Dart `transport_direct_test.dart`）。
+
+**A 仓**：5 份 adapter 补空规则 `masker.json`，`adapterVersion` 同批 bump（fudan/helloworld/thu/xjt
+0.1.1 → 0.2.0、xidian 0.4.1 → 0.5.0——新增文件改变签名字节，沿用旧号会被 `ledger:validate` 判 equivocation）；
+5 份 digest 经核心 `signer digest` 逐字复核一致。
+
+**验证**：tools typecheck + smoke 全绿；server typecheck + smoke 29/29（含 firewall 8 组、masker-policy 38 例）；
+`biome ci` 干净；client `flutter analyze` 零问题、`flutter test` 899 例中仅 `school_manifest_test` 1 例失败（下条）。
+
+**仪式前的已知红（预期代价，非回归）**：入库 bootstrap 仍是 `/2` 签名产物，故
+`npm run bootstrap:verify -w tools` 在 `/3` 重签仪式完成前**必然失败**——这是「不忘记仪式」的硬门，刻意不消。
+`client/test/school_manifest_test.dart` 改为显式 skip（沿用 v1→v2 断代时的同一处理：它测的是已解析
+manifest 与核心 policy 是否一致，不可解析的产物根本没有可测对象），不重复同一信号。
+`release:gate` 不解析 envelope，**仍通过**。
+
+**仍开**：① **`/3` 重签仪式**（YubiKey，owner；catalog seq 10、5 份新身份入台账，runbook 见
+[`2026_09_next_release_sync.md`](./2026_09_next_release_sync.md) §6）；② `adapters.pin` bump 到 A 仓 masker 提交；
+③ P0-09 / P0-10 的**签收**（代码已到位，🔒 须 owner 逐行安全复核，清单
+[`response_masker_signoff_checklist.md`](../reference/response_masker_signoff_checklist.md)）；④ actuator 入口接线（P1-12）、
+handle Commit 事务（P1-08）、Store 真实原子性（C2）。
 
 ### 6.2 契约演进待办（2026-09-11 自 `TODOList_schema_extend.md` 并入，原文已归档）
 

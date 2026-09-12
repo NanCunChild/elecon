@@ -14,6 +14,7 @@ import 'broker/fetch_proxy.dart'
     show
         BrokerFetchRejected,
         FetchProxyDeps,
+        FetchProxyMasker,
         FetchRequestLimitExceeded,
         Transport,
         TransportBodyLimitException,
@@ -87,6 +88,7 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
   required Transport transport,
   CookieJar? jar,
   QueryHarvestTarget? queryHarvest,
+  FetchProxyMasker? masker,
   int maxRequests = 20,
   int nowMs = 0,
   List<df.BindDecl> binds = const [],
@@ -226,6 +228,17 @@ Future<Map<String, dynamic>> fulfillDeclarativeRequests({
             jar: effectiveJar,
             transport: transport,
             queryHarvest: queryHarvest,
+            // ⑦ Masker 交付事务：declarative 代取有逻辑请求 key，故带 requestKey 的规则
+            // 在此可命中（ADR-026 §2.8 RM7/RM9 据此闭合）。
+            masker: masker == null
+                ? null
+                : FetchProxyMasker(
+                    policy: masker.policy,
+                    capability: masker.capability,
+                    sink: masker.sink,
+                    context: masker.context,
+                    requestKey: key,
+                  ),
             brokerInjectHeaders: headerInjects.isEmpty ? null : headerInjects,
             onRawResponse: (status, headers, body) {
               rawForExtract = df.RawResponse(

@@ -19,7 +19,7 @@ import { strict as assert } from "node:assert";
 import { FakeResolver, FakeTransport, resp, runMain } from "./__testutils__/smoke-utils.js";
 import type { Transport, TransportResponse } from "./broker/fetch-proxy.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
-import type { MaskerRule } from "./broker/response-masker.js";
+import type { MaskerPolicy, MaskerPolicyRule } from "./broker/masker-policy.js";
 import { CredentialStore } from "./credential/store.js";
 import { type ImperativeAdapterDeps, runImperativeAdapter, SandboxError } from "./sandbox.js";
 import { fetchTrustPermitted, TrustedAdapterContext } from "./trusted-context.js";
@@ -286,13 +286,17 @@ async function testPerRequestTimeoutNotSwallowable(): Promise<void> {
     transport,
     harvest: { sink: store, schoolId: "xidian" },
     masker: {
-      rules: [
-        {
-          id: "r-late-abort",
-          capture: { source: "json", path: "$.token", destination: { kind: "credential", ref: "session" } },
-          project: "replace",
-        },
-      ],
+      policy: {
+        schemaVersion: 1,
+        rules: [
+          {
+            id: "r-late-abort",
+            match: { capability: "notice.list", method: "GET", urlScope: "https://h.edu.cn/api/*" },
+            capture: { source: "json", path: "$.token", destination: { kind: "credential", ref: "session" } },
+            project: "replace",
+          },
+        ],
+      },
       sink: store,
       ctx: { schoolId: "xidian", now: () => NOW },
     },
@@ -393,11 +397,14 @@ async function testMaskerDeliveryFirewall(): Promise<void> {
     }),
   ]);
   const store = new CredentialStore(undefined, () => NOW);
-  const rule: MaskerRule = {
+  // ② Policy 匹配随 §2.7.1 落地：规则带 match，由 fetch-proxy 按 (capability, method, 最终 URL) 选出。
+  const rule: MaskerPolicyRule = {
     id: "r-harvest",
+    match: { capability: "notice.list", method: "GET", urlScope: "https://h.edu.cn/api/list" },
     capture: { source: "json", path: "$.token", destination: { kind: "credential", ref: "harvested-token" } },
     project: "replace",
   };
+  const policy: MaskerPolicy = { schemaVersion: 1, rules: [rule] };
   const source = `
     export const capabilities = {
       'notice.list': async (ctx) => {
@@ -410,7 +417,7 @@ async function testMaskerDeliveryFirewall(): Promise<void> {
     view,
     resolver: new FakeResolver({}),
     transport,
-    masker: { rules: [rule], sink: store, ctx: { schoolId: "xidian", now: () => NOW } },
+    masker: { policy, sink: store, ctx: { schoolId: "xidian", now: () => NOW } },
   };
   const { data } = await runImperativeAdapter(
     { source, capability: "notice.list", params: {}, nowMs: NOW },

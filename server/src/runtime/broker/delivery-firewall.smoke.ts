@@ -15,7 +15,7 @@ import { runMain } from "../__testutils__/smoke-utils.js";
 import { CredentialStore } from "../credential/store.js";
 import { DeliveryFirewallError, deliverThroughFirewall } from "./delivery-firewall.js";
 import type { BrokerManifestView } from "./inject-policy.js";
-import type { MaskerRule } from "./response-masker.js";
+import { MaskerError, type MaskerRule } from "./response-masker.js";
 
 const SENTINEL = "__ELECON_MASKED__";
 
@@ -124,6 +124,8 @@ async function main(): Promise<void> {
         body: "business payload",
       },
       transportDecodeOk: true,
+      // P1-04：传输层证明了基数（无重复名），header 源规则方可执行。
+      headerCardinalityAttested: true,
       rules: [headerRule],
       view: AIRCON_VIEW,
       sink: store,
@@ -212,6 +214,95 @@ async function main(): Promise<void> {
     assert.equal(outcome.committedCount, 0, "无策略不提交凭证");
     passed++;
     console.log("  ✓ 无策略命中：仍经 choke point 交付（header 脱敏生效），committedCount=0");
+  }
+
+  // ⑦ P1-04：传输层不能证明原始基数 → header 源规则拒交付（json 源不受影响）。
+  {
+    const store = new CredentialStore(undefined, ctx.now);
+    const headerRule: MaskerRule = {
+      id: "r-header-token",
+      capture: {
+        source: "header",
+        name: "x-session-secret",
+        destination: { kind: "credential", ref: "aircon-session" },
+      },
+      project: "delete",
+    };
+    const raw = {
+      status: 200,
+      headers: { "content-type": "text/plain", "X-Session-Secret": "HEADER_FIXTURE_SECRET" },
+      body: "business payload",
+    };
+    assert.throws(
+      () =>
+        deliverThroughFirewall({
+          raw,
+          transportDecodeOk: true,
+          // 缺省即「不可证明」：绝不把折叠后的 "a, b" 当单值凭证收割。
+          rules: [headerRule],
+          view: AIRCON_VIEW,
+          sink: store,
+          ctx,
+        }),
+      (e: unknown) => e instanceof DeliveryFirewallError && e.code === "header_cardinality_unattested",
+      "基数不可证明时 header 源规则须 fail-closed",
+    );
+    assert.ok(!(await store.get("aircon-session")), "拒交付时绝不落库");
+    // 同一响应下 json 源规则不受基数门影响（门只约束 header 源）。
+    const jsonOutcome = deliverThroughFirewall({
+      raw: { status: 200, headers: { "content-type": "application/json" }, body: '{"t":"J"}' },
+      transportDecodeOk: true,
+      rules: [
+        {
+          id: "r-json",
+          capture: { source: "json", path: "$.t", destination: { kind: "redact" } },
+          project: "replace",
+        },
+      ],
+      view: AIRCON_VIEW,
+      sink: store,
+      ctx,
+    });
+    assert.ok(jsonOutcome.response.body?.includes("__ELECON_MASKED__"), "json 源规则不受基数门影响");
+    passed++;
+    console.log("  ✓ P1-04：基数不可证明 → header 源规则 fail-closed（不交付/不落库），json 源不受影响");
+  }
+
+  // ⑧ P1-04：传输层证明了「线上出现两次」→ 纯引擎 capture_ambiguous fail-closed。
+  {
+    const store = new CredentialStore(undefined, ctx.now);
+    const headerRule: MaskerRule = {
+      id: "r-header-token",
+      capture: {
+        source: "header",
+        name: "x-session-secret",
+        destination: { kind: "credential", ref: "aircon-session" },
+      },
+      project: "delete",
+    };
+    assert.throws(
+      () =>
+        deliverThroughFirewall({
+          raw: {
+            status: 200,
+            // 折叠视图只有一个 key，但传输层记下了它在线上出现两次。
+            headers: { "content-type": "text/plain", "X-Session-Secret": "A, B" },
+            body: "business payload",
+            repeatedHeaders: ["x-session-secret"],
+          },
+          transportDecodeOk: true,
+          headerCardinalityAttested: true,
+          rules: [headerRule],
+          view: AIRCON_VIEW,
+          sink: store,
+          ctx,
+        }),
+      (e: unknown) => e instanceof MaskerError && e.code === "capture_ambiguous",
+      "两个同名 token 头须 capture_ambiguous fail-closed",
+    );
+    assert.ok(!(await store.get("aircon-session")), "歧义时绝不落库");
+    passed++;
+    console.log("  ✓ P1-04：两个同名 token 头（折叠前基数=2）→ capture_ambiguous fail-closed");
   }
 
   console.log(`统一交付 firewall 骨架 smoke: ${passed} 组通过 ✅`);

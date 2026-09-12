@@ -18,7 +18,9 @@ export type SandboxFailureReason =
   | "memory"
   | "fetch_limit"
   // 信任闸门拒绝：档位 × 环境不满足入场条件（ADR-002 §2.6 结构化权限错误）。
-  | "trust_rejected";
+  | "trust_rejected"
+  // official 装配缺 Masker policy / sink（ADR-026 §2.7：任一缺失即拒载，空规则不放宽）。
+  | "masker_policy_missing";
 
 export class SandboxError extends Error {
   constructor(

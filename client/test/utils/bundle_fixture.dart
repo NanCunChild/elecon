@@ -96,7 +96,7 @@ class BundleFixture {
   Map<String, String> files, {
   String adapterId = '',
   String adapterVersion = '',
-  String bundleFormat = 'elecon-bundle/2',
+  String bundleFormat = 'elecon-bundle/3',
 }) {
   final blobs = <String, Uint8List>{};
   final descriptors = <Map<String, dynamic>>[];
@@ -147,7 +147,7 @@ Future<BundleFixture> makeBundle(
   String? adapterId,
   String? adapterVersion,
   String tier = kTierOfficial,
-  String bundleFormat = 'elecon-bundle/2',
+  String bundleFormat = 'elecon-bundle/3',
   String? signAsAdapterId,
   String? signAsAdapterVersion,
 }) async {

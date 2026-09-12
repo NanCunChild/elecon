@@ -12,6 +12,10 @@
 ///    **不**关闭证书校验、不注入根证书（ADR-009：TLS 必须校验，禁 verify=False）。
 ///  - **暴露原始 Set-Cookie / Location**：交回宿主 jar（B4）与重定向逻辑（B3）；
 ///    响应脱敏（B2 allowlist）由 broker 在交回 adapter 前完成，不在 transport。
+///  - **证明响应头原始基数（P1-04）**：`HttpHeaders.forEach` 给出折叠前的 `List<String>`，
+///    故记录出现 ≥2 次的头名并置 `headerCardinalityAttested=true`；Masker 据此对
+///    「两个同名 token 头」fail-closed。服务端 TS 传输在 WHATWG `Headers` 下**无法**证明，
+///    恒 `false`（见 `server/src/runtime/transport/direct.ts`）——这是两端的已知能力差。
 ///
 /// 生命周期（ADR-003 §2.1）对 `direct` 平凡：始终「connected」（无隧道）。仅暴露 `fetch`
 /// + `close`（释放底层连接池）。
@@ -76,11 +80,16 @@ class DirectTransport implements Transport {
       // 原始 Set-Cookie（多条）单独交回——由 B4 jar 捕获，绝不并入普通头、绝不交 adapter。
       final setCookie = <String>[];
       final headers = <String, String>{};
+      // **P1-04 原始基数**：`HttpHeaders.forEach` 逐名给出**折叠前**的 `List<String>`，
+      // 故客户端能证明「这个头在线上出现了几次」。记下 ≥2 次的名字交给 Masker——
+      // 交付前它据此对 header 源规则 `capture_ambiguous` fail-closed，绝不收割合并值。
+      final repeatedHeaders = <String>[];
       response.headers.forEach((name, values) {
         if (name.toLowerCase() == 'set-cookie') {
           setCookie.addAll(values);
           return;
         }
+        if (values.length > 1) repeatedHeaders.add(name.toLowerCase());
         // 多值头折叠为逗号连接（HttpHeaders 已小写化 name；broker 脱敏大小写不敏感）。
         headers[name] = values.join(', ');
       });
@@ -100,6 +109,9 @@ class DirectTransport implements Transport {
         location: response.headers.value('location'),
         body: decoded.body,
         decodeOk: decoded.decodeOk,
+        repeatedHeaders: repeatedHeaders,
+        // 上面的 forEach 走遍了全部头名，故本次基数是**完整可证明**的（P1-04）。
+        headerCardinalityAttested: true,
       );
     } catch (e) {
       DevLog.instance.network(

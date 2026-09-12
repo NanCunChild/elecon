@@ -1,0 +1,260 @@
+{
+  "_doc": "Response Masker 策略装配 golden（ADR-026 §2.7.1 落地）。语言无关唯一事实源：TS（server broker/masker-policy.smoke.ts）与 Dart（client broker_masker_policy_test.dart）照同一向量双跑。两段：parse = 已验签 bundle 内 masker.json 字节 → 策略对象的严格解析（形状与 contract/response-masker.schema.json 逐字对齐，多余字段 / 缺字段 / 错枚举一律 fail-closed；policy 与 manifest 的闭合性校验属签发期 validator RM1–RM15，不在运行时重做）；select = Broker firewall ② 步按 (capability, method, 最终 URL, requestKey) 选出交给纯引擎的规则子集（AND 语义、保持策略序、handle 目标不进引擎——由 dataflow bind 承接，ADR-026 §3）。改动此文件须人工 + 安全清单复核（红线 #1）。",
+  "parseErrorCodes": ["policy_bad_json", "policy_bad_shape", "policy_duplicate_rule_id"],
+  "parse": [
+    {
+      "name": "empty_rules_ok",
+      "text": "{\"schemaVersion\":1,\"rules\":[]}",
+      "ok": true,
+      "ruleCount": 0
+    },
+    {
+      "name": "header_redact_rule_ok",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"trace\",\"match\":{\"capability\":\"notice.list\",\"method\":\"GET\",\"urlScope\":\"https://api.example.edu/notices\"},\"capture\":{\"source\":\"header\",\"name\":\"X-Trace\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
+      "ok": true,
+      "ruleCount": 1
+    },
+    {
+      "name": "json_credential_rule_with_request_key_ok",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"session-token\",\"match\":{\"capability\":\"grades.list\",\"requestKey\":\"session\",\"method\":\"POST\",\"urlScope\":\"https://login.example.edu/session\"},\"capture\":{\"source\":\"json\",\"path\":\"$.data.accessToken\",\"exactly\":1,\"destination\":{\"kind\":\"credential\",\"ref\":\"school-session\"}},\"project\":\"replace\"}]}",
+      "ok": true,
+      "ruleCount": 1
+    },
+    {
+      "name": "handle_rule_ok",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"csrf\",\"match\":{\"capability\":\"grades.list\",\"requestKey\":\"page\",\"method\":\"GET\",\"urlScope\":\"https://api.example.edu/page\"},\"capture\":{\"exactly\":1,\"destination\":{\"kind\":\"handle\",\"ref\":\"csrf_token\"}},\"project\":\"replace\"}]}",
+      "ok": true,
+      "ruleCount": 1
+    },
+    {
+      "name": "not_json",
+      "text": "{schemaVersion:1}",
+      "ok": false,
+      "error": "policy_bad_json"
+    },
+    {
+      "name": "top_level_array",
+      "text": "[]",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "missing_rules",
+      "text": "{\"schemaVersion\":1}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "wrong_schema_version",
+      "text": "{\"schemaVersion\":2,\"rules\":[]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "unknown_top_level_key",
+      "text": "{\"schemaVersion\":1,\"rules\":[],\"x-note\":\"\"}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "too_many_rules",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"r0\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r1\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r2\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r3\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r4\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r5\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r6\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r7\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r8\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r9\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r10\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r11\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r12\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r13\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r14\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r15\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r16\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r17\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r18\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r19\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r20\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r21\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r22\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r23\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r24\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r25\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r26\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r27\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r28\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r29\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r30\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r31\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r32\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r33\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r34\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r35\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r36\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r37\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r38\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r39\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r40\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r41\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r42\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r43\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r44\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r45\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r46\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r47\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r48\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r49\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r50\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r51\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r52\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r53\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r54\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r55\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r56\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r57\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r58\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r59\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r60\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r61\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r62\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r63\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"r64\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "rule_unknown_key",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\",\"note\":\"\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "rule_bad_id_pattern",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"Bad_ID\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "match_bad_method",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"PUT\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "match_unknown_key",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\",\"status\":200},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "capture_legacy_required_key_rejected",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"required\":true,\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "capture_exactly_not_one",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":2,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "capture_header_missing_name",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "capture_header_with_path",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"path\":\"$.a\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "capture_json_missing_path",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"json\",\"exactly\":1,\"destination\":{\"kind\":\"credential\",\"ref\":\"s\"}},\"project\":\"replace\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "capture_bad_source",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"text\",\"path\":\"x\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"replace\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "destination_credential_missing_ref",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"json\",\"path\":\"$.t\",\"exactly\":1,\"destination\":{\"kind\":\"credential\"}},\"project\":\"replace\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "destination_redact_with_ref",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"json\",\"path\":\"$.t\",\"exactly\":1,\"destination\":{\"kind\":\"redact\",\"ref\":\"x\"}},\"project\":\"replace\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "destination_handle_with_source",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"json\",\"path\":\"$.t\",\"exactly\":1,\"destination\":{\"kind\":\"handle\",\"ref\":\"csrf_token\"}},\"project\":\"replace\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "handle_bad_ref_pattern",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"requestKey\":\"p\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"exactly\":1,\"destination\":{\"kind\":\"handle\",\"ref\":\"Csrf-Token\"}},\"project\":\"replace\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "project_bad_enum",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"mask\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
+      "name": "duplicate_rule_id",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"},{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"POST\",\"urlScope\":\"https://h/b\"},\"capture\":{\"source\":\"header\",\"name\":\"Y\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
+      "ok": false,
+      "error": "policy_duplicate_rule_id"
+    }
+  ],
+  "selectPolicy": {
+    "schemaVersion": 1,
+    "rules": [
+      {
+        "id": "trace-get",
+        "match": { "capability": "notice.list", "method": "GET", "urlScope": "https://api.example.edu/notices/*" },
+        "capture": { "source": "header", "name": "X-Trace", "exactly": 1, "destination": { "kind": "redact" } },
+        "project": "delete"
+      },
+      {
+        "id": "token-post-exact",
+        "match": { "capability": "notice.list", "method": "POST", "urlScope": "https://login.example.edu/session" },
+        "capture": { "source": "json", "path": "$.token", "exactly": 1, "destination": { "kind": "credential", "ref": "session" } },
+        "project": "replace"
+      },
+      {
+        "id": "keyed-session",
+        "match": { "capability": "grades.list", "requestKey": "session", "method": "POST", "urlScope": "https://login.example.edu/session" },
+        "capture": { "source": "json", "path": "$.data.accessToken", "exactly": 1, "destination": { "kind": "credential", "ref": "school-session" } },
+        "project": "replace"
+      },
+      {
+        "id": "keyed-handle",
+        "match": { "capability": "grades.list", "requestKey": "page", "method": "GET", "urlScope": "https://api.example.edu/page" },
+        "capture": { "exactly": 1, "destination": { "kind": "handle", "ref": "csrf_token" } },
+        "project": "replace"
+      },
+      {
+        "id": "other-cap",
+        "match": { "capability": "schedule.list", "method": "GET", "urlScope": "https://api.example.edu/notices/*" },
+        "capture": { "source": "header", "name": "X-Trace", "exactly": 1, "destination": { "kind": "redact" } },
+        "project": "delete"
+      },
+      {
+        "id": "trace-get-2",
+        "match": { "capability": "notice.list", "method": "GET", "urlScope": "https://api.example.edu/*" },
+        "capture": { "source": "header", "name": "X-Debug", "exactly": 1, "destination": { "kind": "redact" } },
+        "project": "delete"
+      }
+    ]
+  },
+  "select": [
+    {
+      "name": "imperative_get_wildcard_hits_two_in_policy_order",
+      "context": { "capability": "notice.list", "method": "GET", "finalUrl": "https://api.example.edu/notices/2026" },
+      "expectedRuleIds": ["trace-get", "trace-get-2"]
+    },
+    {
+      "name": "method_mismatch_no_hit",
+      "context": { "capability": "notice.list", "method": "POST", "finalUrl": "https://api.example.edu/notices/2026" },
+      "expectedRuleIds": []
+    },
+    {
+      "name": "method_compared_uppercase",
+      "context": { "capability": "notice.list", "method": "get", "finalUrl": "https://api.example.edu/notices/2026" },
+      "expectedRuleIds": ["trace-get", "trace-get-2"]
+    },
+    {
+      "name": "capability_mismatch_no_hit",
+      "context": { "capability": "card.balance", "method": "GET", "finalUrl": "https://api.example.edu/notices/2026" },
+      "expectedRuleIds": []
+    },
+    {
+      "name": "exact_scope_hits_only_exact_url",
+      "context": { "capability": "notice.list", "method": "POST", "finalUrl": "https://login.example.edu/session" },
+      "expectedRuleIds": ["token-post-exact"]
+    },
+    {
+      "name": "exact_scope_rejects_suffix",
+      "context": { "capability": "notice.list", "method": "POST", "finalUrl": "https://login.example.edu/session?x=1" },
+      "expectedRuleIds": []
+    },
+    {
+      "name": "keyed_rule_needs_matching_request_key",
+      "context": { "capability": "grades.list", "method": "POST", "finalUrl": "https://login.example.edu/session", "requestKey": "session" },
+      "expectedRuleIds": ["keyed-session"]
+    },
+    {
+      "name": "keyed_rule_other_key_no_hit",
+      "context": { "capability": "grades.list", "method": "POST", "finalUrl": "https://login.example.edu/session", "requestKey": "other" },
+      "expectedRuleIds": []
+    },
+    {
+      "name": "keyed_rule_never_matches_imperative_without_key",
+      "context": { "capability": "grades.list", "method": "POST", "finalUrl": "https://login.example.edu/session" },
+      "expectedRuleIds": []
+    },
+    {
+      "name": "handle_destination_excluded_from_engine",
+      "context": { "capability": "grades.list", "method": "GET", "finalUrl": "https://api.example.edu/page", "requestKey": "page" },
+      "expectedRuleIds": []
+    },
+    {
+      "name": "unkeyed_rule_still_applies_to_keyed_request",
+      "context": { "capability": "notice.list", "method": "GET", "finalUrl": "https://api.example.edu/notices/1", "requestKey": "raw" },
+      "expectedRuleIds": ["trace-get", "trace-get-2"]
+    }
+  ]
+}

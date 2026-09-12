@@ -1,4 +1,4 @@
-# 下一次发版（catalog seq 9）· 跨仓协商清单
+# 发版跨仓协商清单（seq 9 已完成 · `/3` masker 仪式待做）
 
 > 2026-09-12 起草。目的：把「核心仓 `elecon`」与「社区仓 `elecon-adapters`（A 仓）」在下一次签名仪式前各自要做的事
 > 摆在一页上，做完打勾。**不是 ADR**；判据引用 ADR-018 §2.5.1 / §2.9.1、ADR-026 §2.7.1、整改清单 §2.8 / §2.9。
@@ -9,7 +9,7 @@
 | | 内容 |
 |---|---|
 | **是** | `elecon-bundle/2` 仪式：catalog **seq 9**、revocation **seq 3（TTL 180 天）**；catalog 自此不写 `url`；采用 A 仓最新源 |
-| **不是** | masker `/3` 断代仪式。`RM0_host_gate_unavailable` 仍无条件拒签带 `masker.json` 的 adapter，loader 门未接线（P0-09 / P0-10）。**A 仓本次不要加 `masker.json`** |
+| **不是** | masker `/3` 断代仪式（seq 9 当时 RM0 仍无条件拒签带 `masker.json` 的 adapter）。**`/3` 的代码已于 2026-09-12 随后落地，仪式本身见下方 §6** |
 | **动机** | ① **入库 bootstrap** 的 revocation seq 2 于 2026-09-18T06:31Z 过期，之后 `release.yml` 的 G2 硬失败、无法出任何 app 版本；② catalog 去端点化后，入库 seq 8 的 catalog 仍带 `url`，签一份干净的才能删字段 |
 | **端点 D 现状** | 公网端点暂不可用（整改清单 §2.8；2026-09-12 实测不可达），seq 8/2 从未上传，线上若有产物也至多是 7 月的 seq 3/1。故 §3 末尾的 G6 `--online-base=` 只在端点恢复后跑；端点未恢复时**省略该步**（G6 拉不到即 error，不是 warn） |
 
@@ -75,8 +75,72 @@ npm run release:gate -- --online-base=https://elecon.xidian.one/adapters/   # G6
 | 3 | A 仓 mirror：`mirror-adapters.yml` 在 main 的 `contract/**` 变化时**自动**推 vendor，无需手跑；镜像提交出现后 bump `adapters.pin`，并顺手删 A 仓 `catalog.mjs` 里已成死代码的 url 告警分支（schema 拒绝在前） | [ ] 待 1 合并 |
 | 4 | 端点 D **2026-09-25** 恢复后：`npm run dist:export -w tools` 上传，`release:gate -- --online-base=…` 跑 G6 | [ ] 此前真机测试用本地端点（DEV base 覆盖） |
 
-## 5. 明确不在本次
+## 5. 明确不在 seq 9 本次
 
-- masker `/3` 断代 + RM0 移除 + loader 接线（ADR-026 §2.7.1，随 P0-09 / P0-10）
+- ~~masker `/3` 断代 + RM0 移除 + loader 接线~~ → **代码已于 2026-09-12 落地**（整改清单 §2.11），仪式见 §6
 - 第二把签名密钥（ADR-002 §3 风险 2(c)，已知缺口）
 - 新学校 / 新 capability
+
+## 6. 下一次仪式：`elecon-bundle/3` masker 断代（catalog seq 10）
+
+> 前置代码已全部合入（ADR-026 §2.7.1 / §2.7.2，整改清单 §2.11）。**在本仪式完成前，
+> `npm run bootstrap:verify -w tools` 必然失败**——入库 bootstrap 还是 `/2` 签名产物，新 host 按严格相等
+> 拒载它。这是断代的预期代价，也是「不忘记仪式」的硬门，刻意不消。`client/test/school_manifest_test.dart`
+> 显式 skip，`release:gate` 不解析 envelope、此期间仍通过。
+
+### 6.1 本次与 seq 9 的差别
+
+| | 内容 |
+|---|---|
+| **格式** | `elecon-bundle/3`（envelope 结构不变；断代只表达「official 必带 `masker.json`」） |
+| **catalog** | **seq 10**（5 份 digest **全变**——每份都多了 `masker.json`） |
+| **revocation** | seq 3 沿用即可（TTL 180 天，2027-03-11 到期）。**只有改内容才 bump**，见 G5 |
+| **版本** | 5 份**全部 bump**：fudan/helloworld/thu/xjt `0.1.1 → 0.2.0`、xidian `0.4.1 → 0.5.0`（A 仓已改） |
+| **台账** | **新增 5 条**——身份 = `adapterId+adapterVersion`，5 个都是新身份，G4 要求每个都有首签记录 |
+
+### 6.2 前置核对
+
+| # | 事项 | 状态 |
+|---|---|---|
+| 1 | A 仓补 5 份 `masker.json` + bump 版本 + `build-bundle.mjs` 切 `/3` + vendor 镜像 | [ ] 已改待提交（见 §6.5） |
+| 2 | 核心 `adapters.pin` → A 仓该提交 | [ ] 待 1 |
+| 3 | 核心 masker 落地 PR 合并、CI 绿（除 §6 首段两处已知红） | [ ] |
+
+### 6.3 仪式当天（持 YubiKey 的人）
+
+```bash
+# 前置：本地 A 仓干净且 HEAD == adapters.pin
+cd ~/projects/elecon-adapters && git status --short && [ "$(git rev-parse HEAD)" = "$(grep -vE '^\s*(#|$)' ~/projects/elecon/adapters.pin)" ] && echo pin-ok
+cd ~/projects/elecon-adapters && npm run check                      # validate 须 5/5 过（含 RM0_policy_missing 不触发）
+for a in fudan helloworld thu xidian xjt; do npm run bundle -- --adapter=school-$a; done
+cd ~/projects/elecon/tools
+for a in fudan helloworld thu xidian xjt; do \
+  npx tsx src/signer/index.ts digest --adapter=../../elecon-adapters/adapters/school-$a; done
+#   ↑ 逐份与 A 域 .sha256 比对（§3 所见即所签）。2026-09-12 预演值：
+#     fudan 6284168401c7… helloworld e7db14c1c9f9… thu aceb211147fb… xidian 7af3008928c8… xjt 3c5eaa2341b9…
+npm run release:package -- --adapters=../../elecon-adapters/adapters --out=../dist-10 \
+  --revocation=../release/revocation.json --sequence=10 --key-id=elecon-official-ncc-1 \
+  --pkcs11-module=/usr/lib/libykcs11.so --serial=<序列号> --pinentry-command=/usr/bin/pinentry-qt
+npm run bootstrap:sync -- --dist=../dist-10 && npm run bootstrap:verify   # 此时才会转绿
+# 台账：本次**每一份都是新身份**，5 条全要记。extract 从仓根跑、--dist 相对仓根、输出到 stdout。
+( cd .. && npm run ledger:extract -w tools -- --dist=dist-10 --key-id=… --public-key-hex=… \
+    --source-commit=<A 仓 masker 提交> --signed-at=… --signer=… --review-reference=… > /tmp/ledger-draft.json )
+#   把 5 条全部追加进 release/adapter-release-ledger.json
+npm run ledger:validate && npm run release:gate                      # G1–G5 全过
+cd .. && npm run test -w client -- test/school_manifest_test.dart     # 断代后这条应转绿
+git add client/assets/bootstrap release && git commit                 # bootstrap 是唯一入库产物
+npm run dist:export -w tools && <上传 dist-export 到端点 D>            # 端点 D 2026-09-25 后
+npm run release:gate -w tools -- --online-base=https://elecon.xidian.one/adapters/   # G6
+```
+
+### 6.4 仪式后
+
+- 整改清单 §2.11「仍开」①②消项；P0-09 / P0-10 转入 owner 逐行安全复签（清单
+  [`response_masker_signoff_checklist.md`](../reference/response_masker_signoff_checklist.md)）。
+- `docs/adr/README.md` 的 026 行去掉「余一次 `/3` 重签仪式」。
+
+### 6.5 A 仓待提交内容（2026-09-12 已改好，等 GPG 签名）
+
+5 份 `masker.json`（空规则）+ 5 份 manifest 版本 bump + `scripts/build-bundle.mjs` 切 `/3` +
+`scripts/catalog.mjs` 删已成死代码的 url 告警 + vendor 镜像（新 golden、新 validator）。
+`npm run check` 全绿，5 份 digest 与核心 signer 逐字一致。

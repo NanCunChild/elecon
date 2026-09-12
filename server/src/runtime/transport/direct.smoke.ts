@@ -13,8 +13,10 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { noResolver, runMain } from "../__testutils__/smoke-utils.js";
 import { CookieJar } from "../broker/cookie-jar.js";
+import { DeliveryFirewallError } from "../broker/delivery-firewall.js";
 import { proxyFetch, TransportBodyLimitExceeded } from "../broker/fetch-proxy.js";
 import type { BrokerManifestView } from "../broker/inject-policy.js";
+import { CredentialStore } from "../credential/store.js";
 import { DirectTransport } from "./direct.js";
 
 async function main(): Promise<void> {
@@ -44,6 +46,12 @@ async function main(): Promise<void> {
       res.statusCode = 200;
       res.setHeader("content-type", "text/plain");
       res.end("0123456789");
+    } else if (reqMsg.url === "/dup-token-header") {
+      // P1-04：线上真的发两个同名 token 头。WHATWG Headers 会把它折叠成 "A, B"。
+      res.statusCode = 200;
+      res.setHeader("content-type", "application/json");
+      res.setHeader("x-session-secret", ["TOK_A_FICTITIOUS", "TOK_B_FICTITIOUS"]);
+      res.end(JSON.stringify({ ok: true }));
     } else if (reqMsg.url === "/gbk") {
       // 声明非 UTF-8 charset：A3 不猜测转码 → decodeOk=false。
       res.statusCode = 200;
@@ -156,11 +164,70 @@ async function main(): Promise<void> {
       assert.equal(resp.decodeOk, false, "非法 UTF-8 字节应 decodeOk=false");
       checks++;
     }
+    // 9. P1-04：两个同名 token 头在 WHATWG Headers 里已被折叠，服务端**无法证明**原始基数，
+    //    故 `headerCardinalityAttested=false`；经 firewall 的 header 源 Masker 规则必须 fail-closed。
+    {
+      const resp = await transport.fetch({ url: `${base}/dup-token-header`, method: "GET", headers: {} });
+      assert.equal(
+        resp.headers["x-session-secret"],
+        "TOK_A_FICTITIOUS, TOK_B_FICTITIOUS",
+        "WHATWG 折叠为逗号连接",
+      );
+      assert.equal(resp.headerCardinalityAttested, false, "服务端传输不得声称能证明原始基数");
+
+      const view: BrokerManifestView = {
+        allow: [`${base}/*`],
+        credentials: {
+          "aircon-session": {
+            scope: ["https://actuator.invalid/*"],
+            type: "header",
+            headerName: "x-access-token",
+          },
+        },
+      };
+      const store = new CredentialStore(undefined, () => 1_700_000_000_000);
+      await assert.rejects(
+        proxyFetch(
+          `${base}/dup-token-header`,
+          {},
+          {
+            view,
+            resolver: noResolver,
+            jar: new CookieJar(),
+            transport,
+            masker: {
+              policy: {
+                schemaVersion: 1,
+                rules: [
+                  {
+                    id: "dup-token",
+                    match: { capability: "notice.list", method: "GET", urlScope: `${base}/*` },
+                    capture: {
+                      source: "header",
+                      name: "x-session-secret",
+                      destination: { kind: "credential", ref: "aircon-session" },
+                    },
+                    project: "delete",
+                  },
+                ],
+              },
+              capability: "notice.list",
+              sink: store,
+              ctx: { schoolId: "test", now: () => 1_700_000_000_000 },
+            },
+          },
+        ),
+        (e: unknown) => e instanceof DeliveryFirewallError && e.code === "header_cardinality_unattested",
+        "两个同名 token 头须 fail-closed，绝不把折叠值当凭证",
+      );
+      assert.ok(!(await store.get("aircon-session")), "拒交付时绝不落库");
+      checks++;
+    }
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 
-  console.log(`transport direct smoke: ${checks}/8 例通过 ✅`);
+  console.log(`transport direct smoke: ${checks}/9 例通过 ✅`);
 }
 
 runMain(main);

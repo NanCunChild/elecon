@@ -38,11 +38,24 @@ DeliveryFirewallOutcome deliverThroughFirewall({
   required MaskerCommitSink sink,
   required MaskerCommitContext context,
   bool Function()? isCancelled,
+  bool headerCardinalityAttested = false,
 }) {
+  // ① A3 明文边界（纵深防御；真实解码判定在传输层 seam）。
   if (!transportDecodeOk) {
     throw const DeliveryFirewallException(
       'body_not_plaintext',
       '传输层未能解码为 UTF-8 明文，拒绝交付',
+    );
+  }
+
+  // ①b P1-04 原始基数边界：传输层不能证明基数时，header 源规则一律拒（与纯引擎分工：
+  // 引擎判「已知重复」→ capture_ambiguous，本层判「无从得知」→ 本码）。折叠后的 "a, b"
+  // 与单值 "a, b" 不可区分，把它当凭证收割等于在歧义上开口。
+  if (!headerCardinalityAttested &&
+      rules.any((r) => r.capture.source == 'header')) {
+    throw const DeliveryFirewallException(
+      'header_cardinality_unattested',
+      '传输层无法证明响应头原始基数（P1-04）——header 源 Masker 规则拒交付，绝不收割折叠后的合并值',
     );
   }
 

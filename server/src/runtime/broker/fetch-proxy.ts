@@ -14,13 +14,16 @@
  * `processResponse`，而是统一 delivery firewall `deliverThroughFirewall`——即便无 Masker 策略命中
  * 也强制经此 choke point（空规则 → Masker no-op + ⑧ header 脱敏，与旧 `processResponse` 逐字节
  * 等价），使 imperative 入口「无策略也无旁路」为**结构**保证。Masker 策略经 `deps.masker`
- * 注入（`rules`/`sink`/`ctx` 三者同在，防「有规则无落点」）；缺省 = 无策略、透明交付。
+ * 注入（`policy`/`sink`/`ctx` 三者同在，防「有规则无落点」）；缺省 = 无策略、透明交付——
+ * **但 official 装配缺省即拒载**（判定在 sandbox / loader 入口，ADR-026 §2.7）。
  * **owner 决议已处置（2026-08-05）**：① **A3 真实判定已接入**——`transportDecodeOk` 取自
  * `resp.decodeOk ?? true`（生产 transport 按 charset + `fatal` UTF-8 解码给出，见 `transport/direct.ts`；
  * 缺省 fake transport 按 true）；⑦ **注入凭证回显不做反射检测**（owner 拍板：短字符反射误报，交
  * Masker `redact` 承担），故此处**不**传 `injectedValues`、维持不 strip。
- * **仍为 seam（人工主导）**：② Policy 匹配（签名 `masker.json` §2.10 `match`→rules 的解析与
- * sink/store 装配，本驱动只提供 `deps.masker` 注入点、不含匹配逻辑）。
+ * **② Policy 匹配已接线（2026-09-12，ADR-026 §2.7.1 落地）**：`deps.masker.policy` 为签名
+ * `masker.json` 的严格解析结果（`masker-policy.ts`），每次 deliver 按 (capability, 最后一跳 method,
+ * 最终 URL, requestKey) 由 `selectMaskerRules` 选出规则再入 firewall。sink/store 装配仍由宿主提供。
+ * **P1-04**：传输层折叠前记录的 `repeatedHeaders` 原样送入 firewall（Masker 据此判 `capture_ambiguous`）。
  *
  * **为何自驱循环而非复用 B3 followRedirects**：followRedirects 只回元信息（status/finalUrl/hops），
  * 不带 body/响应头，且不在每跳重做注入决策 + 捕获 Set-Cookie。B6a 需「逐跳完整管线」，故复用
@@ -44,9 +47,9 @@ import { harvestQueryUrl, type QueryHarvestTarget } from "./harvest.js";
 import type { HeaderMap } from "./header-sanitize.js";
 import { type BrokerManifestView, decideInjection } from "./inject-policy.js";
 import type { MaskerCommitContext, MaskerCommitSink } from "./masker-commit.js";
+import { type MaskerPolicy, selectMaskerRules } from "./masker-policy.js";
 import type { CredentialResolver } from "./ports.js";
 import { DEFAULT_MAX_REDIRECTS, decideRedirect } from "./redirect.js";
-import type { MaskerRule } from "./response-masker.js";
 
 /**
  * 缺省（无 Masker 策略）交付：空规则 → `applyResponseMasker` 无收割，故 sink 永不被调用；
@@ -84,6 +87,26 @@ export interface TransportResponse {
    * 生产 transport 必置真值，`false` 时 firewall 以 `body_not_plaintext` fail-closed。
    */
   decodeOk?: boolean;
+  /**
+   * **P1-04 原始基数**：线上出现 ≥2 次的响应头名（小写，不含 Set-Cookie——它单独走 `setCookie`）。
+   * `headers` 是按 HTTP 语义折叠后的单值视图；折叠会抹掉「两个同名 token 头」这一歧义证据，
+   * 故传输层须在折叠**前**记录。firewall 原样送入 Masker，header 源命中即 `capture_ambiguous`。
+   * 仅在 {@link TransportResponse.headerCardinalityAttested} 为 `true` 时有意义。
+   */
+  repeatedHeaders?: string[];
+  /**
+   * **P1-04 基数可证明性**：传输层是否能证明每个响应头名在线上出现的次数。
+   *
+   * `true` → {@link TransportResponse.repeatedHeaders} 是完整的重复名集合（空 = 无重复）。
+   * `false` / 缺省 → **无法证明**，firewall 对任何 header 源 Masker 规则 fail-closed
+   * （`header_cardinality_unattested`）——绝不拿折叠后的合并值当单值凭证收割。
+   *
+   * 平台现状：Dart `HttpHeaders.forEach` 逐名给出 `List<String>`，客户端可证明；服务端
+   * WHATWG `fetch` 的 `Headers` 在读到之前就已把同名头折叠成 `"a, b"` 且无原始访问，故
+   * 服务端 `DirectTransport` 恒为 `false`。要在服务端跑 header 源规则须换传输实现
+   * （ADR-003 范畴）或引入可读原始头的 HTTP 客户端（红线 #9），届时另开 ADR。
+   */
+  headerCardinalityAttested?: boolean;
 }
 
 export interface Transport {
@@ -119,17 +142,25 @@ export interface FetchProxyDeps {
   /** 每个通过 allow 校验、确定跟随的重定向目标由核心收割 query credential（ADR-020 §2.3）。 */
   queryHarvest?: QueryHarvestTarget;
   /**
-   * ⑦ Response Masker 交付事务（C1 firewall）。**三件套同在**（`rules`/`sink`/`ctx`）以防
-   * 「有规则无落点」漏收割：`rules` = ② Policy 匹配结果（seam，调用方从签名 `masker.json`
-   * 解析），`sink`/`ctx` = ⑥ Commit 目标（真实 Store 原子性 = C2 seam）。**缺省 = 无策略**：
-   * 响应仍强制经 firewall（空规则 no-op + header 脱敏），与旧 `processResponse` 等价、无旁路。
-   * 🔒 红线 #1：装配此三件套（含 store 与 match 解析）须人工主导、不得 AI 独自闭环。
+   * ⑦ Response Masker 交付事务（C1 firewall + ② Policy 匹配）。**三件套同在**（`policy`/`sink`/`ctx`）
+   * 以防「有规则无落点」漏收割：`policy` = 已验签 `masker.json` 的严格解析（`parseMaskerPolicy`），
+   * 每次 deliver 按 `capability` / `requestKey` / 最后一跳 method / 最终 URL 选规则；`sink`/`ctx` = ⑥ Commit
+   * 目标（真实 Store 原子性 = C2 seam）。**缺省 = 无策略**：响应仍强制经 firewall（空规则 no-op +
+   * header 脱敏）、无旁路；official 装配缺省即由入口拒载（sandbox / loader，ADR-026 §2.7）。
+   * 🔒 红线 #1：装配此三件套（含 store）须人工主导、不得 AI 独自闭环。
    */
-  masker?: {
-    rules: readonly MaskerRule[];
-    sink: MaskerCommitSink;
-    ctx: MaskerCommitContext;
-  };
+  masker?: FetchProxyMasker;
+}
+
+/** `deps.masker` 三件套 + 选规则上下文。 */
+export interface FetchProxyMasker {
+  policy: MaskerPolicy;
+  /** 本次执行的 capability（manifest 权威能力集内）。 */
+  capability: string;
+  /** declarative 逻辑请求 key；imperative `ctx.fetch` 缺省（带 requestKey 的规则永不命中）。 */
+  requestKey?: string;
+  sink: MaskerCommitSink;
+  ctx: MaskerCommitContext;
 }
 
 export interface FetchProxyOutcome extends ProcessedResponse {
@@ -211,16 +242,30 @@ export async function proxyFetch(
 
     if (rd.kind === "deliver") {
       // ⑦ 经统一 firewall choke point 交回 adapter。无 deps.masker → 空规则透明交付。
+      // ② Policy 匹配：按最终 URL（重定向后最后一跳）+ 最后一跳 method 选规则（ADR-026 §2.8）。
       const masker = deps.masker;
+      const rules =
+        masker === undefined
+          ? []
+          : selectMaskerRules(masker.policy, {
+              capability: masker.capability,
+              method,
+              finalUrl: currentUrl,
+              ...(masker.requestKey === undefined ? {} : { requestKey: masker.requestKey }),
+            });
+      const rawBase = { status: resp.status, headers: resp.headers };
+      const rawWithBody = resp.body === undefined ? rawBase : { ...rawBase, body: resp.body };
       const firewallInput = {
         raw:
-          resp.body === undefined
-            ? { status: resp.status, headers: resp.headers }
-            : { status: resp.status, headers: resp.headers, body: resp.body },
+          resp.repeatedHeaders === undefined
+            ? rawWithBody
+            : { ...rawWithBody, repeatedHeaders: resp.repeatedHeaders },
+        // P1-04：缺省按**不可证明**处理——header 源规则据此 fail-closed，绝不收割折叠值。
+        headerCardinalityAttested: resp.headerCardinalityAttested ?? false,
         // A3：真实判定由传输层给出（`decodeOk`）；缺省（fake transport / 无信号）按 true。
         // `false`（非 UTF-8 charset / 非法字节）→ firewall `body_not_plaintext` fail-closed。
         transportDecodeOk: resp.decodeOk ?? true,
-        rules: masker?.rules ?? [],
+        rules,
         view,
         sink: masker?.sink ?? NOOP_MASKER_SINK,
         ctx: masker?.ctx ?? NOOP_MASKER_CTX,

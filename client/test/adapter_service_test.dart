@@ -15,6 +15,7 @@ import 'package:elecon/core/adapter_runtime.dart' show AdapterFailureReason;
 import 'package:elecon/core/broker/fetch_proxy.dart';
 import 'package:elecon/core/broker/ports.dart';
 import 'package:elecon/core/credential/blob_store.dart';
+import 'package:elecon/core/credential/types.dart' show CredentialEntry;
 import 'package:elecon/core/loader/bootstrap.dart';
 import 'package:elecon/core/loader/bundle_cache.dart';
 import 'package:elecon/core/loader/catalog.dart';
@@ -87,6 +88,7 @@ Future<_Bundle> _mkBundle(
     'schemaVersion': '1.0',
     'adapterId': adapterId,
     'adapterVersion': adapterVersion,
+    'schoolId': 'x',
     'capabilities': [
       {
         'id': capability,
@@ -102,6 +104,8 @@ Future<_Bundle> _mkBundle(
   final built = buildFixtureEnvelope({
     'index.js': source,
     'manifest.json': jsonEncode(manifest),
+    // `elecon-bundle/3` 起 official 必带 masker.json（空规则合法，ADR-026 §2.7.1）。
+    'masker.json': '{"schemaVersion":1,"rules":[]}',
   }, adapterId: adapterId, adapterVersion: adapterVersion);
   final digest = built.digest;
   final sigB64 = await bundleSigner.signB64(
@@ -207,6 +211,10 @@ class _ThrowingTransport implements Transport {
   }) async => throw StateError('transport 不应被调用');
 }
 
+/// ADR-026 §2.7 要求 official 装配一个落库 sink；本文件的断言只看 adapter 产出，
+/// 故用丢弃桶满足装配门（真实落库行为由 broker_delivery_firewall_test 覆盖）。
+void _discardSink(CredentialEntry _) {}
+
 void main() {
   late _Signer catSigner;
   late _Signer revSigner;
@@ -286,6 +294,8 @@ void main() {
       final svc = await serviceFor(b, adapterId: 'school-x');
       final logs = <String>[];
       final r = await svc.run(
+        // ADR-026 §2.7：official 必带 Masker 落库 sink；本测试只验产出，收割落点用丢弃桶。
+        maskerSink: _discardSink,
         adapterId: 'school-x',
         capability: 'notice.list',
         resolver: _ThrowingResolver(),
@@ -318,6 +328,8 @@ void main() {
         transport: _ThrowingTransport(),
       );
       final r = await svc.run(
+        // ADR-026 §2.7：official 必带 Masker 落库 sink；本测试只验产出，收割落点用丢弃桶。
+        maskerSink: _discardSink,
         adapterId: 'school-x',
         capability: 'notice.list',
         resolver: _ThrowingResolver(),
@@ -340,6 +352,8 @@ void main() {
         ),
       );
       final r = await svc.run(
+        // ADR-026 §2.7：official 必带 Masker 落库 sink；本测试只验产出，收割落点用丢弃桶。
+        maskerSink: _discardSink,
         adapterId: 'school-x',
         capability: 'notice.list',
         resolver: _ThrowingResolver(),
@@ -356,6 +370,8 @@ void main() {
       );
       final svc = await serviceFor(b, adapterId: 'school-x');
       final r = await svc.run(
+        // ADR-026 §2.7：official 必带 Masker 落库 sink；本测试只验产出，收割落点用丢弃桶。
+        maskerSink: _discardSink,
         adapterId: 'school-x',
         capability: 'notice.list',
         resolver: _ThrowingResolver(),
@@ -383,6 +399,8 @@ void main() {
           );
           final svc = await serviceFor(b, adapterId: 'school-x');
           final r = await svc.run(
+        // ADR-026 §2.7：official 必带 Masker 落库 sink；本测试只验产出，收割落点用丢弃桶。
+        maskerSink: _discardSink,
             adapterId: 'school-x',
             capability: 'notice.list',
             resolver: _ThrowingResolver(),
@@ -415,6 +433,8 @@ void main() {
       );
       final svc = await serviceFor(b, adapterId: 'school-x');
       final r = await svc.run(
+        // ADR-026 §2.7：official 必带 Masker 落库 sink；本测试只验产出，收割落点用丢弃桶。
+        maskerSink: _discardSink,
         adapterId: 'school-x',
         capability: 'notice.list',
         resolver: _ThrowingResolver(),
@@ -439,6 +459,8 @@ void main() {
           );
           final svc = await serviceFor(b, adapterId: 'school-x');
           final r = await svc.run(
+        // ADR-026 §2.7：official 必带 Masker 落库 sink；本测试只验产出，收割落点用丢弃桶。
+        maskerSink: _discardSink,
             adapterId: 'school-x',
             capability: 'notice.list',
             resolver: _ThrowingResolver(),
@@ -454,6 +476,8 @@ void main() {
       final b = await _mkBundle(bundleSigner, adapterId: 'school-x');
       final svc = await serviceFor(b, adapterId: 'school-x');
       final r = await svc.run(
+        // ADR-026 §2.7：official 必带 Masker 落库 sink；本测试只验产出，收割落点用丢弃桶。
+        maskerSink: _discardSink,
         adapterId: 'school-x',
         capability: 'grade.list', // manifest 只声明 notice.list
         resolver: _ThrowingResolver(),

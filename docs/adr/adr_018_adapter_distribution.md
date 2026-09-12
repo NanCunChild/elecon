@@ -262,9 +262,9 @@ elecon-adapters/（public,另一组织）
 ```jsonc
 // envelope = 签名对象（小、可读、可人眼审完）
 {
-  "bundleFormat": "elecon-bundle/2",
+  "bundleFormat": "elecon-bundle/3",   // 2026-09-12 起；`/2` 见 ADR-026 §2.7.1 的断代论证
   "adapterId": "school-xidian",
-  "adapterVersion": "0.3.1",
+  "adapterVersion": "0.5.0",
   "files": [
     { "path": "index.js",      "size": 4211, "sha256": "9f2c…" },
     { "path": "manifest.json", "size":  812, "sha256": "3ab0…" },
@@ -315,7 +315,7 @@ gzip(JSON({
 
 **落地清单**（🔒 每项均触红线 #4，须人工复核，AI 不得独自闭环）。**第 1–7 与第 11 项已于 2026-09-09 实现，两端 CI 全绿；第 8 项的重签仪式已于 2026-09-11 执行**（catalog sequence 8 / revocation sequence 2，5 份 adapter 全部 bump 版本号，台账首批 5 条 complete；masker 未随此次，第二次仪式随 §2.7.1 断代到 `/3`；记录见整改清单 §2.7）:
 
-1. `tools/src/bundle/envelope.ts`:envelope 改 descriptor（`path`/`size`/`sha256` + 顶层身份）;显式确定性序列化器（固定键序、无多余空白）;`digest = SHA-256(envelopeBytes)`;`BUNDLE_FORMAT` → `elecon-bundle/2`。
+1. `tools/src/bundle/envelope.ts`:envelope 改 descriptor（`path`/`size`/`sha256` + 顶层身份）;显式确定性序列化器（固定键序、无多余空白）;`digest = SHA-256(envelopeBytes)`;`BUNDLE_FORMAT` → `elecon-bundle/2`（**2026-09-12 再断代到 `/3`**，envelope 结构不变，只表达「official 必带 `masker.json`」,见 ADR-026 §2.7.1）。
 2. `tools/src/signer/index.ts`:`serializePayload` 加 `contextTag` 前缀;`computeBundleDigest(dir)` 走 `buildEnvelope(dir)` 同一条 digest;`collectBundleFiles` 增全量文件承诺;`canonicalizeContent` → `assertCanonical`（拒绝而非改写）。
 3. `tools/src/catalog/sign.ts` / `tools/src/signer/revocation.ts`:签/验输入加各自 `contextTag` 前缀（传输对象不变）。
 4. `tools/src/bundle/package.ts`:上线形态改 `{envelopeB64, signature, blobs}`;实现验签先于解析;补 `bundleFormat` 检查、卫生闸门、blob 集合精确相等、逐文件 size/hash 校验、三方身份一致。

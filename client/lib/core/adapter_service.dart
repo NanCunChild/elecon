@@ -30,6 +30,7 @@ import 'adapter_runtime.dart'
         runLoadedAdapter;
 import 'broker/cookie_jar.dart' show CookieJar;
 import 'broker/fetch_proxy.dart' show Transport;
+import 'broker/masker_commit.dart' show MaskerCommitSink;
 import 'broker/ports.dart' show CredentialResolver;
 import 'credential/blob_store.dart' show FileBlobStore;
 import 'loader/bootstrap.dart' show BootstrapBaseline, FlutterAssetSource;
@@ -173,6 +174,8 @@ class AdapterService {
   /// 加载 [adapterId] 并执行 [capability]。全程 fail-closed 并归一化为 [CapabilityRun]，绝不上抛。
   ///
   /// [resolver] 由 session 注入（其 `CredentialStore`）；凭证只在核心闭包侧注入，本层不触其值。
+  /// [maskerSink] 为 Response Masker 的落库端（同一 `CredentialStore` 的 `put`）——**official
+  /// 必填**，缺失即 [CapabilityFailureKind.launch] 拒载（ADR-026 §2.7，policy/sink 任一缺失均拒）。
   /// [htmlStdlib] 为 `elecon:html` stdlib bundle 源码（adapter 若 `import "elecon:html"` 则须给出，
   /// 否则该 import fail-closed）。
   Future<CapabilityRun> run({
@@ -182,6 +185,7 @@ class AdapterService {
     Map<String, dynamic>? params,
     CookieJar? jar,
     HarvestTarget? harvest,
+    MaskerCommitSink? maskerSink,
     String? htmlStdlib,
     int? nowMs,
     void Function(String level, String message)? onLog,
@@ -208,6 +212,7 @@ class AdapterService {
         params: params,
         jar: jar,
         harvest: harvest,
+        maskerSink: maskerSink,
         htmlStdlib: htmlStdlib,
         nowMs: nowMs ?? DateTime.now().millisecondsSinceEpoch,
         onLog: onLog,

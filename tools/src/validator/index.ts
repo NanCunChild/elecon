@@ -1001,8 +1001,14 @@ export function validateAdapterDir(dir: string, contract: Contract, intendedTier
 }
 
 /**
- * `masker.json` 必须位于 adapter 根目录且唯一。当前尚无旧 host 可理解的拒载字段，
- * 因此即使策略本身有效也阻断发布；host gate 落地后再移除 RM0（ADR-026 §2.7）。
+ * `masker.json`（ADR-026 §2.7 / §2.7.1）：
+ *  - **official 档位必须**在 adapter 根目录**恰有一份**（`rules: []` 合法；缺文件 ≠ 空规则，
+ *    `RM0_policy_missing` error）——host 侧同一条件由 loader 拒载（bundleFormat `/3` 断代）。
+ *  - 非根目录 / 多份 → `RM0_policy_location`；超限 → `RM0_policy_too_large`；不可解析 → `RM0_policy_unparseable`。
+ *  - sideload 档位带 `masker.json` 由 `checkResponseMasker` 的 RM2 拒（只允许 official 声明）；缺则不报。
+ *
+ * 历史：`RM0_host_gate_unavailable`（无条件阻断带 masker 的发布）于 2026-09-12 随 `bundleFormat`
+ * 断代到 `elecon-bundle/3` 退役——那个「旧 host 可理解的拒载字段」就是 `bundleFormat` 严格相等。
  */
 function checkResponseMaskerFiles(
   dir: string,
@@ -1024,7 +1030,17 @@ function checkResponseMaskerFiles(
   };
   walk(dir);
 
-  if (found.length === 0) return [];
+  if (found.length === 0) {
+    if (intendedTier !== "official") return [];
+    return [
+      {
+        level: "error",
+        code: "RM0_policy_missing",
+        message:
+          'official adapter 必须在根目录携带 masker.json（无规则写 {"schemaVersion":1,"rules":[]}；缺文件不等价空规则，ADR-026 §2.7）',
+      },
+    ];
+  }
   const rootPolicyPath = join(dir, "masker.json");
   if (found.length !== 1 || found[0] !== rootPolicyPath) {
     return [
@@ -1052,14 +1068,7 @@ function checkResponseMaskerFiles(
     return [{ level: "error", code: "RM0_policy_unparseable", message: "masker.json 解析失败" }];
   }
 
-  return [
-    ...checkResponseMasker(policy, manifest, schemaValidate, intendedTier),
-    {
-      level: "error",
-      code: "RM0_host_gate_unavailable",
-      message: "当前 host 尚无可供旧客户端识别的 Response Masker 最低版本门，禁止发布 masker bundle",
-    },
-  ];
+  return checkResponseMasker(policy, manifest, schemaValidate, intendedTier);
 }
 
 /**
