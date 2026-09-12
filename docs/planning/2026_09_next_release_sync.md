@@ -102,9 +102,9 @@ npm run release:gate -- --online-base=https://elecon.xidian.one/adapters/   # G6
 
 | # | 事项 | 状态 |
 |---|---|---|
-| 1 | A 仓补 5 份 `masker.json` + bump 版本 + `build-bundle.mjs` 切 `/3` + vendor 镜像 | [ ] 已改待提交（见 §6.5） |
-| 2 | 核心 `adapters.pin` → A 仓该提交 | [ ] 待 1 |
-| 3 | 核心 masker 落地 PR 合并、CI 绿（除 §6 首段两处已知红） | [ ] |
+| 1 | A 仓补 5 份 `masker.json` + bump 版本 + `build-bundle.mjs` 切 `/3` + vendor 镜像 | [x] A 仓 `e0ccfb3`（GPG 签名，已推 main） |
+| 2 | 核心 `adapters.pin` → A 仓该提交 | [x] → `e0ccfb3`；`fetch-adapters.sh` + validator 5/5 过（仅既有 C0 warn） |
+| 3 | 核心 masker 落地 PR 合并、CI 绿（除 `bootstrap:verify` 这一已知红） | [ ] |
 
 ### 6.3 仪式当天（持 YubiKey 的人）
 
@@ -139,8 +139,9 @@ npm run release:gate -w tools -- --online-base=https://elecon.xidian.one/adapter
   [`response_masker_signoff_checklist.md`](../reference/response_masker_signoff_checklist.md)）。
 - `docs/adr/README.md` 的 026 行去掉「余一次 `/3` 重签仪式」。
 
-### 6.5 A 仓待提交内容（2026-09-12 已改好，等 GPG 签名）
+### 6.5 A 仓已提交内容（`e0ccfb3`，2026-09-12）
 
 5 份 `masker.json`（空规则）+ 5 份 manifest 版本 bump + `scripts/build-bundle.mjs` 切 `/3` +
 `scripts/catalog.mjs` 删已成死代码的 url 告警 + vendor 镜像（新 golden、新 validator）。
-`npm run check` 全绿，5 份 digest 与核心 signer 逐字一致。
+`npm run check` 全绿；5 份 bundle 以 `elecon-bundle/3` 构建，digest 与核心 `signer digest` 逐字一致
+（预演值见 §6.3 注释）。

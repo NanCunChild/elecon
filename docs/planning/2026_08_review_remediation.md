@@ -737,10 +737,12 @@ envelope 结构不变——断代只表达「official 必带根目录 `masker.js
 manifest 与核心 policy 是否一致，不可解析的产物根本没有可测对象），不重复同一信号。
 `release:gate` 不解析 envelope，**仍通过**。
 
+**跨仓已就位**：A 仓 `e0ccfb3`（5 份 `masker.json` + 版本 bump + `/3` + vendor 镜像，GPG 签名已推 main）；
+核心 `adapters.pin` → `e0ccfb3`，`fetch-adapters.sh` + validator 5/5 过。
+
 **仍开**：① **`/3` 重签仪式**（YubiKey，owner；catalog seq 10、5 份新身份入台账，runbook 见
-[`2026_09_next_release_sync.md`](./2026_09_next_release_sync.md) §6）；② `adapters.pin` bump 到 A 仓 masker 提交；
-③ P0-09 / P0-10 的**签收**（代码已到位，🔒 须 owner 逐行安全复核，清单
-[`response_masker_signoff_checklist.md`](../reference/response_masker_signoff_checklist.md)）；④ actuator 入口接线（P1-12）、
+[`2026_09_next_release_sync.md`](./2026_09_next_release_sync.md) §6）；② P0-09 / P0-10 的**签收**（代码已到位，🔒 须 owner 逐行安全复核，清单
+[`response_masker_signoff_checklist.md`](../reference/response_masker_signoff_checklist.md)）；③ actuator 入口接线（P1-12）、
 handle Commit 事务（P1-08）、Store 真实原子性（C2）。
 
 ### 6.2 契约演进待办（2026-09-11 自 `TODOList_schema_extend.md` 并入，原文已归档）
