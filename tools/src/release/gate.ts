@@ -11,9 +11,10 @@
  *               catalog 过期只 warn（客户端政策同：stale 的已签清单仍 fail-closed 倾向）。
  *   G3 kill-switch  bootstrap 的 revocation.killSwitch 为 true 时拒绝发版（会让所有装机首启即拒载），
  *               除非 `--allow-kill-switch`（密钥泄露事件下有意为之）。
- *   G4 台账     每个 catalog entry 都必须在 `release/adapter-release-ledger.json` 有记录，且
- *               digest / catalogSequence / revocationSequence 一致；台账里最大的 sequence 不得高于
- *               bootstrap（bootstrap 落后台账 = 有人签了没 sync）。
+ *   G4 台账     每个 catalog entry 都必须在 `release/adapter-release-ledger.json` 有**同 digest** 的记录
+ *               （台账身份 = adapterId+adapterVersion，一份字节只记一次），且该记录的 catalog / revocation
+ *               sequence 不得晚于 bootstrap（记录在它首次签发的那次仪式写入，之后的仪式原样沿用即可）；
+ *               台账里最大的 sequence 不得高于 bootstrap（bootstrap 落后台账 = 有人签了没 sync）。
  *   G5 下次输入 `release/revocation.json`（未签名输入）sequence ≥ 已签 revocation；相等时内容须逐字段
  *               相同——内容变了却没 bump，下次仪式会签出「同序号不同内容」（2026-09-11 第一趟的错误）。
  *   G6 线上     `--online-base=` 给出时拉取线上 catalog / revocation：bootstrap 的 sequence 不得低于线上
@@ -203,12 +204,15 @@ export function runReleaseGate(input: GateInput): GateReport {
         r.adapterId === e.adapterId && r.adapterVersion === e.adapterVersion && r.bundleDigest === e.digest,
     );
     if (!rec) {
-      errors.push(`G4 catalog entry ${e.adapterId}@${e.adapterVersion}（${e.digest.slice(0, 12)}…）未入台账`);
+      errors.push(
+        `G4 catalog entry ${e.adapterId}@${e.adapterVersion}（${e.digest.slice(0, 12)}…）未入台账（或台账 digest 不符）`,
+      );
       continue;
     }
-    if (rec.catalogSequence !== catalog.sequence || rec.revocationSequence !== revocation.sequence) {
+    // 记录写于该字节首次签发的仪式；不能晚于现在这份 bootstrap（否则是从未来的台账倒推出的 bootstrap）。
+    if (rec.catalogSequence > catalog.sequence || rec.revocationSequence > revocation.sequence) {
       errors.push(
-        `G4 ${e.adapterId}@${e.adapterVersion} 台账记录的 sequence（catalog ${rec.catalogSequence} / revocation ${rec.revocationSequence}）≠ bootstrap（${catalog.sequence} / ${revocation.sequence}）`,
+        `G4 ${e.adapterId}@${e.adapterVersion} 台账记录的 sequence（catalog ${rec.catalogSequence} / revocation ${rec.revocationSequence}）晚于 bootstrap（${catalog.sequence} / ${revocation.sequence}）`,
       );
     }
   }

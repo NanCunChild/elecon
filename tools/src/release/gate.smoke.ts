@@ -150,13 +150,10 @@ try {
       backend,
     );
     syncBootstrap({ distDir: dist2, assetsDir: assets2 });
-    const ledger2 = [{ ...rec0, catalogSequence: 9, revocationSequence: 3 }] as LedgerRecordLite[];
-    assert.ok(
-      hasError(run({ assetsDir: assets2, ledger: ledger2, revocationInput: ks }), "G3"),
-      "killSwitch 应 G3",
-    );
+    // 同一份 adapter 字节沿用 seq 8/2 的首签记录即可（台账身份只记一次），新仪式 seq 9/3 不需要新记录。
+    assert.ok(hasError(run({ assetsDir: assets2, ledger, revocationInput: ks }), "G3"), "killSwitch 应 G3");
     assert.equal(
-      run({ assetsDir: assets2, ledger: ledger2, revocationInput: ks, allowKillSwitch: true }).errors.length,
+      run({ assetsDir: assets2, ledger, revocationInput: ks, allowKillSwitch: true }).errors.length,
       0,
     );
     console.log("  ✓ G3 kill-switch 拒 / --allow-kill-switch 放行");
@@ -169,11 +166,13 @@ try {
       hasError(run({ ledger: [{ ...rec0, bundleDigest: "f".repeat(64) }] }), "G4"),
       "digest 不符应 G4",
     );
-    assert.ok(
-      hasError(run({ ledger: [{ ...rec0, revocationSequence: 1 }] }), "G4"),
-      "记录 sequence 不符应 G4",
+    // 首签记录早于当前 bootstrap 是常态（未变字节沿用记录），不得报错。
+    assert.equal(
+      run({ ledger: [{ ...rec0, catalogSequence: 5, revocationSequence: 1 }] }).errors.length,
+      0,
+      "早于当前的首签记录应通过",
     );
-    console.log("  ✓ G4 台账倒退 / 缺失 / digest 不符 / sequence 不符被拒");
+    console.log("  ✓ G4 台账高于 bootstrap / 缺失 / digest 不符被拒；早期首签记录放行");
   }
   // G5 下次输入
   {
