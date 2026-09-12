@@ -224,6 +224,7 @@ manifest 里的 `trustTier` 只是**声明（claim）**，不是依据。**权�
 - **吊销清单**：签名的 revocation list（按 `adapterId` + 版本范围 / 具体 bundle 哈希），经**公网哑服务**分发（公开数据、零凭证，契合红线 #2）。
 - **核心行为**：拉取 + 验签吊销清单，拒绝加载被吊销的 bundle；支持**最低版本下限**强制升级有漏洞的 adapter；支持密钥泄露时的总开关（kill-switch）。
 - **时效与离线**：吊销清单自带新鲜度/TTL；拉取失败时回退到**上一份已验签的清单**（绝不把"拉不到"当成"全部放行"）。
+  **TTL 是陈旧度信号，不是加载门（2026-09-12 明确）**：客户端对 catalog / revocation 一律采用最高 sequence 的已验签份，过 TTL 只进遥测、不拒载——一份陈旧的已签清单仍含全部历史吊销，属 fail-closed 倾向；急性吊销依赖在线拉取 + sequence 单调 + kill-switch，与 TTL 无关。TTL 唯一的硬约束落在发版门（P3-08 G2）：不把已过期的基线清单打进新装包。据此 revocation 的 TTL 取长（180 天量级）即可，短 TTL 只会逼迫仪式节奏而不增加安全。
 - **首次启动 / 全新安装的 bootstrap（消解 fail-closed 的两难）。** "回退到上一份已验签清单"在全新安装、**尚无 last-good** 时无依据，会陷入「fail-open 不安全 / fail-closed 离线即不可用」两难。对策：**App bundle 内预置一份初始的已签名吊销清单**（随发版更新），作为 last-good 的初值——新装即有一份可信基线，离线也能 fail-closed 而不瘫。这与 [`adr_010`](./adr_010_ios_appstore.md) §2.2「bundle 预置基线 adapter」同源：让 App 在零网络下即自包含可用。预置清单只是**下限**，联网后按 TTL 拉取更新。
 
 ### 2.5 本地导入与 DEV-Sideload 闸门（红线 #4；ADR-033 修订，已接受待落地）

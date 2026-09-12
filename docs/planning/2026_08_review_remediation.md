@@ -658,7 +658,7 @@ P0-14 的收口路径因此明确：先按旧零入口 gate 签收当前状态�
 **门本体** `tools/src/release/gate.ts`（`npm run release:gate`），检查对象是入库 bootstrap：
 G1 keyId 须命中客户端 `trust_anchors.dart` 的 active 锚并真实验签（直接解析 Dart 源，tools 不另存公钥）；
 G2 revocation 在 TTL 内且不超前，catalog 过 TTL 只 warn；G3 killSwitch 不得随包（`--allow-kill-switch` 显式放行）；
-G4 每个 entry 入台账且 digest / sequence 一致、台账最大序号 ≤ bootstrap；G5 `release/revocation.json` 不倒退、
+G4 每个 entry 在台账有同 digest 的首签记录（身份只记一次、字节未变沿用）且记录序号 ≤ bootstrap、台账最大序号 ≤ bootstrap；G5 `release/revocation.json` 不倒退、
 同序号不得改内容（§2.7 第一趟的错误自此在签名前和门上各拦一次）；G6 `--online-base=` 时 bootstrap ≥ 线上。
 **打包器**：`release:package` 以入库 bootstrap 为基线，签名前拒 catalog 序号不严格递增 / revocation 倒退 /
 同序号改内容（`--no-baseline` 仅首次发布）。**接线**：ci.yml 每个 PR 跑（G2 降 warn，免 7 天 TTL 把 PR 打红）；
@@ -666,7 +666,9 @@ release.yml 经 `release_gate: true` 硬失败。**演练**：`adapter_release.m
 
 验证：gate smoke（正例 + G1–G6 各负例 + 真实 trust_anchors.dart 解析）与 package smoke 基线负例全绿；
 对真实仓：seq 8/2 通过，`--now=2026-09-20` strict 拒 / warn 放行。**当前 revocation 2026-09-18T06:31Z 到期**，
-到期后 release 须先重签 revocation。**关闭**：P3-08。
+到期后 release 须先重签 revocation。2026-09-12 追加：ADR-002 §2.4 明确 TTL 只是陈旧度信号、客户端不因过期拒载；
+`release/revocation.json` 预备 seq 3 / 180 天随下次仪式签发；下次发版的跨仓协商见
+[`2026_09_next_release_sync.md`](./2026_09_next_release_sync.md)。**关闭**：P3-08。
 
 ### 6.2 契约演进待办（2026-09-11 自 `TODOList_schema_extend.md` 并入，原文已归档）
 
