@@ -134,9 +134,11 @@ MaskerMatch _parseMatch(Object? raw, String where) {
     capability: capability,
     method: method,
     urlScope: urlScope,
-    requestKey: raw['requestKey'] == null
-        ? null
-        : _requireString(raw, 'requestKey', where, max: 64),
+    // 显式 null ≠ 缺省：schema `requestKey` 为 string，显式 null 必须与 TS 一致 fail-closed
+    // （golden `match_request_key_null_rejected`）。`containsKey` 才能区分「缺省」与「显式 null」。
+    requestKey: raw.containsKey('requestKey')
+        ? _requireString(raw, 'requestKey', where, max: 64)
+        : null,
   );
 }
 

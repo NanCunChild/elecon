@@ -177,6 +177,13 @@ selector miss 还扩大了一项明确接受的字段漂移残余风险：学校
 仍**不在**本次：actuator 入口接线（随 ADR-030 / P1-12）、handle 目标的 Commit 事务（P1-08）、
 Credential Store 真实原子性 / generation swap（C2）。
 
+**handle 目标的过渡门（2026-09-12 复核补记）**：handle 规则的**投影义务**（§3）在 P1-08 前没有
+运行时执行方（dataflow `bind` 只提取、不投影）。为避免「签名策略被静默跳过」的 fail-open，两端
+装配处（客户端 `planLaunch`、服务端 `runImperativeAdapter`）对含 handle 规则的策略**拒载**，
+validator 以 **`RM17_handle_target_unsupported`（error）禁签**；`selectMaskerRules` 仍按契约
+不把 handle 规则交给纯引擎。P1-08 落地后，本门与 RM17 同批解除（改为 bind 单次执行 + staged
+handle + 投影响应）。
+
 #### 2.7.2 响应头原始基数（P1-04）与两端能力差（2026-09-12）
 
 `capture.exactly: 1` 要求「该头在响应里恰好出现一次」。但两端的 HTTP 栈都会在 Masker 读到之前
@@ -216,12 +223,15 @@ body 命中值使用核心固定 sentinel，建议为 `__ELECON_MASKED__`。body
 
 **实施决议（2026-08-05 owner 拍板，随 C1 firewall 接线落实）：**
 
-- **Policy 匹配契约（§2.4 ② 步细化，就近修订本 ADR 而非新增 ADR）**：`masker.json` 顶层为**响应策略条目数组**，每条含一个 `match` 块与其 `rules`。`match` 按下列封闭维度选出适用规则集，**全部为 AND**、缺省即不约束该维度：
-  - `urlPattern`：与 `network.allow` 同形的 glob（对本响应的**请求 URL**匹配，经重定向后为最终跳 URL）；
-  - `status`：整数或整数数组（HTTP 状态码）；
-  - `contentType`：大小写不敏感的 MIME 前缀（如 `application/json`），只比 `;` 前的媒体类型、不解析参数。
+- **Policy 匹配契约（§2.4 ② 步细化，就近修订本 ADR 而非新增 ADR；2026-09-12 校正为实现口径）**：
+  `masker.json` 顶层为 `{schemaVersion, rules[]}`，**每条规则自带 `match` 块**（不是「顶层条目数组 + 每条的 rules」）。
+  `match` 按下列封闭维度选出适用规则集，**全部为 AND**，`capability` / `method` / `urlScope` 必填，`requestKey` 可选：
+  - `capability`：manifest 权威能力集内的 capability id；
+  - `method`：`GET | POST`，比较时大写归一；
+  - `urlScope`：与 `network.allow` 同形的 glob，对本响应的**最终跳 URL**匹配（须为 `network.allow` 子集，validator RM5）；
+  - `requestKey`：declarative 逻辑请求 key；imperative `ctx.fetch` 无 key，带此维度的规则在 imperative 入口永不命中。
 
-  匹配由 **Broker（firewall ② 步）** 解析裁定，**纯引擎 `applyResponseMasker` 只吃已选定的 `rules[]`**、绝不含 match 判定（保持引擎无 I/O、可跨端 golden）。多条 `match` 命中时其 `rules` **并集**后交引擎，规则内既有的数量 / 目标 / overlap 校验不变。match 维度、glob 语义与并集次序须由共享 golden 跨端钉死；`match` 语法进 `masker.json` schema + validator（step 2 契约），受 host/version gate 约束。**首期只接 imperative 入口**（`fetch-proxy` 每次 `ctx.fetch` 已强制经 firewall，见 checklist C1）；match 解析与 declarative/actuator 入口的接线为后续人工主导步。
+  匹配由 **Broker（firewall ② 步）** 解析裁定，**纯引擎 `applyResponseMasker` 只吃已选定的 `rules[]`**、绝不含 match 判定（保持引擎无 I/O、可跨端 golden）。命中的规则按策略序取并集后交引擎，规则内既有的数量 / 目标 / overlap 校验不变。match 维度、glob 语义与并集次序由共享 golden 跨端钉死（`contract/golden/broker/masker-policy.json`）；`match` 语法进 `masker.json` schema + validator（step 2 契约），受 host/version gate 约束。**首期只接 imperative 入口**（`fetch-proxy` 每次 `ctx.fetch` 已强制经 firewall，见 checklist C1）；客户端 declarative 入口已接入，actuator 入口的接线为后续人工主导步。**`handle` 目标规则不进纯引擎**（由 ADR-023 dataflow bind 承接）；**P1-08 落地前**两端装配处对含 handle 规则的策略 fail-closed 拒载（无投影执行方，见 §3），validator 以 `RM17` 禁签——不得静默跳过投影义务。
 
 - **注入凭证回显 = 不做反射检测，交 Masker 承担**：Broker 注入的凭证若被 origin 回显进响应，**不**在 firewall 做「注入值 → 全 body 反射扫描剥离」（`stripEchoes` 式 blanket sweep）——短密文误报 + 大 body 成本，与 B1-a「不做运行期全 body sweep」同理。回显位置由 **adapter 作者显式声明 `redact` 规则**、经 Masker 投影兜底；发布前主捕获同样靠 D3 replay + D6 门 + 人审。**[ADR-023](./adr_023_declarative_dataflow.md) §2.5 已相应修订（2026-08-05）**：原「注入值回显必做剥离」推翻为「靠 Masker `redact` 声明式承接」，并新增残余风险 #3（作者漏声明 redact → 读回，接受）。**尚待（代码，人工主导）**：firewall ⑦ 的 `injectedValues` / `stripEchoes` blanket 剥离退役 —— 属红线 #1 承重代码移除，与其测试一并须人工审，暂保留不破坏现有 smoke。
 

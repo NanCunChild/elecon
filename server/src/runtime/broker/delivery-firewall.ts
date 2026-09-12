@@ -83,8 +83,9 @@ export interface DeliveryFirewallInput {
   headerCardinalityAttested?: boolean;
   /**
    * ② Response Credential Policy 匹配结果：本次响应适用的 Masker 规则。
-   * **seam**：调用方从签名 `masker.json` 的 match 块（url/status/content-type）解析选出后传入；
-   * 纯引擎不含 match 判定（ADR-026 §2.8）。空数组 = 无策略命中，响应仍**经本 choke point** 交付。
+   * 由调用方从签名 `masker.json` 的 `match{capability/method/urlScope/requestKey}` 选出后传入
+   * （`masker-policy.ts#selectMaskerRules`）；纯引擎不含 match 判定（ADR-026 §2.8）。
+   * 空数组 = 无策略命中，响应仍**经本 choke point** 交付。
    */
   rules: readonly MaskerRule[];
   /** ⑥ Commit 目标权威（已验签 manifest credentials；type/scope 由此取，ADR-012 §2.4）。 */

@@ -1068,7 +1068,33 @@ function checkResponseMaskerFiles(
     return [{ level: "error", code: "RM0_policy_unparseable", message: "masker.json 解析失败" }];
   }
 
-  return checkResponseMasker(policy, manifest, schemaValidate, intendedTier);
+  const findings = checkResponseMasker(policy, manifest, schemaValidate, intendedTier);
+  const rules = Array.isArray(policy.rules) ? policy.rules : [];
+
+  // RM17（error）：handle 目标规则的投影义务（ADR-026 §3）在 P1-08 前**没有运行时执行方**
+  // （dataflow bind 只提取、不投影）。签发这种策略 = 签出一个运行时必拒载的 bundle，故发布门
+  // 直接拦下；P1-08 落地后与两端装配门同批解除。
+  const handleRules = rules.filter((rule) => rule?.capture?.destination?.kind === "handle");
+  if (handleRules.length > 0) {
+    findings.push({
+      level: "error",
+      code: "RM17_handle_target_unsupported",
+      message: `masker.json 含 ${handleRules.length} 条 handle 目标规则（如 '${handleRules[0]?.id}'）：P1-08 前运行时无投影执行方，装配处必拒载（ADR-026 §3 / §2.7.1）`,
+    });
+  }
+
+  // RM18（warn）：header 源规则只在客户端可执行。服务端 WHATWG fetch 无法证明响应头原始基数，
+  // 运行时一律 fail-closed（ADR-026 §2.7.2）——签发不拦，但提醒该规则在服务端不会生效。
+  const headerRules = rules.filter((rule) => rule?.capture?.source === "header");
+  if (headerRules.length > 0) {
+    findings.push({
+      level: "warn",
+      code: "RM18_header_source_server_unattested",
+      message: `masker.json 含 ${headerRules.length} 条 header 源规则：服务端传输无法证明原始头基数，运行时一律 fail-closed（ADR-026 §2.7.2），仅客户端可执行`,
+    });
+  }
+
+  return findings;
 }
 
 /**

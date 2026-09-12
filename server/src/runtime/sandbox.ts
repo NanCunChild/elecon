@@ -36,7 +36,7 @@ import {
 import { decideHarvest, type HarvestSink, harvestInto } from "./broker/harvest.js";
 import type { BrokerManifestView } from "./broker/inject-policy.js";
 import type { MaskerCommitContext, MaskerCommitSink } from "./broker/masker-commit.js";
-import type { MaskerPolicy } from "./broker/masker-policy.js";
+import { hasHandleTargetRules, type MaskerPolicy } from "./broker/masker-policy.js";
 import type { CredentialResolver } from "./broker/ports.js";
 import {
   isThenable,
@@ -544,11 +544,21 @@ export async function runImperativeAdapter(
   }
   // Masker 装配门（ADR-026 §2.7 / §2.7.1）：official 必须带已验签 policy + 落库 sink；任一缺失即拒载，
   // 在触达引擎之前 fail-closed。空规则（`rules: []`）合法，但缺文件 / 缺装配不等价空规则。
-  if (deps.trust.tier === "official" && deps.masker === undefined) {
-    throw new SandboxError(
-      "masker_policy_missing",
-      "official adapter 缺 Response Masker 装配（policy / sink / ctx）——ADR-026 §2.7 任一缺失即拒载",
-    );
+  if (deps.trust.tier === "official") {
+    if (deps.masker === undefined) {
+      throw new SandboxError(
+        "masker_policy_missing",
+        "official adapter 缺 Response Masker 装配（policy / sink / ctx）——ADR-026 §2.7 任一缺失即拒载",
+      );
+    }
+    // handle 目标规则的投影义务（ADR-026 §3）在 P1-08 前没有执行方（dataflow bind 只提取、
+    // 不投影）。静默跳过 = 已签策略不被执行 = fail-open，故拒载而非忽略。
+    if (hasHandleTargetRules(deps.masker.policy)) {
+      throw new SandboxError(
+        "masker_handle_unsupported",
+        "masker.json 含 handle 目标规则：P1-08 前运行时尚无投影执行方，静默跳过即 fail-open，故拒载（ADR-026 §3）",
+      );
+    }
   }
 
   const { runtime, ctx, deadline } = await createRuntime(limits);

@@ -151,13 +151,48 @@ for (const testCase of golden.cases) {
     writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
     writeFileSync(join(dir, "masker.json"), JSON.stringify(policy));
     writeFileSync(join(dir, "index.js"), "export function notice_list() {}\n");
-    const codes = validateAdapterDir(dir, loadContract()).map((finding) => finding.code);
+    const findings = validateAdapterDir(dir, loadContract());
+    const codes = findings.map((finding) => finding.code);
+    const errorCodes = findings.filter((finding) => finding.level === "error").map((finding) => finding.code);
     assert.ok(!codes.includes("RM0_host_gate_unavailable"), "RM0_host_gate_unavailable 已随 /3 断代退役");
     assert.ok(
-      !codes.some((code) => code.startsWith("RM")),
-      `合法 masker bundle 不应有 RM* finding：${codes.join(",")}`,
+      !errorCodes.some((code) => code.startsWith("RM")),
+      `合法 masker bundle 不应有 error 级 RM* finding：${errorCodes.join(",")}`,
     );
-    console.log("  ✓ /3 断代后合法 masker bundle 放行（无 RM* finding）");
+    assert.ok(
+      findings.some(
+        (finding) => finding.code === "RM18_header_source_server_unattested" && finding.level === "warn",
+      ),
+      `header 源规则须有 RM18 warn（服务端运行时不可执行）：${codes.join(",")}`,
+    );
+    console.log("  ✓ /3 断代后合法 masker bundle 放行（无 error 级 RM；header 源规则带 RM18 warn）");
+
+    // P1-08 前：handle 目标规则的投影义务无运行时执行方 → 发布门 RM17 error 禁签。
+    const handlePolicy = {
+      schemaVersion: 1,
+      rules: [
+        {
+          id: "synthetic-handle",
+          match: {
+            capability: "notice.list",
+            method: "GET",
+            urlScope: "https://api.example.edu/notices",
+          },
+          capture: { exactly: 1, destination: { kind: "handle", ref: "csrf" } },
+          project: "replace",
+        },
+      ],
+    };
+    writeFileSync(join(dir, "masker.json"), JSON.stringify(handlePolicy));
+    const handleFindings = validateAdapterDir(dir, loadContract());
+    assert.ok(
+      handleFindings.some(
+        (finding) => finding.code === "RM17_handle_target_unsupported" && finding.level === "error",
+      ),
+      `handle 目标规则须 RM17 error：${handleFindings.map((finding) => finding.code).join(",")}`,
+    );
+    console.log("  ✓ handle 目标规则 → RM17_handle_target_unsupported（P1-08 前禁签）");
+    writeFileSync(join(dir, "masker.json"), JSON.stringify(policy));
 
     // official 缺 masker.json → RM0_policy_missing（缺文件 ≠ 空规则）。
     rmSync(join(dir, "masker.json"));

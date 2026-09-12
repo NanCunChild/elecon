@@ -620,5 +620,26 @@ void main() {
         ),
       );
     });
+
+    test('masker.json 含 handle 目标规则 → planLaunch 拒载（P1-08 前无投影执行方）', () async {
+      const handlePolicy =
+          '{"schemaVersion":1,"rules":[{"id":"csrf","match":'
+          '{"capability":"notice.list","method":"GET","urlScope":"https://x.edu/page"},'
+          '"capture":{"exactly":1,"destination":{"kind":"handle","ref":"csrf"}},'
+          '"project":"replace"}]}';
+      final b = await _mkBundle(bundleSigner, maskerJson: handlePolicy);
+      final r = await load(b);
+      expect(r.ok, isTrue, reason: r.reason);
+      expect(
+        () => planLaunch(r),
+        throwsA(
+          isA<AdapterLaunchException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('handle 目标规则'), contains('csrf')),
+          ),
+        ),
+      );
+    });
   });
 }

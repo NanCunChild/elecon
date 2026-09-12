@@ -205,6 +205,14 @@ export interface MaskerSelectContext {
 }
 
 /**
+ * 策略是否含 `handle` 目标规则。P1-08 前运行时**没有投影执行方**（dataflow `bind` 只提取、
+ * 不投影），装配处必须据此 fail-closed——静默跳过等于已签策略不被执行（fail-open，ADR-026 §3）。
+ */
+export function hasHandleTargetRules(policy: MaskerPolicy): boolean {
+  return policy.rules.some((rule) => !("source" in rule.capture));
+}
+
+/**
  * firewall ② 步：选出本次响应适用的引擎规则（AND：capability = 、method = 、urlScope ∋ finalUrl、
  * requestKey 若声明则须相等）。保持策略序；`handle` 目标不进引擎。
  */

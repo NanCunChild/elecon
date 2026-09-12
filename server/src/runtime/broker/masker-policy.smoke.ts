@@ -8,6 +8,7 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+  hasHandleTargetRules,
   type MaskerPolicy,
   MaskerPolicyError,
   parseMaskerPolicy,
@@ -78,6 +79,19 @@ for (const c of golden.select) {
   assert.ok(picked.length > 0);
   assert.ok(!("match" in picked[0]!), "引擎规则不含 match");
   n++;
+  console.log("  ✓ 选出的规则不含 match");
+}
+
+// handle 目标规则的可执行性门：P1-08 前两端装配处据此 fail-closed（sandbox.ts 同口径）。
+{
+  assert.equal(hasHandleTargetRules(policy), true, "golden selectPolicy 应含 handle 规则以覆盖本断言");
+  assert.equal(
+    hasHandleTargetRules(parseMaskerPolicy('{"schemaVersion":1,"rules":[]}')),
+    false,
+    "空规则不含 handle 目标",
+  );
+  n++;
+  console.log("  ✓ hasHandleTargetRules：handle 目标检出（P1-08 前装配处 fail-closed）");
 }
 
 console.log(`masker-policy smoke: ${n} cases passed`);

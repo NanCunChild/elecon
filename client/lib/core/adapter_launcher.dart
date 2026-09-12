@@ -200,13 +200,28 @@ MaskerPolicy _maskerPolicy(BundleEnvelope env, BlobTable blobs) {
   } on FormatException catch (e) {
     throw AdapterLaunchException('masker.json 非 utf-8 文本：$e（fail-closed）');
   }
+  final MaskerPolicy policy;
   try {
-    return parseMaskerPolicy(text);
+    policy = parseMaskerPolicy(text);
   } on MaskerPolicyException catch (e) {
     throw AdapterLaunchException(
       'masker.json 解析失败：[${e.code}] ${e.message}（fail-closed）',
     );
   }
+  // 🔒 handle 目标（P1-08 前）fail-closed：handle 规则的**投影义务**（ADR-026 §3）尚无执行方
+  // （dataflow bind 只提取、不投影）。静默跳过 = 签名策略不被执行 = fail-open，故在装配处拒载，
+  // 而不是把规则丢给一个不存在的执行者。P1-08 落地后本门与 validator RM17 同批解除。
+  final handleRuleIds = policy.rules
+      .where((r) => r.handleRef != null)
+      .map((r) => r.id)
+      .toList(growable: false);
+  if (handleRuleIds.isNotEmpty) {
+    throw AdapterLaunchException(
+      'masker.json 含 handle 目标规则 ${handleRuleIds.join(', ')}：P1-08 前运行时尚无投影执行方，'
+      '静默跳过即 fail-open，故拒载（ADR-026 §3 / §2.7.1）',
+    );
+  }
+  return policy;
 }
 
 /// 🔒 薄尾：[planLaunch] 后执行 adapter。session 注入 resolver / transport / jar / harvest 等运行时依赖

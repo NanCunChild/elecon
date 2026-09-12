@@ -729,7 +729,7 @@ envelope 结构不变——断代只表达「official 必带根目录 `masker.js
 5 份 digest 经核心 `signer digest` 逐字复核一致。
 
 **验证**：tools typecheck + smoke 全绿；server typecheck + smoke 29/29（含 firewall 8 组、masker-policy 38 例）；
-`biome ci` 干净；client `flutter analyze` 零问题、`flutter test` 899 例中仅 `school_manifest_test` 1 例失败（下条）。
+`biome ci` 干净；client `flutter analyze` 零问题、`flutter test` 908 通过 / 12 skip（`school_manifest_test` 显式 skip，见下条）。
 
 **仪式前的已知红（预期代价，非回归）**：入库 bootstrap 仍是 `/2` 签名产物，故
 `npm run bootstrap:verify -w tools` 在 `/3` 重签仪式完成前**必然失败**——这是「不忘记仪式」的硬门，刻意不消。
@@ -744,6 +744,17 @@ manifest 与核心 policy 是否一致，不可解析的产物根本没有可测
 [`2026_09_next_release_sync.md`](./2026_09_next_release_sync.md) §6）；② P0-09 / P0-10 的**签收**（代码已到位，🔒 须 owner 逐行安全复核，清单
 [`response_masker_signoff_checklist.md`](../reference/response_masker_signoff_checklist.md)）；③ actuator 入口接线（P1-12）、
 handle Commit 事务（P1-08）、Store 真实原子性（C2）。
+
+**复核修正（2026-09-12，review 后同分支补丁）**：
+① **handle 目标过渡门**——P1-08 前投影义务无执行方，两端装配处拒载（客户端 `planLaunch`、服务端
+`runImperativeAdapter` 报 `masker_handle_unsupported`），validator `RM17_handle_target_unsupported`
+（error）禁签，不再静默跳过；② `requestKey: null` 双端对齐为拒（Dart 此前当缺省，golden 补
+`match_request_key_null_rejected`）；③ ADR-026 §2.8 match 契约文本校正为 schema/实现口径
+（`capability/method/urlScope` 必填 + 可选 `requestKey`，每条规则自带 match）；④ validator 新增
+`RM18_header_source_server_unattested`（warn：服务端 WHATWG fetch 无法证明原始头基数，header 源规则
+仅客户端可执行）；⑤ 客户端补 P1-04 `header_cardinality_unattested` 测试；⑥ 核心仓自带 `adapters/school-helloworld`
+与 `adapters/_template/imperative`（均声明 official）补空规则 `masker.json`——原落地遗漏使本地 `npm run validate`
+变红（CI 因 `ELECON_ADAPTERS_ROOT` 指向 A 仓缓存而未暴露）。P1-08 落地时 ① 同批解除。
 
 ### 6.2 契约演进待办（2026-09-11 自 `TODOList_schema_extend.md` 并入，原文已归档）
 

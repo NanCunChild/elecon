@@ -87,6 +87,13 @@
       "error": "policy_bad_shape"
     },
     {
+      "name": "match_request_key_null_rejected",
+      "_why": "显式 null 不是缺省：schema `requestKey` 为 string，两端都必须拒（此前 Dart 把 null 当缺省、TS 拒——已对齐为双端 fail-closed）。",
+      "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\",\"requestKey\":null},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
+      "ok": false,
+      "error": "policy_bad_shape"
+    },
+    {
       "name": "capture_legacy_required_key_rejected",
       "text": "{\"schemaVersion\":1,\"rules\":[{\"id\":\"a\",\"match\":{\"capability\":\"c\",\"method\":\"GET\",\"urlScope\":\"https://h/a\"},\"capture\":{\"source\":\"header\",\"name\":\"X\",\"required\":true,\"exactly\":1,\"destination\":{\"kind\":\"redact\"}},\"project\":\"delete\"}]}",
       "ok": false,

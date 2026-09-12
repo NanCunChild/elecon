@@ -9,6 +9,18 @@
 
 ---
 
+- **2026-09-12 · masker 复核补丁：handle 过渡门 + `requestKey: null` 双端对齐 + validator RM17/RM18（ADR-026 §2.8/§2.7.1/§3）**
+  - **改动**：`contract/golden/broker/masker-policy.json` 新增 parse 向量 `match_request_key_null_rejected`
+    （显式 `null` ≠ 缺省，双端一致 fail-closed）。`response-masker.schema.json` 本身**未改**——schema 一直
+    把 `requestKey` 定为 string，本次只是让 Dart 运行时解析器与 TS/schema 对齐。
+  - **为何**：复核发现 Dart 解析器把 `requestKey: null` 当缺省接受（与 TS 分叉）；且 handle 目标规则在
+    P1-08 前被运行时静默跳过（投影义务无执行方），属 fail-open。
+  - **同批落地**：两端装配处对含 handle 规则的策略拒载（客户端 `planLaunch`、服务端 `runImperativeAdapter`
+    → `masker_handle_unsupported`）；validator `RM17_handle_target_unsupported`（error）禁签、
+    `RM18_header_source_server_unattested`（warn，服务端 header 源规则不可执行）；ADR-026 §2.8 文本
+    校正为 `capability/method/urlScope` + 可选 `requestKey` 的实现口径。
+  - **依据**：ADR-026 §2.8 / §2.7.1 / §3。🔒 触红线 #6；handle 过渡门随 P1-08 同批解除。
+
 - **2026-09-12 · `bundleFormat` 断代 `elecon-bundle/2` → `/3`，`masker.json` 转为 official 强制（ADR-026 §2.7.1）**
   - **改动**：`contract/golden/bundle/loader.json` 重生成（`bundleFormat` = `elecon-bundle/3`，含真实 Ed25519 测试签名）；
     `contract/golden/broker/response-masker.json` 新增 3 例 P1-04 原始头基数向量；**新增**

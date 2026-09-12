@@ -20,7 +20,9 @@ export type SandboxFailureReason =
   // 信任闸门拒绝：档位 × 环境不满足入场条件（ADR-002 §2.6 结构化权限错误）。
   | "trust_rejected"
   // official 装配缺 Masker policy / sink（ADR-026 §2.7：任一缺失即拒载，空规则不放宽）。
-  | "masker_policy_missing";
+  | "masker_policy_missing"
+  // official 装配含 P1-08 前不可执行的 handle 目标规则（ADR-026 §3：无投影执行方即拒载）。
+  | "masker_handle_unsupported";
 
 export class SandboxError extends Error {
   constructor(
