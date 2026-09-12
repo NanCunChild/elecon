@@ -6,8 +6,8 @@
  *  K1 每 entry.capabilities 须 ∈ registry.json ——**catalog 不得引入新 capability id**
  *     （热推只在既有能力集内换数据源映射,守 ADR-010 §3.3.2(a) 立论）
  *  K2 同一 adapterId 多条目 → warn（加载器需明确取哪条）
- *  K3 entry 含已弃用的 `url` → warn（catalog 只描述文件、不描述端点，ADR-018 §2.5.1；
- *     仅 sequence ≤ 8 的历史 catalog 合法携带，打包器不再写入）
+ *  （历史：K3 `url` 弃用 warn，2026-09-11 引入、2026-09-12 seq 9 仪式后随 schema 删字段退役——
+ *    entry 再含 `url` 即由 K0 `additionalProperties:false` 拒绝，ADR-018 §2.5.1）
  *
  * **不在此**（属运行时 / 🔒 Phase 2 客户端加载器）：catalog **签名验签**、`sequence` 防回滚、
  *   TTL/last-good、digest 与实际 bundle 字节比对。本静态校验只保证"载荷合法 + 不越能力集"。
@@ -35,8 +35,6 @@ export interface CatalogEntry {
   adapterId: string;
   adapterVersion: string;
   digest: string;
-  /** @deprecated 已弃用（ADR-018 §2.5.1）：客户端忽略；仅历史 catalog 含。 */
-  url?: string;
   stdlibMin?: string;
   capabilities: string[];
 }
@@ -95,14 +93,6 @@ export function checkCatalog(
           message: `entries[${i}] (${e.adapterId}) capability '${cap}' 不在 registry：catalog 不得引入新能力（ADR-010 §2.1）`,
         });
       }
-    }
-    // K3 已弃用的 url → warn（不阻断：历史已签 catalog 仍需能过校验）
-    if (e.url !== undefined) {
-      findings.push({
-        level: "warn",
-        code: "K3_deprecated_url",
-        message: `entries[${i}] (${e.adapterId}) 含已弃用的 url：catalog 只描述文件，客户端按 digest 自行拼路径（ADR-018 §2.5.1）`,
-      });
     }
     // K2 同 adapterId 多条目 → warn
     const prev = seen.get(e.adapterId);

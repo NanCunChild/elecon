@@ -60,10 +60,6 @@
             "pattern": "^[0-9a-f]{64}$",
             "description": "bundle 信封字节的 SHA-256 hex（digest v2，ADR-002 §2.3 / ADR-018 §2.9.1）。内容寻址主键：客户端按 `bundles/<digest>.json.gz` 拉取并重算比对。"
           },
-          "url": {
-            "type": "string",
-            "description": "**已弃用（2026-09-11，ADR-018 §2.5.1）**：catalog 不再描述端点，客户端忽略本字段、按 digest 自行拼路径。仅为兼容 sequence ≤ 8 的已签 catalog 而保留为可选；打包器不再写入，下一次签名仪式后从 schema 移除。"
-          },
           "stdlibMin": {
             "type": "string",
             "pattern": "^\\d+\\.\\d+\\.\\d+$",
