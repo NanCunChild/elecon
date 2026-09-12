@@ -9,6 +9,14 @@
 
 ---
 
+- **2026-09-12 · `catalog.schema.json`：entry `url` 删除（ADR-018 §2.5.1 第二步）**
+  - **改动**：`entries[].url` 从 schema 移除；`additionalProperties:false` 下再出现即 K0 拒绝。
+  - **为何现在**：2026-09-11 条目预告「下一次仪式后删除」。seq 9 仪式已于 2026-09-12 签出不含 `url` 的 catalog 并入库
+    （整改清单 §2.10），入库产物已无任何携带 `url` 的已签 catalog，暂留可选的唯一理由消失。
+  - **同批落地**：`client/lib/core/loader/catalog.dart` 容忍集去 `url`（再见到按未知字段 fail-closed，测试改为拒绝用例）；
+    `tools/src/catalog/validate.ts` K3 退役（smoke 6b 改为 K0 拒）。A 仓 vendor 由 `mirror-adapters.yml` 自动跟随。
+  - **依据**：ADR-018 §2.5.1（2026-09-11 修订，实现 owner 2026-09-12 签收）。🔒 触红线 #6 契约；删字段是收紧而非放宽。
+
 - **2026-09-11 · `catalog.schema.json`：entry `url` 弃用（从 required 移除），catalog 只描述文件、不描述端点（ADR-018 §2.5.1）**
   - **改动**：`entries[].url` 从 `required` 移除并标记弃用（description 注明）；`additionalProperties:false` 不变，字段暂留为可选。
     顶层与 `entries` / `digest` 的 description 改写为「以 digest 内容寻址，路径恒为 `bundles/<digest>.json.gz`、相对客户端自持 base」。

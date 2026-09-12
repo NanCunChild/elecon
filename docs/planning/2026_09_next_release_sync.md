@@ -70,7 +70,7 @@ npm run release:gate -- --online-base=https://elecon.xidian.one/adapters/   # G6
 | # | 事项 | 状态 |
 |---|---|---|
 | 0 | 仪式收尾 PR：bootstrap seq 9/3 入库、`adapters.pin` → `cc18b1f`、`git rm --cached dist-full`（此前实际仍被跟踪）、文档同步 | [x] 分支 `chore/ceremony-seq9-followup` |
-| 1 | 删 `url`：`contract/catalog.schema.json` 移除字段、`catalog.dart` 容忍集去掉 `'url'`、validator 去掉 K3；`contract/CHANGELOG.md` 记一条（ADR-018 §2.5.1 已预告） | [ ] 分支 `refactor/catalog-drop-url`（基于 0） |
+| 1 | 删 `url`：`contract/catalog.schema.json` 移除字段、`catalog.dart` 容忍集去掉 `'url'`、validator 去掉 K3；`contract/CHANGELOG.md` 记一条（ADR-018 §2.5.1 已预告） | [x] 分支 `refactor/catalog-drop-url`（基于 0），待 PR |
 | 2 | 整改清单新增执行状态节：seq 9 / 3 参数、台账变化、线上生效时间 | [x] §2.10 |
 | 3 | A 仓 mirror：`mirror-adapters.yml` 在 main 的 `contract/**` 变化时**自动**推 vendor，无需手跑；镜像提交出现后 bump `adapters.pin`，并顺手删 A 仓 `catalog.mjs` 里已成死代码的 url 告警分支（schema 拒绝在前） | [ ] 待 1 合并 |
 | 4 | 端点 D **2026-09-25** 恢复后：`npm run dist:export -w tools` 上传，`release:gate -- --online-base=…` 跑 G6 | [ ] 此前真机测试用本地端点（DEV base 覆盖） |

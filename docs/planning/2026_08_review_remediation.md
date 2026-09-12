@@ -690,7 +690,9 @@ catalog / revocation 的签发本身只体现在入库 bootstrap 的 git 历史�
 **线上生效**：端点 D 预计 **2026-09-25** 恢复，届时 `dist:export` 上传并跑 G6；在此之前真机测试用本地端点
 （DEV `ELECON_DISTRIBUTION_BASE_URL` 覆盖，`deploy/public-endpoint` 或 nginx 托管 `dist:export` 导出树）。
 
-**关闭**：本节无新编号项；**仍开**：删 `url`（随后 PR，触红线 #6，ADR-018 §2.5.1 已预告）、端点 D 上传 + G6。
+**删 `url`（同日随后 PR，触红线 #6，ADR-018 §2.5.1 已预告）**：schema 移除字段、`catalog.dart` 容忍集去 `url`（测试改为拒绝用例）、
+validator K3 退役（smoke 6b 改 K0 拒）、`contract/CHANGELOG.md` 2026-09-12 条。A 仓 vendor 由 `mirror-adapters.yml` 自动跟随，
+镜像提交出现后 bump `adapters.pin`。**关闭**：本节无新编号项；**仍开**：pin 跟随镜像、端点 D 上传 + G6（2026-09-25 后）。
 
 ### 6.2 契约演进待办（2026-09-11 自 `TODOList_schema_extend.md` 并入，原文已归档）
 

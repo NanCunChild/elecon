@@ -90,15 +90,15 @@ function base(entries: Catalog["entries"]): Catalog {
   console.log("  ✓ entry 额外字段被拒（K0）");
 }
 
-// 6b) 历史 catalog 携带已弃用 url → K3 warn（非 error：sequence ≤ 8 的已签 catalog 仍须能过）
+// 6b) entry 携带已删除的 url → K0 拒（catalog 只描述文件；seq 9 起 schema 无此字段，ADR-018 §2.5.1）
 {
   const f = checkCatalog(
-    base([baseEntry({ url: "https://cdn.example.org/adapters/bundles/x.json.gz" })]),
+    base([baseEntry({ url: "https://cdn.example.org/adapters/bundles/x.json.gz" } as never)]),
     deps,
   );
-  assert.ok(codes(f).includes("K3_deprecated_url"), "已弃用 url 应触发 K3");
-  assert.equal(f.filter((x) => x.level === "error").length, 0, "已弃用 url 应为 warn 而非 error");
-  console.log("  ✓ 已弃用 url 仅告警（K3 warn）");
+  assert.ok(codes(f).includes("K0_catalog_schema"), "已删除的 url 应触发 K0");
+  assert.ok(!codes(f).includes("K3_deprecated_url"), "K3 已退役，不应再出现");
+  console.log("  ✓ 已删除的 url 按未知字段拒（K0）");
 }
 
 // 7) signCatalog → verifyCatalog 往返 + 篡改拒（dev backend）

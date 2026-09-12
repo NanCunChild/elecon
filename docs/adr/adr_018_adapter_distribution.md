@@ -138,11 +138,11 @@ adapter 依赖两层宿主运行时:**QuickJS 引擎**（ADR-005，双端同引�
 digest 重算 + Ed25519 验签 + 吊销门才是锚（§2.6「缓存/基线非信任源」同理）。
 
 **规则**：
-- `contract/catalog.schema.json`：`url` 从 required 移除、标记弃用；`additionalProperties:false` 不变。
-  **保留为可选仅为兼容 sequence ≤ 8 的已签 catalog**（重签 catalog 只为删一个字段不值一次仪式）；
-  打包器（`release:package`）不再写入、`--base-url` 参数移除；validator 见到即 `K3_deprecated_url` warn。
-  **下一次签名仪式后**（catalog ≥ 9；**不必等** masker `/3` 断代——那是更晚的另一次仪式，见 ADR-026 §2.7.1 与
-  [`2026_09_next_release_sync.md`](../planning/2026_09_next_release_sync.md)）`url` 从 schema 与客户端容忍集中删除。
+- `contract/catalog.schema.json`：`url` **已删除**（`additionalProperties:false` 下再出现即拒）。
+  分两步走：2026-09-11 先从 required 移除、标弃用、打包器不再写入（validator `K3_deprecated_url` warn），
+  以让入库的 seq 8 catalog 仍合 schema；**2026-09-12 seq 9 仪式**签出无 `url` 的 catalog 后，同日删字段、
+  客户端容忍集去 `url`、K3 退役（不必等 masker `/3` 断代，那是更晚的另一次仪式，见 ADR-026 §2.7.1）。
+  `release:package` 的 `--base-url` 参数已移除。
 - 客户端：解析时**整段忽略** `url`（不校验、不暴露）；`DistributionSource.fetchBundle(digest)` 只收 digest，
   形态门 `^[0-9a-f]{64}$` 后拼 `base/bundles/<digest>.json.gz`。
 - **客户端自持 base URL**（`kDistributionBaseUrl`）；DEPLOY 恒用官方端点。**DEV-Sideload profile** 可用

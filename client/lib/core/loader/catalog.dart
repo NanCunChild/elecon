@@ -74,9 +74,8 @@ const Set<String> _entryKeys = {
   'adapterId',
   'adapterVersion',
   'digest',
-  // `url` 已弃用（ADR-018 §2.5.1）：catalog 只描述文件、不描述端点。仅为兼容 sequence ≤ 8 的
-  // 已签 catalog 而容忍其存在——**解析时整段忽略**（不校验、不暴露），bundle 路径由 digest 拼出。
-  'url',
+  // 没有 `url`（ADR-018 §2.5.1）：catalog 只描述文件、不描述端点，bundle 路径由 digest 拼出。
+  // 2026-09-12 seq 9 起已签 catalog 均不含该字段；再出现即按未知字段 fail-closed。
   'stdlibMin',
   'capabilities',
 };
@@ -370,7 +369,6 @@ CatalogEntry _parseEntry(Map<String, dynamic> json) {
   if (digest is! String || !_reDigest.hasMatch(digest)) {
     throw const FormatException('catalog entry.digest 非法（须 64 位小写 hex）');
   }
-  // `url`（若有）整段忽略：它已不参与任何决策（见 _entryKeys 注释）。
   final stdlibMin = json['stdlibMin'];
   if (stdlibMin != null &&
       (stdlibMin is! String || !_reStdlibVersion.hasMatch(stdlibMin))) {

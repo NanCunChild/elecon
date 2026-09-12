@@ -29,7 +29,6 @@ Map<String, dynamic> _entry({
   String adapterId = 'school-xidian',
   String adapterVersion = '1.2.0',
   String digest = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-  String? url,
   String? stdlibMin,
   List<String> capabilities = const ['notice.list'],
 }) =>
@@ -37,8 +36,6 @@ Map<String, dynamic> _entry({
       'adapterId': adapterId,
       'adapterVersion': adapterVersion,
       'digest': digest,
-      // url 已弃用（ADR-018 §2.5.1）；仅历史 catalog 携带，默认不写。
-      'url': ?url,
       'stdlibMin': ?stdlibMin,
       'capabilities': capabilities,
     };
@@ -118,7 +115,7 @@ void main() {
     test('合法 → 通过并返回已解析 catalog', () async {
       final c = (await verified(_payload(entries: [
         _entry(),
-        _entry(adapterId: 'school-xjt', adapterVersion: '0.9.1', stdlibMin: '1.0.0', digest: 'b' * 64, url: 'https://cdn.example/b/${'b' * 64}.json.gz', capabilities: ['notice.list', 'grades.list']),
+        _entry(adapterId: 'school-xjt', adapterVersion: '0.9.1', stdlibMin: '1.0.0', digest: 'b' * 64, capabilities: ['notice.list', 'grades.list']),
       ]))).catalog;
       expect(c.sequence, 7);
       expect(c.entries, hasLength(2));
@@ -216,18 +213,11 @@ void main() {
     test('digest 长度不足 → 拒', () =>
         reject(_payload(entries: [_entry(digest: 'a' * 63)]), contains: 'digest'));
 
-    test('历史 catalog 的已弃用 url 被整段忽略（sequence ≤ 8 兼容，ADR-018 §2.5.1）', () async {
-      // 任何取值（含此前会被拒的 http / userinfo）都不影响解析——它已不参与任何决策。
-      for (final u in const [
-        'https://cdn.example/bundles/x.json.gz',
-        'http://cdn.example/x.json.gz',
-        'https://u:p@cdn.example/x.json.gz',
-        'not a url',
-      ]) {
-        final v = await verified(_payload(entries: [_entry(url: u)]));
-        expect(v.catalog.entries.single.digest, 'a' * 64, reason: 'url=$u 应被忽略');
-      }
-    });
+    test('entry 携带已删除的 url → 拒（catalog 只描述文件，ADR-018 §2.5.1；seq 9 起 schema 无此字段）', () =>
+        reject(
+          _payload(entries: [_entry()..['url'] = 'https://cdn.example/bundles/x.json.gz']),
+          contains: '未知字段',
+        ));
 
     test('stdlibMin 非 semver → 拒', () =>
         reject(_payload(entries: [_entry(stdlibMin: '1.0')]), contains: 'stdlibMin'));
