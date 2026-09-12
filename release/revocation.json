@@ -1,7 +1,7 @@
 {
-  "sequence": 2,
-  "issuedAt": "2026-09-11T06:31:00Z",
-  "ttlSeconds": 604800,
+  "sequence": 3,
+  "issuedAt": "2026-09-12T00:00:00Z",
+  "ttlSeconds": 15552000,
   "minVersions": {},
   "killSwitch": false,
   "entries": []

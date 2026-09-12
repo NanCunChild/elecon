@@ -360,16 +360,17 @@ npm run bootstrap:sync -- --dist=../dist-xidian --assets=../client/assets/bootst
 | G1 | catalog / revocation 的 keyId ∈ 客户端 `trust_anchors.dart` 的 active 锚，且以该公钥真实验签 | error |
 | G2 | revocation 在 TTL 内、issuedAt 不超前 >5 分钟 | error（PR CI 降为 warn）；catalog 过 TTL 只 warn |
 | G3 | revocation.killSwitch 为 false | error，`--allow-kill-switch` 放行 |
-| G4 | 每个 catalog entry 在台账有记录且 digest / catalog / revocation sequence 一致；台账最大序号 ≤ bootstrap | error |
+| G4 | 每个 catalog entry 在台账有**同 digest** 的首签记录（身份只记一次，字节没变就沿用），记录序号 ≤ bootstrap；台账最大序号 ≤ bootstrap | error |
 | G5 | `release/revocation.json` sequence ≥ 已签；相等时内容逐字段相同 | error |
 | G6 | `--online-base=` 给出时，bootstrap sequence ≥ 线上 | error；拉不到也 error |
 
 接线：PR CI 每次跑（G2 过期只告警）；`release.yml` 经 `release_gate: true` 让 G2 硬失败。
 打包器 `release:package` 另在**签名前**按基线拒绝 catalog 序号不严格递增、revocation 倒退或同序号改内容（§4）。
 
-> **注意 TTL**：当前签发的 revocation `ttlSeconds=604800`（7 天，到期 2026-09-18T06:31Z）。到期后任何 release
-> 都会被 G2 挡下，须重签 revocation（走 §4，只改 `release/revocation.json` 的 `issuedAt` 并 bump `sequence`）。
-> 这是有意为之：发出去的 app 不应携带一份已过期的基线吊销清单。
+> **TTL 的语义**（ADR-002 §2.4，2026-09-12 明确）：TTL 只是陈旧度信号，**客户端从不因过期拒载**；急性吊销靠在线拉取
+> + sequence + kill-switch，与 TTL 无关。它唯一硬性约束的是本门 G2：不把一份已过期的基线打进新装包。
+> 当前线上 revocation seq 2 为 7 天 TTL（2026-09-18T06:31Z 到期）；`release/revocation.json` 已预备 **seq 3 / 180 天**，
+> 随下次仪式签发（仪式当天刷新 `issuedAt`）。
 
 ### 10.2 急性吊销演练（无需真事故，建议每次换钥或季度做一次）
 
@@ -380,7 +381,8 @@ npm run bootstrap:sync -- --dist=../dist-xidian --assets=../client/assets/bootst
 2. **先跑门看它拒什么**：`npm run release:gate -w tools` 此时应报 G5「内容已改但 sequence 未 bump」——
    若你漏了第 1 步的 bump；bump 后应通过（输入领先已签是合法的「已准备」状态）。
 3. `release:package`（§4，需 YubiKey；catalog `--sequence` 亦 +1）→ `bootstrap:sync` → `bootstrap:verify`。
-4. `release:gate`：G4 此时应报「未入台账」——补台账（§7 `ledger:extract`）后再跑，应通过；
+4. `release:gate`：若本次有新 adapter 字节，G4 会报「未入台账」——补台账（§7 `ledger:extract`，只追加新身份）后再跑，应通过；
+   仅重签 catalog/revocation、adapter 字节未变时不需要新记录；
    若置了 killSwitch，门会 G3 拒，须 `--allow-kill-switch` 明确放行。
 5. `dist:export` → 上传 → `release:gate --online-base=<base>`：线上与 bootstrap 一致即通过。
 6. 演练结束若是假吊销，再走一遍 1–5 把它撤回（sequence 继续递增，**不回滚**）。
