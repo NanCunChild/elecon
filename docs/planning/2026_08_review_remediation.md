@@ -427,10 +427,10 @@ masker 落地时第二次仪式（`/3`，ADR-026 §2.7.1）；P3-08 发版门（
 `bootstrap:verify` 对入库 bootstrap（seq 8）通过；client `flutter analyze` 零问题，`flutter test` DEPLOY 859 / DEV-Sideload 868 通过
 （含 `fetchBundle(digest)` 拼路径、畸形 digest 拒、http base 仅 `allowInsecureHttp` 放行、历史 `url` 忽略）；`biome ci` 通过。
 
-**🔒 待人工**：本批触红线 #4（loader / distribution 路径）与 #6（catalog schema），实现须 owner 复核签收；
-DEV 覆盖开关的 http 放行需在签收时确认「仅 DEV profile 可达」（`kDistributionOverrideActive` 为编译期常量，
+**人工签收（2026-09-12）**：本批触红线 #4（loader / distribution 路径）与 #6（catalog schema），owner NanCunChild 已复核签收
+ADR-018 §2.5.1 实现（含 DEV 覆盖开关的 http 放行「仅 DEV profile 可达」：`kDistributionOverrideActive` 为编译期常量，
 ADR-024 release gate 另断言 DEPLOY 无 DEV profile）。**仍开**：上传端点 D（现由 `npm run dist:export -w tools` 导出后上传）；
-第二次仪式后从 schema / 客户端删除 `url`。
+第二次仪式后从 schema / 客户端删除 `url`；A 仓 `scripts/catalog.mjs` 去 `url`（跨仓清单 A1，2026-09-12 已落地）。
 
 ---
 
@@ -669,6 +669,28 @@ release.yml 经 `release_gate: true` 硬失败。**演练**：`adapter_release.m
 到期后 release 须先重签 revocation。2026-09-12 追加：ADR-002 §2.4 明确 TTL 只是陈旧度信号、客户端不因过期拒载；
 `release/revocation.json` 预备 seq 3 / 180 天随下次仪式签发；下次发版的跨仓协商见
 [`2026_09_next_release_sync.md`](./2026_09_next_release_sync.md)。**关闭**：P3-08。
+
+### 2.10 执行状态（2026-09-12 · catalog seq 9 / revocation seq 3 仪式 + 去端点化跨仓收口）
+
+**仪式参数**（owner 持 YubiKey 执行，2026-09-12T06:19Z）：catalog **seq 9**（不含 `url`，ttl 86400）、revocation
+**seq 3**（issuedAt 2026-09-12T00:00:00Z，**ttl 15552000 = 180 天**，2027-03-11 到期；`minVersions` 空、killSwitch false）。
+5 份 bundle digest 与 seq 8 **完全相同**（A 仓 `adapters/` 自 `444b92c` 起零改动，未 bump 版本）。
+`bootstrap:verify` 通过；`release:gate` G1–G5 通过、0 warn；`ledger:validate` 结构有效。
+
+**台账**：**无新增记录**——台账按 adapter 身份记账，5 份身份沿用 seq 8 的 complete 记录，G4 按「首签记录」语义放行。
+catalog / revocation 的签发本身只体现在入库 bootstrap 的 git 历史（P0-15 已知边界）。
+
+**跨仓**：A 仓 `scripts/catalog.mjs` 去端点化（不写 `url`、去 `CATALOG_BASE_URL`，A 仓 `cc18b1f`，GPG 签名）；核心
+`adapters.pin` → `cc18b1f`。vendor 镜像无需重跑（镜像面自 core@59bdbae 起未变）。
+
+**修正**：`dist-full/` 此前**仍被 git 跟踪**（§2.8 所记 `git rm --cached` 实际未执行，c04fe02 只加了 .gitignore），本次
+`git rm -r --cached dist-full` 落实「dist 不入库」。ADR-018 §2.5.1 删 `url` 的时点与 masker `/3` 仪式**解绑**
+（seq 9 即可删，见跨仓清单）。跨仓清单 §3 的台账命令改为仓根 `-w tools` 形式（相对路径按仓根解析）。
+
+**线上生效**：端点 D 预计 **2026-09-25** 恢复，届时 `dist:export` 上传并跑 G6；在此之前真机测试用本地端点
+（DEV `ELECON_DISTRIBUTION_BASE_URL` 覆盖，`deploy/public-endpoint` 或 nginx 托管 `dist:export` 导出树）。
+
+**关闭**：本节无新编号项；**仍开**：删 `url`（随后 PR，触红线 #6，ADR-018 §2.5.1 已预告）、端点 D 上传 + G6。
 
 ### 6.2 契约演进待办（2026-09-11 自 `TODOList_schema_extend.md` 并入，原文已归档）
 

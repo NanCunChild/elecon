@@ -27,7 +27,7 @@
 | [015](./adr_015_manifest_login.md) | Accepted | 已落地 | 已有人工评审；增量另审 | 平台能力见 ADR-016 |
 | [016](./adr_016_complex_login.md) | Accepted | 部分平台落地 | 待真机/人工 | P2-12/P2-13 |
 | [017](./adr_017_sso_master_credential.md) | Accepted | 部分落地 | 待人工 | Xidian mint 闭环计划 |
-| [018](./adr_018_adapter_distribution.md) | Accepted；**§2.9.1 digest v2 已签收（owner NanCunChild 2026-09-09）**；**§2.5.1 catalog 去端点化（owner 决策 2026-09-11）** | §2.9.1 **落地清单 1–7、11 项已实现、两端 CI 全绿（2026-09-09）**；第 8 项重签仪式已执行（2026-09-11）；§2.5.1 **已落地**（契约/工具/客户端同批，`url` 暂留可选待下次仪式后删） | **§2.9.1 规格签收完成（2026-09-09）；实现人工安全复核 + 落地决策 A/B/C 已签收（owner NanCunChild 2026-09-11，PR #111）**；§2.5.1 实现待人工复核 | P0-01/P0-15；P3-07 / P3-08 已关（bootstrap 单源 + 发版门） |
+| [018](./adr_018_adapter_distribution.md) | Accepted；**§2.9.1 digest v2 已签收（owner NanCunChild 2026-09-09）**；**§2.5.1 catalog 去端点化（owner 决策 2026-09-11，实现签收 2026-09-12）** | §2.9.1 **落地清单 1–7、11 项已实现、两端 CI 全绿（2026-09-09）**；第 8 项重签仪式已执行（2026-09-11）；§2.5.1 **已落地**（契约/工具/客户端同批，`url` 暂留可选待下次仪式后删） | **§2.9.1 规格签收完成（2026-09-09）；实现人工安全复核 + 落地决策 A/B/C 已签收（owner NanCunChild 2026-09-11，PR #111）**；**§2.5.1 实现人工复核已签收（owner NanCunChild 2026-09-12）** | P0-01/P0-15；P3-07 / P3-08 已关（bootstrap 单源 + 发版门） |
 | [019](./adr_019_classroom_available.md) | Accepted | 契约与 UI 基线已落地 | 契约已评审 | adapter 签发/真机仍开放 |
 | [020](./adr_020_url_query_credential.md) | Accepted | 已落地 | 已人工复核 | 真机验收仍开放 |
 | 021 | Reserved | 未起草 | 不适用 | P3-05 先决定 Money 领域语义 |
