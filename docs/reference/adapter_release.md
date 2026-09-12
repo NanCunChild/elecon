@@ -369,7 +369,7 @@ npm run bootstrap:sync -- --dist=../dist-xidian --assets=../client/assets/bootst
 
 > **TTL 的语义**（ADR-002 §2.4，2026-09-12 明确）：TTL 只是陈旧度信号，**客户端从不因过期拒载**；急性吊销靠在线拉取
 > + sequence + kill-switch，与 TTL 无关。它唯一硬性约束的是本门 G2：不把一份已过期的基线打进新装包。
-> 当前线上 revocation seq 2 为 7 天 TTL（2026-09-18T06:31Z 到期）；`release/revocation.json` 已预备 **seq 3 / 180 天**，
+> 当前**入库 bootstrap** 的 revocation seq 2 为 7 天 TTL（2026-09-18T06:31Z 到期；端点 D 尚未上传过 seq 8/2）；`release/revocation.json` 已预备 **seq 3 / 180 天**，
 > 随下次仪式签发（仪式当天刷新 `issuedAt`）。
 
 ### 10.2 急性吊销演练（无需真事故，建议每次换钥或季度做一次）
