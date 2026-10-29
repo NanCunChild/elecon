@@ -2,8 +2,10 @@
     <!-- release/main 也需要出网：WebView 登录 + DirectTransport（此前只写在 debug/profile，
          导致 release 构建的 APK 无法登录）。 -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- ADR-034 §4: explicitly declared HTTP school origins are admitted by host policy. -->
     <application
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:label="elecon"

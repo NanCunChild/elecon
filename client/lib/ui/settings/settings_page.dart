@@ -14,6 +14,7 @@ import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
 import '../debug/helloworld_test_page.dart';
 import '../theme/liquid_glass.dart';
+import '../scripts/script_workbench_page.dart';
 import 'about_page.dart';
 import 'appearance_section.dart';
 import 'dev_log_page.dart';
@@ -26,6 +27,10 @@ class SettingsPage extends StatelessWidget {
     final session = SessionScope.of(context);
     final school = session.selectedSchool;
     if (school == null) return;
+    if (school.adapterId.startsWith('script:')) {
+      _open(context, const ScriptWorkbenchPage());
+      return;
+    }
     final result = await runSchoolLogin(context, session, school);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -107,6 +112,12 @@ class SettingsPage extends StatelessWidget {
           liquidGlassEnabled(context) ? 100 : 24,
         ),
         children: [
+          ListTile(
+            leading: const Icon(Icons.code),
+            title: Text(l10n.scriptsTitle),
+            subtitle: Text(l10n.scriptsDescription),
+            onTap: () => _open(context, const ScriptWorkbenchPage()),
+          ),
           _SectionTitle(title: l10n.settingsSectionAccount),
           LiquidGlassSurface(
             child: Column(

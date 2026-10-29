@@ -200,6 +200,17 @@ class TrustedScriptRuntime {
           throw const ScriptRunException('invalid_browser_operation');
         }
         try {
+          // Restored cookies are already known secrets even if the platform
+          // rejects the write; diagnostics must never echo their values.
+          if (method == 'setCookies' && args['cookies'] is List) {
+            for (final cookie in args['cookies'] as List) {
+              if (cookie is Map &&
+                  cookie['value'] is String &&
+                  (cookie['value'] as String).isNotEmpty) {
+                knownSecrets.add(cookie['value'] as String);
+              }
+            }
+          }
           final result = await browserCall(
             method,
             Map<String, Object?>.from(args),
@@ -380,6 +391,7 @@ String _bootstrap({
       queryAll: (selector,limit=100) => call('queryAll',{selector:String(selector),limit}),
       waitFor: (selector,timeout=10000) => call('waitFor',{selector:String(selector),timeout}),
       cookies: url => call('cookies',url === undefined ? {} : {url:String(url)}),
+      setCookies: async (url,cookies) => { await call('setCookies',{url:String(url),cookies}); },
     });
   }
   // Build JSON ourselves: JSON.stringify silently drops unsupported values and
@@ -415,6 +427,13 @@ String _bootstrap({
     const result = await caps[${jsonEncode(capability)}](Object.freeze(ctx),JSON.parse(${jsonEncode(paramsJson)}));
     return '{"ok":true,"data":'+encode(result,0)+'}';
   } catch(e) {
+    // Useful diagnostics go through the same bounded secret/URL sanitizer as
+    // ctx.log; the result channel continues to expose stable codes only.
+    try {
+      const message = String(e && e.message || e);
+      const stack = String(e && e.stack || '');
+      globalThis.__script_log('error',(message + '\\n' + stack).slice(0,4096));
+    } catch (_) {}
     const code = e && (e.message === 'non_json_output' || e.message === 'output_limit' || e.message === 'unsupported_encoding') ? e.message : 'adapter_failed';
     return JSON.stringify({ok:false,code});
   }

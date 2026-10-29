@@ -3,7 +3,6 @@
 /// MVP-A：仅 `notice.list`（无凭证）；其它卡片字段留空。失败上抛，由首页 error 态承接。
 library;
 
-import '../../core/adapter_service.dart';
 import '../../session/session_controller.dart';
 import 'schema_decode.dart';
 import 'models.dart';
@@ -16,7 +15,14 @@ Future<CampusSnapshot> loadCampusSnapshot(SessionController session) async {
   }
   final run = await session.runCapability('notice.list');
   if (!run.ok) {
-    throw StateError(_formatFailure(run));
+    return CampusSnapshot(
+      schoolName: school.displayName,
+      updatedAt: DateTime.now().toUtc(),
+      supportedCapabilities: {
+        ...school.capabilityCredentials.keys,
+        ...await session.trustedScriptCapabilities(),
+      },
+    );
   }
   final notices = noticeListFromDynamic(run.data);
   if (notices == null) {
@@ -26,13 +32,9 @@ Future<CampusSnapshot> loadCampusSnapshot(SessionController session) async {
     schoolName: school.displayName,
     updatedAt: DateTime.now().toUtc(),
     notices: notices,
-    supportedCapabilities: run.supportedCapabilities,
+    supportedCapabilities: {
+      ...run.supportedCapabilities,
+      ...await session.trustedScriptCapabilities(),
+    },
   );
-}
-
-String _formatFailure(CapabilityRun run) {
-  final kind = run.failureKind?.name ?? 'unknown';
-  final reason = run.reason?.trim();
-  if (reason == null || reason.isEmpty) return 'notice.list 失败 ($kind)';
-  return 'notice.list 失败 ($kind): $reason';
 }

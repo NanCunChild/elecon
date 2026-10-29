@@ -196,5 +196,54 @@
   "homeLibraryLoansOverdueFee": "逾期费 {fee}",
   "@homeLibraryLoansOverdueFee": {
     "placeholders": { "fee": { "type": "String" } }
-  }
+  },
+  "scriptsTitle": "学校脚本",
+  "scriptsDescription": "导入、更新和运行你信任的学校脚本。启用后，脚本优先提供它声明的首页能力。",
+  "scriptsImportFile": "从文件导入",
+  "scriptsPaste": "粘贴源码包",
+  "scriptsExample": "加载示例",
+  "scriptsInstall": "检查并安装",
+  "scriptsPackageLabel": "脚本源码包 JSON",
+  "scriptsParams": "参数 JSON",
+  "scriptsRun": "运行",
+  "scriptsRunning": "正在运行…",
+  "scriptsUseSchool": "切换到此学校",
+  "scriptsDelete": "卸载",
+  "scriptsDeleteBody": "卸载会停止此脚本。学校凭据将保留；可在设置中登出清除。",
+  "scriptsEmpty": "尚未安装脚本",
+  "scriptsTrustTitle": "信任并安装此脚本？",
+  "scriptsTrustBody": "此本地脚本未经官方审核。它可以读取、修改或泄漏所选学校身份的凭据和私密数据，并执行学校操作。请只安装你信任的代码。",
+  "scriptsBrowserPermission": "允许操作学校页面、读取 DOM 和浏览器 Cookie。页面子资源使用浏览器网络；此模式不提供 IP 连接限制。",
+  "scriptsNetwork": "允许访问的站点",
+  "scriptsIp": "额外 IP / CIDR 限制",
+  "scriptsIpNone": "未限制已声明站点的解析地址（支持校内网络）",
+  "scriptsApprove": "信任并安装",
+  "scriptsInstalled": "脚本已安装",
+  "scriptsFailed": "操作失败：{code}",
+  "scriptsBrowserTitle": "学校页面",
+  "scriptsBrowserClose": "关闭并取消",
+  "scriptsBrowserLoading": "页面加载中",
+  "scriptsBrowserBlocked": "此页面不在脚本声明的站点范围内",
+  "scriptsBrowserFailed": "页面操作失败，请重试或关闭",
+  "scriptsBrowserUnavailable": "当前平台或网络限制不支持此页面模式，请使用 HTTP 脚本",
+  "scriptsResult": "运行结果",
+  "scriptsCancel": "取消运行",
+  "scriptsVersionRejected": "更新被拒绝：版本必须递增，且不能改变学校身份。",
+  "homeNoticeUnavailable": "通知暂不可用，其他功能仍可使用",
+  "scriptsEnabled": "启用",
+  "scriptsSelectCapability": "选择能力",
+  "scriptsSchoolRequired": "请先切换到脚本所属学校",
+  "scriptsCredentialsLocal": "学校凭据保存在本机；受信脚本可在授权身份范围内使用。",
+  "@scriptsFailed": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptsLogs": "脚本日志",
+  "scriptsCopyResult": "复制完整结果",
+  "scriptsResultPreview": "结果较长，下方仅预览部分内容。",
+  "scriptsRegistryRecovered": "安装记录损坏，旧脚本已停用。请重新导入你信任的源码包。",
+  "scriptsBrowserBusy": "浏览器正被另一学校流程使用，请关闭后重试。"
 }

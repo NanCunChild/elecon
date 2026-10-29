@@ -445,6 +445,14 @@ void main() {
       final binary = await transport().fetch(origin, {});
       expect(binary['bodyBytes'], [0xff, 0x00, 0x81]);
       expect(binary['body'], isNull);
+      handler = (request) async {
+        request.response.headers.set('content-type', 'invalid mime type');
+        request.response.add([65, 66]);
+        await request.response.close();
+      };
+      final malformed = await transport().fetch(origin, {});
+      expect(malformed['bodyBytes'], [65, 66]);
+      expect(malformed['body'], isNull);
     },
   );
 }

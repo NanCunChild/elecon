@@ -224,6 +224,42 @@ void main() {
       expect(logs.single, '[credential]');
     },
   );
+  test(
+    'cookie restoration forwards URL and values and sanitizes later logs',
+    () async {
+      final logs = <String>[];
+      final output = await runtime.run(
+        package: script('''
+      export const capabilities={'notice.list':async(ctx)=>{
+        const result=await ctx.browser.setCookies('https://school.example/',[
+          {name:'SESSION',value:'SYNTHETIC_RESTORED_COOKIE',path:'/'}
+        ]);
+        if(result !== undefined)throw new Error('setCookies must resolve void');
+        ctx.log('info','restored SYNTHETIC_RESTORED_COOKIE');
+        return {items:[]};
+      }};
+    ''', browser: true),
+        capability: 'notice.list',
+        credentials: credentials,
+        fetch: response,
+        browserCall: (method, args) async {
+          expect(method, 'setCookies');
+          expect(args['url'], 'https://school.example/');
+          expect(args['cookies'], [
+            {
+              'name': 'SESSION',
+              'value': 'SYNTHETIC_RESTORED_COOKIE',
+              'path': '/',
+            },
+          ]);
+          return null;
+        },
+        onLog: (level, message) => logs.add(message),
+      );
+      expect(output, {'items': []});
+      expect(logs.single, 'restored [credential]');
+    },
+  );
   test('malformed schema and non-JSON output are rejected', () async {
     await expectLater(
       runtime.run(
@@ -353,17 +389,27 @@ void main() {
       );
       expect(logs, hasLength(2));
       expect(logs.every((line) => !line.contains('SYNTHETIC_SECRET')), isTrue);
+      credentials.set('secret', 'SYNTHETIC_SECRET');
+      final errors = <String>[];
       await expectLater(
         runtime.run(
           package: script('''
-      export const capabilities={'notice.list':async()=>{throw new Error('SYNTHETIC_SECRET');}};
+      export const capabilities={'notice.list':async()=>{throw new Error('Request failed SYNTHETIC_SECRET https://school.example/?token=SYNTHETIC_SECRET');}};
     '''),
           capability: 'notice.list',
           credentials: credentials,
           fetch: response,
+          onLog: (level, message) {
+            expect(level, 'error');
+            errors.add(message);
+          },
         ),
         fails('adapter_failed'),
       );
+      expect(errors.single, contains('Request failed'));
+      expect(errors.single, isNot(contains('SYNTHETIC_SECRET')));
+      expect(errors.single, isNot(contains('https://')));
+      expect(errors.single.length, lessThanOrEqualTo(4096));
     },
   );
 }

@@ -44,7 +44,12 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
     final result = await widget.bridge.completion;
     if (!mounted || _returned) return;
     _returned = true;
-    Navigator.of(context).pop(result);
+    try {
+      await widget.bridge.stop();
+    } catch (_) {
+      /* Route still closes on platform failure. */
+    }
+    if (mounted) Navigator.of(context).pop(result);
   }
 
   void _stateChanged() {

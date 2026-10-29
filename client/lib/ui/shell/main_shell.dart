@@ -6,6 +6,10 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../l10n/gen/app_localizations.dart';
+import '../../session/session_scope.dart';
+import '../../session/session_controller.dart';
+import '../scripts/script_presenter.dart';
+import '../security/no_hardware_warning_dialog.dart';
 import '../home/home_page.dart';
 import '../settings/settings_page.dart';
 import '../theme/app_theme.dart';
@@ -22,6 +26,44 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _index = 0;
+  SessionController? _scriptSession;
+  ScriptBrowserPresenter? _presenter;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final session = context
+        .getInheritedWidgetOfExactType<SessionScope>()
+        ?.notifier;
+    if (!identical(session, _scriptSession)) {
+      if (identical(_scriptSession?.scriptBrowserPresenter, _presenter)) {
+        _scriptSession?.scriptBrowserPresenter = null;
+        _scriptSession?.scriptStorageConsent = null;
+      }
+      _scriptSession = session;
+      _presenter = (package, execute) => presentScriptBrowser(
+        context,
+        package,
+        execute,
+        onCancel: session?.cancelTrustedScriptRuns,
+      );
+      session?.scriptBrowserPresenter = _presenter;
+      session?.scriptStorageConsent = () async {
+        if (!mounted) return false;
+        return await showNoHardwareWarningDialog(context) ==
+            SoftwareStorageChoice.continueWithSoftware;
+      };
+    }
+  }
+
+  @override
+  void dispose() {
+    if (identical(_scriptSession?.scriptBrowserPresenter, _presenter)) {
+      _scriptSession?.scriptBrowserPresenter = null;
+      _scriptSession?.scriptStorageConsent = null;
+    }
+    super.dispose();
+  }
 
   /// 标签文案随语言变，故在 build 里按当前 l10n 组装（图标是常量）。
   static List<LiquidGlassTabSpec> _tabsOf(AppLocalizations l10n) =>
@@ -40,6 +82,9 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final session = context
+        .dependOnInheritedWidgetOfExactType<SessionScope>()
+        ?.notifier;
     final tabs = _tabsOf(AppLocalizations.of(context));
     final glassBar = buildLiquidGlassShellBar(
       context: context,
@@ -54,7 +99,12 @@ class _MainShellState extends State<MainShell> {
       body: IndexedStack(
         index: _index,
         children: [
-          EleconHomePage(loadSnapshot: widget.loadHomeSnapshot),
+          EleconHomePage(
+            key: ValueKey(
+              '${session?.selectedSchool?.id}:${session?.trustedScriptViewGeneration}',
+            ),
+            loadSnapshot: widget.loadHomeSnapshot,
+          ),
           const SettingsPage(),
         ],
       ),

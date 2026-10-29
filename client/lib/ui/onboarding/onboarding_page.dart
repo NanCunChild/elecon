@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 
 import '../../catalog/schools.dart';
 import '../../session/session_scope.dart';
+import '../../l10n/gen/app_localizations.dart';
+import '../scripts/script_workbench_page.dart';
 import '../login/login_flow.dart';
 
 class OnboardingPage extends StatefulWidget {
@@ -28,6 +30,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
     final selected = _selected;
     if (selected == null) return;
     setState(() => _busy = true);
+    if (selected.adapterId.startsWith('script:')) {
+      session.selectSchool(selected);
+      if (mounted) setState(() => _busy = false);
+      return;
+    }
     final result = await widget.loginRunner(context, session, selected);
     if (!mounted) return;
     setState(() => _busy = false);
@@ -91,6 +98,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   ),
                 const SizedBox(height: 8),
                 _ComingSoonTile(),
+                TextButton.icon(
+                  onPressed: _busy
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ScriptWorkbenchPage(),
+                          ),
+                        ),
+                  icon: const Icon(Icons.code),
+                  label: Text(AppLocalizations.of(context).scriptsTitle),
+                ),
                 const SizedBox(height: 28),
                 FilledButton.icon(
                   onPressed: _busy || _selected == null ? null : _continue,
@@ -108,7 +126,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '凭证仅保存在本机可信核心，绝不上传（红线 #1）',
+                  AppLocalizations.of(context).scriptsCredentialsLocal,
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,

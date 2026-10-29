@@ -45,6 +45,15 @@ import '../core/login/sso_mint_hidden_webview.dart';
 import '../core/login/webview_login.dart';
 import '../core/login/webview_auth_ui_bridge.dart';
 import '../core/transport/direct.dart';
+import '../core/broker/inject_policy.dart' show BrokerManifestView;
+import '../core/scripts/manifest.dart';
+import '../core/scripts/registry.dart';
+import '../core/scripts/credentials.dart';
+import '../core/scripts/runtime.dart';
+import '../core/scripts/http_transport.dart';
+import '../core/scripts/browser.dart' show ScriptBrowserException;
+
+part 'script_session.dart';
 
 const String _sessionMetaBlob = 'session.json';
 
@@ -209,6 +218,7 @@ class SessionController extends ChangeNotifier {
     if (_availableSchools.isEmpty) {
       _availableSchools = await _loadAvailableSchools();
     }
+    await _restoreScriptSchools();
     _school = blobs == null ? null : await _loadSelectedSchool(blobs);
     _wireSsoMinterFor(_school);
     notifyListeners();
@@ -313,6 +323,13 @@ class SessionController extends ChangeNotifier {
   }
 
   void _replaceStore(SecureStore secure) {
+    // ADR-034: first storage selection must preserve sessions acquired in memory.
+    for (final entry in _store.list()) {
+      final persisted = secure.get(entry.ref);
+      if (persisted == null || persisted.acquiredAt <= entry.acquiredAt) {
+        secure.put(entry);
+      }
+    }
     _secure = secure;
     _store = CredentialStore(store: secure);
     // minter 闭包持 store 引用；换后端后须重建（注入 minter 则不动）。
@@ -369,6 +386,7 @@ class SessionController extends ChangeNotifier {
 
   void selectSchool(SchoolDescriptor school) {
     if (_school?.id == school.id) return;
+    _cancelTrustedScripts();
     _school = school;
     _wireSsoMinterFor(school);
     _scheduleSessionPersist();
@@ -403,6 +421,21 @@ class SessionController extends ChangeNotifier {
     final school = _school;
     if (school == null) {
       return const CapabilityRun.failed(CapabilityFailureKind.load, '未选校');
+    }
+    ScriptPackage? local;
+    try {
+      local = (await scriptRegistry).provider(school.id, capability);
+    } catch (_) {
+      // Optional local registry I/O must not stop the legacy official path.
+    }
+    if (local != null) {
+      return runTrustedScript(
+        local.manifest.id,
+        capability,
+        params: params,
+        htmlStdlib: htmlStdlib,
+        onLog: onLog,
+      );
     }
     final adapterId = school.adapterId;
     final required =
@@ -555,6 +588,7 @@ class SessionController extends ChangeNotifier {
   /// 按 [CredentialEntry.schoolId] 过滤——多校共存时不得波及他校凭证。
   /// 未选校时防御性抹除全部（无归属口径宁可多删，隐私优先于可用性）。
   void logout() {
+    _cancelTrustedScripts();
     final id = _school?.id;
     for (final e in _store.list()) {
       if (id == null || e.schoolId == id) _store.delete(e.ref);
@@ -564,6 +598,7 @@ class SessionController extends ChangeNotifier {
 
   /// 彻底重置：抹除凭证并清除选校，回到开始面板。
   void reset() {
+    _cancelTrustedScripts();
     for (final e in _store.list()) {
       _store.delete(e.ref);
     }
@@ -575,6 +610,7 @@ class SessionController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _cancelTrustedScripts(dispose: true);
     _disposeAutoMint();
     super.dispose();
   }

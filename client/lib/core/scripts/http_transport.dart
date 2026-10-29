@@ -186,7 +186,7 @@ class ScriptHttpTransport {
             'url': uri.toString(),
             'headers': responseHeaders,
             'bodyBytes': List<int>.unmodifiable(bytes),
-            'body': _decode(bytes, response.headers.contentType?.charset),
+            'body': _decodeResponse(bytes, response.headers),
           };
         }
         if (mode == 'error') {
@@ -327,6 +327,16 @@ class ScriptHttpTransport {
       headers[name] = value;
     }
     return headers;
+  }
+
+  static String? _decodeResponse(List<int> bytes, HttpHeaders headers) {
+    try {
+      return _decode(bytes, headers.contentType?.charset);
+    } on HttpException {
+      return null;
+    } on FormatException {
+      return null;
+    }
   }
 
   static String? _decode(List<int> bytes, String? charset) {

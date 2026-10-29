@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../session/session_scope.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../theme/liquid_glass.dart';
 import 'campus_snapshot_loader.dart';
 import 'capability_sections.dart';
@@ -126,6 +127,15 @@ class _EleconHomePageState extends State<EleconHomePage> {
                         if (data.grades != null)
                           GradesCard(data.grades!, summary: data.gpaSummary),
                         if (data.notices != null) NoticeCard(data.notices!),
+                        if (_liveSections && data.notices == null)
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              AppLocalizations.of(
+                                context,
+                              ).homeNoticeUnavailable,
+                            ),
+                          ),
                         for (final section in data.genericSections)
                           GenericSectionCard(section),
                         // 按需取数区（需 ehall-session；点击触发静默 mint / 可见登录）。

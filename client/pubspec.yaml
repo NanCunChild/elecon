@@ -3,7 +3,7 @@ description: "校园信息聚合平台"
 publish_to: none
 # 本地构建的默认版本基线。CI 发版以 git tag 为准（release.yml 用 `--build-name`
 # 覆盖为 tag 去掉 v 前缀、`--build-number` 用 run number），tag 与此处不必逐位同步。
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -42,6 +42,8 @@ dependencies:
   pointycastle: 3.9.1
   # ADR-012 §2.8：app 私有目录给 FileBlobStore；Android 同步配 allowBackup=false + 备份排除。
   path_provider: ^2.1.5
+  # ADR-034: native script-package import; MIT (file_picker LICENSE).
+  file_picker: 13.1.0
   # contract/schema 生成的 Dart 类型（tools codegen 产物包；审阅 P0-1 接线）。
   # UI 模型消费此包，消除手写模型与 schema 的漂移（红线 #6 契约单源）。
   elecon_contract:

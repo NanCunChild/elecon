@@ -56,11 +56,16 @@ class HiddenWebViewSsoMinter implements SsoMinter {
       successUrlMatches: plan.successMatches,
       brokerView: login.brokerView,
     );
-    final bridge = InAppWebViewAuthBridge(
-      login: mintLogin,
-      putCredential: putCredential,
-      requiredRef: targetRef,
-    );
+    final InAppWebViewAuthBridge bridge;
+    try {
+      bridge = InAppWebViewAuthBridge(
+        login: mintLogin,
+        putCredential: putCredential,
+        requiredRef: targetRef,
+      );
+    } on StateError {
+      return MintOutcome.blockedOutsideNav;
+    }
     final started = Completer<void>();
     late final HeadlessInAppWebView webView;
     webView = HeadlessInAppWebView(
@@ -110,7 +115,11 @@ class HiddenWebViewSsoMinter implements SsoMinter {
       return MintOutcome.blockedOutsideNav;
     } finally {
       bridge.dispose(disposeController: false);
-      await webView.dispose();
+      try {
+        await webView.dispose();
+      } finally {
+        bridge.releaseBrowserLease();
+      }
     }
   }
 }

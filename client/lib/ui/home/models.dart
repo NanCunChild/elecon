@@ -56,7 +56,8 @@ class CampusSnapshot {
       grades == null &&
       schedule == null &&
       notices == null &&
-      genericSections.isEmpty;
+      genericSections.isEmpty &&
+      supportedCapabilities.isEmpty;
 }
 
 /// 成绩展示文本：契约 score `{kind, value, max}` → 视图字符串（值原样呈现，

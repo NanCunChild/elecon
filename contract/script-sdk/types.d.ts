@@ -36,6 +36,16 @@ export interface ScriptBrowser {
   queryAll(selector: string, limit?: number): Promise<unknown[]>;
   waitFor(selector: string, timeout?: number): Promise<boolean>;
   cookies(url?: string): Promise<unknown[]>;
+  /** Restore saved cookies for an explicitly allowed URL. */
+  setCookies(url: string, cookies: Array<{
+    name: string;
+    value: string;
+    domain?: string;
+    path?: string;
+    expiresDate?: number;
+    isSecure?: boolean;
+    isHttpOnly?: boolean;
+  }>): Promise<void>;
 }
 export interface ScriptContext {
   /** Current authorized school only; revoked sessions are unavailable. */

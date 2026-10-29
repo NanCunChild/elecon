@@ -30,7 +30,7 @@ network.origins 是精确 HTTP(S) origin 列表（scheme、host、port；不支�
 
 ## 5. 浏览器与 DOM
 
-仅 manifest.browser=true 的脚本得到 `ctx.browser`。API 包含 open、evaluate（页面 JS）、text/queryAll/exists/waitFor 和 cookies；原生 controller 不交付给脚本。所有操作异步转发给宿主创建的可见页面，用户可手工登录和完成验证码。一个页面执行一个学校身份会话，关闭、取消、切校后失效；首版不并行多个学校浏览器身份。
+仅 manifest.browser=true 的脚本得到 `ctx.browser`。API 包含 open、evaluate（页面 JS）、text/queryAll/exists/waitFor、cookies 与 setCookies；原生 controller 不交付给脚本。所有操作异步转发给宿主创建的可见页面，用户可手工登录和完成验证码。一个页面执行一个学校身份会话，关闭、取消、切校后失效；首版不并行多个学校浏览器身份。脚本可将 cookies 保存到授权凭据库，下次先 setCookies 再 open 以复用登录；Cookie 写入检查允许 URL、domain-match、语法及预算，关闭会等待原生写入完成后清理。
 
 页面导航与新窗口受 network.origins 约束；IP 约束的脚本不能使用系统 WebView（无法证明 socket 地址 pinning），须稳定报告不支持并使用 ctx.fetch。WebView 的子资源、iframe、service worker 和页面网络遵循浏览器自身机制；该模式明确不声称全部页面请求均经过 ctx.fetch 或执行与原生 HTTP 相同的 IP 限制。浏览器权限展示明确说明这一区别。浏览器权限是对 origin 内页面程序的信任，不能作为强内容 DLP。
 

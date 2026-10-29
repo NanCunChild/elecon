@@ -61,6 +61,8 @@ if grep -qE '^  liquid_glass_widgets:' pubspec.yaml; then
 fi
 ok "默认依赖图不含 liquid_glass_widgets"
 
+# ADR-034: this gate constrains legacy DEV side-loading symbols only.
+# User-approved elecon-script/1 installations are a separate intentional production path.
 # —— 1. main（release 合并基线）必须声明 INTERNET ——
 # 历史事故：只写在 debug/profile，导致 --release APK 无法 WebView 登录 / DirectTransport。
 if ! grep -qE 'android\.permission\.INTERNET' "$MAIN_MANIFEST"; then

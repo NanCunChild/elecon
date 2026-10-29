@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../catalog/schools.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../../core/debug/perf_trace.dart';
 import '../../core/login/webview_login.dart' show isLoginNavigationAllowed;
 import '../../session/session_controller.dart';
@@ -88,6 +89,14 @@ Future<WebViewLoginResult?> runSchoolLogin(
       trace.mark('credential_flush_complete');
     }
     return result;
+  } on StateError catch (error) {
+    if (error.message != 'browser_busy') rethrow;
+    return WebViewLoginResult(
+      status: WebViewLoginStatus.error,
+      error: context.mounted
+          ? AppLocalizations.of(context).scriptsBrowserBusy
+          : 'browser_busy',
+    );
   } finally {
     trace.finish();
   }

@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../credential/types.dart';
+import '../scripts/browser.dart' show ScriptBrowserLease;
 import 'webview_auth_session.dart';
 import 'webview_auth_ui_bridge.dart';
 import 'webview_login.dart';
@@ -20,7 +21,10 @@ class InAppWebViewAuthBridge implements WebViewAuthUiBridge {
     String? initialUrl,
     String? requiredRef,
     Set<String> tlsProceedHosts = const {},
-  }) : initialUrl = initialUrl ?? login.url,
+  }) : _browserLease =
+           ScriptBrowserLease.tryAcquire('legacy-login') ??
+           (throw StateError('browser_busy')),
+       initialUrl = initialUrl ?? login.url,
        _login = login,
        _tlsProceedHosts = tlsProceedHosts {
     _session = WebViewAuthSession(
@@ -42,6 +46,11 @@ class InAppWebViewAuthBridge implements WebViewAuthUiBridge {
   );
   late final WebViewAuthSession _session;
   InAppWebViewController? _controller;
+  Future<void>? _closingBrowser;
+  final ScriptBrowserLease _browserLease;
+
+  /// ADR-034 §5: hidden WebView calls this only after native disposal.
+  void releaseBrowserLease() => _browserLease.release();
 
   void stateNotifier(WebViewAuthUiState next) => state.value = next;
 
@@ -194,13 +203,36 @@ class InAppWebViewAuthBridge implements WebViewAuthUiBridge {
   @override
   Future<void> stop() async {
     _session.cancel();
-    await _controller?.stopLoading();
+    await (_closingBrowser ??= _stopNativeBrowser());
+  }
+
+  Future<void> _stopNativeBrowser() async {
+    final controller = _controller;
+    if (controller == null) return;
+    // ADR-034 §5: await native quiescence before another school can clear or
+    // reuse the global browser store. Dart controller.dispose alone is not it.
+    await controller.setSettings(
+      settings: InAppWebViewSettings(javaScriptEnabled: false),
+    );
+    await controller.stopLoading();
+    await controller.loadUrl(
+      urlRequest: URLRequest(url: WebUri('about:blank')),
+    );
   }
 
   @override
   void dispose({bool disposeController = true}) {
     _session.dispose();
-    if (disposeController) _controller?.dispose();
+    final controller = _controller;
+    if (disposeController) {
+      final stopped = _closingBrowser ??= _stopNativeBrowser();
+      // Route removal may happen without the normal completion flow. Keep the
+      // lease until native stop has settled, even when that operation fails.
+      stopped.catchError((Object _) {}).whenComplete(() {
+        controller?.dispose();
+        releaseBrowserLease();
+      });
+    }
     _controller = null;
     state.dispose();
   }
