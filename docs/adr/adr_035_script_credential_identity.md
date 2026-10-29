@@ -14,7 +14,7 @@ SDK 2 的地址是 `(schoolId, namespace, key)`。schoolId 由宿主绑定当前
 
 记录返回稳定 id、namespace、key 以及原有 value/type/scope/expiresAt/expired。SDK 2 list 不折叠不同 namespace 下的同名键；`get(record.key, {namespace: record.namespace})` 可往返。新物理 ref 使用有版本前缀的无歧义组合编码；组件校验禁止分隔符。主密钥与其他学校仍不可访问。
 
-`@legacy` 显式寻址当前学校的旧登录 ref；`@preview1` 显式寻址 SDK 1 创建的学校共享键。默认 SDK 2 不隐式覆盖这两类记录。SDK 1 包继续保持原查找语义，仅供预览兼容；其语义不因宿主升级静默改变。旧数据不猜测脚本归属，不自动复制。脚本作者可通过 list 挑选旧记录、读取后写入新 namespace，再按需显式删除旧记录。卸载仍保留凭据，登出删除当前学校全部 namespace。
+`@legacy` 显式寻址当前学校的旧登录 ref；`@preview1` 显式寻址 SDK 1 创建的学校共享键。默认 SDK 2 不隐式覆盖这两类记录。SDK 1 包继续保持原查找语义，仅供预览兼容；其语义不因宿主升级静默改变。旧数据不猜测脚本归属，不自动复制。脚本作者可通过 list 挑选旧记录、读取后写入新 namespace，再按需显式删除旧记录。卸载仍保留凭据，登出删除当前学校全部 namespace；返回选校只是切换导航，不清除任一学校凭据。设置以“本地已保存凭据”描述状态，不把存在条目等同于服务器仍认可登录。
 
 写入已有记录时，省略的 type/scope/expiresAt 保持原值；显式 expiresAt:null 清除期限，scope:[] 清除范围。相同完整地址的 set 是有意更新；不同地址独立保存。若物理槽位已属于其他学校或含不一致描述符，报告冲突，不覆盖。需要一起轮换的 access/refresh token 可存成一个 JSON 记录；不为此引入跨记录事务 DSL。
 

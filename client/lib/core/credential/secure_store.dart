@@ -2,10 +2,10 @@
 ///
 /// 真实实现：iOS Keychain / Android Keystore / 桌面 Secret Service + at-rest 加密。
 ///
-/// 🔒🔴 `InMemorySecureStore` 是**原型后端**：明文存内存、**无加密、无 OS keystore**。
-///   - **绝不可存真实学生凭证**（红线 #1/#8）——仅供模型验证 + B1 集成 + 测试。
-///   - at-rest 加密 + keystore 密钥托管是**上线前硬门槛**；桌面 Linux 无统一 keyring 时的
-///     回退**不得降级为明文落盘**（ADR-012 §3.7）。key custody 仍是开放问题。
+/// 🔒 `InMemorySecureStore` 不落盘，也不提供持久化或 OS keystore 保护。
+/// ADR-012 §2.8 / ADR-034 §3 允许后端工厂显式选择 M 档用于当前真实会话；
+/// release 的缺省构造仍拒绝，避免把未裁定后端误当成持久存储。
+/// H/S 持久化后端另有加密与密钥策略；测试夹具始终只使用合成凭据。
 library;
 
 import 'package:flutter/foundation.dart' show kReleaseMode;
@@ -19,8 +19,7 @@ abstract interface class SecureStore {
   List<CredentialEntry> list();
 }
 
-/// 原型后端：内存 Map。CredentialEntry 不可变（final 字段），按值语义对待。
-/// ⚠️ 真实实现须替换为 OS keystore + at-rest 加密（见文件头）。
+/// 内存档 Map。是否选择此档由可信工厂/会话决定，不承诺跨重启保存。
 class InMemorySecureStore implements SecureStore {
   InMemorySecureStore({bool releaseMode = kReleaseMode}) {
     if (releaseMode) {

@@ -1,5 +1,7 @@
 # ADR-033：双 profile 本地导入（DEPLOY official-only / DEV 全能力侧载）
 
+> **2026-10-29 路线范围**：本文尚未落地的工作是 V1 official bundle 的本地导入与 C3 联动。ADR-034 的未签名源码包导入已是另一条用户授权路径，不受本 ADR 的 official-only/DEV-only 限制，也不据此移除 V1 运行门。 决策见 [ADR-034](./adr_034_trusted_school_scripts.md)，执行状态见[受信脚本计划](../planning/trusted_scripts.md)。本范围说明不改写历史人工审阅或签署事实。
+
 - **状态**：**已接受（Accepted）** · 2026-08-10 owner 评审通过。决策过程逐轮保留于 §1（不作一次性拒绝）。**已接受但尚未落地**：实现按 §5 连带清单推进，落地前现有 DEPLOY 零本地导入实现与 ADR-024 gate 仍是运行基线——这是实现进度，不再是 ADR 状态闸门。
 - **日期**：2026-08-09（2026-08-10 两轮反馈后重写）
 - **适用范围**：adapter bundle 的本地导入渠道、DEPLOY/DEV profile 的加载门禁、吊销新鲜度、设置入口与 `trustTier: sideload` / validator C3 的去留。

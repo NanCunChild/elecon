@@ -1,5 +1,7 @@
 # ADR-022：抹除 fetch/parser 模式，改用每 capability 的 `requestGraph`（声明式 / 命令式）
 
+> **2026-10-29 路线范围**：本文 declarative/imperative requestGraph 是 V1 adapter 契约。ADR-034 新脚本统一使用普通 async capability handler，不要求 requestGraph、requests/bind/compute/inject；旧运行时为迁移兼容保留，尚未整体删除。 决策见 [ADR-034](./adr_034_trusted_school_scripts.md)，执行状态见[受信脚本计划](../planning/trusted_scripts.md)。本范围说明不改写历史人工审阅或签署事实。
+
 - **状态**：**已接受（Accepted）** · 2026-07-23 owner 评审通过（决策面锁定；§6 开放问题已于同日勾决）。本 ADR 触碰红线 #1（凭证）、#5（adapter 能力面）、#6（契约承重墙）、#10（架构性改动先 ADR）。按 [AGENTS.md](../../AGENTS.md) §1：**runtime（两端 ctx 分派 / broker 凭证注入触发条件）与 validator 的实现和测试须人工主导 + 安全清单 + ≥1 人工审，AI 不得独自闭环**。本文只固定契约面决策与迁移规格，安全落地不在 AI 闭环内。
 - **日期**：2026-07-23
 - **依赖**：

@@ -1,5 +1,7 @@
 # ADR-009：imperative requestGraph —— 受限 `ctx.fetch` 与凭证注入
 
+> **2026-10-29 路线范围**：本文的 Broker 注入、头净化与凭据不可见语义只适用于 V1 adapter。ADR-034 的 ctx.fetch 由脚本构造认证字段并读取原始多值 Set-Cookie，中间流程不经过旧 Broker/Masker；宿主仍强制声明的网络范围与预算。 决策见 [ADR-034](./adr_034_trusted_school_scripts.md)，执行状态见[受信脚本计划](../planning/trusted_scripts.md)。本范围说明不改写历史人工审阅或签署事实。
+
 > **术语（ADR-022）**：旧称「fetch 模式」= 今 **imperative requestGraph**；旧称「parser 模式」= 今 **declarative requestGraph**。本文机制章节可保留历史「fetch 模式」一句，现行契约键为 per-capability `requestGraph`。
 
 - **状态**：已接受（Accepted） 本文触碰红线 #1（凭证）与传输/核心承重路径，按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，经人工 review（PR #23）+ 安全检查清单审阅后接受。

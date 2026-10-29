@@ -1,7 +1,8 @@
 /// 凭证条目数据模型（Dart 侧）—— mirror `server/src/runtime/credential/types.ts`（ADR-012 §2.4）。
 ///
-/// 🔒 红线 #1：`value` 是凭证值，仅存于可信核心、at-rest 加密、注入瞬间解密用完即弃。
-/// 本目录为客户端核心实现的原型形态；at-rest 加密 + OS keystore 是上线前硬门槛（见 secure_store.dart）。
+/// 🔒 ADR-012/034/035：持久化由 H/S 后端处理，M 档只存内存。
+/// 新受信脚本可读取当前学校的 value；V1 adapter 仍仅经 Broker 使用。
+/// 加密主密钥不开放，平台可用性与用户同意由后端工厂裁定。
 library;
 
 enum CredentialStatus { active, expired, revoked }
@@ -32,7 +33,8 @@ class CredentialEntry {
     this.protection = CredentialProtection.memory,
   });
 
-  /// 稳定引用名；manifest `credentials.<name>` 指向它（ADR-013）。
+  /// 稳定物理键：V1 为原始 manifest ref；新脚本包含学校/namespace/key。
+  /// 底层按 ref 索引，不自动将旧 raw ref 变成多校复合键（ADR-035 §2）。
   final String ref;
   final String schoolId;
 
@@ -42,7 +44,7 @@ class CredentialEntry {
   /// URL 前缀。**防御性副本 + 一致性基准**——非注入依据（§2.4）。
   final List<String> scope;
 
-  /// 凭证值。**原型为明文**；真实须 at-rest 加密。注入瞬间解密用完即弃。
+  /// 内存中的凭据值。H/S 落盘加密，M 不落盘；新受信脚本可直接访问。
   final String value;
 
   final int acquiredAt;

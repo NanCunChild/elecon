@@ -1,5 +1,9 @@
 /// 凭证存储（Dart 侧）—— mirror `server/src/runtime/credential/store.ts`（ADR-012 §2.4/§2.5）。
 ///
+/// 当前路线：ADR-034/035 受信脚本通过 ScriptCredentials 按当前学校读取真实值，
+/// 复用本存储的 H/S/M 后端；下述 manifest 注入权威只适用于 V1 Broker。
+/// 新 SDK 2 在 ref 中编码唯一地址；本类不替旧 raw-ref 自动补学校或命名空间。
+///
 /// 与 B1 broker 闭合：`decideInjection` 据**已验签 manifest** 判 inject(ref, via) → 调本
 /// store `get(ref)` 取值。**注入权威唯一在 manifest**；store 的 type/scope 是防御性副本，
 /// 不一致以 manifest 为准并告警（漂移检测见测试）。

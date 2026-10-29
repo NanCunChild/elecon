@@ -20,4 +20,4 @@ Resolved new transitive packages (licenses read from each resolved LICENSE):
 | windows_file_picker | MIT |
 | xml | MIT |
 
-All additions are resolved through pubspec.lock. Flutter includes resolved package LICENSE files in its generated NOTICES; upstream packages are unmodified. The Linux file chooser brings the MPL-2.0 dbus dependency, recorded explicitly here rather than treating all transitive dependencies as MIT.
+All additions are resolved through pubspec.lock and pubspec.apple.lock. Both manifests include file_picker so Apple builds expose the same script import surface; existing Apple dependency pins are preserved. Flutter includes resolved package LICENSE files in its generated NOTICES; upstream packages are unmodified. The Linux file chooser brings the MPL-2.0 dbus dependency, recorded explicitly here rather than treating all transitive dependencies as MIT.

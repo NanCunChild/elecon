@@ -6,7 +6,8 @@
 lib/
   main.dart            入口
   core/
-    adapter_runtime.dart  QuickJS adapter 运行时（declarative/imperative requestGraph，后台 isolate）
+    scripts/              ADR-034 受信源码、安装授权、HTTP/IP 与浏览器桥接
+    adapter_runtime.dart  V1 兼容运行时（declarative/imperative requestGraph，后台 isolate）
   ui/                  UI 层（数据驱动 / SDUI，只认标准 schema）
 assets/                静态资源
 test/
@@ -34,9 +35,11 @@ bash tool/with_apple_pubspec.sh fvm flutter run --target lib/main_apple.dart  # 
 - 主线新增 Dart 语法、依赖版本、`pubspec.lock` 解析结果以 Android / iOS stable 为准；不为 OHOS fork 牺牲主线升级节奏。
 - OHOS 恢复打包前再核对 fork 是否跟进。若主线已使用 OHOS fork 不支持的语法或依赖，按兼容债务处理，见 `docs/probes/probe_001_smoke_plan.md` §4.1。
 
-## 测试（双跑一致性）
+## 测试（V1 双跑一致性与新脚本回归）
 
-adapter 在客户端用 QuickJS（`flutter_qjs_next`）执行，服务端使用 QuickJS-wasm。两种绑定、
+V1 adapter 在客户端用 QuickJS（`flutter_qjs_next`）执行，服务端使用 QuickJS-wasm。新源码脚本只在客户端执行，其格式、凭据、HTTP/DOM、身份与安装版本回归位于 `test/scripts/`，不要求服务端双跑或旧 Masker。
+
+V1 两端的绑定、
 版本和编译配置可能不同，只对共享 golden/canary 覆盖的已使用语义承诺一致（ADR-008 §3.2）。
 `test/dual_run_test.dart` 用同一份 declarative 夹具验证客户端产出 == golden，服务端侧由
 `server/src/runtime/sandbox.smoke.ts` 验证同一 golden。
@@ -96,8 +99,10 @@ cookie 收割和持久化完成等阶段，同时输出帧总数、超过 16.67m
 
 - adapter 在后台 isolate 执行，不在 UI 线程同步阻塞
 - UI 只认标准 schema，与学校无关
-- 凭证永不离开核心
+- 凭据仍由宿主保护；ADR-034 受信源码可直接访问当前授权学校身份的值，V1 adapter 仍遵守凭据不可见边界
 
 ## 受信学校脚本（Alpha 0.2）
 
 首次选校页或设置页打开“学校脚本”，导入/粘贴源码包并确认后即可使用。无需修改选校硬编码，也无需官方签名本地脚本。使用、版本更新、HTTP/DOM 模板和平台限制见 [开发文档](../docs/reference/trusted_scripts.md)。旧 official bundle 路径仍验证原签名。
+
+新模板采用 SDK 2（[ADR-035](../docs/adr/adr_035_script_credential_identity.md)）：凭据默认按学校、脚本命名空间、键保存，并可显式共享。SDK 1 预览语义继续兼容。包格式仍为 `elecon-script/1`，脚本自身 version 独立递增。

@@ -1,5 +1,7 @@
 # ADR-012：凭证获取（登录）与可信核心凭证存储
 
+> **2026-10-29 路线范围**：ADR-034 复用本文的存储保护后端及显式 H/S/M 选择，但新受信脚本可通过当前学校身份 API 读取/刷新凭据值；“凭据仅核心可见”仅保留为 V1 执行约束。主密钥不开放，UI 不取得完整 store。 决策见 [ADR-034](./adr_034_trusted_school_scripts.md)，执行状态见[受信脚本计划](../planning/trusted_scripts.md)。本范围说明不改写历史人工审阅或签署事实。
+
 - **状态**：已接受（Accepted） 本文触碰红线 #1（凭证）的**最高风险面**——凭证从哪来、存哪、什么形态。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，经人工 review（PR #23）+ 安全检查清单审阅后接受。
 - **日期**：2026-06-13（历次修订见文末[附录：修订记录](#附录修订记录)）
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)（§3.3 凭证边界、§2.2 可信核心）、[`adr_001_contract.md`](./adr_001_contract.md)（manifest / 契约）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（谁有资格用凭证 = official）、[`adr_003_transport.md`](./adr_003_transport.md)（campus-relay 落点）、[`adr_008_client_runtime.md`](./adr_008_client_runtime.md)（客户端核心）

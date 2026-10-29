@@ -1,5 +1,7 @@
 # ADR-026：Broker 响应凭证收割与投影（Response Masker）
 
+> **2026-10-29 路线范围**：Masker 仍在 V1 official bundle 兼容路径中运行，尚未全局删除。ADR-034 新源码脚本直接读取真实凭据和响应，不加载 masker.json、不经过 Capture/Project/Commit 或 handle；本文 mandatory policy 门不适用于新路径。 决策见 [ADR-034](./adr_034_trusted_school_scripts.md)，执行状态见[受信脚本计划](../planning/trusted_scripts.md)。本范围说明不改写历史人工审阅或签署事实。
+
 - **状态**：已接受（2026-07-30）。本文将原 Deferred 议题重构为正式方案；Broker、契约、签名 bundle 与正式 adapter 的各阶段实现仍须人工安全复核。
 - **日期**：2026-07-27；2026-07-30 重写职责与迁移方向；2026-08-07 接受 selector miss 语义与 mandatory policy gate
 - **适用范围**：Broker 从学校响应中提取非标准凭证敏感值、在核心内建立受控引用，并向 declarative / imperative adapter 交付投影响应。

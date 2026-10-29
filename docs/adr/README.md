@@ -1,8 +1,10 @@
 # ADR 状态索引
 
 本索引把“决策是否接受”和“实现是否落地”分开记录。ADR 正文是决策权威；
-[`2026_08_review_remediation.md`](../planning/2026_08_review_remediation.md) 是当前整改与阻塞状态权威。
+V1 兼容路径的整改与阻塞状态见 [`2026_08_review_remediation.md`](../planning/2026_08_review_remediation.md)；ADR-034 新受信脚本路径的执行与剩余验收状态见 [`trusted_scripts.md`](../planning/trusted_scripts.md)。旧路径的签名/Masker/双跑待办不自动成为新路径的准入条件。
 `Accepted` 只表示可据以实现，**不表示实现、安全签收或生产发布已经完成**。
+
+路线阅读顺序：新源码脚本先读 ADR-034/035；ADR-000–033 中关于 official bundle、凭据不可见、requestGraph、Masker、旧登录收割与发布门的描述继续约束 V1 兼容实现。共享业务 schema、平台存储、背景执行和公网零凭据等未被覆盖的约束继续适用。旧 ADR 的历史决定不因新路线而被改写为“已退役”。
 
 默认 owner 为 **NanCunChild**。安全签收栏中的“待人工”表示实现或测试触及
 `AGENTS.md` 红线，不能由自动测试或 AI 实现替代人工复核。
@@ -35,14 +37,15 @@
 | [023](./adr_023_declarative_dataflow.md) | Accepted | MVP 已落地 | 2026-07-24 owner 签收 | [落地清单](../reference/declarative_dataflow_migration.md) |
 | [024](./adr_024_build_profile_trust.md) | Accepted | 零入口 slice 0–4 已落地（Android 有产物证据）；gate 待随 ADR-033 落地重做 | 待人工签收（新 gate 落地后一并签） | P0-14、[落地清单](../reference/adr_024_landing.md) |
 | [025](./adr_025_item_link.md) | Accepted | 契约/UI 基线已落地 | 外跳路径增量另审 | ADR 正文 §2.7 |
-| [026](./adr_026_response_masker.md) | Accepted；**§2.7.1 `bundleFormat` 断代 owner 决策 2026-09-10** | **§2.7.1 / §2.7.2 已落地（2026-09-12）**：`elecon-bundle/3`、`RM0_host_gate_unavailable` → `RM0_policy_missing`、两端 `masker-policy` 装配、**客户端 firewall 接线**、P1-04 原始头基数；同日复核补丁：handle 过渡门（两端装配拒载 + `RM17`）、`requestKey: null` 双端对齐、`RM18`、§2.8 文本校正；**余一次 `/3` 重签仪式**（在此之前入库 bootstrap 仍 `/2`，硬门 `bootstrap:verify` 必红） | 🔒 **待人工**（清单 [`response_masker_signoff_checklist.md`](../reference/response_masker_signoff_checklist.md)） | P0-09/P0-10、P1-08/P1-09；P1-04 已关 |
+| [026](./adr_026_response_masker.md) | Accepted；**§2.7.1 `bundleFormat` 断代 owner 决策 2026-09-10** | **§2.7.1 / §2.7.2 已落地（2026-09-12）**：`elecon-bundle/3`、`RM0_host_gate_unavailable` → `RM0_policy_missing`、两端 `masker-policy` 装配、**客户端 firewall 接线**、P1-04 原始头基数；同日复核补丁：handle 过渡门（两端装配拒载 + `RM17`）、`requestKey: null` 双端对齐、`RM18`、§2.8 文本校正；历史记录保留 `/3` 重签仪式待办；**2026-10-29 已复用现有 official 验签 `/3` 字节替换入库 `/2`（49b5dad），bootstrap 自洽检查已通过**，不再是“必红”；该只读核验/复用未补造新签署仪式或人工签收。新源码路径不使用 Masker；V1 兼容实现仍保留 | 🔒 **待人工**（清单 [`response_masker_signoff_checklist.md`](../reference/response_masker_signoff_checklist.md)） | P0-09/P0-10、P1-08/P1-09；P1-04 已关 |
 | [027](./adr_027_url_session_param_stripping.md) | Accepted | 实现已提交 | 待人工 | 纳入 P0-10 firewall 总签收 |
 | [028](./adr_028_declarative_crypto_ops.md) | Accepted | 双端实现与 golden 已完成 | 待 owner | [安全清单](../reference/declarative_dataflow_security_checklist.md) |
 | [029](./adr_029_named_and_body_credentials.md) | Accepted | named header 已落地；body 未落地 | 待人工 | P1-11 |
 | [030](./adr_030_actuator_capabilities.md) | Accepted | 未落地 | 待人工 | P1-12 |
 | [031](./adr_031_dataflow_seed.md) | Accepted | 未落地 | 待人工 | P1-10 |
 | [032](./adr_032_app_tunnel_embedding.md) | Proposed | 禁止实现 | 待人工评审 | 接受前不得合并 transport 实现 |
-| [033](./adr_033_production_sideload.md) | Accepted | **未落地**（现仍为 DEPLOY 零本地导入 + C3 在位） | 落地须人工主导 + 安全清单 + ≥1 人工审 | §5 连带清单须同批落地；§6 开放问题按实现分项阻塞 |
+| [033](./adr_033_production_sideload.md) | Accepted | **V1 bundle 本地导入未落地**（其 C3 仍在位）；ADR-034 源码包本地导入独立实现 | 落地须人工主导 + 安全清单 + ≥1 人工审 | §5 连带清单须同批落地；§6 开放问题按实现分项阻塞 |
 | [034](./adr_034_trusted_school_scripts.md) | Accepted（2026-10-29 所有者会话授权） | 已实现，见 [计划](../planning/trusted_scripts.md) | 待人工复核与平台真机 | 新源码脚本路径显式覆盖 #1/#4/#5 旧约束 |
+| [035](./adr_035_script_credential_identity.md) | Accepted（2026-10-29 所有者检查与修复授权） | SDK 2 与多凭据行为见[阶段记录](../planning/trusted_scripts.md) | 待人工复核与平台真机 | 细化 ADR-034；SDK 1 保留预览兼容 |
 
 更新规则：接受或废弃 ADR 时更新 `Decision`；实现 PR 只更新 `Landing`；安全签收必须附人工复核引用，不能以 smoke 通过代替。

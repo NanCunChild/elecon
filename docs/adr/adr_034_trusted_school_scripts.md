@@ -4,11 +4,13 @@
 - **Landing**：见 `docs/planning/trusted_scripts.md`；Accepted 不代表实现人工安全签收。
 - **覆盖**：ADR-000 §3.3、ADR-002/009/018/022/023/026/033 中与新 `elecon-script/1` 路径冲突的约束；既有 official bundle 路径在迁移期间保持原有语义。
 
+> 2026-10-29 复核：凭据描述符、SDK 2、元数据更新与异常后的保存由 [ADR-035](adr_035_script_credential_identity.md) 细化。本文 SDK 1 记载的是首版预览语义，新脚本使用 SDK 2；包格式仍为 `elecon-script/1`。Masker **只在新路径免除，尚未全仓删除**，在役旧链与退役条件见 [审计记录](../reference/masker_retirement_audit.md)。
+
 ## 1. 目标与范围
 
 让学校接口、认证中间值、校本签名和页面流程主要由普通异步 JavaScript 处理，避免继续扩充凭据不可见的数据流 DSL。保留背景执行、身份隔离、资源预算、平台存储、标准输出校验和公网零凭据。脚本受信意味着可读、改、泄漏当前授权身份内的数据；网络清单限制目标，不承诺内容防泄漏。
 
-本决策只为客户端增加一个可实际使用的新路径，不将 V2 分支或 elecon-r 整体合入。elecon-r 只借鉴异步页面执行、DOM 查询和开发体验；新代码自行实现，使用现有依赖，无新增第三方依赖。服务端不执行新脚本。
+本决策只为客户端增加一个可实际使用的新路径，不将 V2 分支或 elecon-r 整体合入。elecon-r 只借鉴异步页面执行、DOM 查询和开发体验；新代码自行实现。运行时使用现有依赖；文件导入增加 file_picker，许可证见 [依赖清单](../reference/trusted_scripts_dependencies.md)。服务端不执行新脚本。
 
 ## 2. 源码包与迭代
 

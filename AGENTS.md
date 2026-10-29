@@ -16,11 +16,11 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 
 以下是架构的承重墙。**任何代码、任何 AI 生成的改动，都不得违背。触碰即拒绝合并。** AI 在产出前必须逐条自检（见 [`docs/rules/ai_coding.md`](docs/rules/ai_coding.md)）。
 
-1. **凭证永不离开核心。** cookie / token 只存于可信核心；adapter、UI、公网服务端永远拿不到凭证的值，也拿不到任何等价物（带 token 的 URL、`Set-Cookie`、重定向中间 token）。
+1. **凭据访问按执行路线裁定。** ADR-034 的受信学校脚本可直接读写当前授权学校身份的凭据；加密主密钥、其他学校或账号的凭据不开放，UI 不取得完整凭据库。V1 official bundle 的 adapter / UI 仍不得取得凭据值及等价物（带 token 的 URL、`Set-Cookie`、重定向中间 token）。公网服务端始终不持凭据。
 2. **公网服务端零凭证、无状态。** 不得为公网哑服务（`server/src/public`）添加任何凭证存储或私密数据持久化。
 3. **私密数据不经公网。** 私密 / 认证数据只走客户端直连或校内授权中继（`server/src/campus`）。
-4. **DEPLOY 仅运行官方签名 adapter。** 无论 bundle 来自 catalog 还是本地文件，都只运行通过 official 验签、身份绑定与吊销门禁的 adapter；不得存在未签名 / 非 official 的加载路径。DEV-Sideload 可本地加载未签名 adapter，但不可分发。（本地 official 导入见 [`adr_033`](docs/adr/adr_033_production_sideload.md)，已接受未落地；本条历史上曾涵盖 transport，2026-09-09 起 transport 编译进二进制、不再是加载物，见 [`adr_003`](docs/adr/adr_003_transport.md) §2.3 与归档流水。）
-5. **adapter 能力面越薄越好——这是安全口号，不是工程口号。** 「薄」约束的是能力 / 信任面；工程上 adapter 是吸收对端混乱的 shim，归一化与校本派生应尽量压进这层。DEV-Sideload 是全能力开发环境，须经强警告 + 全占用确认，凭证值仍不离核心。分工线见 [`adr_000`](docs/adr/adr_000_abstract.md) §3.1，信任档见 [`adr_002`](docs/adr/adr_002_trust_model.md) §2.5。
+4. **执行必须来自明确授权。** `elecon-script/1` 通过用户确认包内容、身份与网络范围建立本地安装授权，允许未签名源码；版本更新重新确认且执行内容必须匹配授权 digest。V1 official bundle 无论来自 catalog 还是本地文件仍须通过 official 验签、身份绑定与吊销门；ADR-033 的 V1 bundle 本地导入尚未落地。不得把新源码路径的授权当作旧 bundle 验签凭据，也不得把旧 DEV-only 规则套用于新源码路径。transport 编译进应用，不开放脚本原生模块侧载。
+5. **学校流程由脚本承担，宿主约束执行能力。** 新受信脚本可自行处理认证、签名、请求与 DOM，仍使用背景执行、当前身份存储和声明的域名/IP 网络范围，不获得任意文件、进程、FFI 或 raw socket。V1 adapter 继续遵守 ADR-000/002 的受限 Broker 能力面；新脚本不要求 requestGraph、opaque handle 或 Masker。旧机制仅作迁移兼容保留，尚未全局删除，不再扩充校本算子（ADR-034）。
 6. **契约即承重墙。** 改动 `contract/`（schema、manifest）必须先有 ADR，在现阶段可以出现破坏性更新，在公测阶段完成且版本号稳定后，由人工决定是否应当修改为兼容考虑。
 7. **adapter 不在 UI 线程同步执行。** 一律背景 isolate，UI 永远异步。
 8. **不提交真实学生数据。** 测试夹具必须脱敏。

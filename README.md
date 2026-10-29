@@ -7,6 +7,8 @@
 
 使用、源码模板、打包命令与平台边界见 [受信学校脚本](docs/reference/trusted_scripts.md)，决策见 [ADR-034](docs/adr/adr_034_trusted_school_scripts.md)，实施记录见 [阶段计划](docs/planning/trusted_scripts.md)。下方旧 Broker/双端 runtime 描述只对应尚未迁移的 V1 路径。
 
+新模板使用 [SDK 2 的凭据描述符](docs/adr/adr_035_script_credential_identity.md)：默认按学校、脚本命名空间和键分别保存，跨脚本共享需显式寻址。SDK 1 预览包保留兼容；旧 Masker 仍在 V1 执行链内，尚未全仓删除。
+
 ---
 
 ## 它解决什么

@@ -7,7 +7,7 @@
 1. [`AGENTS.md`](../AGENTS.md)：不可违背的安全红线与协作规则。
 2. [`ADR-000`](./adr/adr_000_abstract.md) 及相关单点 ADR：架构决策与约束。
 3. [`ADR 状态索引`](./adr/README.md)：分别记录 Decision、Landing、Security signoff、Owner 与 Blocker。
-4. [`2026-08 整改清单`](./planning/2026_08_review_remediation.md)：当前实现缺口、前置关系与完成条件。
+4. 执行状态按路线分开：[`2026-08 整改清单`](./planning/2026_08_review_remediation.md) 对应 V1 兼容路径，[受信脚本计划](./planning/trusted_scripts.md) 对应 ADR-034 新路径。
 5. 代码与自动化测试：当前实现事实；代码存在不代表已经通过安全签收或可生产发布。
 
 发生冲突时，更晚且明确覆盖旧决策的 ADR 优先；实现状态以代码、测试和人工签收证据共同判断，不能用 `Accepted` 推断 `Implemented`。
@@ -21,7 +21,9 @@
 - `adapters/`：stdlib、模板、canary 和示例；真实学校 adapter 从 `adapters.pin` 固定的外部仓拉取。
 - `tools/`：validator、codegen、签名、发布台账与 release gate。
 
-adapter 的**能力/信任面越薄越好**，但作为吸收学校接口差异的 shim，其**归一化和校本派生功能应尽量完整**。DEPLOY 只运行通过 official 验签与吊销门禁的 adapter；本地导入只可作为 official bundle 的另一字节来源。DEV-Sideload 是全能力开发环境，可调试未签名 declarative / imperative adapter。双渠道与 C3 退役见 ADR-033（已接受，尚未落地）。
+[ADR-034](./adr/adr_034_trusted_school_scripts.md) 新增受信源码路径：用户检查并确认 `elecon-script/1` 包后，普通 async JS 直接读写当前学校身份凭据，编排宿主 HTTP 和可见浏览器 DOM；网络目标由声明的 origin/IP 范围约束，执行仍在背景 isolate。凭据存储、身份、取消和标准输出校验留在宿主，公网不执行新脚本。
+
+V1 official bundle 继续验签、吊销、Broker/Masker 及 declarative/imperative 旧契约；其 ADR-033 本地导入/C3 联动尚未落地。新源码导入已经实现，并不依赖这项旧待办。旧 DSL/Masker 是尚未删除的迁移兼容路径，不再扩充校本协议算子；不是新脚本的必需层。
 
 ## 历史资料
 

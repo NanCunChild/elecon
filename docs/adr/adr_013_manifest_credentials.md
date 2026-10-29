@@ -1,5 +1,7 @@
 # ADR-013：manifest `credentials` 声明（凭证引用契约扩展）
 
+> **2026-10-29 路线范围**：本文 credentials/ref/scope 是 V1 manifest 的 Broker 注入声明。ADR-034 源码包使用独立 script-package.schema.json/SDK，不要求 credentials 引用配方；新脚本在授权学校身份内自行管理多个 Cookie/Token 与请求字段。 决策见 [ADR-034](./adr_034_trusted_school_scripts.md)，执行状态见[受信脚本计划](../planning/trusted_scripts.md)。本范围说明不改写历史人工审阅或签署事实。
+
 - **状态**：已接受（Accepted） 本文改动 `contract/`（manifest schema），触碰红线 #6（契约即承重墙）且服务于红线 #1 的凭证注入路径。按 AGENTS.md §1，**AI 不得独自闭环**：本草案由 AI 起草，**必须经人工 + 安全检查清单审阅后才可接受并实现**。
 - **日期**：2026-06-14
 - **依赖**：[`adr_001_contract.md`](./adr_001_contract.md)（§5 manifest 规范、§8 版本与兼容治理）、[`adr_009_fetch_credential.md`](./adr_009_fetch_credential.md)（§2.3 凭证作用域草图——本文将其正式纳入 schema）、[`adr_012_credential_store.md`](./adr_012_credential_store.md)（§2.4 `CredentialEntry`——本文的 `credentials.<name>` 即其 `ref` 的指向目标）、[`adr_002_trust_model.md`](./adr_002_trust_model.md)（§2.3 签名覆盖 manifest，使 credentials 声明不可篡改）
