@@ -161,6 +161,9 @@ class SessionController extends ChangeNotifier {
   Iterable<CredentialEntry> get _selectedCredentialEntries => _store
       .list()
       .where((entry) => _school == null || entry.schoolId == _school!.id);
+
+  /// Local credential presence only; scripts may refresh expired records and
+  /// this does not verify the server-side login state (ADR-035 §2–§3).
   bool get isLoggedIn => _selectedCredentialEntries.isNotEmpty;
   int get credentialCount => _selectedCredentialEntries.length;
 
@@ -176,7 +179,12 @@ class SessionController extends ChangeNotifier {
     _selectedCredentialEntries.map(
       (entry) => SessionCredentialMetadata(
         ref: entry.ref,
-        status: SessionCredentialStatus.values.byName(entry.status.name),
+        status: entry.status == CredentialStatus.revoked
+            ? SessionCredentialStatus.revoked
+            : entry.expiresAt != null &&
+                  DateTime.now().millisecondsSinceEpoch >= entry.expiresAt!
+            ? SessionCredentialStatus.expired
+            : SessionCredentialStatus.values.byName(entry.status.name),
         sensitivity: SessionCredentialSensitivity.values.byName(
           entry.sensitivity.name,
         ),
@@ -277,10 +285,13 @@ class SessionController extends ChangeNotifier {
 
   /// durability 屏障：H/S 档等待挂起的持久化落盘。收割后调用。
   Future<void> flush() async {
-    final s = _secure;
-    if (s is SoftwareSecureStore) await s.flush();
-    if (s is HardwareSecureStore) await s.flush();
+    await _flushCredentialBackend(_secure);
     await _sessionPersistChain;
+  }
+
+  Future<void> _flushCredentialBackend(SecureStore? backend) async {
+    if (backend is SoftwareSecureStore) await backend.flush();
+    if (backend is HardwareSecureStore) await backend.flush();
   }
 
   Future<BlobStore?> _resolveBlobs() async {
@@ -393,6 +404,15 @@ class SessionController extends ChangeNotifier {
     _cancelTrustedScripts();
     _school = school;
     _wireSsoMinterFor(school);
+    _scheduleSessionPersist();
+    notifyListeners();
+  }
+
+  /// ADR-035 §2: navigation to school selection is not a credential reset.
+  void clearSchoolSelection() {
+    _cancelTrustedScripts();
+    _school = null;
+    _wireSsoMinterFor(null);
     _scheduleSessionPersist();
     notifyListeners();
   }
@@ -602,14 +622,10 @@ class SessionController extends ChangeNotifier {
 
   /// 彻底重置：抹除凭证并清除选校，回到开始面板。
   void reset() {
-    _cancelTrustedScripts();
     for (final e in _store.list()) {
       _store.delete(e.ref);
     }
-    _school = null;
-    _wireSsoMinterFor(null);
-    _scheduleSessionPersist();
-    notifyListeners();
+    clearSchoolSelection();
   }
 
   @override

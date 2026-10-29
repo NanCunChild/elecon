@@ -52,7 +52,7 @@ void main() {
     for (final change in <void Function(Map<String, dynamic>)>[
       (j) => j['format'] = 'elecon-script/2',
       (j) => j['unknown'] = true,
-      (j) => (j['manifest'] as Map)['sdkVersion'] = 2,
+      (j) => (j['manifest'] as Map)['sdkVersion'] = 99,
       (j) => (j['manifest'] as Map)['browser'] = 'false',
       (j) => (j['manifest'] as Map)['id'] = '../school',
       (j) => (j['manifest'] as Map)['capabilities'] = [],
@@ -93,4 +93,21 @@ void main() {
     final j = packageJson()..['source'] = '学' * (maxScriptPackageBytes ~/ 2);
     expect(() => ScriptPackage.parse(jsonEncode(j)), throwsFormatException);
   });
+  test(
+    'SDK 1 and 2 are explicit independent versions of the same package format',
+    () {
+      final sdk1 = ScriptPackage.parse(jsonEncode(packageJson()));
+      final newer = packageJson(version: '0.2.0');
+      (newer['manifest'] as Map)['sdkVersion'] = 2;
+      final sdk2 = ScriptPackage.parse(jsonEncode(newer));
+      expect(sdk1.manifest.sdkVersion, 1);
+      expect(sdk2.manifest.sdkVersion, 2);
+      expect(jsonDecode(sdk2.encode())['format'], 'elecon-script/1');
+      expect(
+        compareScriptVersions(sdk2.manifest.version, sdk1.manifest.version),
+        greaterThan(0),
+      );
+      expect(sdk1.digest, isNot(sdk2.digest));
+    },
+  );
 }

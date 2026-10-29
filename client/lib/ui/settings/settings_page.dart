@@ -87,7 +87,7 @@ class SettingsPage extends StatelessWidget {
       ),
     );
     if (confirmed != true) return;
-    session.reset();
+    session.clearSchoolSelection();
   }
 
   void _open(BuildContext context, Widget page) {

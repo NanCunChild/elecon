@@ -273,6 +273,7 @@ class _InAppScriptBrowserDriver implements ScriptBrowserDriver {
           if (cookie.expiresDate != null) 'expiresDate': cookie.expiresDate,
           if (cookie.isHttpOnly != null) 'isHttpOnly': cookie.isHttpOnly,
           if (cookie.isSecure != null) 'isSecure': cookie.isSecure,
+          if (cookie.sameSite != null) 'sameSite': cookie.sameSite!.toValue(),
         },
     ];
   }
@@ -292,6 +293,9 @@ class _InAppScriptBrowserDriver implements ScriptBrowserDriver {
           expiresDate: cookie['expiresDate'] as int?,
           isSecure: cookie['isSecure'] as bool,
           isHttpOnly: cookie['isHttpOnly'] as bool,
+          sameSite: HTTPCookieSameSitePolicy.fromValue(
+            cookie['sameSite'] as String?,
+          ),
           webViewController: _controller,
         );
         if (_closed) throw const ScriptBrowserException('browser_closed');

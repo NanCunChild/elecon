@@ -10,11 +10,12 @@ ScriptPackage package({
   String school = 'school-a',
   String source = 'export const capabilities = {};',
   String id = 'example',
+  int sdkVersion = 1,
 }) => ScriptPackage.parse(
   jsonEncode({
     'format': 'elecon-script/1',
     'manifest': {
-      'sdkVersion': 1,
+      'sdkVersion': sdkVersion,
       'id': id,
       'version': version,
       'schoolId': school,
@@ -43,6 +44,29 @@ class FailingBlobs extends InMemoryBlobStore {
 }
 
 void main() {
+  test(
+    'SDK migration is a content update and needs a higher script version',
+    () async {
+      final blobs = InMemoryBlobStore();
+      final registry = await ScriptRegistry.open(blobs);
+      final preview = package();
+      await registry.install(preview, approvedDigest: preview.digest);
+      final sameVersion = package(sdkVersion: 2);
+      await expectLater(
+        registry.install(sameVersion, approvedDigest: sameVersion.digest),
+        throwsStateError,
+      );
+      final migrated = package(sdkVersion: 2, version: '1.0.1');
+      await registry.install(migrated, approvedDigest: migrated.digest);
+      expect(
+        (await ScriptRegistry.open(
+          blobs,
+        )).find('example')!.package.manifest.sdkVersion,
+        2,
+      );
+    },
+  );
+
   test(
     'install requires consent for exact content, parsing never runs source',
     () async {

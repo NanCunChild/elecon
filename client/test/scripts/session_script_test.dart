@@ -21,6 +21,7 @@ ScriptPackage _package({
   String id = 'local-example',
   String school = 'example',
   String version = '1.0.0',
+  int sdkVersion = 2,
   String name = 'Local school',
   bool browser = false,
   Map<String, Object?> network = const {'origins': []},
@@ -32,7 +33,7 @@ ScriptPackage _package({
   jsonEncode({
     'format': 'elecon-script/1',
     'manifest': {
-      'sdkVersion': 1,
+      'sdkVersion': sdkVersion,
       'id': id,
       'version': version,
       'schoolId': school,
@@ -54,8 +55,265 @@ ScriptPackage _package({
 Future<void> _install(SessionController session, ScriptPackage package) =>
     session.installTrustedScript(package, approvedDigest: package.digest);
 
+class _ControlledCredentialBlobs extends InMemoryBlobStore {
+  final credentialWriteStarted = Completer<void>();
+  final releaseCredentialWrite = Completer<void>();
+  bool hold = false;
+  bool fail = false;
+
+  @override
+  Future<void> write(String name, List<int> bytes) async {
+    if (name == 'store.enc') {
+      if (!credentialWriteStarted.isCompleted) {
+        credentialWriteStarted.complete();
+      }
+      if (hold) await releaseCredentialWrite.future;
+      if (fail) throw StateError('SYNTHETIC_DISK_FAILURE');
+    }
+    await super.write(name, bytes);
+  }
+}
+
 void main() {
   _NetworkSessionBinding();
+
+  test(
+    'admission errors return stable results and consent failure does not poison the queue',
+    () async {
+      final unavailable = SessionController(
+        blobStoreProvider: () async =>
+            throw StateError('SYNTHETIC_PRIVATE_PATH'),
+      );
+      addTearDown(unavailable.dispose);
+      final loadFailure = await unavailable.runTrustedScript(
+        'missing',
+        'notice.list',
+      );
+      expect(loadFailure.ok, isFalse);
+      expect(loadFailure.reason, 'script_registry_unavailable');
+
+      final blobs = InMemoryBlobStore();
+      final session = SessionController(blobStoreProvider: () async => blobs);
+      addTearDown(session.dispose);
+      await session.bootstrap();
+      final package = _package();
+      await _install(session, package);
+      await session.selectTrustedScriptSchool(package.manifest.id);
+      session.scriptStorageConsent = () async =>
+          throw StateError('SYNTHETIC_SECRET');
+      final failed = await session.runCapability('notice.list');
+      expect(failed.ok, isFalse);
+      expect(failed.reason, 'credential_storage_unavailable');
+      session.scriptStorageConsent = () async => false;
+      expect((await session.runCapability('notice.list')).ok, isTrue);
+    },
+  );
+
+  test(
+    'SDK 2 script defaults do not collide; sharing is explicit and survives updates',
+    () async {
+      final session = SessionController();
+      addTearDown(session.dispose);
+      await session.bootstrap();
+      const source = '''
+      export const capabilities={'notice.list':async(ctx,params)=>{
+        if(params.value)await ctx.credentials.set('session',params.value);
+        if(params.shared)await ctx.credentials.set('session',params.shared,{namespace:'campus.sso'});
+        const own=await ctx.credentials.get('session');
+        const shared=await ctx.credentials.get('session',{namespace:'campus.sso'});
+        const records=await ctx.credentials.list();
+        if(new Set(records.map(r=>r.id)).size!==records.length)throw new Error('duplicate_id');
+        for(const r of records){
+          const copy=await ctx.credentials.get(r.key,{namespace:r.namespace});
+          if(copy.id!==r.id||copy.value!==r.value)throw new Error('descriptor_round_trip');
+        }
+        return {items:[],sourceSystem:[own?.value||'',shared?.value||'',records.length].join('|')};
+      }};
+    ''';
+      final a = _package(id: 'school-a', source: source);
+      final b = _package(id: 'school-b', source: source);
+      await _install(session, a);
+      await _install(session, b);
+      await session.selectTrustedScriptSchool(a.manifest.id);
+      final first = await session.runTrustedScript(
+        a.manifest.id,
+        'notice.list',
+        params: {'value': 'A', 'shared': 'SHARED'},
+      );
+      expect(first.ok, isTrue, reason: first.reason);
+      expect((first.data as Map)['sourceSystem'], 'A|SHARED|2');
+      final second = await session.runTrustedScript(
+        b.manifest.id,
+        'notice.list',
+        params: {'value': 'B'},
+      );
+      expect(second.ok, isTrue, reason: second.reason);
+      expect((second.data as Map)['sourceSystem'], 'B|SHARED|3');
+      await _install(
+        session,
+        _package(id: 'school-a', version: '1.1.0', source: source),
+      );
+      final updated = await session.runTrustedScript(
+        a.manifest.id,
+        'notice.list',
+      );
+      expect(updated.ok, isTrue, reason: updated.reason);
+      expect((updated.data as Map)['sourceSystem'], 'A|SHARED|3');
+      session.logout();
+      expect(session.credentialRefs, isEmpty);
+    },
+  );
+
+  test(
+    'failed business output waits for rotated credentials to persist',
+    () async {
+      final blobs = _ControlledCredentialBlobs()..hold = true;
+      addTearDown(() {
+        if (!blobs.releaseCredentialWrite.isCompleted) {
+          blobs.releaseCredentialWrite.complete();
+        }
+      });
+      final session = SessionController(blobStoreProvider: () async => blobs);
+      await session.bootstrap();
+      session.scriptStorageConsent = () async => true;
+      final package = _package(
+        source: '''
+      export const capabilities={'notice.list':async(ctx,params)=>{
+        if(params.rotate){
+          await ctx.credentials.set('tokens',JSON.stringify({access:'NEW_ACCESS',refresh:'NEW_REFRESH'}));
+          throw new Error('synthetic business parse failure');
+        }
+        const saved=await ctx.credentials.get('tokens');
+        return {items:[],sourceSystem:saved?.value||'MISSING'};
+      }};
+    ''',
+      );
+      await _install(session, package);
+      await session.selectTrustedScriptSchool(package.manifest.id);
+      var completed = false;
+      final running = session
+          .runTrustedScript(
+            package.manifest.id,
+            'notice.list',
+            params: {'rotate': true},
+          )
+          .then((result) {
+            completed = true;
+            return result;
+          });
+      await blobs.credentialWriteStarted.future;
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(completed, isFalse);
+      blobs.releaseCredentialWrite.complete();
+      expect((await running).ok, isFalse);
+      session.dispose();
+
+      final restored = SessionController(blobStoreProvider: () async => blobs);
+      addTearDown(restored.dispose);
+      await restored.bootstrap();
+      final result = await restored.runTrustedScript(
+        package.manifest.id,
+        'notice.list',
+      );
+      expect(result.ok, isTrue, reason: result.reason);
+      expect(jsonDecode((result.data as Map)['sourceSystem'] as String), {
+        'access': 'NEW_ACCESS',
+        'refresh': 'NEW_REFRESH',
+      });
+    },
+  );
+
+  test(
+    'credential disk failure is observable on both success and business failure',
+    () async {
+      final blobs = _ControlledCredentialBlobs()..fail = true;
+      final session = SessionController(blobStoreProvider: () async => blobs);
+      addTearDown(session.dispose);
+      await session.bootstrap();
+      session.scriptStorageConsent = () async => true;
+      final package = _package(
+        source: '''
+      export const capabilities={'notice.list':async(ctx,params)=>{
+        await ctx.credentials.set('session','ROTATED');
+        if(params.fail)throw new Error('synthetic business error');
+        return {items:[]};
+      }};
+    ''',
+      );
+      await _install(session, package);
+      await session.selectTrustedScriptSchool(package.manifest.id);
+      for (final fail in [false, true]) {
+        final result = await session.runTrustedScript(
+          package.manifest.id,
+          'notice.list',
+          params: {'fail': fail},
+        );
+        expect(result.ok, isFalse);
+        expect(result.reason, 'credential_persist_failed');
+      }
+      blobs.fail = false;
+      expect(
+        (await session.runTrustedScript(package.manifest.id, 'notice.list')).ok,
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'SDK 1 installs restore unchanged; SDK 2 upgrades explicitly adopt old records',
+    () async {
+      final blobs = InMemoryBlobStore();
+      final first = SessionController(blobStoreProvider: () async => blobs);
+      await first.bootstrap();
+      first.scriptStorageConsent = () async => true;
+      final preview = _package(
+        sdkVersion: 1,
+        source: '''
+      export const capabilities={'notice.list':async(ctx)=>{
+        const old=await ctx.credentials.get('session');
+        if(!old)await ctx.credentials.set('session','PREVIEW_SESSION');
+        return {items:[],sourceSystem:old?.value||'CREATED'};
+      }};
+    ''',
+      );
+      await _install(first, preview);
+      await first.selectTrustedScriptSchool(preview.manifest.id);
+      expect(
+        (await first.runTrustedScript(preview.manifest.id, 'notice.list')).ok,
+        isTrue,
+      );
+      first.dispose();
+      final restored = SessionController(blobStoreProvider: () async => blobs);
+      addTearDown(restored.dispose);
+      await restored.bootstrap();
+      final oldResult = await restored.runTrustedScript(
+        preview.manifest.id,
+        'notice.list',
+      );
+      expect(oldResult.ok, isTrue, reason: oldResult.reason);
+      expect((oldResult.data as Map)['sourceSystem'], 'PREVIEW_SESSION');
+      final upgraded = _package(
+        version: '1.1.0',
+        source: '''
+      export const capabilities={'notice.list':async(ctx)=>{
+        if(await ctx.credentials.get('session'))throw new Error('implicit_legacy_lookup');
+        const old=await ctx.credentials.get('session',{namespace:'@preview1'});
+        await ctx.credentials.set('session',old.value);
+        const own=await ctx.credentials.get('session');
+        return {items:[],sourceSystem:own.value};
+      }};
+    ''',
+      );
+      await _install(restored, upgraded);
+      final result = await restored.runTrustedScript(
+        upgraded.manifest.id,
+        'notice.list',
+      );
+      expect(result.ok, isTrue, reason: result.reason);
+      expect((result.data as Map)['sourceSystem'], 'PREVIEW_SESSION');
+      expect(restored.credentialCount, 2);
+    },
+  );
 
   test(
     'explicit trust discovers a new school and routes normal runCapability to JS',

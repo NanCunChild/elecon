@@ -9,6 +9,11 @@
 
 ---
 
+- **2026-10-29 · 脚本 SDK 2 与凭据完整地址（ADR-035 §2–§4）**
+  - 包容器仍为 `elecon-script/1`；schema 明确支持 SDK 1/2，未知 SDK 拒绝。SDK 1 预览包保留原查找语义，新模板使用 SDK 2，迁移需同时提升脚本 version 并重新确认。
+  - SDK 新增凭据 id/namespace/key 描述符，SDK 2 默认 namespace 为稳定脚本 id，可显式共享及访问 `@legacy`/`@preview1`；同校访问权限不变。
+  - 凭据更新省略元数据时保留原值，expiresAt:null 显式清空；浏览器 Cookie 增加 SameSite 往返。异常结束同样等待已完成写入的保存，不回滚远端轮换。
+
 - **2026-10-29 · 新受信源码脚本包 `elecon-script/1`（ADR-034 §2–§6）**
   - 新增 `script-package.schema.json`：源码包、SDK 版本、严格三段版本、域名 origin 与可选 IP/CIDR、页面权限、标准 capability/schema 对应关系；源码包仍须通过宿主的 1 MiB UTF-8 与 IP 语义校验。
   - 新增 `script-sdk/types.d.ts`：实际凭据 get/set/delete/list、显式 HTTP/多值 Set-Cookie、异步 DOM API。新路径不使用 V1 requestGraph/句柄/Masker，不改变 V1 契约。

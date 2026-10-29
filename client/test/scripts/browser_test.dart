@@ -571,4 +571,72 @@ void main() {
       expect(ScriptBrowserLease.busy, isFalse);
     },
   );
+  test(
+    'cookie restore retains SameSite and rejects None without Secure',
+    () async {
+      bridge.attach(driver);
+      for (final sameSite in ['Lax', 'Strict', 'None']) {
+        await bridge.call('setCookies', {
+          'url': 'https://school.example/notices',
+          'cookies': [
+            {
+              'name': 'sid',
+              'value': 'SYNTHETIC',
+              'sameSite': sameSite,
+              'isSecure': true,
+            },
+          ],
+        });
+        expect(driver.restoredCookies.last['sameSite'], sameSite);
+        expect(driver.restoredCookies.last['isSecure'], isTrue);
+      }
+      final writes = driver.cookieRestoreUrls.length;
+      for (final cookie in <Map<String, Object?>>[
+        {
+          'name': 'sid',
+          'value': 'SYNTHETIC',
+          'sameSite': 'None',
+          'isSecure': false,
+        },
+        {'name': 'sid', 'value': 'SYNTHETIC', 'sameSite': 'none'},
+      ]) {
+        await expectLater(
+          bridge.call('setCookies', {
+            'url': 'https://school.example/notices',
+            'cookies': [cookie],
+          }),
+          throwsA(code('browser_invalid_cookie')),
+        );
+      }
+      expect(driver.cookieRestoreUrls.length, writes);
+    },
+  );
+
+  test(
+    'None on HTTP without explicit Secure fails before native mutation',
+    () async {
+      final plain = ScriptBrowserBridge(
+        policy: ScriptNetworkPolicy.fromJson({
+          'origins': ['http://school.example'],
+        }),
+        available: true,
+      );
+      final native = _Driver(plain);
+      plain.attach(native);
+      try {
+        await expectLater(
+          plain.call('setCookies', {
+            'url': 'http://school.example',
+            'cookies': [
+              {'name': 'sid', 'value': 'SYNTHETIC', 'sameSite': 'None'},
+            ],
+          }),
+          throwsA(code('browser_invalid_cookie')),
+        );
+        expect(native.cookieRestoreUrls, isEmpty);
+      } finally {
+        await plain.close();
+      }
+    },
+  );
 }

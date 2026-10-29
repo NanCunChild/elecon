@@ -7,31 +7,34 @@ import 'package:elecon/core/scripts/manifest.dart';
 import 'package:elecon/core/scripts/runtime.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-ScriptPackage script(String source, {bool browser = false}) =>
-    ScriptPackage.parse(
-      jsonEncode({
-        'format': 'elecon-script/1',
-        'manifest': {
-          'sdkVersion': 1,
-          'id': 'school.example',
-          'version': '0.1.0',
-          'schoolId': 'a',
-          'name': 'Example',
-          'network': {
-            'origins': ['https://school.example'],
-          },
-          'browser': browser,
-          'capabilities': [
-            {
-              'id': 'notice.list',
-              'schema': 'elecon.notice.list',
-              'schemaVersion': '1.1',
-            },
-          ],
+ScriptPackage script(
+  String source, {
+  bool browser = false,
+  int sdkVersion = 1,
+}) => ScriptPackage.parse(
+  jsonEncode({
+    'format': 'elecon-script/1',
+    'manifest': {
+      'sdkVersion': sdkVersion,
+      'id': 'school.example',
+      'version': '0.1.0',
+      'schoolId': 'a',
+      'name': 'Example',
+      'network': {
+        'origins': ['https://school.example'],
+      },
+      'browser': browser,
+      'capabilities': [
+        {
+          'id': 'notice.list',
+          'schema': 'elecon.notice.list',
+          'schemaVersion': '1.1',
         },
-        'source': source,
-      }),
-    );
+      ],
+    },
+    'source': source,
+  }),
+);
 Matcher fails(String code) =>
     throwsA(isA<ScriptRunException>().having((e) => e.code, 'code', code));
 Future<Map<String, Object?>> response(
@@ -410,6 +413,106 @@ void main() {
       expect(errors.single, isNot(contains('SYNTHETIC_SECRET')));
       expect(errors.single, isNot(contains('https://')));
       expect(errors.single.length, lessThanOrEqualTo(4096));
+    },
+  );
+  test(
+    'SDK2 namespaces and omitted metadata survive actual QuickJS bridge',
+    () async {
+      final modern = ScriptCredentials(
+        store: store,
+        schoolId: 'a',
+        scriptId: 'school.example',
+        sdkVersion: 2,
+      );
+      ScriptCredentials(
+        store: store,
+        schoolId: 'a',
+        scriptId: 'school.other',
+        sdkVersion: 2,
+      ).set('session', 'OTHER');
+      final output = await runtime.run(
+        package: script('''
+      export const capabilities={'notice.list':async(ctx)=>{
+        await ctx.credentials.set('session','OLD',{
+          type:'cookie',scope:['https://school.example/'],expiresAt:50
+        });
+        await ctx.credentials.set('session','UPDATED');
+        const kept=await ctx.credentials.get('session');
+        if(kept.type!=='cookie'||kept.scope.length!==1||kept.expiresAt!==50||!kept.expired)
+          throw new Error('metadata reset');
+        await ctx.credentials.set('session','SHARED',{namespace:'campus.session'});
+        const shared=await ctx.credentials.get('session',{namespace:'campus.session'});
+        const other=await ctx.credentials.get('session',{namespace:'school.other'});
+        const rows=await ctx.credentials.list();
+        if(rows.length!==3||new Set(rows.map(r=>r.id)).size!==3)throw new Error('folded namespaces');
+        for(const row of rows){
+          const back=await ctx.credentials.get(row.key,{namespace:row.namespace});
+          if(back.id!==row.id||back.value!==row.value)throw new Error('cannot roundtrip');
+        }
+        await ctx.credentials.set('session','FINAL',{expiresAt:null,scope:[]});
+        const cleared=await ctx.credentials.get('session');
+        if(cleared.expiresAt!==null||cleared.scope.length!==0||cleared.type!=='cookie')
+          throw new Error('explicit metadata clear failed');
+        await ctx.credentials.delete('session',{namespace:'campus.session'});
+        if(await ctx.credentials.get('session',{namespace:'campus.session'})!==null)
+          throw new Error('shared delete failed');
+        return {items:[],sourceSystem:shared.value+':'+other.value+':'+cleared.namespace};
+      }};
+    ''', sdkVersion: 2),
+        capability: 'notice.list',
+        credentials: modern,
+        fetch: response,
+      );
+      expect((output as Map)['sourceSystem'], 'SHARED:OTHER:school.example');
+    },
+  );
+
+  test(
+    'SDK2 package cannot execute with a legacy or another script facade',
+    () async {
+      final package = script(
+        '''export const capabilities={'notice.list':async()=>({items:[]})};''',
+        sdkVersion: 2,
+      );
+      await expectLater(
+        runtime.run(
+          package: package,
+          capability: 'notice.list',
+          credentials: credentials,
+          fetch: response,
+        ),
+        fails('identity_mismatch'),
+      );
+      final wrong = ScriptCredentials(
+        store: store,
+        schoolId: 'a',
+        scriptId: 'school.other',
+        sdkVersion: 2,
+      );
+      await expectLater(
+        runtime.run(
+          package: package,
+          capability: 'notice.list',
+          credentials: wrong,
+          fetch: response,
+        ),
+        fails('identity_mismatch'),
+      );
+      final correct = ScriptCredentials(
+        store: store,
+        schoolId: 'a',
+        scriptId: 'school.example',
+        sdkVersion: 2,
+      );
+      expect(
+        await runtime.run(
+          package: package,
+          capability: 'notice.list',
+          credentials: correct,
+          fetch: response,
+        ),
+        {'items': []},
+      );
     },
   );
 }

@@ -1,5 +1,14 @@
-/** Trusted school script SDK 1 (ADR-034). Values intentionally include secrets. */
+/** Trusted school script SDK 1/2 (ADR-034/035). Values include actual secrets.
+ * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
+ */
+export interface CredentialAddress {
+  /** SDK2: defaults to scriptId. @legacy/@preview1 are explicit migration sources. */
+  namespace?: string;
+}
 export interface CredentialRecord {
+  /** Stable qualified identity; legacy ids include schoolId even when their stored ref is bare. */
+  id: string;
+  namespace: string;
   key: string;
   value: string;
   type: "token" | "cookie" | "header" | "query" | "password";
@@ -7,9 +16,10 @@ export interface CredentialRecord {
   expiresAt: number | null;
   expired: boolean;
 }
-export interface CredentialOptions {
+export interface CredentialOptions extends CredentialAddress {
   type?: CredentialRecord["type"];
-  expiresAt?: number;
+  /** Unix epoch milliseconds. Omit to preserve, null to clear. */
+  expiresAt?: number | null;
   scope?: string[];
 }
 export interface ScriptResponse {
@@ -21,7 +31,7 @@ export interface ScriptResponse {
     getSetCookie(): string[];
     raw(): Record<string, string[]>;
   };
-  /** UTF-8/ASCII only; unsupported encodings reject with unsupported_encoding. */
+  /** UTF-8/ASCII and explicit Latin-1; other encodings reject with unsupported_encoding. */
   text(): Promise<string>;
   /** Raw bytes allow adapter-owned legacy encoding decoders. */
   bytes(): Promise<Uint8Array>;
@@ -45,15 +55,19 @@ export interface ScriptBrowser {
     expiresDate?: number;
     isSecure?: boolean;
     isHttpOnly?: boolean;
+    sameSite?: 'Lax' | 'Strict' | 'None';
   }>): Promise<void>;
 }
 export interface ScriptContext {
-  /** Current authorized school only; revoked sessions are unavailable. */
+  /** Current authorized school only; revoked sessions are unavailable.
+   * SDK2 list retains every namespace; get(record.key,{namespace:record.namespace}) round-trips.
+   * set/delete resolve after in-memory acceptance; the host awaits storage at run end.
+   */
   readonly credentials: {
-    get(key: string): Promise<CredentialRecord | null>;
+    get(key: string, address?: CredentialAddress): Promise<CredentialRecord | null>;
     list(): Promise<CredentialRecord[]>;
     set(key: string, value: string, options?: CredentialOptions): Promise<void>;
-    delete(key: string): Promise<void>;
+    delete(key: string, address?: CredentialAddress): Promise<void>;
   };
   fetch(url: string, init?: {
     method?: string;

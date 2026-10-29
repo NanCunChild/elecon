@@ -56,7 +56,10 @@ class TrustedScriptRuntime {
     }
     final decl = package.manifest.capability(capability);
     if (decl == null) throw const ScriptRunException('capability_not_declared');
-    if (credentials.schoolId != package.manifest.schoolId) {
+    if (credentials.schoolId != package.manifest.schoolId ||
+        credentials.sdkVersion != package.manifest.sdkVersion ||
+        (package.manifest.sdkVersion == 2 &&
+            credentials.scriptId != package.manifest.id)) {
       throw const ScriptRunException('identity_mismatch');
     }
     final validator = outputValidatorFor(decl.schema, decl.schemaVersion);
@@ -130,12 +133,26 @@ class TrustedScriptRuntime {
           (dynamic method, dynamic key, dynamic value, dynamic options) {
             check();
             try {
+              if (options is! Map ||
+                  options.keys.any(
+                    (key) => !const {
+                      'namespace',
+                      'type',
+                      'scope',
+                      'expiresAt',
+                    }.contains(key),
+                  ) ||
+                  (options.containsKey('namespace') &&
+                      options['namespace'] is! String)) {
+                throw const ScriptRunException('invalid_credential_options');
+              }
+              final namespace = options['namespace'] as String?;
               switch (method) {
                 case 'get':
                   if (key is! String) {
                     throw const ScriptRunException('invalid_credential_key');
                   }
-                  final record = credentials.get(key);
+                  final record = credentials.get(key, namespace: namespace);
                   if (record != null &&
                       (record['value'] as String).isNotEmpty) {
                     knownSecrets.add(record['value'] as String);
@@ -153,18 +170,18 @@ class TrustedScriptRuntime {
                   if (key is! String) {
                     throw const ScriptRunException('invalid_credential_key');
                   }
-                  credentials.delete(key);
+                  credentials.delete(key, namespace: namespace);
                   return 'null';
                 case 'set':
-                  if (key is! String || value is! String || options is! Map) {
+                  if (key is! String || value is! String) {
                     throw const ScriptRunException('invalid_credential_value');
                   }
                   final type = options['type'];
                   final expiresAt = options['expiresAt'];
                   final scope = options['scope'];
-                  if ((type != null && type is! String) ||
+                  if ((options.containsKey('type') && type is! String) ||
                       (expiresAt != null && expiresAt is! int) ||
-                      (scope != null &&
+                      (options.containsKey('scope') &&
                           (scope is! List ||
                               scope.any((item) => item is! String)))) {
                     throw const ScriptRunException(
@@ -175,10 +192,13 @@ class TrustedScriptRuntime {
                   credentials.set(
                     key,
                     value,
-                    type: type as String? ?? 'token',
-                    expiresAt: expiresAt as int?,
+                    namespace: namespace,
+                    type: type as String?,
+                    expiresAt: options.containsKey('expiresAt')
+                        ? expiresAt
+                        : scriptCredentialUnspecified,
                     scope: scope == null
-                        ? const []
+                        ? null
                         : List<String>.from(scope as List),
                   );
                   return 'null';
@@ -352,10 +372,10 @@ String _bootstrap({
     now: () => Date.now(),
     log: (level,message) => globalThis.__script_log(level,String(message)),
     credentials: Object.freeze({
-      get: key => hostCredentials('get',key,null,{}),
+      get: (key,options) => hostCredentials('get',key,null,options),
       list: () => hostCredentials('list',null,null,{}),
       set: (key,value,options) => hostCredentials('set',key,value,options),
-      delete: key => hostCredentials('delete',key,null,{}),
+      delete: (key,options) => hostCredentials('delete',key,null,options),
     }),
     fetch: async (url,init) => {
       const r = await globalThis.__script_fetch(String(url),init || {});

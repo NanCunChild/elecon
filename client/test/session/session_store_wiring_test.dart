@@ -18,17 +18,21 @@ import '../credential/hardware_secure_store_test.dart'
     show FakeHardwareKeyStore;
 import '../support/school_fixture.dart';
 
-CredentialEntry _entry(String ref, {String schoolId = 'xidian'}) =>
-    CredentialEntry(
-      ref: ref,
-      schoolId: schoolId,
-      type: 'cookie',
-      scope: const ['https://ehall.xidian.edu.cn/*'],
-      value: 'secret-$ref',
-      acquiredAt: 1000,
-      expiresAt: null,
-      status: CredentialStatus.active,
-    );
+CredentialEntry _entry(
+  String ref, {
+  String schoolId = 'xidian',
+  int? expiresAt,
+  CredentialStatus status = CredentialStatus.active,
+}) => CredentialEntry(
+  ref: ref,
+  schoolId: schoolId,
+  type: 'cookie',
+  scope: const ['https://ehall.xidian.edu.cn/*'],
+  value: 'secret-$ref',
+  acquiredAt: 1000,
+  expiresAt: expiresAt,
+  status: status,
+);
 
 Future<void> _seedSoftware(
   InMemoryBlobStore blobs,
@@ -50,6 +54,64 @@ Future<void> _seedHardware(
 }
 
 void main() {
+  test(
+    'returning to school selection preserves credentials across restart',
+    () async {
+      final blobs = InMemoryBlobStore();
+      final secure = await SoftwareSecureStore.open(blobs);
+      secure.put(_entry('school-a-session'));
+      secure.put(_entry('school-b-session', schoolId: 'other-school'));
+      await secure.flush();
+      final session = SessionController(
+        blobStoreProvider: () async => blobs,
+        initialSchools: [testSchool()],
+      );
+      await session.bootstrap();
+      session.selectSchool(testSchool());
+      session.clearSchoolSelection();
+      expect(session.isConfigured, isFalse);
+      await session.flush();
+      session.dispose();
+      final restored = SessionController(
+        blobStoreProvider: () async => blobs,
+        initialSchools: [testSchool()],
+      );
+      addTearDown(restored.dispose);
+      await restored.bootstrap();
+      expect(restored.isConfigured, isFalse);
+      expect(restored.credentialRefs, ['school-a-session', 'school-b-session']);
+      restored.selectSchool(testSchool());
+      expect(restored.credentialRefs, ['school-a-session']);
+      expect((await SoftwareSecureStore.open(blobs)).list(), hasLength(2));
+    },
+  );
+
+  test(
+    'saved metadata reflects expiry without reviving revoked records',
+    () async {
+      final blobs = InMemoryBlobStore();
+      final secure = await SoftwareSecureStore.open(blobs);
+      secure.put(_entry('expired', expiresAt: 1));
+      secure.put(
+        _entry('revoked', expiresAt: 1, status: CredentialStatus.revoked),
+      );
+      await secure.flush();
+      final session = SessionController(blobStoreProvider: () async => blobs);
+      addTearDown(session.dispose);
+      await session.bootstrap();
+      final statuses = {
+        for (final record in session.credentialMetadata)
+          record.ref: record.status,
+      };
+      expect(statuses, {
+        'expired': SessionCredentialStatus.expired,
+        'revoked': SessionCredentialStatus.revoked,
+      });
+      // Stored secrets remain removable even when none is currently active.
+      expect(session.isLoggedIn, isTrue);
+    },
+  );
+
   test('confirm=true → S 软件档，持久化跨"重启"', () async {
     final blobs = InMemoryBlobStore();
 

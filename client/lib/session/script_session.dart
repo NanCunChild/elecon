@@ -203,7 +203,15 @@ extension TrustedScriptSession on SessionController {
     void Function(String, String)? onLog,
   }) async {
     final state = _scripts;
-    final registry = await scriptRegistry;
+    final ScriptRegistry registry;
+    try {
+      registry = await scriptRegistry;
+    } catch (_) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.load,
+        'script_registry_unavailable',
+      );
+    }
     final installation = registry.find(id);
     final school = _school;
     if (state.disposed ||
@@ -217,9 +225,16 @@ extension TrustedScriptSession on SessionController {
       );
     }
     final admissionGeneration = state.generation;
-    await ensurePersistentStore(
-      confirmSoftwareFallback: state.storageConsent ?? () async => false,
-    );
+    try {
+      await ensurePersistentStore(
+        confirmSoftwareFallback: state.storageConsent ?? () async => false,
+      );
+    } catch (_) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'credential_storage_unavailable',
+      );
+    }
     if (state.disposed ||
         state.generation != admissionGeneration ||
         _school?.id != school.id) {
@@ -232,6 +247,7 @@ extension TrustedScriptSession on SessionController {
     final generation = state.generation;
     final epoch = registry.epoch;
     final store = _store;
+    final backend = _secure;
     bool active() =>
         !state.disposed &&
         state.generation == generation &&
@@ -242,10 +258,13 @@ extension TrustedScriptSession on SessionController {
         registry.find(id)?.package.digest == package.digest;
     final transport = ScriptHttpTransport(policy: package.manifest.network);
     state.transports.add(transport);
+    CapabilityRun result;
     try {
       final credentials = ScriptCredentials(
         store: store,
         schoolId: school.id,
+        scriptId: package.manifest.id,
+        sdkVersion: package.manifest.sdkVersion,
         isActive: active,
       );
       Future<Object?> execute(ScriptBrowserCall? browser) async =>
@@ -265,29 +284,16 @@ extension TrustedScriptSession on SessionController {
       if (package.manifest.browser && browserCall == null) {
         final presenter = state.presenter;
         if (presenter == null) {
-          return const CapabilityRun.failed(
-            CapabilityFailureKind.run,
-            'script_browser_unavailable',
-          );
+          throw const ScriptRunException('script_browser_unavailable');
         }
         data = await presenter(package, (call) => execute(call));
       } else {
         data = await execute(browserCall);
       }
       if (!active()) {
-        return const CapabilityRun.failed(
-          CapabilityFailureKind.run,
-          'script_cancelled',
-        );
+        throw const ScriptRunException('script_cancelled');
       }
-      await flush();
-      if (!active()) {
-        return const CapabilityRun.failed(
-          CapabilityFailureKind.run,
-          'script_cancelled',
-        );
-      }
-      return CapabilityRun.ok(
+      result = CapabilityRun.ok(
         data,
         supportedCapabilities: {
           for (final cap in package.manifest.capabilities) cap.id,
@@ -300,11 +306,29 @@ extension TrustedScriptSession on SessionController {
         ScriptBrowserException() => error.code,
         _ => 'script_failed',
       };
-      return CapabilityRun.failed(CapabilityFailureKind.run, code);
+      result = CapabilityRun.failed(CapabilityFailureKind.run, code);
     } finally {
       transport.close();
       state.transports.remove(transport);
-      if (!state.disposed) onCredentialsChanged();
     }
+    // ADR-035 §3: authentication may already have rotated remotely even when
+    // parsing/output fails. Persist completed writes without rolling them back.
+    // Await the backend bound to this invocation, never a later replacement.
+    try {
+      await _flushCredentialBackend(backend);
+    } catch (_) {
+      result = const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'credential_persist_failed',
+      );
+    }
+    if (result.ok && !active()) {
+      result = const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'script_cancelled',
+      );
+    }
+    if (!state.disposed) onCredentialsChanged();
+    return result;
   }
 }

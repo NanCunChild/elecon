@@ -49,6 +49,7 @@ class ScriptPackage {
 
 class ScriptManifest {
   ScriptManifest._({
+    required this.sdkVersion,
     required this.id,
     required this.version,
     required this.schoolId,
@@ -69,7 +70,8 @@ class ScriptManifest {
       'browser',
       'capabilities',
     }, 'manifest');
-    if (json['sdkVersion'] != 1 || json['sdkVersion'] is! int) {
+    if (!const {1, 2}.contains(json['sdkVersion']) ||
+        json['sdkVersion'] is! int) {
       throw const FormatException('unsupported script SDK version');
     }
     final id = _text(json, 'id', 128);
@@ -97,6 +99,7 @@ class ScriptManifest {
       throw const FormatException('duplicate script capability');
     }
     return ScriptManifest._(
+      sdkVersion: json['sdkVersion'] as int,
       id: id,
       version: version,
       schoolId: schoolId,
@@ -109,6 +112,7 @@ class ScriptManifest {
     );
   }
 
+  final int sdkVersion;
   final String id;
   final String version;
   final String schoolId;

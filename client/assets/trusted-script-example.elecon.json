@@ -1,9 +1,9 @@
 {
   "format": "elecon-script/1",
   "manifest": {
-    "sdkVersion": 1,
+    "sdkVersion": 2,
     "id": "school-example",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "schoolId": "example",
     "name": "Example School",
     "network": {

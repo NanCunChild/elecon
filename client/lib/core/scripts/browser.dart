@@ -252,6 +252,7 @@ class ScriptBrowserBridge {
               'expiresDate',
               'isSecure',
               'isHttpOnly',
+              'sameSite',
             }.contains(key),
           )) {
         throw const ScriptBrowserException('browser_invalid_cookie');
@@ -263,6 +264,7 @@ class ScriptBrowserBridge {
       final expiry = rawCookie['expiresDate'];
       final secure = rawCookie['isSecure'];
       final httpOnly = rawCookie['isHttpOnly'];
+      final sameSite = rawCookie['sameSite'];
       if (name is! String ||
           name.length > 256 ||
           !RegExp(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$").hasMatch(name) ||
@@ -285,7 +287,11 @@ class ScriptBrowserBridge {
                   expiry > 8640000000000000 ||
                   expiry != expiry.round())) ||
           (secure != null && secure is! bool) ||
-          (httpOnly != null && httpOnly is! bool)) {
+          (httpOnly != null && httpOnly is! bool) ||
+          (sameSite != null &&
+              !const {'Lax', 'Strict', 'None'}.contains(sameSite)) ||
+          (sameSite == 'None' &&
+              !(secure as bool? ?? target.scheme == 'https'))) {
         throw const ScriptBrowserException('browser_invalid_cookie');
       }
       String? normalizedDomain;
@@ -323,6 +329,7 @@ class ScriptBrowserBridge {
           if (expiry != null) 'expiresDate': (expiry as num).toInt(),
           'isSecure': secure ?? target.scheme == 'https',
           'isHttpOnly': httpOnly ?? false,
+          'sameSite': ?sameSite,
         }),
       );
     }
