@@ -9,6 +9,11 @@
 
 ---
 
+- **2026-10-29 · 新受信源码脚本包 `elecon-script/1`（ADR-034 §2–§6）**
+  - 新增 `script-package.schema.json`：源码包、SDK 版本、严格三段版本、域名 origin 与可选 IP/CIDR、页面权限、标准 capability/schema 对应关系；源码包仍须通过宿主的 1 MiB UTF-8 与 IP 语义校验。
+  - 新增 `script-sdk/types.d.ts`：实际凭据 get/set/delete/list、显式 HTTP/多值 Set-Cookie、异步 DOM API。新路径不使用 V1 requestGraph/句柄/Masker，不改变 V1 契约。
+  - 内容 digest 与显式安装授权、版本更新及身份范围遵循 ADR-034；新增静态 schema smoke 与真实客户端 QuickJS 回归，不以服务端执行新脚本。
+
 - **2026-09-12 · masker 复核补丁：handle 过渡门 + `requestKey: null` 双端对齐 + validator RM17/RM18（ADR-026 §2.8/§2.7.1/§3）**
   - **改动**：`contract/golden/broker/masker-policy.json` 新增 parse 向量 `match_request_key_null_rejected`
     （显式 `null` ≠ 缺省，双端一致 fail-closed）。`response-masker.schema.json` 本身**未改**——schema 一直

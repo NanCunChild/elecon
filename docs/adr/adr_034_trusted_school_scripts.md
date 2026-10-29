@@ -26,7 +26,7 @@
 
 network.origins 是精确 HTTP(S) origin 列表（scheme、host、port；不支持 host wildcard、userinfo 或路径），支持域名、IPv4 与 IPv6 literal；HTTP 必须显式列出。可选 network.ipAllow 为精确 IP/CIDR 列表；出现时是额外约束，实际连接地址必须命中；未出现则允许已声明 origin 的正常解析结果，包括校内地址。空 ipAllow 表示不允许任何连接。每个 redirect hop 重验 origin，解析结果绑定实际 socket；TLS 仍验证原 hostname，禁止忽略证书错误。不使用公共/私有地址分类代替学校声明。
 
-宿主提供有限 fetch 语义：method、headers、文本 body、status、URL、原始多值响应头和 Set-Cookie、text/json；支持 manual/follow/error redirect，所有跳计入预算。Cookie/Authorization 可由脚本显式构造，不经旧 Broker 注入、Masker 或句柄。禁止设置协议路由/framing 头；跨 origin 自动重定向不重放认证头或敏感请求体。单次调用的请求总量、并发、超时、body 和响应字节有界。
+宿主提供有限 fetch 语义：method、headers、文本请求 body、status、URL、原始多值响应头和 Set-Cookie、text/json/bytes/arrayBuffer；支持 manual/follow/error redirect，所有跳计入预算。响应保留原始字节；UTF-8 / 显式 Latin-1 可直接 text/json，未知编码由脚本用 bytes 处理，不因宿主缺少解码器丢弃响应。Cookie/Authorization 可由脚本显式构造，不经旧 Broker 注入、Masker 或句柄。禁止设置协议路由/framing 头；跨 origin 自动重定向不重放认证头或敏感请求体。单次调用的请求总量、并发、超时、body 和响应字节有界。
 
 ## 5. 浏览器与 DOM
 

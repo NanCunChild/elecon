@@ -185,6 +185,7 @@ class ScriptHttpTransport {
             'status': response.statusCode,
             'url': uri.toString(),
             'headers': responseHeaders,
+            'bodyBytes': List<int>.unmodifiable(bytes),
             'body': _decode(bytes, response.headers.contentType?.charset),
           };
         }
@@ -328,15 +329,20 @@ class ScriptHttpTransport {
     return headers;
   }
 
-  static String _decode(List<int> bytes, String? charset) {
+  static String? _decode(List<int> bytes, String? charset) {
     final encoding = charset?.toLowerCase();
     if (encoding == 'iso-8859-1' || encoding == 'latin1') {
       return latin1.decode(bytes);
     }
+    if (encoding != null &&
+        !const {'utf-8', 'utf8', 'us-ascii', 'ascii'}.contains(encoding)) {
+      return null;
+    }
     try {
       return utf8.decode(bytes);
     } on FormatException {
-      throw const ScriptNetworkException('response_decode_failed');
+      // Preserve binary/legacy-encoded data for the script's own decoder.
+      return null;
     }
   }
 

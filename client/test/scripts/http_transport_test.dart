@@ -425,4 +425,26 @@ void main() {
       failure('invalid_url'),
     );
   });
+  test(
+    'legacy-encoded and binary responses preserve bytes without guessed text',
+    () async {
+      const raw = <int>[0xc4, 0xe3, 0xba, 0xc3]; // GBK "你好", invalid UTF-8.
+      handler = (request) async {
+        request.response.headers.set('content-type', 'text/html; charset=gbk');
+        request.response.add(raw);
+        await request.response.close();
+      };
+      final response = await transport().fetch(origin, {});
+      expect(response['status'], 200);
+      expect(response['bodyBytes'], raw);
+      expect(response['body'], isNull);
+      handler = (request) async {
+        request.response.add([0xff, 0x00, 0x81]);
+        await request.response.close();
+      };
+      final binary = await transport().fetch(origin, {});
+      expect(binary['bodyBytes'], [0xff, 0x00, 0x81]);
+      expect(binary['body'], isNull);
+    },
+  );
 }
