@@ -13,3 +13,5 @@
 阶段 2 验证：26 项网络/HTTP 测试通过（真实 loopback HTTP、DNS pinning、CIDR、跨域重定向、TLS 握手和取消）；四个相关 Dart 文件 analyze 无问题。文本响应支持 UTF-8 / 显式 Latin-1；其它编码需后续按学校样本扩展。
 
 阶段 3 验证：20 项 manifest/凭据/真实 QuickJS 测试 + 6 项安装注册表测试通过；schema smoke（有效包与 12 项拒绝变体）、tools typecheck 通过。包括源码不在安装阶段执行、版本单调更新、持久化失败保留旧版、原始 Set-Cookie、非 UTF-8 原始字节、DOM API、取消与日志净化。新路径无需 Masker/opaque handle。
+
+基线修复来源：原工作区已有未提交的 catalog 与 5 个 bundle/3，于本次工作中只读验签（预埋 elecon-official-ncc-1 公钥；catalog/revocation domain separation；openBundle 完整性/身份检查）。原字节复制到本工作树，替换基线 /2；没有签名私钥操作，没有补造签署者/仪式/人工复核事实，也没有修改签名内时效。该核验不代表吊销列表新鲜度或生产签收。原工作区登录/凭据代码修改仍未纳入。
