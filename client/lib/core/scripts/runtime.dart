@@ -294,7 +294,7 @@ class TrustedScriptRuntime {
           for (const level of ['log','info','warn','error','debug']) {
             output[level] = (...args) => globalThis.__script_log(
               level === 'log' ? 'info' : level,
-              args.map(value => String(value)).join(' '));
+              String(args.map(value => String(value)).join(' ')));
           }
           Object.defineProperty(globalThis, 'console', {
             value: Object.freeze(output), writable: false, configurable: false
@@ -366,8 +366,21 @@ String _bootstrap({
   if (!caps || typeof caps !== 'object' || typeof caps[${jsonEncode(capability)}] !== 'function') {
     return JSON.stringify({ok:false,code:'capability_missing'});
   }
-  const hostCredentials = (method,key,value,options) =>
-    Promise.resolve(globalThis.__script_credentials(method,key,value,options || {})).then(JSON.parse);
+  // flutter_qjs_next 1.2.1 _jsToDart omits STRING_ROPE. QuickJS String()
+  // linearizes rope strings; preserve every non-string's type for host checks.
+  // ADR-034 execution bridge fix, without changing the SDK or output contract.
+  const flat = value => typeof value === 'string' ? String(value) : value;
+  const flatFields = value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return value;
+    return Object.fromEntries(Object.keys(value).map(key => [key,flat(value[key])]));
+  };
+  const hostCredentials = (method,key,value,options) => {
+    options = flatFields(options || {});
+    if (options && Array.isArray(options.scope)) options.scope = options.scope.map(flat);
+    return Promise.resolve(globalThis.__script_credentials(method,flat(key),flat(value),options)).then(JSON.parse);
+  };
   const ctx = {
     now: () => Date.now(),
     log: (level,message) => globalThis.__script_log(level,String(message)),
@@ -378,7 +391,9 @@ String _bootstrap({
       delete: (key,options) => hostCredentials('delete',key,null,options),
     }),
     fetch: async (url,init) => {
-      const r = await globalThis.__script_fetch(String(url),init || {});
+      init = flatFields(init || {});
+      if (init && init.headers) init.headers = flatFields(init.headers);
+      const r = await globalThis.__script_fetch(String(url),init);
       const raw = r.headers || {};
       const find = name => {
         const key = Object.keys(raw).find(k => k.toLowerCase() === String(name).toLowerCase());
@@ -400,7 +415,7 @@ String _bootstrap({
     },
   };
   if ($browser) {
-    const call = async (method,args) => JSON.parse(await globalThis.__script_browser(method,args));
+    const call = async (method,args) => JSON.parse(await globalThis.__script_browser(method,flatFields(args)));
     ctx.browser = Object.freeze({
       open: url => call('open',{url:String(url)}),
       evaluate: (source,...args) => call('evaluate',{
@@ -411,7 +426,7 @@ String _bootstrap({
       queryAll: (selector,limit=100) => call('queryAll',{selector:String(selector),limit}),
       waitFor: (selector,timeout=10000) => call('waitFor',{selector:String(selector),timeout}),
       cookies: url => call('cookies',url === undefined ? {} : {url:String(url)}),
-      setCookies: async (url,cookies) => { await call('setCookies',{url:String(url),cookies}); },
+      setCookies: async (url,cookies) => { await call('setCookies',{url:String(url),cookies:Array.isArray(cookies) ? cookies.map(flatFields) : cookies}); },
     });
   }
   // Build JSON ourselves: JSON.stringify silently drops unsupported values and
@@ -445,14 +460,14 @@ String _bootstrap({
   };
   try {
     const result = await caps[${jsonEncode(capability)}](Object.freeze(ctx),JSON.parse(${jsonEncode(paramsJson)}));
-    return '{"ok":true,"data":'+encode(result,0)+'}';
+    return String('{"ok":true,"data":'+encode(result,0)+'}');
   } catch(e) {
     // Useful diagnostics go through the same bounded secret/URL sanitizer as
     // ctx.log; the result channel continues to expose stable codes only.
     try {
       const message = String(e && e.message || e);
       const stack = String(e && e.stack || '');
-      globalThis.__script_log('error',(message + '\\n' + stack).slice(0,4096));
+      globalThis.__script_log('error',String((message + '\\n' + stack).slice(0,4096)));
     } catch (_) {}
     const code = e && (e.message === 'non_json_output' || e.message === 'output_limit' || e.message === 'unsupported_encoding') ? e.message : 'adapter_failed';
     return JSON.stringify({ok:false,code});

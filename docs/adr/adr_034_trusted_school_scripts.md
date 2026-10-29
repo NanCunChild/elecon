@@ -44,6 +44,8 @@ network.origins 是精确 HTTP(S) origin 列表（scheme、host、port；不支�
 
 取消/超时关闭宿主回调并终止调用；宿主错误不回传未净化 URL/凭据。已知凭据从日志中抹除，但不承诺识别脚本主动编码的数据。远端网络副作用无法回滚。原有数据卡片继续复用，脚本工具支持通用结果展示；不让一个通知接口失败阻断其他入口。
 
+2026-10-30 实施修复：实际西电课表暴露 `flutter_qjs_next 1.2.1` 的 `_jsToDart` 未处理 `STRING_ROPE`，长拼接字符串可跨桥成为 null。宿主 SDK 在既有字符串字段（凭据、HTTP body/header、浏览器 source/Cookie 等）与严格编码后的最终输出上调用 QuickJS `String()` 线性化；非字符串保留原类型，严格 JSON 编码与输出大小/schema 校验不变。没有修改 SDK 格式、增加权限或改变依赖 pin；真实 QuickJS 回归覆盖大于 512 字节的拼接值，不能只用 Node fixture 代替此项验证。
+
 ## 7. 验收与审阅
 
 每阶段提交使用 --no-gpg-sign，commit 带 Assisted-by。覆盖包解析/版本/信任更新、真实 QuickJS 凭据与请求流程、域名/IP/CIDR/redirect、本地 HTTP transport、DOM bridge 取消/关闭、切校/登出隔离、安装恢复和错误输出。合成夹具不访问真实学校和账号。保留原有路径回归；新路径实现测试和独立 agent 审阅不等于人工安全签收或生产合并授权。

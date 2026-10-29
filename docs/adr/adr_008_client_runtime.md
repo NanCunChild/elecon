@@ -1,5 +1,7 @@
 # ADR-008：客户端 adapter 执行运行时（QuickJS / Flutter）
 
+> 2026-10-30 实现状态补注：当前 manifest/lock 精确使用 `flutter_qjs_next 1.2.1`，下文 `1.0.2` 是 2026-07 修订快照。新受信脚本遵循 ADR-034/035；其 STRING_ROPE 跨桥兼容修复见 [ADR-034 §6](adr_034_trusted_school_scripts.md#6-执行与输出)。不改变本 ADR 的背景执行与宿主输出校验决策。
+
 - **状态**：已接受（Accepted，修订 2026-07-16）
 - **日期**：2026-06-09
 - **依赖**：[`adr_000_abstract.md`](./adr_000_abstract.md)、[`adr_001_contract.md`](./adr_001_contract.md)、[`adr_005_runtime.md`](./adr_005_runtime.md)

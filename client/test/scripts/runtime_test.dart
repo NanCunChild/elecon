@@ -55,6 +55,67 @@ void main() {
     store = CredentialStore(store: InMemorySecureStore(releaseMode: false));
     credentials = ScriptCredentials(store: store, schoolId: 'a');
   });
+
+  test(
+    'real QuickJS concatenated strings cross credentials, HTTP, DOM and output without losing types',
+    () async {
+      final token = '${'学' * 600}TOKEN_END';
+      final header = 'Bearer ${'H' * 600}HEADER_END';
+      final cookie = 'COOKIE${'C' * 600}COOKIE_END';
+      final source =
+          '''
+      export const capabilities={'notice.list':async(ctx)=>{
+        const token='学'.repeat(600)+'TOKEN_END';
+        await ctx.credentials.set('long',token,{scope:['https://school.example/'+token]});
+        const saved=await ctx.credentials.get('long');
+        if(saved.value!==token)throw new Error('rope_credential_lost');
+        await ctx.fetch('https://school.example/api',{method:'POST',body:'BODY'+token,headers:{Authorization:'Bearer '+'H'.repeat(600)+'HEADER_END'}});
+        await ctx.browser.setCookies('https://school.example',[{name:'SID',value:'COOKIE'+'C'.repeat(600)+'COOKIE_END',path:'/'}]);
+        await ctx.browser.evaluate(function(){return '${'A' * 650}SYNTHETIC_FUNCTION_MARKER';});
+        return {items:[],sourceSystem:'OUTPUT'+token};
+      }};
+    ''';
+      var requests = 0;
+      var browserCalls = 0;
+      final output =
+          await runtime.run(
+                package: script(source, browser: true),
+                capability: 'notice.list',
+                credentials: credentials,
+                fetch: (url, init) async {
+                  requests++;
+                  expect(init['body'], 'BODY$token');
+                  expect((init['headers'] as Map)['Authorization'], header);
+                  return response(url, init);
+                },
+                browserCall: (method, args) async {
+                  browserCalls++;
+                  if (method == 'setCookies') {
+                    expect(
+                      ((args['cookies'] as List).single as Map)['value'],
+                      cookie,
+                    );
+                  } else {
+                    expect(method, 'evaluate');
+                    expect(args['source'], isA<String>());
+                    expect(
+                      args['source'] as String,
+                      contains('SYNTHETIC_FUNCTION_MARKER'),
+                    );
+                    expect((args['source'] as String).length, greaterThan(512));
+                  }
+                  return null;
+                },
+              )
+              as Map;
+      expect(requests, 1);
+      expect(browserCalls, 2);
+      expect(output['sourceSystem'], 'OUTPUT$token');
+      expect(credentials.get('long')!['scope'], [
+        'https://school.example/$token',
+      ]);
+    },
+  );
   test(
     'real QuickJS reads secret and sees raw multi-value Set-Cookie',
     () async {
