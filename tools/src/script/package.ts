@@ -17,6 +17,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import { validateScriptNetwork } from "./network.js";
 
 export const MAX_SCRIPT_PACKAGE_BYTES = 1024 * 1024;
 
@@ -54,6 +55,23 @@ export function packageScript(manifest: unknown, source: unknown): string {
     // AJV errors can include source-controlled fields. Keep CLI diagnostics
     // stable instead of accidentally echoing embedded credentials or URLs.
     throw new ScriptPackageError("script_package_manifest_invalid");
+  }
+  const typed = manifest as {
+    name: string;
+    network: { origins: string[]; ipAllow?: string[] };
+    capabilities: Array<{ id: string }>;
+  };
+  if (
+    typed.name.includes("\0") ||
+    typed.name.length > 160 ||
+    new Set(typed.capabilities.map((capability) => capability.id)).size !== typed.capabilities.length
+  ) {
+    throw new ScriptPackageError("script_package_manifest_invalid");
+  }
+  try {
+    validateScriptNetwork(typed.network);
+  } catch (error) {
+    throw new ScriptPackageError(error instanceof Error ? error.message : "script_package_network_invalid");
   }
   const encoded = `${JSON.stringify(canonical(candidate))}\n`;
   if (Buffer.byteLength(encoded, "utf8") > MAX_SCRIPT_PACKAGE_BYTES) {

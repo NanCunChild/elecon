@@ -19,6 +19,12 @@ const manifest = {
 };
 const source = "throw new Error('SYNTHETIC_SOURCE_MUST_NEVER_EXECUTE');\n";
 const packaged = packageScript(manifest, source);
+for (const sdkVersion of [1, 2]) {
+  assert.equal(
+    JSON.parse(packageScript({ ...manifest, sdkVersion }, source)).manifest.sdkVersion,
+    sdkVersion,
+  );
+}
 assert.equal(JSON.parse(packaged).manifest.version, "1.2.3");
 assert.equal(JSON.parse(packaged).source, source);
 const reordered = Object.fromEntries(Object.entries(manifest).reverse());
@@ -28,14 +34,44 @@ for (const invalid of ["", "   \n", null, 42, "abc\0def"]) {
   assert.throws(() => packageScript(manifest, invalid), ScriptPackageError);
 }
 for (const invalid of [
+  { ...manifest, capabilities: [...manifest.capabilities, { ...manifest.capabilities[0]! }] },
   { ...manifest, version: "01.2.3" },
-  { ...manifest, sdkVersion: 2 },
+  { ...manifest, sdkVersion: 3 },
   { ...manifest, browser: "true" },
   { ...manifest, unknown: true },
   { ...manifest, capabilities: [{ id: "notice.list", schema: "elecon.notice.list", schemaVersion: "99.0" }] },
 ]) {
   assert.throws(() => packageScript(invalid, source), /script_package_manifest_invalid/);
 }
+for (const invalid of [
+  { ...manifest, network: { origins: ["https://school.example", "https://school.example:443"] } },
+  { ...manifest, network: { origins: ["https://school.example:99999"] } },
+  { ...manifest, network: { origins: ["http://127.1"] } },
+  { ...manifest, network: { origins: ["http://0177.0.0.1"] } },
+  { ...manifest, network: { origins: ["http://0x7f000001"] } },
+  { ...manifest, network: { origins: ["https://school.example."] } },
+  { ...manifest, network: { origins: ["http://[::1]", "http://[0:0:0:0:0:0:0:1]"] } },
+  { ...manifest, network: { origins: [], ipAllow: ["10.0.0.0/999"] } },
+  { ...manifest, network: { origins: [], ipAllow: ["::/129"] } },
+  { ...manifest, network: { origins: [], ipAllow: ["::/01"] } },
+  { ...manifest, network: { origins: [], ipAllow: ["0127.0.0.1"] } },
+  { ...manifest, name: "SYNTHETIC\0NAME" },
+]) {
+  assert.throws(() => packageScript(invalid, source), ScriptPackageError);
+}
+assert.doesNotThrow(() =>
+  packageScript(
+    {
+      ...manifest,
+      sdkVersion: 2,
+      network: {
+        origins: ["https://school.example", "http://10.20.0.8:8080", "https://[2001:db8::1]"],
+        ipAllow: ["10.20.0.0/16", "2001:db8::/48", "::1", "0.0.0.0/0"],
+      },
+    },
+    source,
+  ),
+);
 assert.throws(
   () => packageScript(manifest, "学".repeat(Math.floor(MAX_SCRIPT_PACKAGE_BYTES / 2))),
   /script_package_too_large/,

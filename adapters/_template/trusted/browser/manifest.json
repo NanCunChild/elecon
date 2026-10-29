@@ -1,7 +1,7 @@
 {
-  "sdkVersion": 1,
+  "sdkVersion": 2,
   "id": "school-browser-example",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "schoolId": "example",
   "name": "Example School Browser",
   "network": { "origins": ["https://campus.example.edu"] },

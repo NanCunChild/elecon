@@ -1,7 +1,7 @@
 {
-  "sdkVersion": 1,
+  "sdkVersion": 2,
   "id": "school-http-example",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "schoolId": "example",
   "name": "Example School HTTP",
   "network": { "origins": ["https://campus.example.edu"] },

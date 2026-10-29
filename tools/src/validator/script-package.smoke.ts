@@ -45,14 +45,18 @@ function sample(): Sample {
     source: "throw new Error('schema must not execute source');",
   };
 }
-assert.equal(validate(sample()), true, JSON.stringify(validate.errors));
+for (const sdkVersion of [1, 2]) {
+  const p = sample();
+  p.manifest.sdkVersion = sdkVersion;
+  assert.equal(validate(p), true, JSON.stringify(validate.errors));
+}
 let rejected = 0;
 for (const mutate of [
   (p: Sample) => {
     p.format = "elecon-script/2";
   },
   (p: Sample) => {
-    p.manifest.sdkVersion = 2;
+    p.manifest.sdkVersion = 3;
   },
   (p: Sample) => {
     p.manifest.version = "01.0.0";
