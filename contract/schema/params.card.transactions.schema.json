@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "elecon.params.card.transactions",
-  "$comment": "草案：入参形状待 ADR 确认（红线 #6）。日期范围 + 分页为常见取数约定，需结合真实接口校准。已知学校（XIDIAN）的流水接口仅支持分页（pageNo/pageSize），不支持 from/to；故 from/to 设为可选以适应跨校差异，adapter 可忽略。",
+  "$comment": "日期范围 + 分页为通用取数约定，具体来源差异由脚本明确处理（ADR-034/035）。旧 XIDIAN adapter 曾仅实现 pageNo/pageSize；2026-10-30 对照 Traintime PDA 后，新 SDK 2 西电脚本使用真实 beginDate/endDate 日期窗口 JSON 接口并在完整响应上本地分页。不支持的显式范围应拒绝，不得静默忽略。此次只校正文档，字段/格式/版本不变。",
   "title": "card.transactions 入参",
   "type": "object",
   "properties": {

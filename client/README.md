@@ -106,3 +106,5 @@ cookie 收割和持久化完成等阶段，同时输出帧总数、超过 16.67m
 首次选校页或设置页打开“学校脚本”，导入/粘贴源码包并确认后即可使用。无需修改选校硬编码，也无需官方签名本地脚本。使用、版本更新、HTTP/DOM 模板和平台限制见 [开发文档](../docs/reference/trusted_scripts.md)。旧 official bundle 路径仍验证原签名。
 
 新模板采用 SDK 2（[ADR-035](../docs/adr/adr_035_script_credential_identity.md)）：凭据默认按学校、脚本命名空间、键保存，并可显式共享。SDK 1 预览语义继续兼容。包格式仍为 `elecon-script/1`，脚本自身 version 独立递增。
+
+西电实际脚本见 [school-scripts/xidian](../school-scripts/xidian/README.md)。客户端本地版本 0.2.1+3 修复锁定 QuickJS 绑定的长字符串跨桥问题。`test/scripts/xidian_script_test.dart` 会通过 Node 工作区构建真实源码包再运行；首次全量测试前，在仓库根执行 `npm ci`。CI 的 client job 已安装该前置，测试仍不请求学校。

@@ -9,6 +9,9 @@
 | signer | `src/signer/` | 官方 adapter 签名 / 吊销 |
 | release | `src/release/` | 生成 endpoint D 的 signed catalog、revocation 和 bundle dist；dist ↔ 客户端 bootstrap 基线互转（sync / verify / export） |
 | scanner | `src/scanner/` | 夹具 PII 扫描（脱敏检查） |
+| source package | `src/script/` | ADR-034/035 受信源码包校验与打包；西电多模块源码构建和合成回归，不进入旧 official 签发 |
+
+西电新包：在仓库根执行 `npm run scripts:xidian -w tools`，产物位于 `school-scripts/xidian/dist/`。使用与许可见[西电脚本说明](../school-scripts/xidian/README.md)。`smoke:all` 包含其模块回归、合成数据 PII 检查和确定性构建；不会执行真实认证或调用学校接口。
 
 ## 运行
 

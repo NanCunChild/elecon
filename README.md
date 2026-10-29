@@ -9,6 +9,8 @@
 
 新模板使用 [SDK 2 的凭据描述符](docs/adr/adr_035_script_credential_identity.md)：默认按学校、脚本命名空间和键分别保存，跨脚本共享需显式寻址。SDK 1 预览包保留兼容；旧 Masker 仍在 V1 执行链内，尚未全仓删除。
 
+**2026-10-30 西电适配**：已对照 Traintime PDA 更新 SDK 2 数据包与独立官方页面登录包，涵盖本科/研究生、课表变更、校园卡日期流水和新 OPAC 借阅。源码、构建与导入步骤见 [西电脚本](school-scripts/xidian/README.md)，额外能力及契约缺口见[对照评估](docs/reference/xidian_script_update.md)。本地客户端基线 0.2.1 包含真实 QuickJS 长拼接字符串桥接修复；学校账号与原生设备仍待验收。
+
 ---
 
 ## 它解决什么
@@ -53,6 +55,7 @@ adapters/   仅核心自带 adapter：_stdlib（vendored 解析器）/ _template
             真实学校 adapter 已迁出到独立公开仓 elecon-adapters，构建期按 adapters.pin 钉死的 ref
             拉取（scripts/fetch-adapters.sh，ADR-018 §2.11.1，取代旧 git 子模块）。
 adapters_tests/  各校抓包探针与脱敏夹具（红线 #8：不含真实学生数据/凭证）。
+school-scripts/  新 SDK 2 学校源码与合成协议回归；独立于 V1 official 发布链，许可证按子目录声明。
 client/     Flutter 客户端（iOS / Android / HarmonyOS / 桌面）
 server/     Node/TS 服务端：public（公网哑服务）+ campus（校内授权中继，当前 501 stub），adapter 用 QuickJS-wasm 执行
 tools/      Node/TS 工具链：签名（PKCS#11 / YubiKey）/ 吊销 / adapter 校验 / 契约一致性 / codegen

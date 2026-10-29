@@ -9,6 +9,10 @@
 
 ---
 
+- **2026-10-30 · 西电日期流水的来源说明校正（ADR-034 §3–§4 / ADR-035）**
+  - `params.card.transactions.schema.json` 仅修改过期的 `$comment`：新西电脚本按参考源码使用日期窗口 JSON 接口与本地分页，不能再写“西电不支持 from/to / adapter 可忽略”。字段、format、capability/schema 版本与验证行为均不变。
+  - 学校源码及长字符串桥接修复使用现有 SDK 2 能力，没有新增标准 capability、schema 字段或脚本权限；卡号必填与其它业务缺口单列评估，没有伪造来源或静默放宽契约。
+
 - **2026-10-29 · 脚本 SDK 2 与凭据完整地址（ADR-035 §2–§4）**
   - 包容器仍为 `elecon-script/1`；schema 明确支持 SDK 1/2，未知 SDK 拒绝。SDK 1 预览包保留原查找语义，新模板使用 SDK 2，迁移需同时提升脚本 version 并重新确认。
   - SDK 新增凭据 id/namespace/key 描述符，SDK 2 默认 namespace 为稳定脚本 id，可显式共享及访问 `@legacy`/`@preview1`；同校访问权限不变。

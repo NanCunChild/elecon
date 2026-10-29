@@ -50,3 +50,17 @@
 契约 ADR changelog 门、旧 adapter validate 与 bootstrap 自洽检查通过。旧签名资产未改，未执行签名私钥操作，也未改变历史人工签收状态。
 
 **仍未完成的迁移**：Masker 没有全仓清除，V1 客户端/TS runtime/发行工具/契约/签名历史仍保留；SDK 1 默认学校共享键与旧 raw-ref 索引仍仅作兼容。SDK 2 的独立描述符不等于对整个旧 store 做了多校重构。同校多账号并存仍未提供；每校多个系统/多份凭据已在新路线回归。Android 缺少 Cookie 元数据的平台无法无损恢复完整 jar，真实学校、原生设备与人工审阅仍开放。
+
+## 西电对照迁移（2026-10-30）
+
+参考本机 `~/projects/traintime_pda` 的 `e780e4d01ea740c979ff5c31b9db439dbc586864`（2026-10-14）。参考仓只读，原工作区与 V1 adapter 缓存/pin/签名 bootstrap 保持原字节。实现与导入说明见 [西电脚本](../../school-scripts/xidian/README.md)，额外能力分类见[对照评估](../reference/xidian_script_update.md)。
+
+- [x] 代码对照：本科/研究生教学、官方页认证、校园卡日期查询及新 OPAC；明确源码许可，校本目录保留 MPL-2.0 版权和全文。
+- [x] 绑定修复：`10370fd`；真实 QuickJS 发现 STRING_ROPE 跨桥变 null，修复现有字符串边界并保留非字符串类型/严格输出校验。客户端基线为 0.2.1+3，SDK 和依赖 pin 未变。
+- [x] 学校实现：`818e9e1`；数据包 `school-xidian@0.6.0`（11 个现有能力、无浏览器要求），独立登录包 `school-xidian-login@0.1.0`。没有新增标准 capability 或运行权限。
+- [x] 集成：确定性打包、实际源模块与内置 HTML parser 回归、编译包真实 QuickJS 回归、CI Node 构建前置和新源码 lint；测试数据均为明确的合成占位。
+- [x] 文档：使用/配置、版本、会话、许可、额外业务契约与宿主能力分开记录。只校正 card.transactions 过期来源注释，没有更改字段/格式/验证语义；codegen 无漂移。
+
+验证：**58** 项合成模块测试通过；**9** 项实际包 QuickJS 集成通过；新增长拼接凭据/HTTP/DOM/输出回归通过；全量 Flutter **1039 通过、11 条件跳过**。主清单 analyze、workspace lint/typecheck、tools smoke **24/24**、学校合成数据 PII 扫描（0 error/0 warn）通过。Android/Linux debug 重新编译通过。具体日志为 `/tmp/elecon-xidian-*`。
+
+当前边界：卡号是现有 card 输出的必填约束，来源缺失时需用户明确配置；未排课、成绩构成、考试结束、图书搜索/续借与其它新业务没有硬塞入不合适的字段。官方页面负责密码/滑块/MFA，脚本交互约 100 秒/总预算 120 秒，完整浏览器指纹/原生 Cookie 元数据与真实校园网络尚未验收。没有真实账号、付款、设备写操作、签名私钥操作或生产发布，人工审阅仍开放。

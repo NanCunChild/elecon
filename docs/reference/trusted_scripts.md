@@ -107,3 +107,5 @@ const tokens = JSON.parse((await ctx.credentials.get("tokens", {namespace})).val
 本次回归使用合成凭据、脱敏样本、真实 QuickJS 和 loopback HTTP，不请求真实学校，不控制真实设备。现有签名 bundle 仍走原门链；只在用户明确安装启用同名能力时由新脚本优先提供。不把工具测试或 agent 审阅写成人工安全签收，也没有发布或合并到 main。
 
 后续应优先用不同认证形态的真实学校验证接入成本，逐校将成熟能力迁入新脚本，最后随兼容窗口删除旧 runtime/DSL；不继续给旧 DSL 增加校本协议算子。
+
+2026-10-30 已增加 [西电实际学校脚本](../../school-scripts/xidian/README.md)，对照本机 Traintime PDA 固定提交实现，分成 HTTP 数据包与可见登录包。它提供本/研教务与校园卡、借阅等现有能力；具体配置、未覆盖的字段及额外能力评估见该目录。新客户端 0.2.1 修复长拼接字符串跨 QuickJS 桥失真的问题，SDK 仍为 2；真实账号与原生设备验证尚未完成。

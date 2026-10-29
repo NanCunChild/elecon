@@ -8,6 +8,8 @@
 
 新路径由 `SessionController.runTrustedScript` → `TrustedScriptRuntime` → `ScriptHttpTransport` / `ScriptBrowserBridge` 执行。其源码包 schema、SDK、打包 CLI 不要求 `masker.json`，不会调用旧 Broker 的凭据注入、声明式 dataflow 或 delivery firewall。SDK 2 的显式共享 namespace 也不是 Masker 或不透明句柄。
 
+2026-10-30 增量：已对照 Traintime PDA 增加[西电 SDK 2 数据/登录包](../../school-scripts/xidian/README.md)，可由用户导入启用。旧签名资产、缓存/pin 与其它学校兼容入口没有删除，本文“Masker 未全仓退役”结论不变。
+
 ## 仍然在用的旧链
 
 | 位置 | 实际依赖 | 删除前的配套工作 |

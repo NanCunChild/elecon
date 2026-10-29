@@ -34,6 +34,8 @@
 
 - **新源码路径**：客户端 QuickJS 是唯一生产执行面；tools 验证格式/打包与 schema，不执行学校脚本。无需为新脚本复制服务端运行时或旧 dataflow/Masker golden。
 
+- **学校源码回归**：`school-scripts/<school>/tests/` 可用 fake ctx 执行实际 JS 模块并验证输出 schema；真实客户端集成仍须覆盖编译后的源码包。西电回归同时包括 Node 模块与 Flutter QuickJS，测试前在根执行 `npm ci` 以构建包；不用 Node 通过推断原生绑定也通过。此处“tools 不执行学校脚本”指生产校验/打包器，不禁止合成夹具测试执行实际源码。
+
 ---
 
 ## 4. 性能与并发
