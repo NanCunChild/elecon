@@ -8,7 +8,7 @@ Resolved new transitive packages (licenses read from each resolved LICENSE):
 |---|---|
 | android_file_picker | MIT |
 | cross_file | BSD-3-Clause |
-| dbus | Mozilla Public License Version 2.0 |
+| dbus | MPL-2.0 |
 | ffi_leak_tracker | BSD-3-Clause |
 | file_picker | MIT |
 | file_picker_darwin | MIT |
@@ -19,3 +19,5 @@ Resolved new transitive packages (licenses read from each resolved LICENSE):
 | win32 | BSD-3-Clause |
 | windows_file_picker | MIT |
 | xml | MIT |
+
+All additions are resolved through pubspec.lock. Flutter includes resolved package LICENSE files in its generated NOTICES; upstream packages are unmodified. The Linux file chooser brings the MPL-2.0 dbus dependency, recorded explicitly here rather than treating all transitive dependencies as MIT.

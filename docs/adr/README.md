@@ -43,7 +43,6 @@
 | [031](./adr_031_dataflow_seed.md) | Accepted | 未落地 | 待人工 | P1-10 |
 | [032](./adr_032_app_tunnel_embedding.md) | Proposed | 禁止实现 | 待人工评审 | 接受前不得合并 transport 实现 |
 | [033](./adr_033_production_sideload.md) | Accepted | **未落地**（现仍为 DEPLOY 零本地导入 + C3 在位） | 落地须人工主导 + 安全清单 + ≥1 人工审 | §5 连带清单须同批落地；§6 开放问题按实现分项阻塞 |
+| [034](./adr_034_trusted_school_scripts.md) | Accepted（2026-10-29 所有者会话授权） | 已实现，见 [计划](../planning/trusted_scripts.md) | 待人工复核与平台真机 | 新源码脚本路径显式覆盖 #1/#4/#5 旧约束 |
 
 更新规则：接受或废弃 ADR 时更新 `Decision`；实现 PR 只更新 `Landing`；安全签收必须附人工复核引用，不能以 smoke 通过代替。
-
-| [034](./adr_034_trusted_school_scripts.md) | Accepted（2026-10-29 所有者会话授权） | 分阶段实施，见 [计划](../planning/trusted_scripts.md) | 实现待人工复核 | 新源码脚本路径显式覆盖 #1/#4/#5 旧约束 |

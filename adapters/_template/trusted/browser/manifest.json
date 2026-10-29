@@ -1,0 +1,12 @@
+{
+  "sdkVersion": 1,
+  "id": "school-browser-example",
+  "version": "0.1.0",
+  "schoolId": "example",
+  "name": "Example School Browser",
+  "network": { "origins": ["https://campus.example.edu"] },
+  "browser": true,
+  "capabilities": [
+    { "id": "notice.list", "schema": "elecon.notice.list", "schemaVersion": "1.1" }
+  ]
+}

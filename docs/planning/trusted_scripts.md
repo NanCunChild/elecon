@@ -6,7 +6,7 @@
 - [x] 阶段 2：精确域名/IP/CIDR 白名单及原生 HTTP 传输。
 - [x] 阶段 3：新格式、版本/安装授权、真实凭据 API 与背景 QuickJS。
 - [x] 阶段 4：浏览器 DOM 桥接、可见操作入口与脚本安装/运行产品接线。
-- [ ] 阶段 5：集成回归、文档、交叉审阅与剩余限制。
+- [x] 阶段 5：集成回归、文档、交叉审阅与剩余限制。
 
 每阶段验证后 no-sign commit。不得将 AI 审阅记录为人工安全签收，不声称完成真实学校/真机验证。
 
@@ -17,3 +17,21 @@
 基线修复来源：原工作区已有未提交的 catalog 与 5 个 bundle/3，于本次工作中只读验签（预埋 elecon-official-ncc-1 公钥；catalog/revocation domain separation；openBundle 完整性/身份检查）。原字节复制到本工作树，替换基线 /2；没有签名私钥操作，没有补造签署者/仪式/人工复核事实，也没有修改签名内时效。该核验不代表吊销列表新鲜度或生产签收。原工作区登录/凭据代码修改仍未纳入。
 
 阶段 4 验证：浏览器桥接 21 项、会话/真实 QuickJS/loopback 登录链 16 项、工作台与首页 5 项通过；全量 Flutter 1008 通过、11 按既有条件跳过，analyze 无问题。修复 Apple 默认 TLS/Cookie store、浏览器独占租约、同身份刷新串行、关闭/登出/更新取消、损坏安装恢复、内存凭据迁移、切校旧卡片和工作台结果残留。支持 Cookie 保存/恢复而不要求每次页面运行重新登录。Linux debug 编译通过；原生真机矩阵仍待人工。
+
+## 最终验证（2026-10-29）
+
+- Flutter analyze：无问题。
+- Flutter 全量：1008 通过，11 项按既有条件跳过。
+- server smoke：29/29；tools smoke：22/22（含新 schema 与真实 CLI/npm workspace 打包回归）。
+- Node lint / workspace typecheck、adapter validate、PII scanner：通过。
+- server production build 与 public dist 正/负例：通过。
+- codegen 后 contract/generated 无漂移；新源码包 schema/SDK 已加入 ADR changelog 门。
+- bootstrap 自洽、现有官方签名只读核验、release preflight、客户端静态发布门：通过；不表示签名清单新鲜度或正式发布获准。
+- Linux debug 与 Android debug APK：编译通过。APK 在 client/build/app/outputs/flutter-apk/app-debug.apk；Linux 在 client/build/linux/x64/debug/bundle/。
+- 独立 agent 交叉审阅发现的问题已修复并回归；最终补齐按所选学校显示登录摘要。
+
+## 范围与后续验收
+
+本轮实现与上述自动回归已完成，未推送、未合并 main、未正式发布。Android/iOS/macOS 浏览器登录、HttpOnly、证书、后台切换等仍需真机；没有真实账号或真实学校在线验收。每校目前只有一个当前身份；同校换账号先登出。旧 official bundle/DSL 兼容路径保留，下一轮按真实学校迁移后再删除；不再扩展其校本算子。人工安全签收仍开放，不能以本记录或 agent 审阅替代。
+
+新工作树 /home/nancunchild/projects/elecon-trusted-scripts；原工作区保持原分支及 22 个文件的已有修改（450 additions / 43 deletions），未混入其登录代码。

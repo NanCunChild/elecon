@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # release 构建阀门：
 #   ① 防止 debug-only 权限/配置导致 release 无法出网/登录；
-#   ② ADR-024 护栏 4——**分发 / 提交的产物必须是 DEPLOY profile**（无侧载入口）。
+#   ② ADR-024 护栏 4——**分发 / 提交的产物必须是 DEPLOY profile**（无旧 DEV 侧载入口；ADR-034 用户授权源码导入是独立路径）。
 #
 # ADR-024 §5.3 勾决「二者并用」，本脚本据此对产物做两条独立断言：
 #   (a) 符号 grep：DEPLOY 产物中不得出现侧载入口哨兵 ELECON_SIDELOAD_ENTRY_A7F3。

@@ -49,4 +49,4 @@ elecon 是面向学生的校园信息聚合平台。架构第一目标是**在�
 | [`docs/rules/ui_ai_generation.md`](docs/rules/ui_ai_generation.md) | AI 生成 Flutter UI 的边界（ADR-004 框内、Material 3） |
 | [`docs/glossary.md`](docs/glossary.md) | 术语与编号速查（信任域 A–D、P0–P4、三种 envelope、DEPLOY/DEV-Sideload…） |
 
-**状态只认两处**：决策状态看 [`docs/adr/README.md`](docs/adr/README.md)，执行 / 签收状态看 [`docs/planning/2026_08_review_remediation.md`](docs/planning/2026_08_review_remediation.md)。其它文档里的进度描述一律是快照，冲突时以这两处为准。
+**状态源**：决策状态看 [`docs/adr/README.md`](docs/adr/README.md)，执行 / 签收状态看 [`docs/planning/2026_08_review_remediation.md`](docs/planning/2026_08_review_remediation.md)；ADR-034 新受信脚本路线的执行状态看 [`docs/planning/trusted_scripts.md`](docs/planning/trusted_scripts.md)。其它进度描述是快照，冲突时以对应路线的状态源为准。

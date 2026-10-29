@@ -21,3 +21,5 @@
 - [manifest 规范](../../contract/manifest.schema.json)
 - [标准 schema 索引](../../contract/schema/)
 - [capability 注册表](../../contract/capability/registry.json)
+
+受信学校脚本路线：见 [使用与开发](trusted_scripts.md)、[新增依赖与许可证](trusted_scripts_dependencies.md) 和 [ADR-034](../adr/adr_034_trusted_school_scripts.md)。旧 requestGraph/Masker 操作手册仅供未迁移的 official bundle。

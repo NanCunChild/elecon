@@ -40,7 +40,8 @@
     "smoke:bundle-path-binding": "tsx src/bundle/path-binding.smoke.ts",
     "smoke:all": "node ../scripts/run-smokes.mjs src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "audit": "npm audit --omit=dev"
+    "audit": "npm audit --omit=dev",
+    "scripts:package": "tsx src/script/package.ts"
   },
   "dependencies": {
     "@elecon/broker-primitives": "*",

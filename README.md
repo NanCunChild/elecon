@@ -2,6 +2,11 @@
 
 一个面向学生的校园信息聚合应用。它把成绩、课表、一卡通、图书馆等分散在不同学校后端的信息，归一化后聚合到一处。架构的第一目标不是功能最大化，而是**在最少的人力下，对学校接口的频繁变动与多平台差异保持韧性**。
 
+
+**2026-10-29 路线更新（Alpha 0.2）**：客户端已增加受信学校脚本：用户可从选校页或设置页导入源码包，确认后让普通异步 JS 直接读写当前学校凭据、使用域名/IP 白名单网络与可见浏览器 DOM API。安装和更新无需官方签名仪式，官方旧 bundle 路径继续原有验签。新能力优先从已启用脚本取数，通知失败不阻断其它卡片。
+
+使用、源码模板、打包命令与平台边界见 [受信学校脚本](docs/reference/trusted_scripts.md)，决策见 [ADR-034](docs/adr/adr_034_trusted_school_scripts.md)，实施记录见 [阶段计划](docs/planning/trusted_scripts.md)。下方旧 Broker/双端 runtime 描述只对应尚未迁移的 V1 路径。
+
 ---
 
 ## 它解决什么
@@ -89,7 +94,9 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 
 ---
 
-## 贡献一个学校 adapter
+## 贡献学校脚本与旧 adapter
+
+> 新接入优先使用 `adapters/_template/trusted/` 和上方受信脚本文档。以下流程只对应旧 official bundle。
 
 > 真实学校 adapter 现落在独立公开仓 **elecon-adapters**（本仓按 `adapters.pin` 拉取，见[「仓库结构」](#仓库结构)）。下列以模板 `adapters/_template/` 为例说明形态，实际提交面向 elecon-adapters。
 
@@ -116,7 +123,7 @@ npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新
 
 ## 路线状态
 
-架构的 **Decision** 与 **Landing** 是两个维度，`Accepted` 不等于已实现。当前处于**基础设施型 Alpha / 0.1**：签名分发、Broker、凭证存储、WebView 登录等承重链路已成形，仍有开放安全签收项；产品能力面仍薄（首页主要消费 `notice.list`），campus relay 是 501 stub。
+架构的 **Decision** 与 **Landing** 是两个维度，`Accepted` 不等于已实现。当前处于**Alpha / 0.2（新受信脚本已接入，原生平台矩阵待验收）**：签名分发、Broker、凭证存储、WebView 登录等承重链路已成形，仍有开放安全签收项；产品能力面仍薄（首页主要消费 `notice.list`），campus relay 是 501 stub。
 
 状态只认两处：决策状态看 [`docs/adr/README.md`](docs/adr/README.md)，执行与签收状态看 [`docs/planning/2026_08_review_remediation.md`](docs/planning/2026_08_review_remediation.md)。术语速查见 [`docs/glossary.md`](docs/glossary.md)。
 

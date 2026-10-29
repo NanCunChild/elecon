@@ -157,8 +157,12 @@ class SessionController extends ChangeNotifier {
   List<SchoolDescriptor> get availableSchools => _availableSchools;
   bool get isConfigured => _school != null;
   bool get debugLog => _debugLog;
-  bool get isLoggedIn => _store.list().isNotEmpty;
-  int get credentialCount => _store.list().length;
+  // ADR-034: a different school's credentials do not imply this school is logged in.
+  Iterable<CredentialEntry> get _selectedCredentialEntries => _store
+      .list()
+      .where((entry) => _school == null || entry.schoolId == _school!.id);
+  bool get isLoggedIn => _selectedCredentialEntries.isNotEmpty;
+  int get credentialCount => _selectedCredentialEntries.length;
 
   /// 上次 bootstrap 因 TEE/SE 无法 unwrap 而抹除了 H 档凭证。
   bool get hardwareUnlockFailed => _hardwareUnlockFailed;
@@ -169,7 +173,7 @@ class SessionController extends ChangeNotifier {
 
   /// 已收割凭证的值无关登记信息；不包含 value、scope、type 或可重放等价物（红线 #1）。
   List<SessionCredentialMetadata> get credentialMetadata => List.unmodifiable(
-    _store.list().map(
+    _selectedCredentialEntries.map(
       (entry) => SessionCredentialMetadata(
         ref: entry.ref,
         status: SessionCredentialStatus.values.byName(entry.status.name),

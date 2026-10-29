@@ -97,3 +97,7 @@ cookie 收割和持久化完成等阶段，同时输出帧总数、超过 16.67m
 - adapter 在后台 isolate 执行，不在 UI 线程同步阻塞
 - UI 只认标准 schema，与学校无关
 - 凭证永不离开核心
+
+## 受信学校脚本（Alpha 0.2）
+
+首次选校页或设置页打开“学校脚本”，导入/粘贴源码包并确认后即可使用。无需修改选校硬编码，也无需官方签名本地脚本。使用、版本更新、HTTP/DOM 模板和平台限制见 [开发文档](../docs/reference/trusted_scripts.md)。旧 official bundle 路径仍验证原签名。

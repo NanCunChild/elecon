@@ -138,11 +138,16 @@ void main() {
         'EMPTY',
       );
       await session.selectTrustedScriptSchool('school-b');
+      expect(session.isLoggedIn, isFalse);
+      expect(session.credentialCount, 0);
+      expect(session.credentialMetadata, isEmpty);
       expect(
         ((await session.runCapability('notice.list')).data
             as Map)['sourceSystem'],
         'EMPTY',
       );
+      expect(session.isLoggedIn, isTrue);
+      expect(session.credentialCount, 1);
       await session.selectTrustedScriptSchool('school-a');
       expect(
         ((await session.runCapability('notice.list')).data

@@ -26,6 +26,8 @@ const WATCHED = [
   "contract/manifest.schema.json",
   "contract/catalog.schema.json",
   "contract/response-masker.schema.json",
+  "contract/script-package.schema.json",
+  "contract/script-sdk/",
 ];
 const CHANGELOG = "contract/CHANGELOG.md";
 const ADR_REF = /\b(?:ADR[-_ ]?\d{3}|adr_\d{3})\b/i;
