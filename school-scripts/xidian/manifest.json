@@ -1,0 +1,29 @@
+{
+  "sdkVersion": 2,
+  "id": "school-xidian",
+  "version": "0.6.0",
+  "schoolId": "xidian",
+  "name": "西安电子科技大学",
+  "network": {
+    "origins": [
+      "https://jwc.xidian.edu.cn", "https://ids.xidian.edu.cn",
+      "https://ehall.xidian.edu.cn", "https://yjspt.xidian.edu.cn",
+      "https://v8scan.xidian.edu.cn", "https://tyrzfw.chaoxing.com",
+      "https://mfindxidian.libsp.cn"
+    ]
+  },
+  "browser": false,
+  "capabilities": [
+    {"id":"notice.list","schema":"elecon.notice.list","schemaVersion":"1.1"},
+    {"id":"schedule.week","schema":"elecon.schedule.week","schemaVersion":"1.0"},
+    {"id":"grades.list","schema":"elecon.grades.list","schemaVersion":"1.1"},
+    {"id":"exam.list","schema":"elecon.exam.list","schemaVersion":"1.0"},
+    {"id":"classroom.buildings","schema":"elecon.classroom.buildings","schemaVersion":"1.0"},
+    {"id":"classroom.available","schema":"elecon.classroom.available","schemaVersion":"1.1"},
+    {"id":"card.balance","schema":"elecon.card.balance","schemaVersion":"1.0"},
+    {"id":"card.transactions","schema":"elecon.card.transactions","schemaVersion":"1.0"},
+    {"id":"library.loans","schema":"elecon.library.loans","schemaVersion":"1.0"},
+    {"id":"term.list","schema":"elecon.term.list","schemaVersion":"1.0"},
+    {"id":"calendar.academic","schema":"elecon.calendar.academic","schemaVersion":"1.0"}
+  ]
+}

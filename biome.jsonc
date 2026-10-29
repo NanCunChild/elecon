@@ -9,6 +9,8 @@
       "tools/src/**",
       "packages/*/src/**",
       "scripts/**",
+      "school-scripts/**/*.js",
+      "school-scripts/**/*.mjs",
       "adapters/school-xjt/*.js",
       "adapters/school-xidian/*.js",
       "adapters/_template/**/*.js",

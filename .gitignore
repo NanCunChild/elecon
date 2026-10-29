@@ -44,3 +44,6 @@ server/dist/
 
 # Kotlin incremental compiler state from native builds.
 client/android/.kotlin/
+
+# Locally built user-approved source packages; source/manifests remain reviewable.
+/school-scripts/*/dist/

@@ -41,7 +41,8 @@
     "smoke:all": "node ../scripts/run-smokes.mjs src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "audit": "npm audit --omit=dev",
-    "scripts:package": "tsx src/script/package.ts"
+    "scripts:package": "tsx src/script/package.ts",
+    "scripts:xidian": "tsx src/script/xidian.ts"
   },
   "dependencies": {
     "@elecon/broker-primitives": "*",
