@@ -1,5 +1,7 @@
 # 规则 · Git（分支 / Commit / PR）
 
+> 2026-10-29 路线覆盖：新 `elecon-script/1` 路径遵循 [ADR-034](../adr/adr_034_trusted_school_scripts.md)；允许用户授权的未签名侧载和当前学校凭据直接访问。V1 专属 official/Masker/双跑门不适用于新路径；身份隔离、背景执行、脱敏夹具和人工合并审阅仍适用。
+
 配合 [`AGENTS.md`](../../AGENTS.md) 阅读。原则：**人力有限，流程越轻越好；信任越高的改动，闸门越重。**
 
 ---
