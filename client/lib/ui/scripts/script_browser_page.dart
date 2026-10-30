@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/scripts/browser.dart';
@@ -40,6 +41,7 @@ class ScriptBrowserPageLabels {
     required this.title,
     required this.close,
     required this.loading,
+    required this.signingIn,
     required this.blocked,
     required this.failed,
     required this.unavailable,
@@ -47,6 +49,7 @@ class ScriptBrowserPageLabels {
   final String title;
   final String close;
   final String loading;
+  final String signingIn;
   final String blocked;
   final String failed;
   final String unavailable;
@@ -63,6 +66,54 @@ class ScriptBrowserPage extends StatefulWidget {
 
   @override
   State<ScriptBrowserPage> createState() => _ScriptBrowserPageState();
+}
+
+/// ADR-039 §1: host-owned status; only the school page is blocked, so the
+/// surrounding close button and system back action remain available.
+class ScriptBrowserBusyOverlay extends StatelessWidget {
+  const ScriptBrowserBusyOverlay({
+    super.key,
+    required this.busy,
+    required this.label,
+    required this.child,
+  });
+
+  final bool busy;
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      ExcludeFocus(
+        excluding: busy,
+        child: ExcludeSemantics(
+          excluding: busy,
+          child: AbsorbPointer(absorbing: busy, child: child),
+        ),
+      ),
+      if (busy)
+        Positioned.fill(
+          child: ColoredBox(
+            color: Theme.of(context).colorScheme.surface.withValues(alpha: .92),
+            child: Center(
+              child: Semantics(
+                liveRegion: true,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(semanticsLabel: label),
+                    const SizedBox(height: 16),
+                    Text(label, style: Theme.of(context).textTheme.titleMedium),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
 }
 
 class _ScriptBrowserPageState extends State<ScriptBrowserPage> {
@@ -158,87 +209,95 @@ class _ScriptBrowserPageState extends State<ScriptBrowserPage> {
                   ),
                 ),
                 Expanded(
-                  child: InAppWebView(
-                    key: const ValueKey('trusted_script_browser'),
-                    initialSettings: InAppWebViewSettings(
-                      // Native Apple CookieManager reads the default data
-                      // store, not a nonPersistent WebView store. Use that
-                      // same store under an exclusive lease and explicit
-                      // pre/after cleanup so HttpOnly login cookies work.
-                      incognito: false,
-                      javaScriptEnabled: true,
-                      domStorageEnabled: true,
-                      isInspectable: false,
-                      useShouldOverrideUrlLoading: true,
-                      javaScriptCanOpenWindowsAutomatically: false,
-                      supportMultipleWindows: true,
-                      allowFileAccess: false,
-                      allowContentAccess: false,
-                      allowFileAccessFromFileURLs: false,
-                      allowUniversalAccessFromFileURLs: false,
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: widget.bridge.busy,
+                    builder: (context, busy, child) => ScriptBrowserBusyOverlay(
+                      busy: busy,
+                      label: widget.labels.signingIn,
+                      child: child!,
                     ),
-                    onWebViewCreated: (controller) {
-                      final driver = _InAppScriptBrowserDriver(controller);
-                      if (!mounted) {
-                        driver.discard();
-                        return;
-                      }
-                      controller.addJavaScriptHandler(
-                        handlerName: ScriptBrowserBridge.resultHandler,
-                        callback: (arguments) {
-                          if (arguments.length == 1) {
-                            widget.bridge.receiveResult(arguments.single);
-                          }
-                          return null;
-                        },
-                      );
-                      try {
-                        widget.bridge.attach(driver);
-                      } on ScriptBrowserException {
-                        // A late native creation can arrive after the bridge
-                        // released its lease. Only dispose this orphan view;
-                        // global cookie cleanup could affect a newer identity.
-                        driver.discard();
-                      }
-                    },
-                    shouldOverrideUrlLoading: (controller, action) async {
-                      return scriptBrowserNavigationPolicy(
-                        widget.bridge,
-                        action.request.url?.toString(),
-                        isForMainFrame: action.isForMainFrame,
-                      );
-                    },
-                    onLoadStart: (controller, url) async {
-                      if (url?.toString() == 'about:blank') return;
-                      if (!widget.bridge.navigationStarted(url?.toString())) {
-                        await controller.stopLoading();
-                      }
-                    },
-                    onLoadStop: (_, url) {
-                      if (url?.toString() == 'about:blank') return;
-                      widget.bridge.navigationFinished(url?.toString());
-                    },
-                    onUpdateVisitedHistory: (controller, url, _) async {
-                      if (url?.toString() == 'about:blank') return;
-                      if (!widget.bridge.historyChanged(url?.toString())) {
-                        await controller.stopLoading();
-                      }
-                    },
-                    onReceivedError: (_, request, _) {
-                      if (request.isForMainFrame != false) {
-                        widget.bridge.reportError();
-                      }
-                    },
-                    onReceivedServerTrustAuthRequest: (_, _) async {
-                      final response = scriptBrowserServerTrustResponse(
-                        defaultTargetPlatform,
-                      );
-                      if (response != null) widget.bridge.reportError();
-                      return response;
-                    },
-                    onCreateWindow: (_, _) async => false,
-                    onPermissionRequest: (_, _) async => PermissionResponse(
-                      action: PermissionResponseAction.DENY,
+                    child: InAppWebView(
+                      key: const ValueKey('trusted_script_browser'),
+                      initialSettings: InAppWebViewSettings(
+                        // Native Apple CookieManager reads the default data
+                        // store, not a nonPersistent WebView store. Use that
+                        // same store under an exclusive lease and explicit
+                        // pre/after cleanup so HttpOnly login cookies work.
+                        incognito: false,
+                        javaScriptEnabled: true,
+                        domStorageEnabled: true,
+                        isInspectable: false,
+                        useShouldOverrideUrlLoading: true,
+                        javaScriptCanOpenWindowsAutomatically: false,
+                        supportMultipleWindows: true,
+                        allowFileAccess: false,
+                        allowContentAccess: false,
+                        allowFileAccessFromFileURLs: false,
+                        allowUniversalAccessFromFileURLs: false,
+                      ),
+                      onWebViewCreated: (controller) {
+                        final driver = _InAppScriptBrowserDriver(controller);
+                        if (!mounted) {
+                          driver.discard();
+                          return;
+                        }
+                        controller.addJavaScriptHandler(
+                          handlerName: ScriptBrowserBridge.resultHandler,
+                          callback: (arguments) {
+                            if (arguments.length == 1) {
+                              widget.bridge.receiveResult(arguments.single);
+                            }
+                            return null;
+                          },
+                        );
+                        try {
+                          widget.bridge.attach(driver);
+                        } on ScriptBrowserException {
+                          // A late native creation can arrive after the bridge
+                          // released its lease. Only dispose this orphan view;
+                          // global cookie cleanup could affect a newer identity.
+                          driver.discard();
+                        }
+                      },
+                      shouldOverrideUrlLoading: (controller, action) async {
+                        return scriptBrowserNavigationPolicy(
+                          widget.bridge,
+                          action.request.url?.toString(),
+                          isForMainFrame: action.isForMainFrame,
+                        );
+                      },
+                      onLoadStart: (controller, url) async {
+                        if (url?.toString() == 'about:blank') return;
+                        if (!widget.bridge.navigationStarted(url?.toString())) {
+                          await controller.stopLoading();
+                        }
+                      },
+                      onLoadStop: (_, url) {
+                        if (url?.toString() == 'about:blank') return;
+                        widget.bridge.navigationFinished(url?.toString());
+                      },
+                      onUpdateVisitedHistory: (controller, url, _) async {
+                        if (url?.toString() == 'about:blank') return;
+                        if (!widget.bridge.historyChanged(url?.toString())) {
+                          await controller.stopLoading();
+                        }
+                      },
+                      onReceivedError: (_, request, _) {
+                        if (request.isForMainFrame != false) {
+                          widget.bridge.reportError();
+                        }
+                      },
+                      onReceivedServerTrustAuthRequest: (_, _) async {
+                        final response = scriptBrowserServerTrustResponse(
+                          defaultTargetPlatform,
+                        );
+                        if (response != null) widget.bridge.reportError();
+                        return response;
+                      },
+                      onCreateWindow: (_, _) async => false,
+                      onPermissionRequest: (_, _) async => PermissionResponse(
+                        action: PermissionResponseAction.DENY,
+                      ),
                     ),
                   ),
                 ),
@@ -270,6 +329,24 @@ class _InAppScriptBrowserDriver implements ScriptBrowserDriver {
   @override
   Future<void> evaluate(String source) async {
     await _controller.evaluateJavascript(source: source);
+  }
+
+  @override
+  Future<void> clearFocus() async {
+    if (_closed) return;
+    // ADR-039 §1: platform focus can outlive Flutter's FocusNode. Never read
+    // input contents; blur the DOM and native responder, then dismiss the IME.
+    await _controller.evaluateJavascript(
+      source: 'document.activeElement?.blur?.();',
+    );
+    if (_closed) return;
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      await _controller.clearFocus();
+    }
+    if (!_closed) {
+      await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+    }
   }
 
   @override

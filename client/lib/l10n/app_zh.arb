@@ -223,6 +223,7 @@
   "scriptsBrowserTitle": "学校页面",
   "scriptsBrowserClose": "关闭并取消",
   "scriptsBrowserLoading": "页面加载中",
+  "scriptsBrowserSigningIn": "正在登录",
   "scriptsBrowserBlocked": "此页面不在脚本声明的站点范围内",
   "scriptsBrowserFailed": "页面操作失败，请重试或关闭",
   "scriptsBrowserUnavailable": "当前平台或网络限制不支持此页面模式，请使用 HTTP 脚本",
@@ -285,5 +286,18 @@
   "scriptsInputInvalid": "请按要求填写或选择此项",
   "scriptsInputNoSelection": "不选择",
   "scriptsInputCancelled": "已取消补充信息",
-  "scriptsInputPermission": "脚本可在运行时请求填写信息；你提交的内容会交给当前学校脚本处理，是否保存由脚本决定。"
+  "scriptsInputPermission": "脚本可在运行时请求填写信息；你提交的内容会交给当前学校脚本处理，是否保存由脚本决定。",
+  "noticeDetailTitle": "通知详情",
+  "noticeDetailLoading": "正在加载正文…",
+  "noticeDetailFailed": "正文暂时无法获取，请重试。",
+  "noticeDetailRetry": "重试",
+  "noticeDetailEmpty": "本条通知未提供文字正文。",
+  "noticeAttachments": "附件",
+  "homeDataUpdatedAt": "更新于 {time}",
+  "@homeDataUpdatedAt": {"placeholders": {"time": {"type": "String"}}},
+  "homeDataStaleAt": "缓存于 {time}，等待更新",
+  "@homeDataStaleAt": {"placeholders": {"time": {"type": "String"}}},
+  "homeCampusTitle": "校园信息",
+  "homeSnapshotUpdatedAt": "{school} · 更新于 {time}",
+  "@homeSnapshotUpdatedAt": {"placeholders": {"school": {"type": "String"}, "time": {"type": "String"}}}
 }

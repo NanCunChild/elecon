@@ -1,9 +1,9 @@
 // 🔒 Copyright 2026 elecon contributors. SPDX-License-Identifier: MPL-2.0
 // ADR-034 §3/§5, ADR-035 §2/§3: the official page owns primary authentication.
 // Harvest verified SSO independently; business requests never render app HTML.
-import { IDS_ACCOUNT_URLS, restore, waitForLogin } from "./browser_login.js";
+import { IDS_ACCOUNT_URLS, inspectLoginPage, restore } from "./browser_login.js";
 import { failure } from "./errors.js";
-import { createClient, parseUrl, readSession, saveSession } from "./session.js";
+import { createClient, parseUrl, readSession, replaceBrowserCookiesForUrl, saveSession } from "./session.js";
 
 const IDS_LOGIN = "https://ids.xidian.edu.cn/authserver/login";
 const TARGETS = {
@@ -26,13 +26,13 @@ export async function webviewLogin(ctx, params, role) {
   if (!ctx.browser) throw new Error("xidian_login_browser_required");
   const deadline = ctx.now() + 100000;
   const ids = await readSession(ctx, "ids");
-  const progress = { polls: 0, phaseLogs: 0, staged: true };
+  const progress = {};
   await restore(ctx, ids, IDS_ACCOUNT_URLS);
   ctx.log?.("info", "xidian_login_open:ids");
   // No service parameter, password extraction, replacement form or protocol
   // login. The user completes the school's own slider and MFA in this page.
   await ctx.browser.open(IDS_LOGIN);
-  const verified = await waitForLogin(ctx, "ids", deadline, ids, ids, progress);
+  const verified = await waitForIdsSession(ctx, deadline, ids, progress);
   const supplied = params.studentId ?? params.account;
   const studentId = (typeof supplied === "string" ? supplied.trim() : "") || progress.studentId;
   const metadata = { role, authFlow: "webview", ...(studentId ? { studentId } : {}) };
@@ -52,6 +52,85 @@ export async function webviewLogin(ctx, params, role) {
       { label: "状态", role: "status", value: "已验证并保存会话" },
     ],
   };
+}
+
+// ADR-039 §2: two authenticated, matching snapshots replace the legacy
+// multi-stage 1200ms settle window. Never log snapshot contents or page URLs.
+export async function waitForIdsSession(ctx, deadline, previous, progress) {
+  let fingerprint;
+  let sampleAt = 0;
+  let captures = 0;
+  let busy = false;
+  for (let poll = 0; poll < 150 && ctx.now() < deadline; poll++) {
+    let state;
+    try {
+      state = await ctx.browser.evaluate(inspectLoginPage, "ids", poll ? (busy ? 250 : 750) : 0);
+    } catch (error) {
+      if (
+        !["browser_navigation_changed", "browser_not_loaded", "browser_failed"].some((code) =>
+          String(error).includes(code),
+        )
+      )
+        throw error;
+      fingerprint = undefined;
+      if (busy) {
+        await ctx.browser.setBusy(false);
+        busy = false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      continue;
+    }
+    if (typeof state?.studentId === "string" && /^\d{6,20}$/.test(state.studentId))
+      progress.studentId = state.studentId;
+    if (!state?.ready) {
+      fingerprint = undefined;
+      if (busy) {
+        await ctx.browser.setBusy(false);
+        busy = false;
+      }
+      continue;
+    }
+    if (!busy) {
+      await ctx.browser.setBusy(true);
+      busy = true;
+    }
+    if (++captures > 6) throw new Error("xidian_login_unstable");
+    const snapshots = await Promise.all(IDS_ACCOUNT_URLS.map((url) => ctx.browser.cookies(url)));
+    let cookies = previous?.cookies ?? [];
+    for (let i = 0; i < IDS_ACCOUNT_URLS.length; i++)
+      cookies = replaceBrowserCookiesForUrl(cookies, IDS_ACCOUNT_URLS[i], snapshots[i]);
+    const sorted = cookies.map((cookie) => JSON.stringify(cookie)).sort();
+    const next = JSON.stringify([state.page, sorted]);
+    if (!cookies.length || next !== fingerprint) {
+      fingerprint = cookies.length ? next : undefined;
+      sampleAt = ctx.now();
+      continue;
+    }
+    if (ctx.now() - sampleAt < 250) continue;
+    // Native Cookie reads may span navigation into login/MFA. The final
+    // location check performs no extra accountSetting request.
+    if ((await ctx.browser.evaluate(inspectIdsLocation)) !== state.page) {
+      fingerprint = undefined;
+      await ctx.browser.setBusy(false);
+      busy = false;
+      continue;
+    }
+    if (ctx.now() >= deadline) throw failure("xidian_login_timeout");
+    return { cookies };
+  }
+  throw failure("xidian_login_timeout");
+}
+
+export function inspectIdsLocation() {
+  const url = new URL(location.href);
+  return url.origin === "https://ids.xidian.edu.cn" &&
+    ["/personalInfo/personCenter/index.html", "/personalInfo/personalMobile/index.html"].includes(
+      url.pathname,
+    ) &&
+    document.readyState === "complete" &&
+    !document.querySelector("#pwdFromId")
+    ? `${url.origin}${url.pathname}`
+    : null;
 }
 
 // Read-only CAS service exchange after harvesting. Does not accept passwords

@@ -60,6 +60,7 @@ Future<Object?> presentScriptBrowser(
             title: l10n.scriptsBrowserTitle,
             close: l10n.scriptsBrowserClose,
             loading: l10n.scriptsBrowserLoading,
+            signingIn: l10n.scriptsBrowserSigningIn,
             blocked: l10n.scriptsBrowserBlocked,
             failed: l10n.scriptsBrowserFailed,
             unavailable: l10n.scriptsBrowserUnavailable,

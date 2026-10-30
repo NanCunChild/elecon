@@ -168,6 +168,7 @@ void main() {
     'destroying the calling page closes the form and cancels its invocation',
     (tester) async {
       var cancelled = false, failed = false;
+      var inputSettled = false;
       final request = ScriptInputRequest.fromJson({
         'title': 'T',
         'fields': [
@@ -183,7 +184,13 @@ void main() {
                   await presentScriptInput(
                     context,
                     package('return {items:[]};'),
-                    (input) => input(request),
+                    (input) async {
+                      try {
+                        return await input(request);
+                      } finally {
+                        inputSettled = true;
+                      }
+                    },
                     onCancel: () => cancelled = true,
                   );
                 } catch (_) {
@@ -200,8 +207,10 @@ void main() {
       await tester.pumpWidget(app(const Text('Replacement page')));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pumpAndSettle();
+      await until(tester, () => inputSettled);
       expect(cancelled, isTrue);
       expect(failed, isTrue);
+      expect(inputSettled, isTrue);
       expect(find.text('School script requests information'), findsNothing);
     },
   );

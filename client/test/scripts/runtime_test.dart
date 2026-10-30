@@ -58,6 +58,46 @@ void main() {
   });
 
   test(
+    'SDK4 exposes a boolean browser busy call; earlier SDKs keep their surface',
+    () async {
+      for (final sdk in [1, 2, 3, 4]) {
+        final calls = <bool>[];
+        final output =
+            await runtime.run(
+                  package: script(
+                    '''export const capabilities={'notice.list':async ctx=>{
+          if (ctx.browser.setBusy) {
+            await ctx.browser.setBusy(true);
+            await ctx.browser.setBusy(false);
+          }
+          return {items:[],sourceSystem:typeof ctx.browser.setBusy};
+        }};''',
+                    sdkVersion: sdk,
+                    browser: true,
+                  ),
+                  capability: 'notice.list',
+                  credentials: ScriptCredentials(
+                    store: store,
+                    schoolId: 'a',
+                    scriptId: sdk >= 2 ? 'school.example' : null,
+                    sdkVersion: sdk,
+                  ),
+                  fetch: response,
+                  browserCall: (method, args) async {
+                    expect(method, 'setBusy');
+                    expect(args.keys, ['busy']);
+                    calls.add(args['busy'] as bool);
+                    return null;
+                  },
+                )
+                as Map;
+        expect(output['sourceSystem'], sdk == 4 ? 'function' : 'undefined');
+        expect(calls, sdk == 4 ? [true, false] : isEmpty);
+      }
+    },
+  );
+
+  test(
     'only fixed failure categories cross the QuickJS result channel',
     () async {
       for (final code in [

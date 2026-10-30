@@ -20,6 +20,7 @@ class _Driver implements ScriptBrowserDriver {
   Completer<void>? cleanup;
   int closes = 0;
   int cookieReads = 0;
+  int focusClears = 0;
   final restoredCookies = <Map<String, Object?>>[];
   final cookieRestoreUrls = <String>[];
   Completer<void>? cookieWriteGate;
@@ -70,6 +71,11 @@ class _Driver implements ScriptBrowserDriver {
   Future<void> stopLoading() async {}
 
   @override
+  Future<void> clearFocus() async {
+    focusClears++;
+  }
+
+  @override
   Future<void> close() async {
     closes++;
     closing = true;
@@ -111,6 +117,96 @@ void main() {
     bridge.attach(driver);
     await bridge.open('https://school.example/page?ticket=SYNTHETIC');
   }
+
+  test(
+    'busy status survives allowed navigation and clears on error or close',
+    () async {
+      await ready();
+      for (final bad in [null, 'true', 1, <String, Object?>{}]) {
+        await expectLater(
+          bridge.call('setBusy', {'busy': bad}),
+          throwsA(code('browser_invalid_argument')),
+        );
+      }
+      await bridge.call('setBusy', {'busy': true});
+      expect(bridge.busy.value, isTrue);
+      expect(driver.focusClears, 1);
+      bridge.navigationStarted('https://sso.school.example/continue');
+      bridge.navigationFinished('https://sso.school.example/continue');
+      expect(bridge.busy.value, isTrue);
+      expect(driver.focusClears, 2);
+      bridge.reportError();
+      expect(bridge.busy.value, isFalse);
+      await bridge.call('setBusy', {'busy': true});
+      expect(bridge.navigationStarted('https://outside.example/'), isFalse);
+      expect(bridge.busy.value, isFalse);
+      await bridge.call('setBusy', {'busy': true});
+      await bridge.close();
+      expect(bridge.busy.value, isFalse);
+      await expectLater(
+        bridge.call('setBusy', {'busy': true}),
+        throwsA(code('browser_closed')),
+      );
+    },
+  );
+
+  testWidgets(
+    'login overlay blocks school controls while cancellation remains available',
+    (tester) async {
+      var schoolTaps = 0;
+      var cancellations = 0;
+      final busy = ValueNotifier(false);
+      final schoolFocus = FocusNode();
+      final semantics = tester.ensureSemantics();
+      addTearDown(busy.dispose);
+      addTearDown(schoolFocus.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Cancel',
+                onPressed: () => cancellations++,
+              ),
+            ),
+            body: ValueListenableBuilder<bool>(
+              valueListenable: busy,
+              builder: (_, value, _) => ScriptBrowserBusyOverlay(
+                busy: value,
+                label: 'Signing in',
+                child: Center(
+                  child: TextButton(
+                    focusNode: schoolFocus,
+                    onPressed: () => schoolTaps++,
+                    child: const Text('School control'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      schoolFocus.requestFocus();
+      await tester.pump();
+      expect(schoolFocus.hasFocus, isTrue);
+      busy.value = true;
+      await tester.pump();
+      expect(schoolFocus.hasFocus, isFalse);
+      expect(find.semantics.byLabel('School control'), findsNothing);
+      await tester.tap(find.text('School control'), warnIfMissed: false);
+      expect(schoolTaps, 0);
+      expect(find.text('Signing in'), findsOneWidget);
+      await tester.tap(find.byTooltip('Cancel'));
+      expect(cancellations, 1);
+      busy.value = false;
+      await tester.pump();
+      expect(find.semantics.byLabel('School control'), findsOneWidget);
+      await tester.tap(find.text('School control'));
+      expect(schoolTaps, 1);
+      semantics.dispose();
+    },
+  );
 
   test(
     'bundled E-Hall explicitly admits its HTTP page without changing its scheme',
@@ -607,6 +703,7 @@ void main() {
         title: 'School page',
         close: 'Close',
         loading: 'Loading',
+        signingIn: 'Signing in',
         blocked: 'Blocked',
         failed: 'Failed',
         unavailable: 'Unavailable',

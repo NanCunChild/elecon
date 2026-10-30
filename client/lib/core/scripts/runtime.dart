@@ -2,6 +2,7 @@
 /// Raw credentials and response headers are intentional in this path. This is
 /// independent of the legacy Broker/Masker execution contract.
 /// ADR-037: SDK 3 adds bounded transient input, redlines #1/#5/#7 unchanged.
+/// ADR-039: SDK 4 adds the fixed browser busy status, preserving cancellation.
 library;
 
 import 'dart:async';
@@ -265,6 +266,9 @@ class TrustedScriptRuntime {
         if (method is! String || args is! Map) {
           throw const ScriptRunException('invalid_browser_operation');
         }
+        if (method == 'setBusy' && package.manifest.sdkVersion < 4) {
+          throw const ScriptRunException('invalid_browser_operation');
+        }
         try {
           // Restored cookies are already known secrets even if the platform
           // rejects the write; diagnostics must never echo their values.
@@ -367,6 +371,7 @@ class TrustedScriptRuntime {
             capability: capability,
             paramsJson: paramsJson,
             browser: package.manifest.browser,
+            browserBusy: package.manifest.sdkVersion >= 4,
             input: package.manifest.sdkVersion >= 3,
             maxOutputBytes: maxOutputBytes,
           ),
@@ -415,6 +420,7 @@ String _bootstrap({
   required String capability,
   required String paramsJson,
   required bool browser,
+  required bool browserBusy,
   required bool input,
   required int maxOutputBytes,
 }) =>
@@ -501,6 +507,7 @@ String _bootstrap({
       }
     };
     ctx.browser = Object.freeze({
+      ${browserBusy ? "setBusy: busy => call('setBusy',{busy})," : ''}
       open: url => call('open',{url:String(url)}),
       evaluate: (source,...args) => call('evaluate',{
         source:typeof source === 'function' ? '(' + String(source) + ').apply(null,' + JSON.stringify(args) + ')' : String(source)

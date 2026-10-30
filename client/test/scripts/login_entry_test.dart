@@ -120,7 +120,11 @@ Future<SessionController> prepare(
   return session;
 }
 
-Widget app(SessionController session, Widget home) {
+Widget app(
+  SessionController session,
+  Widget home, {
+  void Function(Future<Object?> run)? onInputRun,
+}) {
   final theme = ThemeController();
   addTearDown(theme.dispose);
   return ThemeScope(
@@ -137,13 +141,16 @@ Widget app(SessionController session, Widget home) {
         ),
         home: Builder(
           builder: (context) {
-            session.scriptInputPresenter = (package, execute) =>
-                presentScriptInput(
-                  context,
-                  package,
-                  execute,
-                  onCancel: session.cancelTrustedScriptRuns,
-                );
+            session.scriptInputPresenter = (package, execute) {
+              final run = presentScriptInput(
+                context,
+                package,
+                execute,
+                onCancel: session.cancelTrustedScriptRuns,
+              );
+              onInputRun?.call(run);
+              return run;
+            };
             return home;
           },
         ),
@@ -400,8 +407,24 @@ void main() {
     'switching schools while input is open cannot replay the old query',
     (tester) async {
       final session = await prepare(tester);
+      var inputCompleted = false;
+      Object? inputFailure;
       await tester.pumpWidget(
-        app(session, const Scaffold(body: CardSection())),
+        app(
+          session,
+          const Scaffold(body: CardSection()),
+          onInputRun: (run) {
+            run.then<void>(
+              (_) {
+                inputCompleted = true;
+              },
+              onError: (Object error) {
+                inputFailure = error;
+                inputCompleted = true;
+              },
+            );
+          },
+        ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('查看余额'));
@@ -417,6 +440,18 @@ void main() {
       await tester.enterText(find.byType(TextFormField), 'CARD-SYNTHETIC-OLD');
       await tester.tap(find.text('Submit and continue'));
       await tester.pumpAndSettle();
+      // QuickJS closes in a real isolate. Frame settlement alone does not
+      // await its close acknowledgement or the native-input invocation.
+      await until(tester, () => inputCompleted);
+      expect(
+        inputFailure,
+        isA<ScriptRunException>().having(
+          (error) => error.code,
+          'code',
+          'invocation_cancelled',
+        ),
+      );
+      expect(find.text('School script requests information'), findsNothing);
       expect(find.textContaining('12.34'), findsNothing);
       expect(session.credentialCount, 0);
       expect(tester.takeException(), isNull);

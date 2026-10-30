@@ -4,6 +4,81 @@ import test from "node:test";
 import { createLogin } from "../src/login.js";
 import { harness, response } from "./webview.fixture.mjs";
 
+test("IDS settles in two snapshots 250ms apart and blocks touches before business exchange", async () => {
+  const h = harness();
+  await createLogin("undergraduate")(h.ctx);
+  const probes = h.events.filter(([type]) => type === "inspect");
+  assert.deepEqual(
+    probes.map(([, , delay]) => delay),
+    [0, 250],
+  );
+  assert.equal(h.events.filter(([type]) => type === "cookies").length, 12);
+  const busyAt = h.events.findIndex(([type, busy]) => type === "busy" && busy);
+  assert.ok(busyAt < h.events.findIndex(([type]) => type === "cookies"));
+  assert.ok(busyAt < h.events.findIndex(([type]) => type === "request"));
+});
+
+test("IDS cookie rotation restarts settling and cookie order does not delay completion", async () => {
+  for (const rotate of [true, false]) {
+    const h = harness();
+    let reads = 0;
+    h.ctx.browser.cookies = async () => {
+      const sample = Math.floor(reads++ / 6);
+      const cookies = [
+        {
+          name: "CASTGC",
+          value: rotate && sample === 0 ? "EXAMPLE_SYNTHETIC_INITIAL" : "EXAMPLE_SYNTHETIC_GLOBAL",
+          path: "/authserver",
+        },
+        { name: "JSESSIONID", value: "EXAMPLE_SYNTHETIC_SESSION", path: "/" },
+      ];
+      return sample % 2 ? cookies.reverse() : cookies;
+    };
+    await createLogin("undergraduate")(h.ctx);
+    assert.equal(reads, rotate ? 18 : 12);
+  }
+});
+
+test("empty or continuously rotating IDS cookies never commit a session", async () => {
+  for (const empty of [false, true]) {
+    const h = harness();
+    let sample = 0;
+    h.ctx.browser.cookies = async () =>
+      empty ? [] : [{ name: "CASTGC", value: `EXAMPLE_SYNTHETIC_ROTATING_${sample++}`, path: "/authserver" }];
+    await assert.rejects(createLogin("undergraduate")(h.ctx), /xidian_login_unstable/);
+    assert.equal(h.records.size, 0);
+    assert.ok(!h.events.some(([type]) => type === "request"));
+  }
+});
+
+test("cancellation while harvesting under the overlay never saves or exchanges a session", async () => {
+  const h = harness();
+  h.ctx.browser.cookies = async () => {
+    throw new Error("script_cancelled");
+  };
+  await assert.rejects(createLogin("undergraduate")(h.ctx), /script_cancelled/);
+  assert.ok(h.events.some(([type, busy]) => type === "busy" && busy));
+  assert.equal(h.records.size, 0);
+  assert.ok(!h.events.some(([type]) => type === "request"));
+});
+
+test("returning to MFA clears the overlay and navigation during snapshots cannot save", async () => {
+  for (const lateNavigation of [false, true]) {
+    const h = harness();
+    const evaluate = h.ctx.browser.evaluate;
+    let probes = 0;
+    h.ctx.browser.evaluate = async (fn, ...args) => {
+      const state = await evaluate(fn, ...args);
+      if (fn.name === "inspectIdsLocation") return null;
+      probes++;
+      return (!lateNavigation && probes > 1) || (lateNavigation && probes > 2) ? { ready: false } : state;
+    };
+    await assert.rejects(createLogin("undergraduate")(h.ctx), /xidian_login_timeout/);
+    assert.ok(h.events.some(([type, busy]) => type === "busy" && busy === false));
+    assert.equal(h.records.size, 0);
+  }
+});
+
 for (const role of ["undergraduate", "postgraduate"]) {
   test(`${role}: default login only renders official IDS and commits verified API session`, async () => {
     const system = role === "postgraduate" ? "yjspt" : "ehall";

@@ -155,6 +155,7 @@
   "scriptsBrowserTitle": "School page",
   "scriptsBrowserClose": "Close and cancel",
   "scriptsBrowserLoading": "Loading page",
+  "scriptsBrowserSigningIn": "Signing in",
   "scriptsBrowserBlocked": "This page is outside the script’s declared sites",
   "scriptsBrowserFailed": "Page operation failed. Retry or close the page.",
   "scriptsBrowserUnavailable": "Page mode is unavailable for this platform or network policy. Use an HTTP script.",
@@ -217,5 +218,18 @@
   "scriptsInputInvalid": "Enter or select a valid value",
   "scriptsInputNoSelection": "No selection",
   "scriptsInputCancelled": "Information request cancelled",
-  "scriptsInputPermission": "The script may request information while running. Submitted values go to this school script, which decides whether to save them."
+  "scriptsInputPermission": "The script may request information while running. Submitted values go to this school script, which decides whether to save them.",
+  "noticeDetailTitle": "Notice details",
+  "noticeDetailLoading": "Loading notice…",
+  "noticeDetailFailed": "The notice could not be loaded. Please try again.",
+  "noticeDetailRetry": "Retry",
+  "noticeDetailEmpty": "This notice has no text content.",
+  "noticeAttachments": "Attachments",
+  "homeDataUpdatedAt": "Updated {time}",
+  "@homeDataUpdatedAt": {"placeholders": {"time": {"type": "String"}}},
+  "homeDataStaleAt": "Cached data from {time}",
+  "@homeDataStaleAt": {"placeholders": {"time": {"type": "String"}}},
+  "homeCampusTitle": "Campus information",
+  "homeSnapshotUpdatedAt": "{school} · Updated {time}",
+  "@homeSnapshotUpdatedAt": {"placeholders": {"school": {"type": "String"}, "time": {"type": "String"}}}
 }

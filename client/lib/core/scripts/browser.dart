@@ -55,6 +55,7 @@ abstract interface class ScriptBrowserDriver {
   Future<void> evaluate(String source);
   Future<List<Map<String, Object?>>> cookies(Uri url);
   Future<void> setCookies(String url, List<Map<String, Object?>> cookies);
+  Future<void> clearFocus();
   Future<void> stopLoading();
   Future<void> close();
 }
@@ -79,6 +80,8 @@ class ScriptBrowserBridge {
   final ValueNotifier<ScriptBrowserState> state = ValueNotifier(
     const ScriptBrowserState(ScriptBrowserPhase.waiting),
   );
+  // ADR-039 §1: fixed host presentation, scoped to this browser invocation.
+  final ValueNotifier<bool> busy = ValueNotifier(false);
   final _driverReady = Completer<ScriptBrowserDriver>();
   final _random = Random.secure();
   final _closedSignal = Completer<void>();
@@ -154,6 +157,19 @@ class ScriptBrowserBridge {
   Future<Object?> call(String method, Map<String, Object?> args) async {
     _checkActive();
     switch (method) {
+      case 'setBusy':
+        final value = args['busy'];
+        if (value is! bool) {
+          throw const ScriptBrowserException('browser_invalid_argument');
+        }
+        final driver = await _ready();
+        _checkActive();
+        busy.value = value;
+        if (value) {
+          await _whileActive(driver.clearFocus()).timeout(evaluateTimeout);
+          _checkActive();
+        }
+        return null;
       case 'open':
         await open(_string(args, 'url'));
         return null;
@@ -342,6 +358,7 @@ class ScriptBrowserBridge {
     }
     final url = Uri.tryParse(value);
     if (url == null || !policy.allowsUrl(url)) {
+      busy.value = false;
       throw const ScriptBrowserException('browser_navigation_blocked');
     }
     return url;
@@ -387,6 +404,7 @@ class ScriptBrowserBridge {
     if (_closed) return false;
     final url = value == null ? null : Uri.tryParse(value);
     if (url == null || !policy.allowsUrl(url)) {
+      busy.value = false;
       _failPending('browser_navigation_blocked');
       _failLoading('browser_navigation_blocked');
       _currentUrl = null;
@@ -414,6 +432,14 @@ class ScriptBrowserBridge {
       return;
     }
     _currentUrl = url;
+    if (busy.value) {
+      // ADR-039 §1: a new document can autofocus native input while masked.
+      unawaited(
+        _driver?.clearFocus().catchError((Object _) {
+          if (!_closed) reportError();
+        }),
+      );
+    }
     state.value = ScriptBrowserState(
       ScriptBrowserPhase.ready,
       origin: _origin(url),
@@ -432,6 +458,7 @@ class ScriptBrowserBridge {
 
   void reportError() {
     if (_closed || state.value.phase == ScriptBrowserPhase.blocked) return;
+    busy.value = false;
     _failPending('browser_page_failed');
     _failLoading('browser_page_failed');
     _currentUrl = null;
@@ -533,6 +560,7 @@ class ScriptBrowserBridge {
   Future<void> _close() async {
     if (_closed) return;
     _closed = true;
+    busy.value = false;
     _closedSignal.complete();
     _failPending('browser_closed');
     _failLoading('browser_closed');

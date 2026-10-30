@@ -32,11 +32,18 @@ export function harness({ system = "ehall", cancel = false, badProbe = false, id
         assert.equal(new URL(url).host, "ids.xidian.edu.cn");
         events.push(["restore", url]);
       },
-      async evaluate(fn, stage) {
+      async setBusy(busy) {
+        events.push(["busy", busy]);
+      },
+      async evaluate(fn, stage, delay) {
+        if (fn.name === "inspectIdsLocation") {
+          events.push(["location"]);
+          return "https://ids.xidian.edu.cn/personalInfo/personalMobile/index.html";
+        }
         assert.equal(fn.name, "inspectLoginPage");
         assert.equal(stage, "ids");
-        clock += 1000;
-        events.push(["inspect", stage]);
+        clock += delay ?? 0;
+        events.push(["inspect", stage, delay]);
         return {
           ready: idsReady,
           page: "https://ids.xidian.edu.cn/personalInfo/personalMobile/index.html",
