@@ -47,5 +47,7 @@ V1 兼容路径的整改与阻塞状态见 [`2026_08_review_remediation.md`](../
 | [033](./adr_033_production_sideload.md) | Accepted | **V1 bundle 本地导入未落地**（其 C3 仍在位）；ADR-034 源码包本地导入独立实现 | 落地须人工主导 + 安全清单 + ≥1 人工审 | §5 连带清单须同批落地；§6 开放问题按实现分项阻塞 |
 | [034](./adr_034_trusted_school_scripts.md) | Accepted（2026-10-29 所有者会话授权） | 已实现；2026-10-30 增加西电脚本与 STRING_ROPE 桥接修复，见 [计划](../planning/trusted_scripts.md) | 待人工复核与平台真机 | 新源码脚本路径显式覆盖 #1/#4/#5 旧约束；没有声称退役全部 V1 |
 | [035](./adr_035_script_credential_identity.md) | Accepted（2026-10-29 所有者检查与修复授权） | SDK 2 与多凭据行为见[阶段记录](../planning/trusted_scripts.md) | 待人工复核与平台真机 | 细化 ADR-034；SDK 1 保留预览兼容 |
+| [036](./adr_036_card_account_identity.md) | Accepted（2026-10-30 所有者确认） | 已实现可选卡号，回归见受信脚本计划 | 待真机及人工审阅 | 不用学号/openid/占位值伪造卡号；不新增支付/换卡能力 |
+| [037](./adr_037_script_input.md) | Accepted（2026-10-30 所有者要求通用输入接口） | SDK 3 固定输入表单已实现，核心回归见计划 | 待真机及人工审阅 | SDK 2 凭据寻址保留，不增加任意 UI/原生能力 |
 
 更新规则：接受或废弃 ADR 时更新 `Decision`；实现 PR 只更新 `Landing`；安全签收必须附人工复核引用，不能以 smoke 通过代替。

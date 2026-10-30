@@ -2,6 +2,8 @@
 
 配合 [`AGENTS.md`](../../AGENTS.md) 与 [`docs/rules/ai_coding.md`](ai_coding.md) 阅读，约束在后者基础上**叠加**。立场：**UI 可以大量交给 AI 生成，但生成必须落在 [ADR-004](../adr/adr_004_ui_sdui.md) 的框内**——elecon 不做完整 SDUI（无 Widget-tree JSON），UI = 客户端硬编码的**有界卡片组件集** + generic 域固定模板。AI 自由发挥页面布局会直接和这套架构打架。
 
+> ADR-037 增量：SDK 3 允许脚本显式请求固定 text/password/select 输入表单。学校字段与调用时机属于脚本，宿主只渲染有界工具表单，不接收 Widget-tree/任意验证代码；提交内容由脚本处理，UI 不取得完整凭据库。
+
 > ADR-034 增量：学校脚本工作台与可见浏览器宿主属于固定客户端工具页，不是脚本下发的布局；仍使用 Material 3/l10n。UI 可展示已校验业务结果和净化日志，不取得完整凭据库。
 
 视觉基线：**Material 3**（M3 的 token 化主题契合 ADR-004「token 随主题变、组件不感知」）。

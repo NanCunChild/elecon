@@ -4,7 +4,7 @@
 - **Landing**：见 `docs/planning/trusted_scripts.md`；Accepted 不代表实现人工安全签收。
 - **覆盖**：ADR-000 §3.3、ADR-002/009/018/022/023/026/033 中与新 `elecon-script/1` 路径冲突的约束；既有 official bundle 路径在迁移期间保持原有语义。
 
-> 2026-10-29 复核：凭据描述符、SDK 2、元数据更新与异常后的保存由 [ADR-035](adr_035_script_credential_identity.md) 细化。本文 SDK 1 记载的是首版预览语义，新脚本使用 SDK 2；包格式仍为 `elecon-script/1`。Masker **只在新路径免除，尚未全仓删除**，在役旧链与退役条件见 [审计记录](../reference/masker_retirement_audit.md)。
+> 2026-10-29 复核：凭据描述符、SDK 2、元数据更新与异常后的保存由 [ADR-035](adr_035_script_credential_identity.md) 细化。本文 SDK 1 记载的是首版预览语义，SDK 2 凭据寻址仍有效；[ADR-037](adr_037_script_input.md) 按所有者要求新增 SDK 3 原生输入接口。包格式仍为 `elecon-script/1`。Masker **只在新路径免除，尚未全仓删除**，在役旧链与退役条件见 [审计记录](../reference/masker_retirement_audit.md)。
 
 ## 1. 目标与范围
 
@@ -45,6 +45,10 @@ network.origins 是精确 HTTP(S) origin 列表（scheme、host、port；不支�
 取消/超时关闭宿主回调并终止调用；宿主错误不回传未净化 URL/凭据。已知凭据从日志中抹除，但不承诺识别脚本主动编码的数据。远端网络副作用无法回滚。原有数据卡片继续复用，脚本工具支持通用结果展示；不让一个通知接口失败阻断其他入口。
 
 2026-10-30 实施修复：实际西电课表暴露 `flutter_qjs_next 1.2.1` 的 `_jsToDart` 未处理 `STRING_ROPE`，长拼接字符串可跨桥成为 null。宿主 SDK 在既有字符串字段（凭据、HTTP body/header、浏览器 source/Cookie 等）与严格编码后的最终输出上调用 QuickJS `String()` 线性化；非字符串保留原类型，严格 JSON 编码与输出大小/schema 校验不变。没有修改 SDK 格式、增加权限或改变依赖 pin；真实 QuickJS 回归覆盖大于 512 字节的拼接值，不能只用 Node fixture 代替此项验证。
+
+同日错误净化修复：脚本 Error.code 仅允许宿主固定类别（缺卡号、缺学号、需认证、认证超时、响应不可识别、网络拒绝）进入错误结果；任意 message 和未认可的 code 仍归一为 `adapter_failed`。固定类别及首页补填行为见[使用文档](../reference/trusted_scripts.md)。不新增任意异常文本透传或宿主权限，不改包 manifest/标准业务 schema。
+
+同日 E-Hall HTTP 拟真测试：真实跳转包含 `https://ehall.xidian.edu.cn → http://ehall.xidian.edu.cn`。先前强制 HTTPS 的尝试在所有者复测中进入维护页，因此已撤回自动协议改写。按所有者明确要求及 §4 的既定 HTTP 声明机制，两校源码包 0.8.3 显式加入精确 `http://ehall.xidian.edu.cn`；用户确认新源码后保留学校原始跳转。业务验证、Cookie 采集和后续取数复用实际验证的 E-Hall origin。其他站点/端口仍由原网络清单裁定，跨源敏感 POST 仍不自动重放；没有全局允许 HTTP 或修改包契约。
 
 ## 7. 验收与审阅
 
