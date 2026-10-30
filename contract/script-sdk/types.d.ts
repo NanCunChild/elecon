@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1/2 (ADR-034/035). Values include actual secrets.
+/** Trusted school script SDK 1/2/3 (ADR-034/035/037). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -59,6 +59,10 @@ export interface ScriptBrowser {
   }>): Promise<void>;
 }
 export interface ScriptContext {
+  /** SDK 3 only: fixed transient native form; no automatic persistence/retry. */
+  readonly ui?: {
+    requestInput(request: ScriptInputRequest): Promise<Record<string, string> | null>;
+  };
   /** Current authorized school only; revoked sessions are unavailable.
    * SDK2 list retains every namespace; get(record.key,{namespace:record.namespace}) round-trips.
    * set/delete resolve after in-memory acceptance; the host awaits storage at run end.
@@ -79,6 +83,24 @@ export interface ScriptContext {
   readonly browser?: ScriptBrowser;
   now(): number;
   log(level: "debug" | "info" | "warn" | "error", message: string): void;
+}
+/** ADR-037: 1–8 fields; request ≤32 KiB; up to 8 serial requests per run. */
+export interface ScriptInputRequest {
+  title: string;
+  message?: string;
+  fields: Array<{
+    id: string;
+    label: string;
+    type?: "text" | "password" | "select";
+    /** Defaults to true. */
+    required?: boolean;
+    /** Defaults to 128; maximum 4096 UTF-16 code units. */
+    maxLength?: number;
+    /** Forbidden for password. For select it must be one declared value. */
+    initialValue?: string;
+    /** Required for select, forbidden otherwise; 1–20 unique values. */
+    options?: Array<{ label: string; value: string }>;
+  }>;
 }
 export type CapabilityHandler = (ctx: ScriptContext, params: Record<string, unknown>) => Promise<unknown>;
 export interface CapabilityModule {

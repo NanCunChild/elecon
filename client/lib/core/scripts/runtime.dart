@@ -1,6 +1,7 @@
 /// 🔒 Trusted async JavaScript in a background isolate (ADR-034 §3–§6).
 /// Raw credentials and response headers are intentional in this path. This is
 /// independent of the legacy Broker/Masker execution contract.
+/// ADR-037: SDK 3 adds bounded transient input, redlines #1/#5/#7 unchanged.
 library;
 
 import 'dart:async';
@@ -10,7 +11,9 @@ import 'package:elecon_contract/output_validator_registry.dart';
 import 'package:flutter_qjs_next/flutter_qjs.dart';
 
 import 'credentials.dart';
+import 'browser.dart';
 import 'manifest.dart';
+import 'input.dart';
 
 class ScriptRunException implements Exception {
   const ScriptRunException(this.code);
@@ -30,6 +33,7 @@ class TrustedScriptRuntime {
     required Future<Map<String, Object?>> Function(String, Map<String, dynamic>)
     fetch,
     Future<Object?> Function(String, Map<String, Object?>)? browserCall,
+    ScriptInputCall? inputCall,
     bool Function()? isActive,
     String? htmlStdlib,
     void Function(String level, String message)? onLog,
@@ -58,7 +62,7 @@ class TrustedScriptRuntime {
     if (decl == null) throw const ScriptRunException('capability_not_declared');
     if (credentials.schoolId != package.manifest.schoolId ||
         credentials.sdkVersion != package.manifest.sdkVersion ||
-        (package.manifest.sdkVersion == 2 &&
+        (package.manifest.sdkVersion >= 2 &&
             credentials.scriptId != package.manifest.id)) {
       throw const ScriptRunException('identity_mismatch');
     }
@@ -74,6 +78,8 @@ class TrustedScriptRuntime {
     final knownSecrets = credentials.secretValues.toSet();
     var logs = 0;
     var logBytes = 0;
+    var inputRequests = 0;
+    var inputPending = false;
     ScriptRunException? fatal;
     void check({bool count = true}) {
       if (fatal != null) throw fatal!;
@@ -100,6 +106,46 @@ class TrustedScriptRuntime {
       hostPromiseRejectionHandler: (_) {},
     );
     qjs.setHostFunctions({
+      '__script_input': (dynamic encoded) async {
+        check();
+        if (package.manifest.sdkVersion < 3) {
+          throw const ScriptRunException('input_unavailable');
+        }
+        if (inputPending) throw const ScriptRunException('input_busy');
+        if (++inputRequests > 8) {
+          fatal = const ScriptRunException('input_limit');
+          throw fatal!;
+        }
+        if (encoded is! String) {
+          throw const ScriptRunException('input_invalid_request');
+        }
+        try {
+          final request = ScriptInputRequest.decode(encoded);
+          final input = inputCall;
+          if (input == null) {
+            throw const ScriptRunException('input_unavailable');
+          }
+          inputPending = true;
+          final raw = await input(request);
+          check(count: false);
+          // ADR-037 §2: all submitted fields, including ordinary identifiers,
+          // are secrets before any JS code can log or persist the result.
+          if (raw is Map) {
+            for (final value in raw.values) {
+              if (value is String && value.isNotEmpty) knownSecrets.add(value);
+            }
+          }
+          return jsonEncode(request.validateResult(raw));
+        } on ScriptInputException catch (error) {
+          throw ScriptRunException(error.code);
+        } on ScriptRunException {
+          rethrow;
+        } catch (_) {
+          throw const ScriptRunException('input_unavailable');
+        } finally {
+          inputPending = false;
+        }
+      },
       '__script_fetch': (dynamic url, dynamic init) async {
         check();
         if (++requests > maxRequests) {
@@ -251,6 +297,16 @@ class TrustedScriptRuntime {
           return jsonEncode(result);
         } on ScriptRunException {
           rethrow;
+        } on ScriptBrowserException catch (error) {
+          // ADR-034 §6: forward only known stable codes, never native text/URLs.
+          final code = switch (error.code) {
+            'browser_navigation_blocked' ||
+            'browser_navigation_changed' ||
+            'browser_not_loaded' ||
+            'browser_closed' => error.code,
+            _ => 'browser_failed',
+          };
+          throw ScriptRunException(code);
         } catch (_) {
           throw const ScriptRunException('browser_failed');
         }
@@ -311,6 +367,7 @@ class TrustedScriptRuntime {
             capability: capability,
             paramsJson: paramsJson,
             browser: package.manifest.browser,
+            input: package.manifest.sdkVersion >= 3,
             maxOutputBytes: maxOutputBytes,
           ),
         );
@@ -358,6 +415,7 @@ String _bootstrap({
   required String capability,
   required String paramsJson,
   required bool browser,
+  required bool input,
   required int maxOutputBytes,
 }) =>
     '''
@@ -414,8 +472,34 @@ String _bootstrap({
         arrayBuffer:async()=>(new Uint8Array(r.bodyBytes || [])).buffer});
     },
   };
+  if ($input) {
+    ctx.ui = Object.freeze({requestInput: async request => {
+      try {
+        return JSON.parse(await globalThis.__script_input(String(JSON.stringify(request))));
+      } catch (error) {
+        const codes = ['input_invalid_request','input_invalid_result','input_unavailable',
+          'input_busy','input_limit','invocation_cancelled'];
+        const code = codes.find(value => String(error).includes('ScriptRunException(' + value + ')'));
+        if (!code) throw error;
+        const failure = new Error(code);
+        failure.code = code;
+        throw failure;
+      }
+    }});
+  }
   if ($browser) {
-    const call = async (method,args) => JSON.parse(await globalThis.__script_browser(method,flatFields(args)));
+    const call = async (method,args) => {
+      try { return JSON.parse(await globalThis.__script_browser(method,flatFields(args))); }
+      catch (error) {
+        // The native bridge supplies a fixed code, never its rejected URL.
+        if (String(error).includes('ScriptRunException(browser_navigation_blocked)')) {
+          const failure = new Error('browser_navigation_blocked');
+          failure.code = 'network_denied';
+          throw failure;
+        }
+        throw error;
+      }
+    };
     ctx.browser = Object.freeze({
       open: url => call('open',{url:String(url)}),
       evaluate: (source,...args) => call('evaluate',{
@@ -469,7 +553,13 @@ String _bootstrap({
       const stack = String(e && e.stack || '');
       globalThis.__script_log('error',String((message + '\\n' + stack).slice(0,4096)));
     } catch (_) {}
-    const code = e && (e.message === 'non_json_output' || e.message === 'output_limit' || e.message === 'unsupported_encoding') ? e.message : 'adapter_failed';
+    // ADR-034 §6: only a fixed vocabulary may cross the error result channel.
+    // A script can classify a failure without exposing its message or data.
+    const safeCodes = new Set(['input_required_card_number','input_required_student_id',
+      'authentication_required','authentication_timeout','source_response_invalid','network_denied',
+      'input_invalid_request','input_invalid_result','input_unavailable','input_busy','input_limit','input_cancelled']);
+    const code = e && (e.message === 'non_json_output' || e.message === 'output_limit' || e.message === 'unsupported_encoding')
+      ? e.message : e && safeCodes.has(e.code) ? e.code : 'adapter_failed';
     return JSON.stringify({ok:false,code});
   }
 })()

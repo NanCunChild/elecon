@@ -9,6 +9,11 @@
 
 ---
 
+- **2026-10-30 · 可选卡号与脚本输入 SDK 3（ADR-036 / ADR-037）**
+  - 所有者确认学校未提供卡号时不强制手填：`card.balance` / `card.transactions` 移除 cardNumber required，有值仍须为非空真实卡号。预公测按 ADR-001 §8 显式更正 1.0；生成 Dart/TS、客户端校验/解码/固定卡片同批更新，金额/流水要求不变。
+  - `elecon-script/1` 支持 SDK 3，继承 SDK 2 完整凭据寻址，新增 `ctx.ui.requestInput` 固定表单（text/password/select）。用户取消返回 null，输入不自动保存/变更参数或重跑；宿主校验大小/结果、计数/并发/取消并净化输入日志。旧 SDK 1/2 不获得新 API，未知 SDK 拒绝。
+  - 新客户端 0.3.0+6 配套西电源码 0.12.0/SDK 3；旧源码与 V1 签名包字节不变。移除首页按卡号/学号错误码猜测表单的补丁；校本脚本决定何时索要学号，无卡号余额/流水不索要输入。
+
 - **2026-10-30 · 西电日期流水的来源说明校正（ADR-034 §3–§4 / ADR-035）**
   - `params.card.transactions.schema.json` 仅修改过期的 `$comment`：新西电脚本按参考源码使用日期窗口 JSON 接口与本地分页，不能再写“西电不支持 from/to / adapter 可忽略”。字段、format、capability/schema 版本与验证行为均不变。
   - 学校源码及长字符串桥接修复使用现有 SDK 2 能力，没有新增标准 capability、schema 字段或脚本权限；卡号必填与其它业务缺口单列评估，没有伪造来源或静默放宽契约。

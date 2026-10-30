@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:elecon/ui/scripts/script_browser_page.dart';
+import 'package:elecon/ui/scripts/bundled_scripts.dart';
 
 class _Driver implements ScriptBrowserDriver {
   _Driver(this.bridge);
@@ -111,6 +112,144 @@ void main() {
     await bridge.open('https://school.example/page?ticket=SYNTHETIC');
   }
 
+  test(
+    'bundled E-Hall explicitly admits its HTTP page without changing its scheme',
+    () async {
+      for (final school in bundledScriptSchools) {
+        final package = (await school.load()).single;
+        final browser = ScriptBrowserBridge(
+          policy: package.manifest.network,
+          available: true,
+        );
+        final native = _Driver(browser);
+        browser.attach(native);
+        const target =
+            'http://ehall.xidian.edu.cn/jwapp/sys/wdkb/index.do?ticket=SYNTHETIC';
+        try {
+          expect(
+            scriptBrowserNavigationPolicy(
+              browser,
+              target,
+              isForMainFrame: true,
+            ),
+            NavigationActionPolicy.ALLOW,
+          );
+          await browser.open(target);
+          expect(native.loads, [target]);
+          expect(browser.state.value.origin, 'http://ehall.xidian.edu.cn');
+          for (final denied in [
+            'http://ehall.xidian.edu.cn:8080/path',
+            'http://ehall.xidian.edu.cn.evil.example/path',
+            'http://ids.xidian.edu.cn/authserver/login',
+          ]) {
+            expect(
+              package.manifest.network.allowsUrl(Uri.parse(denied)),
+              isFalse,
+            );
+          }
+        } finally {
+          await browser.close();
+        }
+      }
+      expect(
+        scriptBrowserNavigationPolicy(
+          bridge,
+          'http://school.example/page',
+          isForMainFrame: true,
+        ),
+        NavigationActionPolicy.CANCEL,
+      );
+    },
+  );
+
+  test(
+    'both bundled login policies admit the witnessed campus card OAuth redirects',
+    () async {
+      for (final school in bundledScriptSchools) {
+        final packages = await school.load();
+        final login = packages.singleWhere(
+          (package) => package.manifest.browser,
+        );
+        final browser = ScriptBrowserBridge(
+          policy: login.manifest.network,
+          available: true,
+        );
+        final native = _Driver(browser);
+        browser.attach(native);
+        final origins = <String?>[];
+        browser.state.addListener(
+          () => origins.add(browser.state.value.origin),
+        );
+        native.onLoad = (_) {
+          for (final url in [
+            'https://v8scan.xidian.edu.cn/home/openXDOAuth2Page',
+            'https://xxcapp.xidian.edu.cn/oauth/authorize?code=SYNTHETIC',
+            'https://ids.xidian.edu.cn:443/authserver/login?service=SYNTHETIC',
+            'https://xxcapp.xidian.edu.cn/callback?ticket=SYNTHETIC',
+            'https://v8scan.xidian.edu.cn/home/openHomePage?openid=SYNTHETIC',
+          ]) {
+            expect(browser.navigationStarted(url), isTrue);
+          }
+          browser.navigationFinished(
+            'https://v8scan.xidian.edu.cn/home/openHomePage?openid=SYNTHETIC',
+          );
+        };
+        try {
+          await browser.open(
+            'https://v8scan.xidian.edu.cn/home/openXDOAuth2Page',
+          );
+          expect(browser.state.value.phase, ScriptBrowserPhase.ready);
+          expect(origins, contains('https://xxcapp.xidian.edu.cn'));
+          expect(origins.join(), isNot(contains('SYNTHETIC')));
+          expect(
+            browser.navigationStarted(
+              'https://xxcapp.xidian.edu.cn.evil.example/?token=SYNTHETIC',
+            ),
+            isFalse,
+          );
+          expect(browser.state.value.phase, ScriptBrowserPhase.blocked);
+        } finally {
+          await browser.close();
+        }
+      }
+    },
+  );
+
+  test(
+    'native blank-page callbacks are cancelled without presenting a false origin failure',
+    () async {
+      expect(
+        scriptBrowserNavigationPolicy(
+          bridge,
+          'about:blank',
+          isForMainFrame: true,
+        ),
+        NavigationActionPolicy.CANCEL,
+      );
+      expect(bridge.state.value.phase, ScriptBrowserPhase.waiting);
+      await ready();
+      expect(
+        scriptBrowserNavigationPolicy(
+          bridge,
+          'about:blank',
+          isForMainFrame: true,
+        ),
+        NavigationActionPolicy.CANCEL,
+      );
+      expect(bridge.state.value.phase, ScriptBrowserPhase.ready);
+      expect(bridge.state.value.origin, 'https://school.example');
+      expect(
+        scriptBrowserNavigationPolicy(
+          bridge,
+          'https://other.example/?ticket=SYNTHETIC',
+          isForMainFrame: true,
+        ),
+        NavigationActionPolicy.CANCEL,
+      );
+      expect(bridge.state.value.phase, ScriptBrowserPhase.blocked);
+    },
+  );
+
   test('exclusive lease is shared, released idempotently, and reusable', () {
     final lease = ScriptBrowserLease.tryAcquire('legacy-login')!;
     expect(ScriptBrowserLease.busy, isTrue);
@@ -169,6 +308,32 @@ void main() {
     expect(bridge.navigationStarted('https://school.example:444/'), isFalse);
   });
 
+  test(
+    'blocked diagnostics strip secrets and survive native cancellation callbacks',
+    () async {
+      await ready();
+      expect(
+        bridge.navigationStarted(
+          'https://user:SYNTHETIC@other.example:444/secret;ticket=SYNTHETIC?token=SYNTHETIC#SYNTHETIC',
+        ),
+        isFalse,
+      );
+      expect(bridge.state.value.origin, 'https://other.example:444');
+      bridge.reportError();
+      bridge.navigationFinished('https://school.example/stale');
+      expect(bridge.state.value.phase, ScriptBrowserPhase.blocked);
+      await expectLater(
+        bridge.evaluate('1'),
+        throwsA(code('browser_navigation_blocked')),
+      );
+      expect(bridge.navigationStarted('custom:SYNTHETIC'), isFalse);
+      expect(bridge.state.value.origin, isNull);
+      expect(bridge.navigationStarted('https://school.example/retry'), isTrue);
+      bridge.navigationFinished('https://school.example/retry');
+      expect(bridge.state.value.phase, ScriptBrowserPhase.ready);
+    },
+  );
+
   test('allowed redirects settle open; external redirect rejects it', () async {
     bridge.attach(driver);
     driver.onLoad = (_) {
@@ -183,7 +348,7 @@ void main() {
       bridge.open('https://school.example/'),
       throwsA(code('browser_navigation_blocked')),
     );
-    expect(bridge.state.value.origin, isNull);
+    expect(bridge.state.value.origin, 'https://other.example');
   });
 
   test(
@@ -413,6 +578,29 @@ void main() {
   testWidgets(
     'unsupported page shows supplied labels and closes without native view',
     (tester) async {
+      final previousLogging =
+          PlatformInAppWebViewController.debugLoggingSettings;
+      addTearDown(() {
+        PlatformInAppWebViewController.debugLoggingSettings = previousLogging;
+      });
+      PlatformInAppWebViewController.debugLoggingSettings =
+          DebugLoggingSettings(enabled: true, usePrint: true);
+      final printed = <String>[];
+      void emitRawPluginResult() => runZoned(
+        () => debugLog(
+          debugLoggingSettings:
+              PlatformInAppWebViewController.debugLoggingSettings,
+          className: 'WebView',
+          method: ScriptBrowserBridge.resultHandler,
+          args: ['EXAMPLE_SYNTHETIC_PASSWORD'],
+        ),
+        zoneSpecification: ZoneSpecification(
+          print: (_, _, _, line) => printed.add(line),
+        ),
+      );
+      emitRawPluginResult();
+      expect(printed.single, contains('EXAMPLE_SYNTHETIC_PASSWORD'));
+      printed.clear();
       await bridge.close();
       bridge = ScriptBrowserBridge(policy: policy, available: false);
       const labels = ScriptBrowserPageLabels(
@@ -443,6 +631,8 @@ void main() {
       );
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
+      emitRawPluginResult();
+      expect(printed, isEmpty);
       expect(find.text('School page'), findsOneWidget);
       expect(find.text('Unavailable'), findsOneWidget);
       expect(

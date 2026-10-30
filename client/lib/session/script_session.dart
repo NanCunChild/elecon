@@ -8,12 +8,18 @@ typedef ScriptBrowserPresenter =
       ScriptPackage package,
       Future<Object?> Function(ScriptBrowserCall call) execute,
     );
+typedef ScriptInputPresenter =
+    Future<Object?> Function(
+      ScriptPackage package,
+      Future<Object?> Function(ScriptInputCall input) execute,
+    );
 
 class _ScriptSessionState {
   Future<ScriptRegistry>? registry;
   Future<void> queue = Future.value();
   bool recoveredRegistry = false;
   ScriptBrowserPresenter? presenter;
+  ScriptInputPresenter? inputPresenter;
   Future<bool> Function()? storageConsent;
   int generation = 0;
   bool disposed = false;
@@ -36,6 +42,10 @@ extension TrustedScriptSession on SessionController {
 
   set scriptBrowserPresenter(ScriptBrowserPresenter? presenter) =>
       _scripts.presenter = presenter;
+
+  ScriptInputPresenter? get scriptInputPresenter => _scripts.inputPresenter;
+  set scriptInputPresenter(ScriptInputPresenter? presenter) =>
+      _scripts.inputPresenter = presenter;
 
   Future<ScriptRegistry> get scriptRegistry =>
       _scripts.registry ??= _openScriptRegistry();
@@ -60,6 +70,7 @@ extension TrustedScriptSession on SessionController {
     if (dispose) {
       state.disposed = true;
       state.presenter = null;
+      state.inputPresenter = null;
     }
     for (final transport in state.transports.toList()) {
       transport.close();
@@ -170,6 +181,7 @@ extension TrustedScriptSession on SessionController {
     Map<String, dynamic>? params,
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
+    ScriptInputCall? inputCall,
     void Function(String, String)? onLog,
   }) {
     final state = _scripts;
@@ -187,6 +199,7 @@ extension TrustedScriptSession on SessionController {
         params: params,
         htmlStdlib: htmlStdlib,
         browserCall: browserCall,
+        inputCall: inputCall,
         onLog: onLog,
       );
     });
@@ -200,6 +213,7 @@ extension TrustedScriptSession on SessionController {
     Map<String, dynamic>? params,
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
+    ScriptInputCall? inputCall,
     void Function(String, String)? onLog,
   }) async {
     final state = _scripts;
@@ -258,6 +272,7 @@ extension TrustedScriptSession on SessionController {
         registry.find(id)?.package.digest == package.digest;
     final transport = ScriptHttpTransport(policy: package.manifest.network);
     state.transports.add(transport);
+    DevLog.instance.runtime('script start: $id $capability');
     CapabilityRun result;
     try {
       final credentials = ScriptCredentials(
@@ -267,29 +282,56 @@ extension TrustedScriptSession on SessionController {
         sdkVersion: package.manifest.sdkVersion,
         isActive: active,
       );
-      Future<Object?> execute(ScriptBrowserCall? browser) async =>
-          const TrustedScriptRuntime().run(
-            package: package,
-            capability: capability,
-            params: params ?? const {},
-            credentials: credentials,
-            fetch: transport.fetch,
-            browserCall: browser,
-            isActive: active,
-            htmlStdlib: htmlStdlib ?? await loadHtmlStdlib(),
-            wallTimeout: Duration(seconds: package.manifest.browser ? 120 : 35),
-            onLog: onLog,
-          );
-      final Object? data;
-      if (package.manifest.browser && browserCall == null) {
-        final presenter = state.presenter;
-        if (presenter == null) {
-          throw const ScriptRunException('script_browser_unavailable');
+      Future<Object?> execute(
+        ScriptBrowserCall? browser,
+        ScriptInputCall? input,
+      ) async => const TrustedScriptRuntime().run(
+        package: package,
+        capability: capability,
+        params: params ?? const {},
+        credentials: credentials,
+        fetch: transport.fetch,
+        browserCall: browser,
+        inputCall: input,
+        isActive: active,
+        htmlStdlib: htmlStdlib ?? await loadHtmlStdlib(),
+        wallTimeout: Duration(
+          seconds: package.manifest.browser || package.manifest.sdkVersion >= 3
+              ? 120
+              : 35,
+        ),
+        // ADR-034 §6: use the existing bounded SDK maximum for interactive
+        // authentication (captcha/MFA plus a redirect chain).
+        maxRequests: package.manifest.browser ? 40 : 20,
+        onLog: (level, message) {
+          DevLog.instance.adapter(level, message);
+          onLog?.call(level, message);
+        },
+      );
+      Future<Object?> withBrowser(ScriptInputCall? input) async {
+        if (package.manifest.browser && browserCall == null) {
+          final presenter = state.presenter;
+          if (presenter == null) {
+            // ADR-034 §5: browser permission does not require a visible page for
+            // HTTP-only calls. Report platform/UI absence only when invoked.
+            return execute((_, _) async {
+              throw const ScriptRunException('script_browser_unavailable');
+            }, input);
+          } else {
+            return presenter(package, (call) => execute(call, input));
+          }
+        } else {
+          return execute(browserCall, input);
         }
-        data = await presenter(package, (call) => execute(call));
-      } else {
-        data = await execute(browserCall);
       }
+
+      final inputPresenter = state.inputPresenter;
+      final data =
+          package.manifest.sdkVersion >= 3 &&
+              inputCall == null &&
+              inputPresenter != null
+          ? await inputPresenter(package, (call) => withBrowser(call))
+          : await withBrowser(inputCall);
       if (!active()) {
         throw const ScriptRunException('script_cancelled');
       }
@@ -329,6 +371,9 @@ extension TrustedScriptSession on SessionController {
       );
     }
     if (!state.disposed) onCredentialsChanged();
+    DevLog.instance.runtime(
+      'script end: $id $capability ${result.ok ? "ok" : result.reason}',
+    );
     return result;
   }
 }

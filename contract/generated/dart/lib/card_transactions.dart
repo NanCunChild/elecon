@@ -5,7 +5,7 @@ library;
 
 class CardTransactions {
   const CardTransactions({
-    required this.cardNumber,
+    this.cardNumber,
     this.cardNumberMasked,
     this.cardType,
     this.accountType,
@@ -22,8 +22,8 @@ class CardTransactions {
     required this.items,
   });
 
-  /// 校内作用域的一卡通卡号。
-  final String cardNumber;
+  /// 校内作用域的真实一卡通卡号；可选，缺失表示来源未提供，查询结果属于当前已认证校园卡账户，不得用学号、openid 或占位值替代。
+  final String? cardNumber;
   /// 脱敏后的一卡通卡号；可选，缺失表示学校不提供。
   final String? cardNumberMasked;
   /// 一卡通卡片类型；可选，缺失表示学校不提供。

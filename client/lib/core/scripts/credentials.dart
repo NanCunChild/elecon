@@ -29,9 +29,9 @@ class ScriptCredentials {
        _isActive = isActive ?? (() => true),
        _now = now ?? (() => DateTime.now().millisecondsSinceEpoch) {
     if (!_identifier.hasMatch(schoolId) ||
-        !const {1, 2}.contains(sdkVersion) ||
+        !const {1, 2, 3}.contains(sdkVersion) ||
         (scriptId != null && !_identifier.hasMatch(scriptId!)) ||
-        (sdkVersion == 2 && scriptId == null)) {
+        (sdkVersion >= 2 && scriptId == null)) {
       throw const ScriptCredentialException('invalid_credential_identity');
     }
   }
@@ -121,7 +121,7 @@ class ScriptCredentials {
       final address = _address(entry);
       if (address == null) continue;
       final record = _record(entry);
-      if (sdkVersion == 2) {
+      if (sdkVersion >= 2) {
         records.add(record);
       } else if (address.namespace == '@legacy' ||
           address.namespace == '@preview1') {
@@ -132,7 +132,7 @@ class ScriptCredentials {
         }
       }
     }
-    return sdkVersion == 2 ? records : preview.values.toList(growable: false);
+    return sdkVersion >= 2 ? records : preview.values.toList(growable: false);
   }
 
   void set(

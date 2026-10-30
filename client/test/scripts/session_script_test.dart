@@ -78,6 +78,43 @@ void main() {
   _NetworkSessionBinding();
 
   test(
+    'source school missing a capability never loads a catalog adapter',
+    () async {
+      var loads = 0;
+      final session = SessionController(
+        adapterServiceProvider: () async {
+          loads++;
+          return null;
+        },
+      );
+      addTearDown(session.dispose);
+      await session.bootstrap();
+      final package = _package();
+      await _install(session, package);
+      await session.selectTrustedScriptSchool(package.manifest.id);
+      final before = loads;
+      final result = await session.runCapability('grades.list');
+      expect(result.ok, isFalse);
+      expect(result.reason, 'script_capability_unavailable');
+      expect(loads, before);
+    },
+  );
+
+  test(
+    'browser-enabled source can serve cached HTTP results without a browser presenter',
+    () async {
+      final session = SessionController();
+      addTearDown(session.dispose);
+      await session.bootstrap();
+      final package = _package(browser: true);
+      await _install(session, package);
+      await session.selectTrustedScriptSchool(package.manifest.id);
+      final result = await session.runCapability('notice.list');
+      expect(result.ok, isTrue, reason: result.reason);
+    },
+  );
+
+  test(
     'admission errors return stable results and consent failure does not poison the queue',
     () async {
       final unavailable = SessionController(

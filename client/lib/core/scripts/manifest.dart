@@ -70,7 +70,7 @@ class ScriptManifest {
       'browser',
       'capabilities',
     }, 'manifest');
-    if (!const {1, 2}.contains(json['sdkVersion']) ||
+    if (!const {1, 2, 3}.contains(json['sdkVersion']) ||
         json['sdkVersion'] is! int) {
       throw const FormatException('unsupported script SDK version');
     }

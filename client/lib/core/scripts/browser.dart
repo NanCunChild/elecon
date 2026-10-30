@@ -348,7 +348,13 @@ class ScriptBrowserBridge {
   }
 
   Future<void> open(String url) async {
-    final target = _checkedUrl(url);
+    final Uri target;
+    try {
+      target = _checkedUrl(url);
+    } on ScriptBrowserException {
+      navigationStarted(url);
+      rethrow;
+    }
     final driver = await _ready();
     _checkActive();
     _failPending('browser_navigation_changed');
@@ -384,8 +390,9 @@ class ScriptBrowserBridge {
       _failPending('browser_navigation_blocked');
       _failLoading('browser_navigation_blocked');
       _currentUrl = null;
-      state.value = const ScriptBrowserState(
+      state.value = ScriptBrowserState(
         ScriptBrowserPhase.blocked,
+        origin: _diagnosticOrigin(url),
         errorCode: 'browser_navigation_blocked',
       );
       return false;
@@ -400,7 +407,7 @@ class ScriptBrowserBridge {
   }
 
   void navigationFinished(String? value) {
-    if (_closed) return;
+    if (_closed || state.value.phase == ScriptBrowserPhase.blocked) return;
     final url = value == null ? null : Uri.tryParse(value);
     if (url == null || !policy.allowsUrl(url)) {
       navigationStarted(value);
@@ -424,7 +431,7 @@ class ScriptBrowserBridge {
   }
 
   void reportError() {
-    if (_closed) return;
+    if (_closed || state.value.phase == ScriptBrowserPhase.blocked) return;
     _failPending('browser_page_failed');
     _failLoading('browser_page_failed');
     _currentUrl = null;
@@ -439,6 +446,9 @@ class ScriptBrowserBridge {
       throw const ScriptBrowserException('browser_source_too_large');
     }
     final driver = await _ready();
+    if (state.value.phase == ScriptBrowserPhase.blocked) {
+      throw const ScriptBrowserException('browser_navigation_blocked');
+    }
     if (_currentUrl == null || state.value.phase != ScriptBrowserPhase.ready) {
       throw const ScriptBrowserException('browser_not_loaded');
     }
@@ -597,5 +607,22 @@ class ScriptBrowserBridge {
 
   static String _expression(String function, List<Object?> args) =>
       '($function).apply(null, ${jsonEncode(args)})';
+  // ADR-034 §6: diagnostics discard userinfo, path, query and fragment even
+  // for rejected URLs. Validate the remaining origin before exposing it to UI.
+  static String? _diagnosticOrigin(Uri? url) {
+    if (url == null || !const {'http', 'https'}.contains(url.scheme)) {
+      return null;
+    }
+    try {
+      final origin = ScriptNetworkPolicy.canonicalOrigin(url).origin;
+      ScriptNetworkPolicy.fromJson({
+        'origins': [origin],
+      });
+      return origin;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static String _origin(Uri url) => url.origin;
 }

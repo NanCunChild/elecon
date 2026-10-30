@@ -50,6 +50,7 @@ import '../core/scripts/manifest.dart';
 import '../core/scripts/registry.dart';
 import '../core/scripts/credentials.dart';
 import '../core/scripts/runtime.dart';
+import '../core/scripts/input.dart';
 import '../core/scripts/http_transport.dart';
 import '../core/scripts/browser.dart' show ScriptBrowserException;
 
@@ -447,9 +448,16 @@ class SessionController extends ChangeNotifier {
       return const CapabilityRun.failed(CapabilityFailureKind.load, '未选校');
     }
     ScriptPackage? local;
+    final scriptSchool = school.adapterId.startsWith('script:');
     try {
       local = (await scriptRegistry).provider(school.id, capability);
     } catch (_) {
+      if (scriptSchool) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.load,
+          'script_registry_unavailable',
+        );
+      }
       // Optional local registry I/O must not stop the legacy official path.
     }
     if (local != null) {
@@ -459,6 +467,13 @@ class SessionController extends ChangeNotifier {
         params: params,
         htmlStdlib: htmlStdlib,
         onLog: onLog,
+      );
+    }
+    // ADR-034 §2: local source identities are never catalog adapter IDs.
+    if (scriptSchool) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.load,
+        'script_capability_unavailable',
       );
     }
     final adapterId = school.adapterId;

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:elecon/core/credential/secure_store.dart';
 import 'package:elecon/core/credential/store.dart';
 import 'package:elecon/core/scripts/credentials.dart';
+import 'package:elecon/core/scripts/browser.dart';
 import 'package:elecon/core/scripts/manifest.dart';
 import 'package:elecon/core/scripts/runtime.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -55,6 +56,95 @@ void main() {
     store = CredentialStore(store: InMemorySecureStore(releaseMode: false));
     credentials = ScriptCredentials(store: store, schoolId: 'a');
   });
+
+  test(
+    'only fixed failure categories cross the QuickJS result channel',
+    () async {
+      for (final code in [
+        'input_required_card_number',
+        'input_required_student_id',
+        'network_denied',
+        'source_response_invalid',
+        'SYNTHETIC_PRIVATE_ACCOUNT',
+      ]) {
+        await expectLater(
+          runtime.run(
+            package: script(
+              '''export const capabilities={'notice.list':async()=>{
+          const error=new Error('SYNTHETIC_PRIVATE_MESSAGE');
+          error.code=${jsonEncode(code)};throw error;
+        }};''',
+            ),
+            capability: 'notice.list',
+            credentials: credentials,
+            fetch: response,
+          ),
+          fails(code == 'SYNTHETIC_PRIVATE_ACCOUNT' ? 'adapter_failed' : code),
+        );
+      }
+    },
+  );
+
+  test(
+    'browser navigation failures retain stable codes but never native details',
+    () async {
+      for (final failure in [
+        const ScriptBrowserException('browser_navigation_blocked'),
+        const ScriptBrowserException(
+          'https://secret.example/path?ticket=SYNTHETIC',
+        ),
+        StateError('https://secret.example/path?ticket=SYNTHETIC'),
+      ]) {
+        final result =
+            await runtime.run(
+                  package: script(
+                    """export const capabilities={'notice.list':async(ctx)=>{
+          try { await ctx.browser.open('https://school.example'); }
+          catch(e) { return {items:[],sourceSystem:String(e)}; }
+          throw new Error('expected failure');
+        }};""",
+                    browser: true,
+                  ),
+                  capability: 'notice.list',
+                  credentials: credentials,
+                  fetch: response,
+                  browserCall: (_, _) async => throw failure,
+                )
+                as Map;
+        expect(
+          result['sourceSystem'],
+          contains(
+            failure is ScriptBrowserException &&
+                    failure.code == 'browser_navigation_blocked'
+                ? 'browser_navigation_blocked'
+                : 'browser_failed',
+          ),
+        );
+        expect(result['sourceSystem'], isNot(contains('SYNTHETIC')));
+        expect(result['sourceSystem'], isNot(contains('secret.example')));
+      }
+    },
+  );
+
+  test(
+    'unhandled browser policy rejection reports network denial rather than adapter failure',
+    () async {
+      await expectLater(
+        runtime.run(
+          package: script(
+            "export const capabilities={'notice.list':async(ctx)=>{await ctx.browser.open('https://school.example');return {items:[]};}};",
+            browser: true,
+          ),
+          capability: 'notice.list',
+          credentials: credentials,
+          fetch: response,
+          browserCall: (_, _) async =>
+              throw const ScriptBrowserException('browser_navigation_blocked'),
+        ),
+        fails('network_denied'),
+      );
+    },
+  );
 
   test(
     'real QuickJS concatenated strings cross credentials, HTTP, DOM and output without losing types',
@@ -431,6 +521,35 @@ void main() {
       fails('request_limit'),
     );
   });
+  test(
+    'interactive maximum permits 40 requests and rejects the 41st',
+    () async {
+      for (final count in [40, 41]) {
+        var delivered = 0;
+        final result = runtime.run(
+          package: script('''
+          export const capabilities={'notice.list':async(ctx)=>{
+            for(let i=0;i<$count;i++)try{await ctx.fetch('https://school.example/api');}catch(e){}
+            return {items:[]};
+          }};
+        '''),
+          capability: 'notice.list',
+          credentials: credentials,
+          fetch: (url, init) async {
+            delivered++;
+            return response(url, init);
+          },
+          maxRequests: 40,
+        );
+        if (count == 40) {
+          expect(await result, {'items': []});
+        } else {
+          await expectLater(result, fails('request_limit'));
+        }
+        expect(delivered, 40);
+      }
+    },
+  );
   test(
     'known secrets and URLs are redacted and source error text is hidden',
     () async {
