@@ -4,19 +4,24 @@
 /// 数据模型见 `models.dart`；`demo_data.dart` 仍 export 供调试占位。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../session/session_scope.dart';
+import '../../session/session_controller.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../theme/liquid_glass.dart';
 import 'campus_snapshot_loader.dart';
 import 'capability_sections.dart';
 import 'demo_data.dart';
 import 'models.dart';
+import 'notice_detail_page.dart';
 
 export 'demo_data.dart';
 export 'models.dart';
+export 'notice_detail_page.dart';
 
 /// debug 下强制走 demo 快照（设置/联调开关可后接；默认 false = 真数据）。
 const bool kForceDemoHomeSnapshot = false;
@@ -32,14 +37,86 @@ class EleconHomePage extends StatefulWidget {
   State<EleconHomePage> createState() => _EleconHomePageState();
 }
 
-class _EleconHomePageState extends State<EleconHomePage> {
+class _EleconHomePageState extends State<EleconHomePage>
+    with WidgetsBindingObserver {
   late Future<CampusSnapshot> _snapshot;
   var _bound = false;
+  SessionController? _session;
+  String? _school;
+  int? _revision;
+  int? _generation;
+  CampusSnapshot? _lastSnapshot;
+  Timer? _homeRefreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _homeRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _homeRefreshTimer?.cancel();
+    if (state == AppLifecycleState.resumed) {
+      _scheduleHomeRefresh();
+      unawaited(_refreshSilently());
+    }
+  }
+
+  void _scheduleHomeRefresh() {
+    _homeRefreshTimer?.cancel();
+    if (_session == null) return;
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (state != null && state != AppLifecycleState.resumed) return;
+    // ADR-038: while the app remains visible, TTL checks can refresh values
+    // without adding foreground animation or opening interactive presenters.
+    _homeRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) unawaited(_refreshSilently());
+    });
+  }
+
+  Future<void> _refreshSilently({bool force = false}) async {
+    try {
+      await _session?.refreshHomeData(force: force);
+    } catch (_) {
+      // ADR-038: background failures retain the original successful values.
+    }
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_bound) {
+    if (_liveSections) {
+      final session = SessionScope.of(context);
+      final changed =
+          _session != session ||
+          _school != session.selectedSchool?.id ||
+          _generation != session.trustedScriptViewGeneration;
+      if (changed) {
+        _session = session;
+        _school = session.selectedSchool?.id;
+        _generation = session.trustedScriptViewGeneration;
+        _lastSnapshot = null;
+      }
+      if (!_bound || changed || _revision != session.homeDataRevision) {
+        _revision = session.homeDataRevision;
+        _bound = true;
+        _snapshot = _load();
+      }
+      if (changed) {
+        _scheduleHomeRefresh();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_refreshSilently());
+        });
+      }
+    } else if (!_bound) {
       _bound = true;
       _snapshot = _load();
     }
@@ -54,10 +131,14 @@ class _EleconHomePageState extends State<EleconHomePage> {
     if (kDebugMode && kForceDemoHomeSnapshot) {
       return loadDemoCampusSnapshot();
     }
-    return loadCampusSnapshot(SessionScope.of(context));
+    return loadCampusSnapshot(SessionScope.of(context), preferCacheOnly: true);
   }
 
   Future<void> _reload() async {
+    if (_liveSections) {
+      await _refreshSilently(force: true);
+      if (!mounted) return;
+    }
     final next = Future<CampusSnapshot>.sync(_load);
     setState(() {
       _snapshot = next;
@@ -82,19 +163,20 @@ class _EleconHomePageState extends State<EleconHomePage> {
     return Scaffold(
       body: SafeArea(
         child: FutureBuilder<CampusSnapshot>(
+          key: ValueKey((_school, _generation)),
           future: _snapshot,
           builder: (context, state) {
-            if (state.connectionState != ConnectionState.done &&
-                !state.hasData) {
+            if (state.hasData) _lastSnapshot = state.data;
+            final data = state.data ?? _lastSnapshot;
+            if (state.connectionState != ConnectionState.done && data == null) {
               return const _LoadingState();
             }
-            if (state.hasError) {
+            if (state.hasError && data == null) {
               return _ErrorState(
                 error: state.error.toString(),
                 onRetry: _reload,
               );
             }
-            final data = state.data;
             if (data == null || data.isEmpty) {
               return _EmptyState(onRetry: _reload);
             }
@@ -197,10 +279,21 @@ class _SnapshotHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('你好，校园信息已就绪', style: theme.textTheme.headlineSmall),
+          Text(
+            AppLocalizations.of(context).homeCampusTitle,
+            style: theme.textTheme.headlineSmall,
+          ),
           const SizedBox(height: 8),
           Text(
-            '${snapshot.schoolName} · ${_formatDateTime(snapshot.updatedAt)} 更新',
+            snapshot.notices == null &&
+                    snapshot.schedule == null &&
+                    snapshot.grades == null &&
+                    snapshot.genericSections.isEmpty
+                ? snapshot.schoolName
+                : AppLocalizations.of(context).homeSnapshotUpdatedAt(
+                    snapshot.schoolName,
+                    _formatDateTime(snapshot.updatedAt),
+                  ),
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -430,70 +523,6 @@ class CourseDetailPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text(item.courseName)),
       body: ListView(padding: const EdgeInsets.all(16), children: rows),
-    );
-  }
-}
-
-/// 通知正文详情（App 内下钻，ADR-025 §2.2/§2.6）。
-///
-/// 仅渲染快照数据；正文按纯文本展示（不解析 HTML，属 ADR-011 范畴）。附件与「在网页
-/// 打开」属外跳（§2.7，触红线 #1），本轮不接线、不可点。
-class NoticeDetailPage extends StatelessWidget {
-  const NoticeDetailPage({required this.item, super.key});
-
-  final NoticeListItems item;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final meta = <String>[
-      item.source,
-      _noticeCategoryText(item.category),
-      if (item.author != null) item.author!,
-      if (item.department != null) item.department!,
-      if (item.publishedAtDateTime != null)
-        _formatDate(item.publishedAtDateTime!),
-    ].join(' · ');
-    final attachments =
-        item.attachments ?? const <NoticeListItemsAttachments>[];
-    final hasContent = item.content != null && item.content!.isNotEmpty;
-    return Scaffold(
-      appBar: AppBar(title: const Text('通知详情')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(item.title, style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text(
-            meta,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const Divider(height: 24),
-          if (item.summary != null && item.summary!.isNotEmpty) ...[
-            Text(item.summary!, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 12),
-          ],
-          Text(
-            hasContent ? item.content! : '（本条通知未提供正文）',
-            style: theme.textTheme.bodyMedium,
-          ),
-          if (attachments.isNotEmpty) ...[
-            const Divider(height: 24),
-            Text('附件', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 4),
-            for (final a in attachments)
-              // 附件打开需外跳（§2.7 凭证隔离，触红线 #1），本轮未接线故禁用点击。
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                enabled: false,
-                leading: const Icon(Icons.attach_file),
-                title: Text(a.name),
-              ),
-          ],
-        ],
-      ),
     );
   }
 }

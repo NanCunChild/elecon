@@ -2,6 +2,8 @@
 /// URLs, DOM checks and credential capture stay inside the trusted script.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../catalog/schools.dart';
@@ -107,6 +109,7 @@ class _ScriptLoginPageState extends State<ScriptLoginPage> {
       );
       if (!mounted || _finished) return;
       final run = result as CapabilityRun;
+      if (run.ok) unawaited(session.refreshHomeData());
       _finish(
         WebViewLoginResult(
           status: run.ok

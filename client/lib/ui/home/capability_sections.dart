@@ -1,11 +1,13 @@
 /// 首页「按需取数」能力区：成绩 / 课表 / 空教室 / 一卡通 / 考试 / 图书借阅。
 ///
 /// 各能力所需凭证由 manifest 声明，[SessionController.runCapability] 内部按需确保。
-/// UI 只按用户点击触发，**不在开屏强制登录**；也**不接触凭证值**（红线 #1）——auth
-/// 失败一律复用已审的 [runSchoolLogin]，成功后重试能力。
+/// ADR-038 声明的缓存可立即恢复，后台刷新不弹交互；UI 不接触凭证值（红线 #1）。
+/// 手动取数的 auth 失败复用 [runSchoolLogin]，成功后重试能力。
 ///
 /// 卡片由标准 schema 选择并在客户端固定实现，不接受 adapter 渲染描述（ADR-004 §2.1）。
 library;
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -105,7 +107,125 @@ Future<bool> _promptVisibleLogin(
   return result?.status == WebViewLoginStatus.success;
 }
 
+// ADR-038: even an earlier successful stage becomes unusable after session
+// replacement, logout or an approved-package change during a later await.
+bool _isCurrentSession(
+  State state,
+  SessionController session,
+  int generation,
+) =>
+    state.mounted &&
+    identical(SessionScope.of(state.context), session) &&
+    session.trustedScriptViewGeneration == generation;
+
 enum _Phase { idle, loading, loaded, needLogin, error }
+
+/// ADR-038: restore validated current-school data independently of widget life.
+/// Background writes notify SessionScope; failed refreshes never replace data.
+mixin _CachedSection<W extends StatefulWidget, D> on State<W> {
+  SessionController? _cacheSession;
+  String? _cacheSchool;
+  int? _cacheRevision;
+  int? _cacheGeneration;
+  int _cacheRead = 0;
+  DateTime? _cacheFetchedAt;
+  bool _cacheStale = false;
+  Map<String, dynamic> _restoredParams = const {};
+
+  String get cacheCapability;
+  D? decodeCache(Object? value);
+  Map<String, dynamic>? get cacheParams => null;
+  bool get useLatestCache => cacheParams == null;
+  void applyCache(D data);
+  void clearCache();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final session = SessionScope.of(context);
+    final school = session.selectedSchool?.id;
+    final changed =
+        _cacheSession != session ||
+        _cacheSchool != school ||
+        _cacheGeneration != session.trustedScriptViewGeneration;
+    if (changed) {
+      _cacheSession = session;
+      _cacheSchool = school;
+      _cacheGeneration = session.trustedScriptViewGeneration;
+      _cacheRead++;
+      _cacheFetchedAt = null;
+      clearCache();
+    }
+    if (changed || _cacheRevision != session.homeDataRevision) {
+      _cacheRevision = session.homeDataRevision;
+      unawaited(restoreCache());
+    }
+  }
+
+  Future<void> restoreCache() async {
+    final session = _cacheSession;
+    if (session == null) return;
+    final read = ++_cacheRead;
+    final generation = session.trustedScriptViewGeneration;
+    final school = _cacheSchool;
+    try {
+      final cached = useLatestCache
+          ? await session.latestCachedCapability(cacheCapability)
+          : await session.cachedCapability(
+              cacheCapability,
+              params: cacheParams,
+            );
+      if (!_isCurrentSession(this, session, generation) ||
+          read != _cacheRead ||
+          session.selectedSchool?.id != school) {
+        return;
+      }
+      final decoded = cached == null ? null : decodeCache(cached.data);
+      if (decoded == null) {
+        // Revoked, disabled or updated packages cannot leave old cached values
+        // visible. A fresh manual result without a cache remains usable.
+        if (_cacheFetchedAt != null) {
+          setState(() {
+            _cacheFetchedAt = null;
+            clearCache();
+          });
+        }
+        return;
+      }
+      setState(() {
+        _restoredParams = cached!.params;
+        _cacheFetchedAt = cached.fetchedAt;
+        _cacheStale = cached.isStale;
+        applyCache(decoded);
+      });
+    } catch (_) {
+      // Cache read failure must not erase a successful visible result.
+    }
+  }
+
+  Widget withCacheTime(Widget child) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      child,
+      if (_cacheFetchedAt != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Text(
+            _cacheStale
+                ? AppLocalizations.of(context).homeDataStaleAt(
+                    _formatTimestamp(_cacheFetchedAt!.toIso8601String()),
+                  )
+                : AppLocalizations.of(context).homeDataUpdatedAt(
+                    _formatTimestamp(_cacheFetchedAt!.toIso8601String()),
+                  ),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+    ],
+  );
+}
 
 // ===========================================================================
 // 成绩（无参）
@@ -118,33 +238,53 @@ class GradesSection extends StatefulWidget {
   State<GradesSection> createState() => _GradesSectionState();
 }
 
-class _GradesSectionState extends State<GradesSection> {
+class _GradesSectionState extends State<GradesSection>
+    with _CachedSection<GradesSection, GradesList> {
+  @override
+  String get cacheCapability => 'grades.list';
+  @override
+  GradesList? decodeCache(Object? value) => gradesListFromDynamic(value);
+  @override
+  void applyCache(GradesList data) {
+    _data = data;
+    _phase = _Phase.loaded;
+  }
+
+  @override
+  void clearCache() {
+    _data = null;
+    _phase = _Phase.idle;
+    _summary = null;
+  }
+
   _Phase _phase = _Phase.idle;
   GradesList? _data;
   GpaSummary? _summary;
   String? _error;
 
   Future<void> _load() async {
-    setState(() => _phase = _Phase.loading);
     final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    setState(() => _phase = _Phase.loading);
     final outcome = await _runDecoded<GradesList>(
       context,
       session,
       'grades.list',
       decode: gradesListFromDynamic,
     );
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     // 学校官方绩点汇总：**可选增强**，取不到不影响成绩单本身（ADR-001 §3.5——
     // 官方数存在时权威，不存在时卡片退到本机聚合并换标签）。故失败一律吞掉，
     // 不把它的 needLogin/error 冒泡成整个成绩区的失败态。
     final summary = outcome.data == null
         ? null
         : await _loadGpaSummary(session);
-    if (!mounted) return;
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
       if (outcome.needLogin) {
-        _phase = _Phase.needLogin;
+        _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
       } else if (outcome.error != null) {
-        _phase = _Phase.error;
+        _phase = _data == null ? _Phase.error : _Phase.loaded;
         _error = outcome.error;
       } else {
         _phase = _Phase.loaded;
@@ -152,6 +292,22 @@ class _GradesSectionState extends State<GradesSection> {
         _summary = summary;
       }
     });
+  }
+
+  @override
+  Future<void> restoreCache() async {
+    await super.restoreCache();
+    final session = _cacheSession;
+    if (session == null) return;
+    final read = _cacheRead;
+    final generation = session.trustedScriptViewGeneration;
+    final cached = await session.cachedCapability('gpa.summary');
+    if (_isCurrentSession(this, session, generation) &&
+        read == _cacheRead &&
+        cached != null) {
+      final summary = gpaSummaryFromDynamic(cached.data);
+      if (summary != null) setState(() => _summary = summary);
+    }
   }
 
   /// 取 `gpa.summary`；任何失败都返回 null（见 [_load] 中的理由）。
@@ -170,8 +326,10 @@ class _GradesSectionState extends State<GradesSection> {
   }
 
   Future<void> _login() async {
-    final ok = await _promptVisibleLogin(context, SessionScope.of(context));
-    if (!mounted) return;
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    final ok = await _promptVisibleLogin(context, session);
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     if (ok) {
       await _load();
     }
@@ -179,8 +337,8 @@ class _GradesSectionState extends State<GradesSection> {
 
   @override
   Widget build(BuildContext context) {
-    if (_phase == _Phase.loaded && _data != null) {
-      return GradesCard(_data!, summary: _summary);
+    if (_data != null) {
+      return withCacheTime(GradesCard(_data!, summary: _summary));
     }
     return _PromptCard(
       title: '成绩',
@@ -209,7 +367,39 @@ class ScheduleSection extends StatefulWidget {
   State<ScheduleSection> createState() => _ScheduleSectionState();
 }
 
-class _ScheduleSectionState extends State<ScheduleSection> {
+class _ScheduleSectionState extends State<ScheduleSection>
+    with _CachedSection<ScheduleSection, ScheduleWeek> {
+  @override
+  String get cacheCapability => 'schedule.week';
+  @override
+  ScheduleWeek? decodeCache(Object? value) => scheduleWeekFromDynamic(value);
+  @override
+  void applyCache(ScheduleWeek data) {
+    _data = data;
+    _phase = _Phase.loaded;
+    _week = data.week;
+    _term = data.term;
+    _calendarLoaded = true;
+  }
+
+  @override
+  void clearCache() {
+    _data = null;
+    _phase = _Phase.idle;
+    _week = 1;
+    _term = null;
+    _calendarLoaded = false;
+    _manualWeek = false;
+  }
+
+  @override
+  bool get useLatestCache => !_manualWeek;
+  @override
+  Map<String, dynamic>? get cacheParams => {
+    'week': _week,
+    if (_term != null) 'term': _term,
+  };
+
   int get _maxWeek => _week > 25 ? _week : 25;
 
   _Phase _phase = _Phase.idle;
@@ -223,8 +413,9 @@ class _ScheduleSectionState extends State<ScheduleSection> {
   String? _error;
 
   Future<void> _load() async {
-    setState(() => _phase = _Phase.loading);
     final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    setState(() => _phase = _Phase.loading);
     if (_queryCurrentWeek) {
       final calendar = await _runDecoded<CalendarAcademic>(
         context,
@@ -232,7 +423,7 @@ class _ScheduleSectionState extends State<ScheduleSection> {
         'calendar.academic',
         decode: calendarAcademicFromDynamic,
       );
-      if (!mounted) return;
+      if (!mounted || !_isCurrentSession(this, session, generation)) return;
       if (calendar.data == null) {
         setState(() {
           _phase = calendar.needLogin ? _Phase.needLogin : _Phase.error;
@@ -253,12 +444,12 @@ class _ScheduleSectionState extends State<ScheduleSection> {
       params: {'week': _week, if (_term != null) 'term': _term},
       decode: scheduleWeekFromDynamic,
     );
-    if (!mounted) return;
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
       if (outcome.needLogin) {
-        _phase = _Phase.needLogin;
+        _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
       } else if (outcome.error != null) {
-        _phase = _Phase.error;
+        _phase = _data == null ? _Phase.error : _Phase.loaded;
         _error = outcome.error;
       } else {
         _phase = _Phase.loaded;
@@ -268,8 +459,10 @@ class _ScheduleSectionState extends State<ScheduleSection> {
   }
 
   Future<void> _login() async {
-    final ok = await _promptVisibleLogin(context, SessionScope.of(context));
-    if (!mounted) return;
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    final ok = await _promptVisibleLogin(context, session);
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     if (ok) await _load();
   }
 
@@ -300,6 +493,10 @@ class _ScheduleSectionState extends State<ScheduleSection> {
                   onChanged: (w) => setState(() {
                     _week = w;
                     _manualWeek = true;
+                    _data = null;
+                    _cacheFetchedAt = null;
+                    _phase = _Phase.idle;
+                    unawaited(restoreCache());
                   }),
                 ),
               const SizedBox(height: 8),
@@ -316,7 +513,7 @@ class _ScheduleSectionState extends State<ScheduleSection> {
             ],
           ),
         ),
-        if (_phase == _Phase.loaded && _data != null) ScheduleCard(_data!),
+        if (_data != null) withCacheTime(ScheduleCard(_data!)),
       ],
     );
   }
@@ -366,7 +563,76 @@ class ClassroomSection extends StatefulWidget {
   State<ClassroomSection> createState() => _ClassroomSectionState();
 }
 
-class _ClassroomSectionState extends State<ClassroomSection> {
+class _ClassroomSectionState extends State<ClassroomSection>
+    with _CachedSection<ClassroomSection, ClassroomAvailable> {
+  bool _manualSelection = false;
+  @override
+  String get cacheCapability => 'classroom.available';
+  @override
+  ClassroomAvailable? decodeCache(Object? value) =>
+      classroomAvailableFromDynamic(value);
+  @override
+  bool get useLatestCache => !_manualSelection;
+  @override
+  Map<String, dynamic>? get cacheParams => {
+    'date': _formatDate(_date),
+    if (_selected?.buildingId != null)
+      'buildingId': _selected!.buildingId
+    else if (_selected != null)
+      'building': _selected!.building,
+  };
+  @override
+  void applyCache(ClassroomAvailable data) {
+    _avail = data;
+    _availPhase = _Phase.loaded;
+    _date =
+        DateTime.tryParse(
+          data.date ?? _restoredParams['date']?.toString() ?? '',
+        ) ??
+        _date;
+  }
+
+  @override
+  void clearCache() {
+    _buildingsPhase = _Phase.idle;
+    _buildings = const [];
+    _selected = null;
+    _avail = null;
+    _availPhase = _Phase.idle;
+    _date = DateTime.now();
+    _manualSelection = false;
+  }
+
+  @override
+  Future<void> restoreCache() async {
+    await super.restoreCache();
+    final session = _cacheSession;
+    if (session == null) return;
+    final read = _cacheRead;
+    final generation = session.trustedScriptViewGeneration;
+    final cached = await session.cachedCapability('classroom.buildings');
+    if (!_isCurrentSession(this, session, generation) ||
+        read != _cacheRead ||
+        cached == null) {
+      return;
+    }
+    final decoded = classroomBuildingsFromDynamic(cached.data);
+    if (decoded == null) return;
+    setState(() {
+      _buildings = decoded.items ?? const [];
+      _buildingsPhase = _Phase.loaded;
+      if (!_buildings.contains(_selected)) {
+        final matches = _buildings.where(
+          (item) =>
+              item.buildingId == _restoredParams['buildingId'] &&
+                  item.buildingId != null ||
+              item.building == _restoredParams['building'],
+        );
+        _selected = matches.firstOrNull ?? _buildings.firstOrNull;
+      }
+    });
+  }
+
   // 教学楼列表阶段
   _Phase _buildingsPhase = _Phase.idle;
   List<ClassroomBuildingsItems> _buildings = const [];
@@ -380,15 +646,16 @@ class _ClassroomSectionState extends State<ClassroomSection> {
   String? _availError;
 
   Future<void> _loadBuildings() async {
-    setState(() => _buildingsPhase = _Phase.loading);
     final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    setState(() => _buildingsPhase = _Phase.loading);
     final outcome = await _runDecoded<ClassroomBuildings>(
       context,
       session,
       'classroom.buildings',
       decode: classroomBuildingsFromDynamic,
     );
-    if (!mounted) return;
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
       if (outcome.needLogin) {
         _buildingsPhase = _Phase.needLogin;
@@ -404,16 +671,19 @@ class _ClassroomSectionState extends State<ClassroomSection> {
   }
 
   Future<void> _loginThenBuildings() async {
-    final ok = await _promptVisibleLogin(context, SessionScope.of(context));
-    if (!mounted) return;
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    final ok = await _promptVisibleLogin(context, session);
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     if (ok) await _loadBuildings();
   }
 
   Future<void> _loadAvailable() async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
     final building = _selected;
     if (building == null) return;
     setState(() => _availPhase = _Phase.loading);
-    final session = SessionScope.of(context);
     final params = <String, dynamic>{'date': _formatDate(_date)};
     if (building.buildingId != null && building.buildingId!.isNotEmpty) {
       params['buildingId'] = building.buildingId;
@@ -427,7 +697,7 @@ class _ClassroomSectionState extends State<ClassroomSection> {
       params: params,
       decode: classroomAvailableFromDynamic,
     );
-    if (!mounted) return;
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
       if (outcome.needLogin) {
         _availPhase = _Phase.needLogin;
@@ -442,6 +712,8 @@ class _ClassroomSectionState extends State<ClassroomSection> {
   }
 
   Future<void> _pickDate() async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
@@ -449,23 +721,38 @@ class _ClassroomSectionState extends State<ClassroomSection> {
       firstDate: now.subtract(const Duration(days: 30)),
       lastDate: now.add(const Duration(days: 180)),
     );
-    if (picked != null && mounted) setState(() => _date = picked);
+    if (picked != null && _isCurrentSession(this, session, generation)) {
+      setState(() {
+        _date = picked;
+        _manualSelection = true;
+        _avail = null;
+        _cacheFetchedAt = null;
+        _availPhase = _Phase.idle;
+      });
+      unawaited(restoreCache());
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     // 教学楼未就绪：先引导取列表（可能触发登录）。
     if (_buildingsPhase != _Phase.loaded) {
-      return _PromptCard(
-        title: '空教室',
-        subtitle: '先加载教学楼列表',
-        child: _PhaseBody(
-          phase: _buildingsPhase,
-          error: _buildingsError,
-          idleLabel: '加载教学楼',
-          onLoad: _loadBuildings,
-          onLogin: _loginThenBuildings,
-        ),
+      return Column(
+        children: [
+          _PromptCard(
+            title: '空教室',
+            subtitle: '先加载教学楼列表',
+            child: _PhaseBody(
+              phase: _buildingsPhase,
+              error: _buildingsError,
+              idleLabel: '加载教学楼',
+              onLoad: _loadBuildings,
+              onLogin: _loginThenBuildings,
+            ),
+          ),
+          if (_avail != null)
+            withCacheTime(_ClassroomResultCard(data: _avail!)),
+        ],
       );
     }
 
@@ -481,7 +768,16 @@ class _ClassroomSectionState extends State<ClassroomSection> {
               DropdownButton<ClassroomBuildingsItems>(
                 isExpanded: true,
                 value: _selected,
-                onChanged: busy ? null : (b) => setState(() => _selected = b),
+                onChanged: busy
+                    ? null
+                    : (b) => setState(() {
+                        _selected = b;
+                        _manualSelection = true;
+                        _avail = null;
+                        _cacheFetchedAt = null;
+                        _availPhase = _Phase.idle;
+                        unawaited(restoreCache());
+                      }),
                 items: [
                   for (final b in _buildings)
                     DropdownMenuItem(
@@ -512,18 +808,18 @@ class _ClassroomSectionState extends State<ClassroomSection> {
                 idleLabel: '查询空教室',
                 onLoad: _loadAvailable,
                 onLogin: () async {
-                  final ok = await _promptVisibleLogin(
-                    context,
-                    SessionScope.of(context),
-                  );
-                  if (mounted && ok) await _loadAvailable();
+                  final session = SessionScope.of(context);
+                  final generation = session.trustedScriptViewGeneration;
+                  final ok = await _promptVisibleLogin(context, session);
+                  if (_isCurrentSession(this, session, generation) && ok) {
+                    await _loadAvailable();
+                  }
                 },
               ),
             ],
           ),
         ),
-        if (_availPhase == _Phase.loaded && _avail != null)
-          _ClassroomResultCard(data: _avail!),
+        if (_avail != null) withCacheTime(_ClassroomResultCard(data: _avail!)),
       ],
     );
   }
@@ -597,25 +893,44 @@ class CardSection extends StatefulWidget {
   State<CardSection> createState() => _CardSectionState();
 }
 
-class _CardSectionState extends State<CardSection> {
+class _CardSectionState extends State<CardSection>
+    with _CachedSection<CardSection, CardBalance> {
+  @override
+  String get cacheCapability => 'card.balance';
+  @override
+  CardBalance? decodeCache(Object? value) => cardBalanceFromDynamic(value);
+  @override
+  void applyCache(CardBalance data) {
+    _data = data;
+    _phase = _Phase.loaded;
+  }
+
+  @override
+  void clearCache() {
+    _data = null;
+    _phase = _Phase.idle;
+  }
+
   _Phase _phase = _Phase.idle;
   CardBalance? _data;
   String? _error;
 
   Future<void> _load() async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
     setState(() => _phase = _Phase.loading);
     final outcome = await _runDecoded<CardBalance>(
       context,
-      SessionScope.of(context),
+      session,
       'card.balance',
       decode: cardBalanceFromDynamic,
     );
-    if (!mounted) return;
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
       if (outcome.needLogin) {
-        _phase = _Phase.needLogin;
+        _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
       } else if (outcome.error != null) {
-        _phase = _Phase.error;
+        _phase = _data == null ? _Phase.error : _Phase.loaded;
         _error = outcome.error;
       } else {
         _phase = _Phase.loaded;
@@ -625,19 +940,21 @@ class _CardSectionState extends State<CardSection> {
   }
 
   Future<void> _login() async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
     final ok = await _promptVisibleLogin(
       context,
-      SessionScope.of(context),
+      session,
       targetRef: 'card-session',
     );
-    if (!mounted) return;
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     if (ok) await _load();
   }
 
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    if (_phase != _Phase.loaded || data == null) {
+    if (data == null) {
       return _PromptCard(
         title: '一卡通',
         subtitle: widget.transactionsEnabled ? '仅在你点击后查询余额和交易记录' : '仅在你点击后查询余额',
@@ -651,54 +968,59 @@ class _CardSectionState extends State<CardSection> {
       );
     }
 
-    return _SectionShell(
-      title: '一卡通',
-      // 即使 adapter 错把完整卡号填进 cardNumberMasked，UI 也只从权威 cardNumber 派生末四位。
-      subtitle: data.cardNumber == null
-          ? AppLocalizations.of(context).cardAccountLabel
-          : _maskCardNumber(data.cardNumber!),
-      child: data.errorStatus == null
-          ? Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _money(data.balance.amountMinor, data.balance.currency),
-                        style: Theme.of(context).textTheme.headlineMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      if (data.status != null)
+    return withCacheTime(
+      _SectionShell(
+        title: '一卡通',
+        // 即使 adapter 错把完整卡号填进 cardNumberMasked，UI 也只从权威 cardNumber 派生末四位。
+        subtitle: data.cardNumber == null
+            ? AppLocalizations.of(context).cardAccountLabel
+            : _maskCardNumber(data.cardNumber!),
+        child: data.errorStatus == null
+            ? Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          _cardStatusText(data.status!),
-                          style: Theme.of(context).textTheme.bodySmall,
+                          _money(
+                            data.balance.amountMinor,
+                            data.balance.currency,
+                          ),
+                          style: Theme.of(context).textTheme.headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
                         ),
-                    ],
-                  ),
-                ),
-                if (widget.transactionsEnabled)
-                  FilledButton.tonalIcon(
-                    onPressed: () => Navigator.of(context).push<void>(
-                      MaterialPageRoute(
-                        builder: (_) => const CardTransactionsPage(),
-                      ),
+                        if (data.status != null)
+                          Text(
+                            _cardStatusText(data.status!),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                      ],
                     ),
-                    icon: const Icon(Icons.receipt_long_outlined),
-                    label: const Text('交易明细'),
                   ),
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(child: Text(_balanceErrorText(data.errorStatus!))),
-                OutlinedButton.icon(
-                  onPressed: _load,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('重新查询'),
-                ),
-              ],
-            ),
+                  if (widget.transactionsEnabled)
+                    FilledButton.tonalIcon(
+                      onPressed: () => Navigator.of(context).push<void>(
+                        MaterialPageRoute(
+                          builder: (_) => const CardTransactionsPage(),
+                        ),
+                      ),
+                      icon: const Icon(Icons.receipt_long_outlined),
+                      label: const Text('交易明细'),
+                    ),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(child: Text(_balanceErrorText(data.errorStatus!))),
+                  OutlinedButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('重新查询'),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 }
@@ -726,19 +1048,21 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
   }
 
   Future<void> _load() async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
     final outcome = await _runDecoded<CardTransactions>(
       context,
-      SessionScope.of(context),
+      session,
       'card.transactions',
       params: const {'page': 1, 'size': 20},
       decode: cardTransactionsFromDynamic,
     );
-    if (!mounted) return;
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
       if (outcome.needLogin) {
-        _phase = _Phase.needLogin;
+        _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
       } else if (outcome.error != null) {
-        _phase = _Phase.error;
+        _phase = _data == null ? _Phase.error : _Phase.loaded;
         _error = outcome.error;
       } else {
         _phase = _Phase.loaded;
@@ -748,12 +1072,14 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
   }
 
   Future<void> _login() async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
     final ok = await _promptVisibleLogin(
       context,
-      SessionScope.of(context),
+      session,
       targetRef: 'card-session',
     );
-    if (!mounted) return;
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     if (ok) {
       setState(() => _phase = _Phase.loading);
       await _load();
@@ -904,25 +1230,44 @@ class ExamSection extends StatefulWidget {
   State<ExamSection> createState() => _ExamSectionState();
 }
 
-class _ExamSectionState extends State<ExamSection> {
+class _ExamSectionState extends State<ExamSection>
+    with _CachedSection<ExamSection, ExamList> {
+  @override
+  String get cacheCapability => 'exam.list';
+  @override
+  ExamList? decodeCache(Object? value) => examListFromDynamic(value);
+  @override
+  void applyCache(ExamList data) {
+    _data = data;
+    _phase = _Phase.loaded;
+  }
+
+  @override
+  void clearCache() {
+    _data = null;
+    _phase = _Phase.idle;
+  }
+
   _Phase _phase = _Phase.idle;
   ExamList? _data;
   String? _error;
 
   Future<void> _load() async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
     setState(() => _phase = _Phase.loading);
     final outcome = await _runDecoded<ExamList>(
       context,
-      SessionScope.of(context),
+      session,
       'exam.list',
       decode: examListFromDynamic,
     );
-    if (!mounted) return;
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
       if (outcome.needLogin) {
-        _phase = _Phase.needLogin;
+        _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
       } else if (outcome.error != null) {
-        _phase = _Phase.error;
+        _phase = _data == null ? _Phase.error : _Phase.loaded;
         _error = outcome.error;
       } else {
         _phase = _Phase.loaded;
@@ -932,15 +1277,17 @@ class _ExamSectionState extends State<ExamSection> {
   }
 
   Future<void> _login() async {
-    final ok = await _promptVisibleLogin(context, SessionScope.of(context));
-    if (mounted && ok) await _load();
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    final ok = await _promptVisibleLogin(context, session);
+    if (_isCurrentSession(this, session, generation) && ok) await _load();
   }
 
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    if (_phase == _Phase.loaded && data != null) {
-      return _ExamResultCard(data: data);
+    if (data != null) {
+      return withCacheTime(_ExamResultCard(data: data));
     }
     final l10n = AppLocalizations.of(context);
     return _PromptCard(
@@ -1020,25 +1367,44 @@ class LibraryLoansSection extends StatefulWidget {
   State<LibraryLoansSection> createState() => _LibraryLoansSectionState();
 }
 
-class _LibraryLoansSectionState extends State<LibraryLoansSection> {
+class _LibraryLoansSectionState extends State<LibraryLoansSection>
+    with _CachedSection<LibraryLoansSection, LibraryLoans> {
+  @override
+  String get cacheCapability => 'library.loans';
+  @override
+  LibraryLoans? decodeCache(Object? value) => libraryLoansFromDynamic(value);
+  @override
+  void applyCache(LibraryLoans data) {
+    _data = data;
+    _phase = _Phase.loaded;
+  }
+
+  @override
+  void clearCache() {
+    _data = null;
+    _phase = _Phase.idle;
+  }
+
   _Phase _phase = _Phase.idle;
   LibraryLoans? _data;
   String? _error;
 
   Future<void> _load() async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
     setState(() => _phase = _Phase.loading);
     final outcome = await _runDecoded<LibraryLoans>(
       context,
-      SessionScope.of(context),
+      session,
       'library.loans',
       decode: libraryLoansFromDynamic,
     );
-    if (!mounted) return;
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
       if (outcome.needLogin) {
-        _phase = _Phase.needLogin;
+        _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
       } else if (outcome.error != null) {
-        _phase = _Phase.error;
+        _phase = _data == null ? _Phase.error : _Phase.loaded;
         _error = outcome.error;
       } else {
         _phase = _Phase.loaded;
@@ -1048,15 +1414,17 @@ class _LibraryLoansSectionState extends State<LibraryLoansSection> {
   }
 
   Future<void> _login() async {
-    final ok = await _promptVisibleLogin(context, SessionScope.of(context));
-    if (mounted && ok) await _load();
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    final ok = await _promptVisibleLogin(context, session);
+    if (_isCurrentSession(this, session, generation) && ok) await _load();
   }
 
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    if (_phase == _Phase.loaded && data != null) {
-      return _LibraryLoansResultCard(data: data);
+    if (data != null) {
+      return withCacheTime(_LibraryLoansResultCard(data: data));
     }
     final l10n = AppLocalizations.of(context);
     return _PromptCard(

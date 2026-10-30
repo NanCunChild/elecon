@@ -8,12 +8,57 @@ import 'schema_decode.dart';
 import 'models.dart';
 
 /// 从当前会话学校跑 `notice.list`，组装首页快照。
-Future<CampusSnapshot> loadCampusSnapshot(SessionController session) async {
+Future<CampusSnapshot> loadCampusSnapshot(
+  SessionController session, {
+  bool preferCacheOnly = false,
+}) async {
   final school = session.selectedSchool;
   if (school == null) {
     throw StateError('未选校');
   }
-  final run = await session.runCapability('notice.list');
+  // The fixed home view has no notice filter; restore the script's default query.
+  final cached = await session.latestCachedCapability('notice.list');
+  final cachedNotices = cached == null
+      ? null
+      : noticeListFromDynamic(cached.data);
+  final capabilities = {
+    ...school.capabilityCredentials.keys,
+    ...await session.trustedScriptCapabilities(),
+  };
+  if (cachedNotices != null) {
+    return CampusSnapshot(
+      schoolName: school.displayName,
+      updatedAt: cached!.fetchedAt,
+      notices: cachedNotices,
+      supportedCapabilities: capabilities,
+    );
+  }
+  // ADR-038: let the shared preload operation own first fetch so the homepage
+  // does not race it with a duplicate request. Older packages retain direct load.
+  var declaredPreload = false;
+  if (preferCacheOnly) {
+    try {
+      final provider = (await session.scriptRegistry).provider(
+        school.id,
+        'notice.list',
+      );
+      declaredPreload =
+          provider?.manifest.home.any(
+            (item) => item.capability == 'notice.list' && item.preload,
+          ) ??
+          false;
+    } catch (_) {
+      // An unavailable optional registry must not break the legacy provider.
+    }
+  }
+  if (declaredPreload) {
+    return CampusSnapshot(
+      schoolName: school.displayName,
+      updatedAt: DateTime.now().toUtc(),
+      supportedCapabilities: capabilities,
+    );
+  }
+  final run = await session.runCapability('notice.list', interactive: false);
   if (!run.ok) {
     return CampusSnapshot(
       schoolName: school.displayName,
