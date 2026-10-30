@@ -15,7 +15,17 @@
 
 验证使用合成夹具：学校Node135项、工具smoke24组、TS类型检查、Biome、契约变更记录门及真实QuickJS/Widget回归通过。最终Flutter全量 **1128项通过、11项跳过**，`flutter analyze --no-pub` 无诊断。既有取消测试补为等待真实isolate清理完成并断言取消/无晚到写入，没有隐藏超时或放宽原断言；新增多阶段Widget测试在真实异步zone初始化QuickJS host port，避免测试自身的FakeAsync生命周期影响后续用例。
 
-本轮未执行新版本手机安装、学校账号登录、研究生/Apple真机验收；不覆盖既有版本的历史手机证据。核心/存储/浏览器改动仍待人工实质性安全审阅，不代表生产合并或发布签收。没有新依赖，没有更改公网服务或V1验签路径。
+本轮学校账号登录、研究生/Apple真机验收尚未执行；不覆盖既有版本的历史手机证据。客户端测试机安装见下节。核心/存储/浏览器改动仍待人工实质性安全审阅，不代表生产合并或发布签收。没有新依赖，没有更改公网服务或V1验签路径。
+
+### 后续：同步显示版本并安装测试机
+
+所有者随后要求同步应用内版本并安装。`app_info.dart` 关于页默认显示从旧 `0.2.1-dev` 修正为 `0.4.0`，与两份pubspec的 `0.4.0+7` 对齐；CI的 `ELECON_VERSION` 注入保持有效。现有关于页/隐私页3项Widget测试及该文件静态分析通过。
+
+本地 Android debug APK 已构建，包元数据为 `dev.nancunchild.elecon` / versionName `0.4.0` / versionCode `7`，信任profile仍为DEPLOY。包内两校0.13.0源码、README和MPL全文已逐字节核验。
+
+通过 `adb install -r` 覆盖更新连接的 CPH2653，未清空应用数据；设备只读包元数据确认从0.3.0+6更新到0.4.0+7，随后成功启动MainActivity并取得运行进程。关于页实机无可读的UI自动化版本标签，未将包元数据核验表述为关于页视觉验收。两校JSON、说明和许可证另复制到 `Download/elecon-scripts/0.13.0/`。未代点源码授权或修改已批准digest，新脚本仍由用户在应用确认更新；不宣称真实学校认证或业务已验收。
+
+构建/检查日志：`/tmp/elecon-version-{test,analyze,apk}.log`；APK为 `client/build/app/outputs/flutter-apk/app-debug.apk`。没有读取手机凭据、私密响应或完整UI内容并写入仓库。
 
 ### 早期阶段记录
 
