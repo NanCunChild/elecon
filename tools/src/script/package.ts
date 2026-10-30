@@ -60,11 +60,24 @@ export function packageScript(manifest: unknown, source: unknown): string {
     name: string;
     network: { origins: string[]; ipAllow?: string[] };
     capabilities: Array<{ id: string }>;
+    home?: Array<{ capability: string; params?: Record<string, unknown> }>;
   };
   if (
     typed.name.includes("\0") ||
     typed.name.length > 160 ||
     new Set(typed.capabilities.map((capability) => capability.id)).size !== typed.capabilities.length
+  ) {
+    throw new ScriptPackageError("script_package_manifest_invalid");
+  }
+  // ADR-038 §1: semantic bounds mirror the client parser.
+  if (
+    typed.home &&
+    (new Set(typed.home.map((entry) => entry.capability)).size !== typed.home.length ||
+      typed.home.some(
+        (entry) =>
+          !typed.capabilities.some((cap) => cap.id === entry.capability) ||
+          Buffer.byteLength(JSON.stringify(entry.params ?? {}), "utf8") > 4096,
+      ))
   ) {
     throw new ScriptPackageError("script_package_manifest_invalid");
   }

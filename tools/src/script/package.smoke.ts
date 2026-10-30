@@ -19,7 +19,7 @@ const manifest = {
 };
 const source = "throw new Error('SYNTHETIC_SOURCE_MUST_NEVER_EXECUTE');\n";
 const packaged = packageScript(manifest, source);
-for (const sdkVersion of [1, 2, 3]) {
+for (const sdkVersion of [1, 2, 3, 4]) {
   assert.equal(
     JSON.parse(packageScript({ ...manifest, sdkVersion }, source)).manifest.sdkVersion,
     sdkVersion,
@@ -36,7 +36,7 @@ for (const invalid of ["", "   \n", null, 42, "abc\0def"]) {
 for (const invalid of [
   { ...manifest, capabilities: [...manifest.capabilities, { ...manifest.capabilities[0]! }] },
   { ...manifest, version: "01.2.3" },
-  { ...manifest, sdkVersion: 4 },
+  { ...manifest, sdkVersion: 5 },
   { ...manifest, browser: "true" },
   { ...manifest, unknown: true },
   { ...manifest, capabilities: [{ id: "notice.list", schema: "elecon.notice.list", schemaVersion: "99.0" }] },
@@ -192,3 +192,22 @@ try {
 } finally {
   rmSync(temporary, { recursive: true, force: true });
 }
+
+// ADR-038: home policy semantic bounds match the native package parser.
+const homeManifest = {
+  ...manifest,
+  sdkVersion: 4,
+  home: [{ capability: "notice.list", ttlSeconds: 900, params: { nested: { page: 1 } }, preload: true }],
+};
+assert.doesNotThrow(() => packageScript(homeManifest, source));
+for (const badHome of [
+  [{ capability: "notice.list", ttlSeconds: 29 }],
+  [{ capability: "grades.list", ttlSeconds: 900 }],
+  [
+    { capability: "notice.list", ttlSeconds: 900 },
+    { capability: "notice.list", ttlSeconds: 1800 },
+  ],
+  [{ capability: "notice.list", ttlSeconds: 900, params: { text: "x".repeat(4096) } }],
+])
+  assert.throws(() => packageScript({ ...homeManifest, home: badHome }, source));
+assert.throws(() => packageScript({ ...homeManifest, sdkVersion: 3 }, source));

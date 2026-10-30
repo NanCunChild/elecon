@@ -9,6 +9,11 @@
 
 ---
 
+- **2026-10-30 · 首页缓存与登录收尾 SDK 4（ADR-038 / ADR-039）**
+  - `elecon-script/1` 新增 SDK 4：manifest 可选 `home` 项声明能力、TTL、默认参数与预加载；宿主只缓存通过标准 schema 的成功输出，按学校/脚本/digest/参数隔离并记录真实 fetchedAt，复用已选择的 H/S/M 存储。
+  - SDK 4 `browser.setBusy(boolean)` 控制固定宿主“正在登录”遮罩，保留取消；SDK 1/2/3 不获得此方法，旧宿主拒绝 SDK 4。后台刷新禁止交互表单/浏览器，不增加权限或业务输出字段。
+  - 西电源码 0.13.0 / SDK 4，客户端 0.4.0+7；源码升级重新确认 digest。接入已存在的 `notice.detail`，不新增标准 capability/schema。
+
 - **2026-10-30 · 可选卡号与脚本输入 SDK 3（ADR-036 / ADR-037）**
   - 所有者确认学校未提供卡号时不强制手填：`card.balance` / `card.transactions` 移除 cardNumber required，有值仍须为非空真实卡号。预公测按 ADR-001 §8 显式更正 1.0；生成 Dart/TS、客户端校验/解码/固定卡片同批更新，金额/流水要求不变。
   - `elecon-script/1` 支持 SDK 3，继承 SDK 2 完整凭据寻址，新增 `ctx.ui.requestInput` 固定表单（text/password/select）。用户取消返回 null，输入不自动保存/变更参数或重跑；宿主校验大小/结果、计数/并发/取消并净化输入日志。旧 SDK 1/2 不获得新 API，未知 SDK 拒绝。

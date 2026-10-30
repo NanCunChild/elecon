@@ -29,7 +29,7 @@ class ScriptCredentials {
        _isActive = isActive ?? (() => true),
        _now = now ?? (() => DateTime.now().millisecondsSinceEpoch) {
     if (!_identifier.hasMatch(schoolId) ||
-        !const {1, 2, 3}.contains(sdkVersion) ||
+        !const {1, 2, 3, 4}.contains(sdkVersion) ||
         (scriptId != null && !_identifier.hasMatch(scriptId!)) ||
         (sdkVersion >= 2 && scriptId == null)) {
       throw const ScriptCredentialException('invalid_credential_identity');

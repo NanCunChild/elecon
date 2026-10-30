@@ -23,6 +23,8 @@ class _ScriptSessionState {
   Future<bool> Function()? storageConsent;
   int generation = 0;
   bool disposed = false;
+  int homeRevision = 0;
+  Future<void>? refreshingHome;
   final Set<ScriptHttpTransport> transports = {};
 }
 
@@ -67,6 +69,8 @@ extension TrustedScriptSession on SessionController {
     final state = _scriptStates[this];
     if (state == null) return;
     state.generation++;
+    state.homeRevision++;
+    state.refreshingHome = null;
     if (dispose) {
       state.disposed = true;
       state.presenter = null;
@@ -175,10 +179,95 @@ extension TrustedScriptSession on SessionController {
     };
   }
 
+  /// ADR-038: these APIs expose validated business outputs, never a store.
+  int get homeDataRevision => _scripts.homeRevision;
+
+  Future<ScriptCachedData?> cachedCapability(
+    String capability, {
+    Map<String, dynamic>? params,
+  }) async {
+    final school = _school;
+    final generation = _scripts.generation;
+    if (school == null || _scripts.disposed) return null;
+    try {
+      final package = (await scriptRegistry).provider(school.id, capability);
+      if (package == null ||
+          generation != _scripts.generation ||
+          _school?.id != school.id) {
+        return null;
+      }
+      return ScriptDataCache(
+        _store,
+      ).read(package, capability, params: params ?? const {});
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<ScriptCachedData?> latestCachedCapability(String capability) async {
+    final school = _school;
+    final generation = _scripts.generation;
+    if (school == null || _scripts.disposed) return null;
+    try {
+      final package = (await scriptRegistry).provider(school.id, capability);
+      if (package == null ||
+          generation != _scripts.generation ||
+          _school?.id != school.id) {
+        return null;
+      }
+      return ScriptDataCache(_store).latest(package, capability);
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> refreshHomeData({bool force = false}) {
+    final state = _scripts;
+    if (state.refreshingHome != null) return state.refreshingHome!;
+    final generation = state.generation;
+    final school = _school;
+    if (school == null || state.disposed) return Future.value();
+    final future = () async {
+      try {
+        final registry = await scriptRegistry;
+        for (final installation in registry.installations.toList()) {
+          final package = installation.package;
+          if (!installation.enabled || package.manifest.schoolId != school.id) {
+            continue;
+          }
+          for (final query in package.manifest.home.where((e) => e.preload)) {
+            if (state.disposed ||
+                state.generation != generation ||
+                _school?.id != school.id) {
+              return;
+            }
+            final cached = ScriptDataCache(
+              _store,
+            ).read(package, query.capability, params: query.params);
+            if (!force && cached != null && !cached.isStale) continue;
+            await runTrustedScript(
+              package.manifest.id,
+              query.capability,
+              params: query.params,
+              interactive: false,
+            );
+          }
+        }
+      } on Object {
+        // Optional background data never replaces a prior successful snapshot.
+      }
+    }();
+    state.refreshingHome = future;
+    return future.whenComplete(() {
+      if (identical(state.refreshingHome, future)) state.refreshingHome = null;
+    });
+  }
+
   Future<CapabilityRun> runTrustedScript(
     String id,
     String capability, {
     Map<String, dynamic>? params,
+    bool interactive = true,
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
     ScriptInputCall? inputCall,
@@ -197,6 +286,7 @@ extension TrustedScriptSession on SessionController {
         id,
         capability,
         params: params,
+        interactive: interactive,
         htmlStdlib: htmlStdlib,
         browserCall: browserCall,
         inputCall: inputCall,
@@ -211,6 +301,7 @@ extension TrustedScriptSession on SessionController {
     String id,
     String capability, {
     Map<String, dynamic>? params,
+    bool interactive = true,
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
     ScriptInputCall? inputCall,
@@ -240,9 +331,11 @@ extension TrustedScriptSession on SessionController {
     }
     final admissionGeneration = state.generation;
     try {
-      await ensurePersistentStore(
-        confirmSoftwareFallback: state.storageConsent ?? () async => false,
-      );
+      if (interactive) {
+        await ensurePersistentStore(
+          confirmSoftwareFallback: state.storageConsent ?? () async => false,
+        );
+      }
     } catch (_) {
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
@@ -296,19 +389,32 @@ extension TrustedScriptSession on SessionController {
         isActive: active,
         htmlStdlib: htmlStdlib ?? await loadHtmlStdlib(),
         wallTimeout: Duration(
-          seconds: package.manifest.browser || package.manifest.sdkVersion >= 3
+          seconds:
+              interactive &&
+                  (package.manifest.browser || package.manifest.sdkVersion >= 3)
               ? 120
               : 35,
         ),
         // ADR-034 §6: use the existing bounded SDK maximum for interactive
         // authentication (captcha/MFA plus a redirect chain).
-        maxRequests: package.manifest.browser ? 40 : 20,
+        maxRequests: interactive && package.manifest.browser ? 40 : 20,
         onLog: (level, message) {
           DevLog.instance.adapter(level, message);
           onLog?.call(level, message);
         },
       );
       Future<Object?> withBrowser(ScriptInputCall? input) async {
+        // ADR-038 §3: background work cannot open a login page or native form.
+        if (!interactive) {
+          return execute(
+            (_, _) async {
+              throw const ScriptRunException('script_browser_unavailable');
+            },
+            (_) async {
+              throw const ScriptRunException('input_unavailable');
+            },
+          );
+        }
         if (package.manifest.browser && browserCall == null) {
           final presenter = state.presenter;
           if (presenter == null) {
@@ -327,13 +433,19 @@ extension TrustedScriptSession on SessionController {
 
       final inputPresenter = state.inputPresenter;
       final data =
-          package.manifest.sdkVersion >= 3 &&
+          interactive &&
+              package.manifest.sdkVersion >= 3 &&
               inputCall == null &&
               inputPresenter != null
           ? await inputPresenter(package, (call) => withBrowser(call))
           : await withBrowser(inputCall);
       if (!active()) {
         throw const ScriptRunException('script_cancelled');
+      }
+      if (ScriptDataCache(
+        store,
+      ).write(package, capability, params ?? const {}, data)) {
+        state.homeRevision++;
       }
       result = CapabilityRun.ok(
         data,

@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1/2/3 (ADR-034/035/037). Values include actual secrets.
+/** Trusted school script SDK 1/2/3/4 (ADR-034/035/037/038/039). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -39,6 +39,8 @@ export interface ScriptResponse {
   json(): Promise<unknown>;
 }
 export interface ScriptBrowser {
+  /** SDK 4: fixed host login overlay; closing/cancelling remains available. */
+  setBusy(busy: boolean): Promise<void>;
   open(url: string): Promise<unknown>;
   evaluate(source: string | ((...args: unknown[]) => unknown), ...args: unknown[]): Promise<unknown>;
   text(selector: string): Promise<string | null>;
@@ -105,4 +107,18 @@ export interface ScriptInputRequest {
 export type CapabilityHandler = (ctx: ScriptContext, params: Record<string, unknown>) => Promise<unknown>;
 export interface CapabilityModule {
   capabilities: Record<string, CapabilityHandler>;
+}
+
+/** ADR-038: optional SDK4 manifest.home entry. Host timestamps successful data.
+ * Entries are unique by capability, at most 16; capability must be declared.
+ * Cache identity includes selected school, installed digest and canonical params.
+ */
+export interface ScriptHomeEntry {
+  capability: string;
+  /** 30–86400 seconds; stale data may display for at most seven days. */
+  ttlSeconds: number;
+  /** Default query, at most 4096 encoded UTF-8 bytes. */
+  params?: Record<string, unknown>;
+  /** Defaults false. Background runs cannot present browser/input/storage UI. */
+  preload?: boolean;
 }

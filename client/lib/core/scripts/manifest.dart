@@ -57,6 +57,7 @@ class ScriptManifest {
     required this.network,
     required this.browser,
     required this.capabilities,
+    required this.home,
   });
 
   factory ScriptManifest.fromJson(Map<String, dynamic> json) {
@@ -69,8 +70,9 @@ class ScriptManifest {
       'network',
       'browser',
       'capabilities',
+      if (json.containsKey('home')) 'home',
     }, 'manifest');
-    if (!const {1, 2, 3}.contains(json['sdkVersion']) ||
+    if (!const {1, 2, 3, 4}.contains(json['sdkVersion']) ||
         json['sdkVersion'] is! int) {
       throw const FormatException('unsupported script SDK version');
     }
@@ -98,6 +100,18 @@ class ScriptManifest {
     if (caps.map((c) => c.id).toSet().length != caps.length) {
       throw const FormatException('duplicate script capability');
     }
+    final rawHome = json['home'];
+    if (json.containsKey('home') &&
+        (json['sdkVersion'] != 4 || rawHome is! List || rawHome.length > 16)) {
+      throw const FormatException('invalid script home declaration');
+    }
+    final home = (rawHome as List? ?? const [])
+        .map((raw) => ScriptHomeEntry.fromJson(_object(raw, 'home entry')))
+        .toList(growable: false);
+    if (home.map((e) => e.capability).toSet().length != home.length ||
+        home.any((e) => !caps.any((c) => c.id == e.capability))) {
+      throw const FormatException('duplicate or undeclared home capability');
+    }
     return ScriptManifest._(
       sdkVersion: json['sdkVersion'] as int,
       id: id,
@@ -109,6 +123,7 @@ class ScriptManifest {
       ),
       browser: json['browser'] as bool,
       capabilities: List.unmodifiable(caps),
+      home: List.unmodifiable(home),
     );
   }
 
@@ -120,6 +135,7 @@ class ScriptManifest {
   final ScriptNetworkPolicy network;
   final bool browser;
   final List<ScriptCapability> capabilities;
+  final List<ScriptHomeEntry> home;
 
   ScriptCapability? capability(String id) {
     for (final c in capabilities) {
@@ -209,5 +225,60 @@ Object? _canonical(Object? value) {
     return {for (final key in keys) key: _canonical(value[key])};
   }
   if (value is List) return value.map(_canonical).toList(growable: false);
+  return value;
+}
+
+/// ADR-038 §1: script-owned freshness and default preload query.
+class ScriptHomeEntry {
+  const ScriptHomeEntry({
+    required this.capability,
+    required this.ttlSeconds,
+    this.params = const {},
+    this.preload = false,
+  });
+  factory ScriptHomeEntry.fromJson(Map<String, dynamic> json) {
+    if (json.keys.any(
+          (k) => !const {
+            'capability',
+            'ttlSeconds',
+            'params',
+            'preload',
+          }.contains(k),
+        ) ||
+        json['ttlSeconds'] is! int ||
+        (json['ttlSeconds'] as int) < 30 ||
+        (json['ttlSeconds'] as int) > 86400 ||
+        (json.containsKey('preload') && json['preload'] is! bool)) {
+      throw const FormatException('invalid home policy');
+    }
+    final params = json.containsKey('params')
+        ? _object(json['params'], 'home params')
+        : <String, dynamic>{};
+    if (utf8.encode(jsonEncode(params)).length > 4096) {
+      throw const FormatException('home params exceed limit');
+    }
+    return ScriptHomeEntry(
+      capability: _text(json, 'capability', 128),
+      ttlSeconds: json['ttlSeconds'] as int,
+      params: _immutableJson(params) as Map<String, dynamic>,
+      preload: json['preload'] == true,
+    );
+  }
+  final String capability;
+  final int ttlSeconds;
+  final Map<String, dynamic> params;
+  final bool preload;
+}
+
+// ADR-038 §1 / ADR-034 §2: nested declaration parameters are digest-bound too.
+Object? _immutableJson(Object? value) {
+  if (value is Map<String, dynamic>) {
+    return Map<String, dynamic>.unmodifiable(
+      value.map((key, item) => MapEntry(key, _immutableJson(item))),
+    );
+  }
+  if (value is List) {
+    return List<Object?>.unmodifiable(value.map(_immutableJson));
+  }
   return value;
 }

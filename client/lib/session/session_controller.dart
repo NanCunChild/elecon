@@ -53,6 +53,8 @@ import '../core/scripts/runtime.dart';
 import '../core/scripts/input.dart';
 import '../core/scripts/http_transport.dart';
 import '../core/scripts/browser.dart' show ScriptBrowserException;
+import '../core/scripts/data_cache.dart';
+export '../core/scripts/data_cache.dart' show ScriptCachedData;
 
 part 'script_session.dart';
 
@@ -159,9 +161,12 @@ class SessionController extends ChangeNotifier {
   bool get isConfigured => _school != null;
   bool get debugLog => _debugLog;
   // ADR-034: a different school's credentials do not imply this school is logged in.
-  Iterable<CredentialEntry> get _selectedCredentialEntries => _store
-      .list()
-      .where((entry) => _school == null || entry.schoolId == _school!.id);
+  Iterable<CredentialEntry> get _selectedCredentialEntries =>
+      _store.list().where(
+        (entry) =>
+            entry.type != ScriptDataCache.type &&
+            (_school == null || entry.schoolId == _school!.id),
+      );
 
   /// Local credential presence only; scripts may refresh expired records and
   /// this does not verify the server-side login state (ADR-035 §2–§3).
@@ -439,6 +444,7 @@ class SessionController extends ChangeNotifier {
   Future<CapabilityRun> runCapability(
     String capability, {
     Map<String, dynamic>? params,
+    bool interactive = true,
     String? htmlStdlib,
     void Function(String level, String message)? onLog,
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
@@ -465,6 +471,7 @@ class SessionController extends ChangeNotifier {
         local.manifest.id,
         capability,
         params: params,
+        interactive: interactive,
         htmlStdlib: htmlStdlib,
         onLog: onLog,
       );
