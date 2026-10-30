@@ -1,4 +1,4 @@
-// Actual compiled SDK 2 packages, synthetic school responses, real QuickJS.
+// Actual compiled SDK 4 packages, synthetic school responses, real QuickJS.
 import 'dart:convert';
 import 'dart:io';
 
@@ -33,6 +33,9 @@ class WebViewFixture {
   final bool pg, businessFailure;
   final opened = <String>[];
   final logs = <String>[];
+  final busyStates = <bool>[];
+  int authenticatedProbes = 0;
+  int cookieReads = 0;
   String get origin =>
       pg ? 'https://yjspt.xidian.edu.cn' : 'https://ehall.xidian.edu.cn';
   Future<Object?> browser(String method, Map<String, Object?> args) async {
@@ -42,14 +45,21 @@ class WebViewFixture {
         opened.add(args['url'] as String);
         return null;
       case 'evaluate':
+        if ((args['source'] as String).contains(
+          'function inspectIdsLocation',
+        )) {
+          return 'https://ids.xidian.edu.cn/personalInfo/personalMobile/index.html';
+        }
         expect(args['source'], contains('function inspectLoginPage'));
-        await Future<void>.delayed(const Duration(milliseconds: 650));
+        authenticatedProbes++;
+        await Future<void>.delayed(const Duration(milliseconds: 250));
         return {
           'ready': true,
           'page':
               'https://ids.xidian.edu.cn/personalInfo/personalMobile/index.html',
         };
       case 'cookies':
+        cookieReads++;
         return [
           {
             'name': 'CASTGC',
@@ -60,6 +70,9 @@ class WebViewFixture {
           },
         ];
       case 'setCookies':
+        return null;
+      case 'setBusy':
+        busyStates.add(args['busy'] as bool);
         return null;
       default:
         throw StateError('unexpected browser operation');
@@ -334,7 +347,7 @@ process.stdout.write(result.outputFiles[0].text);''',
       store: store,
       schoolId: school.manifest.schoolId,
       scriptId: school.manifest.id,
-      sdkVersion: 3,
+      sdkVersion: 4,
     );
   });
 
@@ -370,12 +383,13 @@ process.stdout.write(result.outputFiles[0].text);''',
   );
 
   test(
-    'source packages bind SDK 2 and combine browser login with authenticated data',
+    'source packages bind SDK 4 and combine browser login with authenticated data',
     () {
-      expect(school.manifest.sdkVersion, 3);
-      expect(school.manifest.version, '0.12.1');
+      expect(school.manifest.sdkVersion, 4);
+      expect(school.manifest.version, '0.13.0');
       expect(school.manifest.browser, isTrue);
-      expect(school.manifest.capabilities, hasLength(12));
+      expect(school.manifest.capabilities, hasLength(13));
+      expect(school.manifest.capability('notice.detail'), isNotNull);
       expect(login.manifest.browser, isTrue);
       expect(login.manifest.schoolId, school.manifest.schoolId);
       expect(school.manifest.schoolId, 'xidian_undergraduate');
@@ -494,6 +508,41 @@ process.stdout.write(result.outputFiles[0].text);''',
   );
 
   test(
+    'notice titles omit nested dates and detail parses through real QuickJS',
+    () async {
+      final list =
+          await run(
+                'notice.list',
+                fetch: (url, init) async => response(
+                  url,
+                  '<div class="tit">通知公告</div><ul><li><a title="合成公告" href="info/1012/42.htm"><div class="time"><p>13</p><span>2026.10</span></div><p>合成公告…</p></a></li></ul>',
+                ),
+              )
+              as Map;
+      final item = (list['items'] as List).single as Map;
+      expect(item['title'], '合成公告');
+      expect(item['publishedAt'], '2026-10-13T00:00:00Z');
+      final detail =
+          await run(
+                'notice.detail',
+                params: {'id': item['id'], 'url': item['url']},
+                fetch: (url, init) async {
+                  expect(url, item['url']);
+                  expect(init['headers'], isNull);
+                  return response(
+                    url,
+                    '<div class="nry_con"><div class="con"><p class="tit">合成公告</p><div id="vsb_content"><div class="v_news_content"><style>hidden</style><p>第一段合成正文</p><p>第二段合成正文</p><script>hidden()</script></div></div></div></div>',
+                  );
+                },
+              )
+              as Map;
+      expect(detail['id'], '42');
+      expect(detail['content'], '第一段合成正文\n\n第二段合成正文');
+      expect(store.list(), isEmpty);
+    },
+  );
+
+  test(
     'UG bitmap schedule is filtered and carries the saved service-specific student id',
     () async {
       seed(
@@ -578,7 +627,7 @@ process.stdout.write(result.outputFiles[0].text);''',
         store: store,
         schoolId: school.manifest.schoolId,
         scriptId: school.manifest.id,
-        sdkVersion: 3,
+        sdkVersion: 4,
       );
       seed('ids', data: {'role': 'undergraduate'});
       seed('yjspt', data: {'studentId': 'SYNTHETIC_PG'});
@@ -834,6 +883,9 @@ process.stdout.write(result.outputFiles[0].text);''',
       expect(fixture.opened, ['https://ids.xidian.edu.cn/authserver/login']);
       expect(fixture.logs, contains('xidian_login_saved:ids'));
       expect(fixture.logs, contains('xidian_login_saved:ehall'));
+      expect(fixture.busyStates, [true]);
+      expect(fixture.authenticatedProbes, 2);
+      expect(fixture.cookieReads, 12);
       final cached = await run('term.list', fetch: fixture.fetch);
       expect((cached as Map)['currentTerm'], '2026-2027-1');
     },
@@ -886,7 +938,7 @@ process.stdout.write(result.outputFiles[0].text);''',
         store: store,
         schoolId: postgraduate.manifest.schoolId,
         scriptId: postgraduate.manifest.id,
-        sdkVersion: 3,
+        sdkVersion: 4,
       );
       final fixture = WebViewFixture(pg: true);
       await runtime.run(
@@ -1020,7 +1072,7 @@ process.stdout.write(result.outputFiles[0].text);''',
           store: store,
           schoolId: package.manifest.schoolId,
           scriptId: package.manifest.id,
-          sdkVersion: 3,
+          sdkVersion: 4,
         );
         await expectLater(
           runtime.run(

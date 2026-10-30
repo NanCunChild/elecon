@@ -1,4 +1,4 @@
-/** ADR-034/035: build the independently installable Xidian SDK 3 packages. */
+/** ADR-034/035: build the independently installable Xidian SDK 4 packages. */
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";

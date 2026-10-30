@@ -2,6 +2,23 @@
 
 依据 [ADR-034](../adr/adr_034_trusted_school_scripts.md) 与 [ADR-035](../adr/adr_035_script_credential_identity.md)。这条路径已接入客户端，不依赖 V2 分支、签名仪式、旧 requestGraph、Masker 或不透明句柄。旧 official bundle 作为迁移兼容路径保留，Masker 尚未全仓删除，见 [退役审计](masker_retirement_audit.md)。不把新脚本送到服务端执行。
 
+## SDK 4 首页数据接口
+
+[ADR-038](../adr/adr_038_script_home_cache.md) 与 [ADR-039](../adr/adr_039_script_browser_busy.md) 增加可选的声明和固定收尾提示（客户端0.4.0+7）。例如 manifest：
+
+```json
+"sdkVersion": 4,
+"home": [
+  {"capability": "notice.list", "ttlSeconds": 900, "preload": true},
+  {"capability": "schedule.week", "ttlSeconds": 900, "params": {}, "preload": true},
+  {"capability": "card.balance", "ttlSeconds": 120, "preload": true}
+]
+```
+
+最多16个不同且已声明的能力，TTL为30–86400秒，params须为不超过4096字节的JSON对象。宿主自动缓存这些能力成功的标准输出及实际完成时间；参数分别缓存。预加载只跑preload项，缺认证时不弹窗口；脚本可在无参handler内自行解析当前周等默认查询。自动刷新遵守TTL，显式刷新可强制重取；失败保留原值与时间。固定首页显示缓存时间，页面重建仍可恢复；登出清除当前学校数据，更新digest后旧结果不复用。H/S/M既有选择继续适用，M档仅内存。
+
+仅浏览器授权且SDK4的脚本获得 `await ctx.browser.setBusy(true)` / `setBusy(false)`：宿主显示固定“正在登录”遮罩，学校页面不接收交互，取消仍可用。成功依据仍由脚本验证；调用结束/错误清理遮罩，不增加关闭浏览器能力。SDK1/2/3不获得此方法；安装SDK4需相应客户端。
+
 ## 在应用中使用
 
 1. 首次选校页或设置页打开“学校脚本”。

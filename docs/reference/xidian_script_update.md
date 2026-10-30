@@ -1,5 +1,7 @@
 # 西电脚本与 Traintime PDA 对照
 
+> 2026-10-30 最新：客户端 **0.4.0+7**，两校源码 **0.13.0 / SDK 4**。先更新客户端，再在源码安装确认页授权新版 digest。包含 IDS 收尾遮罩与短窗口采样、首页时间戳缓存/预加载/静默刷新、公告正文；细节见 [学校 README](../../school-scripts/xidian/README.md)。旧版记录保留作历史证据，不能用于声称新版真机验收。
+
 日期：2026-10-30。参考提交 `e780e4d01ea740c979ff5c31b9db439dbc586864`（2026-10-14），工作树只读。实现位于 [school-scripts/xidian](../../school-scripts/xidian/README.md)，采用 ADR-034/035，不修改 V1 签名资产。
 
 ## 已修正的差异

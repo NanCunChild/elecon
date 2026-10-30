@@ -14,10 +14,10 @@ assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildXidianPackages())]);
 for (const role of ["undergraduate", "postgraduate"]) {
   const data = JSON.parse(first.get(`school-xidian-${role}.elecon.json`)!);
-  assert.equal(data.manifest.version, "0.12.1");
-  assert.equal(data.manifest.sdkVersion, 3);
+  assert.equal(data.manifest.version, "0.13.0");
+  assert.equal(data.manifest.sdkVersion, 4);
   assert.equal(data.manifest.browser, true);
-  assert.equal(data.manifest.capabilities.length, 12);
+  assert.equal(data.manifest.capabilities.length, 13);
   assert.ok(data.manifest.network.origins.includes("https://xxcapp.xidian.edu.cn"));
   assert.ok(data.manifest.capabilities.some((cap: { id: string }) => cap.id === "generic.section"));
   assert.equal(data.manifest.schoolId, `xidian_${role}`);
@@ -82,5 +82,5 @@ try {
   rmSync(out, { recursive: true, force: true });
 }
 console.log(
-  "Xidian SDK3 source packages: deterministic build, explicit trust and real module fixtures passed",
+  "Xidian SDK4 source packages: deterministic build, explicit trust and real module fixtures passed",
 );

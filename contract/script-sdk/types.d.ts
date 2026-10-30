@@ -61,7 +61,7 @@ export interface ScriptBrowser {
   }>): Promise<void>;
 }
 export interface ScriptContext {
-  /** SDK 3 only: fixed transient native form; no automatic persistence/retry. */
+  /** SDK 3+: fixed transient native form; no automatic persistence/retry. */
   readonly ui?: {
     requestInput(request: ScriptInputRequest): Promise<Record<string, string> | null>;
   };

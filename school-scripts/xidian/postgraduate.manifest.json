@@ -1,7 +1,7 @@
 {
-  "sdkVersion": 3,
+  "sdkVersion": 4,
   "id": "school-xidian-postgraduate",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "schoolId": "xidian_postgraduate",
   "name": "西安电子科技大学（研究生）",
   "network": {
@@ -19,6 +19,11 @@
   },
   "browser": true,
   "capabilities": [
+    {
+      "id": "notice.detail",
+      "schema": "elecon.notice.detail",
+      "schemaVersion": "1.0"
+    },
     {
       "id": "notice.list",
       "schema": "elecon.notice.list",
@@ -78,6 +83,63 @@
       "id": "generic.section",
       "schema": "elecon.generic.section",
       "schemaVersion": "1.0"
+    }
+  ],
+  "home": [
+    {
+      "capability": "notice.list",
+      "ttlSeconds": 900,
+      "preload": true
+    },
+    {
+      "capability": "calendar.academic",
+      "ttlSeconds": 3600,
+      "preload": true
+    },
+    {
+      "capability": "schedule.week",
+      "ttlSeconds": 900,
+      "preload": true
+    },
+    {
+      "capability": "card.balance",
+      "ttlSeconds": 120,
+      "preload": true
+    },
+    {
+      "capability": "grades.list",
+      "ttlSeconds": 3600,
+      "preload": true
+    },
+    {
+      "capability": "exam.list",
+      "ttlSeconds": 1800,
+      "preload": true
+    },
+    {
+      "capability": "library.loans",
+      "ttlSeconds": 1800,
+      "preload": true
+    },
+    {
+      "capability": "card.transactions",
+      "ttlSeconds": 300,
+      "preload": false
+    },
+    {
+      "capability": "classroom.buildings",
+      "ttlSeconds": 86400,
+      "preload": false
+    },
+    {
+      "capability": "classroom.available",
+      "ttlSeconds": 300,
+      "preload": false
+    },
+    {
+      "capability": "notice.detail",
+      "ttlSeconds": 86400,
+      "preload": false
     }
   ]
 }

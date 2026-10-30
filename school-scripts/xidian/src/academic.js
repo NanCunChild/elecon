@@ -452,6 +452,11 @@ function slotOutput(slot, startDate, week) {
 
 export async function scheduleWeek(ctx, params = {}) {
   const pg = postgraduate(params);
+  // ADR-038 §1: the script resolves its default home query; host stays school-agnostic.
+  if (params.week == null) {
+    const calendar = await calendarAcademic(ctx, params);
+    params = { ...params, term: params.term ?? calendar.term, week: calendar.currentWeek ?? 1 };
+  }
   const week = positive(params.week, "week", MAX_WEEKS);
   const client = await createClient(ctx, pg ? "yjspt" : "ehall");
   const term = await resolveTerm(client, pg, params);

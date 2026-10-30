@@ -124,6 +124,17 @@ test("UG bitmap week indexing, actual dates, empty week, and exact student id", 
   assert.equal(empty.days.flatMap((day) => day.slots).length, 0);
 });
 
+test("home schedule query resolves the current week within the script", async () => {
+  const ctx = fake((call) => {
+    if (call.url.pathname.endsWith("/xskcb.do")) return payload("xskcb", []);
+    if (call.url.pathname.endsWith("/xsdkkc.do")) return payload("xsdkkc", []);
+    return ugCalendar(call);
+  });
+  const result = valid("schedule.week", await scheduleWeek(ctx, { term: TERM }));
+  assert.equal(result.week, 3);
+  assert.equal(result.term, TERM);
+});
+
 test("calendar starts need not be Monday when deriving a slot date", async () => {
   const ctx = fake((call) => {
     if (call.url.pathname.endsWith("/cxjcs.do")) return payload("cxjcs", [{ XQKSRQ: "2025-08-31" }]);
