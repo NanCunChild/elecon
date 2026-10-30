@@ -1,7 +1,7 @@
 /** Compile the real school packages and run every synthetic protocol fixture. */
 import { strict as assert } from "node:assert";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,22 +12,59 @@ const root = fileURLToPath(new URL("../../../school-scripts/xidian/", import.met
 const first = await buildXidianPackages();
 assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildXidianPackages())]);
-const data = JSON.parse(first.get("school-xidian.elecon.json")!);
-const login = JSON.parse(first.get("school-xidian-login.elecon.json")!);
-assert.equal(data.manifest.version, "0.6.0");
-assert.equal(data.manifest.sdkVersion, 2);
-assert.equal(data.manifest.browser, false);
-assert.equal(data.manifest.capabilities.length, 11);
-assert.equal(login.manifest.browser, true);
-assert.equal(login.manifest.schoolId, data.manifest.schoolId);
-assert.ok(data.source.includes("MPL-2.0"));
-assert.ok(!/^import .*from ["']\.\.?\//m.test(data.source));
+for (const role of ["undergraduate", "postgraduate"]) {
+  const data = JSON.parse(first.get(`school-xidian-${role}.elecon.json`)!);
+  assert.equal(data.manifest.version, "0.12.1");
+  assert.equal(data.manifest.sdkVersion, 3);
+  assert.equal(data.manifest.browser, true);
+  assert.equal(data.manifest.capabilities.length, 12);
+  assert.ok(data.manifest.network.origins.includes("https://xxcapp.xidian.edu.cn"));
+  assert.ok(data.manifest.capabilities.some((cap: { id: string }) => cap.id === "generic.section"));
+  assert.equal(data.manifest.schoolId, `xidian_${role}`);
+  assert.equal(data.manifest.id, `school-xidian-${role}`);
+  assert.equal(
+    data.manifest.network.origins.includes("https://yjspt.xidian.edu.cn"),
+    role === "postgraduate",
+  );
+  assert.ok(data.source.includes("MPL-2.0"));
+  // The password protocol remains a separate experiment, never a hidden
+  // fallback or a selectable parameter in the default school packages.
+  for (const symbol of ["pdaLogin", "renderPdaInput", "encryptPda", "openSliderCaptcha.htl"])
+    assert.ok(!data.source.includes(symbol), `password protocol bundled: ${symbol}`);
+  assert.ok(!/^import .*from ["']\.\.?\//m.test(data.source));
+}
+// App assets must be regenerated with every school-source change.
+for (const [name, content] of first) {
+  assert.equal(
+    readFileSync(join(root, "../../client/assets/school-scripts", name), "utf8"),
+    content,
+    `stale bundled script: ${name}`,
+  );
+}
+for (const [asset, source] of [
+  ["LICENSE.txt", "LICENSE"],
+  ["README.md", "README.md"],
+]) {
+  assert.equal(
+    readFileSync(join(root, "../../client/assets/school-scripts", asset!), "utf8"),
+    readFileSync(join(root, source!), "utf8"),
+  );
+}
 const out = mkdtempSync(join(tmpdir(), "elecon-xidian-build-"));
 try {
+  for (const name of ["school-xidian.elecon.json", "school-xidian-login.elecon.json"]) {
+    writeFileSync(join(out, name), "obsolete_synthetic_package");
+  }
   await writeXidianPackages(out);
   for (const [name, content] of first) assert.equal(readFileSync(join(out, name), "utf8"), content);
-  const tests = readdirSync(join(root, "tests")).filter((name) => name.endsWith(".test.mjs"));
-  for (const file of tests) {
+  assert.equal(existsSync(join(out, "school-xidian.elecon.json")), false);
+  assert.equal(existsSync(join(out, "school-xidian-login.elecon.json")), false);
+  for (const role of ["undergraduate", "postgraduate"]) {
+    assert.equal(existsSync(join(out, `school-xidian-${role}-login.elecon.json`)), false);
+  }
+  const fixtures = readdirSync(join(root, "tests")).filter((name) => name.endsWith(".mjs"));
+  const tests = fixtures.filter((name) => name.endsWith(".test.mjs"));
+  for (const file of fixtures) {
     assert.deepEqual(
       scanFile(join(root, "tests", file)).filter((finding) => finding.level === "error"),
       [],
@@ -45,5 +82,5 @@ try {
   rmSync(out, { recursive: true, force: true });
 }
 console.log(
-  "Xidian SDK2 source packages: deterministic build, explicit trust and real module fixtures passed",
+  "Xidian SDK3 source packages: deterministic build, explicit trust and real module fixtures passed",
 );

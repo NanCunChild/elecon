@@ -14,6 +14,7 @@ import '../../core/login/webview_login.dart' show isLoginNavigationAllowed;
 import '../../session/session_controller.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import 'webview_login_page.dart';
+import 'script_login_page.dart';
 
 typedef SchoolLoginRunner =
     Future<WebViewLoginResult?> Function(
@@ -30,6 +31,19 @@ Future<WebViewLoginResult?> runSchoolLogin(
   String? initialUrl,
   String? requiredRef,
 }) async {
+  // ADR-034 §5/§6: the installed script chooses its URL, success checks and
+  // credential capture. The legacy LoginManifestView is not its auth policy.
+  if (school.adapterId.startsWith('script:')) {
+    return Navigator.of(context).push<WebViewLoginResult>(
+      MaterialPageRoute(
+        builder: (_) => ScriptLoginPage(
+          session: session,
+          school: school,
+          requiredRef: requiredRef,
+        ),
+      ),
+    );
+  }
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
     return const WebViewLoginResult(
       status: WebViewLoginStatus.error,

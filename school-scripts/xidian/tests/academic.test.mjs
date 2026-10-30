@@ -460,7 +460,15 @@ test("PG exams send student/term/publication filters and parse weekday parenthes
   );
   assert.equal(result.items[0].examAt, "2026-01-02T00:30:00.000Z");
   assert.equal(result.items[0].seat, undefined);
-  await assert.rejects(examList(ctx, { role: "postgraduate", term: TERM }), /student_id_required/);
+  // Explicit account input is now saved for the next query in this school.
+  await examList(ctx, { role: "postgraduate", term: TERM });
+  await assert.rejects(
+    examList(
+      fake(() => assert.fail("missing id must fail before exam I/O"), { studentId: null }),
+      { role: "postgraduate", term: TERM },
+    ),
+    /student_id_required/,
+  );
 });
 
 const buildingRows = [{ JXLDM: "demo-building", JXLJC: "测试楼", XXXQMC: "南校区" }];
@@ -562,7 +570,7 @@ test("term/current calendar capabilities expose only proven fields for both role
   assert.equal(ugTerm.currentTerm, TERM);
   assert.equal(ugTerm.items.length, 1);
   const ugCal = valid("calendar.academic", await calendarAcademic(ug, { term: TERM }));
-  assert.deepEqual(ugCal, { term: TERM, startDate: "2025-09-01" });
+  assert.deepEqual(ugCal, { term: TERM, startDate: "2025-09-01", currentWeek: 3 });
   const pg = fake((call) =>
     call.url.pathname.endsWith("/getUserInfo.do")
       ? { code: "0", data: { xnxqdm: TERM } }
@@ -570,6 +578,74 @@ test("term/current calendar capabilities expose only proven fields for both role
   );
   assert.equal(valid("term.list", await termList(pg, { role: "postgraduate" })).currentTerm, TERM);
   assert.deepEqual(valid("calendar.academic", await calendarAcademic(pg, { role: "postgraduate" })), ugCal);
+});
+
+test("current week follows China midnight and school term start rather than device timezone", async () => {
+  for (const [now, week] of [
+    ["2025-08-31T15:59:59Z", undefined],
+    ["2025-08-31T16:00:00Z", 1],
+    ["2025-09-07T15:59:59Z", 1],
+    ["2025-09-07T16:00:00Z", 2],
+  ]) {
+    const ctx = fake(ugCalendar);
+    ctx.now = () => Date.parse(now);
+    const out = valid("calendar.academic", await calendarAcademic(ctx, { term: TERM }));
+    assert.equal(out.currentWeek, week);
+  }
+});
+
+test("the school script requests a missing student id and persists only its submitted value", async () => {
+  const ctx = fake(
+    (call) => ugCalendar(call) ?? payload(call.url.pathname.endsWith("/xsdkkc.do") ? "xsdkkc" : "xskcb", []),
+    { studentId: null },
+  );
+  let prompts = 0;
+  ctx.ui = {
+    requestInput: async (request) => {
+      prompts++;
+      assert.equal(request.fields[0].id, "studentId");
+      return { studentId: "EXAMPLE_SYNTHETIC_STUDENT" };
+    },
+  };
+  await scheduleWeek(ctx, { term: TERM, week: 3 });
+  assert.equal(prompts, 1);
+  assert.equal(
+    JSON.parse((await ctx.credentials.get("ehall", { namespace: "xidian.auth" })).value).data.studentId,
+    "EXAMPLE_SYNTHETIC_STUDENT",
+  );
+  await scheduleWeek(ctx, { term: TERM, week: 3 });
+  assert.equal(prompts, 1);
+});
+
+test("cancelling the school script's student form cannot continue its schedule API request", async () => {
+  const ctx = fake(ugCalendar, { studentId: null });
+  ctx.ui = { requestInput: async () => null };
+  await assert.rejects(
+    scheduleWeek(ctx, { term: TERM, week: 3 }),
+    (error) => error.code === "input_cancelled",
+  );
+  assert.ok(!ctx.calls.some((call) => call.url.pathname.endsWith("/xskcb.do")));
+});
+
+test("exam API uses top-level success and array rows, independently of timetable extParams codes", async () => {
+  const ctx = fake((call) => {
+    const name = call.url.pathname.endsWith("/wdksap.do") ? "wdksap" : "cxyxkwapkwdkc";
+    return payload(name, [], 0, { extParams: { code: 0 } });
+  });
+  assert.deepEqual((await examList(ctx, { term: TERM })).items, []);
+  for (const invalid of [
+    { code: "1", datas: { wdksap: { rows: [], extParams: { code: 1 } } } },
+    { datas: { wdksap: { rows: [] } } },
+    { code: "0", datas: { wdksap: { rows: null } } },
+  ]) {
+    await assert.rejects(
+      examList(
+        fake(() => invalid),
+        { term: TERM },
+      ),
+      /academic_response_invalid/,
+    );
+  }
 });
 
 test("invalid role/week and missing required student id fail explicitly", async () => {

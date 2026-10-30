@@ -1,14 +1,19 @@
 /*! Copyright 2026 elecon contributors. SPDX-License-Identifier: MPL-2.0
  * ADR-034/035: school-owned session flow; no Broker, opaque handles or native imports.
  */
+import { failure } from "./errors.js";
+import { PDA_UA } from "./pda_constants.js";
+
 export const AUTH_NAMESPACE = "xidian.auth";
 const address = { namespace: AUTH_NAMESPACE };
 const services = new Set(["ids", "ehall", "yjspt", "card", "library"]);
 const origins = new Set([
   "https://ids.xidian.edu.cn",
   "https://ehall.xidian.edu.cn",
+  "http://ehall.xidian.edu.cn",
   "https://yjspt.xidian.edu.cn",
   "https://v8scan.xidian.edu.cn",
+  "https://xxcapp.xidian.edu.cn",
   "https://tyrzfw.chaoxing.com",
   "https://mfindxidian.libsp.cn",
 ]);
@@ -207,7 +212,7 @@ export async function saveSession(ctx, service, session) {
   });
 }
 
-function parseSetCookie(line, url, now) {
+export function parseSetCookie(line, url, now) {
   const target = parseUrl(url),
     fields = line.split(";");
   const equal = fields[0].indexOf("=");
@@ -252,22 +257,50 @@ export function encodeForm(fields) {
     .join("&");
 }
 
-export async function createClient(ctx, service) {
-  let session = await readSession(ctx, service);
+export async function createClient(
+  ctx,
+  service,
+  { initialSession, persistSession = true, maxRedirects = 8, userAgent } = {},
+) {
+  if (!Number.isInteger(maxRedirects) || maxRedirects < 0 || maxRedirects > 30)
+    throw new Error("xidian_redirect_limit_invalid");
+  let session = initialSession ?? (await readSession(ctx, service));
+  if (session && session.service !== service) throw new Error("xidian_invalid_session");
   let ids = service === "ids" ? null : await readSession(ctx, "ids");
-  if (!session && !ids) throw new Error(`xidian_login_required_${service}`);
+  if (!session && !ids) throw failure(`xidian_login_required_${service}`);
   session ||= { version: 1, service, cookies: [], data: {} };
+  // ADR-035 §2: same-school IDS metadata was saved only after verified login.
+  // SSO can bypass the username form; do not discard that verified account id.
+  if ((service === "ehall" || service === "yjspt") && !session.data.studentId && ids?.data?.studentId)
+    session.data.studentId = ids.data.studentId;
   const client = {
     session,
-    save: () => saveSession(ctx, service, session),
+    log: (level, message) => ctx.log?.(level, message),
+    save: async () => {
+      if (persistSession) await saveSession(ctx, service, session);
+    },
     async request(initialUrl, init = {}) {
       let url = initialUrl,
         method = (init.method || "GET").toUpperCase(),
         body = init.body;
+      // Follow the origin verified in this school's visible E-Hall session.
+      // HTTPS and HTTP are distinct authorized origins, not interchangeable
+      // servers; forcing HTTPS can reach the school's maintenance vhost.
+      if (
+        service === "ehall" &&
+        session.data.origin === "http://ehall.xidian.edu.cn" &&
+        parseUrl(url).origin === "https://ehall.xidian.edu.cn"
+      ) {
+        url = url.replace(/^https:/, "http:");
+      }
       let headers = { ...(init.headers || {}) };
-      for (let hop = 0; hop <= 8; hop++) {
+      for (let hop = 0; hop <= maxRedirects; hop++) {
         const target = parseUrl(url);
-        if (!origins.has(target.origin)) throw new Error("xidian_redirect_origin_denied");
+        if (!origins.has(target.origin)) {
+          // Origin only: never include the redirect path, query or ticket.
+          ctx.log?.("warn", `xidian_redirect_blocked ${target.origin.replace("://", " ")}`);
+          throw failure("xidian_redirect_origin_denied");
+        }
         const jar = {
           cookies:
             target.host === "ids.xidian.edu.cn"
@@ -275,7 +308,10 @@ export async function createClient(ctx, service) {
               : mergeCookies(ids?.cookies || [], session.cookies),
         };
         const cookie = cookieHeader(jar, url, ctx.now());
-        const requestHeaders = { ...headers };
+        const requestHeaders = {
+          ...(userAgent || session.data.authFlow === "pda" ? { "User-Agent": userAgent || PDA_UA } : {}),
+          ...headers,
+        };
         for (const key of Object.keys(requestHeaders))
           if (key.toLowerCase() === "cookie") delete requestHeaders[key];
         if (cookie) requestHeaders.Cookie = cookie;
@@ -298,19 +334,37 @@ export async function createClient(ctx, service) {
             (c) => c.expiresDate == null || c.expiresDate > ctx.now(),
           );
           // Persist rotated credentials before parsing the business response.
-          await saveSession(ctx, owner.service, owner);
+          // ADR-035 §3: verified IDS rotations survive a failed service login;
+          // a staged business jar is committed only after its read-only probe.
+          if (owner === ids || persistSession) await saveSession(ctx, owner.service, owner);
         }
         const location = response.headers.get("location");
-        if (![301, 302, 303, 307, 308].includes(response.status) || !location) return response;
-        if (hop === 8) throw new Error("xidian_redirect_limit");
-        const next = resolveUrl(location, url),
-          cross = parseUrl(next).origin !== target.origin;
+        if (![301, 302, 303, 307, 308].includes(response.status) || !location) {
+          if (
+            service === "ehall" &&
+            target.host === "ehall.xidian.edu.cn" &&
+            target.path.startsWith("/jwapp/") &&
+            session.data.origin !== target.origin &&
+            (target.origin === "http://ehall.xidian.edu.cn" ||
+              session.data.origin === "http://ehall.xidian.edu.cn")
+          ) {
+            session.data.origin = target.origin;
+            await client.save();
+          }
+          return response;
+        }
+        if (hop === maxRedirects) throw new Error("xidian_redirect_limit");
+        // PDA's HTTPS Location rule belongs to its own verified sessions; legacy
+        // browser sessions retain their observed HTTP origin (ADR-034 §5).
+        const resolved = resolveUrl(location, url);
+        const next = session.data.authFlow === "pda" ? resolved.replace(/^http:/, "https:") : resolved;
         if (response.status === 303 || ([301, 302].includes(response.status) && method === "POST")) {
           if (method !== "HEAD") method = "GET";
           body = undefined;
           for (const key of Object.keys(headers))
             if (key.toLowerCase().startsWith("content-")) delete headers[key];
         }
+        const cross = parseUrl(next).origin !== target.origin;
         if (cross) {
           if (body != null && method !== "GET" && method !== "HEAD")
             throw new Error("xidian_cross_origin_replay_denied");
@@ -354,7 +408,7 @@ export async function createClient(ctx, service) {
       response.status === 403 ||
       parseUrl(response.url).host === "ids.xidian.edu.cn"
     )
-      throw new Error(`xidian_login_required_${service}`);
+      throw failure(`xidian_login_required_${service}`);
     if (!response.ok) throw new Error("xidian_http_failed");
     try {
       return await response.json();

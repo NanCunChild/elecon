@@ -1,4 +1,4 @@
-/** ADR-034/035: build the independently installable Xidian SDK 2 packages. */
+/** ADR-034/035: build the independently installable Xidian SDK 3 packages. */
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -18,8 +18,8 @@ const banner = `/*! Copyright 2023-2025 BenderBlog Rodriguez and contributors.
 export async function buildXidianPackages(): Promise<Map<string, string>> {
   const packages = new Map<string, string>();
   for (const [entry, manifestFile, name] of [
-    ["index.js", "manifest.json", "school-xidian.elecon.json"],
-    ["login.js", "login.manifest.json", "school-xidian-login.elecon.json"],
+    ["index.js", "manifest.json", "school-xidian-undergraduate.elecon.json"],
+    ["postgraduate.js", "postgraduate.manifest.json", "school-xidian-postgraduate.elecon.json"],
   ]) {
     const manifest = JSON.parse(await readFile(join(root, manifestFile!), "utf8"));
     const result = await build({
@@ -43,7 +43,7 @@ export async function buildXidianPackages(): Promise<Map<string, string>> {
 }
 
 export async function writeXidianPackages(outputDirectory: string): Promise<void> {
-  // Validate both packages before replacing either output.
+  // Validate every package before replacing any output.
   const packages = await buildXidianPackages();
   await mkdir(outputDirectory, { recursive: true });
   for (const [name, source] of packages) {
@@ -55,6 +55,18 @@ export async function writeXidianPackages(outputDirectory: string): Promise<void
     } finally {
       await rm(temporary, { force: true });
     }
+  }
+  await writeFile(join(outputDirectory, "LICENSE.txt"), await readFile(join(root, "LICENSE")));
+  await writeFile(join(outputDirectory, "README.md"), await readFile(join(root, "README.md")));
+  // Remove this builder's obsolete unsplit artifacts so they cannot be mistaken
+  // for the new school-bound packages on a subsequent import.
+  for (const name of [
+    "school-xidian.elecon.json",
+    "school-xidian-login.elecon.json",
+    "school-xidian-undergraduate-login.elecon.json",
+    "school-xidian-postgraduate-login.elecon.json",
+  ]) {
+    await rm(join(outputDirectory, name), { force: true });
   }
 }
 

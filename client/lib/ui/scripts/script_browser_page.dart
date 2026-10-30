@@ -20,6 +20,20 @@ ServerTrustAuthResponse? scriptBrowserServerTrustResponse(
     ? ServerTrustAuthResponse(action: ServerTrustAuthResponseAction.CANCEL)
     : null;
 
+// ADR-034 §5: a platform placeholder is never a school page or a browser
+// execution target. Cancel it without a misleading school-policy failure.
+NavigationActionPolicy scriptBrowserNavigationPolicy(
+  ScriptBrowserBridge bridge,
+  String? url, {
+  bool? isForMainFrame,
+}) {
+  if (url == 'about:blank') return NavigationActionPolicy.CANCEL;
+  if (isForMainFrame == false) return NavigationActionPolicy.ALLOW;
+  return bridge.navigationStarted(url)
+      ? NavigationActionPolicy.ALLOW
+      : NavigationActionPolicy.CANCEL;
+}
+
 /// Provided by the parent flow from ARB-backed AppLocalizations.
 class ScriptBrowserPageLabels {
   const ScriptBrowserPageLabels({
@@ -58,6 +72,10 @@ class _ScriptBrowserPageState extends State<ScriptBrowserPage> {
   @override
   void initState() {
     super.initState();
+    // ADR-034 §6 / redline #1: the plugin otherwise logs JS handler arguments
+    // in debug builds, including one-shot passwords, OTPs and cookie results.
+    // Keep only the host's sanitized stage diagnostics, including after close.
+    PlatformInAppWebViewController.debugLoggingSettings.enabled = false;
     try {
       widget.bridge.prepare();
       _prepared = true;
@@ -184,14 +202,11 @@ class _ScriptBrowserPageState extends State<ScriptBrowserPage> {
                       }
                     },
                     shouldOverrideUrlLoading: (controller, action) async {
-                      if (action.isForMainFrame == false) {
-                        return NavigationActionPolicy.ALLOW;
-                      }
-                      return widget.bridge.navigationStarted(
-                            action.request.url?.toString(),
-                          )
-                          ? NavigationActionPolicy.ALLOW
-                          : NavigationActionPolicy.CANCEL;
+                      return scriptBrowserNavigationPolicy(
+                        widget.bridge,
+                        action.request.url?.toString(),
+                        isForMainFrame: action.isForMainFrame,
+                      );
                     },
                     onLoadStart: (controller, url) async {
                       if (url?.toString() == 'about:blank') return;

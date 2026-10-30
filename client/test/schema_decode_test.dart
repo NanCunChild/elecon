@@ -9,6 +9,57 @@ import 'package:elecon/ui/home/schema_decode.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'card account results need money or transactions, not an invented physical card id',
+    () {
+      expect(
+        cardBalanceFromDynamic({
+          'balance': {'amountMinor': 1234, 'currency': 'CNY'},
+        })?.cardNumber,
+        isNull,
+      );
+      expect(
+        cardBalanceFromDynamic({
+          'balance': {'amountMinor': 1234, 'currency': 'CNY'},
+        })?.balance.amountMinor,
+        1234,
+      );
+      expect(cardTransactionsFromDynamic({'items': []})?.items, isEmpty);
+      for (final invalid in ['', null, 123]) {
+        expect(
+          cardBalanceFromDynamic({
+            'cardNumber': invalid,
+            'balance': {'amountMinor': 1234, 'currency': 'CNY'},
+          }),
+          isNull,
+        );
+        expect(
+          cardTransactionsFromDynamic({'cardNumber': invalid, 'items': []}),
+          isNull,
+        );
+      }
+    },
+  );
+  test(
+    'academic calendar carries current week and rejects invalid week types',
+    () {
+      final out = calendarAcademicFromDynamic({
+        'term': '2026-2027-1',
+        'startDate': '2026-09-07',
+        'currentWeek': 8,
+      });
+      expect(out?.currentWeek, 8);
+      expect(out?.term, '2026-2027-1');
+      for (final invalid in [0, -1, '8', 1.5, null]) {
+        expect(calendarAcademicFromDynamic({'currentWeek': invalid}), isNull);
+      }
+      expect(
+        calendarAcademicFromDynamic({'startDate': '2026-09-07'})?.currentWeek,
+        isNull,
+      );
+    },
+  );
+
   group('gradesListFromDynamic', () {
     test('解出学期与合法条目；score.value 原样透传', () {
       final out = gradesListFromDynamic({

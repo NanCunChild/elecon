@@ -6,6 +6,27 @@ library;
 
 import 'models.dart';
 
+CalendarAcademic? calendarAcademicFromDynamic(Object? raw) {
+  final map = _asStringKeyedMap(raw);
+  if (map == null ||
+      !_optionalIs<String>(map, 'term') ||
+      !_optionalIs<String>(map, 'startDate') ||
+      !_optionalIs<String>(map, 'endDate')) {
+    return null;
+  }
+  final currentWeek = _asInt(map['currentWeek']);
+  if (map.containsKey('currentWeek') &&
+      (map['currentWeek'] is! num || currentWeek == null || currentWeek < 1)) {
+    return null;
+  }
+  return CalendarAcademic(
+    term: map['term'] as String?,
+    startDate: map['startDate'] as String?,
+    endDate: map['endDate'] as String?,
+    currentWeek: currentWeek,
+  );
+}
+
 NoticeList? noticeListFromDynamic(Object? raw) {
   final map = _asStringKeyedMap(raw);
   if (map == null) return null;
@@ -90,9 +111,12 @@ GpaSummary? gpaSummaryFromDynamic(Object? raw) {
   return GpaSummary(
     gpa: map['gpa'] is num ? map['gpa'] as num : null,
     gradePointScale: map['gradePointScale']?.toString(),
-    earnedCredits: map['earnedCredits'] is num ? map['earnedCredits'] as num : null,
-    attemptedCredits:
-        map['attemptedCredits'] is num ? map['attemptedCredits'] as num : null,
+    earnedCredits: map['earnedCredits'] is num
+        ? map['earnedCredits'] as num
+        : null,
+    attemptedCredits: map['attemptedCredits'] is num
+        ? map['attemptedCredits'] as num
+        : null,
     rank: _asInt(map['rank']),
     rankTotal: _asInt(map['rankTotal']),
     window: map['window']?.toString(),
@@ -377,12 +401,12 @@ ClassroomAvailableItems? _classroomItem(Object? raw) {
 CardBalance? cardBalanceFromDynamic(Object? raw) {
   final map = _asStringKeyedMap(raw);
   if (map == null) return null;
-  final cardNumber = map['cardNumber']?.toString();
+  final cardNumber = map['cardNumber'];
   final balanceMap = _asStringKeyedMap(map['balance']);
   final amountMinor = _asInt(balanceMap?['amountMinor']);
   final currency = balanceMap?['currency']?.toString();
-  if (cardNumber == null ||
-      cardNumber.isEmpty ||
+  if ((map.containsKey('cardNumber') &&
+          (cardNumber is! String || cardNumber.isEmpty)) ||
       amountMinor == null ||
       currency == null ||
       !_currencyPattern.hasMatch(currency)) {
@@ -390,7 +414,7 @@ CardBalance? cardBalanceFromDynamic(Object? raw) {
   }
   final lastMap = _asStringKeyedMap(map['lastTransaction']);
   return CardBalance(
-    cardNumber: cardNumber,
+    cardNumber: cardNumber as String?,
     cardNumberMasked: map['cardNumberMasked']?.toString(),
     cardType: map['cardType']?.toString(),
     accountType: map['accountType']?.toString(),
@@ -415,9 +439,11 @@ CardBalance? cardBalanceFromDynamic(Object? raw) {
 CardTransactions? cardTransactionsFromDynamic(Object? raw) {
   final map = _asStringKeyedMap(raw);
   if (map == null) return null;
-  final cardNumber = map['cardNumber']?.toString();
+  final cardNumber = map['cardNumber'];
   final itemsRaw = map['items'];
-  if (cardNumber == null || cardNumber.isEmpty || itemsRaw is! List) {
+  if ((map.containsKey('cardNumber') &&
+          (cardNumber is! String || cardNumber.isEmpty)) ||
+      itemsRaw is! List) {
     return null;
   }
   final items = <CardTransactionsItems>[];
@@ -426,7 +452,7 @@ CardTransactions? cardTransactionsFromDynamic(Object? raw) {
     if (item != null) items.add(item);
   }
   return CardTransactions(
-    cardNumber: cardNumber,
+    cardNumber: cardNumber as String?,
     cardNumberMasked: map['cardNumberMasked']?.toString(),
     cardType: map['cardType']?.toString(),
     accountType: map['accountType']?.toString(),

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/scripts/browser.dart';
+import '../../core/debug/dev_log.dart';
 import '../../core/scripts/manifest.dart';
 import '../../core/scripts/runtime.dart';
 import '../../l10n/gen/app_localizations.dart';
@@ -17,67 +18,87 @@ Future<Object?> presentScriptBrowser(
   ScriptPackage package,
   Future<Object?> Function(ScriptBrowserCall) execute, {
   void Function()? onCancel,
+  void Function(String)? onTrace,
 }) async {
-  final bridge = ScriptBrowserBridge(policy: package.manifest.network);
-  bridge.prepare();
-  if (!context.mounted) {
-    await bridge.close();
-    throw const ScriptRunException('invocation_cancelled');
-  }
-  final l10n = AppLocalizations.of(context);
-  final navigator = Navigator.of(context);
-  final route = MaterialPageRoute<void>(
-    builder: (_) => ScriptBrowserPage(
-      bridge: bridge,
-      labels: ScriptBrowserPageLabels(
-        title: l10n.scriptsBrowserTitle,
-        close: l10n.scriptsBrowserClose,
-        loading: l10n.scriptsBrowserLoading,
-        blocked: l10n.scriptsBrowserBlocked,
-        failed: l10n.scriptsBrowserFailed,
-        unavailable: l10n.scriptsBrowserUnavailable,
-      ),
-    ),
-  );
+  ScriptBrowserBridge? bridge;
+  Route<void>? route;
+  NavigatorState? navigator;
   final closed = Completer<Object?>();
   var completed = false;
+  String? lastTrace;
   void observeClose() {
-    if (!completed && bridge.state.value.phase == ScriptBrowserPhase.closed) {
-      // Invalidate credential/HTTP callbacks immediately, before native cleanup
-      // or a caught page exception can return a seemingly successful result.
+    final state = bridge!.state.value;
+    final trace =
+        '[browser] ${state.phase.name}${state.origin == null ? "" : " ${state.origin}"}${state.errorCode == null ? "" : " ${state.errorCode}"}';
+    if (trace != lastTrace) {
+      lastTrace = trace;
+      DevLog.instance.webview(trace);
+      onTrace?.call(trace);
+    }
+    if (!completed && state.phase == ScriptBrowserPhase.closed) {
       onCancel?.call();
     }
   }
 
-  bridge.state.addListener(observeClose);
-  unawaited(
-    navigator.push(route).then((_) async {
-      try {
-        await bridge.close();
-      } catch (_) {
-        // Native cleanup errors must not escape this unobserved route future.
-      } finally {
-        if (!closed.isCompleted) {
-          closed.completeError(
-            const ScriptRunException('invocation_cancelled'),
-          );
-        }
-      }
-    }),
-  );
-  // Future.any attaches an error handler to the route-cancellation future.
+  // ADR-034 §5: create a page/lease only when the script actually invokes a
+  // browser method. Cached sessions and public HTTP never flash an empty page.
+  Future<Object?> call(String method, Map<String, Object?> arguments) async {
+    if (completed || !context.mounted) {
+      throw const ScriptRunException('invocation_cancelled');
+    }
+    if (bridge == null) {
+      final created = ScriptBrowserBridge(policy: package.manifest.network);
+      bridge = created;
+      created.prepare();
+      final l10n = AppLocalizations.of(context);
+      navigator = Navigator.of(context);
+      created.state.addListener(observeClose);
+      final page = MaterialPageRoute<void>(
+        builder: (_) => ScriptBrowserPage(
+          bridge: created,
+          labels: ScriptBrowserPageLabels(
+            title: l10n.scriptsBrowserTitle,
+            close: l10n.scriptsBrowserClose,
+            loading: l10n.scriptsBrowserLoading,
+            blocked: l10n.scriptsBrowserBlocked,
+            failed: l10n.scriptsBrowserFailed,
+            unavailable: l10n.scriptsBrowserUnavailable,
+          ),
+        ),
+      );
+      route = page;
+      unawaited(
+        navigator!.push(page).then((_) async {
+          try {
+            await created.close();
+          } catch (_) {
+            // The next session still passes the native cleanup barrier.
+          } finally {
+            if (!closed.isCompleted) {
+              closed.completeError(
+                const ScriptRunException('invocation_cancelled'),
+              );
+            }
+          }
+        }),
+      );
+    }
+    return bridge!.call(method, arguments);
+  }
+
   try {
-    return await Future.any([execute(bridge.call), closed.future]);
+    return await Future.any([execute(call), closed.future]);
   } finally {
     completed = true;
-    bridge.state.removeListener(observeClose);
+    bridge?.state.removeListener(observeClose);
     try {
-      await bridge.close();
+      await bridge?.close();
     } finally {
-      if (route.isCurrent) {
-        navigator.pop();
-      } else if (route.isActive) {
-        navigator.removeRoute(route);
+      final page = route;
+      if (page != null && page.isCurrent) {
+        navigator!.pop();
+      } else if (page != null && page.isActive) {
+        navigator!.removeRoute(page);
       }
     }
   }

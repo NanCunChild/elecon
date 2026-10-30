@@ -9,6 +9,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_scope.dart';
 import '../../session/session_controller.dart';
 import '../scripts/script_presenter.dart';
+import '../scripts/script_input_presenter.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import '../home/home_page.dart';
 import '../settings/settings_page.dart';
@@ -28,6 +29,7 @@ class _MainShellState extends State<MainShell> {
   int _index = 0;
   SessionController? _scriptSession;
   ScriptBrowserPresenter? _presenter;
+  ScriptInputPresenter? _inputPresenter;
 
   @override
   void didChangeDependencies() {
@@ -36,9 +38,15 @@ class _MainShellState extends State<MainShell> {
         .getInheritedWidgetOfExactType<SessionScope>()
         ?.notifier;
     if (!identical(session, _scriptSession)) {
+      // ADR-037 §2: a replacement controller must revoke dialogs belonging to
+      // the old visible identity, even if that controller is retained elsewhere.
+      _scriptSession?.cancelTrustedScriptRuns();
       if (identical(_scriptSession?.scriptBrowserPresenter, _presenter)) {
         _scriptSession?.scriptBrowserPresenter = null;
         _scriptSession?.scriptStorageConsent = null;
+      }
+      if (identical(_scriptSession?.scriptInputPresenter, _inputPresenter)) {
+        _scriptSession?.scriptInputPresenter = null;
       }
       _scriptSession = session;
       _presenter = (package, execute) => presentScriptBrowser(
@@ -48,6 +56,13 @@ class _MainShellState extends State<MainShell> {
         onCancel: session?.cancelTrustedScriptRuns,
       );
       session?.scriptBrowserPresenter = _presenter;
+      _inputPresenter = (package, execute) => presentScriptInput(
+        context,
+        package,
+        execute,
+        onCancel: session?.cancelTrustedScriptRuns,
+      );
+      session?.scriptInputPresenter = _inputPresenter;
       session?.scriptStorageConsent = () async {
         if (!mounted) return false;
         return await showNoHardwareWarningDialog(context) ==
@@ -58,6 +73,10 @@ class _MainShellState extends State<MainShell> {
 
   @override
   void dispose() {
+    _scriptSession?.cancelTrustedScriptRuns();
+    if (identical(_scriptSession?.scriptInputPresenter, _inputPresenter)) {
+      _scriptSession?.scriptInputPresenter = null;
+    }
     if (identical(_scriptSession?.scriptBrowserPresenter, _presenter)) {
       _scriptSession?.scriptBrowserPresenter = null;
       _scriptSession?.scriptStorageConsent = null;

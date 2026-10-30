@@ -22,15 +22,16 @@ import 'schema_decode.dart';
 
 /// 一次能力取数 + 解码的归一化结果。
 class _Outcome<T> {
-  const _Outcome({this.data, this.needLogin = false, this.error});
+  const _Outcome({this.data, this.needLogin = false, this.error, this.reason});
 
   final T? data;
   final bool needLogin;
   final String? error;
+  final String? reason;
 }
 
 /// 跑能力 → 解码。auth 失败归为 [needLogin]（引导可见登录后重试），不外泄凭证/原因语义。
-Future<_Outcome<T>> _runDecoded<T>(
+Future<_Outcome<T>> _runOnceDecoded<T>(
   SessionController session,
   String capability, {
   Map<String, dynamic>? params,
@@ -38,12 +39,14 @@ Future<_Outcome<T>> _runDecoded<T>(
 }) async {
   final run = await session.runCapability(capability, params: params);
   if (!run.ok) {
-    if (run.failureKind == CapabilityFailureKind.auth) {
+    if (run.failureKind == CapabilityFailureKind.auth ||
+        run.reason == 'authentication_required') {
       return const _Outcome(needLogin: true);
     }
     final reason = run.reason?.trim();
     final kind = run.failureKind?.name ?? 'unknown';
     return _Outcome(
+      reason: reason,
       error: reason == null || reason.isEmpty
           ? '$capability 失败（$kind）'
           : '$capability 失败（$kind）：$reason',
@@ -52,6 +55,33 @@ Future<_Outcome<T>> _runDecoded<T>(
   final data = decode(run.data);
   if (data == null) return _Outcome(error: '$capability 产出无法解码');
   return _Outcome(data: data);
+}
+
+Future<_Outcome<T>> _runDecoded<T>(
+  BuildContext context,
+  SessionController session,
+  String capability, {
+  Map<String, dynamic>? params,
+  required T? Function(Object?) decode,
+}) async {
+  final first = await _runOnceDecoded(
+    session,
+    capability,
+    params: params,
+    decode: decode,
+  );
+  if (context.mounted) {
+    final l10n = AppLocalizations.of(context);
+    final message = switch (first.reason) {
+      'network_denied' => l10n.scriptsNetworkDenied,
+      'source_response_invalid' => l10n.scriptsSourceResponseInvalid,
+      'authentication_timeout' => l10n.scriptsAuthenticationTimeout,
+      'input_cancelled' => l10n.scriptsInputCancelled,
+      _ => null,
+    };
+    if (message != null) return _Outcome(error: message);
+  }
+  return first;
 }
 
 /// 引导当前会话学校的可见登录；成功返回 true。凭证收割在核心（红线 #1）。
@@ -98,6 +128,7 @@ class _GradesSectionState extends State<GradesSection> {
     setState(() => _phase = _Phase.loading);
     final session = SessionScope.of(context);
     final outcome = await _runDecoded<GradesList>(
+      context,
       session,
       'grades.list',
       decode: gradesListFromDynamic,
@@ -127,6 +158,7 @@ class _GradesSectionState extends State<GradesSection> {
   Future<GpaSummary?> _loadGpaSummary(SessionController session) async {
     try {
       final run = await _runDecoded<GpaSummary>(
+        context,
         session,
         'gpa.summary',
         decode: gpaSummaryFromDynamic,
@@ -169,27 +201,56 @@ class _GradesSectionState extends State<GradesSection> {
 // ===========================================================================
 
 class ScheduleSection extends StatefulWidget {
-  const ScheduleSection({super.key});
+  const ScheduleSection({super.key, this.calendarEnabled = false});
+
+  final bool calendarEnabled;
 
   @override
   State<ScheduleSection> createState() => _ScheduleSectionState();
 }
 
 class _ScheduleSectionState extends State<ScheduleSection> {
-  static const int _maxWeek = 25;
+  int get _maxWeek => _week > 25 ? _week : 25;
 
   _Phase _phase = _Phase.idle;
   int _week = 1;
+  bool _calendarLoaded = false;
+  bool _manualWeek = false;
+  String? _term;
+  bool get _queryCurrentWeek => widget.calendarEnabled && !_manualWeek;
+  bool get _needsCurrentWeek => _queryCurrentWeek && !_calendarLoaded;
   ScheduleWeek? _data;
   String? _error;
 
   Future<void> _load() async {
     setState(() => _phase = _Phase.loading);
     final session = SessionScope.of(context);
+    if (_queryCurrentWeek) {
+      final calendar = await _runDecoded<CalendarAcademic>(
+        context,
+        session,
+        'calendar.academic',
+        decode: calendarAcademicFromDynamic,
+      );
+      if (!mounted) return;
+      if (calendar.data == null) {
+        setState(() {
+          _phase = calendar.needLogin ? _Phase.needLogin : _Phase.error;
+          _error = calendar.error;
+        });
+        return;
+      }
+      setState(() {
+        _week = calendar.data!.currentWeek ?? 1;
+        _term = calendar.data!.term;
+        _calendarLoaded = true;
+      });
+    }
     final outcome = await _runDecoded<ScheduleWeek>(
+      context,
       session,
       'schedule.week',
-      params: {'week': _week},
+      params: {'week': _week, if (_term != null) 'term': _term},
       decode: scheduleWeekFromDynamic,
     );
     if (!mounted) return;
@@ -215,25 +276,39 @@ class _ScheduleSectionState extends State<ScheduleSection> {
   @override
   Widget build(BuildContext context) {
     final busy = _phase == _Phase.loading;
+    final l10n = AppLocalizations.of(context);
     return Column(
       children: [
         _PromptCard(
-          title: '课表',
-          subtitle: '选择周次后查询',
+          title: l10n.homeScheduleTitle,
+          subtitle: l10n.homeSchedulePrompt,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _WeekPicker(
-                week: _week,
-                maxWeek: _maxWeek,
-                enabled: !busy,
-                onChanged: (w) => setState(() => _week = w),
-              ),
+              if (_needsCurrentWeek)
+                TextButton(
+                  onPressed: busy
+                      ? null
+                      : () => setState(() => _manualWeek = true),
+                  child: Text(l10n.homeScheduleSelectWeek),
+                )
+              else
+                _WeekPicker(
+                  week: _week,
+                  maxWeek: _maxWeek,
+                  enabled: !busy,
+                  onChanged: (w) => setState(() {
+                    _week = w;
+                    _manualWeek = true;
+                  }),
+                ),
               const SizedBox(height: 8),
               _PhaseBody(
                 phase: _phase,
                 error: _error,
-                idleLabel: '查询第 $_week 周',
+                idleLabel: _queryCurrentWeek
+                    ? l10n.homeScheduleLoadCurrent
+                    : l10n.homeScheduleLoadWeek(_week),
                 loadingHidden: false,
                 onLoad: _load,
                 onLogin: _login,
@@ -308,6 +383,7 @@ class _ClassroomSectionState extends State<ClassroomSection> {
     setState(() => _buildingsPhase = _Phase.loading);
     final session = SessionScope.of(context);
     final outcome = await _runDecoded<ClassroomBuildings>(
+      context,
       session,
       'classroom.buildings',
       decode: classroomBuildingsFromDynamic,
@@ -345,6 +421,7 @@ class _ClassroomSectionState extends State<ClassroomSection> {
       params['building'] = building.building;
     }
     final outcome = await _runDecoded<ClassroomAvailable>(
+      context,
       session,
       'classroom.available',
       params: params,
@@ -528,6 +605,7 @@ class _CardSectionState extends State<CardSection> {
   Future<void> _load() async {
     setState(() => _phase = _Phase.loading);
     final outcome = await _runDecoded<CardBalance>(
+      context,
       SessionScope.of(context),
       'card.balance',
       decode: cardBalanceFromDynamic,
@@ -576,7 +654,9 @@ class _CardSectionState extends State<CardSection> {
     return _SectionShell(
       title: '一卡通',
       // 即使 adapter 错把完整卡号填进 cardNumberMasked，UI 也只从权威 cardNumber 派生末四位。
-      subtitle: _maskCardNumber(data.cardNumber),
+      subtitle: data.cardNumber == null
+          ? AppLocalizations.of(context).cardAccountLabel
+          : _maskCardNumber(data.cardNumber!),
       child: data.errorStatus == null
           ? Row(
               children: [
@@ -647,6 +727,7 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
 
   Future<void> _load() async {
     final outcome = await _runDecoded<CardTransactions>(
+      context,
       SessionScope.of(context),
       'card.transactions',
       params: const {'page': 1, 'size': 20},
@@ -831,6 +912,7 @@ class _ExamSectionState extends State<ExamSection> {
   Future<void> _load() async {
     setState(() => _phase = _Phase.loading);
     final outcome = await _runDecoded<ExamList>(
+      context,
       SessionScope.of(context),
       'exam.list',
       decode: examListFromDynamic,
@@ -946,6 +1028,7 @@ class _LibraryLoansSectionState extends State<LibraryLoansSection> {
   Future<void> _load() async {
     setState(() => _phase = _Phase.loading);
     final outcome = await _runDecoded<LibraryLoans>(
+      context,
       SessionScope.of(context),
       'library.loans',
       decode: libraryLoansFromDynamic,

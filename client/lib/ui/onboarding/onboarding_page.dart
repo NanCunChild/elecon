@@ -10,6 +10,7 @@ import '../../catalog/schools.dart';
 import '../../session/session_scope.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../scripts/script_workbench_page.dart';
+import '../scripts/bundled_scripts.dart';
 import '../login/login_flow.dart';
 
 class OnboardingPage extends StatefulWidget {
@@ -23,10 +24,35 @@ class OnboardingPage extends StatefulWidget {
 
 class _OnboardingPageState extends State<OnboardingPage> {
   SchoolDescriptor? _selected;
+  BundledScriptSchool? _bundled = bundledScriptSchools.first;
   bool _busy = false;
 
   Future<void> _continue() async {
     final session = SessionScope.of(context);
+    final bundled = _bundled;
+    if (bundled != null) {
+      setState(() => _busy = true);
+      try {
+        await installBundledSchool(context, session, bundled);
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppLocalizations.of(context).scriptsFailed(
+                  error is StateError
+                      ? error.message.toString()
+                      : 'bundled_script_unavailable',
+                ),
+              ),
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
+      return;
+    }
     final selected = _selected;
     if (selected == null) return;
     setState(() => _busy = true);
@@ -50,7 +76,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final schools = SessionScope.of(context).availableSchools;
-    _selected ??= schools.firstOrNull;
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       body: SafeArea(
@@ -88,12 +114,37 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                for (final school in schools)
+                for (final school in bundledScriptSchools)
+                  Card(
+                    child: ListTile(
+                      title: Text(school.label(l10n)),
+                      subtitle: Text(l10n.scriptsBundled),
+                      trailing: Icon(
+                        _bundled == school
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                      ),
+                      onTap: _busy
+                          ? null
+                          : () => setState(() {
+                              _bundled = school;
+                              _selected = null;
+                            }),
+                    ),
+                  ),
+                for (final school in schools.where(
+                  (s) =>
+                      !bundledLegacySchoolIds.contains(s.id) &&
+                      !bundledScriptSchools.any((b) => b.id == s.id),
+                ))
                   _SchoolTile(
                     school: school,
                     selected: _selected?.id == school.id,
                     onTap: school.available && !_busy
-                        ? () => setState(() => _selected = school)
+                        ? () => setState(() {
+                            _selected = school;
+                            _bundled = null;
+                          })
                         : null,
                   ),
                 const SizedBox(height: 8),
@@ -111,7 +162,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 ),
                 const SizedBox(height: 28),
                 FilledButton.icon(
-                  onPressed: _busy || _selected == null ? null : _continue,
+                  onPressed: _busy || (_selected == null && _bundled == null)
+                      ? null
+                      : _continue,
                   icon: _busy
                       ? const SizedBox(
                           width: 18,
@@ -119,7 +172,15 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.login),
-                  label: Text(_busy ? '登录中…' : '登录并进入'),
+                  label: Text(
+                    _busy
+                        ? l10n.scriptsRunning
+                        : _bundled != null ||
+                              (_selected?.adapterId.startsWith('script:') ??
+                                  false)
+                        ? l10n.scriptsSelectAndEnter
+                        : '登录并进入',
+                  ),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),
                   ),

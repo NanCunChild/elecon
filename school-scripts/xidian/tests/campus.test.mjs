@@ -112,13 +112,13 @@ test("card balance accepts explicit user card number and converts decimal money 
   assert.equal(env.saved().data.cardNumber, CARD_NO);
 });
 
-test("balance-only page cannot invent a card number or use student id", async () => {
+test("balance-only page omits card number and never substitutes student id", async () => {
   const env = context(
     "card",
     { openid: "EXAMPLE_SYNTHETIC_OPENID", openidFetchedAt: NOW, studentId: "EXAMPLE_SYNTHETIC_STUDENT" },
     ({ url }) => response(url.href, account()),
   );
-  await assert.rejects(cardBalance(env.ctx), /card_number_required/);
+  assert.deepEqual(await cardBalance(env.ctx), { balance: { amountMinor: 12345, currency: "CNY" } });
   assert.equal(env.saved().data.cardNumber, undefined);
   assert.equal(env.calls.length, 1); // Missing user input must not refresh OAuth.
 });
@@ -128,6 +128,66 @@ test("balance supports the exact first-li element layout witnessed in the refere
     response(url.href, "<ul><li><div>校园卡</div><div><p>金额</p><p>28.09</p></div></li></ul>"),
   );
   assert.equal((await cardBalance(env.ctx, { cardNumber: CARD_NO })).balance.amountMinor, 2809);
+});
+
+test("PDA account cell takes precedence over unrelated page amounts", async () => {
+  const env = context("card", { openid: "EXAMPLE_SYNTHETIC_OPENID", openidFetchedAt: NOW }, ({ url }) =>
+    response(
+      url.href,
+      "<p>上次充值：￥999.99</p><ul><li><div>校园卡</div><div><p>金额</p><p>28.09</p></div></li></ul>",
+    ),
+  );
+  assert.equal((await cardBalance(env.ctx, { cardNumber: CARD_NO })).balance.amountMinor, 2809);
+});
+
+test("PDA account cell permits explicit currency units and preserves integer cents", async () => {
+  for (const [amount, expected] of [
+    ["￥ 28.09 元", 2809],
+    ["1,234.56（元）", 123456],
+    ["余额：¥-0.10元", -10],
+  ]) {
+    const env = context(
+      "card",
+      { openid: "EXAMPLE_SYNTHETIC_OPENID", openidFetchedAt: NOW },
+      ({ url, init }) => {
+        assert.match(init.headers["User-Agent"], /XDYou\/2.0.0/);
+        return response(
+          url.href,
+          `<ul><li><div>校园卡</div><div><p>金额</p><p>${amount}</p></div></li></ul>`,
+        );
+      },
+    );
+    assert.equal((await cardBalance(env.ctx)).balance.amountMinor, expected);
+  }
+});
+
+test("card openid comes from the official hidden field rather than a conflicting URL", async () => {
+  const env = context("card", {}, ({ url }) => {
+    if (url.pathname === "/home/openXDOAuth2Page")
+      return response(
+        `${url.href}?openid=EXAMPLE_SYNTHETIC_WRONG`,
+        '<input type="hidden" id="openid" value="EXAMPLE_SYNTHETIC_CORRECT">',
+      );
+    assert.equal(url.searchParams.get("openid"), "EXAMPLE_SYNTHETIC_CORRECT");
+    return response(url.href, account("账户余额：￥1.20"));
+  });
+  assert.equal((await cardBalance(env.ctx)).balance.amountMinor, 120);
+});
+
+test("card OAuth can follow the reference's bounded chain beyond eight hops", async () => {
+  let hop = 0;
+  const env = context("card", {}, ({ url }) => {
+    if (url.pathname.startsWith("/myaccount/"))
+      return response(url.href, account(`校园卡号：${CARD_NO}；账户余额：￥1.20`));
+    if (++hop < 12)
+      return response(url.href, "", {
+        status: 302,
+        headers: { location: `https://v8scan.xidian.edu.cn/oauth/hop-${hop}` },
+      });
+    return response(url.href, '<input type="hidden" id="openid" value="EXAMPLE_SYNTHETIC_OPENID">');
+  });
+  assert.equal((await cardBalance(env.ctx)).balance.amountMinor, 120);
+  assert.equal(hop, 12);
 });
 
 test("factually labelled HTML card number is accepted and account JS is not parsed as facts", async () => {
@@ -206,11 +266,13 @@ test("card number configured in transactions is persisted for the next balance q
         account(afterTransactions || supplied ? "余额：￥12.34" : `卡号：${CARD_NO}；余额：￥12.34`),
       );
     });
-    await cardTransactions(env.ctx, supplied ? { cardNumber: CARD_NO } : {});
-    assert.equal(env.saved().data.cardNumber, CARD_NO);
+    const transactions = await cardTransactions(env.ctx, supplied ? { cardNumber: CARD_NO } : {});
+    assert.equal(env.saved().data.cardNumber, supplied ? CARD_NO : undefined);
+    assert.equal(transactions.cardNumber, supplied ? CARD_NO : undefined);
+    assert.equal(env.calls.length, 1);
     afterTransactions = true;
     assert.deepEqual(await cardBalance(env.ctx), {
-      cardNumber: CARD_NO,
+      ...(supplied ? { cardNumber: CARD_NO } : {}),
       balance: { amountMinor: 1234, currency: "CNY" },
     });
   }

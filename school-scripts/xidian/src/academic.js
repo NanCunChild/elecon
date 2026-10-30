@@ -7,8 +7,9 @@
  * and lib/model/xidian_ids/{classtable,score,exam}.dart. See ../LICENSE.
  */
 
+import { failure } from "./errors.js";
 import { dateOnly, integer, number, schoolDateTime, text } from "./normalize.js";
-import { createClient } from "./session.js";
+import { createClient, parseUrl } from "./session.js";
 
 const EH = "https://ehall.xidian.edu.cn";
 const PG = "https://yjspt.xidian.edu.cn/gsapp/sys";
@@ -57,9 +58,23 @@ function optional(out, key, value) {
   if (result) out[key] = result;
 }
 
-function studentId(client, params) {
-  const value = text(params.studentId ?? client.session?.data?.studentId);
-  if (!value) throw new Error("student_id_required");
+async function studentId(ctx, client, params) {
+  let value = text(params.studentId ?? client.session?.data?.studentId);
+  if (!value && ctx.ui) {
+    // ADR-037: only this school script knows which query needs the identifier.
+    const input = await ctx.ui.requestInput({
+      title: "补充学号",
+      message: "学校接口需要学号以查询当前账号的课表或考试。填写后仅保存在当前学校身份中。",
+      fields: [{ id: "studentId", label: "学号", type: "text", required: true, maxLength: 128 }],
+    });
+    if (input === null) throw failure("input_cancelled");
+    value = text(input.studentId);
+  }
+  if (!value) throw failure("student_id_required");
+  if (client.session.data.studentId !== value) {
+    client.session.data.studentId = value;
+    await client.save();
+  }
   return value;
 }
 
@@ -76,11 +91,16 @@ async function openApp(client, pg, app) {
       : `${PG}/${app}/*default/index.do`
     : `${EH}/appShow?appId=${app}`;
   const response = await client.request(url);
+  if (
+    response &&
+    ([401, 403].includes(response.status) || parseUrl(response.url).host === "ids.xidian.edu.cn")
+  )
+    throw failure(`xidian_login_required_${client.session.service}`);
   if (!response || response.status < 200 || response.status >= 300)
     throw new Error("academic_app_open_failed");
 }
 
-function resultNode(payload, name, allowUnpublished = false) {
+function resultNode(payload, name, allowUnpublished = false, statusFromEnvelope = false) {
   const node = payload?.datas?.[name];
   const unpublished = text(node?.extParams?.msg ?? payload?.extParams?.msg).includes(
     "查询学年学期的课程未发布",
@@ -88,12 +108,14 @@ function resultNode(payload, name, allowUnpublished = false) {
   if (allowUnpublished && unpublished) return { rows: [], totalSize: 0 };
   if (
     !node ||
-    (payload.code != null && String(payload.code) !== "0") ||
-    (node.extParams?.code != null && Number(node.extParams.code) !== 1) ||
+    (statusFromEnvelope
+      ? String(payload?.code) !== "0"
+      : payload.code != null && String(payload.code) !== "0") ||
+    (!statusFromEnvelope && node.extParams?.code != null && Number(node.extParams.code) !== 1) ||
     !Array.isArray(node.rows)
   ) {
     // Do not repeat server messages: they may contain account data or login URLs.
-    throw new Error("academic_response_invalid");
+    throw failure("academic_response_invalid");
   }
   return node;
 }
@@ -111,14 +133,36 @@ function pageTotal(node) {
 // Emap tables use pageNumber/pageSize and normally totalSize. If an endpoint
 // ignores pagination, repeats a page, changes its total, or exceeds the bounded
 // budget, fail explicitly instead of returning a plausible truncated result.
-async function pages(client, url, fields, name, { query = false, unpublished = false } = {}) {
+async function pages(
+  client,
+  url,
+  fields,
+  name,
+  { query = false, unpublished = false, statusFromEnvelope = false } = {},
+) {
   const all = [];
   const seen = new Set();
   let expected = null;
   for (let page = 1; page <= MAX_PAGES; page++) {
     const args = { ...fields, pageSize: PAGE_SIZE, pageNumber: page };
     const payload = query ? await client.postForm(queryUrl(url, args), {}) : await client.postForm(url, args);
-    const node = resultNode(payload, name, unpublished);
+    let node;
+    try {
+      node = resultNode(payload, name, unpublished, statusFromEnvelope);
+    } catch (error) {
+      const table = payload?.datas?.[name];
+      // Static table names and shape only; no response text or student fields.
+      client.log(
+        "warn",
+        `academic_table_invalid:${name}:${!table ? "missing_table" : !Array.isArray(table.rows) ? "missing_rows" : "rejected"}`,
+      );
+      // Fixed classifications only; codes/messages/rows may identify a user.
+      client.log(
+        "warn",
+        `academic_table_status:${name}:${String(payload?.code) === "0" ? "top_ok" : payload?.code == null ? "top_missing" : "top_failed"}:${table?.extParams?.code == null ? "table_missing" : Number(table.extParams.code) === 1 ? "table_one" : Number(table.extParams.code) === 0 ? "table_zero" : "table_other"}`,
+      );
+      throw error;
+    }
     const total = pageTotal(node);
     if (total != null) {
       if (expected != null && total !== expected) throw new Error("academic_pagination_changed");
@@ -416,7 +460,7 @@ export async function scheduleWeek(ctx, params = {}) {
   const rows = await pages(
     client,
     pg ? `${PG}/wdkbapp/modules/xskcb/xspkjgcx.do` : `${SCHEDULE}/xskcb/xskcb.do`,
-    pg ? { XNXQDM: term } : { XNXQDM: term, XH: studentId(client, params) },
+    pg ? { XNXQDM: term } : { XNXQDM: term, XH: await studentId(ctx, client, params) },
     pg ? "xspkjgcx" : "xskcb",
     { unpublished: true },
   );
@@ -592,7 +636,13 @@ export async function examList(ctx, params = {}) {
         querySetting: JSON.stringify([
           { name: "XNXQDM", caption: "学年学期代码", builder: "equal", linkOpt: "AND", value: term },
           { name: "SFFBKSAP", caption: "是否发布考试安排", builder: "equal", linkOpt: "AND", value: "1" },
-          { name: "XH", caption: "学号", builder: "equal", linkOpt: "AND", value: studentId(client, params) },
+          {
+            name: "XH",
+            caption: "学号",
+            builder: "equal",
+            linkOpt: "AND",
+            value: await studentId(ctx, client, params),
+          },
           { name: "KSAPWID", caption: "考试安排WID", builder: "notEqual", linkOpt: "AND", value: null },
         ]),
       }
@@ -602,12 +652,15 @@ export async function examList(ctx, params = {}) {
     pg ? `${PG}/wdksapp/modules/ksxxck/wdksxxcx.do` : `${EXAMS}/wdksap.do`,
     fields,
     pg ? "wdksxxcx" : "wdksap",
-    { query: true },
+    // PDA exam_session.dart validates top-level code and rows. The exam
+    // table's extParams code does not share the timetable's success=1 rule.
+    { query: true, statusFromEnvelope: true },
   );
   const items = rows.map((row) => examOutput(row, pg));
   if (!pg) {
     const pending = await pages(client, `${EXAMS}/cxyxkwapkwdkc.do`, { XNXQDM: term }, "cxyxkwapkwdkc", {
       query: true,
+      statusFromEnvelope: true,
     });
     for (const row of pending) {
       const item = { courseName: text(row.KCM), status: "unknown", changeReason: "已选课，考试尚未安排" };
@@ -805,5 +858,10 @@ export async function calendarAcademic(ctx, params = {}) {
   await openApp(client, pg, pg ? "wdkbapp" : "4770397878132218");
   const startDate = await termStart(client, pg, term);
   // No inferred end date/holidays: neither proven API provides those fields.
-  return { term, startDate };
+  // PDA classtable_controller.dart getCurrentWeek: elapsed calendar days / 7.
+  // School days use Asia/Shanghai regardless of the device's current timezone.
+  const today = new Date(ctx.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const elapsedDays = (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000;
+  const currentWeek = Math.floor(elapsedDays / 7) + 1;
+  return { term, startDate, ...(currentWeek >= 1 ? { currentWeek } : {}) };
 }

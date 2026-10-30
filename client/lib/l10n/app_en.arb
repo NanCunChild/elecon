@@ -177,5 +177,45 @@
   "scriptsCopyResult": "Copy full result",
   "scriptsResultPreview": "This result is long. Only part is previewed below.",
   "scriptsRegistryRecovered": "Installation records were damaged. Previous scripts are inactive; import trusted packages again.",
-  "scriptsBrowserBusy": "The browser is in use by another school flow. Close it and retry."
+  "scriptsBrowserBusy": "The browser is in use by another school flow. Close it and retry.",
+  "scriptsBundled": "Bundled scripts",
+  "scriptsInstallBundled": "Review bundled school scripts",
+  "scriptsViewSource": "View source",
+  "scriptsXidianUndergraduate": "Xidian University (undergraduate)",
+  "scriptsXidianPostgraduate": "Xidian University (postgraduate)",
+  "scriptsSelectAndEnter": "Select and continue",
+  "scriptsLoginUnavailable": "This script does not provide a manual login entry. Use a supported data query to sign in.",
+  "scriptsLoginFailed": "School login could not finish. Please retry.",
+  "scriptsLoginRunning": "Starting the selected school’s login…",
+  "cardNumberRequiredTitle": "Enter your campus card number",
+  "cardNumberRequiredBody": "The school returned a balance without a card number. Enter the actual campus card number to continue; it will be saved for this school.",
+  "cardNumberLabel": "Campus card number",
+  "cardNumberInvalid": "Enter a campus card number.",
+  "cardNumberContinue": "Continue query",
+  "studentIdRequiredTitle": "Enter your student ID",
+  "studentIdRequiredBody": "The school session has no student ID. Enter your actual student ID to continue; it will be saved for this school.",
+  "studentIdLabel": "Student ID",
+  "studentIdInvalid": "Enter a student ID.",
+  "scriptsNetworkDenied": "The school redirected to a site outside this script’s allowed sites. Update the school script and retry.",
+  "scriptsSourceResponseInvalid": "The school returned data that could not be recognized. Retry or update the school script.",
+  "scriptsAuthenticationTimeout": "Login did not finish in time. Please sign in again.",
+  "homeScheduleTitle": "Timetable",
+  "homeSchedulePrompt": "View this week from the academic calendar, or choose a week",
+  "homeScheduleSelectWeek": "Choose a week",
+  "homeScheduleLoadCurrent": "View this week",
+  "homeScheduleLoadWeek": "View week {week}",
+  "@homeScheduleLoadWeek": {
+    "placeholders": {
+      "week": {
+        "type": "int"
+      }
+    }
+  },
+  "cardAccountLabel": "Campus card account",
+  "scriptsInputTitle": "School script requests information",
+  "scriptsInputSubmit": "Submit and continue",
+  "scriptsInputInvalid": "Enter or select a valid value",
+  "scriptsInputNoSelection": "No selection",
+  "scriptsInputCancelled": "Information request cancelled",
+  "scriptsInputPermission": "The script may request information while running. Submitted values go to this school script, which decides whether to save them."
 }

@@ -15,6 +15,8 @@
 | `school_card_session.dart` 17–85、88–102、168–189 | 永久复用 openid、表单分页、拒绝日期 | 五分钟/失败一次重取，真实 hidden openid，日期窗口 JSON，整数分及本地分页 |
 | `library_session.dart` 登录约 630–697、`loanList` | 探针仍指向旧双域/用户 token 链 | 超星 CAS + `mfindxidian.libsp.cn` OPAC，JWT header/cookies、groupCode、实际借阅列表 |
 | `ids_session.dart`、`ids_reauth_client.dart` | 旧架构需要核心代理认证材料 | 受信 JS 管理会话，官方浏览器处理密码/滑块/二次认证，按目标重新取得 ST |
+| `semester_session.dart`、`ids_auth_protocol.dart` / `ids_reauth_client.dart` | 仅靠业务页路径即可误收割；失败时也写 IDS 快照 | 2026-10-30：只读业务接口验证、完整加载和稳定快照、提交前再次检查；MFA/超时无新凭据写入 |
+| 本科/研究生分支 | 共用 `schoolId: xidian`，可变 role 选择教务 | 2026-10-30：拆成 `xidian_undergraduate` / `xidian_postgraduate`，四个独立包；角色绑定源码入口，凭据按学校隔离 |
 
 以上行号对应参考提交，仅作为代码证据，不是学校接口当前在线稳定性的证明。合成夹具不能代替真机脱敏样本。
 
@@ -23,7 +25,7 @@
 | 目标 | 当前能力是否足够 | 需要增加或核实的内容 |
 |---|---|---|
 | 本轮 11 个只读业务能力及官方页登录 | SDK 2 的凭据、HTTP、DOM、Cookie 和真实 QuickJS timer 足够 | 无新增宿主 API/权限、无新业务 id；需真实学校/设备校准 |
-| 卡片只返回余额但无真实卡号 | 网络/脚本足够 | 现 `card.balance` / `card.transactions` 输出强制 cardNumber；本轮允许用户明确提供，不造值。若要免配置完整兼容，应另开 ADR 调整输出契约的必填性与版本 |
+| 卡片只返回余额但无真实卡号 | 网络/脚本足够 | ADR-036 已由所有者确认，0.12.0 的 cardNumber 可省略；无卡号账户查询不强制手填、不造值，SDK 3 补学号由脚本显式请求 |
 | 未排课程、考试结束时刻、成绩构成 | 请求与解析足够 | 现标准输出没有对应结构；需业务契约扩展/专门能力，不能假装已有字段可无损承载 |
 | 历史学期 | 不缺宿主 API | 参考只证实当前学期接口；需补实际来源，不靠推算制造历史列表 |
 | 图书搜索/详情/续借 | HTTP 足够 | 需 `library.search` / 详情结构及续借写操作能力与用户交互；本轮不借只读能力触发续借 |

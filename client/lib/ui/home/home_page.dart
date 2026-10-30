@@ -153,7 +153,11 @@ class _EleconHomePageState extends State<EleconHomePage> {
                           const GradesSection(),
                         if (_liveSections &&
                             data.supportsAll(const ['schedule.week']))
-                          const ScheduleSection(),
+                          ScheduleSection(
+                            calendarEnabled: data.supportsAll(const [
+                              'calendar.academic',
+                            ]),
+                          ),
                         if (_liveSections &&
                             data.supportsAll(const ['exam.list']))
                           const ExamSection(),

@@ -245,5 +245,45 @@
   "scriptsCopyResult": "复制完整结果",
   "scriptsResultPreview": "结果较长，下方仅预览部分内容。",
   "scriptsRegistryRecovered": "安装记录损坏，旧脚本已停用。请重新导入你信任的源码包。",
-  "scriptsBrowserBusy": "浏览器正被另一学校流程使用，请关闭后重试。"
+  "scriptsBrowserBusy": "浏览器正被另一学校流程使用，请关闭后重试。",
+  "scriptsBundled": "应用自带脚本",
+  "scriptsInstallBundled": "检查并安装所选学校脚本",
+  "scriptsViewSource": "查看源码",
+  "scriptsXidianUndergraduate": "西安电子科技大学（本科生）",
+  "scriptsXidianPostgraduate": "西安电子科技大学（研究生）",
+  "scriptsSelectAndEnter": "选择并进入",
+  "scriptsLoginUnavailable": "当前脚本未提供主动登录入口，请通过支持的取数功能登录。",
+  "scriptsLoginFailed": "学校登录未能完成，请重试。",
+  "scriptsLoginRunning": "正在启动所选学校的登录流程…",
+  "cardNumberRequiredTitle": "补充校园卡号",
+  "cardNumberRequiredBody": "学校页面未提供卡号，请填写实际校园卡号后继续查询。卡号会保存在当前学校身份中。",
+  "cardNumberLabel": "校园卡号",
+  "cardNumberInvalid": "请输入校园卡号。",
+  "cardNumberContinue": "继续查询",
+  "studentIdRequiredTitle": "补充学号",
+  "studentIdRequiredBody": "当前学校会话未提供学号，请填写实际学号后继续查询。学号会保存在当前学校身份中。",
+  "studentIdLabel": "学号",
+  "studentIdInvalid": "请输入学号。",
+  "scriptsNetworkDenied": "学校请求跳转到了脚本未声明的站点，请更新学校脚本后重试。",
+  "scriptsSourceResponseInvalid": "学校返回的数据暂时无法识别，请重试或更新学校脚本。",
+  "scriptsAuthenticationTimeout": "登录未在限定时间内完成，请重新登录。",
+  "homeScheduleTitle": "课表",
+  "homeSchedulePrompt": "按校历查询本周课表，也可手动选择周次",
+  "homeScheduleSelectWeek": "手动选择周次",
+  "homeScheduleLoadCurrent": "查看本周课表",
+  "homeScheduleLoadWeek": "查询第 {week} 周",
+  "@homeScheduleLoadWeek": {
+    "placeholders": {
+      "week": {
+        "type": "int"
+      }
+    }
+  },
+  "cardAccountLabel": "校园卡账户",
+  "scriptsInputTitle": "学校脚本请求信息",
+  "scriptsInputSubmit": "提交并继续",
+  "scriptsInputInvalid": "请按要求填写或选择此项",
+  "scriptsInputNoSelection": "不选择",
+  "scriptsInputCancelled": "已取消补充信息",
+  "scriptsInputPermission": "脚本可在运行时请求填写信息；你提交的内容会交给当前学校脚本处理，是否保存由脚本决定。"
 }

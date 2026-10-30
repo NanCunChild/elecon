@@ -27,10 +27,6 @@ class SettingsPage extends StatelessWidget {
     final session = SessionScope.of(context);
     final school = session.selectedSchool;
     if (school == null) return;
-    if (school.adapterId.startsWith('script:')) {
-      _open(context, const ScriptWorkbenchPage());
-      return;
-    }
     final result = await runSchoolLogin(context, session, school);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

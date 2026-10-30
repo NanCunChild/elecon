@@ -38,6 +38,89 @@ function context(sessions, fetch) {
 function session(service, cookies = [], data = {}) {
   return { version: 1, service, cookies, data };
 }
+
+test("academic SSO reuses verified same-school IDS account metadata without replacing a service account", async () => {
+  const ctx = context(
+    {
+      ids: session("ids", [], { studentId: "SYNTHETIC-IDS" }),
+      ehall: session("ehall"),
+      yjspt: session("yjspt", [], { studentId: "SYNTHETIC-SERVICE" }),
+    },
+    () => assert.fail("metadata lookup does not need a request"),
+  );
+  assert.equal((await createClient(ctx, "ehall")).session.data.studentId, "SYNTHETIC-IDS");
+  assert.equal((await createClient(ctx, "yjspt")).session.data.studentId, "SYNTHETIC-SERVICE");
+  assert.deepEqual(ctx.writes, []);
+});
+
+test("denied redirect diagnostics identify only its scheme and host", async () => {
+  const ctx = context({ ehall: session("ehall") }, async () =>
+    response("https://ehall.xidian.edu.cn/", {
+      status: 302,
+      headers: { location: "https://blocked.example/path?ticket=SYNTHETIC-PRIVATE" },
+    }),
+  );
+  const logs = [];
+  ctx.log = (level, message) => logs.push([level, message]);
+  const client = await createClient(ctx, "ehall");
+  await assert.rejects(
+    client.request("https://ehall.xidian.edu.cn/"),
+    (error) => error.message === "xidian_redirect_origin_denied" && error.code === "network_denied",
+  );
+  assert.deepEqual(logs, [["warn", "xidian_redirect_blocked https blocked.example"]]);
+});
+
+test("declared E-Hall HTTP redirect is preserved and subsequent business calls use its actual origin", async () => {
+  const seen = [];
+  const start = "https://ehall.xidian.edu.cn/appShow?appId=EXAMPLE_SYNTHETIC";
+  const end = "http://ehall.xidian.edu.cn/jwapp/sys/wdkb/index.do?ticket=EXAMPLE_SYNTHETIC";
+  const ctx = context({ ehall: session("ehall") }, async (url) => {
+    seen.push(url);
+    return response(url, url === start ? { status: 302, headers: { location: end } } : {});
+  });
+  const client = await createClient(ctx, "ehall");
+  await client.request(start);
+  assert.deepEqual(seen, [start, end]);
+  assert.equal((await readSession(ctx, "ehall")).data.origin, "http://ehall.xidian.edu.cn");
+  await client.request("https://ehall.xidian.edu.cn/jwapp/sys/wdkb/api.do");
+  assert.equal(seen.at(-1), "http://ehall.xidian.edu.cn/jwapp/sys/wdkb/api.do");
+  const explicitPort = context({ ehall: session("ehall") }, async (url) => {
+    if (url === start)
+      return response(url, {
+        status: 302,
+        headers: { location: end.replace(/^http:\/\/ehall.xidian.edu.cn/, "http://ehall.xidian.edu.cn:80") },
+      });
+    assert.equal(url, end.replace(/^http:\/\/ehall.xidian.edu.cn/, "http://ehall.xidian.edu.cn:80"));
+    return response(url);
+  });
+  await (await createClient(explicitPort, "ehall")).request(start);
+  for (const denied of ["http://ehall.xidian.edu.cn:8080/path", "http://other.example/path"]) {
+    const rejected = context({ ehall: session("ehall") }, async (url) => {
+      assert.equal(url, start);
+      return response(url, { status: 302, headers: { location: denied } });
+    });
+    await assert.rejects(
+      (await createClient(rejected, "ehall")).request(start),
+      /xidian_redirect_origin_denied/,
+    );
+  }
+});
+
+test("a cross-origin 307 cannot replay a POST even when the HTTP destination is declared", async () => {
+  let count = 0;
+  const ctx = context({ ehall: session("ehall") }, async (url) => {
+    count++;
+    return response(url, { status: 307, headers: { location: "http://ehall.xidian.edu.cn/next" } });
+  });
+  await assert.rejects(
+    (await createClient(ctx, "ehall")).request("https://ehall.xidian.edu.cn/start", {
+      method: "POST",
+      body: "EXAMPLE_SYNTHETIC",
+    }),
+    /xidian_cross_origin_replay_denied/,
+  );
+  assert.equal(count, 1);
+});
 function response(url, { status = 200, headers = {}, cookies = [], body = {} } = {}) {
   return {
     url,
@@ -276,4 +359,59 @@ test("China wall times, calendar dates and decimal money are normalized without 
     resolveUrl("../sso/login?ticket=ONE#jwt=TWO", "https://ehall.xidian.edu.cn/app/start"),
     "https://ehall.xidian.edu.cn/sso/login?ticket=ONE#jwt=TWO",
   );
+});
+
+test("campus-card HTTP redirects admit the OAuth intermediary without replaying card cookies", async () => {
+  const start = "https://v8scan.xidian.edu.cn/home/openXDOAuth2Page";
+  const oauth = "https://xxcapp.xidian.edu.cn/oauth/authorize?state=EXAMPLE_SYNTHETIC";
+  const cas = "https://ids.xidian.edu.cn/authserver/login?service=EXAMPLE_SYNTHETIC";
+  const seen = [];
+  const ctx = context(
+    {
+      card: session(
+        "card",
+        normalizeBrowserCookies(start, [{ name: "SID", value: "EXAMPLE_SYNTHETIC_CARD", path: "/" }]),
+      ),
+      ids: session(
+        "ids",
+        normalizeBrowserCookies(cas, [{ name: "TGC", value: "EXAMPLE_SYNTHETIC_IDS", path: "/authserver" }]),
+      ),
+    },
+    async (url, init) => {
+      seen.push(url);
+      if (url === start) {
+        assert.equal(init.headers.Cookie, "SID=EXAMPLE_SYNTHETIC_CARD");
+        return response(url, { status: 302, headers: { location: oauth } });
+      }
+      if (url === oauth) {
+        assert.equal(init.headers.Cookie, undefined);
+        return response(url, { status: 302, headers: { location: cas } });
+      }
+      assert.equal(url, cas);
+      assert.equal(init.headers.Cookie, "TGC=EXAMPLE_SYNTHETIC_IDS");
+      return response(url);
+    },
+  );
+  await (await createClient(ctx, "card")).request(start);
+  assert.deepEqual(seen, [start, oauth, cas]);
+});
+
+test("PDA sessions retain desktop UA and HTTPS redirects after login", async () => {
+  const seen = [];
+  const start = "https://ehall.xidian.edu.cn/appShow?appId=EXAMPLE_SYNTHETIC";
+  const end = "https://ehall.xidian.edu.cn/jwapp/sys/wdkb/index.do";
+  const ctx = context(
+    { ehall: session("ehall", [], { authFlow: "pda", origin: "https://ehall.xidian.edu.cn" }) },
+    async (url, init) => {
+      seen.push(url);
+      assert.match(init.headers["User-Agent"], /Chrome\/130.*XDYou\/2\.0\.0/);
+      return response(
+        url,
+        url === start ? { status: 302, headers: { location: end.replace("https:", "http:") } } : {},
+      );
+    },
+  );
+  await (await createClient(ctx, "ehall")).request(start);
+  assert.deepEqual(seen, [start, end]);
+  assert.equal(ctx.writes.length, 0);
 });

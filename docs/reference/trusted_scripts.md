@@ -15,6 +15,12 @@
 
 设置页“切换学校”和工作台选校都保留各校凭据；“登出”清除当前学校全部命名空间。设置显示的是本机已保存凭据，不代表服务器仍认可登录。过期记录仍可供脚本刷新；撤销记录不通过脚本 get/list 暴露。
 
+统一学校包的主动登录入口沿用 `generic.section`，并声明 `browser: true`。设置页“登录/重新登录”直接执行当前选中 provider 的此入口；URL、成功判断和凭据收割由脚本中的既有浏览器逻辑决定，不再打开脚本管理页，也不从 network 第一项猜测登录地址。没有该入口时明确提示不可用；按需取数仍可自行认证。学校脚本管理用于安装/更新。
+
+西电 `0.8.6` 的 E-Hall 登录按“门户认证 → 无 service 的 IDS 个人中心验证并保存 → 课表应用验证并保存”执行。IDS 已验证保存后，后续业务失败或取消仍保留该 IDS 记录；它不代表教务会话已成功。常规阶段日志依次包含 `xidian_login_open:ehall_portal`、`xidian_login_verified:ehall_portal`、`xidian_login_saved:ids`、`xidian_login_open:ehall`；只有最终业务验证通过才出现 `xidian_login_saved:ehall`。若手机先落到 IDS 移动个人中心，则先验证并保存 IDS，再通过 `xidian_login_resume:ehall_portal` 返回门户一次，经 `hasLogin` 验证才继续业务。两校包同为 `0.8.6`，研究生共用 E-Hall 教室入口亦覆盖；其余目标入口保持原流程。更新仍需在学校脚本页确认新源码。实验来源和分阶段成功判据见[独立 Chrome 认证监听](browser_auth_trace.md)。
+
+脚本可在抛出的 JS Error 上设置固定 `code` 来区分可恢复失败：`input_required_card_number`、`input_required_student_id`、`authentication_required`、`authentication_timeout`、`source_response_invalid`、`network_denied`。宿主仅转发这些固定字面量，未知 code/原始 message 仍为 `adapter_failed`；既有输出/预算错误语义保留。这些旧预览错误码不再让首页推断表单或重跑；新脚本使用下文 ADR-037 的显式输入 API，输入取消/不可用等通过固定 input_* 类别报告。未知 message 仍不透传。
+
 ## 格式与打包
 
 格式为 UTF-8 JSON，最大 1 MiB：
@@ -49,7 +55,7 @@ npm run scripts:package -w tools -- \
 
 打包器不执行源码、不签名、不猜测版本，验证失败不覆盖已有输出。`version` 是严格的 `主.次.修订` 三个非负整数，禁止前导零；当前不接受 prerelease/build metadata。按整数段比较，`1.10.0 > 1.9.0`，不按字符串排序。
 
-三类版本各司其职：`format:elecon-script/1` 是包容器；`sdkVersion:2` 是宿主 API/凭据语义；`manifest.version` 是作者发布的脚本版本。输出的 `schemaVersion` 另属于标准数据契约，不是脚本版本。宿主识别 SDK 1/2，未知格式/SDK 在执行前拒绝。SDK 1 保留首版预览的同校共享键/旧 ref 隐式查找；新包使用 SDK 2。迁移时同时修改 SDK、源码，并提升脚本版本后重新确认，不能只改 SDK 或同版本替换字节。脚本更新/修复/权限变化都需提升版本；卸载后重装不保留版本防回退历史，不把本地更新规则描述为全局反回滚系统。
+三类版本各司其职：`format:elecon-script/1` 是包容器；`sdkVersion` 是宿主 API/凭据语义（2 为完整凭据地址，3 在此基础上增加原生输入）；`manifest.version` 是作者发布的脚本版本。输出的 `schemaVersion` 另属于标准数据契约，不是脚本版本。宿主识别 SDK 1/2/3，未知格式/SDK 在执行前拒绝。SDK 1 保留首版预览的同校共享键/旧 ref 隐式查找；需要输入接口的新包使用 SDK 3；纯 HTTP/浏览器 SDK 2 包仍可继续使用。迁移时同时修改 SDK、源码，并提升脚本版本后重新确认，不能只改 SDK 或同版本替换字节。脚本更新/修复/权限变化都需提升版本；卸载后重装不保留版本防回退历史，不把本地更新规则描述为全局反回滚系统。
 
 身份、权限、源码都进入 canonical SHA-256 内容身份；安装恢复时重新解析并核对 digest。文件排版变化不改变内容身份，源码文本变化会改变。规范中的三段数值版本是当前接受的 SemVer 子集，不宣称支持完整 SemVer 2.0。
 
@@ -109,3 +115,31 @@ const tokens = JSON.parse((await ctx.credentials.get("tokens", {namespace})).val
 后续应优先用不同认证形态的真实学校验证接入成本，逐校将成熟能力迁入新脚本，最后随兼容窗口删除旧 runtime/DSL；不继续给旧 DSL 增加校本协议算子。
 
 2026-10-30 已增加 [西电实际学校脚本](../../school-scripts/xidian/README.md)，对照本机 Traintime PDA 固定提交实现，分成 HTTP 数据包与可见登录包。它提供本/研教务与校园卡、借阅等现有能力；具体配置、未覆盖的字段及额外能力评估见该目录。新客户端 0.2.1 修复长拼接字符串跨 QuickJS 桥失真的问题，SDK 仍为 2；真实账号与原生设备验证尚未完成。
+
+## SDK 3：由脚本主动请求输入
+
+ADR-037 为所有已授权 SDK 3 脚本提供 `ctx.ui.requestInput`，不要求 browser=true；SDK 1/2 不注入此 API。旧客户端在解析 SDK 3 时拒绝。SDK 3 保留 SDK 2 的完整凭据描述符，不改变其它学校/主密钥边界。
+
+```js
+const answer = await ctx.ui.requestInput({
+  title: "补充查询信息",
+  message: "仅在缺少查询所需信息时调用。",
+  fields: [
+    { id: "studentId", label: "学号", type: "text", maxLength: 128 },
+    { id: "campus", label: "校区", type: "select", required: false,
+      options: [{ label: "南校区", value: "south" }, { label: "北校区", value: "north" }] }
+  ]
+});
+if (answer === null) {
+  // 用户取消；脚本决定终止或使用其它路径，不能猜测身份继续。
+  return { sectionId: "query", title: "查询已取消" };
+}
+// 校本验证和保存属于脚本，不由宿主自动完成。
+await ctx.credentials.set("studentId", answer.studentId);
+```
+
+提交返回字段 id → 字符串（可选未填字段为 ""）；取消返回 null。字段支持 text/password/select，默认 required=true、maxLength=128；maxLength 上限 4096，密码不允许初始值，select 最多 20 个唯一选项值。每张最多八字段、请求 JSON 最多 32 KiB、一次运行最多八次表单，不能并发显示；标题/标签最多 120、说明最多 1000 字符。宿主校验请求和返回，提交内容在交还 JS 前加入日志秘密集合，不自动落盘、注入参数或重跑 capability。
+
+SDK 3 的会话总预算为已有交互上限 120 秒，表单不暂停或重置计时；网络/宿主调用预算不解除。切校、登出、更新、禁用、取消、超时及页面销毁关闭弹窗；晚到提交不能写回。安装确认会说明脚本可主动请求输入，弹窗固定标出当前安装脚本与学校。固定 input_* 错误不透传请求或用户原文；这不承诺防止受信脚本主动编码泄漏。
+
+共享首页不再根据 card/student 错误码决定字段或自动重跑。旧 SDK 若依赖这一预览补丁，应迁移为 SDK 3 的显式表单调用，或在工作台明确提供参数。西电 SDK 3 无卡号时直接提供账户余额/流水，仅在缺失学号且查询确实需要时请求输入；官方网页登录仍承担密码、滑块和 MFA。

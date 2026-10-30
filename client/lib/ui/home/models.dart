@@ -18,6 +18,7 @@ export 'package:elecon_contract/classroom_available.dart';
 export 'package:elecon_contract/classroom_buildings.dart';
 export 'package:elecon_contract/card_balance.dart';
 export 'package:elecon_contract/card_transactions.dart';
+export 'package:elecon_contract/calendar_academic.dart';
 export 'package:elecon_contract/exam_list.dart';
 export 'package:elecon_contract/gpa_summary.dart';
 export 'package:elecon_contract/grades_list.dart';

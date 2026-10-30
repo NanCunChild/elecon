@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:elecon/core/trust/trust_profile.dart' show kSideloadEnabled;
 import 'package:elecon/main.dart';
+import 'package:elecon/l10n/gen/app_localizations.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:elecon/ui/login/webview_login_page.dart';
 import 'package:elecon/ui/security/dev_sideload_banner.dart'
@@ -21,7 +22,9 @@ void main() {
           await storageReady.future;
           return null;
         },
-        initialSchools: [testSchool()],
+        initialSchools: [
+          testSchool(schoolId: 'synthetic', adapterId: 'school-synthetic'),
+        ],
       );
 
       await tester.pumpWidget(EleconApp(sessionController: session));
@@ -79,12 +82,18 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('测试乙大学'));
       await tester.tap(find.text('测试乙大学'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('登录并进入'));
       await tester.tap(find.text('登录并进入'));
       await tester.pump();
 
       expect(loginSchoolId, 'test-b');
-      expect(find.text('登录中…'), findsOneWidget);
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(FilledButton).first),
+      );
+      expect(find.text(l10n.scriptsRunning), findsOneWidget);
       expect(session.selectedSchool, isNull);
 
       loginResult.complete(

@@ -14,6 +14,10 @@ import '../../session/session_controller.dart';
 import '../../session/session_scope.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import 'script_presenter.dart';
+import 'script_input_presenter.dart';
+import '../../core/scripts/input.dart';
+import 'script_install_dialog.dart';
+import 'bundled_scripts.dart';
 
 class ScriptWorkbenchPage extends StatefulWidget {
   const ScriptWorkbenchPage({super.key});
@@ -28,6 +32,7 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
   List<ScriptInstallation> _installed = [];
   SessionController? _session;
   bool _busy = false;
+  BundledScriptSchool _bundled = bundledScriptSchools.first;
   String? _result;
   final List<String> _logs = [];
   int? _viewGeneration;
@@ -111,44 +116,8 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
 
   Future<void> _install() => _guard(() async {
     final package = ScriptPackage.parse(_source.text);
-    final m = package.manifest;
     final l10n = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.scriptsTrustTitle),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${m.name} · ${m.version}\n${m.id} · ${m.schoolId}'),
-              const SizedBox(height: 16),
-              Text(l10n.scriptsTrustBody),
-              const SizedBox(height: 16),
-              Text(l10n.scriptsNetwork),
-              for (final origin in m.network.origins) Text(origin.toString()),
-              const SizedBox(height: 12),
-              Text(l10n.scriptsIp),
-              Text(m.network.ipAllow?.join('\n') ?? l10n.scriptsIpNone),
-              if (m.browser) ...[
-                const SizedBox(height: 12),
-                Text(l10n.scriptsBrowserPermission),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(l10n.scriptsApprove),
-          ),
-        ],
-      ),
-    );
+    final confirmed = await confirmScriptInstall(context, [package]);
     if (confirmed != true) return;
     await _session!.installTrustedScript(
       package,
@@ -182,6 +151,16 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
     // Browser presentation is installed locally too: the workbench is usable
     // from onboarding before MainShell exists.
     final previous = session.scriptBrowserPresenter;
+    final previousInput = session.scriptInputPresenter;
+    Future<Object?> temporaryInput(
+      ScriptPackage package,
+      Future<Object?> Function(ScriptInputCall) execute,
+    ) => presentScriptInput(
+      context,
+      package,
+      execute,
+      onCancel: session.cancelTrustedScriptRuns,
+    );
     Future<Object?> temporary(
       ScriptPackage package,
       Future<Object?> Function(ScriptBrowserCall) execute,
@@ -190,8 +169,17 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
       package,
       execute,
       onCancel: session.cancelTrustedScriptRuns,
+      onTrace: (message) {
+        if (mounted && _viewGeneration == session.trustedScriptViewGeneration) {
+          setState(() {
+            if (_logs.length == 100) _logs.removeAt(0);
+            _logs.add(message);
+          });
+        }
+      },
     );
     session.scriptBrowserPresenter = temporary;
+    session.scriptInputPresenter = temporaryInput;
     setState(() {
       _result = null;
       _logs.clear();
@@ -218,6 +206,9 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
         );
       }
     } finally {
+      if (identical(session.scriptInputPresenter, temporaryInput)) {
+        session.scriptInputPresenter = previousInput;
+      }
       if (identical(session.scriptBrowserPresenter, temporary)) {
         session.scriptBrowserPresenter = previous;
       }
@@ -263,6 +254,30 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
         padding: const EdgeInsets.all(16),
         children: [
           Text(l10n.scriptsDescription),
+          DropdownButtonFormField<BundledScriptSchool>(
+            initialValue: _bundled,
+            decoration: InputDecoration(labelText: l10n.scriptsBundled),
+            items: [
+              for (final school in bundledScriptSchools)
+                DropdownMenuItem(
+                  value: school,
+                  child: Text(school.label(l10n)),
+                ),
+            ],
+            onChanged: _busy
+                ? null
+                : (value) => setState(() {
+                    if (value != null) _bundled = value;
+                  }),
+          ),
+          OutlinedButton(
+            onPressed: _busy
+                ? null
+                : () => _guard(() async {
+                    await installBundledSchool(context, _session!, _bundled);
+                  }),
+            child: Text(l10n.scriptsInstallBundled),
+          ),
           if (_session?.scriptRegistryRecovered ?? false)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),

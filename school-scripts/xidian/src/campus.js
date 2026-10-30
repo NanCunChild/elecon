@@ -7,7 +7,9 @@
 // live credentials, payment QR, renewal, or device-write operation is included.
 
 import { getChildren, getText, isTag, parseDocument, selectAll } from "elecon:html";
+import { failure } from "./errors.js";
 import { dateOnly, integer, moneyMinor, schoolDateTime, text } from "./normalize.js";
+import { PDA_UA } from "./pda_constants.js";
 import { createClient, mergeCookies, normalizeBrowserCookies } from "./session.js";
 
 const CARD = "https://v8scan.xidian.edu.cn";
@@ -18,7 +20,7 @@ const MAX_LOAN_PAGES = 12;
 const OPENID_TTL_MS = 5 * 60 * 1000;
 
 function fail(code) {
-  throw new Error(code);
+  throw failure(code);
 }
 
 function decodeHTML(value) {
@@ -50,21 +52,6 @@ function pageText(html) {
     .trim();
 }
 
-function queryValue(url, name) {
-  const query =
-    String(url || "")
-      .split("?")[1]
-      ?.split("#")[0] || "";
-  for (const part of query.split("&")) {
-    const at = part.indexOf("=");
-    if (at < 0) continue;
-    if (decodeURIComponent(part.slice(0, at)) === name) {
-      return decodeURIComponent(part.slice(at + 1).replace(/\+/g, " "));
-    }
-  }
-  return "";
-}
-
 function hiddenInput(html, id) {
   for (const tag of String(html).match(/<input\b[^>]*>/gi) || []) {
     const attrs = {};
@@ -91,7 +78,9 @@ async function responseText(response, code) {
 }
 
 async function cardClient(ctx) {
-  const client = await createClient(ctx, "card");
+  // PDA followIDSRedirects permits 30 school hops. Host request/time budgets
+  // still apply, and each hop retains the shared origin/cookie/replay checks.
+  const client = await createClient(ctx, "card", { maxRedirects: 30, userAgent: PDA_UA });
   const fetchedAt = client.session.data.openidFetchedAt;
   const age = ctx.now() - fetchedAt;
   if (!text(client.session.data.openid) || !Number.isFinite(fetchedAt) || age < 0 || age >= OPENID_TTL_MS)
@@ -100,13 +89,17 @@ async function cardClient(ctx) {
 }
 
 async function refreshOpenId(ctx, client) {
+  client.log("info", "xidian_card_stage:openid_start");
   const response = await client.request(`${CARD}/home/openXDOAuth2Page`);
   const html = await responseText(response, "xidian_login_required_card");
-  const openid = queryValue(response.url, "openid") || hiddenInput(html, "openid");
+  // PDA school_card_session.dart uses the authenticated page's hidden field,
+  // not a possibly stale intermediary's URL parameter.
+  const openid = hiddenInput(html, "openid");
   if (!openid) fail("xidian_login_required_card");
   client.session.data.openid = openid;
   client.session.data.openidFetchedAt = ctx.now();
   await client.save();
+  client.log("info", "xidian_card_stage:openid_ready");
 }
 
 async function cardQuery(ctx, client, action) {
@@ -158,41 +151,49 @@ function cardMoney(value) {
   return moneyMinor(raw.replace(/,/g, ""));
 }
 
-function balanceMinor(html) {
-  const content = pageText(html);
-  const amount =
-    /(?:账户余额|卡余额|余额)\s*[：:]?\s*(?:CNY|RMB|¥|￥)?\s*(-?[0-9][0-9,]*(?:\.\d{1,2})?)/i.exec(
-      content,
-    )?.[1] || /(?:CNY|RMB|¥|￥)\s*(-?[0-9][0-9,]*(?:\.\d{1,2})?)/i.exec(content)?.[1];
-  if (amount) return cardMoney(amount);
-  // Reference school_card_session.dart _fetchOverview reads the first li's
-  // second element child, then its second element child. Keep that witnessed
-  // numeric layout as a fallback; do not select an arbitrary page number.
+function balanceMinor(html, log) {
+  // Match PDA _fetchOverview's selected account cell before considering page
+  // labels; unrelated wallet/transaction amounts elsewhere are not a balance.
   const first = selectAll("li", parseDocument(html))[0];
   const group = first && getChildren(first).filter(isTag)[1];
   const cell = group && getChildren(group).filter(isTag)[1];
   const value = cell && getText(cell).trim();
-  if (!value || !/^[¥￥]?\s*-?[0-9][0-9,]*(?:\.\d{1,2})?$/.test(value)) fail("card_balance_missing");
-  return cardMoney(value.replace(/^[¥￥]\s*/, ""));
+  const cellAmount =
+    /^(?:(?:账户余额|卡余额|余额|金额)[：:]?)?(?:人民币|CNY|RMB|¥|￥)?([+-]?[0-9][0-9,]*(?:\.\d{1,2})?)(?:元|[（(]元[）)]|CNY|RMB)?$/i.exec(
+      (value || "").replace(/\s+/g, ""),
+    );
+  if (cellAmount) return cardMoney(cellAmount[1]);
+  const content = pageText(html);
+  const amount =
+    /(?:账户余额|卡余额|余额)\s*[：:]?\s*(?:CNY|RMB|¥|￥)?\s*(-?[0-9][0-9,]*(?:\.\d{1,2})?)/i.exec(
+      content,
+    )?.[1];
+  if (amount) return cardMoney(amount);
+  log?.(
+    "warn",
+    `xidian_card_balance_shape:${first ? "li" : "no_li"}:${group ? "group" : "no_group"}:${cell ? "cell" : "no_cell"}:${/[0-9]/.test(value || "") ? "digits" : "no_digits"}:${/元/.test(value || "") ? "yuan" : "no_yuan"}`,
+  );
+  fail("card_balance_missing");
 }
 
-/** Requires an explicitly configured or factually labelled card number. */
+/** ADR-036: account reads do not require or invent a physical card number. */
 export async function cardBalance(ctx, params = {}) {
   if (params.cardNumber !== undefined) explicitCardNumber(params, { data: {} });
   const client = await cardClient(ctx);
   return cardQuery(ctx, client, async () => {
+    client.log("info", "xidian_card_stage:account_start");
     const response = await client.request(
       `${CARD}/myaccount/openMyAccount?openid=${encodeURIComponent(client.session.data.openid)}`,
     );
     const html = await responseText(response, "xidian_login_required_card");
     const cardNumber = explicitCardNumber(params, client.session, html);
-    if (!cardNumber) fail("card_number_required");
-    const amountMinor = balanceMinor(html);
-    if (client.session.data.cardNumber !== cardNumber) {
+    const amountMinor = balanceMinor(html, client.log);
+    client.log("info", "xidian_card_stage:account_ready");
+    if (cardNumber && client.session.data.cardNumber !== cardNumber) {
       client.session.data.cardNumber = cardNumber;
       await client.save();
     }
-    return { cardNumber, balance: { amountMinor, currency: "CNY" } };
+    return { ...(cardNumber ? { cardNumber } : {}), balance: { amountMinor, currency: "CNY" } };
   });
 }
 
@@ -254,19 +255,8 @@ export async function cardTransactions(ctx, params = {}) {
   if (params.cardNumber !== undefined) explicitCardNumber(params, { data: {} });
   const client = await cardClient(ctx);
   return cardQuery(ctx, client, async () => {
-    let cardNumber = explicitCardNumber(params, client.session);
-    if (!cardNumber) {
-      const account = await client.request(
-        `${CARD}/myaccount/openMyAccount?openid=${encodeURIComponent(client.session.data.openid)}`,
-      );
-      cardNumber = explicitCardNumber(
-        params,
-        client.session,
-        await responseText(account, "xidian_login_required_card"),
-      );
-    }
-    if (!cardNumber) fail("card_number_required");
-    if (client.session.data.cardNumber !== cardNumber) {
+    const cardNumber = explicitCardNumber(params, client.session);
+    if (cardNumber && client.session.data.cardNumber !== cardNumber) {
       client.session.data.cardNumber = cardNumber;
       await client.save();
     }
@@ -295,7 +285,7 @@ export async function cardTransactions(ctx, params = {}) {
       return date >= from && date <= to;
     });
     return {
-      cardNumber,
+      ...(cardNumber ? { cardNumber } : {}),
       page,
       size,
       total: all.length,
