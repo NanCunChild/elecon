@@ -11,7 +11,7 @@ import {
 } from "./academic.js";
 import { cardBalance, cardTransactions, libraryLoans } from "./campus.js";
 import { createLogin } from "./login.js";
-import { noticeList } from "./notices.js";
+import { noticeDetail, noticeList } from "./notices.js";
 
 // ADR-034 §3 / ADR-035 §2: the installed school owns the academic route.
 // A saved role or invocation parameter must never switch school identities.
@@ -38,6 +38,7 @@ export function createCapabilities(role) {
   if (role !== "undergraduate" && role !== "postgraduate") throw new Error("academic_role_invalid");
   return {
     "notice.list": noticeList,
+    "notice.detail": noticeDetail,
     "generic.section": createLogin(role),
     "schedule.week": authenticated(scheduleWeek, role),
     "grades.list": authenticated(gradesList, role),
