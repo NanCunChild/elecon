@@ -6,6 +6,7 @@
 |---|---|
 | 学校源码开发、安装与打包 | [trusted_scripts](trusted_scripts.md) |
 | 学校实现与验收状态 | [实施记录](../planning/trusted_scripts.md) |
+| 首页长按编辑、卡片尺寸及同名覆盖 | [使用说明](card_layout_and_overrides.md)、[ADR-043](../adr/adr_043_card_layout_and_overrides.md) |
 | 新页面、模板、标准接口与增强包 | [接口审计](interface_evolution.md)、[ADR-042 提案](../adr/adr_042_providers_pages_enhancements.md) |
 | 通知/教室/水电中继 | [研究](../research/relay_enhancement_feasibility.md)、[实施切片](../planning/platform_evolution.md) |
 | 旧代码兼容维护 | [legacy_compatibility](legacy_compatibility.md)、[Masker 退役审计](masker_retirement_audit.md) |

@@ -1,6 +1,6 @@
 # 页面、增强包与中继实施计划
 
-> 更新：2026-10-31。文档重整依据 [ADR-041](../adr/adr_041_current_architecture.md)已执行；[ADR-042](../adr/adr_042_providers_pages_enhancements.md)是 Proposed。以下功能切片尚未实现，不是本轮代码交付。现行脚本验收仍看 [trusted_scripts](trusted_scripts.md)。
+> 更新：2026-10-31。文档重整依据 [ADR-041](../adr/adr_041_current_architecture.md)已执行；[ADR-042](../adr/adr_042_providers_pages_enhancements.md)是 Proposed。本轮已实施的独立客户端切片见下方 ADR-043 进度；表中完整平台阶段仍按各自验收，不批量标记完成。现行脚本验收仍看 [trusted_scripts](trusted_scripts.md)。
 
 ## 目标与顺序
 
@@ -63,3 +63,9 @@ N1/N2 完成后，用户先安装并验证主学校包，再独立安装通知�
 | “课标”业务含义 | 未确认 | 课表与课程标准暂分开；不重解释 schedule.week |
 
 技术目标值是拟验收门槛，不是实测成绩。上线需实际部署、监控、回滚、授权与必要人工审阅；本轮没有部署服务或对学校发起压测。
+
+## ADR-043 首个客户端切片
+
+已实现：SDK 6 可选 cards 建议、四类三档原生卡片、首页长按编辑/拖动排序/角落调整尺寸、学校级布局持久化、工作台同名能力来源覆盖、稳定默认来源及取消边界。具体使用见[说明](../reference/card_layout_and_overrides.md)。
+
+本切片不代表 C1/P1/A1/N1 全部完成：没有通用输入校验改造、通用 QueryController、独立课表业务路由、匿名增强沙箱或公共中继部署。卡片“查看全部”展示当前已加载结果，不伪装为已实现服务端分页查询。实际测试结果记录在 ADR-043，真机触控和人工核心审阅仍独立验收。

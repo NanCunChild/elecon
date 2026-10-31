@@ -2,6 +2,14 @@
 
 依据 [ADR-034](../adr/adr_034_trusted_school_scripts.md) 与 [ADR-035](../adr/adr_035_script_credential_identity.md)。这条路径已接入客户端，不依赖 V2 分支、签名仪式、旧 requestGraph、Masker 或不透明句柄。旧 official bundle 作为迁移兼容路径保留，Masker 尚未全仓删除，见 [退役审计](masker_retirement_audit.md)。不把新脚本送到服务端执行。
 
+## SDK 5：已确认的设备操作（ADR-040）
+
+SDK 5 继承 SDK 4 的凭据、输入、浏览器与 home；可选 actions 将已知 mutation 能力绑定至已声明 origin 下的精确 HTTPS POST endpoint（无 query/fragment）。当前支持 climate.command，禁止作为 home 缓存/预加载能力；SDK 1–4 不接受 actions，旧客户端拒绝 SDK 5。
+
+普通 runCapability、工作台直接执行或运行脚本不能调用 climate.command。固定客户端入口先校验已核验设备和标准目标，再确认学校/包/设备掩码及全部联动设置；宿主 grant 绑定身份、digest、命令、端点与调用生命周期，只允许一次请求、禁止重定向/重试。超时/中断为 unknown，完成后独立只读同步状态，禁止乐观更新。当前仅 Android 执行控制。该约束不将 ADR-034 的任意受信脚本改造成只读沙箱，原有安装信任边界仍适用。
+
+西电本科 0.14.0 及客户端 0.5.0+8 提供首个实现；水电使用 energy.meters / energy.usage@1.1，设备为 climate.devices/status，详细操作见学校 README。规格与实现的人工安全审阅、真机验收分开记录。
+
 ## SDK 4 首页数据接口
 
 [ADR-038](../adr/adr_038_script_home_cache.md) 与 [ADR-039](../adr/adr_039_script_browser_busy.md) 增加可选的声明和固定收尾提示（客户端0.4.0+7）。例如 manifest：
@@ -160,3 +168,8 @@ await ctx.credentials.set("studentId", answer.studentId);
 SDK 3 的会话总预算为已有交互上限 120 秒，表单不暂停或重置计时；网络/宿主调用预算不解除。切校、登出、更新、禁用、取消、超时及页面销毁关闭弹窗；晚到提交不能写回。安装确认会说明脚本可主动请求输入，弹窗固定标出当前安装脚本与学校。固定 input_* 错误不透传请求或用户原文；这不承诺防止受信脚本主动编码泄漏。
 
 共享首页不再根据 card/student 错误码决定字段或自动重跑。旧 SDK 若依赖这一预览补丁，应迁移为 SDK 3 的显式表单调用，或在工作台明确提供参数。西电 SDK 3 无卡号时直接提供账户余额/流水，仅在缺失学号且查询确实需要时请求输入；官方网页登录仍承担密码、滑块和 MFA。
+
+
+## SDK 6 卡片建议与同名来源
+
+SDK 6 在 SDK 5 上增加可选静态 cards，供学校包建议宿主已实现的卡片类型与有限形式；用户保存的布局优先。旧 SDK 不必升级即可使用首页长按编辑、排序和尺寸调整，cards 也不替代 home 查询缓存策略。同名能力可在工作台明确选择来源，主包不需为增强包写适配逻辑。格式、实际操作与边界见[卡片与同名覆盖](card_layout_and_overrides.md)和 [ADR-043](../adr/adr_043_card_layout_and_overrides.md)。

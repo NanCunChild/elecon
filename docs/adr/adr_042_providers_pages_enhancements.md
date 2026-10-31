@@ -1,9 +1,9 @@
 # ADR-042 能力提供者、独立页面与增强包
 
-- **Decision**：Proposed（2026-10-31）。本轮授权是研究与文档规划；以下新的 SDK、权限和接口不是已接受或已实现的产品能力。
-- **Landing**：未实现；代码观察见[接口审计](../reference/interface_evolution.md)，分期见[计划](../planning/platform_evolution.md)。
+- **Decision**：部分切片已由 [ADR-043](adr_043_card_layout_and_overrides.md) 接受并实施（同名覆盖、有限卡片、长按编辑及 SDK 6 展示建议）；其余保持 Proposed。后续公共中继、匿名权限、论坛/馆藏模型不因本切片成为已实现能力。
+- **Landing**：首个客户端切片见 ADR-043；完整平台目标尚未完成。代码观察见[接口审计](../reference/interface_evolution.md)，分期见[计划](../planning/platform_evolution.md)。
 - **依赖**：[ADR-041](adr_041_current_architecture.md)当前基线、ADR-034/035/038/040。
-- **不修改**：现有 SDK 1–5 语义、manifest、schema、控制门和 V1 入口。本 ADR 内类型和字段均是设计记法，不能直接放入现有包。
+- **兼容**：SDK 1–5 保持原语义；ADR-043 新增 SDK 6 可选 cards。其余本文拟议类型仍不是现行 wire schema，不能直接放入安装包。
 
 ## 1. 问题与目标
 
@@ -120,3 +120,7 @@ EntityRef = identityScope + datasetId + providerContext + entityType + localId
 ## 9. 未采用
 
 不使用安装顺序或通用优先级数字决定提供者；不允许增强包自动继承凭据；不将所有页面塞入 generic.section；不把论坛映射为通知；不把 schema 增加等同于页面已可用；不以给每个层加任意 Map/插件接口来声称兼容。
+
+## 10. 首个落地切片
+
+[ADR-043](adr_043_card_layout_and_overrides.md)将对作者的扩展接口收敛为导出同名能力，由宿主选择有效实现；不要求主包识别增强包。首页采用有限原生卡片，用户长按进入编辑、拖动排序、拖角落调整档位；包仅建议默认呈现，用户布局优先。具体支持范围与操作见[卡片和来源使用说明](../reference/card_layout_and_overrides.md)。

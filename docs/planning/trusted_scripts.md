@@ -4,6 +4,22 @@
 
 **当前工作目录（2026-10-30 所有者指定）**：`/home/nancunchild/projects/elecon`，分支 `feat/trusted-school-scripts`。已接入原新工作区的 `33bcdc4`；原 `elecon-trusted-scripts` 工作树留在 detached HEAD，后续开发在本目录进行。切换前全部已跟踪及未跟踪改动保存于 stash `1837515ffa21666526fe05d1ee1cf4fb493b6a1d`，并由固定引用 `refs/backups/elecon-before-trusted-scripts-20261030` 保留；未把旧登录实现混入新路线。
 
+## 2026-10-31：本科水电与空调（ADR-040 已确认并实现）
+
+所有者在审阅 ADR-040 后明确确认并要求完成。客户端 **0.5.0+8**，本科统一包 **0.14.0 / SDK 5**；研究生因公共 IDS/会话模块变更独立升为 **0.13.1 / SDK 4**，不新增水电/空调能力。规格接受与实现人工安全签收仍分别记录。
+
+- 水电新增 energy.meters 和 energy.usage@1.1，多表发现/选择、余量、累计/前次读数与用量分别归一。旧 energy.usage@1.0 使用独立历史 schema 保留原校验行为，不套用新字段约束。JS 完成校园网 OAuth、逐请求签名、AES-CBC/PKCS7 和有界单表窗口；默认电表近日历月、水表近一年，显式窗口生效。独立 energy 会话复用已验证 IDS，继续学校原页登录，不接回 PDA 密码协议。
+- 空调新增 climate.devices/status/command。用户主动绑定并核验自己的设备，保存于当前本科身份的 xidian.climate 命名空间；不扫描设备、不假装存在账户 discovery/token 登录接口。electricAmount 的余量语义未证实，因此省略，不编造剩余电量。
+- SDK 5 actions 绑定批准 digest 内的精确 HTTPS POST endpoint。固定控制入口确认设备、学校/包和全部目标/联动设置；普通入口、工作台直接运行及 home 拒绝 command。宿主 grant 绑定身份、代际、设备、参数和有效期，单次占位/单请求、禁重定向/重试/交互重登；取消、退后台、切校、登出、更新或离开页面使确认失效。运行中的第二次/并发请求为致命失败，脚本捕获错误也不能伪报成功。
+- 命令结果保留 accepted/rejected/unknown，HTTP/JS 成功不等于 applied；无实际请求不能报已发送。完成或失败后独立读取状态，只有完整目标匹配才确认 applied。界面开关和模式均由已核验状态驱动，原生下拉框不会提前显示用户目标。未知/错误/离线状态不能控制；首版宿主仅在 Android 前台接受控制，其它平台只读。
+- 水电及空调为按 schema 选择的固定 Material 3 卡片，双语、可选元信息、窄屏/大字体布局；水电带真实成功时间恢复缓存/历史，空调按初始化/登录及界面可见生命周期同步，不进入周期预加载。未新增第三方依赖，不修改公网服务、V1 official/Masker/签名门或背景执行边界。
+
+验证：Flutter 全量 **1167 通过、11 条件跳过**；学校 Node **144/144**；真实打包源码/SDK action 定向 **15/15**（含首次原生输入绑定、保存凭据类型、独立 OpenSSL 解密校验 QuickJS AES 请求）；工具链 smoke **24/24**、服务端 smoke **29/29**；workspace lint/typecheck、全量 Flutter analyze、54 份生成 schema 及 registry/validator 字节一致性、学校确定性构建/PII 扫描与 diff 检查通过。新增 schema golden 同步至 54 个 schema / 52 个 registry 引用，保留原有负例并新增 SDK 5 正例及未知 SDK 6 拒绝例。标准 codegen 检查通过；可选全仓 require-descriptions 仍报告 **27 处既有缺失**，本次水电/空调全部新增与修改字段已单独验证 description 覆盖，未借本任务改写其它领域。
+
+Android 调试 APK：`client/build/app/outputs/flutter-apk/app-debug.apk`；aapt 核验 versionName=0.5.0 / versionCode=8，APK 内两校 JSON、README 与 MPL 许可证均与工作区逐字节一致。应用内仍须由用户确认新版源码/身份/网络/控制授权；没有覆盖已授权旧 digest，没有安装到手机、访问学校账号或调用真实设备。
+
+**仍开放**：校园网水电及实际学校响应、用户明确选定空调的真机控制验收；核心/action/凭据实现及其测试的人工实质性安全审阅。合成测试、AI 自检和调试 APK 不等于上述签收或生产合并。
+
 ## 2026-10-30：登录收尾、首页缓存与公告正文（ADR-038/039）
 
 本轮先将原工作区按决策、SDK/核心、学校集成、脱敏追踪工具保存为4次本地提交，再开展本增量。新客户端为 **0.4.0+7**，本科/研究生源码均为 **0.13.0 / SDK 4**；内置JSON、README和许可证与确定性构建一致。升级顺序是先客户端、后重新确认源码digest，不自动替代旧安装授权。

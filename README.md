@@ -10,9 +10,11 @@
 
 使用、模板与打包见[受信脚本参考](docs/reference/trusted_scripts.md)，学校源码见 [school-scripts](school-scripts/README.md)，西电接入见[学校说明](school-scripts/xidian/README.md)。客户端平台、真实学校与人工验收状态见[实施记录](docs/planning/trusted_scripts.md)，不以代码存在推断发布已完成。
 
+**2026-10-31 本科宿舍功能**：客户端 0.5.0+8、SDK 5 本科包 0.14.0 增加校园网水电多表/历史查询和空调状态/确认控制；研究生不新增这些能力。方案见 [ADR-040](docs/adr/adr_040_energy_and_trusted_climate.md)，使用与平台边界见[学校说明](school-scripts/xidian/README.md)。校园网/真实设备与核心人工安全验收另行记录。
+
 ## 下一步规划
 
-[ADR-042](docs/adr/adr_042_providers_pages_enhancements.md)提出显式 provider 绑定、独立页面与可选择的增强包，尚未实现。课表与课程标准分开建模；图书搜索不复用个人借阅语义，论坛不冒充通知。公开通知是中继缓存的首个试点，空教室先核实共享授权，水电按身份与表具隔离。
+[ADR-042](docs/adr/adr_042_providers_pages_enhancements.md)规划独立页面与可选择的增强包。[ADR-043](docs/adr/adr_043_card_layout_and_overrides.md) 已实现同名能力覆盖与首页长按编辑、拖动排序、有限尺寸调整，见[使用说明](docs/reference/card_layout_and_overrides.md)；匿名增强和中继仍未实现。课表与课程标准分开建模；图书搜索不复用个人借阅语义，论坛不冒充通知。公开通知是中继缓存的首个试点，空教室先核实共享授权，水电按身份与表具隔离。
 
 - [模板与接口审计](docs/reference/interface_evolution.md)
 - [中继研究与可复现实验](docs/research/relay_enhancement_feasibility.md)
