@@ -484,6 +484,8 @@ void main() {
       await tester.pumpWidget(_app(session, const MainShell()));
       await tester.pumpAndSettle();
       expect(find.text('成绩'), findsOneWidget);
+      await tester.tap(find.text('成绩'));
+      await tester.pumpAndSettle();
       expect(find.text('查看成绩'), findsOneWidget);
       expect(find.text('No data yet'), findsNothing);
       expect(tester.takeException(), isNull);

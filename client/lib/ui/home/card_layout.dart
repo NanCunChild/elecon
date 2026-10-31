@@ -1,7 +1,7 @@
 /// ADR-043 §2: finite, host-owned card presentation and local layout preferences.
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 enum HomeCardSize { compact, regular, expanded }
 
@@ -9,20 +9,32 @@ class HomeCardPresentation extends InheritedWidget {
   const HomeCardPresentation({
     super.key,
     required this.size,
+    this.onOpen,
+    this.icon = Icons.dashboard_outlined,
     required super.child,
   });
 
   final HomeCardSize size;
+  final VoidCallback? onOpen;
+  final IconData icon;
+
+  static HomeCardPresentation? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<HomeCardPresentation>();
+
+  static bool isPreview(BuildContext context) =>
+      maybeOf(context)?.onOpen != null && of(context) != HomeCardSize.expanded;
 
   static HomeCardSize of(BuildContext context) =>
       context
           .dependOnInheritedWidgetOfExactType<HomeCardPresentation>()
           ?.size ??
-      HomeCardSize.regular;
+      HomeCardSize.expanded;
 
   @override
   bool updateShouldNotify(HomeCardPresentation oldWidget) =>
-      size != oldWidget.size;
+      size != oldWidget.size ||
+      onOpen != oldWidget.onOpen ||
+      icon != oldWidget.icon;
 }
 
 class HomeCardEntry {
@@ -30,6 +42,7 @@ class HomeCardEntry {
     required this.id,
     required this.label,
     required this.builder,
+    this.icon = Icons.dashboard_outlined,
     this.sizes = HomeCardSize.values,
     this.defaultSize = HomeCardSize.regular,
   }) : assert(id != ''),
@@ -38,6 +51,7 @@ class HomeCardEntry {
   final String id;
   final String label;
   final WidgetBuilder builder;
+  final IconData icon;
   final List<HomeCardSize> sizes;
   final HomeCardSize defaultSize;
 
@@ -60,7 +74,9 @@ class HomeCardLayout {
   final Map<String, HomeCardSize> sizes;
 
   factory HomeCardLayout.fromJson(Object? value) {
-    if (value is! Map || value['version'] != 1) return HomeCardLayout();
+    if (value is! Map || ![1, 2].contains(value['version'])) {
+      return HomeCardLayout();
+    }
     final rawOrder = value['order'];
     final rawSizes = value['sizes'];
     if (rawOrder is! List ||
@@ -77,7 +93,18 @@ class HomeCardLayout {
     for (final entry in rawSizes.entries) {
       if (!_validId(entry.key)) continue;
       for (final size in HomeCardSize.values) {
-        if (entry.value == size.name) sizes[entry.key as String] = size;
+        if (entry.value == size.name) {
+          sizes[entry.key as String] = value['version'] == 1
+              ? (size == HomeCardSize.compact
+                    ? HomeCardSize.regular
+                    : HomeCardSize.expanded)
+              : size;
+        }
+      }
+    }
+    if (value['version'] == 1) {
+      for (final id in order) {
+        sizes.putIfAbsent(id, () => HomeCardSize.expanded);
       }
     }
     return HomeCardLayout(order: order, sizes: sizes);
@@ -87,7 +114,7 @@ class HomeCardLayout {
       id is String && id.isNotEmpty && id.length <= 256;
 
   Map<String, Object> toJson() => {
-    'version': 1,
+    'version': 2,
     'order': order,
     'sizes': sizes.map((id, size) => MapEntry(id, size.name)),
   };

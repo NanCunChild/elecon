@@ -9,6 +9,21 @@ HomeCardEntry entry(String id) =>
     HomeCardEntry(id: id, label: id, builder: (_) => const SizedBox());
 
 void main() {
+  test('v1 migrates density and order; v2 round trips', () {
+    final migrated = HomeCardLayout.fromJson({
+      'version': 1,
+      'order': ['notice', 'schedule', 'card'],
+      'sizes': {'notice': 'compact', 'schedule': 'regular', 'card': 'expanded'},
+    });
+    expect(migrated.sizes, {
+      'notice': HomeCardSize.regular,
+      'schedule': HomeCardSize.expanded,
+      'card': HomeCardSize.expanded,
+    });
+    expect(migrated.order, ['notice', 'schedule', 'card']);
+    expect(migrated.toJson()['version'], 2);
+    expect(HomeCardLayout.fromJson(migrated.toJson()).sizes, migrated.sizes);
+  });
   test('missing capabilities retain their order and sizes', () {
     final layout = HomeCardLayout(
       order: ['library', 'notice', 'schedule'],
@@ -29,14 +44,17 @@ void main() {
     );
   });
   test('unknown versions and invalid fields fail safely', () {
-    expect(HomeCardLayout.fromJson({'version': 2}).order, isEmpty);
+    expect(HomeCardLayout.fromJson({'version': 3}).order, isEmpty);
     final parsed = HomeCardLayout.fromJson({
       'version': 1,
       'order': ['notice', 'notice', 4, ''],
       'sizes': {'notice': 'bad', 'schedule': 'compact'},
     });
     expect(parsed.order, ['notice']);
-    expect(parsed.sizes, {'schedule': HomeCardSize.compact});
+    expect(parsed.sizes, {
+      'notice': HomeCardSize.expanded,
+      'schedule': HomeCardSize.regular,
+    });
     final card = HomeCardEntry(
       id: 'control',
       label: 'control',

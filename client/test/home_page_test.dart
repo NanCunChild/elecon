@@ -61,6 +61,8 @@ void main() {
     );
 
     await tester.pumpAndSettle();
+    await tester.tap(find.text('成绩'));
+    await tester.pumpAndSettle();
 
     expect(find.text('elecon'), findsWidgets);
     expect(find.textContaining('测试大学'), findsOneWidget);
@@ -104,6 +106,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('成绩'));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('测试课程'));
     await tester.pumpAndSettle();
@@ -142,6 +146,8 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('通知'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('测试通知'));
@@ -263,6 +269,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('成绩'));
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('GPA'), findsNothing);
     expect(find.textContaining('NaN'), findsNothing);
@@ -302,6 +310,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('成绩'));
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('GPA'), findsNothing);
     expect(find.text('无尺度课程'), findsOneWidget);
@@ -339,6 +349,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('成绩'));
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('GPA'), findsNothing);
     expect(find.text('异制课程'), findsOneWidget);
@@ -375,6 +387,8 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('成绩'));
     await tester.pumpAndSettle();
 
     // 本机聚合**不叫 GPA**——官方数与自算值同名是 ADR-001 §3.5 优先级规则第 3 条
@@ -419,6 +433,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('成绩'));
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('GPA 3.71（4.3 制）'), findsOneWidget);
     expect(find.textContaining('4.30'), findsNothing);
@@ -459,6 +475,8 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('成绩'));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('3.71'), findsNothing);

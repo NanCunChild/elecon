@@ -146,10 +146,11 @@ class _EleconHomePageState extends State<EleconHomePage>
         if (package == null) continue;
         for (final card in package.manifest.cards) {
           if (card.type != entry.key) continue;
-          defaults[card.type] = HomeCardSize.values.firstWhere(
-            (size) => size.name == card.defaultVariant,
-            orElse: () => HomeCardSize.regular,
-          );
+          // SDK 6 retains its original preview meanings; local layout v2
+          // maps those suggestions without reinterpreting the package.
+          defaults[card.type] = card.defaultVariant == 'compact'
+              ? HomeCardSize.regular
+              : HomeCardSize.expanded;
         }
       }
       if (mounted &&
@@ -169,13 +170,23 @@ class _EleconHomePageState extends State<EleconHomePage>
       String id,
       String label,
       WidgetBuilder builder, {
-      bool resizable = false,
       String? type,
     }) => HomeCardEntry(
       id: id,
       label: label,
       builder: builder,
-      sizes: resizable ? HomeCardSize.values : const [HomeCardSize.regular],
+      icon: switch (type ?? id) {
+        'notice' => Icons.campaign_outlined,
+        'schedule' => Icons.calendar_month_outlined,
+        'grades' => Icons.school_outlined,
+        'library' => Icons.menu_book_outlined,
+        'card' => Icons.account_balance_wallet_outlined,
+        'exam' => Icons.event_note_outlined,
+        'classroom' => Icons.meeting_room_outlined,
+        'energy' => Icons.bolt_outlined,
+        'climate' => Icons.ac_unit,
+        _ => Icons.widgets_outlined,
+      },
       defaultSize: _cardDefaults[type ?? id] ?? HomeCardSize.regular,
     );
     return [
@@ -184,7 +195,6 @@ class _EleconHomePageState extends State<EleconHomePage>
           'schedule',
           l10n.homeScheduleTitle,
           (_) => ScheduleCard(data.schedule!),
-          resizable: true,
         )
       else if (_liveSections && data.supportsAll(const ['schedule.week']))
         entry(
@@ -193,29 +203,17 @@ class _EleconHomePageState extends State<EleconHomePage>
           (_) => ScheduleSection(
             calendarEnabled: data.supportsAll(const ['calendar.academic']),
           ),
-          resizable: true,
         ),
       if (data.grades != null)
         entry(
           'grades',
           l10n.homeGradesTitle,
           (_) => GradesCard(data.grades!, summary: data.gpaSummary),
-          resizable: true,
         )
       else if (_liveSections && data.supportsAll(const ['grades.list']))
-        entry(
-          'grades',
-          l10n.homeGradesTitle,
-          (_) => const GradesSection(),
-          resizable: true,
-        ),
+        entry('grades', l10n.homeGradesTitle, (_) => const GradesSection()),
       if (data.notices != null)
-        entry(
-          'notice',
-          l10n.homeNoticeTitle,
-          (_) => NoticeCard(data.notices!),
-          resizable: true,
-        )
+        entry('notice', l10n.homeNoticeTitle, (_) => NoticeCard(data.notices!))
       else if (_liveSections && data.supportsAll(const ['notice.list']))
         entry(
           'notice',
@@ -224,7 +222,6 @@ class _EleconHomePageState extends State<EleconHomePage>
             title: l10n.homeNoticeTitle,
             child: Text(l10n.homeNoticeUnavailable),
           ),
-          resizable: true,
         ),
       for (final section in data.genericSections)
         entry(
@@ -248,7 +245,6 @@ class _EleconHomePageState extends State<EleconHomePage>
           'library',
           l10n.homeLibraryLoansTitle,
           (_) => const LibraryLoansSection(),
-          resizable: true,
         ),
       if (_liveSections &&
           data.supportsAll(const ['energy.meters', 'energy.usage']))
@@ -423,6 +419,10 @@ class ScheduleCard extends StatelessWidget {
     return SectionCard(
       title: '本周课表',
       subtitle: '${data.term} · 第 ${data.week} 周 · $count 节课',
+      summary: CardSummary(
+        data.days.expand((day) => day.slots).firstOrNull?.courseName ?? '—',
+        detail: '${data.term} · 第 ${data.week} 周 · $count 节课',
+      ),
       child: CardPreviewList(
         title: '本周课表',
         children: [
@@ -512,6 +512,14 @@ class GradesCard extends StatelessWidget {
       title: '成绩',
       subtitle:
           '${data.term}${gradePointText == null ? '' : ' · $gradePointText'}',
+      summary: CardSummary(
+        gradePointText ?? data.items.firstOrNull?.scoreText ?? '—',
+        detail: [
+          data.term,
+          if (gradePointText == null && data.items.isNotEmpty)
+            data.items.first.courseName,
+        ].join(' · '),
+      ),
       child: CardPreviewList(
         title: '成绩',
         children: [
@@ -557,6 +565,16 @@ class NoticeCard extends StatelessWidget {
     return SectionCard(
       title: l10n.homeNoticeTitle,
       subtitle: l10n.homeNoticeCount(data.items.length),
+      summary: CardSummary(
+        data.items.firstOrNull?.title ?? l10n.homeNoticeCount(0),
+        detail: data.items.isEmpty
+            ? null
+            : [
+                data.items.first.source,
+                if (data.items.first.publishedAtDateTime != null)
+                  formatLocalDate(data.items.first.publishedAtDateTime!),
+              ].where((s) => s.trim().isNotEmpty).join(' · '),
+      ),
       child: CardPreviewList(
         title: l10n.homeNoticeTitle,
         children: [
@@ -684,6 +702,24 @@ class GenericSectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return SectionCard(
       title: section.title,
+      summary: section.fields.isEmpty
+          ? (section.table == null
+                ? null
+                : CardSummary(
+                    AppLocalizations.of(
+                      context,
+                    ).homeCardTableRows(section.table!.rows.length),
+                    detail: section.table!.columns
+                        .map((c) => c.label)
+                        .join(' · '),
+                  ))
+          : CardSummary(
+              _formatGenericValue(
+                section.fields.first.value,
+                section.fields.first.role,
+              ),
+              detail: section.fields.first.label,
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

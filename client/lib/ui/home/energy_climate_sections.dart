@@ -155,6 +155,23 @@ class _EnergySectionState extends State<EnergySection> {
     return SectionCard(
       title: l10n.energyTitle,
       subtitle: l10n.energyPrompt,
+      summary: CardSummary(
+        meter?['remaining'] != null
+            ? '${meter!['remaining']} ${meter['unit']}'
+            : _busy
+            ? l10n.homeCardLoading
+            : _failed
+            ? l10n.campusLoadFailed
+            : _meters?.isEmpty == true
+            ? l10n.energyEmpty
+            : l10n.energyPrompt,
+        detail: [
+          if (_failed && meter?['remaining'] != null) l10n.campusLoadFailed,
+          if (meter?['label'] is String) meter!['label'] as String,
+          if (_fetchedAt != null)
+            l10n.homeDataUpdatedAt(formatLocalDateTime(_fetchedAt!)),
+        ].join(' · '),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -552,6 +569,24 @@ class _ClimateSectionState extends State<ClimateSection>
     return SectionCard(
       title: l10n.climateTitle,
       subtitle: l10n.climatePrompt,
+      summary: CardSummary(
+        _busy || _acting
+            ? l10n.homeCardLoading
+            : _failed
+            ? l10n.campusLoadFailed
+            : !known
+            ? l10n.climateUnknown
+            : '${_status!['targetTemperature']} ℃',
+        detail: [
+          if (device?['label'] is String) device!['label'] as String,
+          if (_status?['power'] is bool)
+            _status!['power'] == true ? l10n.climateOn : l10n.climateOff,
+          if (_status?['observedAt'] is String)
+            formatLocalDateTime(
+              DateTime.parse(_status!['observedAt'] as String),
+            ),
+        ].join(' · '),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

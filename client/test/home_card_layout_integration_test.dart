@@ -30,7 +30,7 @@ CampusSnapshot snapshot() => CampusSnapshot(
   updatedAt: DateTime.utc(2026, 10, 31),
   notices: NoticeList(
     items: [
-      for (var i = 1; i <= 8; i++)
+      for (var i = 1; i <= 12; i++)
         NoticeListItems(
           id: 'notice-$i',
           title: 'Notice $i',
@@ -45,10 +45,21 @@ CampusSnapshot snapshot() => CampusSnapshot(
   ],
 );
 
-Widget app(LayoutMemory store, {double scale = 1}) => MaterialApp(
+Widget app(
+  LayoutMemory store, {
+  double scale = 1,
+  Brightness brightness = Brightness.light,
+  String language = 'zh',
+}) => MaterialApp(
   localizationsDelegates: AppLocalizations.localizationsDelegates,
   supportedLocales: AppLocalizations.supportedLocales,
-  locale: const Locale('zh'),
+  locale: Locale(language),
+  theme: ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: Colors.teal,
+      brightness: brightness,
+    ),
+  ),
   builder: (context, child) => MediaQuery(
     data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
     child: child!,
@@ -60,6 +71,30 @@ Widget app(LayoutMemory store, {double scale = 1}) => MaterialApp(
 );
 
 void main() {
+  for (final brightness in Brightness.values) {
+    testWidgets('half cards support large English text in $brightness', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = LayoutMemory();
+      await tester.pumpWidget(
+        app(store, scale: 2, brightness: brightness, language: 'en'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Notices'), findsOneWidget);
+      expect(find.text('Notice 1'), findsOneWidget);
+      expect(find.text('Notice 2'), findsNothing);
+      await tester.tap(find.text('Notices'));
+      await tester.pumpAndSettle();
+      expect(find.text('Notice 2'), findsOneWidget);
+      expect(store.values, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('full preview clears when identity or data source changes', (
     tester,
   ) async {
@@ -69,9 +104,11 @@ void main() {
       SessionScope(controller: session, child: app(LayoutMemory())),
     );
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('查看全部（8）'));
+    await tester.tap(find.byKey(const ValueKey('home-card:notice')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查看全部（8）'));
+    await tester.ensureVisible(find.text('查看全部（12）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查看全部（12）'));
     await tester.pumpAndSettle();
     expect(find.text('Notice 1'), findsOneWidget);
     session.changeSource();
@@ -81,56 +118,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('real home long press and resize retain layout across remount', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(900, 1800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final store = LayoutMemory();
-    await tester.pumpWidget(app(store));
-    await tester.pumpAndSettle();
-    expect(find.text('Notice 3'), findsOneWidget);
-    expect(find.text('Notice 4'), findsNothing);
-    await tester.longPress(find.byKey(const ValueKey('home-card:notice')));
-    await tester.pumpAndSettle();
-    expect(find.text('完成'), findsOneWidget);
-    await tester.tap(find.text('Notice 1'), warnIfMissed: false);
-    await tester.pumpAndSettle();
-    expect(find.text('通知详情'), findsNothing);
-    await tester.drag(
-      find.byKey(const ValueKey('home-card-resize:notice')),
-      const Offset(-80, -80),
-    );
-    await tester.pumpAndSettle();
-    expect(store.values['preview']!.sizes['notice'], HomeCardSize.compact);
-    expect(find.text('Notice 2'), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('home-card-after:notice')));
-    await tester.pumpAndSettle();
-    expect(store.values['preview']!.order, ['generic:extra', 'notice']);
-    await tester.tap(find.byKey(const ValueKey('home-layout-edit')));
-    await tester.pumpAndSettle();
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpWidget(app(store));
-    await tester.pumpAndSettle();
-    expect(find.text('Notice 2'), findsNothing);
-    expect(
-      tester
-          .getTopLeft(find.byKey(const ValueKey('home-card:generic:extra')))
-          .dy,
-      lessThan(
-        tester.getTopLeft(find.byKey(const ValueKey('home-card:notice'))).dy,
-      ),
-    );
-    await tester.tap(find.text('查看全部（8）'));
-    await tester.pumpAndSettle();
-    expect(find.text('Notice 8'), findsOneWidget);
-    await tester.tap(find.text('Notice 8'));
-    await tester.pumpAndSettle();
-    expect(find.text('Body 8'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'real home offers summaries, icon mode, full data and persistent order',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = LayoutMemory();
+      await tester.pumpWidget(app(store));
+      await tester.pumpAndSettle();
+      expect(find.text('Notice 1'), findsOneWidget);
+      expect(find.text('Notice 2'), findsNothing);
+      await tester.longPress(find.byKey(const ValueKey('home-card:notice')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('home-card:notice')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('home-card-size:compact')));
+      await tester.pumpAndSettle();
+      expect(find.text('Notice 1'), findsNothing);
+      expect(store.values['preview']!.sizes['notice'], HomeCardSize.compact);
+      await tester.tap(find.byKey(const ValueKey('home-card:notice')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('home-card-after:notice')));
+      await tester.pumpAndSettle();
+      expect(store.values['preview']!.order, ['generic:extra', 'notice']);
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(app(store));
+      await tester.pumpAndSettle();
+      expect(find.text('Notice 1'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('home-card-open:notice')));
+      await tester.pumpAndSettle();
+      expect(find.text('Notice 2'), findsOneWidget);
+      await tester.ensureVisible(find.text('查看全部（12）'));
+      await tester.tap(find.text('查看全部（12）'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Notice 12'));
+      await tester.tap(find.text('Notice 12'));
+      await tester.pumpAndSettle();
+      expect(find.text('Body 12'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final width in [320.0, 900.0]) {
     testWidgets('compact real cards remain readable at $width and large text', (
       tester,
@@ -145,8 +176,8 @@ void main() {
       );
       await tester.pumpWidget(app(store, scale: 2));
       await tester.pumpAndSettle();
-      expect(find.text('Notice 1'), findsOneWidget);
-      expect(find.text('Notice 2'), findsNothing);
+      expect(find.text('Notice 1'), findsNothing);
+      expect(find.byTooltip('通知'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.longPress(find.byKey(const ValueKey('home-card:notice')));
       await tester.pumpAndSettle();

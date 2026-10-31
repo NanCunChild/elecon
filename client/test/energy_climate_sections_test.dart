@@ -5,6 +5,9 @@ import 'package:elecon/l10n/gen/app_localizations.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:elecon/session/session_scope.dart';
 import 'package:elecon/ui/home/energy_climate_sections.dart';
+import 'package:elecon/ui/home/card_layout.dart';
+import 'package:elecon/ui/home/editable_card_board.dart';
+import 'package:elecon/ui/home/card_layout_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/climate_fixture.dart';
@@ -121,7 +124,132 @@ void iosTest(String name, WidgetTesterCallback callback) => testWidgets(
   variant: TargetPlatformVariant.only(TargetPlatform.iOS),
 );
 
+class _LayoutMemory extends CardLayoutStore {
+  HomeCardLayout value = HomeCardLayout();
+  @override
+  Future<HomeCardLayout> load(String scope) async => value;
+  @override
+  Future<void> save(String scope, HomeCardLayout layout) async {
+    value = layout;
+  }
+}
+
 void main() {
+  androidTest(
+    'launcher summaries expand without querying and retain meter selection and history',
+    (tester) async {
+      tester.view.physicalSize = const Size(400, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final session = EnergySession();
+      addTearDown(session.dispose);
+      final store = _LayoutMemory();
+      await tester.pumpWidget(
+        app(
+          session,
+          EditableCardBoard(
+            scopeId: 'synthetic',
+            store: store,
+            cards: [
+              HomeCardEntry(
+                id: 'energy',
+                label: 'Energy',
+                icon: Icons.bolt,
+                builder: (_) => const EnergySection(),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+      expect(find.text('View meters'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('home-card:energy')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('View meters'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.text('Synthetic water meter · SYNTHETIC-WATER').last,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('View usage history'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DataTable), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('home-card-close:energy')));
+      await tester.pumpAndSettle();
+      expect(find.text('12.5 m³'), findsOneWidget);
+      expect(find.byType(DataTable), findsNothing);
+      await tester.longPress(find.byKey(const ValueKey('home-card:energy')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('home-card:energy')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('home-card-size:compact')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+      expect(find.text('12.5 m³'), findsNothing);
+      session.fail =
+          true; // Expanding must use the mounted result, not query again.
+      await tester.tap(find.byKey(const ValueKey('home-card-open:energy')));
+      await tester.pumpAndSettle();
+      expect(find.byType(DataTable), findsOneWidget);
+      expect(session.lastParams, {'meterId': 'SYNTHETIC-WATER'});
+      expect(
+        find.text(
+          'Could not load data. Check your connection or sign in and retry.',
+        ),
+        findsNothing,
+      );
+      expect(store.value.sizes['energy'], HomeCardSize.compact);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  androidTest('climate summary opens existing confirmed control path', (
+    tester,
+  ) async {
+    final session = await prepare(tester);
+    await tester.pumpWidget(
+      app(
+        session,
+        EditableCardBoard(
+          scopeId: 'synthetic',
+          store: _LayoutMemory(),
+          cards: [
+            HomeCardEntry(
+              id: 'climate',
+              label: 'Climate',
+              icon: Icons.ac_unit,
+              builder: (_) => const ClimateSection(),
+            ),
+          ],
+        ),
+      ),
+    );
+    await until(tester, () => find.text('26 ℃').evaluate().isNotEmpty);
+    expect(powerSwitch(), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('home-card:climate')));
+    await until(
+      tester,
+      () =>
+          powerSwitch().evaluate().isNotEmpty &&
+          tester.widget<SwitchListTile>(powerSwitch()).onChanged != null,
+    );
+    expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(powerSwitch());
+    await tester.pumpAndSettle();
+    await tester.tap(powerSwitch());
+    await until(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   androidTest(
     'water card selects an actual meter and keeps values visible after read failure',
     (tester) async {

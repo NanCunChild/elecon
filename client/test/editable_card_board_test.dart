@@ -12,12 +12,12 @@ class MemoryLayoutStore extends CardLayoutStore {
   final reads = <String, Completer<HomeCardLayout>>{};
   bool fail = false;
   @override
-  Future<HomeCardLayout> load(String scopeId) async =>
-      reads[scopeId]?.future ?? layouts[scopeId] ?? HomeCardLayout();
+  Future<HomeCardLayout> load(String id) async =>
+      reads[id]?.future ?? layouts[id] ?? HomeCardLayout();
   @override
-  Future<void> save(String scopeId, HomeCardLayout layout) async {
-    if (fail) throw StateError('synthetic save failure');
-    layouts[scopeId] = layout;
+  Future<void> save(String id, HomeCardLayout layout) async {
+    if (fail) throw StateError('synthetic failure');
+    layouts[id] = layout;
   }
 }
 
@@ -25,11 +25,16 @@ List<HomeCardEntry> entries([
   List<String> ids = const ['notice', 'schedule'],
 ]) => [
   for (final id in ids)
-    HomeCardEntry(id: id, label: id, builder: (_) => _CounterCard(id)),
+    HomeCardEntry(
+      id: id,
+      label: id,
+      defaultSize: HomeCardSize.expanded,
+      builder: (_) => _CounterCard(id),
+    ),
 ];
 Widget app(
   MemoryLayoutStore store, {
-  String school = 'school-a',
+  String school = 'a',
   List<HomeCardEntry>? cards,
   double scale = 1,
 }) => MaterialApp(
@@ -64,26 +69,19 @@ class _CounterCard extends StatefulWidget {
 class _CounterCardState extends State<_CounterCard> {
   int count = 0;
   @override
-  Widget build(BuildContext context) {
-    final size = HomeCardPresentation.of(context);
-    return SizedBox(
-      height: switch (size) {
-        HomeCardSize.compact => 90,
-        HomeCardSize.regular => 110,
-        HomeCardSize.expanded => 160,
-      },
-      child: Column(
-        children: [
-          Text('${widget.id}:${size.name}:$count'),
-          TextButton(
-            key: ValueKey('action:${widget.id}'),
-            onPressed: () => setState(() => count++),
-            child: const Text('business action'),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(minHeight: 160),
+    child: Column(
+      children: [
+        Text('${widget.id}:${HomeCardPresentation.of(context).name}:$count'),
+        TextButton(
+          key: ValueKey('action:${widget.id}'),
+          onPressed: () => setState(() => count++),
+          child: const Text('business action'),
+        ),
+      ],
+    ),
+  );
 }
 
 Future<void> edit(WidgetTester tester) async {
@@ -91,14 +89,93 @@ Future<void> edit(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-void expectOrder(WidgetTester tester, String first, String second) => expect(
+Future<void> choose(WidgetTester tester, String id, String action) async {
+  await tester.tap(card(id));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.byKey(ValueKey(action)));
+  await tester.tap(find.byKey(ValueKey(action)));
+  await tester.pumpAndSettle();
+}
+
+Future<TestGesture> pickup(WidgetTester tester, String id) async {
+  final g = await tester.startGesture(
+    tester.getTopLeft(card(id)) + const Offset(20, 20),
+  );
+  await tester.pump(const Duration(milliseconds: 600));
+  return g;
+}
+
+void order(WidgetTester tester, String first, String second) => expect(
   tester.getTopLeft(card(first)).dy,
   lessThan(tester.getTopLeft(card(second)).dy),
 );
-
 void main() {
+  testWidgets('icon centre long press picks up and reorders horizontally', (
+    tester,
+  ) async {
+    final store = MemoryLayoutStore();
+    store.layouts['a'] = HomeCardLayout(
+      sizes: {'notice': HomeCardSize.compact, 'schedule': HomeCardSize.compact},
+    );
+    await tester.pumpWidget(app(store));
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(
+      tester.getCenter(control('open', 'notice')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('完成'), findsOneWidget);
+    await gesture.moveTo(tester.getCenter(control('open', 'schedule')));
+    await tester.pump(const Duration(milliseconds: 160));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(
+      tester.getTopLeft(card('schedule')).dx,
+      lessThan(tester.getTopLeft(card('notice')).dx),
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(store.layouts['a']!.order, ['schedule', 'notice']);
+  });
+
   testWidgets(
-    'editing removes business keyboard focus and prevents activation',
+    'one long press moves neighbours before release and saves only on drop',
+    (tester) async {
+      final store = MemoryLayoutStore();
+      await tester.pumpWidget(app(store));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('action:notice')));
+      final g = await pickup(tester, 'notice');
+      expect(find.text('完成'), findsOneWidget);
+      await g.moveTo(tester.getCenter(card('schedule')));
+      await tester.pump(const Duration(milliseconds: 160));
+      await tester.pump(const Duration(milliseconds: 250));
+      order(tester, 'schedule', 'notice');
+      expect(store.layouts, isEmpty);
+      await tester.pump(const Duration(milliseconds: 500));
+      order(tester, 'schedule', 'notice');
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(store.layouts['a']!.order, ['schedule', 'notice']);
+      expect(find.text('notice:expanded:1'), findsOneWidget);
+      expect(control('resize', 'notice'), findsNothing);
+      expect(control('drag', 'notice'), findsNothing);
+    },
+  );
+  testWidgets('cancel restores order without saving', (tester) async {
+    final store = MemoryLayoutStore();
+    await tester.pumpWidget(app(store));
+    await tester.pumpAndSettle();
+    final g = await pickup(tester, 'notice');
+    await g.moveTo(tester.getCenter(card('schedule')));
+    await tester.pump(const Duration(milliseconds: 160));
+    await tester.pump(const Duration(milliseconds: 250));
+    order(tester, 'schedule', 'notice');
+    await g.cancel();
+    await tester.pumpAndSettle();
+    order(tester, 'notice', 'schedule');
+    expect(store.layouts, isEmpty);
+  });
+  testWidgets(
+    'editing excludes business keyboard focus and permits size menu',
     (tester) async {
       final store = MemoryLayoutStore();
       final focus = FocusNode();
@@ -114,7 +191,7 @@ void main() {
               builder: (_) => TextButton(
                 focusNode: focus,
                 onPressed: () => calls++,
-                child: const Text('keyboard action'),
+                child: const Text('action'),
               ),
             ),
           ],
@@ -124,195 +201,117 @@ void main() {
       focus.requestFocus();
       await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pump();
       expect(calls, 1);
       await edit(tester);
       focus.requestFocus();
       await tester.pump();
       expect(focus.hasFocus, isFalse);
-      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-      await tester.pump();
-      expect(focus.hasFocus, isFalse);
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.sendKeyEvent(LogicalKeyboardKey.space);
-      await tester.pumpAndSettle();
+      await choose(tester, 'notice', 'home-card-size:compact');
       expect(calls, 1);
+      expect(store.layouts['a']!.sizes['notice'], HomeCardSize.compact);
     },
   );
-
   testWidgets(
-    'long press edits, absorbs business taps, and preserves state during reorder',
+    'icon opens same child and collapses without rewriting size; school isolation',
     (tester) async {
       final store = MemoryLayoutStore();
       await tester.pumpWidget(app(store));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('action:notice')));
-      await tester.pump();
       await edit(tester);
-      expect(find.text('完成'), findsOneWidget);
-      await tester.tap(
-        find.byKey(const ValueKey('action:notice')),
-        warnIfMissed: false,
-      );
-      await tester.pump();
-      expect(find.text('notice:regular:1'), findsOneWidget);
-      await tester.tap(control('after', 'notice'));
-      await tester.pumpAndSettle();
-      expectOrder(tester, 'schedule', 'notice');
-      expect(find.text('notice:regular:1'), findsOneWidget);
-      expect(store.layouts['school-a']!.order, ['schedule', 'notice']);
+      await choose(tester, 'notice', 'home-card-size:compact');
+      expect(find.text('notice:compact:1'), findsNothing);
+      expect(find.byTooltip('notice'), findsOneWidget);
       await tester.tap(find.text('完成'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('action:notice')));
-      await tester.pump();
-      expect(find.text('notice:regular:2'), findsOneWidget);
-    },
-  );
-  testWidgets('corner drag snaps size and survives remount and school switch', (
-    tester,
-  ) async {
-    final store = MemoryLayoutStore();
-    await tester.pumpWidget(app(store));
-    await tester.pumpAndSettle();
-    await edit(tester);
-    final gesture = await tester.startGesture(
-      tester.getCenter(control('resize', 'notice')),
-    );
-    await gesture.moveBy(const Offset(-20, 0));
-    await tester.pump();
-    await gesture.moveBy(const Offset(-70, 0));
-    await tester.pump();
-    await gesture.up();
-    await tester.pumpAndSettle();
-    expect(find.text('notice:compact:0'), findsOneWidget);
-    expect(store.layouts['school-a']!.sizes['notice'], HomeCardSize.compact);
-    expect(
-      tester.getSize(card('notice')).width,
-      lessThan(tester.getSize(card('schedule')).width),
-    );
-    await tester.pumpWidget(const SizedBox());
-    await tester.pumpWidget(app(store));
-    await tester.pumpAndSettle();
-    expect(find.text('notice:compact:0'), findsOneWidget);
-    await tester.pumpWidget(app(store, school: 'school-b'));
-    await tester.pumpAndSettle();
-    expect(find.text('notice:regular:0'), findsOneWidget);
-    await tester.pumpWidget(app(store, school: 'school-a'));
-    await tester.pumpAndSettle();
-    expect(find.text('notice:compact:0'), findsOneWidget);
-  });
-  testWidgets('drag handle reorders without remounting the loaded child', (
-    tester,
-  ) async {
-    final store = MemoryLayoutStore();
-    await tester.pumpWidget(app(store));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('action:notice')));
-    await edit(tester);
-    await tester.drag(
-      control('drag', 'notice'),
-      tester.getCenter(card('schedule')) -
-          tester.getCenter(control('drag', 'notice')),
-    );
-    await tester.pumpAndSettle();
-    expectOrder(tester, 'schedule', 'notice');
-    expect(find.text('notice:regular:1'), findsOneWidget);
-  });
-  testWidgets(
-    'large text and narrow width stay readable without rewriting preferences',
-    (tester) async {
-      final store = MemoryLayoutStore();
-      store.layouts['school-a'] = HomeCardLayout(
-        sizes: {'notice': HomeCardSize.compact},
-      );
-      await tester.pumpWidget(app(store, scale: 1.5));
+      await tester.tap(control('open', 'notice'));
       await tester.pumpAndSettle();
-      expect(
-        tester.getSize(card('notice')).width,
-        tester.getSize(card('schedule')).width,
-      );
-      tester.view.physicalSize = const Size(320, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+      expect(find.text('notice:expanded:1'), findsOneWidget);
+      await tester.tap(control('close', 'notice'));
+      await tester.pumpAndSettle();
+      expect(store.layouts['a']!.sizes['notice'], HomeCardSize.compact);
+      await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(app(store));
       await tester.pumpAndSettle();
-      expect(tester.getSize(card('notice')).width, 320);
-      await edit(tester);
-      expect(tester.takeException(), isNull);
-      expect(store.layouts['school-a']!.sizes['notice'], HomeCardSize.compact);
+      expect(find.byTooltip('notice'), findsOneWidget);
+      await tester.pumpWidget(app(store, school: 'b'));
+      await tester.pumpAndSettle();
+      expect(find.text('notice:expanded:0'), findsOneWidget);
+      await tester.pumpWidget(app(store));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('notice'), findsOneWidget);
     },
   );
-  testWidgets('late load cannot replace edits or new school layout', (
+  testWidgets('phone shows quarter half full; large text retains preferences', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final store = MemoryLayoutStore();
-    final late = Completer<HomeCardLayout>();
-    store.reads['school-a'] = late;
-    await tester.pumpWidget(app(store));
-    await edit(tester);
-    await tester.tap(control('after', 'notice'));
+    store.layouts['a'] = HomeCardLayout(
+      sizes: {
+        'notice': HomeCardSize.compact,
+        'schedule': HomeCardSize.regular,
+        'library': HomeCardSize.expanded,
+      },
+    );
+    await tester.pumpWidget(
+      app(store, cards: entries(['notice', 'schedule', 'library'])),
+    );
     await tester.pumpAndSettle();
-    late.complete(HomeCardLayout(order: ['notice', 'schedule']));
+    expect(tester.getSize(card('notice')).width, 91);
+    expect(tester.getSize(card('schedule')).width, 194);
+    expect(tester.getSize(card('library')).width, 400);
+    await tester.pumpWidget(app(store, scale: 2));
     await tester.pumpAndSettle();
-    expectOrder(tester, 'schedule', 'notice');
-    final later = Completer<HomeCardLayout>();
-    store.reads['school-c'] = later;
-    await tester.pumpWidget(app(store, school: 'school-c'));
-    await tester.pump();
-    await tester.pumpWidget(app(store, school: 'school-b'));
-    await tester.pumpAndSettle();
-    later.complete(HomeCardLayout(order: ['schedule', 'notice']));
-    await tester.pumpAndSettle();
-    expectOrder(tester, 'notice', 'schedule');
+    expect(tester.getSize(card('schedule')).width, 400);
+    expect(tester.getSize(card('notice')).width, 91);
+    expect(store.layouts['a']!.sizes['schedule'], HomeCardSize.regular);
+    expect(tester.takeException(), isNull);
   });
-  testWidgets('failed save retains draft and can retry; reset persists', (
+  testWidgets(
+    'late reads and old scope menus cannot overwrite current layout',
+    (tester) async {
+      final store = MemoryLayoutStore();
+      final late = Completer<HomeCardLayout>();
+      store.reads['a'] = late;
+      await tester.pumpWidget(app(store));
+      await edit(tester);
+      await choose(tester, 'notice', 'home-card-after:notice');
+      late.complete(HomeCardLayout(order: ['notice', 'schedule']));
+      await tester.pumpAndSettle();
+      order(tester, 'schedule', 'notice');
+      await tester.tap(card('notice'));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(app(store, school: 'b'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('home-card-size:compact')));
+      await tester.pumpAndSettle();
+      expect(store.layouts.containsKey('b'), isFalse);
+      order(tester, 'notice', 'schedule');
+    },
+  );
+  testWidgets('failed save retains draft; retry and reset persist', (
     tester,
   ) async {
     final store = MemoryLayoutStore()..fail = true;
     await tester.pumpWidget(app(store));
     await tester.pumpAndSettle();
     await edit(tester);
-    await tester.tap(control('after', 'notice'));
-    await tester.pumpAndSettle();
+    await choose(tester, 'notice', 'home-card-after:notice');
     expect(find.text('布局暂未保存，请重试'), findsOneWidget);
-    expectOrder(tester, 'schedule', 'notice');
+    order(tester, 'schedule', 'notice');
     store.fail = false;
     await tester.tap(find.text('重试保存'));
     await tester.pumpAndSettle();
     expect(find.text('布局暂未保存，请重试'), findsNothing);
-    expect(store.layouts['school-a']!.order, ['schedule', 'notice']);
     await tester.tap(find.text('恢复默认'));
     await tester.pumpAndSettle();
-    expect(store.layouts['school-a']!.order, isEmpty);
-    expectOrder(tester, 'notice', 'schedule');
+    expect(store.layouts['a']!.order, isEmpty);
   });
-  testWidgets(
-    'vertical resize works inside scrolling and cancellation restores size',
-    (tester) async {
-      final store = MemoryLayoutStore();
-      await tester.pumpWidget(app(store));
-      await tester.pumpAndSettle();
-      await edit(tester);
-      await tester.drag(control('resize', 'notice'), const Offset(0, -80));
-      await tester.pumpAndSettle();
-      expect(find.text('notice:compact:0'), findsOneWidget);
-      final gesture = await tester.startGesture(
-        tester.getCenter(control('resize', 'notice')),
-      );
-      await gesture.moveBy(const Offset(0, 80));
-      await tester.pump();
-      expect(find.text('notice:regular:0'), findsOneWidget);
-      await gesture.cancel();
-      await tester.pumpAndSettle();
-      expect(find.text('notice:compact:0'), findsOneWidget);
-      expect(store.layouts['school-a']!.sizes['notice'], HomeCardSize.compact);
-    },
-  );
-
-  testWidgets('dragging near the viewport edge scrolls a long dashboard', (
-    tester,
-  ) async {
+  testWidgets('edge dragging scrolls a long dashboard', (tester) async {
     final store = MemoryLayoutStore();
     await tester.pumpWidget(
       app(
@@ -321,59 +320,30 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await edit(tester);
-    final scrollable = tester.state<ScrollableState>(
-      find.byType(Scrollable).first,
+    final g = await pickup(tester, 'notice');
+    await g.moveTo(const Offset(200, 580));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position
+          .pixels,
+      greaterThan(0),
     );
-    final start = tester.getCenter(control('drag', 'notice'));
-    final gesture = await tester.startGesture(start);
-    await gesture.moveTo(Offset(start.dx, 580));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(scrollable.position.pixels, greaterThan(0));
-    await gesture.up();
+    await g.up();
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets(
-    'finite size picker and temporarily missing cards retain preferences',
-    (tester) async {
-      final store = MemoryLayoutStore();
-      await tester.pumpWidget(app(store));
-      await tester.pumpAndSettle();
-      await edit(tester);
-      await tester.tap(control('size', 'notice'));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is CheckedPopupMenuItem<HomeCardSize> &&
-              widget.value == HomeCardSize.expanded,
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('notice:expanded:0'), findsOneWidget);
-      await tester.pumpWidget(app(store, cards: entries(['schedule'])));
-      await tester.pumpAndSettle();
-      await tester.pumpWidget(app(store));
-      await tester.pumpAndSettle();
-      expect(find.text('notice:expanded:0'), findsOneWidget);
-      await tester.pumpWidget(
-        app(
-          store,
-          cards: [
-            HomeCardEntry(
-              id: 'controls',
-              label: 'controls',
-              builder: (_) => const Text('body'),
-              sizes: const [HomeCardSize.regular],
-            ),
-          ],
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(control('resize', 'controls'), findsNothing);
-      expect(control('size', 'controls'), findsNothing);
-    },
-  );
+  testWidgets('temporarily missing cards retain preferences', (tester) async {
+    final store = MemoryLayoutStore();
+    await tester.pumpWidget(app(store));
+    await tester.pumpAndSettle();
+    await edit(tester);
+    await choose(tester, 'notice', 'home-card-size:regular');
+    await tester.pumpWidget(app(store, cards: entries(['schedule'])));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(app(store));
+    await tester.pumpAndSettle();
+    expect(find.text('notice:regular:0'), findsOneWidget);
+  });
 }

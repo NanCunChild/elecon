@@ -366,10 +366,10 @@
   "homeLayoutEdit": "编辑布局",
   "homeLayoutDone": "完成",
   "homeLayoutReset": "恢复默认",
-  "homeLayoutHint": "拖动卡片调整顺序，拖动右下角调整大小",
-  "homeLayoutCompact": "紧凑",
-  "homeLayoutRegular": "常规",
-  "homeLayoutExpanded": "展开",
+  "homeLayoutHint": "长按并拖动卡片，停留片刻即可让位；点卡片调整尺寸或顺序。",
+  "homeLayoutCompact": "仅图标",
+  "homeLayoutRegular": "半宽摘要",
+  "homeLayoutExpanded": "全宽详情",
   "homeLayoutMoveBefore": "向前移动",
   "homeLayoutMoveAfter": "向后移动",
   "homeLayoutResize": "调整卡片大小",
@@ -391,5 +391,11 @@
       }
     }
   },
-  "homeCardDataChanged": "数据来源或身份已变更，请返回首页刷新。"
+  "homeCardDataChanged": "数据来源或身份已变更，请返回首页刷新。",
+  "homeCardCollapse": "收起",
+  "homeCardLoading": "正在加载…",
+  "homeCardNeedsLogin": "登录后查看",
+  "homeCardAvailableRooms": "已知空闲教室",
+  "homeCardTableRows": "{count} 条记录",
+  "@homeCardTableRows": {"placeholders": {"count": {"type": "int"}}}
 }

@@ -298,10 +298,10 @@
   "homeLayoutEdit": "Edit layout",
   "homeLayoutDone": "Done",
   "homeLayoutReset": "Reset layout",
-  "homeLayoutHint": "Drag cards to reorder; drag the corner to resize",
-  "homeLayoutCompact": "Compact",
-  "homeLayoutRegular": "Regular",
-  "homeLayoutExpanded": "Expanded",
+  "homeLayoutHint": "Hold and drag a card; pause to move its neighbours. Tap a card to change size or order.",
+  "homeLayoutCompact": "Icon only",
+  "homeLayoutRegular": "Half width",
+  "homeLayoutExpanded": "Full width",
   "homeLayoutMoveBefore": "Move earlier",
   "homeLayoutMoveAfter": "Move later",
   "homeLayoutResize": "Resize card",
@@ -323,5 +323,11 @@
       }
     }
   },
-  "homeCardDataChanged": "The source or identity has changed. Return home to refresh."
+  "homeCardDataChanged": "The source or identity has changed. Return home to refresh.",
+  "homeCardCollapse": "Collapse",
+  "homeCardLoading": "Loading…",
+  "homeCardNeedsLogin": "Sign in to view",
+  "homeCardAvailableRooms": "Known available rooms",
+  "homeCardTableRows": "{count} records",
+  "@homeCardTableRows": {"placeholders": {"count": {"type": "int"}}}
 }

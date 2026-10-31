@@ -345,6 +345,7 @@ class _GradesSectionState extends State<GradesSection>
     }
     return _PromptCard(
       title: '成绩',
+      summary: _querySummary(context, _phase),
       subtitle: '登录后查看本学期成绩单',
       child: _PhaseBody(
         phase: _phase,
@@ -471,8 +472,7 @@ class _ScheduleSectionState extends State<ScheduleSection>
 
   @override
   Widget build(BuildContext context) {
-    if (_data != null &&
-        HomeCardPresentation.of(context) == HomeCardSize.compact) {
+    if (_data != null && HomeCardPresentation.isPreview(context)) {
       return withCacheTime(ScheduleCard(_data!));
     }
     final busy = _phase == _Phase.loading;
@@ -481,6 +481,7 @@ class _ScheduleSectionState extends State<ScheduleSection>
       children: [
         _PromptCard(
           title: l10n.homeScheduleTitle,
+          summary: _querySummary(context, _phase),
           subtitle: l10n.homeSchedulePrompt,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -742,12 +743,16 @@ class _ClassroomSectionState extends State<ClassroomSection>
 
   @override
   Widget build(BuildContext context) {
+    if (HomeCardPresentation.isPreview(context) && _avail != null) {
+      return withCacheTime(_ClassroomResultCard(data: _avail!));
+    }
     // 教学楼未就绪：先引导取列表（可能触发登录）。
     if (_buildingsPhase != _Phase.loaded) {
       return Column(
         children: [
           _PromptCard(
             title: '空教室',
+            summary: _querySummary(context, _buildingsPhase),
             subtitle: '先加载教学楼列表',
             child: _PhaseBody(
               phase: _buildingsPhase,
@@ -768,6 +773,7 @@ class _ClassroomSectionState extends State<ClassroomSection>
       children: [
         _PromptCard(
           title: '空教室',
+          summary: _querySummary(context, _availPhase),
           subtitle: '选择教学楼与日期后查询',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -840,9 +846,22 @@ class _ClassroomResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = data.items ?? const [];
-    final free = items.where((i) => i.occupied != true).toList();
+    final free = items
+        .where(
+          (i) =>
+              i.occupied == false ||
+              (i.occupied == null && i.status == 'available'),
+        )
+        .toList();
     return SectionCard(
       title: '空教室',
+      summary: CardSummary(
+        '${free.length}/${items.length}',
+        detail: [
+          AppLocalizations.of(context).homeCardAvailableRooms,
+          if (data.date != null) data.date!,
+        ].join(' · '),
+      ),
       subtitle: [
         if (data.date != null) data.date!,
         '${free.length}/${items.length} 空闲',
@@ -964,6 +983,7 @@ class _CardSectionState extends State<CardSection>
     if (data == null) {
       return _PromptCard(
         title: '一卡通',
+        summary: _querySummary(context, _phase),
         subtitle: widget.transactionsEnabled ? '仅在你点击后查询余额和交易记录' : '仅在你点击后查询余额',
         child: _PhaseBody(
           phase: _phase,
@@ -978,6 +998,12 @@ class _CardSectionState extends State<CardSection>
     return withCacheTime(
       SectionCard(
         title: '一卡通',
+        summary: CardSummary(
+          data.errorStatus == null
+              ? _money(data.balance.amountMinor, data.balance.currency)
+              : _balanceErrorText(data.errorStatus!),
+          detail: data.status == null ? null : _cardStatusText(data.status!),
+        ),
         // 即使 adapter 错把完整卡号填进 cardNumberMasked，UI 也只从权威 cardNumber 派生末四位。
         subtitle: data.cardNumber == null
             ? AppLocalizations.of(context).cardAccountLabel
@@ -1297,6 +1323,7 @@ class _ExamSectionState extends State<ExamSection>
     final l10n = AppLocalizations.of(context);
     return _PromptCard(
       title: l10n.homeExamTitle,
+      summary: _querySummary(context, _phase),
       subtitle: l10n.homeExamPrompt,
       child: _PhaseBody(
         phase: _phase,
@@ -1320,6 +1347,12 @@ class _ExamResultCard extends StatelessWidget {
     final items = data.items ?? const <ExamListItems>[];
     return SectionCard(
       title: l10n.homeExamTitle,
+      summary: CardSummary(
+        items.firstOrNull?.courseName ?? l10n.homeExamEmpty,
+        detail: items.firstOrNull?.examAt == null
+            ? null
+            : _formatTimestamp(items.first.examAt!),
+      ),
       subtitle: data.term == null
           ? l10n.homeExamCount(items.length)
           : l10n.homeExamTermCount(data.term!, items.length),
@@ -1434,6 +1467,7 @@ class _LibraryLoansSectionState extends State<LibraryLoansSection>
     final l10n = AppLocalizations.of(context);
     return _PromptCard(
       title: l10n.homeLibraryLoansTitle,
+      summary: _querySummary(context, _phase),
       subtitle: l10n.homeLibraryLoansPrompt,
       child: _PhaseBody(
         phase: _phase,
@@ -1457,6 +1491,19 @@ class _LibraryLoansResultCard extends StatelessWidget {
     return SectionCard(
       title: l10n.homeLibraryLoansTitle,
       subtitle: l10n.homeLibraryLoansCount(data.items.length),
+      summary: CardSummary(
+        data.items.firstOrNull?.title ?? l10n.homeLibraryLoansEmpty,
+        detail: data.items.isEmpty
+            ? null
+            : [
+                l10n.homeLibraryLoansCount(data.items.length),
+                l10n.homeLibraryLoansDue(
+                  _formatTimestamp(data.items.first.dueAt),
+                ),
+                if (data.items.any((item) => item.overdue == true))
+                  l10n.homeLibraryLoansOverdue,
+              ].join(' · '),
+      ),
       child: data.items.isEmpty
           ? Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1530,15 +1577,21 @@ class _PromptCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
+    this.summary,
   });
 
+  final Widget? summary;
   final String title;
   final String subtitle;
   final Widget child;
 
   @override
-  Widget build(BuildContext context) =>
-      SectionCard(title: title, subtitle: subtitle, child: child);
+  Widget build(BuildContext context) => SectionCard(
+    title: title,
+    subtitle: subtitle,
+    summary: summary,
+    child: child,
+  );
 }
 
 /// 按阶段渲染取数动作/状态；不含已加载内容（由各区自行渲染数据卡片）。
@@ -1626,3 +1679,10 @@ String _formatDate(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-'
     '${d.month.toString().padLeft(2, '0')}-'
     '${d.day.toString().padLeft(2, '0')}';
+
+Widget? _querySummary(BuildContext context, _Phase phase) => switch (phase) {
+  _Phase.loading => Text(AppLocalizations.of(context).homeCardLoading),
+  _Phase.error => Text(AppLocalizations.of(context).campusLoadFailed),
+  _Phase.needLogin => Text(AppLocalizations.of(context).homeCardNeedsLogin),
+  _ => null,
+};
