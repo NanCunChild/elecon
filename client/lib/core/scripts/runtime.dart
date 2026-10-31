@@ -3,6 +3,7 @@
 /// independent of the legacy Broker/Masker execution contract.
 /// ADR-037: SDK 3 adds bounded transient input, redlines #1/#5/#7 unchanged.
 /// ADR-039: SDK 4 adds the fixed browser busy status, preserving cancellation.
+/// ADR-040: SDK 5 command execution requires a native one-use action scope.
 library;
 
 import 'dart:async';
@@ -15,6 +16,7 @@ import 'credentials.dart';
 import 'browser.dart';
 import 'manifest.dart';
 import 'input.dart';
+import 'action.dart';
 
 class ScriptRunException implements Exception {
   const ScriptRunException(this.code);
@@ -44,7 +46,19 @@ class TrustedScriptRuntime {
     int maxOutputBytes = 4 * 1024 * 1024,
     int maxHostCalls = 256,
     int maxRequests = 20,
+    ScriptActionScope? actionScope,
   }) async {
+    // ADR-040 §4: reject even module top-level code before loading the engine.
+    if (capability == 'climate.command' || actionScope != null) {
+      if (actionScope == null) {
+        throw const ScriptRunException('action_confirmation_required');
+      }
+      try {
+        actionScope.consume(package, capability, params);
+      } on ScriptActionException catch (error) {
+        throw ScriptRunException(error.code);
+      }
+    }
     if (wallTimeout <= Duration.zero ||
         wallTimeout > const Duration(minutes: 2) ||
         cpuTimeoutMs < 1 ||
@@ -77,6 +91,9 @@ class TrustedScriptRuntime {
     var hostCalls = 0;
     var requests = 0;
     final knownSecrets = credentials.secretValues.toSet();
+    if (capability.startsWith('climate.') && params['deviceId'] is String) {
+      knownSecrets.add(params['deviceId'] as String);
+    }
     var logs = 0;
     var logBytes = 0;
     var inputRequests = 0;
@@ -84,7 +101,9 @@ class TrustedScriptRuntime {
     ScriptRunException? fatal;
     void check({bool count = true}) {
       if (fatal != null) throw fatal!;
-      if (!running || !(isActive?.call() ?? true)) {
+      if (!running ||
+          !(isActive?.call() ?? true) ||
+          (actionScope != null && !actionScope.active)) {
         throw const ScriptRunException('invocation_cancelled');
       }
       if (count && ++hostCalls > maxHostCalls) {
@@ -109,6 +128,9 @@ class TrustedScriptRuntime {
     qjs.setHostFunctions({
       '__script_input': (dynamic encoded) async {
         check();
+        if (actionScope != null) {
+          throw const ScriptRunException('action_interaction_denied');
+        }
         if (package.manifest.sdkVersion < 3) {
           throw const ScriptRunException('input_unavailable');
         }
@@ -156,6 +178,14 @@ class TrustedScriptRuntime {
         if (url is! String || init is! Map) {
           throw const ScriptRunException('invalid_fetch');
         }
+        if (actionScope != null) {
+          try {
+            actionScope.reserve(url, init);
+          } on ScriptActionException catch (error) {
+            fatal = ScriptRunException(error.code);
+            throw fatal!;
+          }
+        }
         final uri = Uri.tryParse(url);
         if (uri == null || !package.manifest.network.allowsUrl(uri)) {
           throw const ScriptRunException('network_denied');
@@ -163,6 +193,13 @@ class TrustedScriptRuntime {
         try {
           final response = await fetch(url, Map<String, dynamic>.from(init));
           check(count: false);
+          if (actionScope != null &&
+              response['status'] is int &&
+              (response['status'] as int) >= 300 &&
+              (response['status'] as int) < 400) {
+            fatal = const ScriptRunException('action_redirect_denied');
+            throw fatal!;
+          }
           // The pinned isolate bridge maps a Dart null field to JS undefined.
           // Preserve explicit decoding failure with a separate boolean marker.
           return <String, Object?>{
@@ -260,6 +297,9 @@ class TrustedScriptRuntime {
           },
       '__script_browser': (dynamic method, dynamic args) async {
         check();
+        if (actionScope != null) {
+          throw const ScriptRunException('action_interaction_denied');
+        }
         if (!package.manifest.browser || browserCall == null) {
           throw const ScriptRunException('browser_unavailable');
         }
@@ -339,7 +379,9 @@ class TrustedScriptRuntime {
 
     final cancelled = Completer<Object?>();
     final timer = Timer.periodic(const Duration(milliseconds: 25), (_) {
-      if (!(isActive?.call() ?? true) && !cancelled.isCompleted) {
+      if ((!(isActive?.call() ?? true) ||
+              (actionScope != null && !actionScope.active)) &&
+          !cancelled.isCompleted) {
         cancelled.completeError(
           const ScriptRunException('invocation_cancelled'),
         );
@@ -370,9 +412,9 @@ class TrustedScriptRuntime {
           _bootstrap(
             capability: capability,
             paramsJson: paramsJson,
-            browser: package.manifest.browser,
+            browser: package.manifest.browser && actionScope == null,
             browserBusy: package.manifest.sdkVersion >= 4,
-            input: package.manifest.sdkVersion >= 3,
+            input: package.manifest.sdkVersion >= 3 && actionScope == null,
             maxOutputBytes: maxOutputBytes,
           ),
         );

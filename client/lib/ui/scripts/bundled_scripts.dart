@@ -80,6 +80,9 @@ Future<bool> installBundledSchool(
   }
   for (final package in packages) {
     await session.installTrustedScript(package, approvedDigest: package.digest);
+    // Selecting a bundled school is an explicit re-enable operation; ordinary
+    // package updates retain the user's disabled state.
+    await session.enableTrustedScript(package.manifest.id, true);
   }
   // ADR-034 §2 / ADR-035 §2: retire the standalone install only after the
   // unified provider is approved. Uninstall retains same-school credentials.
@@ -89,6 +92,16 @@ Future<bool> installBundledSchool(
             p.manifest.capabilities.any((c) => c.id == 'generic.section'),
       ) &&
       registry.find(school.loginId) != null) {
+    final previous = registry.provider(school.id, 'generic.section');
+    if (previous == null || previous.manifest.id == school.loginId) {
+      // This is the explicit standalone-login → unified-package migration,
+      // not a general fallback to whichever package was installed last.
+      await session.selectTrustedScriptProvider(
+        school.id,
+        'generic.section',
+        school.dataId,
+      );
+    }
     await session.removeTrustedScript(school.loginId);
   }
   await session.selectTrustedScriptSchool(school.dataId);

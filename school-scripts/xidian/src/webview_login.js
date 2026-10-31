@@ -23,6 +23,20 @@ export async function webviewLogin(ctx, params, role) {
   const system = params.system;
   const target = TARGETS[system];
   if (!target) throw new Error("xidian_login_system_invalid");
+  const { metadata, deadline } = await loginIds(ctx, params, role);
+  await establishAcademicSession(ctx, system, metadata, deadline);
+  return {
+    sectionId: "xidian.login",
+    title: "西电登录会话",
+    fields: [
+      { label: "系统", role: "label", value: system },
+      { label: "状态", role: "status", value: "已验证并保存会话" },
+    ],
+  };
+}
+
+// ADR-040 §2: water/electricity reuse verified IDS without requiring E-Hall.
+export async function loginIds(ctx, params, role) {
   if (!ctx.browser) throw new Error("xidian_login_browser_required");
   const deadline = ctx.now() + 100000;
   const ids = await readSession(ctx, "ids");
@@ -43,15 +57,7 @@ export async function webviewLogin(ctx, params, role) {
     data: metadata,
   });
   ctx.log?.("info", "xidian_login_saved:ids");
-  await establishAcademicSession(ctx, system, metadata, deadline);
-  return {
-    sectionId: "xidian.login",
-    title: "西电登录会话",
-    fields: [
-      { label: "系统", role: "label", value: system },
-      { label: "状态", role: "status", value: "已验证并保存会话" },
-    ],
-  };
+  return { metadata, deadline };
 }
 
 // ADR-039 §2: two authenticated, matching snapshots replace the legacy

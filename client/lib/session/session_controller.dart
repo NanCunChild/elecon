@@ -54,6 +54,8 @@ import '../core/scripts/input.dart';
 import '../core/scripts/http_transport.dart';
 import '../core/scripts/browser.dart' show ScriptBrowserException;
 import '../core/scripts/data_cache.dart';
+import '../core/scripts/action.dart';
+export '../core/scripts/action.dart' show climateControlAvailable;
 export '../core/scripts/data_cache.dart' show ScriptCachedData;
 
 part 'script_session.dart';
@@ -449,14 +451,26 @@ class SessionController extends ChangeNotifier {
     void Function(String level, String message)? onLog,
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) async {
+    if (capability == 'climate.command') {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'action_confirmation_required',
+      );
+    }
     final school = _school;
     if (school == null) {
       return const CapabilityRun.failed(CapabilityFailureKind.load, '未选校');
     }
     ScriptPackage? local;
+    var blockedLocalProvider = false;
     final scriptSchool = school.adapterId.startsWith('script:');
     try {
-      local = (await scriptRegistry).provider(school.id, capability);
+      final registry = await scriptRegistry;
+      local = registry.provider(school.id, capability);
+      blockedLocalProvider = registry.blocksLegacyFallback(
+        school.id,
+        capability,
+      );
     } catch (_) {
       if (scriptSchool) {
         return const CapabilityRun.failed(
@@ -474,6 +488,14 @@ class SessionController extends ChangeNotifier {
         interactive: interactive,
         htmlStdlib: htmlStdlib,
         onLog: onLog,
+      );
+    }
+    // ADR-043 §1: an incompatible local selection or a local-list entity
+    // must never fall through into an unrelated V1 handler.
+    if (blockedLocalProvider) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.load,
+        'script_provider_unavailable',
       );
     }
     // ADR-034 §2: local source identities are never catalog adapter IDs.
@@ -595,6 +617,12 @@ class SessionController extends ChangeNotifier {
     void Function(String level, String message)? onLog,
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) async {
+    if (capability == 'climate.command') {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'action_confirmation_required',
+      );
+    }
     final service = await _resolveAdapterService();
     if (service == null) {
       return const CapabilityRun.failed(

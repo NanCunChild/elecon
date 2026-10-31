@@ -6,7 +6,7 @@ import { PDA_UA } from "./pda_constants.js";
 
 export const AUTH_NAMESPACE = "xidian.auth";
 const address = { namespace: AUTH_NAMESPACE };
-const services = new Set(["ids", "ehall", "yjspt", "card", "library"]);
+const services = new Set(["ids", "ehall", "yjspt", "card", "library", "energy"]);
 const origins = new Set([
   "https://ids.xidian.edu.cn",
   "https://ehall.xidian.edu.cn",
@@ -16,6 +16,7 @@ const origins = new Set([
   "https://xxcapp.xidian.edu.cn",
   "https://tyrzfw.chaoxing.com",
   "https://mfindxidian.libsp.cn",
+  "https://ignypt.xidian.edu.cn",
 ]);
 
 export function parseUrl(value) {

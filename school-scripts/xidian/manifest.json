@@ -1,7 +1,7 @@
 {
-  "sdkVersion": 4,
+  "sdkVersion": 5,
   "id": "school-xidian-undergraduate",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "schoolId": "xidian_undergraduate",
   "name": "西安电子科技大学（本科生）",
   "network": {
@@ -13,7 +13,9 @@
       "https://v8scan.xidian.edu.cn",
       "https://xxcapp.xidian.edu.cn",
       "https://tyrzfw.chaoxing.com",
-      "https://mfindxidian.libsp.cn"
+      "https://mfindxidian.libsp.cn",
+      "https://ignypt.xidian.edu.cn",
+      "https://gxkt.juhaolian.cn"
     ]
   },
   "browser": true,
@@ -82,6 +84,31 @@
       "id": "generic.section",
       "schema": "elecon.generic.section",
       "schemaVersion": "1.0"
+    },
+    {
+      "id": "energy.meters",
+      "schema": "elecon.energy.meters",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "energy.usage",
+      "schema": "elecon.energy.usage",
+      "schemaVersion": "1.1"
+    },
+    {
+      "id": "climate.devices",
+      "schema": "elecon.climate.devices",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "climate.status",
+      "schema": "elecon.climate.status",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "climate.command",
+      "schema": "elecon.climate.command",
+      "schemaVersion": "1.0"
     }
   ],
   "home": [
@@ -139,6 +166,23 @@
       "capability": "notice.detail",
       "ttlSeconds": 86400,
       "preload": false
+    },
+    {
+      "capability": "energy.meters",
+      "ttlSeconds": 300,
+      "preload": false
+    },
+    {
+      "capability": "energy.usage",
+      "ttlSeconds": 900,
+      "preload": false
+    }
+  ],
+  "actions": [
+    {
+      "capability": "climate.command",
+      "method": "POST",
+      "url": "https://gxkt.juhaolian.cn/api/device/direct/command"
     }
   ]
 }

@@ -58,6 +58,8 @@ class ScriptManifest {
     required this.browser,
     required this.capabilities,
     required this.home,
+    required this.actions,
+    required this.cards,
   });
 
   factory ScriptManifest.fromJson(Map<String, dynamic> json) {
@@ -71,8 +73,10 @@ class ScriptManifest {
       'browser',
       'capabilities',
       if (json.containsKey('home')) 'home',
+      if (json.containsKey('actions')) 'actions',
+      if (json.containsKey('cards')) 'cards',
     }, 'manifest');
-    if (!const {1, 2, 3, 4}.contains(json['sdkVersion']) ||
+    if (!const {1, 2, 3, 4, 5, 6}.contains(json['sdkVersion']) ||
         json['sdkVersion'] is! int) {
       throw const FormatException('unsupported script SDK version');
     }
@@ -102,15 +106,62 @@ class ScriptManifest {
     }
     final rawHome = json['home'];
     if (json.containsKey('home') &&
-        (json['sdkVersion'] != 4 || rawHome is! List || rawHome.length > 16)) {
+        ((json['sdkVersion'] as int) < 4 ||
+            rawHome is! List ||
+            rawHome.length > 16)) {
       throw const FormatException('invalid script home declaration');
     }
     final home = (rawHome as List? ?? const [])
         .map((raw) => ScriptHomeEntry.fromJson(_object(raw, 'home entry')))
         .toList(growable: false);
     if (home.map((e) => e.capability).toSet().length != home.length ||
-        home.any((e) => !caps.any((c) => c.id == e.capability))) {
+        home.any(
+          (e) =>
+              e.capability == 'climate.command' ||
+              !caps.any((c) => c.id == e.capability),
+        )) {
       throw const FormatException('duplicate or undeclared home capability');
+    }
+    // ADR-043 §3: presentation suggestions do not declare new capabilities.
+    final rawCards = json['cards'];
+    if (json.containsKey('cards') &&
+        (json['sdkVersion'] != 6 ||
+            rawCards is! List ||
+            rawCards.length > 10)) {
+      throw const FormatException('invalid script cards declaration');
+    }
+    final cards = (rawCards as List? ?? const [])
+        .map((raw) => ScriptCardEntry.fromJson(_object(raw, 'card entry')))
+        .toList(growable: false);
+    final capabilityIds = caps.map((c) => c.id).toSet();
+    if (cards.map((c) => c.type).toSet().length != cards.length ||
+        cards.any((c) => !capabilityIds.containsAll(c.requiredCapabilities))) {
+      throw const FormatException('duplicate or unsupported script card');
+    }
+    final network = ScriptNetworkPolicy.fromJson(
+      _object(json['network'], 'network'),
+    );
+    final rawActions = json['actions'];
+    if (json.containsKey('actions') &&
+        ((json['sdkVersion'] as int) < 5 ||
+            rawActions is! List ||
+            rawActions.length > 4)) {
+      throw const FormatException('invalid script actions');
+    }
+    final actions = (rawActions as List? ?? const [])
+        .map(
+          (raw) =>
+              ScriptActionDeclaration.fromJson(_object(raw, 'action'), network),
+        )
+        .toList(growable: false);
+    if (actions.map((a) => a.capability).toSet().length != actions.length ||
+        actions.any((a) => !caps.any((c) => c.id == a.capability)) ||
+        caps.any(
+          (c) =>
+              c.id == 'climate.command' &&
+              !actions.any((a) => a.capability == c.id),
+        )) {
+      throw const FormatException('action capability mismatch');
     }
     return ScriptManifest._(
       sdkVersion: json['sdkVersion'] as int,
@@ -118,12 +169,12 @@ class ScriptManifest {
       version: version,
       schoolId: schoolId,
       name: _text(json, 'name', 160),
-      network: ScriptNetworkPolicy.fromJson(
-        _object(json['network'], 'network'),
-      ),
+      network: network,
       browser: json['browser'] as bool,
       capabilities: List.unmodifiable(caps),
       home: List.unmodifiable(home),
+      actions: List.unmodifiable(actions),
+      cards: List.unmodifiable(cards),
     );
   }
 
@@ -136,6 +187,15 @@ class ScriptManifest {
   final bool browser;
   final List<ScriptCapability> capabilities;
   final List<ScriptHomeEntry> home;
+  final List<ScriptActionDeclaration> actions;
+  final List<ScriptCardEntry> cards;
+
+  ScriptActionDeclaration? action(String capability) {
+    for (final action in actions) {
+      if (action.capability == capability) return action;
+    }
+    return null;
+  }
 
   ScriptCapability? capability(String id) {
     for (final c in capabilities) {
@@ -143,6 +203,33 @@ class ScriptManifest {
     }
     return null;
   }
+}
+
+/// 🔒 ADR-040 §4: exact action destination is part of the approved digest.
+class ScriptActionDeclaration {
+  const ScriptActionDeclaration._(this.capability, this.method, this.url);
+  factory ScriptActionDeclaration.fromJson(
+    Map<String, dynamic> json,
+    ScriptNetworkPolicy network,
+  ) {
+    _keys(json, {'capability', 'method', 'url'}, 'action');
+    final url = _text(json, 'url', 2048);
+    final uri = Uri.tryParse(url);
+    if (json['capability'] != 'climate.command' ||
+        json['method'] != 'POST' ||
+        uri == null ||
+        uri.scheme != 'https' ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        uri.userInfo.isNotEmpty ||
+        !network.allowsUrl(uri) ||
+        uri.path.isEmpty ||
+        url != uri.toString()) {
+      throw const FormatException('invalid action endpoint');
+    }
+    return ScriptActionDeclaration._('climate.command', 'POST', url);
+  }
+  final String capability, method, url;
 }
 
 class ScriptCapability {
@@ -281,4 +368,44 @@ Object? _immutableJson(Object? value) {
     return List<Object?>.unmodifiable(value.map(_immutableJson));
   }
   return value;
+}
+
+/// ADR-043 §3: finite host-owned presentation, never executable layout.
+class ScriptCardEntry {
+  const ScriptCardEntry._(this.type, this.defaultVariant);
+
+  factory ScriptCardEntry.fromJson(Map<String, dynamic> json) {
+    _keys(json, {'type', 'defaultVariant'}, 'card entry');
+    final type = _text(json, 'type', 32);
+    final variant = _text(json, 'defaultVariant', 32);
+    if (!requiredCapabilitiesByType.containsKey(type) ||
+        !variantsFor(type).contains(variant)) {
+      throw const FormatException('unsupported script card presentation');
+    }
+    return ScriptCardEntry._(type, variant);
+  }
+
+  final String type;
+  final String defaultVariant;
+
+  static const requiredCapabilitiesByType = <String, List<String>>{
+    'notice': ['notice.list'],
+    'schedule': ['schedule.week'],
+    'grades': ['grades.list'],
+    'card': ['card.balance'],
+    'library': ['library.loans'],
+    'exam': ['exam.list'],
+    'classroom': ['classroom.buildings', 'classroom.available'],
+    'energy': ['energy.meters', 'energy.usage'],
+    'climate': ['climate.devices', 'climate.status'],
+    'generic': ['generic.section'],
+  };
+
+  static const _resizableTypes = {'notice', 'schedule', 'grades', 'library'};
+
+  static List<String> variantsFor(String type) => _resizableTypes.contains(type)
+      ? const ['compact', 'regular', 'expanded']
+      : const ['regular'];
+
+  List<String> get requiredCapabilities => requiredCapabilitiesByType[type]!;
 }

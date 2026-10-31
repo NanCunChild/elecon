@@ -1,4 +1,4 @@
-// Actual compiled SDK 4 packages, synthetic school responses, real QuickJS.
+// Actual compiled SDK 4/5 packages, synthetic school responses, real QuickJS.
 import 'dart:convert';
 import 'dart:io';
 
@@ -347,7 +347,7 @@ process.stdout.write(result.outputFiles[0].text);''',
       store: store,
       schoolId: school.manifest.schoolId,
       scriptId: school.manifest.id,
-      sdkVersion: 4,
+      sdkVersion: school.manifest.sdkVersion,
     );
   });
 
@@ -383,12 +383,12 @@ process.stdout.write(result.outputFiles[0].text);''',
   );
 
   test(
-    'source packages bind SDK 4 and combine browser login with authenticated data',
+    'source packages bind SDK 5 and combine browser login with authenticated data',
     () {
-      expect(school.manifest.sdkVersion, 4);
-      expect(school.manifest.version, '0.13.0');
+      expect(school.manifest.sdkVersion, 5);
+      expect(school.manifest.version, '0.14.0');
       expect(school.manifest.browser, isTrue);
-      expect(school.manifest.capabilities, hasLength(13));
+      expect(school.manifest.capabilities, hasLength(18));
       expect(school.manifest.capability('notice.detail'), isNotNull);
       expect(login.manifest.browser, isTrue);
       expect(login.manifest.schoolId, school.manifest.schoolId);

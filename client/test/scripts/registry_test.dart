@@ -166,13 +166,18 @@ void main() {
   );
 
   test(
-    'most recently installed enabled provider wins without hiding other capabilities',
+    'installing a candidate does not replace a source until explicitly selected',
     () async {
       final registry = await ScriptRegistry.open(null);
       final first = package(id: 'first');
       final second = package(id: 'second');
       await registry.install(first, approvedDigest: first.digest);
       await registry.install(second, approvedDigest: second.digest);
+      expect(
+        registry.provider('school-a', 'notice.list')!.manifest.id,
+        'first',
+      );
+      await registry.setProviderOverride('school-a', 'notice.list', 'second');
       expect(
         registry.provider('school-a', 'notice.list')!.manifest.id,
         'second',

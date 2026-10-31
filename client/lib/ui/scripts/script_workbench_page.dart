@@ -30,6 +30,7 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
   final _params = TextEditingController(text: '{}');
   final Map<String, String> _capabilities = {};
   List<ScriptInstallation> _installed = [];
+  ScriptRegistry? _registry;
   SessionController? _session;
   bool _busy = false;
   BundledScriptSchool _bundled = bundledScriptSchools.first;
@@ -55,7 +56,12 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
   Future<void> _refresh() async {
     try {
       final registry = await _session!.scriptRegistry;
-      if (mounted) setState(() => _installed = registry.installations);
+      if (mounted) {
+        setState(() {
+          _registry = registry;
+          _installed = registry.installations;
+        });
+      }
     } catch (_) {
       if (mounted) _error('script_registry_unavailable');
     }
@@ -69,6 +75,8 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
       'script_version_reused' ||
       'script_school_changed' => l10n.scriptsVersionRejected,
       'script_school_not_selected' => l10n.scriptsSchoolRequired,
+      'script_provider_incompatible' => l10n.scriptsProviderIncompatible,
+      'script_provider_group_required' => l10n.scriptsProviderGroupRequired,
       'script_browser_unavailable' ||
       'browser_unavailable' ||
       'browser_ip_policy_unsupported' => l10n.scriptsBrowserUnavailable,
@@ -423,6 +431,49 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
             Wrap(
               spacing: 8,
               children: [
+                OutlinedButton.icon(
+                  key: ValueKey('script-provider-${m.id}'),
+                  onPressed: _busy || !installation.enabled
+                      ? null
+                      : () => _guard(
+                          () => _session!.selectTrustedScriptProvider(
+                            m.schoolId,
+                            capability,
+                            m.id,
+                          ),
+                        ),
+                  icon: Icon(
+                    _registry?.provider(m.schoolId, capability)?.manifest.id ==
+                            m.id
+                        ? Icons.check_circle_outline
+                        : Icons.swap_horiz,
+                  ),
+                  label: Text(
+                    _registry?.provider(m.schoolId, capability)?.manifest.id ==
+                            m.id
+                        ? l10n.scriptsProviderActive
+                        : l10n.scriptsUseProvider,
+                  ),
+                ),
+                if (_registry?.isProviderOverride(
+                      m.schoolId,
+                      capability,
+                      m.id,
+                    ) ??
+                    false)
+                  TextButton(
+                    key: ValueKey('script-provider-reset-${m.id}'),
+                    onPressed: _busy
+                        ? null
+                        : () => _guard(
+                            () => _session!.selectTrustedScriptProvider(
+                              m.schoolId,
+                              capability,
+                              null,
+                            ),
+                          ),
+                    child: Text(l10n.scriptsRestoreProvider),
+                  ),
                 TextButton(
                   onPressed: _busy || !installation.enabled
                       ? null

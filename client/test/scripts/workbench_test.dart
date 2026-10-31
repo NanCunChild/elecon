@@ -307,6 +307,15 @@ void main() {
         isTrue,
       );
       expect(session.credentialCount, 1);
+      expect(
+        (await session.scriptRegistry)
+            .provider(school.id, 'generic.section')
+            ?.manifest
+            .id,
+        school.dataId,
+        reason:
+            'Retiring the old login install must explicitly select the approved unified handler',
+      );
       expect(tester.takeException(), isNull);
     },
   );
