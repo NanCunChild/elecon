@@ -1,65 +1,12 @@
-# 规则 · Git（分支 / Commit / PR）
+# 规则 Git 与提交
 
-> 2026-10-29 路线覆盖：新 `elecon-script/1` 路径遵循 [ADR-034](../adr/adr_034_trusted_school_scripts.md)；允许用户授权的未签名侧载和当前学校凭据直接访问。V1 专属 official/Masker/双跑门不适用于新路径；身份隔离、背景执行、脱敏夹具和人工合并审阅仍适用。
+依据 [AGENTS](../../AGENTS.md)。旧版已[废弃归档](../archived/2026-10-31/docs/rules/git.md)。
 
-配合 [`AGENTS.md`](../../AGENTS.md) 阅读。原则：**人力有限，流程越轻越好；信任越高的改动，闸门越重。**
+- 使用短命分支：`feat/`、`fix/`、`docs/`、`refactor/`、`chore/`、`adapter/<school>`。已有任务分支可继续使用；禁止直推受保护 `main`，经 PR 审查合并。
+- 提交用 Conventional Commits：`type(scope): subject`。一个提交一个目的，避免把文档迁移、业务实现和格式化混在一起。
+- AI 辅助提交 body 加 `Assisted-by: Codex`；安全敏感变化写明边界影响和验证。
+- 用户要求 unsigned 时，逐次使用 `git -c commit.gpgsign=false commit --no-gpg-sign`，不修改全局签名设置，不签署 tag 或发布产物。
+- 提交前核对 `git diff --cached`，只暂存本次变化；已有未提交内容保留。需要修改同一文件时按本次差异暂存。
+- PR 说明有效 ADR、源码/V1/提案的路线范围、验证和剩余人工验收。使用[模板](../../.github/pull_request_template.md)。
 
----
-
-## 1. 分支模型
-
-主干式（trunk-based），`main` 始终可发布、受保护、禁止直推。功能在**短命**分支上做，尽快合回。
-
-分支命名：`<type>/<简短描述>`，type 取：
-
-| 前缀 | 用途 |
-|---|---|
-| `feat/` | 新功能 |
-| `fix/` | 缺陷修复 |
-| `adapter/<school-id>` | 单个学校 adapter（走快车道，见 feature-workflow） |
-| `docs/` | 文档 / ADR |
-| `chore/` | 构建、依赖、工具链 |
-| `refactor/` | 不改行为的重构 |
-
-> **adapter 分支是特例**：因为 adapter 隔离、可热替换、坏了只影响一个数据源，它走更快的审查车道。但改动一旦碰到 `contract/` 或核心，就不再是 adapter 改动，按 `feat/` 处理。
-
----
-
-## 2. Commit 规范
-
-采用 **Conventional Commits**：`type(scope): subject`
-
-- **type**：`feat` / `fix` / `docs` / `test` / `refactor` / `chore` / `perf`
-- **scope**：对应模块，建议取 `core` / `broker` / `runtime` / `transport` / `plugin` / `contract` / `adapter` / `server` / `client` / `ui`
-- **subject**：祈使句、小写开头、不超过 ~50 字符、结尾不加句号
-
-示例：
-
-```
-feat(adapter): 新增 school-1234 课表归一化
-fix(broker): 修复白名单外请求误注入凭证
-docs(adr): 起草 adr_001 标准 schema 规范
-```
-
-约定补充：
-
-- 触碰**红线相关路径**（core / credential / transport / 签名）的 commit，body 里写明影响与缓解。
-- **AI 生成的改动**在 body 加一行 `Assisted-by: <工具名>`，提示审阅者这段需人眼复核（尤其安全敏感路径）。
-- 一个 commit 一个逻辑变更，别把格式化和逻辑改动混在一起。
-
----
-
-## 3. PR 规范
-
-- **小而单一**：一个 PR 一个目的；大改先拆分。
-- **禁止直推 `main`**：一律经 PR + 审查。
-- **必须声明合规**：PR 描述里勾选"本改动遵循/不破坏的红线与 ADR"。
-- **必须带测试**：见 [`testing.md`](testing.md)；无测试的逻辑改动不予合并。
-- **分级审查**：
-  - 普通 adapter / UI 卡片 → 1 人审，快车道；
-  - 触碰 `contract/`、`core/`、`transport/`、签名/吊销 → **至少 1 名人工审阅 + 安全检查清单**，AI 不得独自闭环。
-- **CI 必过**：契约校验、夹具回归、lint 与适用发布门。V1 adapter 继续验证 requestGraph、Broker/Masker、official loader 和 DEV 编译哨兵；新 `elecon-script/1` 验证源码包、版本/安装授权、身份、网络、浏览器与取消，不套用 C3/official-only 执行门。DEPLOY 中允许已由用户授权的新源码安装路径，仍不允许旧 devSideload 或开发 transport 旁路。
-
-### PR 描述模板
-
-见`.github/pull_request_template.md`文件描述
+契约和核心变更按 [feature_workflow](feature_workflow.md) 处理。V1 门只验证 V1；新脚本验证安装授权、身份、网络、版本、取消和输出。CI 与人工安全审阅分别记录。

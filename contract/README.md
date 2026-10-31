@@ -1,7 +1,7 @@
 # contract/ — 跨端共享契约
 
 > **这是整个项目最重要的目录。** adapter 与 UI 之间唯一的耦合面就在这里。
-> 改动必须走 ADR，默认保持向后兼容（红线 #6）。
+> 改动必须走 ADR；现阶段允许有明确版本与迁移方案的破坏性更新，禁止静默改义。当前基线见 [ADR-041](../docs/adr/adr_041_current_architecture.md)。
 
 ## 目录
 
@@ -24,11 +24,11 @@ adapter-sdk/     V1 adapter 开发者参考（ctx 类型声明）
 
 | 约定 | 说明 |
 |---|---|
-| 时间 | RFC3339, UTC (`...Z`) |
+| 时间 | 时刻用 RFC3339/UTC；日历日用 YYYY-MM-DD，按具体 schema 定义 |
 | 金额 | 整数 + 最小货币单位，禁止浮点 |
 | 缺失 | 字段缺失 ≠ `null`，语义不同 |
-| ID | 校内作用域字符串 |
-| 枚举 | 未知值 → `"unknown"` |
+| ID | 按具体领域/来源解释；不同 provider 的相同字符串不自动表示同一实体 |
+| 枚举 | 只有 schema 明确提供 `unknown` 才可映射；否则按该能力错误/兼容约定处理 |
 | 兼容 | 新增可选字段 = 兼容；删除/改义/改类型 = 破坏性 |
 
 ## 两条执行路线
@@ -40,3 +40,5 @@ V1 `manifest.schema.json`、`adapter-sdk/`、Masker 与 golden 仍约束尚未�
 `format`（elecon-script/1）、`sdkVersion`（宿主 API）、`manifest.version`（单脚本更新）、capability 的 `schemaVersion`（业务输出）及应用版本相互独立。不要为脚本接口修复改动业务 schema 版本，也不要把 V2 分支名当作格式或应用版本号。安装版本与 digest 行为见 [使用文档](../docs/reference/trusted_scripts.md)。
 
 SDK 2 的凭据地址与写入语义见 [ADR-035](../docs/adr/adr_035_script_credential_identity.md)：namespace 默认脚本 id，记录 id/namespace/key 可往返；同校显式共享仍在同一授权身份内。SDK 1 为已有预览包保留原有寻址，不静默升级或猜测旧记录归属。
+
+页面、provider 与增强包的接口演进见 [ADR-042 提案](../docs/adr/adr_042_providers_pages_enhancements.md)。拟议字段尚不可写入现有 manifest；页面可复用多个现有能力，不必为了独立路由新增 schema。

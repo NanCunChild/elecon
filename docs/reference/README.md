@@ -1,25 +1,20 @@
-# 参考文档
+# 当前参考文档
 
-- [Track B 实施草案 —— 命令式 requestGraph 运行时](./track_b_imperative_runtime_plan.md)（落地 ADR-009 §4，🔒 人工主导；旧称 fetch 模式）
-- [B4 实现计划 —— per-execution cookie jar（两分区）](./b4_cookie_jar_plan.md)（ADR-009 §2.4，🔒 人工主导）
-- [B5 实现计划 —— 耐久 cookie 收割桥接](./b5_harvest_bridge_plan.md)（ADR-009 §2.4 / ADR-012，🔒 人工主导，含 🔴 开放点）
-- [B6 实现计划 —— ctx.fetch 代理 + 异步运行时 + 限额](./b6_imperative_runtime_plan.md)（ADR-009 §2.1/§2.7，🔒 人工主导，含开放点）
-- [WebView 登录收割 + XIDIAN 取数可行性](./webview_login_fetch_feasibility.md)（ADR-012/015/016，🔒 人工主导）
-- [XIDIAN 全闭环 + SSO mint 签票](./xidian_mint_closed_loop_plan.md)（ADR-017，🔒 接线/执行人工主导）
-- [ADR-023 声明式跨请求数据流落地清单](./declarative_dataflow_migration.md)（MVP 已于 2026-07-24 完成并由 owner 安全签收；后续增量单独评审）
-- [Response Masker 重构与迁移计划](./response_masker_plan.md)（ADR-026；Broker 响应凭证收割与投影）
-- [Response Masker · JSON 定位 / 重复键 / DEV 诊断](./response_masker_json_locator.md)（B1 拍板：手写剪接 + 重复键 fail-closed + ADR-024 DEV 诊断）
-- [Response Masker 签收清单](./response_masker_signoff_checklist.md)
-- [ADR-024 落地计划 —— 信任 profile 解绑优化等级](./adr_024_landing.md)（四问已勾决；slice 0 基座已落，判别器翻转 + 护栏捆绑待人工主导，🔒 红线 #4）
-- [跨端日志策略](./cross_end_logging.md)（DevLog 唯一 sink、默认脱敏、campus 不落凭证）
-- [**Adapter 包与签名机制 · 快速入门**](./adapter_bundle_primer.md)（写给外部贡献者：包形态 / 五个角色各看到什么 / 常见误解；按 digest v2 + catalog 去端点化后的现状维护）
-- [绩点归属重划落地报告](./gradepoint_ownership_landing.md)（ADR-001 §3.5/§8；`grades.list` 1.0→1.1 的业务动机、预期结果与外部仓联动清单）
-- [签名面与元数据复盘](./signing_surface_review.md)（2026-09-01：三类被签对象、元数据落点、五项发现与去向；非 ADR）
-- [离线 YubiKey 签名密钥 Ceremony](./signing_ceremony.md)（密钥生成 / PIN / 公钥预埋；**不得由 AI 执行**）
-- [Adapter 发布 runbook](./adapter_release.md)（每次发版：unsigned → digest 比对 → `release:package` → `bootstrap:sync` 入仓 → `dist:export` 上传端点 D）
-- [adapter-sdk 类型声明](../../contract/adapter-sdk/types.d.ts)
-- [manifest 规范](../../contract/manifest.schema.json)
-- [标准 schema 索引](../../contract/schema/)
-- [capability 注册表](../../contract/capability/registry.json)
+先读[当前架构](../architecture.md)，再按任务选资料。
 
-受信学校脚本路线：见 [使用与开发](trusted_scripts.md)、[新增依赖与许可证](trusted_scripts_dependencies.md) 和 [ADR-034](../adr/adr_034_trusted_school_scripts.md)。旧 requestGraph/Masker 操作手册仅供未迁移的 official bundle。
+| 任务 | 文档 |
+|---|---|
+| 学校源码开发、安装与打包 | [trusted_scripts](trusted_scripts.md) |
+| 学校实现与验收状态 | [实施记录](../planning/trusted_scripts.md) |
+| 新页面、模板、标准接口与增强包 | [接口审计](interface_evolution.md)、[ADR-042 提案](../adr/adr_042_providers_pages_enhancements.md) |
+| 通知/教室/水电中继 | [研究](../research/relay_enhancement_feasibility.md)、[实施切片](../planning/platform_evolution.md) |
+| 旧代码兼容维护 | [legacy_compatibility](legacy_compatibility.md)、[Masker 退役审计](masker_retirement_audit.md) |
+| 浏览器认证观察 | [browser_auth_trace](browser_auth_trace.md)、[西电认证对照](xidian_pda_auth_comparison.md) |
+| 西电能力对照及探针 | [xidian_script_update](xidian_script_update.md)、[历史 smoke runbook](xidian_smoke_runbook.md)（注意其 V1 范围） |
+| 依赖许可 | [trusted_scripts_dependencies](trusted_scripts_dependencies.md) |
+| 发布与日志 | [release_workflow](release_workflow.md)、[cross_end_logging](cross_end_logging.md)（按执行路线选择） |
+| 既有成绩字段历史 | [gradepoint_ownership_landing](gradepoint_ownership_landing.md) |
+
+[script SDK](../../contract/script-sdk/types.d.ts)、[源码包 schema](../../contract/script-package.schema.json)、[领域 schema](../../contract/schema/)和[能力 registry](../../contract/capability/registry.json)是实际机器契约。研究中出现的拟议接口尚不可用于安装包。
+
+旧 requestGraph、Broker、Masker、签名发布规格及签收记录已迁至 [archived](../archived/README.md)。原参考路径只留跳转，继续修改旧实现前查兼容边界与历史原文。

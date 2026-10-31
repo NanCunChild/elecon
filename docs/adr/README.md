@@ -1,56 +1,20 @@
-# ADR 状态索引
+# 当前 ADR 状态索引
 
-本索引把“决策是否接受”和“实现是否落地”分开记录。ADR 正文是决策权威；
-V1 兼容路径的整改与阻塞状态见 [`2026_08_review_remediation.md`](../planning/2026_08_review_remediation.md)；ADR-034 新受信脚本路径的执行与剩余验收状态见 [`trusted_scripts.md`](../planning/trusted_scripts.md)。旧路径的签名/Masker/双跑待办不自动成为新路径的准入条件。
-`Accepted` 只表示可据以实现，**不表示实现、安全签收或生产发布已经完成**。
+新开发先读 [ADR-041](adr_041_current_architecture.md)与相关 ADR-034 起的有效决定。`Accepted` 表示决策接受，不代表代码、真机验收或人工安全签收完成。默认 owner 为 NanCunChild，安全签收必须有人工证据。
 
-路线阅读顺序：新源码脚本先读 ADR-034/035；ADR-000–033 中关于 official bundle、凭据不可见、requestGraph、Masker、旧登录收割与发布门的描述继续约束 V1 兼容实现。共享业务 schema、平台存储、背景执行和公网零凭据等未被覆盖的约束继续适用。旧 ADR 的历史决定不因新路线而被改写为“已退役”。
+ADR-000–033 已废弃为新开发总纲，正文移至 [archived](../archived/README.md)，旧路径只留跳转。共享语义和未迁移 V1 约束由 [ADR-041 §3](adr_041_current_architecture.md#3-从历史-adr-继承的有效约束)及[兼容边界](../reference/legacy_compatibility.md)承接。历史接受/延期/签收状态见[旧索引快照](../archived/2026-10-31/docs/adr/README.md)，不批量改写为“代码已退役”。
 
-默认 owner 为 **NanCunChild**。安全签收栏中的“待人工”表示实现或测试触及
-`AGENTS.md` 红线，不能由自动测试或 AI 实现替代人工复核。
+现行脚本执行与验收见 [trusted_scripts](../planning/trusted_scripts.md)；后续页面/增强包/中继切片见 [platform_evolution](../planning/platform_evolution.md)。
 
 | ADR | Decision | Landing | Security signoff | Blocker / source |
 |---|---|---|---|---|
-| [000](./adr_000_abstract.md) | Accepted | 顶层约束生效 | 按子 ADR | 总纲 |
-| [001](./adr_001_contract.md) | Accepted | 部分落地 | 契约改动逐项评审 | P1-13/P1-15、P3-04/P3-06 |
-| [002](./adr_002_trust_model.md) | Accepted；**§2.3 digest v2 已签收（owner NanCunChild 2026-09-09）** | §2.3 digest v2 **实现已落地、两端 CI 全绿（2026-09-09）**；第 8 项重签仪式已执行（2026-09-11：catalog seq 8 / revocation seq 2，台账首批 5 条 complete）；§2.1.1 Sideload 消歧（2026-09-08）**未落地**（`C3_sideload_must_declarative` 仍开火，移除随 ADR-033 §5） | **§2.3 规格签收完成（2026-09-09）；实现人工安全复核已签收（owner NanCunChild 2026-09-11，PR #111，清单 [`bundle_digest_v2_signoff_checklist.md`](../reference/bundle_digest_v2_signoff_checklist.md)）**；§2.1.1 待人工 | P0-01/P0-14 |
-| [003](./adr_003_transport.md) | Accepted | 抽象已落地；app-tunnel 未落地 | 待人工 | ADR-032 |
-| [004](./adr_004_ui_sdui.md) | Accepted | typed UI 框架已落地 | 按契约改动 | P4-03/P4-05 |
-| [005](./adr_005_runtime.md) | Accepted | 已落地 | 已有双端回归 | 共享 golden 只覆盖已使用语义 |
-| [006](./adr_006_school_auth.md) | Deferred | 不实施 | 不适用 | 由 ADR-012 通用路径覆盖 |
-| [007](./adr_007_public_deploy.md) | Deferred | 不实施 | 不适用 | P3-15 有真实部署需求时重启评审 |
-| [008](./adr_008_client_runtime.md) | Accepted | 已落地 | 按 runtime 改动 | P2-09 |
-| [009](./adr_009_fetch_credential.md) | Accepted | 部分落地 | 待人工 | P0-10 |
-| [010](./adr_010_ios_appstore.md) | Accepted | 分发约束生效；正式上架未闭环 | 待人工/外部 | P3-13/P3-14 |
-| [011](./adr_011_html_parser.md) | Accepted | 分批落地 | 按 runtime 改动 | 正文 §4 |
-| [012](./adr_012_credential_store.md) | Accepted | 部分落地 | 待人工/真机 | P0-06/P0-07、P1-01/P1-03 |
-| [013](./adr_013_manifest_credentials.md) | Accepted | 基线契约与 loader 已落地 | 已有人工评审；增量另审 | 后续最小权限见 P4-02 |
-| [014](./adr_014_client_host_fn.md) | Accepted | 基线 host-fn 已落地 | 已有人工评审；增量另审 | P0-10 |
-| [015](./adr_015_manifest_login.md) | Accepted | 已落地 | 已有人工评审；增量另审 | 平台能力见 ADR-016 |
-| [016](./adr_016_complex_login.md) | Accepted | 部分平台落地 | 待真机/人工 | P2-12/P2-13 |
-| [017](./adr_017_sso_master_credential.md) | Accepted | 部分落地 | 待人工 | Xidian mint 闭环计划 |
-| [018](./adr_018_adapter_distribution.md) | Accepted；**§2.9.1 digest v2 已签收（owner NanCunChild 2026-09-09）**；**§2.5.1 catalog 去端点化（owner 决策 2026-09-11，实现签收 2026-09-12）** | §2.9.1 **落地清单 1–7、11 项已实现、两端 CI 全绿（2026-09-09）**；第 8 项重签仪式已执行（2026-09-11）；§2.5.1 **已落地**（契约/工具/客户端同批，`url` 暂留可选待下次仪式后删） | **§2.9.1 规格签收完成（2026-09-09）；实现人工安全复核 + 落地决策 A/B/C 已签收（owner NanCunChild 2026-09-11，PR #111）**；**§2.5.1 实现人工复核已签收（owner NanCunChild 2026-09-12）** | P0-01/P0-15；P3-07 / P3-08 已关（bootstrap 单源 + 发版门） |
-| [019](./adr_019_classroom_available.md) | Accepted | 契约与 UI 基线已落地 | 契约已评审 | adapter 签发/真机仍开放 |
-| [020](./adr_020_url_query_credential.md) | Accepted | 已落地 | 已人工复核 | 真机验收仍开放 |
-| 021 | Reserved | 未起草 | 不适用 | P3-05 先决定 Money 领域语义 |
-| [022](./adr_022_request_graph.md) | Accepted | 基线已落地 | 已人工复核 | fixture 全编排见 P1-17 |
-| [023](./adr_023_declarative_dataflow.md) | Accepted | MVP 已落地 | 2026-07-24 owner 签收 | [落地清单](../reference/declarative_dataflow_migration.md) |
-| [024](./adr_024_build_profile_trust.md) | Accepted | 零入口 slice 0–4 已落地（Android 有产物证据）；gate 待随 ADR-033 落地重做 | 待人工签收（新 gate 落地后一并签） | P0-14、[落地清单](../reference/adr_024_landing.md) |
-| [025](./adr_025_item_link.md) | Accepted | 契约/UI 基线已落地 | 外跳路径增量另审 | ADR 正文 §2.7 |
-| [026](./adr_026_response_masker.md) | Accepted；**§2.7.1 `bundleFormat` 断代 owner 决策 2026-09-10** | **§2.7.1 / §2.7.2 已落地（2026-09-12）**：`elecon-bundle/3`、`RM0_host_gate_unavailable` → `RM0_policy_missing`、两端 `masker-policy` 装配、**客户端 firewall 接线**、P1-04 原始头基数；同日复核补丁：handle 过渡门（两端装配拒载 + `RM17`）、`requestKey: null` 双端对齐、`RM18`、§2.8 文本校正；历史记录保留 `/3` 重签仪式待办；**2026-10-29 已复用现有 official 验签 `/3` 字节替换入库 `/2`（49b5dad），bootstrap 自洽检查已通过**，不再是“必红”；该只读核验/复用未补造新签署仪式或人工签收。新源码路径不使用 Masker；V1 兼容实现仍保留 | 🔒 **待人工**（清单 [`response_masker_signoff_checklist.md`](../reference/response_masker_signoff_checklist.md)） | P0-09/P0-10、P1-08/P1-09；P1-04 已关 |
-| [027](./adr_027_url_session_param_stripping.md) | Accepted | 实现已提交 | 待人工 | 纳入 P0-10 firewall 总签收 |
-| [028](./adr_028_declarative_crypto_ops.md) | Accepted | 双端实现与 golden 已完成 | 待 owner | [安全清单](../reference/declarative_dataflow_security_checklist.md) |
-| [029](./adr_029_named_and_body_credentials.md) | Accepted | named header 已落地；body 未落地 | 待人工 | P1-11 |
-| [030](./adr_030_actuator_capabilities.md) | Accepted | 未落地 | 待人工 | P1-12 |
-| [031](./adr_031_dataflow_seed.md) | Accepted | 未落地 | 待人工 | P1-10 |
-| [032](./adr_032_app_tunnel_embedding.md) | Proposed | 禁止实现 | 待人工评审 | 接受前不得合并 transport 实现 |
-| [033](./adr_033_production_sideload.md) | Accepted | **V1 bundle 本地导入未落地**（其 C3 仍在位）；ADR-034 源码包本地导入独立实现 | 落地须人工主导 + 安全清单 + ≥1 人工审 | §5 连带清单须同批落地；§6 开放问题按实现分项阻塞 |
 | [034](./adr_034_trusted_school_scripts.md) | Accepted（2026-10-29 所有者会话授权） | 已实现；2026-10-30 增加西电脚本与 STRING_ROPE 桥接修复，见 [计划](../planning/trusted_scripts.md) | 待人工复核与平台真机 | 新源码脚本路径显式覆盖 #1/#4/#5 旧约束；没有声称退役全部 V1 |
 | [035](./adr_035_script_credential_identity.md) | Accepted（2026-10-29 所有者检查与修复授权） | SDK 2 与多凭据行为见[阶段记录](../planning/trusted_scripts.md) | 待人工复核与平台真机 | 细化 ADR-034；SDK 1 保留预览兼容 |
 | [036](./adr_036_card_account_identity.md) | Accepted（2026-10-30 所有者确认） | 已实现可选卡号，回归见受信脚本计划 | 待真机及人工审阅 | 不用学号/openid/占位值伪造卡号；不新增支付/换卡能力 |
 | [037](./adr_037_script_input.md) | Accepted（2026-10-30 所有者要求通用输入接口） | SDK 3 固定输入表单已实现，核心回归见计划 | 待真机及人工审阅 | SDK 2 凭据寻址保留，不增加任意 UI/原生能力 |
-
 | [038](./adr_038_script_home_cache.md) | Accepted（2026-10-30 所有者本轮要求） | SDK 4 首页缓存、预加载与静默刷新已实现 | 待真机及人工审阅 | 当前学校本地 H/S/M 保护、时间与参数隔离，后台不弹认证界面 |
 | [039](./adr_039_script_browser_busy.md) | Accepted（2026-10-30 所有者本轮要求） | SDK 4 固定登录遮罩与 IDS 收尾优化已实现 | 待真机及人工审阅 | 脚本只控制 busy 布尔值，取消继续可用，保留业务验证 |
+| [041](adr_041_current_architecture.md) | Accepted（本轮文档重整授权） | 文档基线与归档 | 不新增实现签收 | 承接有效约束，旧总纲退出主线 |
+| [042](adr_042_providers_pages_enhancements.md) | Proposed | 未实现 | 后续核心/权限实施须人工审阅 | provider、独立页面、增强包与中继切片 |
 
-更新规则：接受或废弃 ADR 时更新 `Decision`；实现 PR 只更新 `Landing`；安全签收必须附人工复核引用，不能以 smoke 通过代替。
+ADR 编号不回收：021 仍是历史预留。更新决策、实现与签收时分别修改对应列，不用自动测试替代人工复核。

@@ -1,5 +1,7 @@
 # server/ — Node/TS 服务端
 
+> 当前职责：public 只分发静态签名产物；campus 查询仍为 501 stub。通知/空教室/水电加速见[研究](../docs/research/relay_enhancement_feasibility.md)和[规划](../docs/planning/platform_evolution.md)，尚未部署。以下 QuickJS-wasm/Broker 指 V1 兼容运行时，新源码包目前仅在客户端运行。
+
 > 运行时选型见 [`docs/adr/adr_005_runtime.md`](../docs/adr/adr_005_runtime.md)：
 > **TypeScript on Node**（不是裸 Node），adapter 用 **QuickJS-wasm** 执行（不用 Node 的 `vm`）。
 
@@ -27,7 +29,7 @@ npm run typecheck      # 严格类型检查
 
 ## 原则
 
-- `src/public` 零凭证、无状态——仅分发 adapter + 缓存公开数据（红线 #2）。
-- `src/campus` 在校内堡垒机后代取私密数据，**经手凭证 = 承重路径**：锁 lockfile、最小依赖、定期 `npm audit`（ADR-005 §3.3）。
+- `src/public` 零凭证、无状态——当前仅分发 catalog/revocation/bundle；业务公开缓存是独立待实施服务（红线 #2）。
+- `src/campus` 规划在校内授权环境代取私密数据，当前尚未实现查询，**经手凭证 = 承重路径**：锁 lockfile、最小依赖、定期 `npm audit`（ADR-005 §3.3）。
 - adapter 用 **QuickJS-wasm** 执行；客户端是另一套 QuickJS 绑定，跨端只对共享 golden/canary 覆盖的已使用语义承诺一致。**绝不用** Node 的 `vm`（`vm` 不是安全边界）。
 - 全程 TypeScript `strict`；契约校验用 `ajv`，与 `tools/` 共用一套。

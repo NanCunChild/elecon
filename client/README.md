@@ -1,5 +1,7 @@
 # client/ — Flutter 客户端
 
+当前架构见[入口](../docs/architecture.md)。独立页面、查询状态复用与增强包绑定见[接口审计](../docs/reference/interface_evolution.md)及[ADR-042 提案](../docs/adr/adr_042_providers_pages_enhancements.md)；这些抽象尚未实现。
+
 ## 结构
 
 ```
@@ -8,7 +10,7 @@ lib/
   core/
     scripts/              ADR-034 受信源码、安装授权、HTTP/IP 与浏览器桥接
     adapter_runtime.dart  V1 兼容运行时（declarative/imperative requestGraph，后台 isolate）
-  ui/                  UI 层（数据驱动 / SDUI，只认标准 schema）
+  ui/                  固定原生页面与卡片（消费标准业务数据，不接受 Widget tree）
 assets/                静态资源
 test/
   utils/

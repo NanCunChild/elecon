@@ -6,9 +6,11 @@
 
 ---
 
+> 2026-10-31：由 [ADR-041](../adr/adr_041_current_architecture.md)承接既有 schema 规则；以下约定描述现存契约。新参数收严、时间类型和共享结构须按 [ADR-042](../adr/adr_042_providers_pages_enhancements.md)提出的迁移切片另立版本，不能直接改变旧 validator。旧版已[归档](../archived/2026-10-31/docs/rules/schema_style.md)。
+
 ## 0. 一句话
 
-**命名即语义、每字段必有 `description`、时刻/日历日格式二分、书写统一 pretty-print。** 兼容面**默认开放**（不 `additionalProperties: false`），拼写错误由 adapter 作者负责。
+**命名即语义、每字段必有 `description`、时刻/日历日格式二分、书写统一 pretty-print。** 既有开放结果/参数保持其版本约定；新 command 可以按领域契约封闭字段与组合，不能静默收紧旧版本。
 
 ---
 
@@ -28,7 +30,7 @@
 - 顶层 `type: object`（codegen 只为对象根生成类型）。
 - `title` 用中文短语。
 
-## 2. `description`：**每个 `properties` 字段必填**（本次新规）
+## 2. `description`：**每个 `properties` 字段必填**
 
 - **所有** `properties` 下的字段（含嵌套 object / array item 内的字段）**必须**带 `description`。
 - 理由：`description` 是**前端展示与 adapter 作者的唯一契约交代**（不引入 `x-` 扩展命名空间，正因它无法向前端交代——见 §5）。
@@ -37,7 +39,7 @@
   "amountMinor": { "type": "integer", "minimum": 0, "description": "金额最小货币单位（分）；不用浮点。" }
   ```
 - **CI 有牙齿（分级上线）**：`cd tools && npm run codegen -- --check` 始终**枚举**缺 `description` 的字段（`file  路径`）；加 `--require-descriptions` 则**硬失败**（退出码非 0）。
-  - 现阶段：backfill 未完成，CI 用不带 flag 的 `--check`（只报告，不打红）。
+  - 历史基线采用不带 flag 的 `--check`；具体 gate 以当前 CI 命令为准，不从本文推断 backfill 已完成。
   - backfill 完成后：CI 切到 `--check --require-descriptions`，缺字段即挡合并。
 
 ## 3. 时刻 vs 日历日：命名即语义
@@ -62,7 +64,7 @@
 - 结果 `emits` schema **不设** `additionalProperties: false`（默认 `true`）。跨校源站多给的字段静默透传，**最大化跨校 adapter 覆盖面**。
 - **拒绝** `x-` 扩展命名空间：它对前端展示无法交代，收益不足以抵消复杂度。
 - **拼写错误由 adapter 作者承担**——不靠 schema 收严来兜底拼写；收严的边际收益小。
-- `params.*` 入参同理默认开放（入参由本仓构造，风险自控）。
+- 旧 `params.*` 默认开放；不能据此放宽后续控制命令的封闭枚举、字段组合与确认绑定（ADR-040）。输入是否开放由能力语义决定，变更须显式版本化。
 
 ## 6. 书写格式
 
@@ -79,6 +81,6 @@
 - [ ] 每个 `properties` 字段有 `description`（含嵌套）
 - [ ] 时刻字段 `*At`→`date-time`、日历日 `*Date`→`date`
 - [ ] 金额用 `amountMinor`+`currency`，字段名/约束与 §4 一致
-- [ ] 未新增 `additionalProperties: false`、未引入 `x-` 字段
+- [ ] 开放/封闭符合该版本契约，command 严格校验字段组合；未无版本改变旧 schema，未擅自引入 `x-` 字段
 - [ ] pretty-print、2 空格缩进
 - [ ] `cd tools && npm run codegen -- --check` 通过（含 description 门）
