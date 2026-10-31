@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import '../../session/session_scope.dart';
+import 'display_date.dart';
 import 'models.dart';
 
 typedef NoticeDetailLoader = Future<NoticeDetail?> Function();
@@ -142,13 +143,16 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
     final item = widget.item;
     final content = _detail?.content ?? item.content;
     final published = item.publishedAtDateTime;
-    final meta = [
-      item.source,
-      if (item.author != null) item.author!,
-      if (item.department != null) item.department!,
-      if (published != null)
-        MaterialLocalizations.of(context).formatMediumDate(published.toLocal()),
-    ].join(' · ');
+    final meta =
+        [
+              item.source,
+              if (item.author != null) item.author!,
+              if (item.department != null) item.department!,
+              if (published != null) formatLocalDate(published),
+            ]
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty)
+            .join(' · ');
     final attachments =
         _detail?.attachments ??
         [

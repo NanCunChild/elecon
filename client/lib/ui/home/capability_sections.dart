@@ -17,10 +17,13 @@ import '../../session/session_controller.dart';
 import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
 import '../login/webview_login_page.dart';
-import '../theme/liquid_glass.dart';
+import 'display_date.dart';
+import 'card_layout.dart';
+import 'card_preview_list.dart';
 import 'home_page.dart' show GradesCard, ScheduleCard;
 import 'models.dart';
 import 'schema_decode.dart';
+import 'section_card.dart';
 
 /// 一次能力取数 + 解码的归一化结果。
 class _Outcome<T> {
@@ -468,6 +471,10 @@ class _ScheduleSectionState extends State<ScheduleSection>
 
   @override
   Widget build(BuildContext context) {
+    if (_data != null &&
+        HomeCardPresentation.of(context) == HomeCardSize.compact) {
+      return withCacheTime(ScheduleCard(_data!));
+    }
     final busy = _phase == _Phase.loading;
     final l10n = AppLocalizations.of(context);
     return Column(
@@ -834,7 +841,7 @@ class _ClassroomResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = data.items ?? const [];
     final free = items.where((i) => i.occupied != true).toList();
-    return _SectionShell(
+    return SectionCard(
       title: '空教室',
       subtitle: [
         if (data.date != null) data.date!,
@@ -969,7 +976,7 @@ class _CardSectionState extends State<CardSection>
     }
 
     return withCacheTime(
-      _SectionShell(
+      SectionCard(
         title: '一卡通',
         // 即使 adapter 错把完整卡号填进 cardNumberMasked，UI 也只从权威 cardNumber 派生末四位。
         subtitle: data.cardNumber == null
@@ -1212,11 +1219,9 @@ String _transactionStatusText(String status) => switch (status) {
 };
 
 String _formatTimestamp(String value) {
-  final date = DateTime.tryParse(value)?.toLocal();
+  final date = DateTime.tryParse(value);
   if (date == null) return value;
-  return '${_formatDate(date)} '
-      '${date.hour.toString().padLeft(2, '0')}:'
-      '${date.minute.toString().padLeft(2, '0')}';
+  return formatLocalDateTime(date);
 }
 
 // ===========================================================================
@@ -1313,7 +1318,7 @@ class _ExamResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final items = data.items ?? const <ExamListItems>[];
-    return _SectionShell(
+    return SectionCard(
       title: l10n.homeExamTitle,
       subtitle: data.term == null
           ? l10n.homeExamCount(items.length)
@@ -1449,7 +1454,7 @@ class _LibraryLoansResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return _SectionShell(
+    return SectionCard(
       title: l10n.homeLibraryLoansTitle,
       subtitle: l10n.homeLibraryLoansCount(data.items.length),
       child: data.items.isEmpty
@@ -1457,19 +1462,23 @@ class _LibraryLoansResultCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(l10n.homeLibraryLoansEmpty),
             )
-          : Column(
+          : CardPreviewList(
+              title: l10n.homeLibraryLoansTitle,
               children: [
                 for (final item in data.items)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      item.overdue == true
-                          ? Icons.warning_amber_rounded
-                          : Icons.menu_book_outlined,
-                      color: item.overdue == true
-                          ? Theme.of(context).colorScheme.error
-                          : null,
-                    ),
+                    leading:
+                        HomeCardPresentation.of(context) == HomeCardSize.compact
+                        ? null
+                        : Icon(
+                            item.overdue == true
+                                ? Icons.warning_amber_rounded
+                                : Icons.menu_book_outlined,
+                            color: item.overdue == true
+                                ? Theme.of(context).colorScheme.error
+                                : null,
+                          ),
                     title: Text(item.title),
                     subtitle: Text(
                       [
@@ -1515,7 +1524,7 @@ String _examStatusText(AppLocalizations l10n, String status) =>
 // 共用外壳
 // ===========================================================================
 
-/// 引导态卡片（与首页 `_SectionCard` 同风格；private 无法跨文件复用，故此处内联）。
+/// 引导态卡片与已加载数据复用客户端卡片布局（ADR-004 §2.1）。
 class _PromptCard extends StatelessWidget {
   const _PromptCard({
     required this.title,
@@ -1529,43 +1538,7 @@ class _PromptCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      _SectionShell(title: title, subtitle: subtitle, child: child);
-}
-
-class _SectionShell extends StatelessWidget {
-  const _SectionShell({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return LiquidGlassSurface(
-      margin: const EdgeInsets.only(bottom: 12),
-      borderRadius: 16,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          child,
-        ],
-      ),
-    );
-  }
+      SectionCard(title: title, subtitle: subtitle, child: child);
 }
 
 /// 按阶段渲染取数动作/状态；不含已加载内容（由各区自行渲染数据卡片）。

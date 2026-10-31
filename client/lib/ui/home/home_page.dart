@@ -10,14 +10,22 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../session/session_scope.dart';
+import '../../core/scripts/manifest.dart';
 import '../../session/session_controller.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../theme/liquid_glass.dart';
 import 'campus_snapshot_loader.dart';
+import 'card_layout.dart';
+import 'card_layout_store.dart';
+import 'card_preview_list.dart';
+import 'editable_card_board.dart';
 import 'capability_sections.dart';
 import 'demo_data.dart';
+import 'display_date.dart';
 import 'models.dart';
 import 'notice_detail_page.dart';
+import 'section_card.dart';
+import 'energy_climate_sections.dart';
 
 export 'demo_data.dart';
 export 'models.dart';
@@ -29,9 +37,10 @@ const bool kForceDemoHomeSnapshot = false;
 typedef CampusSnapshotLoader = Future<CampusSnapshot> Function();
 
 class EleconHomePage extends StatefulWidget {
-  const EleconHomePage({super.key, this.loadSnapshot});
+  const EleconHomePage({super.key, this.loadSnapshot, this.layoutStore});
 
   final CampusSnapshotLoader? loadSnapshot;
+  final CardLayoutStore? layoutStore;
 
   @override
   State<EleconHomePage> createState() => _EleconHomePageState();
@@ -47,6 +56,7 @@ class _EleconHomePageState extends State<EleconHomePage>
   int? _generation;
   CampusSnapshot? _lastSnapshot;
   Timer? _homeRefreshTimer;
+  Map<String, HomeCardSize> _cardDefaults = {};
 
   @override
   void initState() {
@@ -104,6 +114,8 @@ class _EleconHomePageState extends State<EleconHomePage>
         _school = session.selectedSchool?.id;
         _generation = session.trustedScriptViewGeneration;
         _lastSnapshot = null;
+        _cardDefaults = {};
+        unawaited(_loadCardDefaults(session));
       }
       if (!_bound || changed || _revision != session.homeDataRevision) {
         _revision = session.homeDataRevision;
@@ -120,6 +132,141 @@ class _EleconHomePageState extends State<EleconHomePage>
       _bound = true;
       _snapshot = _load();
     }
+  }
+
+  Future<void> _loadCardDefaults(SessionController session) async {
+    final school = session.selectedSchool?.id;
+    final generation = session.trustedScriptViewGeneration;
+    if (school == null) return;
+    try {
+      final registry = await session.scriptRegistry;
+      final defaults = <String, HomeCardSize>{};
+      for (final entry in ScriptCardEntry.requiredCapabilitiesByType.entries) {
+        final package = registry.baseProvider(school, entry.value.first);
+        if (package == null) continue;
+        for (final card in package.manifest.cards) {
+          if (card.type != entry.key) continue;
+          defaults[card.type] = HomeCardSize.values.firstWhere(
+            (size) => size.name == card.defaultVariant,
+            orElse: () => HomeCardSize.regular,
+          );
+        }
+      }
+      if (mounted &&
+          identical(session, _session) &&
+          school == _school &&
+          generation == _generation) {
+        setState(() => _cardDefaults = defaults);
+      }
+    } catch (_) {
+      // Presentation suggestions are optional; local user choices still apply.
+    }
+  }
+
+  List<HomeCardEntry> _cards(CampusSnapshot data) {
+    final l10n = AppLocalizations.of(context);
+    HomeCardEntry entry(
+      String id,
+      String label,
+      WidgetBuilder builder, {
+      bool resizable = false,
+      String? type,
+    }) => HomeCardEntry(
+      id: id,
+      label: label,
+      builder: builder,
+      sizes: resizable ? HomeCardSize.values : const [HomeCardSize.regular],
+      defaultSize: _cardDefaults[type ?? id] ?? HomeCardSize.regular,
+    );
+    return [
+      if (data.schedule != null)
+        entry(
+          'schedule',
+          l10n.homeScheduleTitle,
+          (_) => ScheduleCard(data.schedule!),
+          resizable: true,
+        )
+      else if (_liveSections && data.supportsAll(const ['schedule.week']))
+        entry(
+          'schedule',
+          l10n.homeScheduleTitle,
+          (_) => ScheduleSection(
+            calendarEnabled: data.supportsAll(const ['calendar.academic']),
+          ),
+          resizable: true,
+        ),
+      if (data.grades != null)
+        entry(
+          'grades',
+          l10n.homeGradesTitle,
+          (_) => GradesCard(data.grades!, summary: data.gpaSummary),
+          resizable: true,
+        )
+      else if (_liveSections && data.supportsAll(const ['grades.list']))
+        entry(
+          'grades',
+          l10n.homeGradesTitle,
+          (_) => const GradesSection(),
+          resizable: true,
+        ),
+      if (data.notices != null)
+        entry(
+          'notice',
+          l10n.homeNoticeTitle,
+          (_) => NoticeCard(data.notices!),
+          resizable: true,
+        )
+      else if (_liveSections && data.supportsAll(const ['notice.list']))
+        entry(
+          'notice',
+          l10n.homeNoticeTitle,
+          (_) => SectionCard(
+            title: l10n.homeNoticeTitle,
+            child: Text(l10n.homeNoticeUnavailable),
+          ),
+          resizable: true,
+        ),
+      for (final section in data.genericSections)
+        entry(
+          'generic:${section.sectionId}',
+          section.title,
+          (_) => GenericSectionCard(section),
+          type: 'generic',
+        ),
+      if (_liveSections && data.supportsAll(const ['card.balance']))
+        entry(
+          'card',
+          l10n.homeCardTitle,
+          (_) => CardSection(
+            transactionsEnabled: data.supportsAll(const ['card.transactions']),
+          ),
+        ),
+      if (_liveSections && data.supportsAll(const ['exam.list']))
+        entry('exam', l10n.homeExamTitle, (_) => const ExamSection()),
+      if (_liveSections && data.supportsAll(const ['library.loans']))
+        entry(
+          'library',
+          l10n.homeLibraryLoansTitle,
+          (_) => const LibraryLoansSection(),
+          resizable: true,
+        ),
+      if (_liveSections &&
+          data.supportsAll(const ['energy.meters', 'energy.usage']))
+        entry('energy', l10n.energyTitle, (_) => const EnergySection()),
+      if (_liveSections &&
+          data.supportsAll(const ['climate.devices', 'climate.status']))
+        entry('climate', l10n.climateTitle, (_) => const ClimateSection()),
+      if (_liveSections &&
+          data.supportsAll(const [
+            'classroom.buildings',
+            'classroom.available',
+          ]))
+        entry(
+          'classroom',
+          l10n.homeClassroomTitle,
+          (_) => const ClassroomSection(),
+        ),
+    ];
   }
 
   /// 是否装配按需取数区：仅真数据模式（无注入、无 demo）——否则无 [SessionScope]。
@@ -201,58 +348,19 @@ class _EleconHomePageState extends State<EleconHomePage>
                       16,
                       liquidGlassEnabled(context) ? 100 : 24,
                     ),
-                    sliver: SliverList.list(
-                      children: [
-                        _SnapshotHeader(snapshot: data),
-                        const SizedBox(height: 12),
-                        if (data.schedule != null) ScheduleCard(data.schedule!),
-                        if (data.grades != null)
-                          GradesCard(data.grades!, summary: data.gpaSummary),
-                        if (data.notices != null) NoticeCard(data.notices!),
-                        if (_liveSections && data.notices == null)
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(
-                              AppLocalizations.of(
-                                context,
-                              ).homeNoticeUnavailable,
-                            ),
+                    sliver: SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _SnapshotHeader(snapshot: data),
+                          const SizedBox(height: 12),
+                          EditableCardBoard(
+                            scopeId: _school ?? 'preview',
+                            store: widget.layoutStore,
+                            cards: _cards(data),
                           ),
-                        for (final section in data.genericSections)
-                          GenericSectionCard(section),
-                        // 按需取数区（需 ehall-session；点击触发静默 mint / 可见登录）。
-                        // 仅真数据模式装配——注入 loadSnapshot（测试）或 demo 快照时不挂，
-                        // 避免无 SessionScope 语境崩溃。
-                        if (_liveSections &&
-                            data.supportsAll(const ['card.balance']))
-                          CardSection(
-                            transactionsEnabled: data.supportsAll(const [
-                              'card.transactions',
-                            ]),
-                          ),
-                        if (_liveSections &&
-                            data.supportsAll(const ['grades.list']))
-                          const GradesSection(),
-                        if (_liveSections &&
-                            data.supportsAll(const ['schedule.week']))
-                          ScheduleSection(
-                            calendarEnabled: data.supportsAll(const [
-                              'calendar.academic',
-                            ]),
-                          ),
-                        if (_liveSections &&
-                            data.supportsAll(const ['exam.list']))
-                          const ExamSection(),
-                        if (_liveSections &&
-                            data.supportsAll(const ['library.loans']))
-                          const LibraryLoansSection(),
-                        if (_liveSections &&
-                            data.supportsAll(const [
-                              'classroom.buildings',
-                              'classroom.available',
-                            ]))
-                          const ClassroomSection(),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -292,7 +400,7 @@ class _SnapshotHeader extends StatelessWidget {
                 ? snapshot.schoolName
                 : AppLocalizations.of(context).homeSnapshotUpdatedAt(
                     snapshot.schoolName,
-                    _formatDateTime(snapshot.updatedAt),
+                    formatLocalDateTime(snapshot.updatedAt),
                   ),
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
@@ -312,18 +420,20 @@ class ScheduleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final count = data.days.fold<int>(0, (sum, day) => sum + day.slots.length);
-    return _SectionCard(
+    return SectionCard(
       title: '本周课表',
       subtitle: '${data.term} · 第 ${data.week} 周 · $count 节课',
-      child: Column(
+      child: CardPreviewList(
+        title: '本周课表',
         children: [
           for (final day in data.days)
             for (final slot in day.slots)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  child: Text('周${_weekText(day.dayOfWeek)}'),
-                ),
+                leading:
+                    HomeCardPresentation.of(context) == HomeCardSize.compact
+                    ? null
+                    : CircleAvatar(child: Text('周${_weekText(day.dayOfWeek)}')),
                 title: Text(slot.courseName),
                 subtitle: Text(
                   [
@@ -398,11 +508,12 @@ class GradesCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gradePointText = _gradePointText();
-    return _SectionCard(
+    return SectionCard(
       title: '成绩',
       subtitle:
           '${data.term}${gradePointText == null ? '' : ' · $gradePointText'}',
-      child: Column(
+      child: CardPreviewList(
+        title: '成绩',
         children: [
           for (final item in data.items)
             ListTile(
@@ -442,10 +553,12 @@ class NoticeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _SectionCard(
-      title: '通知',
-      subtitle: '${data.items.length} 条最新消息',
-      child: Column(
+    final l10n = AppLocalizations.of(context);
+    return SectionCard(
+      title: l10n.homeNoticeTitle,
+      subtitle: l10n.homeNoticeCount(data.items.length),
+      child: CardPreviewList(
+        title: l10n.homeNoticeTitle,
         children: [
           for (final item in data.items)
             ListTile(
@@ -453,13 +566,16 @@ class NoticeCard extends StatelessWidget {
               title: Text(item.title),
               subtitle: Text(
                 [
-                  item.source,
-                  _noticeCategoryText(item.category),
-                  // 契约 publishedAt 为 RFC3339 字符串；经视图扩展转 DateTime 展示。
-                  if (item.publishedAtDateTime != null)
-                    _formatDate(item.publishedAtDateTime!),
-                  if (item.summary != null) item.summary!,
-                ].join(' · '),
+                      item.source,
+                      _noticeCategoryText(l10n, item.category),
+                      // 契约 publishedAt 为 RFC3339 字符串；经视图扩展转 DateTime 展示。
+                      if (item.publishedAtDateTime != null)
+                        formatLocalDate(item.publishedAtDateTime!),
+                      if (item.summary != null) item.summary!,
+                    ]
+                    .map((value) => value.trim())
+                    .where((value) => value.isNotEmpty)
+                    .join(' · '),
               ),
               trailing: const Icon(Icons.chevron_right),
               // App 内下钻：由通知标识 + 本详情视图闸门，不依赖外链（ADR-025 §2.6）。
@@ -515,7 +631,7 @@ class CourseDetailPage extends StatelessWidget {
       if (item.examMethod != null)
         _DetailRow(label: '考核方式', value: item.examMethod!),
       if (examAt != null)
-        _DetailRow(label: '考试时间', value: _formatDateTime(examAt)),
+        _DetailRow(label: '考试时间', value: formatLocalDateTime(examAt)),
       if (item.rank != null) _DetailRow(label: '课程排名', value: '${item.rank}'),
       if (item.courseAverage != null)
         _DetailRow(label: '课程平均分', value: '${item.courseAverage}'),
@@ -566,9 +682,8 @@ class GenericSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _SectionCard(
+    return SectionCard(
       title: section.title,
-      subtitle: '通用模板 · ${section.sectionId}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -592,9 +707,12 @@ class _GenericFields extends StatelessWidget {
         for (final field in fields)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
+            child: OverflowBar(
+              alignment: MainAxisAlignment.spaceBetween,
+              spacing: 16,
+              overflowSpacing: 4,
               children: [
-                Expanded(child: Text(field.label)),
+                Text(field.label),
                 Text(
                   _formatGenericValue(field.value, field.role),
                   style: _roleTextStyle(context, field.role),
@@ -631,42 +749,6 @@ class _GenericTableView extends StatelessWidget {
                   ),
               ],
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return LiquidGlassSurface(
-      margin: const EdgeInsets.only(bottom: 12),
-      borderRadius: 16,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          child,
         ],
       ),
     );
@@ -779,18 +861,10 @@ String _formatGenericValue(Object? value, GenericRole role) {
   }
   if ((role == GenericRole.datetime || role == GenericRole.deadline) &&
       value is DateTime) {
-    return _formatDateTime(value);
+    return formatLocalDateTime(value);
   }
   return value.toString();
 }
-
-String _formatDate(DateTime date) =>
-    '${date.year}-${_two(date.month)}-${_two(date.day)}';
-
-String _formatDateTime(DateTime date) =>
-    '${_formatDate(date)} ${_two(date.hour)}:${_two(date.minute)}';
-
-String _two(int value) => value.toString().padLeft(2, '0');
 
 String _weekText(int day) => switch (day) {
   1 => '一',
@@ -815,9 +889,10 @@ String _statusText(String status) => switch (status) {
   _ => '未知',
 };
 
-String _noticeCategoryText(String category) => switch (category) {
-  'academic' => '教学',
-  'admin' => '行政',
-  'event' => '活动',
-  _ => '其他',
-};
+String _noticeCategoryText(AppLocalizations l10n, String category) =>
+    switch (category) {
+      'academic' => l10n.homeNoticeCategoryAcademic,
+      'admin' => l10n.homeNoticeCategoryAdmin,
+      'event' => l10n.homeNoticeCategoryEvent,
+      _ => l10n.homeNoticeCategoryOther,
+    };
