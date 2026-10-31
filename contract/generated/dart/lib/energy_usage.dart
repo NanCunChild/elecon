@@ -23,6 +23,9 @@ class EnergyUsageItems {
     this.unit,
     this.from,
     this.to,
+    this.meterId,
+    this.previousReading,
+    this.readAt,
   });
 
   /// 用量记录所属校区；可选，缺失表示学校不提供。
@@ -43,4 +46,10 @@ class EnergyUsageItems {
   final String? from;
   /// 用量统计时段的结束时刻，RFC3339/UTC；可选，缺失表示学校不提供。
   final String? to;
+  /// 当前学校身份内的计量表标识；旧提供者可省略。
+  final String? meterId;
+  /// 上次累计读数，与 unit 同单位；未知时省略。
+  final num? previousReading;
+  /// 本次抄表时刻，RFC3339/UTC；未知时省略。
+  final String? readAt;
 }

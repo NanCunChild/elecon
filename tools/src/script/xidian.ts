@@ -18,7 +18,7 @@ const banner = `/*! Copyright 2023-2025 BenderBlog Rodriguez and contributors.
 export async function buildXidianPackages(): Promise<Map<string, string>> {
   const packages = new Map<string, string>();
   for (const [entry, manifestFile, name] of [
-    ["index.js", "manifest.json", "school-xidian-undergraduate.elecon.json"],
+    ["undergraduate.js", "manifest.json", "school-xidian-undergraduate.elecon.json"],
     ["postgraduate.js", "postgraduate.manifest.json", "school-xidian-postgraduate.elecon.json"],
   ]) {
     const manifest = JSON.parse(await readFile(join(root, manifestFile!), "utf8"));

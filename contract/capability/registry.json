@@ -43,7 +43,7 @@
     "attendance.summary": { "description": "获取考勤汇总", "emits": { "schema": "elecon.attendance.summary", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.attendance.summary", "schemaVersion": "1.0" } },
     "library.seats": { "description": "查询图书馆座位", "emits": { "schema": "elecon.library.seats", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.library.seats", "schemaVersion": "1.0" } },
     "library.booking": { "description": "获取图书馆预约", "emits": { "schema": "elecon.library.booking", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.library.booking", "schemaVersion": "1.0" } },
-    "energy.usage": { "description": "获取水电用量", "emits": { "schema": "elecon.energy.usage", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.energy.usage", "schemaVersion": "1.0" } },
+    "energy.usage": {"description": "获取水电用量", "emits": {"schema": "elecon.energy.usage", "schemaVersion": "1.1", "previousVersions": ["1.0"]}, "params": {"schema": "elecon.params.energy.usage", "schemaVersion": "1.1"}},
     "course.catalog": { "description": "检索课程目录", "emits": { "schema": "elecon.course.catalog", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.course.catalog", "schemaVersion": "1.0" } },
     "course.selection": { "description": "获取选课状态", "emits": { "schema": "elecon.course.selection", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.course.selection", "schemaVersion": "1.0" } },
     "gpa.summary": { "description": "获取绩点汇总", "emits": { "schema": "elecon.gpa.summary", "schemaVersion": "1.1" }, "params": { "schema": "elecon.params.gpa.summary", "schemaVersion": "1.0" } }
@@ -57,5 +57,9 @@
     ,"research.income": { "description": "获取科研收入", "emits": { "schema": "elecon.research.income", "schemaVersion": "1.0" } }
     ,"campus.network": { "description": "获取校园网络状态", "emits": { "schema": "elecon.campus.network", "schemaVersion": "1.0" } }
     ,"app.announcement": { "description": "获取应用公告", "emits": { "schema": "elecon.app.announcement", "schemaVersion": "1.0" } }
+    ,"energy.meters": {"description": "energy.meters（ADR-040）", "emits": {"schema": "elecon.energy.meters", "schemaVersion": "1.0"}}
+    ,"climate.devices": {"description": "climate.devices（ADR-040）", "emits": {"schema": "elecon.climate.devices", "schemaVersion": "1.0"}}
+    ,"climate.status": {"description": "climate.status（ADR-040）", "emits": {"schema": "elecon.climate.status", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.climate.status", "schemaVersion": "1.0"}}
+    ,"climate.command": {"description": "climate.command（ADR-040）", "emits": {"schema": "elecon.climate.command", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.climate.command", "schemaVersion": "1.0"}}
     }
   }

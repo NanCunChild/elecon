@@ -1,1 +1,24 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"elecon.params.energy.usage","type":"object","properties":{"from":{"type":"string","format":"date-time"},"to":{"type":"string","format":"date-time"}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.energy.usage",
+  "type": "object",
+  "properties": {
+    "meterId": {
+      "type": "string",
+      "description": "指定当前账户发现的表；多表提供者要求选择。",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "from": {
+      "type": "string",
+      "description": "查询起始时刻，RFC3339/UTC；缺失采用学校默认窗口。",
+      "format": "date-time"
+    },
+    "to": {
+      "type": "string",
+      "description": "查询结束时刻，RFC3339/UTC；缺失采用学校默认窗口。",
+      "format": "date-time"
+    }
+  },
+  "title": "水电用量查询参数"
+}

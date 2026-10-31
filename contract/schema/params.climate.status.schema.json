@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.climate.status",
+  "title": "空调状态参数",
+  "$comment": "ADR-040: accepted 2026-10-31; new trusted-script route.",
+  "type": "object",
+  "description": "空调状态参数",
+  "properties": {
+    "deviceId": {
+      "type": "string",
+      "description": "当前身份已经绑定的设备。",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  },
+  "required": [
+    "deviceId"
+  ]
+}

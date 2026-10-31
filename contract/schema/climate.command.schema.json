@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.climate.command",
+  "title": "空调命令结果",
+  "$comment": "ADR-040: accepted 2026-10-31; new trusted-script route.",
+  "type": "object",
+  "description": "空调命令结果",
+  "properties": {
+    "status": {
+      "type": "string",
+      "description": "accepted 不等于 applied；只有独立状态核验才确认 applied。",
+      "enum": [
+        "accepted",
+        "applied",
+        "rejected",
+        "unknown"
+      ]
+    }
+  },
+  "required": [
+    "status"
+  ]
+}

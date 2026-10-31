@@ -15,8 +15,8 @@ import addFormats from "ajv-formats";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const schemaDir = join(repoRoot, "contract/schema");
 const registryPath = join(repoRoot, "contract/capability/registry.json");
-const expectedSchemaCount = 48;
-const expectedRegistryReferenceCount = 46;
+const expectedSchemaCount = 54;
+const expectedRegistryReferenceCount = 52;
 
 interface InvalidGolden {
   behavior: string;
@@ -640,9 +640,115 @@ const cases: Record<string, SchemaGolden> = {
     valid: { term: "2025-2026-2", window: "all" },
     invalid: [{ behavior: "GPA window string type", value: { window: null } }],
   },
+
+  // ADR-040: meters retain distinct remaining/reading meanings; commands are finite.
+  "elecon.energy.meters": {
+    valid: {
+      items: [
+        {
+          meterId: "METER-SYNTHETIC",
+          type: "electricity",
+          unit: "kWh",
+          remaining: 12.5,
+          lastReadDate: "2026-10-31",
+        },
+      ],
+    },
+    invalid: [
+      {
+        behavior: "remaining is numeric, never a money/string substitute",
+        value: { items: [{ meterId: "M", type: "electricity", unit: "kWh", remaining: "12.5" }] },
+      },
+      {
+        behavior: "calendar reading day is a real date",
+        value: { items: [{ meterId: "M", type: "water", unit: "m³", lastReadDate: "2026-02-30" }] },
+      },
+    ],
+  },
+  "elecon.climate.devices": {
+    valid: {
+      items: [
+        {
+          deviceId: "SYNTHETIC-DEVICE",
+          label: "Synthetic room",
+          minTemperature: 18,
+          maxTemperature: 32,
+          modes: ["cool"],
+          fanSpeeds: ["auto"],
+          commands: ["power", "temperature"],
+          modeDefaults: [
+            {
+              mode: "cool",
+              targetTemperature: 26,
+              fanSpeed: "auto",
+              turbo: false,
+              auxiliaryHeat: false,
+              indoorClean: false,
+              outdoorClean: false,
+            },
+          ],
+          powerOffClearsAuxiliaryHeat: true,
+          powerOffClearsCleaning: true,
+          fanSpeedClearsTurbo: true,
+          turboUsesAutoFan: true,
+        },
+      ],
+    },
+    invalid: [
+      {
+        behavior: "empty device identifier cannot select hardware",
+        value: { items: [{ deviceId: "", label: "Synthetic room" }] },
+      },
+    ],
+  },
+  "elecon.climate.status": {
+    valid: {
+      deviceId: "SYNTHETIC-DEVICE",
+      power: false,
+      mode: "cool",
+      targetTemperature: 26,
+      observedAt: "2026-10-31T00:00:00Z",
+    },
+    invalid: [
+      {
+        behavior: "unknown state is omitted, not an invalid enum",
+        value: { deviceId: "SYNTHETIC-DEVICE", mode: "arbitrary" },
+      },
+      { behavior: "power is boolean", value: { deviceId: "SYNTHETIC-DEVICE", power: 1 } },
+    ],
+  },
+  "elecon.climate.command": {
+    valid: { status: "unknown" },
+    invalid: [{ behavior: "HTTP success is not a result status", value: { status: "success" } }],
+  },
+  "elecon.params.climate.status": {
+    valid: { deviceId: "SYNTHETIC-DEVICE" },
+    invalid: [{ behavior: "a device must be selected", value: {} }],
+  },
+  "elecon.params.climate.command": {
+    valid: { deviceId: "SYNTHETIC-DEVICE", command: "temperature", settings: { targetTemperature: 26 } },
+    invalid: [
+      {
+        behavior: "raw JSON is not a command enum",
+        value: { deviceId: "SYNTHETIC-DEVICE", command: "raw", settings: {} },
+      },
+      {
+        behavior: "temperature has a finite upper bound",
+        value: { deviceId: "SYNTHETIC-DEVICE", command: "temperature", settings: { targetTemperature: 33 } },
+      },
+    ],
+  },
 };
 
 async function main(): Promise<void> {
+  // ADR-040: isolate the identifier constraint from all other required fields.
+  const blankDevice = structuredClone(cases["elecon.climate.devices"]!.valid) as {
+    items: Array<{ deviceId: string }>;
+  };
+  blankDevice.items[0]!.deviceId = "";
+  cases["elecon.climate.devices"]!.invalid = [
+    { behavior: "empty device identifier cannot select hardware", value: blankDevice },
+  ];
   const registry = readJson<{ capabilities: Record<string, RegistryEntry> }>(registryPath);
   const references = Object.values(registry.capabilities).flatMap((entry) => [
     entry.emits.schema,

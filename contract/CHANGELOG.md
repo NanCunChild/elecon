@@ -1,5 +1,9 @@
 # `contract/` 变更流水
 
+- **2026-10-31 · ADR-043（所有者确认落地）**：新增 SDK 6 可选 `cards` 静态展示建议，有限业务类型与 `defaultVariant`，按类型验证能力依赖、重复类型和已实现的呈现档位；用户布局优先，宿主拥有渲染。继承 SDK 5 action 与 SDK 4 home，不增加权限、业务输出或远程布局代码，旧 SDK 1–5 保持原行为；实际学校包不随之自动升级。
+
+- **2026-10-31 · ADR-040（所有者已确认规格）**：新增 energy.meters、climate.devices/status/command；energy.usage 1.1 增加表标识、前次读数与抄表时刻，保留 1.0 输出校验；SDK 5 新增独立 action 声明。实现人工安全审阅与真机验收另行记录。
+
 > **这是什么**：`contract/`（schema、`capability/registry.json`、`manifest.schema.json`）每一次新增或变更的 dated 记录。
 > **权威关系**：**决策**的权威在 ADR 正文（治理规则见 [`adr_001_contract.md`](../docs/adr/adr_001_contract.md) §8）；**落地与安全签收**的权威在 [`docs/adr/README.md`](../docs/adr/README.md) 索引表。本文件只记「契约事实上被改成了什么、依据哪条 ADR」。
 > **红线 #6 如何不被弱化**：每条记录**必须引用一个 ADR 编号**——记录的存在即证明该变更「先有 ADR」。无 ADR 引用的条目视为违规。

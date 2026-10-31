@@ -45,7 +45,7 @@ function sample(): Sample {
     source: "throw new Error('schema must not execute source');",
   };
 }
-for (const sdkVersion of [1, 2, 3, 4]) {
+for (const sdkVersion of [1, 2, 3, 4, 5, 6]) {
   const p = sample();
   p.manifest.sdkVersion = sdkVersion;
   assert.equal(validate(p), true, JSON.stringify(validate.errors));
@@ -56,7 +56,7 @@ for (const mutate of [
     p.format = "elecon-script/2";
   },
   (p: Sample) => {
-    p.manifest.sdkVersion = 5;
+    p.manifest.sdkVersion = 7;
   },
   (p: Sample) => {
     p.manifest.version = "01.0.0";
@@ -95,3 +95,18 @@ for (const mutate of [
   rejected++;
 }
 console.log(`script-package schema: valid source package + ${rejected} rejections passed`);
+
+// ADR-040: SDK5 action shape is explicit; unknown SDKs remain rejected above.
+const actionPackage = sample();
+actionPackage.manifest.sdkVersion = 5;
+actionPackage.manifest.capabilities[0] = {
+  id: "climate.command",
+  schema: "elecon.climate.command",
+  schemaVersion: "1.0",
+};
+actionPackage.manifest.actions = [
+  { capability: "climate.command", method: "POST", url: "https://school.example/command" },
+];
+assert.equal(validate(actionPackage), true, JSON.stringify(validate.errors));
+actionPackage.manifest.sdkVersion = 4;
+assert.equal(validate(actionPackage), false, "older SDK must reject action declarations");

@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1/2/3/4 (ADR-034/035/037/038/039). Values include actual secrets.
+/** Trusted school script SDK 1/2/3/4/5/6 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -122,3 +122,30 @@ export interface ScriptHomeEntry {
   /** Defaults false. Background runs cannot present browser/input/storage UI. */
   preload?: boolean;
 }
+
+/** ADR-040 §4 / ADR-043 §3: SDK5+; no action grant is exposed to JavaScript.
+ * Known mutation capabilities cannot run through ordinary/background entries.
+ * The host admits one exact POST after fixed native confirmation; no redirects.
+ */
+export interface ScriptActionDeclaration {
+  capability: "climate.command";
+  method: "POST";
+  /** Exact HTTPS URL without query, fragment or userinfo; origin must be declared. */
+  url: string;
+}
+
+/** ADR-043 §3: optional SDK6 manifest.cards entry (at most ten distinct types).
+ * Suggestions never override saved user layout. The host owns geometry,
+ * rendering and stable card identity; this is not a runtime JS layout API.
+ * Each type requires its corresponding standard capabilities. This does not
+ * change manifest.home cache/preload policy or grant any additional access.
+ */
+export type ScriptCardEntry =
+  | {
+      type: "notice" | "schedule" | "grades" | "library";
+      defaultVariant: "compact" | "regular" | "expanded";
+    }
+  | {
+      type: "card" | "exam" | "classroom" | "energy" | "climate" | "generic";
+      defaultVariant: "regular";
+    };

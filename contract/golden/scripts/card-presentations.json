@@ -1,0 +1,666 @@
+{
+  "description": "ADR-043 shared Dart/parser, TypeScript/package and JSON Schema cases; synthetic only. Patch each manifest over baseManifest.",
+  "baseManifest": {
+    "sdkVersion": 6,
+    "id": "school.fixture",
+    "version": "1.0.0",
+    "schoolId": "fixture",
+    "name": "Synthetic card fixture",
+    "network": {
+      "origins": [
+        "https://school.example"
+      ]
+    },
+    "browser": false,
+    "capabilities": [
+      {
+        "id": "notice.list",
+        "schema": "elecon.notice.list",
+        "schemaVersion": "1.1"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "notice_compact",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "notice.list",
+            "schema": "elecon.notice.list",
+            "schemaVersion": "1.1"
+          }
+        ],
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "compact"
+          }
+        ]
+      }
+    },
+    {
+      "name": "notice_regular",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "notice.list",
+            "schema": "elecon.notice.list",
+            "schemaVersion": "1.1"
+          }
+        ],
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "notice_expanded",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "notice.list",
+            "schema": "elecon.notice.list",
+            "schemaVersion": "1.1"
+          }
+        ],
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "expanded"
+          }
+        ]
+      }
+    },
+    {
+      "name": "schedule_compact",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "schedule.week",
+            "schema": "elecon.schedule.week",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "schedule",
+            "defaultVariant": "compact"
+          }
+        ]
+      }
+    },
+    {
+      "name": "schedule_regular",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "schedule.week",
+            "schema": "elecon.schedule.week",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "schedule",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "schedule_expanded",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "schedule.week",
+            "schema": "elecon.schedule.week",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "schedule",
+            "defaultVariant": "expanded"
+          }
+        ]
+      }
+    },
+    {
+      "name": "grades_compact",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "grades.list",
+            "schema": "elecon.grades.list",
+            "schemaVersion": "1.1"
+          }
+        ],
+        "cards": [
+          {
+            "type": "grades",
+            "defaultVariant": "compact"
+          }
+        ]
+      }
+    },
+    {
+      "name": "grades_regular",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "grades.list",
+            "schema": "elecon.grades.list",
+            "schemaVersion": "1.1"
+          }
+        ],
+        "cards": [
+          {
+            "type": "grades",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "grades_expanded",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "grades.list",
+            "schema": "elecon.grades.list",
+            "schemaVersion": "1.1"
+          }
+        ],
+        "cards": [
+          {
+            "type": "grades",
+            "defaultVariant": "expanded"
+          }
+        ]
+      }
+    },
+    {
+      "name": "card_regular",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "card.balance",
+            "schema": "elecon.card.balance",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "card",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "library_compact",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "library.loans",
+            "schema": "elecon.library.loans",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "library",
+            "defaultVariant": "compact"
+          }
+        ]
+      }
+    },
+    {
+      "name": "library_regular",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "library.loans",
+            "schema": "elecon.library.loans",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "library",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "library_expanded",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "library.loans",
+            "schema": "elecon.library.loans",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "library",
+            "defaultVariant": "expanded"
+          }
+        ]
+      }
+    },
+    {
+      "name": "exam_regular",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "exam.list",
+            "schema": "elecon.exam.list",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "exam",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "classroom_regular",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "classroom.buildings",
+            "schema": "elecon.classroom.buildings",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "classroom.available",
+            "schema": "elecon.classroom.available",
+            "schemaVersion": "1.1"
+          }
+        ],
+        "cards": [
+          {
+            "type": "classroom",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "energy_regular",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "energy.meters",
+            "schema": "elecon.energy.meters",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "energy.usage",
+            "schema": "elecon.energy.usage",
+            "schemaVersion": "1.1"
+          }
+        ],
+        "cards": [
+          {
+            "type": "energy",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "climate_regular",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "climate.devices",
+            "schema": "elecon.climate.devices",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "climate.status",
+            "schema": "elecon.climate.status",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "climate",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "generic_regular",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "generic",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "no_suggestions",
+      "valid": true,
+      "manifest": {}
+    },
+    {
+      "name": "empty_suggestions",
+      "valid": true,
+      "manifest": {
+        "cards": []
+      }
+    },
+    {
+      "name": "old_sdk_1_rejects_even_empty_cards",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 1,
+        "cards": []
+      }
+    },
+    {
+      "name": "old_sdk_2_rejects_even_empty_cards",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 2,
+        "cards": []
+      }
+    },
+    {
+      "name": "old_sdk_3_rejects_even_empty_cards",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 3,
+        "cards": []
+      }
+    },
+    {
+      "name": "old_sdk_4_rejects_even_empty_cards",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 4,
+        "cards": []
+      }
+    },
+    {
+      "name": "old_sdk_5_rejects_even_empty_cards",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 5,
+        "cards": []
+      }
+    },
+    {
+      "name": "cards_null",
+      "valid": false,
+      "manifest": {
+        "cards": null
+      }
+    },
+    {
+      "name": "cards_object",
+      "valid": false,
+      "manifest": {
+        "cards": {}
+      }
+    },
+    {
+      "name": "cards_string",
+      "valid": false,
+      "manifest": {
+        "cards": "notice"
+      }
+    },
+    {
+      "name": "missing_variant",
+      "valid": false,
+      "manifest": {
+        "cards": [
+          {
+            "type": "notice"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown_variant",
+      "valid": false,
+      "manifest": {
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "giant"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown_type",
+      "valid": false,
+      "manifest": {
+        "cards": [
+          {
+            "type": "forum",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "arbitrary_layout",
+      "valid": false,
+      "manifest": {
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "regular",
+            "width": 400
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate_type_different_variants",
+      "valid": false,
+      "manifest": {
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          },
+          {
+            "type": "notice",
+            "defaultVariant": "compact"
+          }
+        ]
+      }
+    },
+    {
+      "name": "undeclared_capability",
+      "valid": false,
+      "manifest": {
+        "cards": [
+          {
+            "type": "schedule",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing_companion_capability",
+      "valid": false,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "classroom.available",
+            "schema": "elecon.classroom.available",
+            "schemaVersion": "1.1"
+          }
+        ],
+        "cards": [
+          {
+            "type": "classroom",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unsupported_size_for_type",
+      "valid": false,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "card.balance",
+            "schema": "elecon.card.balance",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "card",
+            "defaultVariant": "compact"
+          }
+        ]
+      }
+    },
+    {
+      "name": "too_many_suggestions",
+      "valid": false,
+      "manifest": {
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          },
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          },
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          },
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          },
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          },
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          },
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          },
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          },
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          },
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          },
+          {
+            "type": "notice",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sdk6_inherits_home_and_action",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "notice.list",
+            "schema": "elecon.notice.list",
+            "schemaVersion": "1.1"
+          },
+          {
+            "id": "climate.command",
+            "schema": "elecon.climate.command",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "expanded"
+          }
+        ],
+        "home": [
+          {
+            "capability": "notice.list",
+            "ttlSeconds": 60,
+            "preload": true
+          }
+        ],
+        "actions": [
+          {
+            "capability": "climate.command",
+            "method": "POST",
+            "url": "https://school.example/command"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown_sdk",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 7
+      }
+    }
+  ]
+}

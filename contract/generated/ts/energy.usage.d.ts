@@ -25,4 +25,10 @@ export interface EnergyUsageItems {
   from?: string;
   /** 用量统计时段的结束时刻，RFC3339/UTC；可选，缺失表示学校不提供。 */
   to?: string;
+  /** 当前学校身份内的计量表标识；旧提供者可省略。 */
+  meterId?: string;
+  /** 上次累计读数，与 unit 同单位；未知时省略。 */
+  previousReading?: number;
+  /** 本次抄表时刻，RFC3339/UTC；未知时省略。 */
+  readAt?: string;
 }

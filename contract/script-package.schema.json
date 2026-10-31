@@ -39,7 +39,9 @@
             1,
             2,
             3,
-            4
+            4,
+            5,
+            6
           ],
           "type": "integer"
         },
@@ -440,7 +442,10 @@
                     "const": "elecon.energy.usage"
                   },
                   "schemaVersion": {
-                    "const": "1.0"
+                    "enum": [
+                      "1.0",
+                      "1.1"
+                    ]
                   }
                 }
               },
@@ -703,6 +708,86 @@
                     "const": "1.0"
                   }
                 }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "energy.meters"
+                  },
+                  "schema": {
+                    "const": "elecon.energy.meters"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "climate.devices"
+                  },
+                  "schema": {
+                    "const": "elecon.climate.devices"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "climate.status"
+                  },
+                  "schema": {
+                    "const": "elecon.climate.status"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "climate.command"
+                  },
+                  "schema": {
+                    "const": "elecon.climate.command"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
               }
             ]
           },
@@ -737,6 +822,61 @@
               }
             }
           }
+        },
+        "actions": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "capability",
+              "method",
+              "url"
+            ],
+            "properties": {
+              "capability": {
+                "const": "climate.command"
+              },
+              "method": {
+                "const": "POST"
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              }
+            }
+          }
+        },
+        "cards": {
+          "description": "SDK 6 only: optional host-owned card suggestions. User preferences take precedence; no executable layout or new data access.",
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "defaultVariant"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["notice", "schedule", "grades", "card", "library", "exam", "classroom", "energy", "climate", "generic"],
+                "description": "Stable host business-card type; the package must provide all its required capabilities."
+              },
+              "defaultVariant": {
+                "type": "string",
+                "enum": ["compact", "regular", "expanded"],
+                "description": "Suggested host presentation; only notice, schedule, grades and library support compact/expanded in this version."
+              }
+            },
+            "allOf": [
+              {
+                "if": {"properties": {"type": {"enum": ["notice", "schedule", "grades", "library"]}}},
+                "else": {"properties": {"defaultVariant": {"const": "regular"}}}
+              }
+            ]
+          }
         }
       },
       "allOf": [
@@ -752,7 +892,282 @@
           "then": {
             "properties": {
               "sdkVersion": {
-                "const": 4
+                "enum": [
+                  4,
+                  5,
+                  6
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "actions"
+            ],
+            "properties": {
+              "actions": {}
+            }
+          },
+          "then": {
+            "properties": {
+              "sdkVersion": {
+                "enum": [5, 6]
+              }
+            }
+          }
+        },
+        {"if": {"required": ["cards"], "properties": {"cards": {}}}, "then": {"properties": {"sdkVersion": {"const": 6}}}},
+        {
+          "if": {
+            "required": ["cards"],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "notice"}}}
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "notice"}}},
+                "maxContains": 1
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "notice.list"}}}}]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["cards"],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "schedule"}}}
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "schedule"}}},
+                "maxContains": 1
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "schedule.week"}}}}]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["cards"],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "grades"}}}
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "grades"}}},
+                "maxContains": 1
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "grades.list"}}}}]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["cards"],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "card"}}}
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "card"}}},
+                "maxContains": 1
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "card.balance"}}}}]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["cards"],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "library"}}}
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "library"}}},
+                "maxContains": 1
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "library.loans"}}}}]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["cards"],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "exam"}}}
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "exam"}}},
+                "maxContains": 1
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "exam.list"}}}}]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["cards"],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "classroom"}}}
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "classroom"}}},
+                "maxContains": 1
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [
+                  {
+                    "contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "classroom.buildings"}}}
+                  },
+                  {
+                    "contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "classroom.available"}}}
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["cards"],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "energy"}}}
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "energy"}}},
+                "maxContains": 1
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [
+                  {"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "energy.meters"}}}},
+                  {"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "energy.usage"}}}}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["cards"],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "climate"}}}
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "climate"}}},
+                "maxContains": 1
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [
+                  {"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "climate.devices"}}}},
+                  {"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "climate.status"}}}}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["cards"],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "generic"}}}
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "generic"}}},
+                "maxContains": 1
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "generic.section"}}}}]
               }
             }
           }

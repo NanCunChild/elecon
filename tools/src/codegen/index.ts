@@ -386,7 +386,10 @@ function dartConst(value: unknown): string {
  */
 export function generateOutputValidatorRegistryDart(): string {
   const reg = JSON.parse(readFileSync(registryPath, "utf-8")) as {
-    capabilities: Record<string, { emits?: { schema?: unknown; schemaVersion?: unknown } }>;
+    capabilities: Record<
+      string,
+      { emits?: { schema?: unknown; schemaVersion?: unknown; previousVersions?: string[] } }
+    >;
   };
   const schemas = new Map<string, JsonSchema>();
   for (const file of readdirSync(schemaDir).filter((f) => f.endsWith(".schema.json"))) {
@@ -413,6 +416,17 @@ export function generateOutputValidatorRegistryDart(): string {
       throw new Error(`${capability}: emits key ${schemaId}@${version} 对应多个 schema`);
     }
     validators.set(key, descriptor);
+    // ADR-040 §2: retain the exact old descriptor, not a newer superset.
+    for (const old of entry.emits?.previousVersions ?? []) {
+      if (!/^\d+\.\d+$/.test(old) || !/^[a-z][a-z0-9.]*$/.test(capability)) {
+        throw new Error("invalid historical schema reference");
+      }
+      const historical = JSON.parse(
+        readFileSync(join(repoRoot, "contract", "schema-versions", capability, `${old}.schema.json`), "utf8"),
+      ) as JsonSchema;
+      if (historical.$id !== schemaId) throw new Error("historical schema identity mismatch");
+      validators.set(`${schemaId}\0${old}`, validatorDescriptor(historical, historical));
+    }
   }
   if (validators.size === 0) throw new Error("registry.json 无 emits——拒绝生成空 validator registry");
 

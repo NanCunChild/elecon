@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.energy.meters",
+  "title": "水电表列表",
+  "$comment": "ADR-040: accepted 2026-10-31; new trusted-script route.",
+  "type": "object",
+  "description": "水电表列表",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "当前账户可查询的计量表；空数组表示已验证无表具。",
+      "items": {
+        "type": "object",
+        "description": "一只学校计量表。",
+        "properties": {
+          "meterId": {
+            "type": "string",
+            "description": "当前学校身份内的表标识。",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "type": {
+            "type": "string",
+            "description": "表类型。",
+            "enum": [
+              "water",
+              "electricity",
+              "unknown"
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "description": "计量单位，例如 kWh 或 m³。",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "label": {
+            "type": "string",
+            "description": "学校给出的表名；缺失不猜测。"
+          },
+          "campus": {
+            "type": "string",
+            "description": "校区；学校未提供时省略。"
+          },
+          "dormitory": {
+            "type": "string",
+            "description": "宿舍楼；学校未提供时省略。"
+          },
+          "room": {
+            "type": "string",
+            "description": "房间；学校未提供时省略。"
+          },
+          "remaining": {
+            "type": "number",
+            "description": "剩余量，与 unit 同单位；不是累计读数或金额，缺失时省略。"
+          },
+          "lastReadDate": {
+            "type": "string",
+            "description": "学校最后抄表日，无时区日历日。",
+            "format": "date"
+          }
+        },
+        "required": [
+          "meterId",
+          "type",
+          "unit"
+        ]
+      },
+      "maxItems": 100
+    }
+  },
+  "required": [
+    "items"
+  ]
+}
