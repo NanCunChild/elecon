@@ -1,0 +1,342 @@
+[
+  {
+    "original": "docs/adr/adr_004_ui_sdui.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_004_ui_sdui.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_005_runtime.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_005_runtime.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_006_school_auth.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_006_school_auth.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_007_public_deploy.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_007_public_deploy.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_010_ios_appstore.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_010_ios_appstore.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_011_html_parser.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_011_html_parser.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_014_client_host_fn.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_014_client_host_fn.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_015_manifest_login.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_015_manifest_login.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_016_complex_login.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_016_complex_login.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_017_sso_master_credential.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_017_sso_master_credential.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_020_url_query_credential.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_020_url_query_credential.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_027_url_session_param_stripping.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_027_url_session_param_stripping.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_028_declarative_crypto_ops.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_028_declarative_crypto_ops.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_029_named_and_body_credentials.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_029_named_and_body_credentials.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_030_actuator_capabilities.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_030_actuator_capabilities.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_031_dataflow_seed.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_031_dataflow_seed.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_001_contract.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_001_contract.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_003_transport.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_003_transport.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_019_classroom_available.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_019_classroom_available.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_024_build_profile_trust.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_024_build_profile_trust.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_025_item_link.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_025_item_link.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_032_app_tunnel_embedding.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_032_app_tunnel_embedding.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_000_abstract.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_000_abstract.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_002_trust_model.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_002_trust_model.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_008_client_runtime.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_008_client_runtime.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_009_fetch_credential.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_009_fetch_credential.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_012_credential_store.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_012_credential_store.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_013_manifest_credentials.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_013_manifest_credentials.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_018_adapter_distribution.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_018_adapter_distribution.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_022_request_graph.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_022_request_graph.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_023_declarative_dataflow.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_023_declarative_dataflow.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_026_response_masker.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_026_response_masker.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/adr/adr_033_production_sideload.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/adr_033_production_sideload.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/adapter_bundle_primer.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/adapter_bundle_primer.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/adapter_release.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/adapter_release.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/adr_024_landing.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/adr_024_landing.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/b4_cookie_jar_plan.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/b4_cookie_jar_plan.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/b5_harvest_bridge_plan.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/b5_harvest_bridge_plan.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/b6_imperative_runtime_plan.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/b6_imperative_runtime_plan.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/bundle_digest_v2_signoff_checklist.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/bundle_digest_v2_signoff_checklist.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/declarative_dataflow_migration.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/declarative_dataflow_migration.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/declarative_dataflow_ops.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/declarative_dataflow_ops.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/declarative_dataflow_security_checklist.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/declarative_dataflow_security_checklist.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/redirect_fail_closed_signoff_checklist.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/redirect_fail_closed_signoff_checklist.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/requestgraph_migration.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/requestgraph_migration.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/response_masker_json_locator.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/response_masker_json_locator.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/response_masker_plan.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/response_masker_plan.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/response_masker_signoff_checklist.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/response_masker_signoff_checklist.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/signing_ceremony.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/signing_ceremony.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/signing_surface_review.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/signing_surface_review.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/track_b_imperative_runtime_plan.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/track_b_imperative_runtime_plan.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/webview_login_fetch_feasibility.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/webview_login_fetch_feasibility.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/reference/xidian_mint_closed_loop_plan.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/xidian_mint_closed_loop_plan.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/planning/2026_08_review_remediation.md",
+    "archived": "docs/archived/2026-10-31/docs/planning/2026_08_review_remediation.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "docs/planning/2026_09_next_release_sync.md",
+    "archived": "docs/archived/2026-10-31/docs/planning/2026_09_next_release_sync.md",
+    "treatment": "redirect"
+  },
+  {
+    "original": "AGENTS.md",
+    "archived": "docs/archived/2026-10-31/AGENTS.pre-2026-10-31.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": "README.md",
+    "archived": "docs/archived/2026-10-31/README.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": "docs/adr/README.md",
+    "archived": "docs/archived/2026-10-31/docs/adr/README.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": "docs/architecture.md",
+    "archived": "docs/archived/2026-10-31/docs/architecture.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": "docs/glossary.md",
+    "archived": "docs/archived/2026-10-31/docs/glossary.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": "docs/reference/README.md",
+    "archived": "docs/archived/2026-10-31/docs/reference/README.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": ".github/pull_request_template.md",
+    "archived": "docs/archived/2026-10-31/.github/pull_request_template.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": "docs/rules/schema_style.md",
+    "archived": "docs/archived/2026-10-31/docs/rules/schema_style.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": "docs/rules/ai_coding.md",
+    "archived": "docs/archived/2026-10-31/docs/rules/ai_coding.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": "docs/rules/feature_workflow.md",
+    "archived": "docs/archived/2026-10-31/docs/rules/feature_workflow.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": "docs/rules/git.md",
+    "archived": "docs/archived/2026-10-31/docs/rules/git.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": "docs/rules/testing.md",
+    "archived": "docs/archived/2026-10-31/docs/rules/testing.md",
+    "treatment": "rewritten"
+  },
+  {
+    "original": "docs/rules/ui_ai_generation.md",
+    "archived": "docs/archived/2026-10-31/docs/rules/ui_ai_generation.md",
+    "treatment": "rewritten"
+  }
+]

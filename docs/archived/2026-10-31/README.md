@@ -1,0 +1,141 @@
+> **已废弃 / Archived（2026-10-31）**：原路径 `README.md`。不再作为新开发总则；正文的历史决定、签收和未完成记录原样保留。当前基线见[架构入口](../../architecture.md)；未迁移 V1 的维护边界见[兼容说明](../../reference/legacy_compatibility.md)。本文不产生新的开发指令。
+
+# Elecon · 校园信息聚合平台
+
+一个面向学生的校园信息聚合应用。它把成绩、课表、一卡通、图书馆等分散在不同学校后端的信息，归一化后聚合到一处。架构的第一目标不是功能最大化，而是**在最少的人力下，对学校接口的频繁变动与多平台差异保持韧性**。
+
+
+**2026-10-29 路线更新（Alpha 0.2）**：客户端已增加受信学校脚本：用户可从选校页或设置页导入源码包，确认后让普通异步 JS 直接读写当前学校凭据、使用域名/IP 白名单网络与可见浏览器 DOM API。安装和更新无需官方签名仪式，官方旧 bundle 路径继续原有验签。新能力优先从已启用脚本取数，通知失败不阻断其它卡片。
+
+使用、源码模板、打包命令与平台边界见 [受信学校脚本](../../reference/trusted_scripts.md)，决策见 [ADR-034](../../adr/adr_034_trusted_school_scripts.md)，实施记录见 [阶段计划](../../planning/trusted_scripts.md)。下方旧 Broker/双端 runtime 描述只对应尚未迁移的 V1 路径。
+
+新模板使用 [SDK 2 的凭据描述符](../../adr/adr_035_script_credential_identity.md)：默认按学校、脚本命名空间和键分别保存，跨脚本共享需显式寻址。SDK 1 预览包保留兼容；旧 Masker 仍在 V1 执行链内，尚未全仓删除。
+
+**2026-10-30 西电适配**：已对照 Traintime PDA 更新 SDK 2 数据包与独立官方页面登录包，涵盖本科/研究生、课表变更、校园卡日期流水和新 OPAC 借阅。源码、构建与导入步骤见 [西电脚本](../../../school-scripts/xidian/README.md)，额外能力及契约缺口见[对照评估](../../reference/xidian_script_update.md)。本地客户端基线 0.2.1 包含真实 QuickJS 长拼接字符串桥接修复；学校账号与原生设备仍待验收。
+
+---
+
+## 它解决什么
+
+- **学校接口频繁变动** → 把对接逻辑沉成可热替换的 adapter，接口一改推新 adapter 即可，**无需发版**。
+- **维护人力不足 / 社区难参与** → 贡献者只需写一个 JS 文件（adapter），客户端与服务端共用，门槛最低。
+- **合规与安全** → 私密数据永远走客户端直连或校内授权环境，**公网组件不持有任何凭证**。
+- **多平台割裂（iOS / Android / HarmonyOS）** → 保留 Flutter UI，传输/数据/UI 三层各自可替换。
+
+---
+
+## 架构速览
+
+```
+        UI 层（数据驱动 / SDUI，只认"标准 schema"）
+                       │
+        可信核心 Core —— 凭证保管 · Capability Broker · 插件信任 · 版本/时效
+            │                                   │
+   数据 adapter（QuickJS 脚本，热替换）    传输底座（原生，编译进应用）
+            │                                   │
+   ┌────────┴─────────┐                ┌────────┴─────────┐
+   │ 校内授权中继 campus │                │  公网哑服务 public │
+   │ 堡垒机后·代取私密   │                │ 无状态·发adapter+  │
+   │                  │                │ 缓存公开数据·零凭证 │
+   └──────────────────┘                └──────────────────┘
+```
+
+**两条要记住的原则：**
+
+1. **公网服务端是"哑"的**——只发 adapter、只缓存公开数据，永不持凭证。它同时解决了成本、合规、安全。
+2. **一份 adapter，两端运行**——客户端 QuickJS 与服务端 QuickJS-wasm 跑同一份脚本；两种绑定、版本和编译配置可能不同，以共享 golden/canary 约束项目实际使用的语义。
+
+完整路线与取舍见 [`docs/adr/adr_000_abstract.md`](docs/adr/adr_000_abstract.md)；目录与职责见下方[「仓库结构」](#仓库结构)与各子目录的 `README.md`，开发总则见 [`AGENTS.md`](AGENTS.pre-2026-10-31.md)。
+
+---
+
+## 仓库结构
+
+```
+contract/   跨端共享契约：标准 schema + capability manifest + adapter SDK + golden 向量（最重要的一层）
+adapters/   仅核心自带 adapter：_stdlib（vendored 解析器）/ _template / _canary / school-helloworld。
+            真实学校 adapter 已迁出到独立公开仓 elecon-adapters，构建期按 adapters.pin 钉死的 ref
+            拉取（scripts/fetch-adapters.sh，ADR-018 §2.11.1，取代旧 git 子模块）。
+adapters_tests/  各校抓包探针与脱敏夹具（红线 #8：不含真实学生数据/凭证）。
+school-scripts/  新 SDK 2 学校源码与合成协议回归；独立于 V1 official 发布链，许可证按子目录声明。
+client/     Flutter 客户端（iOS / Android / HarmonyOS / 桌面）
+server/     Node/TS 服务端：public（公网哑服务）+ campus（校内授权中继，当前 501 stub），adapter 用 QuickJS-wasm 执行
+tools/      Node/TS 工具链：签名（PKCS#11 / YubiKey）/ 吊销 / adapter 校验 / 契约一致性 / codegen
+client/assets/bootstrap/  唯一入库的签名分发产物（catalog + revocation + bundles）；端点 D 的 dist 树由它导出，不入库
+docs/       ADR、规则细则（docs/rules/）与工程结构说明
+```
+
+---
+
+## 构建与运行
+
+### 客户端（Flutter）
+
+```bash
+cd client
+flutter pub get
+flutter run                 # Android / 非 Apple 桌面
+bash tool/with_apple_pubspec.sh flutter run --target lib/main_apple.dart  # iOS / macOS
+```
+
+**HarmonyOS：** 用 FVM 管理多版本 SDK，平时用官方版保持主线纯净，仅在打包鸿蒙时切到 OHOS 分支 SDK；鸿蒙特有依赖只写入 `client/pubspec.ohos.yaml`，由 `tools/ohos/build-hap.sh` 临时启用。详见 `client/ohos/README`。
+
+### 服务端（Node / TypeScript）
+
+```bash
+cd server
+npm install
+npm run dev:public          # 公网哑服务：分发 adapter + 缓存公开数据
+npm run dev:campus          # 校内授权中继：堡垒机后部署
+npm run typecheck           # TypeScript 类型检查
+npm run smoke:broker        # Broker B1 注入策略 smoke（12 例 golden）
+npm run smoke:header        # B2 头净化 smoke（12 例）
+npm run smoke:redirect      # B3 重定向 smoke（14 例 + driver 4）
+npm run smoke:cookie        # B4 cookie jar smoke（22 例 + 有态 6）
+npm run smoke:harvest       # B5 收割桥接 smoke（golden 18 例：cookie 11 + query 7 + 集成 5）
+npm run smoke:credential    # 凭证存储 smoke
+npm run smoke:all           # 全量 golden 冒烟（CI 用；目录发现，新增即跑）
+```
+
+> adapter 在服务端用 **QuickJS-wasm**（`quickjs-emscripten`）执行；客户端使用另一套 QuickJS 绑定，跨端一致性由共享 golden/canary 验证。**不使用** Node 的 `vm` 模块（`vm` 不是安全边界）。运行时选型见 [`docs/adr/adr_005_runtime.md`](docs/adr/adr_005_runtime.md)。
+
+---
+
+## 贡献学校脚本与旧 adapter
+
+> 新接入优先使用 `adapters/_template/trusted/` 和上方受信脚本文档。以下流程只对应旧 official bundle。
+
+> 真实学校 adapter 现落在独立公开仓 **elecon-adapters**（本仓按 `adapters.pin` 拉取，见[「仓库结构」](#仓库结构)）。下列以模板 `adapters/_template/` 为例说明形态，实际提交面向 elecon-adapters。
+
+1. 按信任档复制 `adapters/_template/imperative/` 或 `adapters/_template/declarative/` 为 `school-<你的学校id>/`。
+2. 在 `manifest.json` 声明能力与**域名白名单**（核心据此注入凭证，越界请求不带凭证）。
+3. 在 `index.js` 实现归一化：把该校接口返回的数据转成 `contract/schema/` 定义的标准结构。adapter 的**能力/信任面越薄越好**，但归一化、脏数据清洗与校本派生应尽量完整；凭证、网络授权、渲染和跨源编排仍留在核心。
+4. 在 `fixtures/` 放抓包样本，写归一化回归测试。
+5. 在该 adapter 的 `README.md` 记录：该校属哪一档（UA 门禁 / CAS 逃生口 / openid 唯一身份 / 微信小程序）及已知坑。
+
+**信任级别：** DEPLOY 只运行通过 official 验签与吊销门禁的 adapter；ADR-033（已接受，尚未落地）在设置中保留本地 official bundle 导入，但它只改变字节来源，不产生低信任运行档。DEV-Sideload 可本地加载未签名 adapter，declarative / imperative 与当前 DEV 宿主能力全部可调试；DEV 可使用优化 build，但不可分发。ADR-033 同时退役 `C3_sideload_must_declarative`（待落地）。
+
+---
+
+## 合规与安全
+
+- **客户端直连为基线**：私密、认证相关的数据走客户端直连或校内授权中继，**不经公网服务器**。
+- **凭证零泄露给插件**：cookie/token 只存于可信核心，adapter 通过受限方法访问数据，拿不到凭证的值，也拿不到任何等价于凭证的东西（带 token 的 URL、`Set-Cookie`、重定向中间 token 等均不暴露）。
+- **传输底座不是插件**：能看到全部流量的传输底座编译进应用二进制，完整性由平台应用签名承担，运行时受远程开关管控；不存在 transport 侧载入口（ADR-003 §2.3、ADR-032）。
+- **显式知情同意**：启用能看到全部流量的隧道时，提供独立且更重的告知与授权流。
+
+> 涉及第三方协议复刻（如校园 VPN）的接入，需先完成"许可证 + 协议模式 + iOS 可行性"评估（ADR-003 §2.4、ADR-032）。
+
+---
+
+## 路线状态
+
+架构的 **Decision** 与 **Landing** 是两个维度，`Accepted` 不等于已实现。当前处于**Alpha / 0.2（新受信脚本已接入，原生平台矩阵待验收）**：签名分发、Broker、凭证存储、WebView 登录等承重链路已成形，仍有开放安全签收项；产品能力面仍薄（首页主要消费 `notice.list`），campus relay 是 501 stub。
+
+状态只认两处：决策状态看 [`docs/adr/README.md`](docs/adr/README.md)，执行与签收状态看 [`docs/planning/2026_08_review_remediation.md`](docs/planning/2026_08_review_remediation.md)。术语速查见 [`docs/glossary.md`](docs/glossary.md)。
+
+---
+
+## 许可证
+
+见 [`LICENSE`](../../../LICENSE)。注意：若接入 GPL 系第三方组件（如某些 VPN 协议复刻），需做实进程/模块边界隔离以避免传染，相关分析见对应 ADR。

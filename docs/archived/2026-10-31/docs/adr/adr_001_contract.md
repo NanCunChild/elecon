@@ -1,0 +1,402 @@
+> **已废弃 / Archived（2026-10-31）**：原路径 `docs/adr/adr_001_contract.md`。不再作为新开发总则；正文的历史决定、签收和未完成记录原样保留。当前基线见[架构入口](../../../../architecture.md)；未迁移 V1 的维护边界见[兼容说明](../../../../reference/legacy_compatibility.md)。本文不产生新的开发指令。
+
+# ADR-001：标准数据 schema 与 Capability Manifest 规范
+
+- **状态**：已接受（Accepted）
+- **日期**：2026-06-08（修订 2026-06-16 · 2026-07-22 · 2026-09-08）
+- **人工复核**：2026-06-16 两条契约变更已于 **2026-08-22** 由 owner 完成人工复核。
+- **变更流水**：历次契约新增/变更的 dated 记录已迁至 [`contract/CHANGELOG.md`](../../../../../contract/CHANGELOG.md)；本文 §8 只留治理规则。
+- **状态源约定**：本文只承载**决策**；**落地与安全签收**的待办态一律只存在于 [`docs/adr/README.md`](README.md) 索引表与 [`2026_08_review_remediation.md`](../planning/2026_08_review_remediation.md)，正文不重复记录，避免多处状态源互相漂移。
+- **依赖**：[`adr_000_abstract.md`](adr_000_abstract.md)
+- **适用范围**：`contract/` 目录的全部内容，即 adapter↔UI、adapter↔核心之间的所有契约。本文一动，两端都受影响——改动须遵循本文 §7 的治理规则。
+
+---
+
+## 1. 背景（Context）
+
+ADR-000 把"标准数据 schema + Capability Manifest"定为整个项目最重要的设计产物：
+
+- **schema** 是 adapter 与 UI 之间唯一的耦合面：adapter 负责"某校混乱格式 → 标准 schema"，UI 只认标准 schema、与学校无关。
+- **manifest** 是 adapter 对核心的声明：声明能提供什么能力、需要访问哪些域名——核心据此做凭证注入与撮合。
+
+ADR-000 同时定下三条约束本文必须落地：①一份 adapter 客户端与服务端双跑（两端均为 QuickJS——服务端走 QuickJS-wasm，见 [`adr_005`](adr_005_runtime.md)）；②按宿主裁定信任，DEPLOY 仅运行 official，DEV-Sideload 可调试未签名全能力 adapter；③数据用 TTL/新鲜度、代码用版本号。本文把这些从"原则"变成"可校验的规范"。C3 退役与 DEPLOY 本地 official 导入见 ADR-033（已接受，尚未落地）。
+
+---
+
+## 2. 决策概览（Decision）
+
+1. **schema 的规范语言用 JSON Schema（Draft 2020-12）**，作为唯一事实来源（single source of truth），向 Dart / Go 生成类型，向 JS 提供运行期校验依据。
+2. **校验发生在宿主侧的信任边界**（客户端核心 Dart / 服务端 TS，见 [`adr_005`](adr_005_runtime.md)），不在 adapter 内部——QuickJS 不背校验器。
+3. **一切归一化结果都包在统一数据信封（data envelope）里**，携带来源、新鲜度、schema 版本等元数据。
+4. **capability 是契约的基本单元**：`<domain>.<action>`，每个 capability 绑定一个输出 schema 与一段网络作用域。
+5. **manifest 声明能力 + 网络白名单**；每 capability 声明 `requestGraph`（`declarative` | `imperative`；ADR-022）。
+6. **错误也是契约**：统一的归一化错误模型，让 UI/同步层对失败有一致反应。
+7. **保留 typed 模型 + 一个受约束的兜底域**：本体确实"认识"成绩/课表等 typed 域（这是产品价值与本体智能的来源）；长尾、冷门数据走一个**由本体渲染**的通用域 `elecon.generic.section`——adapter 只提供归一化数据 + 轻量**语义角色提示**，**绝不**提供样式/控件/CSS（见 §3.6）。
+
+---
+
+## 3. 标准数据 schema
+
+### 3.1 为什么是 JSON Schema
+
+| 候选 | 取 | 舍 |
+|---|---|---|
+| **JSON Schema（选用）** | 语言中立、可运行期校验、人类可读、贡献门槛低（写 JS adapter 的人天然熟 JSON） | 类型表达力弱于 IDL，需配 codegen 补强 |
+| Protobuf / IDL | 强类型、codegen 好 | 二进制不直观、QuickJS 处理重、抬高 adapter 贡献门槛，违背"降低门槛" |
+| TypeScript 类型 | DX 好 | 非中立、Dart/Go 不能直接消费、非运行期契约 |
+
+结论：JSON Schema 当事实来源；`tools/` 生成 Dart / TS 类型；宿主在边界处校验（服务端用 `ajv`，与 `tools/` 共用一套）。**校验器只活在 Dart/TS**，adapter 产出的数据由宿主校验后才被接受，QuickJS 不引入校验负担。
+
+### 3.2 命名空间
+
+所有 schema 以 `elecon.` 前缀命名：
+
+- 数据域：`elecon.grades.list`、`elecon.schedule.week`、`elecon.card.balance` …
+- 入参：`elecon.params.<capability>`，如 `elecon.params.grades.list`
+- 数据信封：`elecon.envelope`（**不是** bundle 信封，见 §3.3 作用域声明）
+- 错误：`elecon.error`
+
+### 3.3 统一数据信封（data envelope）
+
+> **作用域声明（ADR-000 §2.3.1）**：**本文全文所称 envelope / 信封，一律指本节定义的「数据信封」**——运行期包裹归一化数据的外层对象，schema id `elecon.envelope`。它与 adapter 分发用的 **bundle 信封**（签名对象，[`adr_018`](adr_018_adapter_distribution.md) §2.9）、与凭证存储用的 **信封加密**（[`adr_012`](adr_012_credential_store.md) §2.8）**是三样无关的东西**，只是撞名。本文不涉及后两者。
+
+每一份跨越 adapter↔宿主 边界的归一化数据都用数据信封包裹。**数据的新鲜度由此承载（TTL），与代码版本无关**（呼应 ADR-000 §2.4）。
+
+```json
+{
+  "schema": "elecon.grades.list",
+  "schemaVersion": "1.0",
+  "source": {
+    "schoolId": "1234",
+    "adapterId": "school-1234",
+    "adapterVersion": "3.2.0",
+    "origin": "client-direct"        // client-direct | campus-relay | public-cache
+  },
+  "freshness": {
+    "fetchedAt": "2026-06-08T03:00:00Z",   // RFC3339 / UTC
+    "ttlSeconds": 3600,
+    "stale": false
+  },
+  "data": { /* 见 §3.5 域负载 */ }
+}
+```
+
+`origin` 让 UI 能区分数据来路（直连最鲜、公网缓存兜底），配合 `stale` 提示用户。
+
+### 3.4 全局约定（所有域必须遵守）
+
+- **时间**：一律 RFC3339、UTC（`...Z`）。展示时区由 UI 处理，schema 不存本地时区偏移。
+- **金额**：整数 + 最小货币单位（如"分"）+ 货币码，**禁止浮点**。例：`{ "amountMinor": 1250, "currency": "CNY" }` 表示 12.50 元。一卡通余额尤其依赖这条。
+- **缺失语义**：字段缺失 = 该校不提供该信息（字段可省略）；字段为 `null` = 提供该信息但本次确为空。两者语义不同。
+- **ID**：均为校内作用域字符串，UI 不假设跨校唯一。
+- **枚举**：未知值统一落到 `"unknown"`，禁止把未识别值丢失或瞎猜。
+- **兼容**：新增可选字段 = 向后兼容；删除/改义/改类型 = 破坏性（见 §7）。
+
+### 3.5 域负载示例（以 `elecon.grades.list` 为例）
+
+```json
+{
+  "term": "2025-2026-2",
+  "gradePointScale": "4.0",         // 校本绩点尺度，缺失=来源未提供
+  "items": [
+    {
+      "courseId": "CS101",
+      "courseName": "计算机导论",
+      "credit": 3.0,
+      "score": { "kind": "numeric", "value": 88, "max": 100 },
+      "gradePoint": 3.7,
+      "gradePointSource": "source",  // source | adapter-derived | unknown
+      "category": "required",        // required | elective | unknown
+      "status": "final"              // final | provisional | unknown
+    }
+  ]
+}
+```
+
+> 说明：`score.kind` 支持 `numeric` / `letter` / `passfail`，以容纳不同学校的记分制。
+>
+> **派生值归属的判据（2026-09-08 修订，见 [`contract/CHANGELOG.md`](../../../../../contract/CHANGELOG.md)）**：**跨校统一的派生 → 本体；校本特有的派生 → adapter（尽量重）。** 这**不是**因为"adapter 要薄"（那是能力面的安全口号，见 [`adr_000`](adr_000_abstract.md) §3.1「两个轴」）——功能轴上 adapter 越重越好。**校本特有的派生（脏日期格式归一化、从校历推当前教学周、单位换算、多接口拼装）是 adapter 的重活**，应尽量吸收进 adapter，不上抛核心/UI——本体不该知道每所学校的校历。
+>
+> **「绩点」必须拆成两个词，否则判据会被误用**（本 ADR 早期版本正是在此自相矛盾：先给出上面的判据，又把 `gradePoint` 判给 UI 计算）：
+>
+> | 概念 | 归属 | 理由 |
+> |---|---|---|
+> | **课程级 `gradePoint`**（分数 → 绩点的换算） | **adapter** | 换算表是校本的：各校甚至各院系不同，尺度有 4.0 / 4.3 / 4.5 / 5.0。属"校本特有派生"。 |
+> | **GPA 聚合**（加权平均、排序、跨学期 / 跨校对比） | **本体** | 跨校统一，算法一致性由本体保证。属"跨校统一派生"。 |
+>
+> 因此 adapter 在学校不直接给出绩点时**可以**按校本规则派生——但派生不是"擅自推算"，而是**可声明、可审计**的交付物：
+>
+> - `gradePointScale`（列表级，可选）：声明本次数据里 `gradePoint` 所用的校本尺度（`4.0` / `4.3` / `4.5` / `5.0` / `other` / `unknown`）。缺失 = 来源未提供（§3.4 缺失语义）。
+> - `gradePointSource`（item 级，可选）：`source`（学校来源直接给出）/ `adapter-derived`（adapter 按校本规则派生）/ `unknown`。
+>
+> **两个 GPA，两个所有者，互不替代（2026-09-09 修订）**：
+>
+> | | **学校官方 GPA** | **交互式聚合 GPA** |
+> |---|---|---|
+> | 是什么 | 成绩单上那个数 | 「本学期」「只看专业课」「排除体育」 |
+> | 谁能产 | **只有 adapter**（读学校来源） | **只有本体**（依赖用户当下的筛选） |
+> | 能否重算 | **不能** | 必须能 |
+> | 契约位置 | `elecon.gpa.summary` | `elecon.grades.list` + 本体聚合 |
+>
+> 官方 GPA **不可重算**：重修取最高还是取最后、学位课是否加权、体育与公选是否计入、缓考清考怎么算——这些规则是校本的且常无公开文档，学校之外算不出同一个数。故 adapter **只读不算**；本体拿到后原样展示，**不得用自算值覆盖或"修正"它**。
+> 交互式聚合 **不可由 adapter 产**：adapter 永远不知道用户此刻筛了什么。
+>
+> **优先级规则（硬约束）**：
+>
+> 1. `gpa.summary` 可用时，它是**权威**，作为该学期/范围的 GPA 展示。
+> 2. 本体自算值**只在**下列情形出现：(a) 没有 `gpa.summary`；或 (b) 用户施加了筛选，使官方数不再对应当前视图。
+> 3. 两者同时可见时**必须用不同标签**（如官方「GPA」vs 本机「均绩（本机计算）」）。**绝不允许两个不同的数都叫 GPA**——那比不显示更糟。
+>
+> **本体侧的 fail-closed 义务**：无论哪一路，**`gradePointScale` 缺失、为 `unknown`/`other`，或跨数据源尺度不一致时不得展示绩点数**——宁可不显示，也不显示一个尺度不明的数。该字段**只界定量纲，不保证跨校可比**（换算表本身是校本的），故**不得据此做跨校比较或排名**。
+
+首批落地的域（其余按需经 ADR 扩展）：`grades`、`schedule`、`card`、`library`、`notice`，外加通用兜底域 `generic`（见 §3.6）。
+
+### 3.6 通用兜底域 `elecon.generic.section`
+
+typed 域（成绩/课表等）是本体智能与产品价值的来源，**不能**为了"少走 ADR"就把它们抽象成"样式命名 + adapter 自带变量"——那会一次性打掉本体的智能（算 GPA、排序、语义搜索、跨校聚合、上课提醒）、统一体验、安全模型（半可信 adapter 不得驱动渲染层）与服务端缓存（缓存依赖归一化成已知 schema）。一个只渲染、不理解数据的本体本质上只是个更差的浏览器。
+
+但"新增/冷门数据类型就得走 ADR 慢车道"这个摩擦是真的。解法不是放弃 typed 模型，而是加**一个**通用、**由本体渲染**的兜底域：
+
+- **形态**：受约束的"带标签字段 / 键值组 / 简单表格"。宿舍水电、实验室预约这类长尾、不值得单独立 schema 的校园特有数据走这个域，**不必每个字段都开 ADR**。
+- **承重边界——必须分清两个东西，差别就是成败：**
+  - **语义角色提示（adapter 可以给）**：标注某字段"是状态 / 是截止时间 / 是金额 / 是主标识 / 是链接"。落在受控枚举 `role` 上。
+  - **样式（adapter 绝不能给）**：具体颜色、控件选择、布局代码——一律不接受。
+- **谁决定外观**：adapter 说"这是个 deadline"，**本体的主题**决定 deadline 长什么样。这样长尾灵活性有了，而一致性、安全、本体智能一个没丢。
+- **角色如何映射到主题样式**属 SDUI 范畴，归 `adr_004`（UI 层，待补，见 ADR-000 §6 索引）——本文只固定**数据 + 角色枚举**这一契约面。
+
+角色枚举（`elecon.generic.section` 字段上的 `role`，未知值落 `"unknown"`）：
+
+| role | 含义 |
+|---|---|
+| `identifier` | 主标识 / 主键字段 |
+| `label` | 普通文本标签 |
+| `status` | 状态（本体主题决定如何着色/打标） |
+| `datetime` | 时间点（RFC3339/UTC） |
+| `deadline` | 截止时间（本体可据此做提醒） |
+| `amount` | 金额（遵守 §3.4 金额约定：整数 + 最小单位 + 币种） |
+| `quantity` | 数量 / 计量值 |
+| `link` | 链接 URL |
+| `unknown` | 未识别角色（禁止丢弃或瞎猜） |
+
+> 注意：`generic` 是**兜底**，不是"省事通道"。一旦某类数据稳定下来、值得本体施加智能（计算/排序/提醒/聚合），就应经 ADR 升级为独立 typed 域，而非长期赖在 `generic` 里。
+
+---
+
+## 4. Capability：契约的基本单元
+
+一个 capability = 一个意图 + 一个输出 schema + 一段网络作用域。
+
+- **命名**：`<domain>.<action>`，如 `grades.list`、`schedule.week`、`card.balance`、`card.transactions`、`library.loans`、`notice.list`。
+- **注册表**：所有合法 capability id 收在 `contract/capability/registry.json`。**新增 id 或改其语义 = 契约变更 = 需 ADR**（呼应 feature-workflow 慢车道）。
+- **绑定**：每个 capability 指定它发出的 `emits.schema`（+版本）和可选的 `params.schema`。
+- **UI 绑定**：UI 的卡片通过 capability id 声明所需数据（如"成绩卡"消费 `grades.list`）。UI↔capability 的具体渲染绑定细节属 SDUI 范畴，留待 `adr_004`，本文只固定 id 作为接口。
+
+---
+
+## 5. Capability Manifest（adapter 的声明）
+
+manifest 是 adapter 对核心的契约，JSON 格式，供宿主与 `tools/` 静态校验器读取。
+
+### 5.1 公共字段
+
+```json
+{
+  "manifestVersion": "1.0",
+  "adapterId": "school-1234",
+  "adapterVersion": "3.2.0",          // 代码版本，参与 max(本地,服务端) 解析
+  "schoolId": "1234",
+  "displayName": "示例大学",
+  "trustTier": "official",            // official | sideload（community 已于 ADR-002 2026-06-14 移除）
+  "runtime": { "engine": "quickjs", "entry": "index.js" },
+  "network": {
+    "allow": [
+      "https://jw.example.edu.cn/api/*",
+      "https://ehall.example.edu.cn/*"
+    ]
+  },
+  "capabilities": [ /* 见 §6；每 cap 必含 requestGraph */ ]
+}
+```
+
+`network.allow` 是核心的**出口闸门**：打到白名单外一律拒绝（fail-closed）。这是 capability-based security 的落点——即便 adapter 恶意，也只能在学校自己的接口范围内活动，无法拿着凭证往外带数据。
+
+**凭证注入由可选的 `credentials` 块声明（[`adr_013`](adr_013_manifest_credentials.md)）**，**不是**"命中白名单即注入"：
+
+```json
+"credentials": {
+  "session": { "scope": ["https://jw.example.edu.cn/api/*"], "type": "cookie" }
+}
+```
+
+- `credentials.<name>`：凭证引用名（= ADR-012 `CredentialEntry.ref`），值声明 `scope`（注入作用域，须 ⊆ `network.allow`）+ `type`（`cookie`/`header`）。**只含引用名 + 作用域 + 注入方式，绝不含凭证值**（红线 #1）。
+- **命中 `network.allow` ≠ 注入**：仅当请求 URL 命中某 `credentials.<name>.scope` 才注入对应凭证；白名单内未被任何 scope 覆盖的 URL = passthrough（可达不注入，用于反爬挑战端点等）。
+- 可选字段、向后兼容；`tools/` 校验器强制 scope ⊆ allow、scope 等长重叠拒绝、declarative `requests[].credential` 引用闭合（见 ADR-013 §2.4）。
+
+### 5.2 信任档与 requestGraph 约束
+
+- `trustTier: official` → 每 capability 可用 `requestGraph: imperative` 和/或 `declarative`（DEPLOY 下凭证注入资格仍由宿主验签裁定的 trust tier 决定；ADR-022）。
+- `trustTier: sideload` → 表示 DEV 未签名素材，不是 DEPLOY 运行档。**Sideload 可加载任意 adapter**：每个 capability 可选 `declarative` 或 `imperative`，两者一视同仁——**requestGraph 的声明性不是信任维度**（[`adr_002`](adr_002_trust_model.md) §2.1.1）；并可调试当前 DEV 宿主已编入的敏感能力；凭证值仍不离核心。ADR-033（已接受）决定退役 `C3_sideload_must_declarative`，改由 requestGraph 结构、白名单、凭证引用与能力专属规则逐项校验。**该退役尚未落地：现有 C3 实现仍在 validator 内，删除须与 DEPLOY official-only 负例同批。**
+- DEPLOY 本地导入的 bundle 不按 `sideload` 档运行：只有 official 验签、身份绑定、在线吊销治理与兼容门全过后，才能铸造既有 official grant（ADR-033，已接受待落地）。
+- **`community` 档已移除**（ADR-002 2026-06-14 修订）：信任模型只剩 official + sideload，`trustTier` 枚举不再含 `community`（见 [`adr_002`](adr_002_trust_model.md) §2.1）。
+- **无 adapter 级 `mode`**：取数图声明性 per-capability，见 §6 / [`adr_022`](adr_022_request_graph.md)。
+
+---
+
+## 6. 请求图声明性（adapter-sdk 约定；ADR-022）
+
+同一份 adapter 在客户端与服务端以相同宿主契约被调用——两端均属 QuickJS 谱系（服务端走 QuickJS-wasm，见 [`adr_005`](adr_005_runtime.md)），但绑定、版本和编译配置不同；共享 golden/canary 只保证覆盖到的已使用语义一致（ADR-008 §3.2）。**每 capability** 用 `requestGraph` 声明取数请求图（**required、无 default**）；同一 adapter 可混用两种图。
+
+> 旧称「fetch 模式 / parser 模式」与顶层 `mode` 已由 [ADR-022](adr_022_request_graph.md) 抹除。真正发请求与注入凭证的始终是核心 broker。
+
+### 6.1 imperative requestGraph（官方签名可独占 `ctx.fetch`）
+
+adapter 在代码里自编排请求 + 解析；核心通过受限的 `ctx.fetch` 注入凭证（仅 scope 命中时）。**adapter 拿不到凭证的值。**
+
+manifest 片段：
+
+```json
+"capabilities": [
+  {
+    "id": "grades.list",
+    "requestGraph": "imperative",
+    "emits":  { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
+    "params": { "schema": "elecon.params.grades.list", "schemaVersion": "1.0" }
+  }
+]
+```
+
+adapter 代码：
+
+```js
+export const capabilities = {
+  // ctx: { fetch, setEphemeralCookie, log, now }  —— fetch 由 broker 包装
+  "grades.list": async (ctx, params) => {
+    const res  = await ctx.fetch("https://jw.example.edu.cn/api/grades?term=" + params.term);
+    const json = await res.json();
+    return {                                  // 宿主据 emits.schema 校验后才接受
+      term: params.term,
+      items: json.list.map(normalizeGradeItem)
+    };
+  }
+};
+```
+
+### 6.2 declarative requestGraph（核心代取 + 纯解析；sideload 强制）
+
+adapter **无网络、无凭证**，退化为纯函数解析器。核心据 manifest 的请求配方代取（注入凭证、限定白名单），把原始响应交给 adapter 解析。handler **必须同步**；返回 Promise 则错误码 `async_in_declarative`。
+
+manifest 片段（capability 额外声明 `requests` 配方）：
+
+```json
+"capabilities": [
+  {
+    "id": "grades.list",
+    "requestGraph": "declarative",
+    "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.0" },
+    "requests": [
+      { "key": "raw", "method": "GET",
+        "url": "https://jw.example.edu.cn/api/grades?term={term}",
+        "credential": "session" }            // 凭证名，由核心解析，adapter 看不到值
+    ]
+  }
+]
+```
+
+adapter 代码：
+
+```js
+export const capabilities = {
+  // 注意：ctx 不含 fetch；responses 是核心代取后脱敏的原始响应
+  "grades.list": (ctx, params, responses) => {
+    const json = JSON.parse(responses.raw.body);
+    return { term: params.term, items: json.list.map(normalizeGradeItem) };
+  }
+};
+```
+
+### 6.3 凭证零泄露的硬约束（两种 requestGraph 通用）
+
+跨 adapter 边界流动的只有"请求意图"和"已脱敏结果"，绝不流动任何等价于凭证的东西：
+
+- 交给 adapter 的 `responses` 必须剥除 `Set-Cookie`、`Authorization` 回显、重定向链中的中间 token；
+- imperative 下 `ctx.fetch` 的 URL 不得由核心回填带 token 的形式给 adapter 读取；
+- adapter 的返回值在被接受前由宿主按 schema 校验，**校验不通过即丢弃并返回 `parse_failed`**。
+
+---
+
+## 7. 错误模型（`elecon.error`）
+
+adapter 与核心以统一错误契约表达失败，UI/同步层据此一致反应（重试、引导登录、降级到缓存）。
+
+```json
+{
+  "schema": "elecon.error",
+  "schemaVersion": "1.0",
+  "error": {
+    "kind": "auth_required",     // 见下表
+    "retriable": false,
+    "capability": "grades.list",
+    "message": "需要重新登录"      // 安全文案，禁止含凭证/堆栈/内网细节
+  }
+}
+```
+
+| kind | 含义 | UI 典型反应 |
+|---|---|---|
+| `auth_required` | 会话失效/需登录 | 引导走对应登录流 |
+| `source_unavailable` | 学校侧不可达/故障 | 降级到公网缓存（若有），提示 stale |
+| `network_blocked` | 请求打到白名单外被拦 | 视为 adapter bug，记录上报 |
+| `rate_limited` | 被限流 | 退避重试 |
+| `parse_failed` | 归一化/校验失败 | 提示并上报，疑似学校改接口 |
+| `capability_unsupported` | 该校该 adapter 不支持此能力 | UI 隐藏对应卡片 |
+
+`message` 仅作安全展示，**不得携带凭证、堆栈、内网地址**等敏感信息。
+
+---
+
+## 8. 版本与兼容（治理）
+
+**只保护最新版本（2026-09-08 owner 决策）。** 契约面**不做多版本并存**：`capability/registry.json` 记的版本就是唯一在役版本，codegen 只为它生成 validator，宿主按 `schema + schemaVersion` 精确查表——旧版本查不到 validator 即 fail-closed（`contract/generated/dart/lib/output_validator_registry.dart`）。这是**已实现的行为**，本节把它从事实提升为决策，不再声称支持新旧并存。
+
+**允许且推荐破坏性更新。** 项目处于契约高频校准期，用真实学校接口反复修正 schema 的收益，远大于维持向后兼容的收益；为兼容而堆积的兼容层本身就是要消除的心智负担。因此**破坏性更新不需要论证「为什么不能兼容」**，但须满足下面二选一的放行条件。
+
+**放行条件（二选一，必须满足其一）：**
+
+1. **同批全面升级**：仓内所有引用点在同一 PR 内改完——schema、`registry.json`、受影响 manifest、codegen 产物、夹具/golden、两端运行时与消费方 UI。CI 门（validator C2 + schema golden + 双端 smoke）即此条件的机器校验。
+2. **提供联动升级文档**：当引用点在本仓之外（典型：`elecon-adapters`）而无法同批改完时，须在 `docs/reference/` 留一份联动升级文档，写明**改了什么、预期结果、外层须做的逐项改动、不改的后果**，并从 `contract/CHANGELOG.md` 的对应条目链接过去。样例：[`gradepoint_ownership_landing.md`](../../../../reference/gradepoint_ownership_landing.md)。
+
+**两条都不满足的破坏性变更不得合并。** 「先改契约，联动以后再说」是本节唯一禁止的形态——它会让外部 adapter 在无预警下 fail-closed。
+
+- **版本号是信号，不是闸门**：`MAJOR.MINOR` 仍照旧标注（新增可选字段 → MINOR；删除/改义/改类型/收紧约束 → MAJOR），用途是让读者一眼看出下游要做多少活。放行与否由上面的条件决定，不由 MAJOR/MINOR 决定。
+- **manifest 版本**：`manifestVersion` 独立演进；宿主拒绝不认识的大版本。
+- **adapter 版本**：参与 ADR-000 的 `max(本地, 服务端)` 解析，与数据新鲜度无关。
+- **契约变更须走 ADR**：新增/修改 capability id、新增域 schema、破坏性变更，均属慢车道（呼应 AGENTS.md 红线 #6 与 feature-workflow）。**红线 #6 的「默认保持向后兼容」在契约高频校准期按本节豁免**——豁免的是兼容义务，不是 ADR 义务与上面的放行条件。
+- **每次契约变更必须在 [`contract/CHANGELOG.md`](../../../../../contract/CHANGELOG.md) 留一条记录，且记录中必须引用一个 ADR 编号。** 记录的存在即证明该变更「先有 ADR」，使红线 #6 从人工约定变成**可 CI 校验的引用闭合**（无 ADR 引用的条目视为违规）。**该校验已落地**：`scripts/check-contract-changelog.mjs`（CI `tools` job，`npm run check:contract-changelog -w tools`）——改动触及 `contract/schema/` / `contract/capability/` / `contract/manifest.schema.json` 而 CHANGELOG 无新增记录、或新增记录里没有任何 ADR 编号，即拒。它**不判断内容对不对**（那是人的活），只保证「改了契约却什么都没记」这一形态过不去。变更流水不再写在本 ADR 正文里——它是持续增长的时序事实，与本 ADR 这一份决策不是同一类东西；混放会让 ADR 正文被流水淹没，也让别的 ADR（如 ADR-019）的契约变更错记在本文名下。
+- **`tools/` 强制校验**：manifest 合法性、requestGraph 结构、白名单越界、凭证引用、capability id、能力专属规则与双端夹具一致性均做成 CI 闸门。当前另有 `C3_sideload_must_declarative`；ADR-033 已决定退役 C3 以支持 DEV-Sideload 全能力调试，落地须与负例同批。
+
+---
+
+## 9. 取舍（Consequences）
+
+
+**收益**
+- adapter 与 UI 彻底解耦，UI 不含任何学校逻辑；新学校只写 adapter + manifest。
+- 网络白名单 + per-capability `requestGraph` 把 adapter 的能力声明变成机制约束。DEV-Sideload 需要完整调试 imperative，故 ADR-033 已决定退役按 trustTier 一刀切的 declarative C3；DEPLOY 则在更外层只铸造 official grant，本地导入不产生低信任运行档。
+- 统一数据信封/错误模型让同步层、缓存、降级有一致依据。
+
+**代价 / 已知约束**
+- JSON Schema 类型表达力有限，依赖 codegen 与边界校验补强；增加 `tools/` 的维护面。
+- declarative requestGraph 要求 manifest 声明请求配方，使"取数逻辑"与"解析逻辑"分处两地（manifest 声明 vs adapter 代码），对 declarative adapter 作者是额外心智负担——这是为隔离性付的价。
+- 统一金额/时间/缺失语义等约定需要 adapter 作者严格遵守，靠 `tools/` 校验兜底，但语义正确性（如归一化是否真的对）仍需夹具回归保证。
+- 首批只覆盖 5 个域；扩展每个新域都要走 ADR，节奏受治理流程约束（这是刻意的——契约稳定优先于扩张速度）。
+
+---
+
+## 10. 落地清单（指向 `contract/` 骨架）
+
+- `contract/schema/`：`envelope`（数据信封）、`error`、`grades.list`、`schedule.week`、`card.balance`、`library.loans`、`notice.list`、`generic.section` 的 JSON Schema 与对应 `params.*`。
+- `contract/capability/registry.json`：首批 capability id 注册表。
+- `contract/CHANGELOG.md`：契约变更的 dated 流水（§8 治理规则的落点；每条须引用 ADR 编号）。
+- `contract/manifest.schema.json`：manifest 自身的 JSON Schema（供 `tools/` 校验 manifest；无顶层 `mode`，每 cap 强制 `requestGraph`，ADR-022）。
+- `contract/adapter-sdk/`：`ctx` 与 capability handler 的类型声明（`CtxDeclarative` / `CtxImperative` 两种签名）。
+- `adapters/_template/{declarative,imperative}/`：两种 requestGraph 的脚手架样例。
