@@ -584,7 +584,7 @@ void main() {
   );
 
   testWidgets(
-    'empty-cell drop persists exact coordinates and cancelled drag rolls back',
+    'empty-cell drop settles upward and cancelled drag rolls back',
     (tester) async {
       tester.view.physicalSize = const Size(400, 1200);
       tester.view.devicePixelRatio = 1;
@@ -615,12 +615,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         store.layouts['a']!.positions['notice'],
-        const HomeCardPosition(3, 2),
+        const HomeCardPosition(3, 0),
       );
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(app(store));
       await tester.pumpAndSettle();
-      expect(tester.getTopLeft(card('notice')), origin + delta);
+      expect(tester.getTopLeft(card('notice')), origin + Offset(delta.dx, 0));
       final cancel = await tester.startGesture(
         tester.getCenter(control('open', 'notice')),
       );
@@ -630,15 +630,15 @@ void main() {
       await tester.pump(const Duration(milliseconds: 250));
       await cancel.cancel();
       await tester.pumpAndSettle();
-      expect(tester.getTopLeft(card('notice')), origin + delta);
+      expect(tester.getTopLeft(card('notice')), origin + Offset(delta.dx, 0));
       expect(
         store.layouts['a']!.positions['notice'],
-        const HomeCardPosition(3, 2),
+        const HomeCardPosition(3, 0),
       );
       await choose(tester, 'notice', 'home-card-grid:up');
       expect(
         store.layouts['a']!.positions['notice'],
-        const HomeCardPosition(3, 1),
+        const HomeCardPosition(3, 0),
       );
     },
   );
@@ -668,12 +668,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       store.layouts['a']!.positions['notice'],
-      const HomeCardPosition(2, 1),
+      const HomeCardPosition(2, 0),
     );
     await choose(tester, 'notice', 'home-card-grid:left');
     expect(
       store.layouts['a']!.positions['notice'],
-      const HomeCardPosition(3, 1),
+      const HomeCardPosition(3, 0),
     );
     await tester.pumpWidget(app(store, direction: TextDirection.ltr));
     await tester.pumpAndSettle();

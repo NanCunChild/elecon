@@ -201,7 +201,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
     final locations = grid.place(_spans, {
       ...(_dragLocations ?? _locations),
       id: target,
-    }, priority: id);
+    }, priority: save ? null : id);
     setState(() {
       _layout = _layout.locate(locations);
       _revision++;
@@ -250,7 +250,11 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
     if (!_accepts(drag)) return;
     if (details.wasAccepted) _considerMove(immediate: true);
     setState(() {
-      if (!details.wasAccepted) _layout = _beforeDrag ?? _layout;
+      if (!details.wasAccepted) {
+        _layout = _beforeDrag ?? _layout;
+      } else {
+        _layout = _layout.locate(_grid!.place(_spans, _layout.positions));
+      }
       _stopDrag();
     });
     if (details.wasAccepted) unawaited(_persist());
@@ -582,7 +586,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
             _locations = grid.place(
               _spans,
               _layout.positions,
-              priority: _opened ?? _dragging,
+              priority: _dragging,
             );
             _slots.clear();
             var bottom = 0.0;

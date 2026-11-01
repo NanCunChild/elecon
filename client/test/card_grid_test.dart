@@ -34,7 +34,7 @@ void main() {
       'icon3': const HomeCardPosition(3, 1),
     });
   });
-  test('explicit empty space survives and only colliding cards move', () {
+  test('saved gaps settle upward while the live drag target stays pinned', () {
     final grid = HomeCardGrid(width: 400, labelHeight: 16);
     final spans = {
       'a': grid.span(HomeCardSize.compact),
@@ -46,12 +46,14 @@ void main() {
       'b': const HomeCardPosition(1, 1),
       'c': const HomeCardPosition(0, 0),
     });
-    expect(placed['a'], const HomeCardPosition(3, 3));
+    expect(placed['a'], const HomeCardPosition(3, 0));
+    expect(placed['b'], const HomeCardPosition(1, 0));
     final dragged = grid.place(spans, {
       ...placed,
-      'a': const HomeCardPosition(2, 2),
+      'a': const HomeCardPosition(2, 1),
     }, priority: 'a');
-    expect(dragged['a'], const HomeCardPosition(2, 2));
+    expect(dragged['a'], const HomeCardPosition(2, 1));
+    expect(grid.place(spans, dragged)['a']!.row, lessThanOrEqualTo(1));
     expect(dragged['b'], isNot(placed['b']));
     expect(dragged['c'], placed['c']);
   });
@@ -62,15 +64,33 @@ void main() {
       final narrow = HomeCardGrid(width: 240, labelHeight: 16);
       expect(
         narrow.place({'a': narrow.span(HomeCardSize.compact)}, preferred)['a'],
-        const HomeCardPosition(1, 2),
+        const HomeCardPosition(1, 0),
       );
       final wide = HomeCardGrid(width: 400, labelHeight: 16);
       expect(
         wide.place({'a': wide.span(HomeCardSize.compact)}, preferred)['a'],
-        const HomeCardPosition(3, 2),
+        const HomeCardPosition(3, 0),
       );
     },
   );
+  test('hiding or shrinking a card releases the space below it', () {
+    final grid = HomeCardGrid(width: 400, labelHeight: 16);
+    const saved = {
+      'top': HomeCardPosition(0, 0),
+      'bottom': HomeCardPosition(0, 5),
+    };
+    expect(grid.place({
+      'top': grid.span(HomeCardSize.regular),
+      'bottom': grid.span(HomeCardSize.compact),
+    }, saved)['bottom'], const HomeCardPosition(0, 2));
+    expect(grid.place({
+      'top': grid.span(HomeCardSize.compact),
+      'bottom': grid.span(HomeCardSize.compact),
+    }, saved)['bottom'], const HomeCardPosition(0, 1));
+    expect(grid.place({
+      'bottom': grid.span(HomeCardSize.compact),
+    }, saved)['bottom'], const HomeCardPosition(0, 0));
+  });
   test('mixed sizes, collisions and tall details never overlap', () {
     final grid = HomeCardGrid(width: 400, labelHeight: 16);
     final spans = {

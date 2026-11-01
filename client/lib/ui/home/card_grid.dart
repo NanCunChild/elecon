@@ -1,4 +1,4 @@
-/// Integer cell placement; saved empty space is meaningful, not a flow gap.
+/// Integer cell placement with vertical gravity and a pinned drag target.
 library;
 
 import 'dart:math' as math;
@@ -96,6 +96,28 @@ class HomeCardGrid {
         }
         row++;
       }
+    }
+    // Settle from top to bottom without changing columns or crossing cards.
+    // A live drag target stays pinned until drop; normal builds settle all cards.
+    final settling = result.keys.toList()
+      ..sort((a, b) {
+        final row = result[a]!.row.compareTo(result[b]!.row);
+        return row != 0 ? row : result[a]!.column.compareTo(result[b]!.column);
+      });
+    for (final id in settling) {
+      if (id == priority) continue;
+      final old = result[id]!;
+      final span = spans[id]!;
+      for (var row = old.row; row < old.row + span.rows; row++) {
+        for (var col = old.column; col < old.column + span.columns; col++) {
+          occupied.remove((col, row));
+        }
+      }
+      var row = old.row;
+      while (row > 0 && fits(HomeCardPosition(old.column, row - 1), span)) {
+        row--;
+      }
+      put(id, HomeCardPosition(old.column, row));
     }
     return result;
   }
