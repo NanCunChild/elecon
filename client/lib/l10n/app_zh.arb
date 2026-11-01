@@ -24,6 +24,16 @@
 
   "navHome": "首页",
   "navSettings": "设置",
+  "navForum": "论坛",
+  "navMessages": "消息",
+  "forumPlannedTitle": "论坛筹备中",
+  "forumPlannedDescription": "未来可在这里浏览校园讨论、查看主题与回复。",
+  "forumPlannedAccount": "论坛可能需要单独登录服务账号，学校登录状态不代表论坛已登录。",
+  "messagesPlannedTitle": "消息功能筹备中",
+  "messagesPlannedDescription": "未来可在这里查看回复、提及和站内消息。",
+  "messagesPlannedAccount": "消息将跟随对应服务账号显示，具体登录方式将在接入服务后提供。",
+  "communityPlannedAccountTitle": "服务账号",
+  "communityPlannedAvailability": "功能尚未开放，暂不支持登录或加载内容。",
 
   "settingsTitle": "设置",
   "settingsSectionAccount": "账户",

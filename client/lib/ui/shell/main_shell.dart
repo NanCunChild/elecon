@@ -1,4 +1,4 @@
-/// 主壳：底部导航在「首页 / 设置」间切换。
+/// 主壳：底部导航在「首页 / 论坛 / 消息 / 设置」间切换。
 ///
 /// Apple 构建开启液态玻璃时使用玻璃底栏；其余情况为 Material 底栏。
 library;
@@ -13,6 +13,7 @@ import '../scripts/script_input_presenter.dart';
 import '../scripts/script_scanner_page.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import '../home/home_page.dart';
+import '../community/community_pages.dart';
 import '../settings/settings_page.dart';
 import '../theme/app_theme.dart';
 import '../theme/liquid_glass.dart';
@@ -107,6 +108,16 @@ class _MainShellState extends State<MainShell> {
           selectedIcon: Icons.home,
         ),
         LiquidGlassTabSpec(
+          label: l10n.navForum,
+          icon: Icons.forum_outlined,
+          selectedIcon: Icons.forum,
+        ),
+        LiquidGlassTabSpec(
+          label: l10n.navMessages,
+          icon: Icons.chat_bubble_outline,
+          selectedIcon: Icons.chat_bubble,
+        ),
+        LiquidGlassTabSpec(
           label: l10n.navSettings,
           icon: Icons.settings_outlined,
           selectedIcon: Icons.settings,
@@ -138,6 +149,8 @@ class _MainShellState extends State<MainShell> {
             ),
             loadSnapshot: widget.loadHomeSnapshot,
           ),
+          const ForumPage(),
+          const MessagesPage(),
           const SettingsPage(),
         ],
       ),

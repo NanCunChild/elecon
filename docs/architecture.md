@@ -31,6 +31,8 @@ flowchart TD
 
 [ADR-050](adr/adr_050_faculty_search.md) 的 `faculty.search` 1.0 提供公开教师检索，西电按官网单页查询；原生页面保留教师身份、分页、来源和简介，不获取凭据、不预加载或持久缓存检索结果。
 
+按 [ADR-051](adr/adr_051_forum_and_messages_reservation.md) 预留“首页 / 论坛 / 消息 / 设置”原生导航。论坛与消息目前仅显示筹备状态；无服务接入、额外账号登录、消息计数或后台请求。独立服务账号、只读内容及后续写操作见[实施规划](planning/forum_and_messages.md)，均需按各切片另行设计与验证。
+
 ## 后续方向
 
 [ADR-042](adr/adr_042_providers_pages_enhancements.md)提出：用显式 provider 绑定连接学校包与增强包，以业务 feature 组合多个查询和页面，以固定原生模板复用展示。公开通知缓存优先试点；鉴权空教室和账户水电分别验证授权与隔离，不共享学生会话。
