@@ -68,6 +68,15 @@ class _ProviderBinding {
     overrideId: id,
   );
 
+  _ProviderBinding withBaseContract(ScriptCapability cap) => _ProviderBinding(
+    schoolId: schoolId,
+    capability: capability,
+    baseId: baseId,
+    schema: schema,
+    schemaVersion: cap.schemaVersion,
+    overrideId: overrideId,
+  );
+
   bool accepts(ScriptPackage package) {
     final cap = package.manifest.capability(capability);
     return package.manifest.schoolId == schoolId &&
@@ -109,7 +118,7 @@ class ScriptRegistry {
     }
     final raw = jsonDecode(utf8.decode(bytes));
     if (raw is! Map ||
-        !const [1, 2].contains(raw['version']) ||
+        !const [1, 2, 3].contains(raw['version']) ||
         raw['entries'] is! List ||
         (raw['entries'] as List).length > 32) {
       throw const FormatException('script_registry_format');
@@ -190,6 +199,22 @@ class ScriptRegistry {
           }
         }
         registry._bindings[binding.key] = binding;
+      }
+    }
+    if (raw['version'] == 2) {
+      // ADR-053: the already approved base package owns its declared version.
+      // Repair the v2 upgrade omission without promoting a different source or
+      // changing any package bytes, approval digest or override selection.
+      for (final binding in registry._bindings.values.toList()) {
+        final package = registry._entries[binding.baseId]?.package;
+        final cap = package?.manifest.capability(binding.capability);
+        if (package != null &&
+            !package.requiresUpdate &&
+            cap != null &&
+            package.manifest.schoolId == binding.schoolId &&
+            cap.schema == binding.schema) {
+          registry._bindings[binding.key] = binding.withBaseContract(cap);
+        }
       }
     }
     return registry;
@@ -367,7 +392,12 @@ class ScriptRegistry {
     entries[id] = ScriptInstallation(package, enabled: old?.enabled ?? true);
     for (final cap in package.manifest.capabilities) {
       final binding = _ProviderBinding.forPackage(package, cap);
-      bindings.putIfAbsent(binding.key, () => binding);
+      final current = bindings[binding.key];
+      if (current == null) {
+        bindings[binding.key] = binding;
+      } else if (current.baseId == id && current.schema == cap.schema) {
+        bindings[binding.key] = current.withBaseContract(cap);
+      }
     }
   });
 
@@ -408,7 +438,7 @@ class ScriptRegistry {
         edit(next, bindings);
         final bytes = utf8.encode(
           jsonEncode({
-            'version': 2,
+            'version': 3,
             'entries': [
               for (final item in next.values)
                 {

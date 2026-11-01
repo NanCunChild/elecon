@@ -66,6 +66,165 @@ class FailingBlobs extends InMemoryBlobStore {
 }
 
 void main() {
+  test(
+    'approved base schema upgrade follows the same source across restart',
+    () async {
+      final blobs = InMemoryBlobStore();
+      final registry = await ScriptRegistry.open(blobs);
+      await install(
+        registry,
+        package('base', capabilities: {'schedule.week': '1.0'}),
+      );
+      final upgraded = package(
+        'base',
+        version: '1.1.0',
+        capabilities: {'schedule.week': '1.1'},
+      );
+      await install(registry, upgraded);
+      final restored = await ScriptRegistry.open(blobs);
+      expect(
+        restored.provider('school-a', 'schedule.week')?.digest,
+        upgraded.digest,
+      );
+      expect(
+        restored
+            .baseProvider('school-a', 'schedule.week')
+            ?.manifest
+            .capability('schedule.week')
+            ?.schemaVersion,
+        '1.1',
+      );
+    },
+  );
+
+  test(
+    'v2 stale binding is repaired without changing approval or explicit override',
+    () async {
+      final blobs = InMemoryBlobStore();
+      final base = package('base', capabilities: {'schedule.week': '1.1'});
+      final extra = package('extra', capabilities: {'schedule.week': '1.0'});
+      await blobs.write(
+        'trusted-scripts.json',
+        utf8.encode(
+          jsonEncode({
+            'version': 2,
+            'entries': [
+              for (final p in [base, extra])
+                {'package': p.encode(), 'digest': p.digest, 'enabled': true},
+            ],
+            'bindings': [
+              {
+                'schoolId': 'school-a',
+                'capability': 'schedule.week',
+                'baseId': 'base',
+                'schema': 'elecon.schedule.week',
+                'schemaVersion': '1.0',
+                'overrideId': 'extra',
+              },
+            ],
+          }),
+        ),
+      );
+      final registry = await ScriptRegistry.open(blobs);
+      expect(
+        registry.baseProvider('school-a', 'schedule.week')?.digest,
+        base.digest,
+      );
+      expect(
+        registry.isProviderOverride('school-a', 'schedule.week', 'extra'),
+        isTrue,
+      );
+      expect(registry.provider('school-a', 'schedule.week'), isNull);
+      expect(
+        registry.blocksLegacyFallback('school-a', 'schedule.week'),
+        isTrue,
+      );
+      await registry.setProviderOverride('school-a', 'schedule.week', null);
+      final restored = await ScriptRegistry.open(blobs);
+      expect(
+        restored.provider('school-a', 'schedule.week')?.digest,
+        base.digest,
+      );
+      final stored =
+          jsonDecode(utf8.decode((await blobs.read('trusted-scripts.json'))!))
+              as Map;
+      expect(stored['version'], 3);
+      expect((stored['entries'] as List).first['package'], base.encode());
+      expect((stored['entries'] as List).first['digest'], base.digest);
+    },
+  );
+
+  test(
+    'failed schema upgrade leaves the previous contract and installation intact',
+    () async {
+      final blobs = FailingBlobs();
+      final registry = await ScriptRegistry.open(blobs);
+      final original = package('base', capabilities: {'schedule.week': '1.0'});
+      await install(registry, original);
+      blobs.fail = true;
+      await expectLater(
+        install(
+          registry,
+          package(
+            'base',
+            version: '1.1.0',
+            capabilities: {'schedule.week': '1.1'},
+          ),
+        ),
+        throwsStateError,
+      );
+      expect(
+        registry.provider('school-a', 'schedule.week')?.digest,
+        original.digest,
+      );
+      expect(
+        registry
+            .find('base')
+            ?.package
+            .manifest
+            .capability('schedule.week')
+            ?.schemaVersion,
+        '1.0',
+      );
+    },
+  );
+
+  test(
+    'base upgrade preserves incompatible override selection until explicit removal',
+    () async {
+      final registry = await ScriptRegistry.open(null);
+      await install(
+        registry,
+        package('base', capabilities: {'schedule.week': '1.0'}),
+      );
+      await install(
+        registry,
+        package('extra', capabilities: {'schedule.week': '1.0'}),
+      );
+      await registry.setProviderOverride('school-a', 'schedule.week', 'extra');
+      await install(
+        registry,
+        package(
+          'base',
+          version: '1.1.0',
+          capabilities: {'schedule.week': '1.1'},
+        ),
+      );
+      expect(
+        registry.isProviderOverride('school-a', 'schedule.week', 'extra'),
+        isTrue,
+      );
+      expect(registry.provider('school-a', 'schedule.week'), isNull);
+      await registry.setProviderOverride('school-a', 'schedule.week', null);
+      expect(
+        registry.provider('school-a', 'schedule.week')?.manifest.id,
+        'base',
+      );
+      await registry.setEnabled('base', false);
+      expect(registry.provider('school-a', 'schedule.week'), isNull);
+    },
+  );
+
   test('disabling a base does not promote an unselected candidate', () async {
     final registry = await ScriptRegistry.open(null);
     await install(registry, package('base'));
@@ -154,7 +313,7 @@ void main() {
       final raw =
           jsonDecode(utf8.decode((await blobs.read('trusted-scripts.json'))!))
               as Map;
-      expect(raw['version'], 2);
+      expect(raw['version'], 3);
     },
   );
 

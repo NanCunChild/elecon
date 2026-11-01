@@ -25,6 +25,7 @@ ADR-000–033 已废弃为新开发总纲，正文移至 [archived](../archived/
 | [048](adr_048_schedule_navigation_and_segments.md) | Accepted（本轮课表交互授权） | 周预览、滑动切周、学校时间分段及重叠覆盖已实现 | 待人工契约审阅/真机 | schedule.week 1.1，保留 1.0 校验 |
 | [050](adr_050_faculty_search.md) | Accepted（本轮教师查询授权） | 官网分页脚本、原生检索与同源详情已实现 | 待人工契约/网络审阅 | 新增 faculty.search 1.0；不预加载/不读取凭据 |
 | [051](adr_051_forum_and_messages_reservation.md) | 入口预留 Accepted；后续由 052 细化 | 历史四导航/占位首片；当前为按能力显示 | 后续认证/网络仍待人工审阅 | 保留规划历史，当前状态见 052 |
-| [052](adr_052_community_accounts_and_chaoxing.md) | Accepted（本轮服务接入授权） | 瑞思账号、学习通增强包、SDK 9 有界前台 WebSocket 与动态 Tab | 待人工核心/网络审阅与真实账号/真机 | 无历史私信/推送；签到限定无额外挑战的 QR 活动 |
+| [052](adr_052_community_accounts_and_chaoxing.md) | Accepted（本轮服务接入授权） | 睿思账号、学习通增强包、SDK 9 有界前台 WebSocket 与动态 Tab | 待人工核心/网络审阅与真实账号/真机 | 无历史私信/推送；签到限定无额外挑战的 QR 活动 |
+| [053](adr_053_provider_updates_and_service_cancellation.md) | Accepted（修复课表与独立服务） | registry v3 旧绑定恢复、基础包契约升级、单次调用取消；社区包手动导入 | 自动回归与设备结果另记；核心人工审阅待完成 | 保留批准 digest 和显式覆盖选择，不提升 namespace 权限 |
 
 ADR 编号不回收：021 仍是历史预留。更新决策、实现与签收时分别修改对应列，不用自动测试替代人工复核。
