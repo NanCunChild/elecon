@@ -12,6 +12,11 @@
 
 新增 `card.qr` / `elecon.card.qr` 1.0：短时 PNG 图片、取得与停止显示时刻、可选用途；禁止 home 预加载/缓存。校园卡建议可由余额、流水或二维码独立提供。旧余额契约不变，二维码学校不伪造消费数据；旧宿主拒绝未知 schema。
 
+- **2026-11-01 · 服务账号、消息窗口、扫码签到与 SDK 9（ADR-052）**
+  - 新增 `forum.session`、`messages.session`、`messages.list`、`attendance.checkin` 及参数 schema，均 1.0；registry/TS/Dart/输出 validator 同步。前台执行，禁止 home/preload/持久缓存；不重解释 notice 或 attendance.summary。
+  - SDK 9 `websocketOrigins` 与 `ctx.websocket`：精确 wss origin、固定 DNS/TLS、二进制有界窗口、无重定向/压缩/自动重连。与 HTTP 权限分别授权，旧 SDK 不变，旧宿主拒绝 SDK 9。
+  - 基本包升至 0.18.0、增强包 0.1.0；新增来源需重新确认 digest。动态 Tab 只读可执行 provider。真实账号、协议在线兼容及人工安全签收未完成。
+
 - **2026-11-01 · ADR-046（所有者废除 action 授权）**：移除新包 `manifest.actions` 与 SDK action 声明；Dart/TS 新包解析明确拒绝旧字段，已有安装仅保留原始内容/digest 并等待显式更新。普通 capability 使用通用 `ctx.fetch`，空调按钮触发一次控制后查询一次状态；不额外确认或自动重发。包格式及 SDK 其它 API 不变，西电本科包升至 0.15.0。V1 控制门不变。
 
 

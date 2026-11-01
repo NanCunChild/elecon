@@ -66,5 +66,10 @@
     ,"climate.devices": {"description": "climate.devices（ADR-040）", "emits": {"schema": "elecon.climate.devices", "schemaVersion": "1.0"}}
     ,"climate.status": {"description": "climate.status（ADR-040）", "emits": {"schema": "elecon.climate.status", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.climate.status", "schemaVersion": "1.0"}}
     ,"climate.command": {"description": "climate.command（ADR-040）", "emits": {"schema": "elecon.climate.command", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.climate.command", "schemaVersion": "1.0"}}
+
+    ,"forum.session": {"description": "forum.session（ADR-052；仅前台、不缓存）", "emits": {"schema": "elecon.forum.session", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.forum.session", "schemaVersion": "1.0"}}
+    ,"messages.session": {"description": "messages.session（ADR-052；仅前台、不缓存）", "emits": {"schema": "elecon.messages.session", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.session", "schemaVersion": "1.0"}}
+    ,"messages.list": {"description": "messages.list（ADR-052；仅前台、不缓存）", "emits": {"schema": "elecon.messages.list", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.list", "schemaVersion": "1.0"}}
+    ,"attendance.checkin": {"description": "attendance.checkin（ADR-052；仅前台、不缓存）", "emits": {"schema": "elecon.attendance.checkin", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.attendance.checkin", "schemaVersion": "1.0"}}
     }
   }

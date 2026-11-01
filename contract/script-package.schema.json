@@ -43,7 +43,8 @@
             5,
             6,
             7,
-            8
+            8,
+            9
           ],
           "type": "integer"
         },
@@ -76,6 +77,17 @@
           "maxLength": 80,
           "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
           "description": "SDK 7 optional single-line homepage title. Omitted: use the school name. Maximum 80 Unicode code points; no control or bidi control characters. Does not rename the package or grant authority."
+        },
+        "websocketOrigins": {
+          "type": "array",
+          "description": "SDK 9：前台有界二进制 WebSocket 精确 wss origins；默认拒绝。",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^wss://(?:[a-zA-Z0-9.-]+|\\[[0-9a-fA-F:.]+\\])(?::[0-9]{1,5})?/?$"
+          }
         },
         "scanner": {
           "type": "boolean",
@@ -119,6 +131,86 @@
           "maxItems": 64,
           "items": {
             "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "forum.session"
+                  },
+                  "schema": {
+                    "const": "elecon.forum.session"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "messages.session"
+                  },
+                  "schema": {
+                    "const": "elecon.messages.session"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "messages.list"
+                  },
+                  "schema": {
+                    "const": "elecon.messages.list"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "attendance.checkin"
+                  },
+                  "schema": {
+                    "const": "elecon.attendance.checkin"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
               {
                 "type": "object",
                 "additionalProperties": false,
@@ -908,8 +1000,8 @@
         }
       },
       "allOf": [
-        {"if": {"required": ["scanner"], "properties": {"scanner": {}}}, "then": {"properties": {"sdkVersion": {"const": 8}}}},
-        {"if": {"required": ["homeTitle"], "properties": {"homeTitle": {}}}, "then": {"properties": {"sdkVersion": {"enum": [7, 8]}}}},
+        {"if": {"required": ["scanner"], "properties": {"scanner": {}}}, "then": {"properties": {"sdkVersion": {"type": "integer", "minimum": 8}}}},
+        {"if": {"required": ["homeTitle"], "properties": {"homeTitle": {}}}, "then": {"properties": {"sdkVersion": {"enum": [7, 8, 9]}}}},
         {
           "if": {
             "required": [
@@ -927,13 +1019,14 @@
                   5,
                   6,
                   7,
-                  8
+                  8,
+                  9
                 ]
               }
             }
           }
         },
-        {"if": {"required": ["cards"], "properties": {"cards": {}}}, "then": {"properties": {"sdkVersion": {"enum": [6, 7, 8]}}}},
+        {"if": {"required": ["cards"], "properties": {"cards": {}}}, "then": {"properties": {"sdkVersion": {"enum": [6, 7, 8, 9]}}}},
         {
           "if": {
             "required": ["cards"],
@@ -1186,7 +1279,8 @@
               }
             }
           }
-        }
+        },
+        {"if": {"required": ["websocketOrigins"], "properties": {"websocketOrigins": {}}}, "then": {"properties": {"sdkVersion": {"minimum": 9, "type": "integer"}}}}
       ]
     }
   }

@@ -96,7 +96,7 @@ void main() {
         store: store,
         schoolId: 'fixture',
         scriptId: 'school.fixture',
-        sdkVersion: 9,
+        sdkVersion: 10,
       ),
       throwsA(isA<ScriptCredentialException>()),
     );

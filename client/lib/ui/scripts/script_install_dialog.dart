@@ -34,6 +34,13 @@ Future<bool> confirmScriptInstall(
                   Text(l10n.scriptsNetwork),
                   for (final origin in package.manifest.network.origins)
                     Text(origin.toString()),
+                  if (package.manifest.websocketNetwork.origins.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(l10n.scriptsWebsocketPermission),
+                    for (final origin
+                        in package.manifest.websocketNetwork.origins)
+                      Text(origin.replace(scheme: 'wss').toString()),
+                  ],
                   const SizedBox(height: 12),
                   Text(l10n.scriptsIp),
                   Text(

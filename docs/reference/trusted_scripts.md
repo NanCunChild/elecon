@@ -8,7 +8,7 @@
 
 这是开发阶段的显式迁移：当前解析器/打包器拒绝任何 `actions` 字段，包括空数组；旧已安装包只保留来源、版本及原 digest，标为需要更新且不能执行，不自动修改已授权源码或清空其它安装。西电本科升级至 0.15.0 后需重新检查并授权。各已支持 SDK 的其它接口与领域数据版本不变。
 
-签到可以在受信脚本内使用通用请求，无 action 前置；SDK 8 只提供扫码输入。当前没有 Chaoxing 登录或签到实现。具体协议考察见[研究](../research/chaoxing_checkin_feasibility.md)。
+签到可以在受信脚本内使用通用请求，无 action 前置；SDK 8 只提供扫码输入。[学习通增强包](../../school-scripts/xidian-chaoxing/README.md)已提供前台登录、群消息窗口和无额外挑战的 QR 签到。具体协议考察见[研究](../research/chaoxing_checkin_feasibility.md)。
 
 ## SDK 4 首页数据接口
 
@@ -201,3 +201,11 @@ if (qr === null) return { items: [] }; // 用户取消，由脚本决定结束�
 学校可分别提供 `card.balance`、`card.transactions`、`card.qr`。二维码学校无需提供虚构余额或消费记录，`cards.type=card` 接受任一能力。`card.qr` 1.0 返回 PNG 的 `imageBase64`、`issuedAt`、`expiresAt` 和可选 `purpose`。图片不含 data URI 前缀、不允许远端 URL，最大 256 KiB、显示尺寸最大 2048×2048；客户端最多显示 60 秒，页面后台/退出/身份变化后清除，刷新由用户触发。禁止加入 `home`，否则安装校验拒绝。此接口不执行支付提交。
 
 空教室进入后自动准备教学楼并显示搜索，选定代码后不重复请求楼目录。静态目录须由学校脚本维护真实楼名/代码；当前西电仓库仍缺此名单，本轮保留首次发现兼容路径，未宣称完全离线目录已完成。
+
+## SDK 9 服务账号与前台消息
+
+[ADR-052](../adr/adr_052_community_accounts_and_chaoxing.md) 新增可选 `websocketOrigins: ["wss://service.example"]`。最多 8 个精确 origin，安装页单独显示；HTTP/browser origins 不授予 WebSocket。SDK 9 可用 `ctx.websocket.open(url)`、`send(Uint8Array)`、`receive(timeoutMs)`、`close()`。每运行一次连接、最长 30 秒，握手 10 秒，单帧/消息 64 KiB，收发各 1 MiB/128 帧；接收等待 1–5000ms（默认 1000），超时 null，关闭/错误抛出固定错误。禁止跳转、压缩、任意 headers 和自动重连；协议、鉴权 token 和 ACK 由脚本处理。原应用进后台、切校/身份/来源、更新和取消销毁通道。
+
+`forum.session` / `messages.session` 的 `operation=status|login|logout` 表示核验、显式登录、本地退出，不等于远端注销。`messages.list` 只返回明确账号下的前台消息窗口（不是完整历史或未读数）；`attendance.checkin` 在当前调用中取得 QR 输入并返回 confirmed/already/ended/unsupported/cancelled/rejected/unknown。四能力禁止 home/cache/preload 及后台调用。
+
+基本包 0.18.0 提供瑞思账号，SDK 9 学习通增强包单独导入。论坛 Tab 要求当前可执行 `forum.session`，消息 Tab 要求 `messages.list`；无支持则隐藏。登录/消息/签到绑定同一选中包，不自动借用其他包的账号 handler。每平台一个当前会话，先本地退出再换号；当前 Profile/学校仍是授权边界，namespace 不是权限沙箱。

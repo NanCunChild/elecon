@@ -7,6 +7,7 @@ library;
 /// 客户端加载器据此拒绝 catalog 引入 registry 之外的新能力（ADR-010 §3.3.2(a)，红线 #6）。
 const Set<String> kCapabilityIds = {
   'app.announcement',
+  'attendance.checkin',
   'attendance.summary',
   'calendar.academic',
   'campus.network',
@@ -27,6 +28,7 @@ const Set<String> kCapabilityIds = {
   'energy.usage',
   'exam.list',
   'faculty.search',
+  'forum.session',
   'generic.section',
   'gpa.summary',
   'grades.list',
@@ -34,6 +36,8 @@ const Set<String> kCapabilityIds = {
   'library.booking',
   'library.loans',
   'library.seats',
+  'messages.list',
+  'messages.session',
   'notice.detail',
   'notice.list',
   'profile.me',

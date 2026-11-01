@@ -10,6 +10,14 @@ import 'package:elecon_contract/output_validator_registry.dart';
 import 'network_policy.dart';
 
 const scriptPackageFormat = 'elecon-script/1';
+
+/// ADR-052: authentication, private windows and side effects stay foreground.
+const foregroundCommunityCapabilities = {
+  'forum.session',
+  'messages.session',
+  'messages.list',
+  'attendance.checkin',
+};
 const maxScriptPackageBytes = 1024 * 1024;
 
 class ScriptPackage {
@@ -77,6 +85,7 @@ class ScriptManifest {
     required this.name,
     required this.homeTitle,
     required this.network,
+    required this.websocketNetwork,
     required this.browser,
     required this.scanner,
     required this.capabilities,
@@ -93,16 +102,38 @@ class ScriptManifest {
       'name',
       if (json.containsKey('homeTitle')) 'homeTitle',
       'network',
+      if (json.containsKey('websocketOrigins')) 'websocketOrigins',
       'browser',
       if (json.containsKey('scanner')) 'scanner',
       'capabilities',
       if (json.containsKey('home')) 'home',
       if (json.containsKey('cards')) 'cards',
     }, 'manifest');
-    if (!const {1, 2, 3, 4, 5, 6, 7, 8}.contains(json['sdkVersion']) ||
+    if (!const {1, 2, 3, 4, 5, 6, 7, 8, 9}.contains(json['sdkVersion']) ||
         json['sdkVersion'] is! int) {
       throw const FormatException('unsupported script SDK version');
     }
+    final sockets = json.containsKey('websocketOrigins')
+        ? json['websocketOrigins']
+        : const [];
+    if (sockets is! List ||
+        sockets.length > 8 ||
+        (json.containsKey('websocketOrigins') &&
+            (json['sdkVersion'] as int) < 9) ||
+        sockets.any((s) => s is! String || !s.startsWith('wss://'))) {
+      throw const FormatException(
+        'websocketOrigins requires SDK 9 and exact wss origins',
+      );
+    }
+    final network = ScriptNetworkPolicy.fromJson(
+      _object(json['network'], 'network'),
+    );
+    final websocketNetwork = ScriptNetworkPolicy.fromJson({
+      'origins': [
+        for (final s in sockets) (s as String).replaceFirst('wss:', 'https:'),
+      ],
+      if (network.ipAllow != null) 'ipAllow': network.ipAllow,
+    });
     String? homeTitle;
     if (json.containsKey('homeTitle')) {
       if ((json['sdkVersion'] as int) < 7) {
@@ -161,6 +192,7 @@ class ScriptManifest {
           (e) =>
               e.capability == 'climate.command' ||
               e.capability == 'card.qr' ||
+              foregroundCommunityCapabilities.contains(e.capability) ||
               !caps.any((c) => c.id == e.capability),
         )) {
       throw const FormatException('duplicate or undeclared home capability');
@@ -191,9 +223,6 @@ class ScriptManifest {
         )) {
       throw const FormatException('duplicate or unsupported script card');
     }
-    final network = ScriptNetworkPolicy.fromJson(
-      _object(json['network'], 'network'),
-    );
     return ScriptManifest._(
       sdkVersion: json['sdkVersion'] as int,
       id: id,
@@ -202,6 +231,7 @@ class ScriptManifest {
       name: _text(json, 'name', 160),
       homeTitle: homeTitle,
       network: network,
+      websocketNetwork: websocketNetwork,
       browser: json['browser'] as bool,
       scanner: json['scanner'] == true,
       capabilities: List.unmodifiable(caps),
@@ -217,6 +247,7 @@ class ScriptManifest {
   final String name;
   final String? homeTitle;
   final ScriptNetworkPolicy network;
+  final ScriptNetworkPolicy websocketNetwork;
   final bool browser;
   final bool scanner;
   final List<ScriptCapability> capabilities;

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.messages.list",
+  "title": "读取消息参数",
+  "description": "ADR-052：前台调用，不预加载或持久缓存。",
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false
+}

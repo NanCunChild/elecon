@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1/2/3/4/5/6/7/8 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
+/** Trusted school script SDK 1/2/3/4/5/6/7/8/9 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -69,6 +69,16 @@ export interface ScriptContext {
      * persistence or check-in submission.
      */
     scanQRCode?(): Promise<{ text: string; format: "qrCode" } | null>;
+  };
+  /** ADR-052: SDK9, separately declared websocketOrigins, foreground only.
+   * One TLS connection/run, 30s lifetime, 64KiB/message, 1MiB and 128 frames
+   * per direction. No compression, redirects, automatic auth or reconnect. */
+  readonly websocket?: {
+    open(url: string): Promise<void>;
+    send(bytes: Uint8Array): Promise<void>;
+    /** 1–5000ms, default 1000. Null means timeout, closure throws. */
+    receive(timeoutMs?: number): Promise<Uint8Array | null>;
+    close(): Promise<void>;
   };
   /** Current authorized school only; revoked sessions are unavailable.
    * SDK2 list retains every namespace; get(record.key,{namespace:record.namespace}) round-trips.
@@ -182,3 +192,11 @@ export interface FacultySearchParams {
  * previews mean unknown, not zero. These are standard data, never layout code.
  * Existing 1.0 packages remain supported; query params and host API are unchanged. */
 export type ScheduleWeek = import("../generated/ts/schedule.week.js").ScheduleWeek;
+
+/** SDK9: up to eight exact wss origins; omission denies WebSocket use.
+ * HTTP/browser network.origins grants no socket access. Digest authorized. */
+export interface ScriptWebsocketPermission { websocketOrigins?: string[]; }
+/** ADR-052: these capabilities are foreground-only and forbidden in home. */
+export interface ServiceSessionParams { operation?: "status" | "login" | "logout"; }
+export type MessagesList = import("../generated/ts/messages.list.js").MessagesList;
+export type AttendanceCheckin = import("../generated/ts/attendance.checkin.js").AttendanceCheckin;

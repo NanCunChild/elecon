@@ -52,6 +52,7 @@ import '../core/scripts/credentials.dart';
 import '../core/scripts/runtime.dart';
 import '../core/scripts/input.dart';
 import '../core/scripts/http_transport.dart';
+import '../core/scripts/websocket_transport.dart';
 import '../core/scripts/browser.dart' show ScriptBrowserException;
 import '../core/scripts/data_cache.dart';
 export '../core/scripts/data_cache.dart' show ScriptCachedData;

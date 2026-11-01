@@ -30,6 +30,7 @@ class _ScriptSessionState {
   int homeRevision = 0;
   Future<void>? refreshingHome;
   final Set<ScriptHttpTransport> transports = {};
+  final Set<ScriptWebSocketTransport> sockets = {};
 }
 
 final _scriptStates = Expando<_ScriptSessionState>();
@@ -91,6 +92,10 @@ extension TrustedScriptSession on SessionController {
       transport.close();
     }
     state.transports.clear();
+    for (final socket in state.sockets.toList()) {
+      socket.close();
+    }
+    state.sockets.clear();
   }
 
   /// Reconstruct local schools without requiring a catalog release or App update.
@@ -366,6 +371,12 @@ extension TrustedScriptSession on SessionController {
     void Function(String, String)? onLog,
   }) async {
     final state = _scripts;
+    if (!interactive && foregroundCommunityCapabilities.contains(capability)) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'foreground_required',
+      );
+    }
     final ScriptRegistry registry;
     try {
       registry = await scriptRegistry;
@@ -430,6 +441,10 @@ extension TrustedScriptSession on SessionController {
         registry.find(id)?.package.digest == package.digest;
     final transport = ScriptHttpTransport(policy: package.manifest.network);
     state.transports.add(transport);
+    final socket = ScriptWebSocketTransport(
+      policy: package.manifest.websocketNetwork,
+    );
+    state.sockets.add(socket);
     DevLog.instance.runtime('script start: $id $capability');
     CapabilityRun result;
     try {
@@ -449,6 +464,7 @@ extension TrustedScriptSession on SessionController {
         params: params ?? const {},
         credentials: credentials,
         fetch: transport.fetch,
+        websocketCall: interactive ? socket.call : null,
         browserCall: browser,
         inputCall: input,
         scanCall: interactive && state.scannerPresenter != null
@@ -532,6 +548,8 @@ extension TrustedScriptSession on SessionController {
     } finally {
       transport.close();
       state.transports.remove(transport);
+      socket.close();
+      state.sockets.remove(socket);
     }
     // ADR-035 §3: authentication may already have rotated remotely even when
     // parsing/output fails. Persist completed writes without rolling them back.

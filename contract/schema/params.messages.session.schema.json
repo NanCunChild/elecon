@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.messages.session",
+  "title": "服务账号操作",
+  "description": "ADR-052：前台调用，不预加载或持久缓存。",
+  "type": "object",
+  "properties": {
+    "operation": {
+      "type": "string",
+      "description": "默认 status，仅查询；login 为显式登录；logout 仅清除此服务本地会话，不等于远端注销。",
+      "enum": [
+        "status",
+        "login",
+        "logout"
+      ]
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

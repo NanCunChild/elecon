@@ -191,10 +191,10 @@
       }
     },
     {
-      "name": "sdk8_rejected",
+      "name": "future_sdk_rejected",
       "valid": false,
       "manifest": {
-        "sdkVersion": 9
+        "sdkVersion": 10
       }
     },
     {

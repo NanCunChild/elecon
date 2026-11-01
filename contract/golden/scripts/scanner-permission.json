@@ -61,7 +61,7 @@
     {
       "name": "future_sdk",
       "manifest": {
-        "sdkVersion": 9
+        "sdkVersion": 10
       },
       "valid": false
     },

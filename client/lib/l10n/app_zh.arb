@@ -529,5 +529,57 @@
         "type": "String"
       }
     }
+  },
+  "scriptsWebsocketPermission": "允许前台有界 WebSocket 连接：",
+  "scriptsChaoxingEnhancement": "导入学习通增强包",
+  "forumAccountDescription": "连接独立的瑞思论坛账号。当前支持登录与本地退出，帖子浏览正在准备。",
+  "messagesWindowDescription": "手动获取学习通当前窗口的群消息，不包含完整历史或私信；接收回执不表示你已读。扫码签到仅支持无需定位、人脸、照片或验证码的活动。",
+  "communitySignedOut": "尚未连接此服务账号",
+  "communityConnect": "登录服务账号",
+  "communityDisconnect": "本地退出",
+  "communityConnected": "{service} · {account}",
+  "communityLoginRequired": "请先登录此服务账号，再重试。",
+  "communityRequestFailed": "请求未完成，请检查网络或重新登录后手动重试。",
+  "messagesFetch": "获取消息",
+  "messagesWindowTime": "接收窗口：{start} 至 {end}",
+  "messagesWindowEmpty": "本次窗口没有收到群消息，不代表没有历史消息或未读消息。",
+  "messagesSource": "群组 {conversation} · 发送人 {sender}",
+  "checkinScan": "扫码签到",
+  "checkinConfirmed": "签到状态已确认。",
+  "checkinAlready": "此活动已签到。",
+  "checkinEnded": "此签到活动已结束或被删除。",
+  "checkinUnsupported": "此活动有额外要求，请使用学习通完成签到。",
+  "checkinCancelled": "操作已取消。",
+  "checkinRejected": "此次签到未完成，请检查活动和二维码。",
+  "checkinUnknown": "签到结果未知，请先在学习通核实状态，避免重复提交。",
+  "@communityConnected": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      },
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "@messagesWindowTime": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "@messagesSource": {
+    "placeholders": {
+      "conversation": {
+        "type": "String"
+      },
+      "sender": {
+        "type": "String"
+      }
+    }
   }
 }

@@ -19,7 +19,7 @@ const manifest = {
 };
 const source = "throw new Error('SYNTHETIC_SOURCE_MUST_NEVER_EXECUTE');\n";
 const packaged = packageScript(manifest, source);
-for (const sdkVersion of [1, 2, 3, 4, 5, 6, 7, 8]) {
+for (const sdkVersion of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
   assert.equal(
     JSON.parse(packageScript({ ...manifest, sdkVersion }, source)).manifest.sdkVersion,
     sdkVersion,
@@ -36,7 +36,7 @@ for (const invalid of ["", "   \n", null, 42, "abc\0def"]) {
 for (const invalid of [
   { ...manifest, capabilities: [...manifest.capabilities, { ...manifest.capabilities[0]! }] },
   { ...manifest, version: "01.2.3" },
-  { ...manifest, sdkVersion: 9 },
+  { ...manifest, sdkVersion: 10 },
   { ...manifest, browser: "true" },
   { ...manifest, unknown: true },
   { ...manifest, capabilities: [{ id: "notice.list", schema: "elecon.notice.list", schemaVersion: "99.0" }] },
@@ -211,3 +211,24 @@ for (const badHome of [
 ])
   assert.throws(() => packageScript({ ...homeManifest, home: badHome }, source));
 assert.throws(() => packageScript({ ...homeManifest, sdkVersion: 3 }, source));
+
+// ADR-052: socket authorization is distinct from HTTP and sensitive home data.
+const socketManifest = { ...manifest, sdkVersion: 9, websocketOrigins: ["wss://messages.example"] };
+assert.doesNotThrow(() => packageScript(socketManifest, source));
+for (const origins of [
+  ["ws://messages.example"],
+  ["wss://messages.example/path"],
+  ["wss://messages.example", "wss://messages.example:443"],
+])
+  assert.throws(() => packageScript({ ...socketManifest, websocketOrigins: origins }, source));
+assert.throws(() => packageScript({ ...socketManifest, sdkVersion: 8 }, source));
+for (const id of ["forum.session", "messages.session", "messages.list", "attendance.checkin"]) {
+  const caps = [{ id, schema: `elecon.${id}`, schemaVersion: "1.0" }];
+  assert.doesNotThrow(() => packageScript({ ...socketManifest, capabilities: caps }, source));
+  assert.throws(() =>
+    packageScript(
+      { ...socketManifest, capabilities: caps, home: [{ capability: id, ttlSeconds: 30 }] },
+      source,
+    ),
+  );
+}

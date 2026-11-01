@@ -59,6 +59,7 @@ export function packageScript(manifest: unknown, source: unknown): string {
   const typed = manifest as {
     name: string;
     homeTitle?: string;
+    websocketOrigins?: string[];
     network: { origins: string[]; ipAllow?: string[] };
     capabilities: Array<{ id: string }>;
     home?: Array<{ capability: string; params?: Record<string, unknown> }>;
@@ -83,6 +84,9 @@ export function packageScript(manifest: unknown, source: unknown): string {
         (entry) =>
           entry.capability === "climate.command" ||
           entry.capability === "card.qr" ||
+          ["forum.session", "messages.session", "messages.list", "attendance.checkin"].includes(
+            entry.capability,
+          ) ||
           !typed.capabilities.some((cap) => cap.id === entry.capability) ||
           Buffer.byteLength(JSON.stringify(entry.params ?? {}), "utf8") > 4096,
       ))
@@ -91,6 +95,10 @@ export function packageScript(manifest: unknown, source: unknown): string {
   }
   try {
     validateScriptNetwork(typed.network);
+    validateScriptNetwork({
+      origins: (typed.websocketOrigins ?? []).map((s) => s.replace(/^wss:/, "https:")),
+      ...(typed.network.ipAllow ? { ipAllow: typed.network.ipAllow } : {}),
+    });
   } catch (error) {
     throw new ScriptPackageError(error instanceof Error ? error.message : "script_package_network_invalid");
   }

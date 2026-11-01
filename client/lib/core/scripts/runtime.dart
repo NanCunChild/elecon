@@ -36,6 +36,7 @@ class TrustedScriptRuntime {
     required Future<Map<String, Object?>> Function(String, Map<String, dynamic>)
     fetch,
     Future<Object?> Function(String, Map<String, Object?>)? browserCall,
+    Future<Object?> Function(String, Map<String, dynamic>)? websocketCall,
     ScriptInputCall? inputCall,
     ScriptScanCall? scanCall,
     bool Function()? isActive,
@@ -118,6 +119,45 @@ class TrustedScriptRuntime {
       hostPromiseRejectionHandler: (_) {},
     );
     qjs.setHostFunctions({
+      '__script_websocket': (dynamic method, dynamic encoded) async {
+        check();
+        if (package.manifest.sdkVersion < 9 ||
+            package.manifest.websocketNetwork.origins.isEmpty ||
+            websocketCall == null) {
+          throw const ScriptRunException('websocket_unavailable');
+        }
+        if (method is! String ||
+            encoded is! String ||
+            encoded.length > 400000) {
+          throw const ScriptRunException('websocket_invalid_request');
+        }
+        try {
+          final args = jsonDecode(encoded);
+          if (args is! Map<String, dynamic>) {
+            throw const ScriptRunException('websocket_invalid_request');
+          }
+          if (method == 'open') {
+            final uri = args['url'] is String
+                ? Uri.tryParse(args['url'] as String)
+                : null;
+            if (uri == null ||
+                uri.scheme != 'wss' ||
+                uri.hasFragment ||
+                !package.manifest.websocketNetwork.allowsUrl(
+                  uri.replace(scheme: 'https'),
+                )) {
+              throw const ScriptRunException('network_denied');
+            }
+          }
+          final result = await websocketCall(method, args);
+          check(count: false);
+          return jsonEncode(result);
+        } on ScriptRunException {
+          rethrow;
+        } catch (_) {
+          throw const ScriptRunException('websocket_failed');
+        }
+      },
       '__script_scan': (dynamic argumentCount) async {
         check();
         if (package.manifest.sdkVersion < 8 ||
@@ -372,7 +412,7 @@ class TrustedScriptRuntime {
         for (final secret in knownSecrets) {
           clean = clean.replaceAll(secret, '[credential]');
         }
-        clean = clean.replaceAll(RegExp(r'https?://[^\s]+'), '[url]');
+        clean = clean.replaceAll(RegExp(r'(?:https?|wss)://[^\s]+'), '[url]');
         logBytes += utf8.encode(clean).length;
         if (logBytes <= 64 * 1024) {
           onLog?.call(
@@ -422,6 +462,9 @@ class TrustedScriptRuntime {
             browser: package.manifest.browser,
             browserBusy: package.manifest.sdkVersion >= 4,
             input: package.manifest.sdkVersion >= 3,
+            websocket:
+                package.manifest.sdkVersion >= 9 &&
+                package.manifest.websocketNetwork.origins.isNotEmpty,
             scanner:
                 package.manifest.sdkVersion >= 8 && package.manifest.scanner,
             maxOutputBytes: maxOutputBytes,
@@ -473,6 +516,7 @@ String _bootstrap({
   required bool browser,
   required bool browserBusy,
   required bool input,
+  required bool websocket,
   required bool scanner,
   required int maxOutputBytes,
 }) =>
@@ -530,6 +574,15 @@ String _bootstrap({
         arrayBuffer:async()=>(new Uint8Array(r.bodyBytes || [])).buffer});
     },
   };
+  if ($websocket) {
+    const call = async (method,args) => JSON.parse(await globalThis.__script_websocket(method,String(JSON.stringify(args))));
+    ctx.websocket = Object.freeze({
+      open: url => call('open',{url}),
+      send: bytes => call('send',{bytes:bytes instanceof Uint8Array ? Array.from(bytes) : bytes}),
+      receive: async (timeoutMs=1000) => { const bytes = await call('receive',{timeoutMs}); return bytes === null ? null : new Uint8Array(bytes); },
+      close: () => call('close',{}),
+    });
+  }
   if ($input) {
     ctx.ui = {requestInput: async request => {
       try {
