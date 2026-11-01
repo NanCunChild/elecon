@@ -742,14 +742,17 @@ export async function classroomAvailable(ctx, params = {}) {
   const buildingName = text(params.building);
   if (!buildingId && !buildingName) throw new Error("classroom_building_required");
   await openApp(client, false, "4768402106681759");
-  let choices = campusFilter(await buildings(client), text(params.campus));
-  if (buildingId) choices = choices.filter((b) => b.buildingId === buildingId);
-  else {
+  let building;
+  if (buildingId) {
+    building = { buildingId, building: buildingName || buildingId };
+    optional(building, "campus", params.campus);
+  } else {
+    const choices = campusFilter(await buildings(client), text(params.campus));
     const exact = choices.filter((b) => b.building === buildingName);
-    choices = exact.length ? exact : choices.filter((b) => b.building.includes(buildingName));
+    const matches = exact.length ? exact : choices.filter((b) => b.building.includes(buildingName));
+    if (matches.length !== 1 || !matches[0].buildingId) throw new Error("classroom_building_not_unique");
+    building = matches[0];
   }
-  if (choices.length !== 1 || !choices[0].buildingId) throw new Error("classroom_building_not_unique");
-  const building = choices[0];
   let week;
   let weekday;
   if (date) {

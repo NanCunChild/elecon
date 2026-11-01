@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Protocols and OPAC field mappings adapted from traintime_pda's
 // school_card_session.dart and library_session.dart. No reference configuration,
-// live credentials, payment QR, renewal, or device-write operation is included.
+// live credentials, renewal, or device-write operation is included.
 
 import { getChildren, getText, isTag, parseDocument, selectAll } from "elecon:html";
 import { failure } from "./errors.js";
@@ -432,4 +432,38 @@ export async function libraryLoans(ctx, _params = {}) {
     }
   }
   fail("library_pagination_limit");
+}
+
+// ADR-047: display-only school image; do not persist it in the auth session.
+export async function cardQr(ctx) {
+  const client = await cardClient(ctx);
+  const openid = client.session.data.openid;
+  const home = await responseText(
+    await client.request(`${CARD}/home/openHomePage?openid=${encodeURIComponent(openid)}`),
+    "xidian_login_required_card",
+  );
+  let id = "";
+  for (const anchor of selectAll("a", parseDocument(home))) {
+    const href = decodeHTML(anchor.attribs?.href || "");
+    // Only extract the id. Never follow an arbitrary link from the page.
+    if (!/^(?:https:\/\/v8scan\.xidian\.edu\.cn)?\/virtualcard\/openVirtualcard\?/.test(href)) continue;
+    const match = /[?&]id=([^&]+)/.exec(href);
+    if (match) { id = decodeURIComponent(match[1]); break; }
+  }
+  if (!id || id.length > 256) fail("card_qr_missing");
+  const html = await responseText(await client.request(
+    `${CARD}/virtualcard/openVirtualcard?openid=${encodeURIComponent(openid)}&displayflag=1&id=${encodeURIComponent(id)}`,
+  ), "xidian_login_required_card");
+  const source = selectAll("#qrcode", parseDocument(html))[0]?.attribs?.src || "";
+  const match = /^data:image\/png;base64,(iVBORw0KGgo[A-Za-z0-9+/]*={0,2})$/.exec(source.replace(/\s/g, ""));
+  if (!match || match[1].length > 349528) fail("card_qr_invalid");
+  const now = ctx.now();
+  return {
+    imageBase64: match[1],
+    issuedAt: new Date(now).toISOString(),
+    // Source has no documented expiry. This is a conservative display cutoff,
+    // not a claim about the school's token validity (ADR-047).
+    expiresAt: new Date(now + 30000).toISOString(),
+    purpose: "校园卡",
+  };
 }

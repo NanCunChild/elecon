@@ -18,7 +18,7 @@ const compiled = await build({
     "elecon:html": fileURLToPath(new URL("../../../adapters/_stdlib/html.bundle.js", import.meta.url)),
   },
 });
-const { cardBalance, cardTransactions, libraryLoans } = await import(
+const { cardBalance, cardQr, cardTransactions, libraryLoans } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`
 );
 
@@ -506,4 +506,30 @@ test("OPAC changing totals are rejected rather than treated as a complete snapsh
   );
   await assert.rejects(libraryLoans(env.ctx), /library_pagination_changed/);
   assert.equal(env.calls.filter((call) => call.url.pathname === "/find/loanInfo/loanList").length, 2);
+});
+
+test("card QR follows only the fixed school route and keeps the image out of session storage", async () => {
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jD0sAAAAASUVORK5CYII=";
+  const env = context("card", { openid: "EXAMPLE_SYNTHETIC_OPENID", openidFetchedAt: NOW }, ({ url }) => {
+    if (url.pathname === "/home/openHomePage") return response(url.href,
+      '<a href="https://example.invalid/virtualcard/openVirtualcard?id=wrong">external</a><a href="/virtualcard/openVirtualcard?id=EXAMPLE&amp;displayflag=1">card</a>');
+    assert.equal(url.pathname, "/virtualcard/openVirtualcard");
+    assert.equal(url.searchParams.get("id"), "EXAMPLE");
+    return response(url.href, `<img id="qrcode" src="data:image/png;base64,${png}">`);
+  });
+  const qr = await cardQr(env.ctx);
+  assert.equal(qr.imageBase64, png);
+  assert.equal(Date.parse(qr.expiresAt) - NOW, 30000);
+  assert.equal(env.calls.length, 2);
+  assert.ok(!JSON.stringify(env.saved()).includes(png));
+});
+
+test("card QR rejects remote images and malformed PNG data without retry", async () => {
+  for (const src of ["https://example.invalid/private.png", "data:image/png;base64,ZmFrZQ=="]) {
+    const env = context("card", { openid: "EXAMPLE_SYNTHETIC_OPENID", openidFetchedAt: NOW }, ({ url }) =>
+      response(url.href, url.pathname === "/home/openHomePage"
+        ? '<a href="/virtualcard/openVirtualcard?id=EXAMPLE">card</a>' : `<img id="qrcode" src="${src}">`));
+    await assert.rejects(cardQr(env.ctx), /card_qr_invalid/);
+    assert.equal(env.calls.length, 2);
+  }
 });

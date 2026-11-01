@@ -1,7 +1,7 @@
 {
   "sdkVersion": 5,
   "id": "school-xidian-undergraduate",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "schoolId": "xidian_undergraduate",
   "name": "西安电子科技大学（本科生）",
   "network": {
@@ -108,6 +108,11 @@
     {
       "id": "climate.command",
       "schema": "elecon.climate.command",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "card.qr",
+      "schema": "elecon.card.qr",
       "schemaVersion": "1.0"
     }
   ],

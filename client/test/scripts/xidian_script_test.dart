@@ -386,9 +386,9 @@ process.stdout.write(result.outputFiles[0].text);''',
     'source packages bind SDK 5 and combine browser login with authenticated data',
     () {
       expect(school.manifest.sdkVersion, 5);
-      expect(school.manifest.version, '0.15.0');
+      expect(school.manifest.version, '0.16.0');
       expect(school.manifest.browser, isTrue);
-      expect(school.manifest.capabilities, hasLength(18));
+      expect(school.manifest.capabilities, hasLength(19));
       expect(school.manifest.capability('notice.detail'), isNotNull);
       expect(login.manifest.browser, isTrue);
       expect(login.manifest.schoolId, school.manifest.schoolId);
@@ -397,6 +397,49 @@ process.stdout.write(result.outputFiles[0].text);''',
       expect(
         postgraduateLogin.manifest.schoolId,
         postgraduate.manifest.schoolId,
+      );
+    },
+  );
+
+  test(
+    'actual QR source returns PNG through QuickJS and output validation',
+    () async {
+      seed(
+        'card',
+        data: {
+          'openid': 'SYNTHETIC-OPENID',
+          'openidFetchedAt': DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+      const png =
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jD0sAAAAASUVORK5CYII=';
+      var calls = 0;
+      final result =
+          await run(
+                'card.qr',
+                fetch: (url, init) async {
+                  calls++;
+                  if (Uri.parse(url).path == '/home/openHomePage') {
+                    return response(
+                      url,
+                      '<a href="/virtualcard/openVirtualcard?id=SYNTHETIC">card</a>',
+                    );
+                  }
+                  expect(Uri.parse(url).path, '/virtualcard/openVirtualcard');
+                  return response(
+                    url,
+                    '<img id="qrcode" src="data:image/png;base64,$png">',
+                  );
+                },
+              )
+              as Map;
+      expect(result['imageBase64'], png);
+      expect(calls, 2);
+      expect(
+        DateTime.parse(
+          result['expiresAt'] as String,
+        ).difference(DateTime.parse(result['issuedAt'] as String)).inSeconds,
+        30,
       );
     },
   );

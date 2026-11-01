@@ -9,7 +9,7 @@ import {
   scheduleWeek,
   termList,
 } from "./academic.js";
-import { cardBalance, cardTransactions, libraryLoans } from "./campus.js";
+import { cardBalance, cardQr, cardTransactions, libraryLoans } from "./campus.js";
 import { createLogin } from "./login.js";
 import { noticeDetail, noticeList } from "./notices.js";
 
@@ -45,6 +45,7 @@ export function createCapabilities(role) {
     "exam.list": authenticated(examList, role),
     "classroom.buildings": authenticated(classroomBuildings, role),
     "classroom.available": authenticated(classroomAvailable, role),
+    "card.qr": authenticated(cardQr, role),
     "card.balance": authenticated(cardBalance, role),
     "card.transactions": authenticated(cardTransactions, role),
     "library.loans": authenticated(libraryLoans, role),

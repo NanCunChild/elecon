@@ -1,7 +1,7 @@
 {
   "sdkVersion": 4,
   "id": "school-xidian-postgraduate",
-  "version": "0.13.1",
+  "version": "0.16.0",
   "schoolId": "xidian_postgraduate",
   "name": "西安电子科技大学（研究生）",
   "network": {
@@ -82,6 +82,11 @@
     {
       "id": "generic.section",
       "schema": "elecon.generic.section",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "card.qr",
+      "schema": "elecon.card.qr",
       "schemaVersion": "1.0"
     }
   ],

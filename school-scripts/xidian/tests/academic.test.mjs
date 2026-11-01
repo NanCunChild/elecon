@@ -667,3 +667,9 @@ test("invalid role/week and missing required student id fail explicitly", async 
     /student_id_required/,
   );
 });
+
+ test("classroom id query does not refetch the building directory", async () => {
+  const ctx = fake(classroomsRoute);
+  await classroomAvailable(ctx, { term: TERM, date: "2025-09-16", buildingId: "demo-building", building: "测试楼" });
+  assert.equal(ctx.calls.some((call) => call.url.pathname.endsWith("/jxlcx.do")), false);
+});
