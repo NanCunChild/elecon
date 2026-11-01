@@ -386,9 +386,9 @@ process.stdout.write(result.outputFiles[0].text);''',
     'source packages bind SDK 5 and combine browser login with authenticated data',
     () {
       expect(school.manifest.sdkVersion, 5);
-      expect(school.manifest.version, '0.17.0');
+      expect(school.manifest.version, '0.18.0');
       expect(school.manifest.browser, isTrue);
-      expect(school.manifest.capabilities, hasLength(20));
+      expect(school.manifest.capabilities, hasLength(21));
       expect(school.manifest.capability('notice.detail'), isNotNull);
       expect(login.manifest.browser, isTrue);
       expect(login.manifest.schoolId, school.manifest.schoolId);

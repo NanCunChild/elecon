@@ -42,7 +42,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "audit": "npm audit --omit=dev",
     "scripts:package": "tsx src/script/package.ts",
-    "scripts:xidian": "tsx src/script/xidian.ts"
+    "scripts:xidian": "tsx src/script/xidian.ts",
+    "scripts:chaoxing": "tsx src/script/chaoxing.ts"
   },
   "dependencies": {
     "@elecon/broker-primitives": "*",

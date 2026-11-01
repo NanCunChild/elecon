@@ -1,0 +1,40 @@
+{
+  "sdkVersion": 9,
+  "id": "enhancement-xidian-postgraduate-chaoxing",
+  "version": "0.1.0",
+  "schoolId": "xidian_postgraduate",
+  "name": "西电学习通增强（研究生）",
+  "network": {
+    "origins": [
+      "https://passport2.chaoxing.com",
+      "https://learn.chaoxing.com",
+      "https://mobilelearn.chaoxing.com",
+      "https://sso.chaoxing.com",
+      "https://i.chaoxing.com",
+      "https://learning.xidian.edu.cn",
+      "https://ids.xidian.edu.cn"
+    ]
+  },
+  "browser": true,
+  "scanner": true,
+  "websocketOrigins": [
+    "wss://im-api-wechat-vip6.easemob.com"
+  ],
+  "capabilities": [
+    {
+      "id": "messages.session",
+      "schema": "elecon.messages.session",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "messages.list",
+      "schema": "elecon.messages.list",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "attendance.checkin",
+      "schema": "elecon.attendance.checkin",
+      "schemaVersion": "1.0"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 /** ADR-034/035: build the independently installable Xidian SDK 4 packages. */
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { packageScript } from "./package.js";
@@ -57,7 +57,21 @@ export async function writeXidianPackages(outputDirectory: string): Promise<void
     }
   }
   await writeFile(join(outputDirectory, "LICENSE.txt"), await readFile(join(root, "LICENSE")));
-  await writeFile(join(outputDirectory, "README.md"), await readFile(join(root, "README.md")));
+  // Keep repository links usable after moving the source notice into assets/dist.
+  const readme = (await readFile(join(root, "README.md"), "utf8")).replace(
+    /\]\(([^)]+)\)/g,
+    (match, target: string) => {
+      if (/^(?:[a-z]+:|#)/i.test(target)) return match;
+      if (target === "LICENSE") return "](LICENSE.txt)";
+      if (target === "RUISI-LICENSE.txt") return match;
+      return `](${relative(outputDirectory, resolve(root, target)).replaceAll("\\", "/")})`;
+    },
+  );
+  await writeFile(join(outputDirectory, "README.md"), readme);
+  await writeFile(
+    join(outputDirectory, "RUISI-LICENSE.txt"),
+    await readFile(join(root, "RUISI-LICENSE.txt")),
+  );
   // Remove this builder's obsolete unsplit artifacts so they cannot be mistaken
   // for the new school-bound packages on a subsequent import.
   for (const name of [

@@ -1,16 +1,24 @@
 # 西电 SDK 4/5 脚本
 
-版本：本科包 `0.17.0 / SDK 5`，研究生包 `0.17.0 / SDK 4`；客户端本地构建基线 `0.6.0+9`。依 ADR-046 移除 actions，控制沿用普通 capability 与 ctx.fetch；保留既有凭据、输入、浏览器与首页缓存。参考本机 `traintime_pda` 提交 `e780e4d01ea740c979ff5c31b9db439dbc586864`（2026-10-14），2026-10-31 只读核对水电及空调相关源码；源码适配和合成回归不等于真实学校/设备验收或人工安全签收。
+版本：本科包 `0.18.0 / SDK 5`，研究生包 `0.18.0 / SDK 4`；客户端本地构建基线 `0.6.0+9`。依 ADR-046 移除 actions，控制沿用普通 capability 与 ctx.fetch；保留既有凭据、输入、浏览器与首页缓存。参考本机 `traintime_pda` 提交 `e780e4d01ea740c979ff5c31b9db439dbc586864`（2026-10-14），2026-10-31 只读核对水电及空调相关源码；源码适配和合成回归不等于真实学校/设备验收或人工安全签收。
 
 本科和研究生是两个学校身份：`xidian_undergraduate`、`xidian_postgraduate`。教务路由由安装的学校包绑定，不再由共享 IDS 记录中的 `role` 决定。
 
 旧西电源码还在 `adapters.pin` 指向的外部仓，签名包仍在 bootstrap。本目录更新的是新的受信脚本路径，不修改旧路径缓存、外部仓 pin 或签名内字节。导入后须选择对应的本科/研究生学校；原 `xidian` 是保留的旧身份，其凭据不会自动迁入新学校。
 
+## 0.18.0：独立瑞思账号
+
+按 [ADR-052](../../../docs/adr/adr_052_community_accounts_and_chaoxing.md) 新增 `forum.session` 与 `https://rs.xidian.edu.cn`。基本包升级后重新检查授权，论坛 Tab 显示账号连接页；原生表单使用瑞思自己的用户名/密码，遇验证码转到原站页面。表单参考 traintime_pda 同一提交的 `lib/external/ruisi_flutter`（BSD-3-Clause），版权与完整许可证保留于源码及 [RUISI-LICENSE.txt](RUISI-LICENSE.txt)，随内置包分发。
+
+会话独立存于当前 Profile/学校的 `xidian.services` / `xidian.ruisi`，不写入或复用 IDS 密码。登录须由“当前用户”页头和退出控件核验远端 UID；只保存 Cookie，不保存密码或密码摘要。本地退出只删除瑞思会话，不等于远端注销。`forum.session` 的参数为 `operation: status|login|logout`，默认 status；不允许首页缓存或后台执行。帖子浏览尚未实现。
+
+学习通消息与扫码签到在[独立增强包](../../../school-scripts/xidian-chaoxing/README.md)，需 SDK 9 客户端及单独安装授权，基本包不声明这些能力。无可执行论坛/消息来源时核心隐藏对应 Tab。
+
 ## 0.17.0：课表预览、教师查询与内置教学楼
 
 课表采用 `schedule.week` 1.1：脚本返回本校 11 个上课时间分段和从同次学期排课生成的逐周七日预览；客户端负责周按钮、左右滑动和重叠提示。旧 1.0 输出仍有独立校验，新包须先更新宿主后确认安装。
 
-新增 `faculty.search` 1.0，通过 `https://faculty.xidian.edu.cn` 公开分页接口按姓名关键词/研究方向查询；不读取登录凭据、不预加载、不抓全站，列表展开显示同一结果的简介与公开主页。每次用户查询/翻页仅请求一页，官网解析观察与限制见 [研究](../../docs/research/xidian_faculty.md)。新增 origin 与源码 digest 需在安装界面重新检查。
+新增 `faculty.search` 1.0，通过 `https://faculty.xidian.edu.cn` 公开分页接口按姓名关键词/研究方向查询；不读取登录凭据、不预加载、不抓全站，列表展开显示同一结果的简介与公开主页。每次用户查询/翻页仅请求一页，官网解析观察与限制见 [研究](../../../docs/research/xidian_faculty.md)。新增 origin 与源码 digest 需在安装界面重新检查。
 
 `classroom_directory.js` 内置 2026-11-01 经已授权手机 E-Hall 查询核实的 36 个教学楼名称/代码/校区（N/S 保留来源代码）。这里只保存公共楼宇目录，不含个人数据或设备标识；`classroom.buildings` 不读凭据、不登录、不请求学校，目录变化随脚本更新。按楼名或代码查询占用均复用此目录，不再调用 `jxlcx.do`；占用数据仍实时请求学校。真机字段形态核对发现学校的空节次是完整 `JC1–JC11` 键下的显式 `null`；按 PDA 的既有占用判定将显式空值处理为无占用，真正缺键仍为未知。此为字段解析修复，不代表现场验证教室实际空置。
 
@@ -58,8 +66,8 @@ npm run scripts:xidian -w tools
 
 生成：
 
-- `dist/school-xidian-undergraduate.elecon.json`：本科统一包，SDK 5、20 个能力（含同包登录）。
-- `dist/school-xidian-postgraduate.elecon.json`：研究生统一包，SDK 4、15 个能力（含同包登录）。
+- `dist/school-xidian-undergraduate.elecon.json`：本科统一包，SDK 5、21 个能力（含同包登录）。
+- `dist/school-xidian-postgraduate.elecon.json`：研究生统一包，SDK 4、16 个能力（含同包登录）。
 
 也可传 `-- --out-dir /tmp/xidian-scripts`。构建器先编译、校验两个统一包，不执行学校代码、不签名，并清理输出目录内旧的未分校包和独立登录包。所有本地模块合并成一个 ESM，`elecon:html` 保留为宿主内置模块。输出保留 MPL 版权和来源说明。内置选校展示该学校统一包的源码、身份与权限并确认。
 
@@ -137,11 +145,11 @@ Android 未提供 Cookie 属性时，快照只能绑定到采集的业务 URL。
 
 ## 额外能力是否必要
 
-ADR-037 提供有界原生输入，ADR-038/039 增加 SDK 4 首页声明与固定登录收尾遮罩，均不增加网络/凭据权限、认证 DSL、Masker或加密原语。公告正文复用既有 notice.detail capability。实际需求与后续建议见 [能力差异评估](../../docs/reference/xidian_script_update.md)。需要区分宿主 API、业务输出契约，以及平台/网络条件：卡号约束是契约缺口；长时间 MFA、可恢复浏览器身份是可选宿主改进；校园网可达性不是给脚本增加一个函数就能解决。
+ADR-037 提供有界原生输入，ADR-038/039 增加 SDK 4 首页声明与固定登录收尾遮罩，均不增加网络/凭据权限、认证 DSL、Masker或加密原语。公告正文复用既有 notice.detail capability。实际需求与后续建议见 [能力差异评估](../../../docs/reference/xidian_script_update.md)。需要区分宿主 API、业务输出契约，以及平台/网络条件：卡号约束是契约缺口；长时间 MFA、可恢复浏览器身份是可选宿主改进；校园网可达性不是给脚本增加一个函数就能解决。
 
 ## 来源与许可
 
-本目录 JS 与测试以 **MPL-2.0** 分发，完整文本见 [LICENSE](LICENSE)。教务、登录、校园卡、图书馆模块按下列参考源码的协议/字段适配并保留版权，未把 MPL 文件当作根仓库 MIT 代码重新授权：
+本目录 JS 与测试以 **MPL-2.0** 分发，完整文本见 [LICENSE](LICENSE.txt)。教务、登录、校园卡、图书馆模块按下列参考源码的协议/字段适配并保留版权，未把 MPL 文件当作根仓库 MIT 代码重新授权：
 
 - `traintime_pda/lib/repository/ids_session/` 下的 `ids_session.dart`、`classtable_session.dart`、`score_session.dart`、`exam_session.dart`、`semester_session.dart`、`empty_classroom_session.dart`、`school_card_session.dart`、`library_session.dart`。
 - 相关 `lib/model/xidian_ids/` 及 `lib/model/time_list.dart`。参考滑块求解文件虽单独为 MIT，本轮不复制求解器，官方页面处理验证。
@@ -169,7 +177,7 @@ Flutter 集成测试会用 Node 工作区重新构建实际包，在真实 Quick
 
 底层通过 `await ctx.ui.requestInput({title, message?, fields})` 提供固定原生表单，支持 text/password/select；脚本决定何时需要哪些信息，并处理提交或 null（用户取消）。输入不由宿主自动保存、不隐式注入业务参数，也不重新执行整段 capability。西电脚本仅在真实查询缺学号时请求一次学号，并自行保存到当前学校身份；取消后不继续发起该课表/考试查询。首页已移除按缺卡号/学号错误码猜测弹窗和重跑的逻辑。默认主认证仍为学校原页 WebView，未接回 PDA 密码代请求。
 
-SDK 3 延续 SDK 2 的 `(schoolId, namespace, key)`，不是 SDK 1 的寻址回退。每次运行最多八张表单、每张最多八字段，宿主严格校验字段/选择/长度并保护提交内容的日志；切校、登出、更新、禁用、销毁、取消和超时关闭未完成表单。脚本输入不需要浏览器权限或 Cookie 租约。通用 API、限制和示例见 [SDK 使用文档](../../docs/reference/trusted_scripts.md)。
+SDK 3 延续 SDK 2 的 `(schoolId, namespace, key)`，不是 SDK 1 的寻址回退。每次运行最多八张表单、每张最多八字段，宿主严格校验字段/选择/长度并保护提交内容的日志；切校、登出、更新、禁用、销毁、取消和超时关闭未完成表单。脚本输入不需要浏览器权限或 Cookie 租约。通用 API、限制和示例见 [SDK 使用文档](../../../docs/reference/trusted_scripts.md)。
 
 ## 0.11.0：考试解析与当前教学周
 
@@ -189,7 +197,7 @@ SDK 3 延续 SDK 2 的 `(schoolId, namespace, key)`，不是 SDK 1 的寻址回�
 
 阶段日志为 `xidian_login_open:ids`、`xidian_login_saved:ids`、`xidian_login_exchange:<system>`、`xidian_login_probe:<system>`、`xidian_login_saved:<system>`。后两阶段失败不撤销 IDS 保存；服务再次要求密码/MFA 时明确失败，不自动切入账号密码代请求。校园卡/图书馆保留原学校页面路径。浏览器轮询/稳定性沿用既有有界实现，100 秒认证 deadline、宿主 120 秒及调用/请求预算继续有效。
 
-`pda_login.js` / `pda_ui.js` 仅保留为独立协议实验及回归，默认分发包不包含该状态机、账号密码输入页或 AES 登录代码；没有运行参数可以切回它。后续原生登录界面在 WebView 实测验收后再接入。旧 `authFlow=pda` 会话仍可用于现有只读查询，主动重新登录将通过官方 WebView 建立新会话。两校新版源码与 digest 仍须由用户确认安装，不自动修改已批准的内容。合成与 QuickJS 回归不替代真机验证。本轮 CPH2653 本科官方页认证、IDS 收割、CAS 签票与学期 API 验证已实际通过（见[实施记录](../../docs/planning/trusted_scripts.md)）；研究生、其它系统和 Apple 平台仍需分别实测，人工安全审阅仍开放。
+`pda_login.js` / `pda_ui.js` 仅保留为独立协议实验及回归，默认分发包不包含该状态机、账号密码输入页或 AES 登录代码；没有运行参数可以切回它。后续原生登录界面在 WebView 实测验收后再接入。旧 `authFlow=pda` 会话仍可用于现有只读查询，主动重新登录将通过官方 WebView 建立新会话。两校新版源码与 digest 仍须由用户确认安装，不自动修改已批准的内容。合成与 QuickJS 回归不替代真机验证。本轮 CPH2653 本科官方页认证、IDS 收割、CAS 签票与学期 API 验证已实际通过（见[实施记录](../../../docs/planning/trusted_scripts.md)）；研究生、其它系统和 Apple 平台仍需分别实测，人工安全审阅仍开放。
 
 ## 0.9.0：PDA 协议登录（历史实验，默认包已移除）
 

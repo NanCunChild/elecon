@@ -1,10 +1,18 @@
 # 西电 SDK 4/5 脚本
 
-版本：本科包 `0.17.0 / SDK 5`，研究生包 `0.17.0 / SDK 4`；客户端本地构建基线 `0.6.0+9`。依 ADR-046 移除 actions，控制沿用普通 capability 与 ctx.fetch；保留既有凭据、输入、浏览器与首页缓存。参考本机 `traintime_pda` 提交 `e780e4d01ea740c979ff5c31b9db439dbc586864`（2026-10-14），2026-10-31 只读核对水电及空调相关源码；源码适配和合成回归不等于真实学校/设备验收或人工安全签收。
+版本：本科包 `0.18.0 / SDK 5`，研究生包 `0.18.0 / SDK 4`；客户端本地构建基线 `0.6.0+9`。依 ADR-046 移除 actions，控制沿用普通 capability 与 ctx.fetch；保留既有凭据、输入、浏览器与首页缓存。参考本机 `traintime_pda` 提交 `e780e4d01ea740c979ff5c31b9db439dbc586864`（2026-10-14），2026-10-31 只读核对水电及空调相关源码；源码适配和合成回归不等于真实学校/设备验收或人工安全签收。
 
 本科和研究生是两个学校身份：`xidian_undergraduate`、`xidian_postgraduate`。教务路由由安装的学校包绑定，不再由共享 IDS 记录中的 `role` 决定。
 
 旧西电源码还在 `adapters.pin` 指向的外部仓，签名包仍在 bootstrap。本目录更新的是新的受信脚本路径，不修改旧路径缓存、外部仓 pin 或签名内字节。导入后须选择对应的本科/研究生学校；原 `xidian` 是保留的旧身份，其凭据不会自动迁入新学校。
+
+## 0.18.0：独立瑞思账号
+
+按 [ADR-052](../../docs/adr/adr_052_community_accounts_and_chaoxing.md) 新增 `forum.session` 与 `https://rs.xidian.edu.cn`。基本包升级后重新检查授权，论坛 Tab 显示账号连接页；原生表单使用瑞思自己的用户名/密码，遇验证码转到原站页面。表单参考 traintime_pda 同一提交的 `lib/external/ruisi_flutter`（BSD-3-Clause），版权与完整许可证保留于源码及 [RUISI-LICENSE.txt](RUISI-LICENSE.txt)，随内置包分发。
+
+会话独立存于当前 Profile/学校的 `xidian.services` / `xidian.ruisi`，不写入或复用 IDS 密码。登录须由“当前用户”页头和退出控件核验远端 UID；只保存 Cookie，不保存密码或密码摘要。本地退出只删除瑞思会话，不等于远端注销。`forum.session` 的参数为 `operation: status|login|logout`，默认 status；不允许首页缓存或后台执行。帖子浏览尚未实现。
+
+学习通消息与扫码签到在[独立增强包](../xidian-chaoxing/README.md)，需 SDK 9 客户端及单独安装授权，基本包不声明这些能力。无可执行论坛/消息来源时核心隐藏对应 Tab。
 
 ## 0.17.0：课表预览、教师查询与内置教学楼
 
@@ -58,8 +66,8 @@ npm run scripts:xidian -w tools
 
 生成：
 
-- `dist/school-xidian-undergraduate.elecon.json`：本科统一包，SDK 5、20 个能力（含同包登录）。
-- `dist/school-xidian-postgraduate.elecon.json`：研究生统一包，SDK 4、15 个能力（含同包登录）。
+- `dist/school-xidian-undergraduate.elecon.json`：本科统一包，SDK 5、21 个能力（含同包登录）。
+- `dist/school-xidian-postgraduate.elecon.json`：研究生统一包，SDK 4、16 个能力（含同包登录）。
 
 也可传 `-- --out-dir /tmp/xidian-scripts`。构建器先编译、校验两个统一包，不执行学校代码、不签名，并清理输出目录内旧的未分校包和独立登录包。所有本地模块合并成一个 ESM，`elecon:html` 保留为宿主内置模块。输出保留 MPL 版权和来源说明。内置选校展示该学校统一包的源码、身份与权限并确认。
 

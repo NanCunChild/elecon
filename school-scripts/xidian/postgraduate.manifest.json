@@ -1,7 +1,7 @@
 {
   "sdkVersion": 4,
   "id": "school-xidian-postgraduate",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "schoolId": "xidian_postgraduate",
   "name": "西安电子科技大学（研究生）",
   "network": {
@@ -15,7 +15,8 @@
       "https://xxcapp.xidian.edu.cn",
       "https://tyrzfw.chaoxing.com",
       "https://mfindxidian.libsp.cn",
-      "https://faculty.xidian.edu.cn"
+      "https://faculty.xidian.edu.cn",
+      "https://rs.xidian.edu.cn"
     ]
   },
   "browser": true,
@@ -93,6 +94,11 @@
     {
       "id": "faculty.search",
       "schema": "elecon.faculty.search",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "forum.session",
+      "schema": "elecon.forum.session",
       "schemaVersion": "1.0"
     }
   ],

@@ -14,10 +14,10 @@ assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildXidianPackages())]);
 for (const role of ["undergraduate", "postgraduate"]) {
   const data = JSON.parse(first.get(`school-xidian-${role}.elecon.json`)!);
-  assert.equal(data.manifest.version, "0.17.0");
+  assert.equal(data.manifest.version, "0.18.0");
   assert.equal(data.manifest.sdkVersion, role === "undergraduate" ? 5 : 4);
   assert.equal(data.manifest.browser, true);
-  assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 20 : 15);
+  assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 21 : 16);
   assert.ok(data.manifest.network.origins.includes("https://faculty.xidian.edu.cn"));
   assert.ok(data.manifest.capabilities.some((cap: { id: string }) => cap.id === "faculty.search"));
   assert.equal(
@@ -58,12 +58,16 @@ for (const [name, content] of first) {
 }
 for (const [asset, source] of [
   ["LICENSE.txt", "LICENSE"],
-  ["README.md", "README.md"],
+  ["RUISI-LICENSE.txt", "RUISI-LICENSE.txt"],
 ]) {
   assert.equal(
     readFileSync(join(root, "../../client/assets/school-scripts", asset!), "utf8"),
     readFileSync(join(root, source!), "utf8"),
   );
+}
+const assetDirectory = join(root, "../../client/assets/school-scripts");
+for (const [, target] of readFileSync(join(assetDirectory, "README.md"), "utf8").matchAll(/\]\(([^)]+)\)/g)) {
+  if (!/^(?:[a-z]+:|#)/i.test(target!)) assert.ok(existsSync(join(assetDirectory, target!)), target);
 }
 const out = mkdtempSync(join(tmpdir(), "elecon-xidian-build-"));
 try {

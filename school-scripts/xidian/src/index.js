@@ -13,6 +13,7 @@ import { cardBalance, cardQr, cardTransactions, libraryLoans } from "./campus.js
 import { facultySearch } from "./faculty.js";
 import { createLogin } from "./login.js";
 import { noticeDetail, noticeList } from "./notices.js";
+import { forumSession } from "./ruisi.js";
 
 // ADR-034 §3 / ADR-035 §2: the installed school owns the academic route.
 // A saved role or invocation parameter must never switch school identities.
@@ -38,6 +39,7 @@ function authenticated(handler, role) {
 export function createCapabilities(role) {
   if (role !== "undergraduate" && role !== "postgraduate") throw new Error("academic_role_invalid");
   return {
+    "forum.session": forumSession,
     "faculty.search": facultySearch,
     "notice.list": noticeList,
     "notice.detail": noticeDetail,

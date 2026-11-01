@@ -1,5 +1,7 @@
 # Chaoxing 扫码签到与 Profile 多平台登录考察
 
+> 后续实施：本文保留接入前研究快照；当前已实现的学习通增强包与 SDK 9 前台消息通道见 [ADR-052](../adr/adr_052_community_accounts_and_chaoxing.md) 和[增强包说明](../../school-scripts/xidian-chaoxing/README.md)。研究中“未实现”描述不再代表当前实现状态。
+
 日期：2026-11-01。状态：研究，未接入学校签到。范围包括 Quasar-core 的二维码解析、登录、config、地理位置及其在 elecon 受信脚本中的适配条件。
 
 **协议编排可以留在学校脚本内，通过普通 capability 与 `ctx.fetch` 接入。** [ADR-046](../adr/adr_046_triggered_script_requests.md) 已按所有者要求废除 action 通道；签到不再有 action 或额外宿主确认前置。登录、Cookie、二维码规则、位置表、设备参数、请求体及响应解释由脚本负责，宿主继续约束身份、网络和预算。具体协议尚未实现或在线核验。
