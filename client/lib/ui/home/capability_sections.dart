@@ -206,28 +206,57 @@ mixin _CachedSection<W extends StatefulWidget, D> on State<W> {
     }
   }
 
-  Widget withCacheTime(Widget child) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      child,
-      if (_cacheFetchedAt != null)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Text(
-            _cacheStale
-                ? AppLocalizations.of(context).homeDataStaleAt(
-                    _formatTimestamp(_cacheFetchedAt!.toIso8601String()),
-                  )
-                : AppLocalizations.of(context).homeDataUpdatedAt(
-                    _formatTimestamp(_cacheFetchedAt!.toIso8601String()),
-                  ),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+  Widget withCacheTime(Widget child) {
+    final presentation = HomeCardPresentation.maybeOf(context);
+    final height = presentation?.previewHeight;
+    final caption = _cacheFetchedAt == null
+        ? null
+        : (_cacheStale
+              ? AppLocalizations.of(context).homeDataStaleAt(
+                  _formatTimestamp(_cacheFetchedAt!.toIso8601String()),
+                )
+              : AppLocalizations.of(context).homeDataUpdatedAt(
+                  _formatTimestamp(_cacheFetchedAt!.toIso8601String()),
+                ));
+    final style = Theme.of(context).textTheme.bodySmall!;
+    final footerHeight = caption == null
+        ? 0.0
+        : MediaQuery.textScalerOf(context).scale(style.fontSize!) *
+                  (style.height ?? 1.4) *
+                  2 +
+              8;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (height != null)
+          HomeCardPresentation(
+            size: presentation!.size,
+            preset: presentation.preset,
+            icon: presentation.icon,
+            onOpen: presentation.onOpen,
+            previewHeight: height - footerHeight,
+            child: child,
+          )
+        else
+          child,
+        if (caption != null)
+          SizedBox(
+            height: height == null ? null : footerHeight,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Text(
+                caption,
+                maxLines: height == null ? null : 2,
+                overflow: height == null ? null : TextOverflow.ellipsis,
+                style: style.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ),
-        ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 // ===========================================================================

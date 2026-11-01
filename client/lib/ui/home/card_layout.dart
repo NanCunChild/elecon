@@ -5,6 +5,18 @@ import 'package:flutter/material.dart';
 
 enum HomeCardSize { compact, regular, expanded }
 
+class HomeCardPosition {
+  const HomeCardPosition(this.column, this.row);
+  final int column;
+  final int row;
+  Map<String, int> toJson() => {'column': column, 'row': row};
+  @override
+  bool operator ==(Object other) =>
+      other is HomeCardPosition && column == other.column && row == other.row;
+  @override
+  int get hashCode => Object.hash(column, row);
+}
+
 /// Host-owned visual presets, independent of size and query/provider selection.
 /// The business component reads [HomeCardPresentation.presetOf] and renders
 /// the selected style from its existing data and state.
@@ -22,6 +34,7 @@ class HomeCardPresentation extends InheritedWidget {
     super.key,
     required this.size,
     this.preset = HomeCardPreset.standard,
+    this.previewHeight,
     this.onOpen,
     this.icon = Icons.dashboard_outlined,
     required super.child,
@@ -29,6 +42,7 @@ class HomeCardPresentation extends InheritedWidget {
 
   final HomeCardSize size;
   final String preset;
+  final double? previewHeight;
   final VoidCallback? onOpen;
   final IconData icon;
 
@@ -51,6 +65,7 @@ class HomeCardPresentation extends InheritedWidget {
   bool updateShouldNotify(HomeCardPresentation oldWidget) =>
       size != oldWidget.size ||
       preset != oldWidget.preset ||
+      previewHeight != oldWidget.previewHeight ||
       onOpen != oldWidget.onOpen ||
       icon != oldWidget.icon;
 }
@@ -97,18 +112,21 @@ class HomeCardLayout {
     Map<String, HomeCardSize> sizes = const {},
     Set<String> hidden = const {},
     Map<String, String> presets = const {},
+    Map<String, HomeCardPosition> positions = const {},
   }) : order = List.unmodifiable(order),
        sizes = Map.unmodifiable(sizes),
        hidden = Set.unmodifiable(hidden),
-       presets = Map.unmodifiable(presets);
+       presets = Map.unmodifiable(presets),
+       positions = Map.unmodifiable(positions);
 
   final List<String> order;
   final Map<String, HomeCardSize> sizes;
   final Set<String> hidden;
   final Map<String, String> presets;
+  final Map<String, HomeCardPosition> positions;
 
   factory HomeCardLayout.fromJson(Object? value) {
-    if (value is! Map || ![1, 2, 3].contains(value['version'])) {
+    if (value is! Map || ![1, 2, 3, 4].contains(value['version'])) {
       return HomeCardLayout();
     }
     final rawOrder = value['order'];
@@ -143,7 +161,7 @@ class HomeCardLayout {
     }
     final hidden = <String>{};
     final presets = <String, String>{};
-    if (value['version'] == 3) {
+    if (value['version'] == 3 || value['version'] == 4) {
       final rawHidden = value['hidden'];
       final rawPresets = value['presets'];
       if (rawHidden is List && rawHidden.length <= 128) {
@@ -157,11 +175,31 @@ class HomeCardLayout {
         }
       }
     }
+    final positions = <String, HomeCardPosition>{};
+    final rawPositions = value['positions'];
+    if (value['version'] == 4 &&
+        rawPositions is Map &&
+        rawPositions.length <= 128) {
+      for (final entry in rawPositions.entries) {
+        final position = entry.value;
+        if (!_validId(entry.key) || position is! Map) continue;
+        final column = position['column'], row = position['row'];
+        if (column is int &&
+            row is int &&
+            column >= 0 &&
+            column < 4 &&
+            row >= 0 &&
+            row <= 1023) {
+          positions[entry.key as String] = HomeCardPosition(column, row);
+        }
+      }
+    }
     return HomeCardLayout(
       order: order,
       sizes: sizes,
       hidden: hidden,
       presets: presets,
+      positions: positions,
     );
   }
 
@@ -169,11 +207,14 @@ class HomeCardLayout {
       id is String && id.isNotEmpty && id.length <= 256;
 
   Map<String, Object> toJson() => {
-    'version': 3,
+    'version': 4,
     'order': order,
     'sizes': sizes.map((id, size) => MapEntry(id, size.name)),
     'hidden': hidden.toList(),
     'presets': presets,
+    'positions': positions.map(
+      (id, position) => MapEntry(id, position.toJson()),
+    ),
   };
 
   List<HomeCardEntry> arrange(List<HomeCardEntry> cards) {
@@ -195,6 +236,7 @@ class HomeCardLayout {
     sizes: {...sizes, id: size},
     hidden: hidden,
     presets: presets,
+    positions: positions,
   );
 
   HomeCardLayout show(String id, bool visible) => HomeCardLayout(
@@ -202,6 +244,7 @@ class HomeCardLayout {
     sizes: sizes,
     hidden: visible ? (Set.of(hidden)..remove(id)) : {...hidden, id},
     presets: presets,
+    positions: positions,
   );
 
   HomeCardLayout selectPreset(String id, String preset) => HomeCardLayout(
@@ -211,7 +254,25 @@ class HomeCardLayout {
     presets: preset == HomeCardPreset.standard
         ? (Map.of(presets)..remove(id))
         : {...presets, id: preset},
+    positions: positions,
   );
+
+  HomeCardLayout locate(Map<String, HomeCardPosition> locations) {
+    final sorted = locations.keys.toList()
+      ..sort((a, b) {
+        final row = locations[a]!.row.compareTo(locations[b]!.row);
+        return row != 0
+            ? row
+            : locations[a]!.column.compareTo(locations[b]!.column);
+      });
+    return HomeCardLayout(
+      order: [...sorted, ...order.where((id) => !locations.containsKey(id))],
+      sizes: sizes,
+      hidden: hidden,
+      presets: presets,
+      positions: {...positions, ...locations},
+    );
+  }
 
   /// Retain missing cards and their preferences when capabilities are transient.
   HomeCardLayout move(String from, String to, List<HomeCardEntry> cards) {
@@ -230,6 +291,7 @@ class HomeCardLayout {
       sizes: sizes,
       hidden: hidden,
       presets: presets,
+      positions: positions,
     );
   }
 }

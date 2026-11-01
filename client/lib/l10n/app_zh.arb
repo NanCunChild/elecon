@@ -406,6 +406,10 @@
   "homeLayoutPresetStandard": "标准样式",
   "homeRefresh": "刷新",
   "homeDataNotUpdated": "暂无成功更新的数据",
+  "homeLayoutMoveUp": "上移一格",
+  "homeLayoutMoveDown": "下移一格",
+  "homeLayoutMoveLeft": "左移一格",
+  "homeLayoutMoveRight": "右移一格",
   "scriptsHomeTitle": "首页标题：{title}",
   "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}}
 }

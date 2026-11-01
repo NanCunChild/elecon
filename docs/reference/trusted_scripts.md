@@ -173,3 +173,7 @@ SDK 3 的会话总预算为已有交互上限 120 秒，表单不暂停或重置
 ## SDK 6 卡片建议与同名来源
 
 SDK 6 在 SDK 5 上增加可选静态 cards，供学校包建议宿主已实现的卡片类型与有限形式；用户保存的布局优先。旧 SDK 不必升级即可使用首页长按编辑、排序和尺寸调整，cards 也不替代 home 查询缓存策略。同名能力可在工作台明确选择来源，主包不需为增强包写适配逻辑。格式、实际操作与边界见[卡片与同名覆盖](card_layout_and_overrides.md)和 [ADR-043](../adr/adr_043_card_layout_and_overrides.md)。
+
+## SDK 7 首页命名
+
+SDK 7 可选静态 `manifest.homeTitle` 为学校首页命名，与安装包 `name` 分开。最多 80 个 Unicode 字符、单行纯文本，缺省回退学校名；安装时展示并绑定授权 digest。SDK 7 继承现有 home/actions/cards 与执行权限，旧宿主拒绝未知 SDK。更新既有包须提升 version 并重新确认，不能仅修改本地已授权字节。声明示例、标题来源与实际数据更新时间见[首页标题](card_layout_and_overrides.md#首页标题)。

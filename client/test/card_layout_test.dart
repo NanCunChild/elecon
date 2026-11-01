@@ -9,7 +9,7 @@ HomeCardEntry entry(String id) =>
     HomeCardEntry(id: id, label: id, builder: (_) => const SizedBox());
 
 void main() {
-  test('v1 migrates density and order into v3 presentation settings', () {
+  test('v1 migrates density and order into v4 presentation settings', () {
     final migrated = HomeCardLayout.fromJson({
       'version': 1,
       'order': ['notice', 'schedule', 'card'],
@@ -21,10 +21,16 @@ void main() {
       'card': HomeCardSize.expanded,
     });
     expect(migrated.order, ['notice', 'schedule', 'card']);
-    expect(migrated.toJson()['version'], 3);
+    expect(migrated.toJson()['version'], 4);
     expect(migrated.hidden, isEmpty);
     expect(migrated.presets, isEmpty);
     expect(HomeCardLayout.fromJson(migrated.toJson()).sizes, migrated.sizes);
+    // JSON numbers such as 4.0 compare equal to the supported version; parsing
+    // must not throw when restoring the settings for that numeric value.
+    expect(
+      HomeCardLayout.fromJson({...migrated.toJson(), 'version': 4.0}).sizes,
+      migrated.sizes,
+    );
   });
   test(
     'v2 sizes and order survive with all cards visible and standard style',
@@ -123,7 +129,7 @@ void main() {
     );
   });
   test('unknown versions and invalid fields fail safely', () {
-    expect(HomeCardLayout.fromJson({'version': 4}).order, isEmpty);
+    expect(HomeCardLayout.fromJson({'version': 5}).order, isEmpty);
     final parsed = HomeCardLayout.fromJson({
       'version': 1,
       'order': ['notice', 'notice', 4, ''],
@@ -181,6 +187,7 @@ void main() {
         'sizes',
         'hidden',
         'presets',
+        'positions',
       });
     }
   });
@@ -197,4 +204,41 @@ void main() {
     await store.save('school', HomeCardLayout(order: ['schedule']));
     expect((await store.load('school')).order, ['schedule']);
   });
+  test(
+    'v3 migrates to v4 without losing presentation; coordinates round trip',
+    () {
+      final old = HomeCardLayout.fromJson({
+        'version': 3,
+        'order': ['notice'],
+        'sizes': {'notice': 'compact'},
+        'hidden': ['notice'],
+        'presets': {'notice': 'preview'},
+      });
+      expect(old.positions, isEmpty);
+      final placed = old.locate({'notice': const HomeCardPosition(3, 2)});
+      final reopened = HomeCardLayout.fromJson(placed.toJson());
+      expect(reopened.positions['notice'], const HomeCardPosition(3, 2));
+      expect(reopened.sizes['notice'], HomeCardSize.compact);
+      expect(reopened.hidden, {'notice'});
+      expect(reopened.presets, {'notice': 'preview'});
+      expect(
+        reopened
+            .show('notice', true)
+            .resize('notice', HomeCardSize.regular)
+            .positions,
+        reopened.positions,
+      );
+      final invalid = HomeCardLayout.fromJson({
+        ...placed.toJson(),
+        'positions': {
+          'a': {'column': -1, 'row': 0},
+          'b': {'column': 4, 'row': 0},
+          'c': {'column': 1, 'row': 1024},
+          'd': {'column': 0.5, 'row': 1},
+          'notice': {'column': 3, 'row': 2},
+        },
+      });
+      expect(invalid.positions, {'notice': const HomeCardPosition(3, 2)});
+    },
+  );
 }

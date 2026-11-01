@@ -10,6 +10,7 @@ import 'package:flutter/rendering.dart';
 
 import '../../l10n/gen/app_localizations.dart';
 import 'card_layout.dart';
+import 'card_grid.dart';
 import 'card_layout_store.dart';
 
 class EditableCardBoard extends StatefulWidget {
@@ -47,11 +48,15 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
   int _revision = 0;
   String? _dragging;
   String? _opened;
-  String? _hovered;
+  HomeCardPosition? _hovered;
+  HomeCardGrid? _grid;
+  Map<String, HomeCardPosition> _locations = {};
+  Map<String, HomeCardSpan> _spans = {};
+  Map<String, HomeCardPosition>? _dragLocations;
+  Offset _pickupOffset = Offset.zero;
   Timer? _scrollTimer;
   Timer? _hoverTimer;
   Offset? _pointer;
-  Offset? _lastMove;
 
   CardLayoutStore get _store => widget.store ?? CardLayoutStore.shared;
 
@@ -103,8 +108,8 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
     _dragging = null;
     _hovered = null;
     _beforeDrag = null;
+    _dragLocations = null;
     _pointer = null;
-    _lastMove = null;
   }
 
   void _edit() {
@@ -148,6 +153,22 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
     _edit();
     setState(() {
       _beforeDrag = _layout;
+      // Temporary detail expansion must not become the next saved layout.
+      final spans = {
+        for (final card in _layout.visible(widget.cards))
+          card.id: _grid!.span(
+            card.supportedSize(_layout.sizes[card.id]),
+            contentHeight: _heights[card.id] ?? 0,
+          ),
+      };
+      _dragLocations = _grid!.place(spans, _layout.positions);
+      if (_opened == drag.id) {
+        _pickupOffset = Offset(
+          _pickupOffset.dx.clamp(0, _grid!.widthOf(spans[drag.id]!) / 2),
+          _pickupOffset.dy.clamp(0, _grid!.heightOf(spans[drag.id]!) / 2),
+        );
+      }
+      _opened = null;
       _dragging = drag.id;
     });
     _scrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
@@ -174,42 +195,60 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
     });
   }
 
-  void _considerMove({bool scrolling = false}) {
-    if (_dragging == null || _pointer == null) return;
-    // A stationary pointer must not swap back as its neighbour animates past.
-    if (!scrolling &&
-        _lastMove != null &&
-        (_pointer! - _lastMove!).distance < 18) {
-      return;
-    }
+  void _moveTo(String id, HomeCardPosition target, {bool save = false}) {
+    final grid = _grid;
+    if (grid == null || !_spans.containsKey(id)) return;
+    final locations = grid.place(_spans, {
+      ...(_dragLocations ?? _locations),
+      id: target,
+    }, priority: id);
+    setState(() {
+      _layout = _layout.locate(locations);
+      _revision++;
+    });
+    if (save) unawaited(_persist());
+  }
+
+  void _considerMove({bool scrolling = false, bool immediate = false}) {
+    if (_dragging == null || _pointer == null || _grid == null) return;
     final box = _gridKey.currentContext?.findRenderObject();
     if (box is! RenderBox) return;
     final local = box.globalToLocal(_pointer!);
-    final point = Directionality.of(context) == TextDirection.rtl
-        ? Offset(box.size.width - local.dx, local.dy)
-        : local;
-    final target = _slots.entries
-        .where((e) => e.value.contains(point))
-        .firstOrNull
-        ?.key;
+    if (!(Offset.zero & box.size).contains(local)) return;
+    final grid = _grid!;
+    final span = _spans[_dragging!]!;
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final x = rtl ? box.size.width - local.dx : local.dx;
+    final anchorX = rtl
+        ? grid.widthOf(span) - _pickupOffset.dx
+        : _pickupOffset.dx;
+    final target = HomeCardPosition(
+      ((x - anchorX) / (grid.cellWidth + HomeCardGrid.gap)).round().clamp(
+        0,
+        grid.columns - span.columns,
+      ),
+      ((local.dy - _pickupOffset.dy) / (grid.cellHeight + HomeCardGrid.gap))
+          .round()
+          .clamp(0, 1023),
+    );
+    if (immediate) {
+      _hoverTimer?.cancel();
+      _moveTo(_dragging!, target);
+      return;
+    }
     if (target == _hovered) return;
     _hoverTimer?.cancel();
     _hovered = target;
-    if (target == null || target == _dragging) return;
     final generation = _generation;
     _hoverTimer = Timer(const Duration(milliseconds: 140), () {
       if (!mounted || generation != _generation || _dragging == null) return;
-      setState(() {
-        _layout = _layout.move(_dragging!, target, widget.cards);
-        _revision++;
-        _lastMove = _pointer;
-        _hovered = null;
-      });
+      _moveTo(_dragging!, target);
     });
   }
 
   void _endDrag(_CardDrag drag, DraggableDetails details) {
     if (!_accepts(drag)) return;
+    if (details.wasAccepted) _considerMove(immediate: true);
     setState(() {
       if (!details.wasAccepted) _layout = _beforeDrag ?? _layout;
       _stopDrag();
@@ -242,6 +281,39 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(leading: Icon(card.icon), title: Text(card.label)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (final direction in [
+                    ('up', 0, -1, Icons.arrow_upward, l10n.homeLayoutMoveUp),
+                    (
+                      'down',
+                      0,
+                      1,
+                      Icons.arrow_downward,
+                      l10n.homeLayoutMoveDown,
+                    ),
+                    ('left', -1, 0, Icons.arrow_back, l10n.homeLayoutMoveLeft),
+                    (
+                      'right',
+                      1,
+                      0,
+                      Icons.arrow_forward,
+                      l10n.homeLayoutMoveRight,
+                    ),
+                  ])
+                    IconButton(
+                      key: ValueKey('home-card-grid:${direction.$1}'),
+                      tooltip: direction.$5,
+                      onPressed: () =>
+                          Navigator.pop(context, 'grid:${direction.$1}'),
+                      icon: Icon(
+                        direction.$4,
+                        textDirection: TextDirection.ltr,
+                      ),
+                    ),
+                ],
+              ),
               for (final size in card.sizes)
                 ListTile(
                   key: ValueKey('home-card-size:${size.name}'),
@@ -311,14 +383,40 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
         !widget.cards.any((c) => c.id == card.id)) {
       return;
     }
-    if (result == 'before' || result == 'after') {
-      _change(
-        _layout.move(
-          card.id,
-          cards[index + (result == 'before' ? -1 : 1)].id,
-          widget.cards,
+    if (result.startsWith('grid:')) {
+      final current = _locations[card.id];
+      if (current == null || _grid == null) return;
+      final horizontal = Directionality.of(context) == TextDirection.rtl
+          ? -1
+          : 1;
+      final delta = switch (result.substring(5)) {
+        'up' => (0, -1),
+        'down' => (0, 1),
+        'left' => (-horizontal, 0),
+        _ => (horizontal, 0),
+      };
+      _moveTo(
+        card.id,
+        HomeCardPosition(
+          (current.column + delta.$1).clamp(
+            0,
+            _grid!.columns - _spans[card.id]!.columns,
+          ),
+          (current.row + delta.$2).clamp(0, 1023),
         ),
+        save: true,
       );
+    } else if (result == 'before' || result == 'after') {
+      final targetId = cards[index + (result == 'before' ? -1 : 1)].id;
+      final moved = _layout.move(card.id, targetId, widget.cards);
+      final preferred = Map.of(_locations)
+        ..remove(card.id)
+        ..remove(targetId);
+      final placed = _grid!.place({
+        for (final item in moved.visible(widget.cards))
+          item.id: _spans[item.id]!,
+      }, preferred);
+      _change(moved.locate(placed));
     } else if (result == 'hide') {
       setState(() => _opened = null);
       _change(_layout.show(card.id, false));
@@ -326,11 +424,19 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
       _change(_layout.selectPreset(card.id, result.substring(7)));
     } else if (result.startsWith('size:')) {
       setState(() => _opened = null);
+      final resized = _layout.resize(
+        card.id,
+        HomeCardSize.values.byName(result.substring(5)),
+      );
+      final spans = {
+        for (final item in resized.visible(widget.cards))
+          item.id: _grid!.span(
+            item.supportedSize(resized.sizes[item.id]),
+            contentHeight: _heights[item.id] ?? 0,
+          ),
+      };
       _change(
-        _layout.resize(
-          card.id,
-          HomeCardSize.values.byName(result.substring(5)),
-        ),
+        resized.locate(_grid!.place(spans, _locations, priority: card.id)),
       );
     }
   }
@@ -457,40 +563,44 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
           ),
         LayoutBuilder(
           builder: (context, constraints) {
-            const gap = 12.0;
             final width = constraints.maxWidth;
-            final columns = width < 280 ? 2 : 4;
-            final unit = (width - gap * (columns - 1)) / columns;
-            final split =
-                width >= 320 &&
-                MediaQuery.textScalerOf(context).scale(14) <= 20;
-            var x = 0.0, y = 0.0, rowHeight = 0.0;
-            var used = 0;
+            final labelStyle = Theme.of(context).textTheme.labelMedium!;
+            final labelHeight =
+                MediaQuery.textScalerOf(context).scale(labelStyle.fontSize!) *
+                (labelStyle.height ?? 1.3);
+            final grid = HomeCardGrid(width: width, labelHeight: labelHeight);
+            _grid = grid;
+            _spans = {
+              for (final card in cards)
+                card.id: grid.span(
+                  _opened == card.id
+                      ? HomeCardSize.expanded
+                      : card.supportedSize(_layout.sizes[card.id]),
+                  contentHeight: _heights[card.id] ?? 0,
+                ),
+            };
+            _locations = grid.place(
+              _spans,
+              _layout.positions,
+              priority: _opened ?? _dragging,
+            );
             _slots.clear();
+            var bottom = 0.0;
             for (final card in cards) {
-              final size = _opened == card.id
-                  ? HomeCardSize.expanded
-                  : card.supportedSize(_layout.sizes[card.id]);
-              final span = size == HomeCardSize.compact
-                  ? 1
-                  : size == HomeCardSize.regular && split
-                  ? 2
-                  : columns;
-              if (used + span > columns) {
-                used = 0;
-                x = 0;
-                y += rowHeight + gap;
-                rowHeight = 0;
-              }
-              final tileWidth = unit * span + gap * (span - 1);
-              final height =
-                  _heights[card.id] ??
-                  (size == HomeCardSize.compact ? 104.0 : 168.0);
-              _slots[card.id] = Rect.fromLTWH(x, y, tileWidth, height);
-              rowHeight = math.max(rowHeight, height);
-              x += tileWidth + gap;
-              used += span;
+              final position = _locations[card.id]!;
+              final span = _spans[card.id]!;
+              final rect = Rect.fromLTWH(
+                position.column * (grid.cellWidth + HomeCardGrid.gap),
+                position.row * (grid.cellHeight + HomeCardGrid.gap),
+                grid.widthOf(span),
+                grid.heightOf(span),
+              );
+              _slots[card.id] = rect;
+              bottom = math.max(bottom, rect.bottom);
             }
+            final gridHeight =
+                bottom +
+                (_editing ? 2 * (grid.cellHeight + HomeCardGrid.gap) : 0);
             final duration = MediaQuery.disableAnimationsOf(context)
                 ? Duration.zero
                 : const Duration(milliseconds: 220);
@@ -503,10 +613,21 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
               onAcceptWithDetails: (_) {},
               builder: (context, _, _) => SizedBox(
                 key: _gridKey,
-                height: y + rowHeight,
+                height: gridHeight,
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
+                    if (_dragging != null)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: CustomPaint(
+                            painter: _GridDots(
+                              grid,
+                              Theme.of(context).colorScheme.outlineVariant,
+                            ),
+                          ),
+                        ),
+                      ),
                     for (final card in cards)
                       AnimatedPositioned(
                         key: ValueKey((widget.scopeId, card.id)),
@@ -517,13 +638,36 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                             : _slots[card.id]!.left,
                         top: _slots[card.id]!.top,
                         width: _slots[card.id]!.width,
-                        child: _MeasureSize(
-                          onChange: (size) {
-                            if (mounted && _heights[card.id] != size.height) {
-                              setState(() => _heights[card.id] = size.height);
-                            }
-                          },
-                          child: _tile(card, width),
+                        height: _slots[card.id]!.height,
+                        child: Material(
+                          key: ValueKey('home-card-slot:${card.id}'),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(24),
+                          clipBehavior: Clip.antiAlias,
+                          child: OverflowBox(
+                            alignment: Alignment.topCenter,
+                            fit: OverflowBoxFit.deferToChild,
+                            minHeight: 0,
+                            maxHeight: double.infinity,
+                            child: _MeasureSize(
+                              onChange: (size) {
+                                if (mounted &&
+                                    (_opened == card.id ||
+                                        card.supportedSize(
+                                              _layout.sizes[card.id],
+                                            ) ==
+                                            HomeCardSize.expanded) &&
+                                    _heights[card.id] != size.height) {
+                                  setState(
+                                    () => _heights[card.id] = size.height,
+                                  );
+                                }
+                              },
+                              child: _tile(card, width),
+                            ),
+                          ),
                         ),
                       ),
                   ],
@@ -547,6 +691,11 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
     void open() => setState(() => _opened = card.id);
     return LongPressDraggable<_CardDrag>(
       data: drag,
+      dragAnchorStrategy: (draggable, context, position) {
+        final box = context.findRenderObject() as RenderBox;
+        _pickupOffset = box.globalToLocal(position);
+        return _pickupOffset;
+      },
       maxSimultaneousDrags: _dragging == null ? 1 : 0,
       onDragStarted: () => _startDrag(drag),
       onDragUpdate: (details) {
@@ -590,37 +739,40 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (compact)
-                  Tooltip(
-                    // Leave long press to the launcher drag recognizer.
-                    triggerMode: TooltipTriggerMode.manual,
-                    excludeFromSemantics: true,
-                    message: card.label,
-                    child: FilledButton.tonal(
-                      key: ValueKey('home-card-open:${card.id}'),
-                      onPressed: _editing ? () => _menu(card) : open,
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 16,
-                        ),
-                        minimumSize: const Size(0, 104),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(card.icon, size: 36),
-                          const SizedBox(height: 8),
-                          Text(
-                            card.label,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelLarge,
+                  SizedBox(
+                    height: _grid!.cellHeight,
+                    child: Tooltip(
+                      // Leave long press to the launcher drag recognizer.
+                      triggerMode: TooltipTriggerMode.manual,
+                      excludeFromSemantics: true,
+                      message: card.label,
+                      child: FilledButton.tonal(
+                        key: ValueKey('home-card-open:${card.id}'),
+                        onPressed: _editing ? () => _menu(card) : open,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
                           ),
-                        ],
+                          minimumSize: const Size(0, 0),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(card.icon, size: 32),
+                            const SizedBox(height: 6),
+                            Text(
+                              card.label,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelMedium,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -646,6 +798,9 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                       maxWidth: compact ? boardWidth : null,
                       child: HomeCardPresentation(
                         size: size,
+                        previewHeight: size == HomeCardSize.regular
+                            ? _slots[card.id]!.height
+                            : null,
                         preset: card.supportedPreset(_layout.presets[card.id]),
                         icon: card.icon,
                         onOpen: open,
@@ -702,4 +857,30 @@ class _MeasureRenderBox extends RenderProxyBox {
       if (attached) onChange(measured);
     });
   }
+}
+
+class _GridDots extends CustomPainter {
+  const _GridDots(this.grid, this.color);
+  final HomeCardGrid grid;
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    for (
+      var y = grid.cellHeight / 2;
+      y < size.height;
+      y += grid.cellHeight + HomeCardGrid.gap
+    ) {
+      for (
+        var x = grid.cellWidth / 2;
+        x < size.width;
+        x += grid.cellWidth + HomeCardGrid.gap
+      ) {
+        canvas.drawCircle(Offset(x, y), 2, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GridDots old) => old.grid != grid || old.color != color;
 }

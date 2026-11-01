@@ -338,6 +338,10 @@
   "homeLayoutPresetStandard": "Standard",
   "homeRefresh": "Refresh",
   "homeDataNotUpdated": "No successful data update yet",
+  "homeLayoutMoveUp": "Move up one cell",
+  "homeLayoutMoveDown": "Move down one cell",
+  "homeLayoutMoveLeft": "Move left one cell",
+  "homeLayoutMoveRight": "Move right one cell",
   "scriptsHomeTitle": "Home title: {title}",
   "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}}
 }

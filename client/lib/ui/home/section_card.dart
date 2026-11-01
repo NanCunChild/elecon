@@ -22,6 +22,62 @@ class SectionCard extends StatelessWidget {
     final presentation = HomeCardPresentation.maybeOf(context);
     final preview = HomeCardPresentation.isPreview(context);
     final subtitle = this.subtitle?.trim();
+    if (preview && presentation?.previewHeight != null) {
+      return SizedBox(
+        height: presentation!.previewHeight,
+        child: Material(
+          color: theme.colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(24),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: presentation.onOpen,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        presentation.icon,
+                        size: 22,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: DefaultTextStyle(
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium!.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      child:
+                          summary ??
+                          Text(
+                            subtitle == null || subtitle.isEmpty
+                                ? title
+                                : subtitle,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Material(
       color: theme.colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(24),
@@ -87,19 +143,50 @@ class CardSummary extends StatelessWidget {
   final String value;
   final String? detail;
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        value,
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.titleMedium,
-      ),
-      if (detail != null && detail!.isNotEmpty) ...[
-        const SizedBox(height: 4),
-        Text(detail!, maxLines: 3, overflow: TextOverflow.ellipsis),
-      ],
-    ],
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final theme = Theme.of(context);
+      final scale = MediaQuery.textScalerOf(context);
+      final valueStyle = theme.textTheme.titleMedium!;
+      final detailStyle = DefaultTextStyle.of(context).style;
+      final valueLine =
+          scale.scale(valueStyle.fontSize!) * (valueStyle.height ?? 1.4);
+      final detailLine =
+          scale.scale(detailStyle.fontSize ?? 14) * (detailStyle.height ?? 1.4);
+      final hasDetail = detail != null && detail!.isNotEmpty;
+      var valueLines = 3, detailLines = 3;
+      if (constraints.hasBoundedHeight) {
+        final available = constraints.maxHeight;
+        valueLines =
+            ((available - (hasDetail ? detailLine + 4 : 0)) / valueLine)
+                .floor()
+                .clamp(1, 3);
+        detailLines = hasDetail
+            ? ((available - valueLines * valueLine - 4) / detailLine)
+                  .floor()
+                  .clamp(0, 3)
+            : 0;
+      }
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            maxLines: valueLines,
+            overflow: TextOverflow.ellipsis,
+            style: valueStyle,
+          ),
+          if (hasDetail && detailLines > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              detail!,
+              maxLines: detailLines,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      );
+    },
   );
 }

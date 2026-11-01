@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:elecon/l10n/gen/app_localizations.dart';
 import 'package:elecon/ui/home/card_layout.dart';
+import 'package:elecon/ui/home/section_card.dart';
 import 'package:elecon/ui/home/card_layout_store.dart';
 import 'package:elecon/ui/home/editable_card_board.dart';
 import 'package:flutter/material.dart';
@@ -37,13 +38,14 @@ Widget app(
   String school = 'a',
   List<HomeCardEntry>? cards,
   double scale = 1,
+  TextDirection direction = TextDirection.ltr,
 }) => MaterialApp(
   localizationsDelegates: AppLocalizations.localizationsDelegates,
   supportedLocales: AppLocalizations.supportedLocales,
   locale: const Locale('zh'),
   builder: (context, child) => MediaQuery(
     data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
-    child: child!,
+    child: Directionality(textDirection: direction, child: child!),
   ),
   home: Scaffold(
     body: SingleChildScrollView(
@@ -267,10 +269,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.getSize(card('notice')).width, 91);
     expect(tester.getSize(control('open', 'notice')).width, 91);
-    expect(
-      tester.getSize(control('open', 'notice')).height,
-      greaterThanOrEqualTo(104),
-    );
+    expect(tester.getSize(control('open', 'notice')).height, 91);
     expect(
       find.descendant(of: card('notice'), matching: find.text('notice')),
       findsOneWidget,
@@ -279,7 +278,7 @@ void main() {
     expect(tester.getSize(card('library')).width, 400);
     await tester.pumpWidget(app(store, scale: 2));
     await tester.pumpAndSettle();
-    expect(tester.getSize(card('schedule')).width, 400);
+    expect(tester.getSize(card('schedule')).width, 194);
     expect(tester.getSize(card('notice')).width, 91);
     expect(store.layouts['a']!.sizes['schedule'], HomeCardSize.regular);
     expect(tester.takeException(), isNull);
@@ -532,7 +531,169 @@ void main() {
       await edit(tester);
       await choose(tester, 'notice', 'home-card-preset:standard');
       expect(store.layouts['a']!.presets, isEmpty);
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+      await tester.tap(control('open', 'notice'));
+      await tester.pumpAndSettle();
       expect(find.text('preset:notice:standard'), findsOneWidget);
     },
   );
+  testWidgets(
+    'real summary equals four icons including gaps, with staggered cells',
+    (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = MemoryLayoutStore();
+      store.layouts['a'] = HomeCardLayout(
+        sizes: {
+          for (final id in ['a', 'b', 'c', 'd']) id: HomeCardSize.compact,
+        },
+      );
+      await tester.pumpWidget(
+        app(
+          store,
+          cards: [
+            HomeCardEntry(
+              id: 'summary',
+              label: 'Summary',
+              builder: (_) => const SectionCard(
+                title: 'Summary',
+                summary: CardSummary(
+                  'Synthetic summary',
+                  detail: 'Synthetic source',
+                ),
+                child: Text('Full details'),
+              ),
+            ),
+            ...entries(['a', 'b', 'c', 'd']),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+      Rect slot(String id) => tester.getRect(control('slot', id));
+      final smallGroup = slot('a').expandToInclude(slot('d'));
+      expect(smallGroup.size, slot('summary').size);
+      expect(slot('a').top, slot('summary').top);
+      expect(slot('d').bottom, slot('summary').bottom);
+      expect(slot('c').left, slot('a').left);
+      expect(slot('c').top - slot('a').bottom, 12);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'empty-cell drop persists exact coordinates and cancelled drag rolls back',
+    (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = MemoryLayoutStore();
+      store.layouts['a'] = HomeCardLayout(
+        sizes: {
+          'notice': HomeCardSize.compact,
+          'schedule': HomeCardSize.compact,
+        },
+      );
+      await tester.pumpWidget(app(store));
+      await tester.pumpAndSettle();
+      final origin = tester.getTopLeft(card('notice'));
+      final small = tester.getSize(card('notice'));
+      final delta = Offset(3 * (small.width + 12), 2 * (small.height + 12));
+      final gesture = await tester.startGesture(
+        tester.getCenter(control('open', 'notice')),
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await gesture.moveBy(delta);
+      await tester.pump(const Duration(milliseconds: 180));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(tester.getTopLeft(card('notice')), origin + delta);
+      expect(store.layouts['a']!.positions, isEmpty);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(
+        store.layouts['a']!.positions['notice'],
+        const HomeCardPosition(3, 2),
+      );
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(app(store));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(card('notice')), origin + delta);
+      final cancel = await tester.startGesture(
+        tester.getCenter(control('open', 'notice')),
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await cancel.moveBy(-delta);
+      await tester.pump(const Duration(milliseconds: 180));
+      await tester.pump(const Duration(milliseconds: 250));
+      await cancel.cancel();
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(card('notice')), origin + delta);
+      expect(
+        store.layouts['a']!.positions['notice'],
+        const HomeCardPosition(3, 2),
+      );
+      await choose(tester, 'notice', 'home-card-grid:up');
+      expect(
+        store.layouts['a']!.positions['notice'],
+        const HomeCardPosition(3, 1),
+      );
+    },
+  );
+  testWidgets('RTL drag mirrors columns while preserving logical coordinates', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryLayoutStore();
+    store.layouts['a'] = HomeCardLayout(
+      sizes: {'notice': HomeCardSize.compact, 'schedule': HomeCardSize.compact},
+    );
+    await tester.pumpWidget(app(store, direction: TextDirection.rtl));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(card('notice')).dx,
+      greaterThan(tester.getTopLeft(card('schedule')).dx),
+    );
+    final start = tester.getCenter(control('open', 'notice'));
+    final gesture = await tester.startGesture(start);
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveBy(const Offset(-206, 103));
+    await tester.pump(const Duration(milliseconds: 180));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(
+      store.layouts['a']!.positions['notice'],
+      const HomeCardPosition(2, 1),
+    );
+    await choose(tester, 'notice', 'home-card-grid:left');
+    expect(
+      store.layouts['a']!.positions['notice'],
+      const HomeCardPosition(3, 1),
+    );
+    await tester.pumpWidget(app(store, direction: TextDirection.ltr));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(card('notice')).dx, 309);
+  });
+  testWidgets('large-text toolbar does not move the grid on pickup', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(288, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryLayoutStore();
+    await tester.pumpWidget(app(store, scale: 2));
+    await tester.pumpAndSettle();
+    final before = tester.getTopLeft(card('notice'));
+    final g = await pickup(tester, 'notice');
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(card('notice')), before);
+    await g.cancel();
+    await tester.pumpAndSettle();
+  });
 }
