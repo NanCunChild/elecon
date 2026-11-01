@@ -9,7 +9,7 @@ HomeCardEntry entry(String id) =>
     HomeCardEntry(id: id, label: id, builder: (_) => const SizedBox());
 
 void main() {
-  test('v1 migrates density and order; v2 round trips', () {
+  test('v1 migrates density and order into v3 presentation settings', () {
     final migrated = HomeCardLayout.fromJson({
       'version': 1,
       'order': ['notice', 'schedule', 'card'],
@@ -21,9 +21,88 @@ void main() {
       'card': HomeCardSize.expanded,
     });
     expect(migrated.order, ['notice', 'schedule', 'card']);
-    expect(migrated.toJson()['version'], 2);
+    expect(migrated.toJson()['version'], 3);
+    expect(migrated.hidden, isEmpty);
+    expect(migrated.presets, isEmpty);
     expect(HomeCardLayout.fromJson(migrated.toJson()).sizes, migrated.sizes);
   });
+  test(
+    'v2 sizes and order survive with all cards visible and standard style',
+    () {
+      final migrated = HomeCardLayout.fromJson({
+        'version': 2,
+        'order': ['schedule', 'notice'],
+        'sizes': {'schedule': 'compact', 'notice': 'regular'},
+      });
+      expect(migrated.order, ['schedule', 'notice']);
+      expect(migrated.sizes, {
+        'schedule': HomeCardSize.compact,
+        'notice': HomeCardSize.regular,
+      });
+      expect(migrated.hidden, isEmpty);
+      expect(migrated.presets, isEmpty);
+    },
+  );
+  test(
+    'hidden and missing cards retain order, size and independent preset',
+    () {
+      final cards = [entry('notice'), entry('schedule'), entry('new')];
+      final layout =
+          HomeCardLayout(
+                order: ['library', 'notice', 'schedule'],
+                hidden: {'notice', 'library'},
+                presets: {'notice': 'future-style'},
+              )
+              .resize('notice', HomeCardSize.compact)
+              .move('schedule', 'notice', cards);
+      final restored = HomeCardLayout.fromJson(layout.toJson());
+      expect(restored.visible(cards).map((c) => c.id), ['schedule', 'new']);
+      expect(restored.order, ['library', 'schedule', 'notice', 'new']);
+      expect(restored.hidden, {'notice', 'library'});
+      expect(restored.presets['notice'], 'future-style');
+      expect(
+        entry('notice').supportedPreset(restored.presets['notice']),
+        'standard',
+      );
+      final shown = restored.show('notice', true);
+      expect(shown.visible(cards).map((c) => c.id), [
+        'schedule',
+        'notice',
+        'new',
+      ]);
+      expect(shown.sizes['notice'], HomeCardSize.compact);
+      expect(shown.presets['notice'], 'future-style');
+      expect(shown.hidden, {'library'});
+      expect(
+        shown.selectPreset('notice', HomeCardPreset.standard).presets,
+        isEmpty,
+      );
+    },
+  );
+  test(
+    'v3 validates visibility and preset fields without losing valid layout',
+    () {
+      final parsed = HomeCardLayout.fromJson({
+        'version': 3,
+        'order': ['notice'],
+        'sizes': {'notice': 'compact'},
+        'hidden': ['notice', 'notice', 7, ''],
+        'presets': {'notice': 'preview', '': 'bad', 'schedule': 1},
+      });
+      expect(parsed.hidden, {'notice'});
+      expect(parsed.presets, {'notice': 'preview'});
+      final oversized = HomeCardLayout.fromJson({
+        ...parsed.toJson(),
+        'hidden': List.filled(129, 'notice'),
+        'presets': <String, Object>{
+          for (var i = 0; i < 129; i++) '$i': 'preview',
+        },
+      });
+      expect(oversized.hidden, isEmpty);
+      expect(oversized.presets, isEmpty);
+      expect(oversized.sizes['notice'], HomeCardSize.compact);
+    },
+  );
   test('missing capabilities retain their order and sizes', () {
     final layout = HomeCardLayout(
       order: ['library', 'notice', 'schedule'],
@@ -44,7 +123,7 @@ void main() {
     );
   });
   test('unknown versions and invalid fields fail safely', () {
-    expect(HomeCardLayout.fromJson({'version': 3}).order, isEmpty);
+    expect(HomeCardLayout.fromJson({'version': 4}).order, isEmpty);
     final parsed = HomeCardLayout.fromJson({
       'version': 1,
       'order': ['notice', 'notice', 4, ''],
@@ -76,6 +155,8 @@ void main() {
         HomeCardLayout(
           order: ['schedule', 'notice'],
           sizes: {'notice': HomeCardSize.compact},
+          hidden: {'notice'},
+          presets: {'notice': 'preview'},
         ),
       ),
     ]);
@@ -85,12 +166,22 @@ void main() {
       HomeCardSize.compact,
     );
     expect((await reopened.load('school/b')).sizes, isEmpty);
+    expect((await reopened.load('school/a')).hidden, {'notice'});
+    expect((await reopened.load('school/a')).presets, {'notice': 'preview'});
+    expect((await reopened.load('school/b')).hidden, isEmpty);
+    expect((await reopened.load('school/b')).presets, isEmpty);
     expect((await reopened.load('school/c')).order, isEmpty);
     final files = await Directory('${dir.path}/home-layout').list().toList();
     expect(files.length, 2);
     for (final file in files) {
       final json = jsonDecode(await File(file.path).readAsString()) as Map;
-      expect(json.keys.toSet(), {'version', 'order', 'sizes'});
+      expect(json.keys.toSet(), {
+        'version',
+        'order',
+        'sizes',
+        'hidden',
+        'presets',
+      });
     }
   });
   test('bad disk data falls back and does not poison future saves', () async {

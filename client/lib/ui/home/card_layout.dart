@@ -5,21 +5,38 @@ import 'package:flutter/material.dart';
 
 enum HomeCardSize { compact, regular, expanded }
 
+/// Host-owned visual presets, independent of size and query/provider selection.
+/// The business component reads [HomeCardPresentation.presetOf] and renders
+/// the selected style from its existing data and state.
+class HomeCardPreset {
+  const HomeCardPreset({required this.id, required this.label})
+    : assert(id != '' && id != standard);
+
+  static const standard = 'standard';
+  final String id;
+  final String label;
+}
+
 class HomeCardPresentation extends InheritedWidget {
   const HomeCardPresentation({
     super.key,
     required this.size,
+    this.preset = HomeCardPreset.standard,
     this.onOpen,
     this.icon = Icons.dashboard_outlined,
     required super.child,
   });
 
   final HomeCardSize size;
+  final String preset;
   final VoidCallback? onOpen;
   final IconData icon;
 
   static HomeCardPresentation? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<HomeCardPresentation>();
+
+  static String presetOf(BuildContext context) =>
+      maybeOf(context)?.preset ?? HomeCardPreset.standard;
 
   static bool isPreview(BuildContext context) =>
       maybeOf(context)?.onOpen != null && of(context) != HomeCardSize.expanded;
@@ -33,6 +50,7 @@ class HomeCardPresentation extends InheritedWidget {
   @override
   bool updateShouldNotify(HomeCardPresentation oldWidget) =>
       size != oldWidget.size ||
+      preset != oldWidget.preset ||
       onOpen != oldWidget.onOpen ||
       icon != oldWidget.icon;
 }
@@ -45,6 +63,7 @@ class HomeCardEntry {
     this.icon = Icons.dashboard_outlined,
     this.sizes = HomeCardSize.values,
     this.defaultSize = HomeCardSize.regular,
+    this.presets = const [],
   }) : assert(id != ''),
        assert(sizes.length > 0);
 
@@ -54,6 +73,15 @@ class HomeCardEntry {
   final IconData icon;
   final List<HomeCardSize> sizes;
   final HomeCardSize defaultSize;
+
+  /// Additional styles actually implemented by this card's native component.
+  /// Standard is always available and need not be registered here.
+  final List<HomeCardPreset> presets;
+
+  String supportedPreset(String? preferred) =>
+      presets.any((preset) => preset.id == preferred)
+      ? preferred!
+      : HomeCardPreset.standard;
 
   HomeCardSize supportedSize(HomeCardSize? preferred) {
     if (preferred != null && sizes.contains(preferred)) return preferred;
@@ -67,14 +95,20 @@ class HomeCardLayout {
   HomeCardLayout({
     List<String> order = const [],
     Map<String, HomeCardSize> sizes = const {},
+    Set<String> hidden = const {},
+    Map<String, String> presets = const {},
   }) : order = List.unmodifiable(order),
-       sizes = Map.unmodifiable(sizes);
+       sizes = Map.unmodifiable(sizes),
+       hidden = Set.unmodifiable(hidden),
+       presets = Map.unmodifiable(presets);
 
   final List<String> order;
   final Map<String, HomeCardSize> sizes;
+  final Set<String> hidden;
+  final Map<String, String> presets;
 
   factory HomeCardLayout.fromJson(Object? value) {
-    if (value is! Map || ![1, 2].contains(value['version'])) {
+    if (value is! Map || ![1, 2, 3].contains(value['version'])) {
       return HomeCardLayout();
     }
     final rawOrder = value['order'];
@@ -107,16 +141,39 @@ class HomeCardLayout {
         sizes.putIfAbsent(id, () => HomeCardSize.expanded);
       }
     }
-    return HomeCardLayout(order: order, sizes: sizes);
+    final hidden = <String>{};
+    final presets = <String, String>{};
+    if (value['version'] == 3) {
+      final rawHidden = value['hidden'];
+      final rawPresets = value['presets'];
+      if (rawHidden is List && rawHidden.length <= 128) {
+        hidden.addAll(rawHidden.where(_validId).cast<String>());
+      }
+      if (rawPresets is Map && rawPresets.length <= 128) {
+        for (final entry in rawPresets.entries) {
+          if (_validId(entry.key) && _validId(entry.value)) {
+            presets[entry.key as String] = entry.value as String;
+          }
+        }
+      }
+    }
+    return HomeCardLayout(
+      order: order,
+      sizes: sizes,
+      hidden: hidden,
+      presets: presets,
+    );
   }
 
   static bool _validId(Object? id) =>
       id is String && id.isNotEmpty && id.length <= 256;
 
   Map<String, Object> toJson() => {
-    'version': 2,
+    'version': 3,
     'order': order,
     'sizes': sizes.map((id, size) => MapEntry(id, size.name)),
+    'hidden': hidden.toList(),
+    'presets': presets,
   };
 
   List<HomeCardEntry> arrange(List<HomeCardEntry> cards) {
@@ -130,8 +187,31 @@ class HomeCardLayout {
     return result;
   }
 
-  HomeCardLayout resize(String id, HomeCardSize size) =>
-      HomeCardLayout(order: order, sizes: {...sizes, id: size});
+  List<HomeCardEntry> visible(List<HomeCardEntry> cards) =>
+      arrange(cards).where((card) => !hidden.contains(card.id)).toList();
+
+  HomeCardLayout resize(String id, HomeCardSize size) => HomeCardLayout(
+    order: order,
+    sizes: {...sizes, id: size},
+    hidden: hidden,
+    presets: presets,
+  );
+
+  HomeCardLayout show(String id, bool visible) => HomeCardLayout(
+    order: order,
+    sizes: sizes,
+    hidden: visible ? (Set.of(hidden)..remove(id)) : {...hidden, id},
+    presets: presets,
+  );
+
+  HomeCardLayout selectPreset(String id, String preset) => HomeCardLayout(
+    order: order,
+    sizes: sizes,
+    hidden: hidden,
+    presets: preset == HomeCardPreset.standard
+        ? (Map.of(presets)..remove(id))
+        : {...presets, id: preset},
+  );
 
   /// Retain missing cards and their preferences when capabilities are transient.
   HomeCardLayout move(String from, String to, List<HomeCardEntry> cards) {
@@ -145,6 +225,11 @@ class HomeCardLayout {
     if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex) return this;
     fullOrder.removeAt(fromIndex);
     fullOrder.insert(toIndex, from);
-    return HomeCardLayout(order: fullOrder, sizes: sizes);
+    return HomeCardLayout(
+      order: fullOrder,
+      sizes: sizes,
+      hidden: hidden,
+      presets: presets,
+    );
   }
 }
