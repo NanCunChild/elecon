@@ -21,7 +21,8 @@ ADR-000–033 已废弃为新开发总纲，正文移至 [archived](../archived/
 | [044](adr_044_local_profiles.md) | Accepted（本轮多 Profiles 授权） | 独立会话/存储与设置行已实现 | 待人工核心审阅/真机 | 不共享安装授权与凭据 |
 | [045](adr_045_script_qr_scanner.md) | Accepted（本轮扫码接口授权） | SDK 8 前台二维码接口已实现 | 待人工权限审阅/真机 | 扫描不等于提交签到 |
 | [046](adr_046_triggered_script_requests.md) | Accepted（2026-11-01 所有者废除 action 授权） | 统一普通请求，空调触发发送后查询；见受信脚本计划 | 待人工核心审阅/真机 | 取代 040 action 与额外确认；旧包显式更新，V1 不变 |
-| [047](adr_047_feature_pages_and_card_qr.md) | Accepted（本轮功能查看授权） | 原生查看页、周课表/今日时间线、独立校园卡二维码；空教室目录待提供 | 待真机及核心人工审阅 | 无消费学校不伪造余额；二维码禁止持久缓存 |
+| [047](adr_047_feature_pages_and_card_qr.md) | Accepted（本轮功能查看授权） | 原生查看页、周课表/今日时间线、独立校园卡二维码；空教室目录由脚本内置 | 待真机及核心人工审阅 | 无消费学校不伪造余额；二维码禁止持久缓存 |
 | [048](adr_048_schedule_navigation_and_segments.md) | Accepted（本轮课表交互授权） | 周预览、滑动切周、学校时间分段及重叠覆盖已实现 | 待人工契约审阅/真机 | schedule.week 1.1，保留 1.0 校验 |
+| [050](adr_050_faculty_search.md) | Accepted（本轮教师查询授权） | 官网分页脚本、原生检索与同源详情已实现 | 待人工契约/网络审阅 | 新增 faculty.search 1.0；不预加载/不读取凭据 |
 
 ADR 编号不回收：021 仍是历史预留。更新决策、实现与签收时分别修改对应列，不用自动测试替代人工复核。
