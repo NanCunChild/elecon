@@ -390,5 +390,31 @@
         "type": "int"
       }
     }
-  }
+  },
+  "cardSpendingTitle": "Spending",
+  "cardSpendingDistribution": "By merchant",
+  "cardSpendingDaily": "Daily trend",
+  "cardSpendingLastDays": "Last {days} days",
+  "@cardSpendingLastDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "cardSpendingLoadedOnly": "Includes loaded debit records only. Top-ups, refunds and unfinished transactions are excluded; debits without a status are counted as reported.",
+  "cardSpendingPartial": "Not all records are loaded; charts do not show all spending in this period.",
+  "cardSpendingUnknownMerchant": "Unknown merchant",
+  "cardSpendingNoRecords": "No transactions in this period",
+  "cardSpendingLocalDates": "Dates use your device’s local time",
+  "cardTransactionsLoadMore": "Load more transactions",
+  "cardTransactionsLogin": "Sign in to view",
+  "cardTransactionsEntry": "Card transaction",
+  "cardSpendingCurrency": "Currency",
+  "cardSpendingTotal": "Loaded spending",
+  "cardTransactionFinal": "Completed",
+  "cardTransactionPending": "Pending",
+  "cardTransactionFailed": "Failed",
+  "cardTransactionCancelled": "Cancelled",
+  "cardTransactionUnknown": "Unknown"
 }

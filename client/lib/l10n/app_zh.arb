@@ -458,5 +458,31 @@
         "type": "int"
       }
     }
-  }
+  },
+  "cardSpendingTitle": "消费分析",
+  "cardSpendingDistribution": "商户分布",
+  "cardSpendingDaily": "每日变化",
+  "cardSpendingLastDays": "近 {days} 天",
+  "@cardSpendingLastDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "cardSpendingLoadedOnly": "仅统计已加载的支出记录，不含充值、退款及未完成交易；未提供状态的支出按来源记录计入。",
+  "cardSpendingPartial": "记录尚未加载完整，图表不是该时段的全部消费。",
+  "cardSpendingUnknownMerchant": "未提供商户",
+  "cardSpendingNoRecords": "该时段暂无交易记录",
+  "cardSpendingLocalDates": "日期按设备本地时间显示",
+  "cardTransactionsLoadMore": "加载更多记录",
+  "cardTransactionsLogin": "登录并查看",
+  "cardTransactionsEntry": "一卡通交易",
+  "cardSpendingCurrency": "币种",
+  "cardSpendingTotal": "已加载消费",
+  "cardTransactionFinal": "已完成",
+  "cardTransactionPending": "处理中",
+  "cardTransactionFailed": "失败",
+  "cardTransactionCancelled": "已取消",
+  "cardTransactionUnknown": "未知"
 }

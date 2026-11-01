@@ -15,6 +15,7 @@ import 'package:elecon_contract/card_qr.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/adapter_service.dart';
+import '../../core/card_spending.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import '../../session/session_scope.dart';
@@ -23,6 +24,7 @@ import '../login/webview_login_page.dart';
 import 'display_date.dart';
 import 'card_layout.dart';
 import 'card_preview_list.dart';
+import 'card_spending_view.dart';
 import 'home_page.dart' show GradesCard, ScheduleCard;
 import 'models.dart';
 import 'schema_decode.dart';
@@ -1441,138 +1443,330 @@ class CardTransactionsPage extends StatefulWidget {
 }
 
 class _CardTransactionsPageState extends State<CardTransactionsPage> {
+  static const _pageSize = 100;
   _Phase _phase = _Phase.loading;
   CardTransactions? _data;
+  final _items = <CardTransactionsItems>[];
   String? _error;
-  bool _started = false;
+  SessionController? _session;
+  int? _generation;
+  int _request = 0;
+  int _page = 0;
+  int _rangeDays = 30;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  bool _complete = false;
+  bool _loginRequired = false;
+  DateTime _to = DateTime.now();
+  DateTime? _fetchedAt;
+  String? _snapshotAt;
+
+  DateTime get _from => DateTime(_to.year, _to.month, _to.day - _rangeDays + 1);
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_started) {
-      _started = true;
-      _load();
+    final session = SessionScope.of(context);
+    if (_session == null) {
+      _session = session;
+      _generation = session.trustedScriptViewGeneration;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    } else if (!identical(session, _session) ||
+        session.trustedScriptViewGeneration != _generation) {
+      _request++;
+      _data = null;
+      _items.clear();
+      _error = null;
+      _phase = _Phase.idle;
     }
   }
 
-  Future<void> _load() async {
-    final session = SessionScope.of(context);
-    final generation = session.trustedScriptViewGeneration;
+  @override
+  void dispose() {
+    _request++;
+    super.dispose();
+  }
+
+  Future<void> _load({bool more = false}) async {
+    final session = _session!;
+    if (!_isCurrentSession(this, session, _generation!)) return;
+    if (more && (_loadingMore || !_hasMore)) return;
+    final request = ++_request;
+    final nextPage = more ? _page + 1 : 1;
+    setState(() {
+      _error = null;
+      _loginRequired = false;
+      _loadingMore = more;
+      if (!more) {
+        _phase = _Phase.loading;
+        _data = null;
+        _items.clear();
+        _fetchedAt = null;
+        _snapshotAt = null;
+        _page = 0;
+        _hasMore = false;
+        _complete = false;
+      }
+    });
     final outcome = await _runDecoded<CardTransactions>(
       context,
       session,
       'card.transactions',
-      params: const {'page': 1, 'size': 20},
+      params: {
+        'from': formatLocalDate(_from),
+        'to': formatLocalDate(_to),
+        'page': nextPage,
+        'size': _pageSize,
+      },
       decode: cardTransactionsFromDynamic,
     );
-    if (!mounted || !_isCurrentSession(this, session, generation)) return;
+    if (!mounted ||
+        request != _request ||
+        !_isCurrentSession(this, session, _generation!)) {
+      return;
+    }
+    final l10n = AppLocalizations.of(context);
     setState(() {
+      _loadingMore = false;
       if (outcome.needLogin) {
+        _loginRequired = true;
         _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
-      } else if (outcome.error != null) {
+      } else if (outcome.error != null ||
+          outcome.data == null ||
+          (outcome.data!.page != null && outcome.data!.page != nextPage)) {
         _phase = _data == null ? _Phase.error : _Phase.loaded;
-        _error = outcome.error;
+        _error = outcome.error ?? l10n.campusLoadFailed;
       } else {
+        final data = outcome.data!;
         _phase = _Phase.loaded;
-        _data = outcome.data;
+        _data = data;
+        _page = nextPage;
+        final ids = {
+          for (final item in _items)
+            if (item.transactionId != null && item.transactionId!.isNotEmpty)
+              (item.currency, item.transactionId!),
+        };
+        final previousCount = _items.length;
+        for (final item in data.items) {
+          final id = item.transactionId;
+          if (id == null || id.isEmpty || ids.add((item.currency, id))) {
+            _items.add(item);
+          }
+        }
+        _fetchedAt ??= DateTime.now();
+        if (!more) _snapshotAt = data.snapshotAt;
+        final total = data.total;
+        _complete =
+            data.hasNext != true &&
+            data.cursor == null &&
+            (total == null || _items.length >= total) &&
+            (data.hasNext == false ||
+                (total != null && _items.length >= total));
+        _hasMore =
+            !_complete &&
+            data.items.isNotEmpty &&
+            (!more || _items.length > previousCount) &&
+            data.cursor == null &&
+            (data.hasNext == true ||
+                (total != null && _items.length < total) ||
+                data.items.length >= _pageSize);
       }
     });
   }
 
   Future<void> _login() async {
-    final session = SessionScope.of(context);
-    final generation = session.trustedScriptViewGeneration;
+    final session = _session!;
+    if (!_isCurrentSession(this, session, _generation!)) return;
     final ok = await _promptVisibleLogin(
       context,
       session,
       targetRef: 'card-session',
     );
-    if (!mounted || !_isCurrentSession(this, session, generation)) return;
-    if (ok) {
-      setState(() => _phase = _Phase.loading);
-      await _load();
-    }
+    if (!mounted || !_isCurrentSession(this, session, _generation!)) return;
+    if (ok) await _load(more: _data != null);
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final session = SessionScope.of(context);
+    final current =
+        identical(session, _session) &&
+        session.trustedScriptViewGeneration == _generation;
     return Scaffold(
-      appBar: AppBar(title: const Text('一卡通交易明细')),
-      body: switch (_phase) {
-        _Phase.loading => const Center(child: CircularProgressIndicator()),
-        _Phase.needLogin => Center(
-          child: FilledButton.icon(
-            onPressed: _login,
-            icon: const Icon(Icons.login),
-            label: const Text('登录并查看'),
+      appBar: AppBar(title: Text(l10n.cardTransactions)),
+      body: SafeArea(
+        child: !current
+            ? Center(child: Text(l10n.homeCardDataChanged))
+            : ListView(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        for (final days in [7, 30, 90])
+                          ChoiceChip(
+                            label: Text(l10n.cardSpendingLastDays(days)),
+                            selected: _rangeDays == days,
+                            onSelected: (_) {
+                              if (_rangeDays == days) return;
+                              setState(() {
+                                _rangeDays = days;
+                                _to = DateTime.now();
+                              });
+                              _load();
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      '${formatLocalDate(_from)} – ${formatLocalDate(_to)}',
+                    ),
+                  ),
+                  if (_phase == _Phase.loading)
+                    const Center(child: CircularProgressIndicator())
+                  else if (_phase == _Phase.needLogin || _loginRequired)
+                    Center(
+                      child: FilledButton.icon(
+                        onPressed: _login,
+                        icon: const Icon(Icons.login),
+                        label: Text(l10n.cardTransactionsLogin),
+                      ),
+                    ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          Text(_error!, textAlign: TextAlign.center),
+                          TextButton.icon(
+                            onPressed: () => _load(more: _data != null),
+                            icon: const Icon(Icons.refresh),
+                            label: Text(l10n.commonRetry),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (_phase == _Phase.loaded) ...[
+                    if (_items.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          l10n.cardSpendingNoRecords,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    CardSpendingView(
+                      summary: CardSpendingSummary.fromTransactions(
+                        _items,
+                        from: _from,
+                        to: _to,
+                      ),
+                      partial: !_complete,
+                    ),
+                    if (_fetchedAt != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          l10n.homeDataUpdatedAt(
+                            _formatTimestamp(
+                              _snapshotAt ?? _fetchedAt!.toIso8601String(),
+                            ),
+                          ),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    for (final item in _items) ...[
+                      _transactionTile(context, item),
+                      const Divider(height: 1),
+                    ],
+                    if (!_complete)
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(l10n.cardSpendingPartial),
+                      ),
+                    if (_loadingMore)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (_hasMore && !_loginRequired)
+                      Center(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _load(more: true),
+                          icon: const Icon(Icons.expand_more),
+                          label: Text(l10n.cardTransactionsLoadMore),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _transactionTile(BuildContext context, CardTransactionsItems item) {
+    final l10n = AppLocalizations.of(context);
+    final sign = _directionSign(item.direction);
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2, right: 12),
+            child: Icon(
+              sign == '+'
+                  ? Icons.south_west
+                  : sign == '-'
+                  ? Icons.north_east
+                  : Icons.swap_horiz,
+            ),
           ),
-        ),
-        _Phase.error => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
+          Expanded(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_error ?? '加载失败', textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    setState(() => _phase = _Phase.loading);
-                    _load();
-                  },
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('重试'),
+                Text(
+                  item.merchant ?? item.type ?? l10n.cardTransactionsEntry,
+                  style: theme.textTheme.titleMedium,
+                ),
+                Text(
+                  '$sign${formatCardMoney(context, item.amountMinor, item.currency)}',
+                  style: theme.textTheme.titleMedium,
+                ),
+                Text(
+                  [
+                    _formatTimestamp(item.time),
+                    if (item.location != null) item.location!,
+                    if (item.status != null)
+                      switch (item.status) {
+                        'final' => l10n.cardTransactionFinal,
+                        'pending' => l10n.cardTransactionPending,
+                        'failed' => l10n.cardTransactionFailed,
+                        'cancelled' => l10n.cardTransactionCancelled,
+                        _ => l10n.cardTransactionUnknown,
+                      },
+                  ].join(' · '),
+                  style: theme.textTheme.bodySmall,
                 ),
               ],
             ),
           ),
-        ),
-        _Phase.idle || _Phase.loaded => _transactionsBody(context),
-      },
-    );
-  }
-
-  Widget _transactionsBody(BuildContext context) {
-    final data = _data;
-    if (data == null || data.items.isEmpty) {
-      return const Center(child: Text('暂无交易记录'));
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: data.items.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        final item = data.items[index];
-        final sign = _directionSign(item.direction);
-        final color = sign == '+'
-            ? Theme.of(context).colorScheme.primary
-            : Theme.of(context).colorScheme.onSurface;
-        return ListTile(
-          leading: Icon(
-            sign == '+'
-                ? Icons.south_west
-                : sign == '-'
-                ? Icons.north_east
-                : Icons.swap_horiz,
-            color: color,
-          ),
-          title: Text(item.merchant ?? item.type ?? '一卡通交易'),
-          subtitle: Text(
-            [
-              _formatTimestamp(item.time),
-              if (item.location != null) item.location!,
-              if (item.status != null) _transactionStatusText(item.status!),
-            ].join(' · '),
-          ),
-          trailing: Text(
-            '$sign${_money(item.amountMinor, item.currency)}',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
@@ -1609,14 +1803,6 @@ String _balanceErrorText(String status) => switch (status) {
   'failed' => '余额查询失败，当前数值可能不是最新结果。',
   'pending' => '余额仍在处理中，请稍后重试。',
   _ => '余额状态未知，请重新查询。',
-};
-
-String _transactionStatusText(String status) => switch (status) {
-  'final' => '已完成',
-  'pending' => '处理中',
-  'failed' => '失败',
-  'cancelled' => '已取消',
-  _ => '状态未知',
 };
 
 String _formatTimestamp(String value) {
