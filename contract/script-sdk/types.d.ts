@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1/2/3/4/5/6 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
+/** Trusted school script SDK 1/2/3/4/5/6/7 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -134,7 +134,7 @@ export interface ScriptActionDeclaration {
   url: string;
 }
 
-/** ADR-043 §3: optional SDK6 manifest.cards entry (at most ten distinct types).
+/** ADR-043 §3: optional SDK6+ manifest.cards entry (at most ten distinct types).
  * Suggestions never override saved user layout. The host owns geometry,
  * rendering and stable card identity; this is not a runtime JS layout API.
  * Each type requires its corresponding standard capabilities. This does not
@@ -149,3 +149,12 @@ export type ScriptCardEntry =
       type: "card" | "exam" | "classroom" | "energy" | "climate" | "generic";
       defaultVariant: "regular";
     };
+
+/** ADR-043 §2.2: optional SDK7 manifest presentation metadata.
+ * homeTitle is single-line plain text, at most 80 Unicode code points, without
+ * control/bidi characters. Omission uses the school name. Approved digest
+ * covers this field; it does not execute code or change package.name.
+ */
+export interface ScriptHomePresentation {
+  homeTitle?: string;
+}

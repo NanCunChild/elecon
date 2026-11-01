@@ -58,6 +58,7 @@ export function packageScript(manifest: unknown, source: unknown): string {
   }
   const typed = manifest as {
     name: string;
+    homeTitle?: string;
     network: { origins: string[]; ipAllow?: string[] };
     capabilities: Array<{ id: string }>;
     home?: Array<{ capability: string; params?: Record<string, unknown> }>;
@@ -68,6 +69,7 @@ export function packageScript(manifest: unknown, source: unknown): string {
   if (
     typed.name.includes("\0") ||
     typed.name.length > 160 ||
+    (typed.homeTitle !== undefined && Array.from(typed.homeTitle).length > 80) ||
     new Set(typed.capabilities.map((capability) => capability.id)).size !== typed.capabilities.length
   ) {
     throw new ScriptPackageError("script_package_manifest_invalid");

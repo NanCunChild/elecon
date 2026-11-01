@@ -320,22 +320,28 @@ class _EleconHomePageState extends State<EleconHomePage>
                 onRetry: _reload,
               );
             }
-            if (data == null || data.isEmpty) {
+            if (data == null) {
               return _EmptyState(onRetry: _reload);
             }
             return RefreshIndicator(
               onRefresh: _reload,
               child: CustomScrollView(
                 slivers: [
-                  SliverAppBar.large(
-                    title: const Text('elecon'),
-                    actions: [
-                      IconButton(
-                        tooltip: '刷新',
-                        onPressed: _reload,
-                        icon: const Icon(Icons.refresh),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 24, 8, 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: _SnapshotHeader(snapshot: data)),
+                          IconButton(
+                            tooltip: AppLocalizations.of(context).homeRefresh,
+                            onPressed: _reload,
+                            icon: const Icon(Icons.refresh),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(
@@ -348,8 +354,7 @@ class _EleconHomePageState extends State<EleconHomePage>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _SnapshotHeader(snapshot: data),
-                          const SizedBox(height: 12),
+                          if (data.isEmpty) _EmptyState(onRetry: _reload),
                           EditableCardBoard(
                             scopeId: _school ?? 'preview',
                             store: widget.layoutStore,
@@ -377,33 +382,28 @@ class _SnapshotHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return LiquidGlassSurface(
-      borderRadius: 16,
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            AppLocalizations.of(context).homeCampusTitle,
-            style: theme.textTheme.headlineSmall,
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          snapshot.homeTitle ?? snapshot.schoolName,
+          key: const ValueKey('home-title'),
+          style: theme.textTheme.headlineMedium,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          snapshot.updatedAt == null
+              ? l10n.homeDataNotUpdated
+              : l10n.homeDataUpdatedAt(
+                  formatLocalDateTime(snapshot.updatedAt!),
+                ),
+          key: const ValueKey('home-updated-at'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(height: 8),
-          Text(
-            snapshot.notices == null &&
-                    snapshot.schedule == null &&
-                    snapshot.grades == null &&
-                    snapshot.genericSections.isEmpty
-                ? snapshot.schoolName
-                : AppLocalizations.of(context).homeSnapshotUpdatedAt(
-                    snapshot.schoolName,
-                    formatLocalDateTime(snapshot.updatedAt),
-                  ),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

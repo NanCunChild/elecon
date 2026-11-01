@@ -1,6 +1,6 @@
 /// 🔒 Actual values in the current school; SDK 2 adds explicit addresses.
 /// ADR-034 §3 / ADR-035 §2–§3: namespace is an address, not an access grant.
-/// ADR-040 §4 / ADR-043 §3: SDK 5/6 preserve the same credential addresses.
+/// ADR-040 §4 / ADR-043 §3: SDK 5/6/7 preserve the same credential addresses.
 library;
 
 import 'dart:convert';
@@ -30,7 +30,7 @@ class ScriptCredentials {
        _isActive = isActive ?? (() => true),
        _now = now ?? (() => DateTime.now().millisecondsSinceEpoch) {
     if (!_identifier.hasMatch(schoolId) ||
-        !const {1, 2, 3, 4, 5, 6}.contains(sdkVersion) ||
+        !const {1, 2, 3, 4, 5, 6, 7}.contains(sdkVersion) ||
         (scriptId != null && !_identifier.hasMatch(scriptId!)) ||
         (sdkVersion >= 2 && scriptId == null)) {
       throw const ScriptCredentialException('invalid_credential_identity');

@@ -11,57 +11,63 @@ import 'package:elecon/session/session_controller.dart';
 import 'package:elecon/session/session_scope.dart';
 import 'package:elecon/ui/home/capability_sections.dart';
 import 'package:elecon/ui/home/home_page.dart';
+import 'package:elecon/ui/home/campus_snapshot_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-ScriptPackage schoolPackage(String id, {String version = '1.0.0'}) =>
-    ScriptPackage.parse(
-      jsonEncode({
-        'format': 'elecon-script/1',
-        'manifest': {
-          'sdkVersion': 4,
-          'id': id,
-          'version': version,
-          'schoolId': id,
-          'name': 'Synthetic $id',
-          'network': {'origins': []},
-          'browser': true,
-          'capabilities': [
-            for (final entry in [
-              ['generic.section', '1.0'],
-              ['card.balance', '1.0'],
-              ['schedule.week', '1.0'],
-              ['notice.list', '1.1'],
-              ['grades.list', '1.1'],
-              ['gpa.summary', '1.1'],
-              ['calendar.academic', '1.0'],
-            ])
-              {
-                'id': entry[0],
-                'schema': 'elecon.${entry[0]}',
-                'schemaVersion': entry[1],
-              },
-          ],
-          'home': [
-            {
-              'capability': 'card.balance',
-              'params': {'scope': 'home'},
-              'ttlSeconds': 3600,
-              'preload': true,
-            },
-            {'capability': 'schedule.week', 'ttlSeconds': 3600},
-            {
-              'capability': 'notice.list',
-              'params': {'scope': 'home'},
-              'ttlSeconds': 3600,
-              'preload': true,
-            },
-          ],
+ScriptPackage schoolPackage(
+  String id, {
+  String version = '1.0.0',
+  String? homeTitle,
+}) => ScriptPackage.parse(
+  jsonEncode({
+    'format': 'elecon-script/1',
+    'manifest': {
+      'sdkVersion': homeTitle == null ? 4 : 7,
+      'homeTitle': ?homeTitle,
+      'id': id,
+      'version': version,
+      'schoolId': id,
+      'name': 'Synthetic $id',
+      'network': {'origins': []},
+      'browser': true,
+      'capabilities': [
+        for (final entry in [
+          ['generic.section', '1.0'],
+          ['card.balance', '1.0'],
+          ['schedule.week', '1.0'],
+          ['notice.list', '1.1'],
+          ['grades.list', '1.1'],
+          ['gpa.summary', '1.1'],
+          ['calendar.academic', '1.0'],
+        ])
+          {
+            'id': entry[0],
+            'schema': 'elecon.${entry[0]}',
+            'schemaVersion': entry[1],
+          },
+      ],
+      'home': [
+        {
+          'capability': 'card.balance',
+          'params': {'scope': 'home'},
+          'ttlSeconds': 3600,
+          'preload': true,
         },
-        'source': '''export const capabilities={
+        {'capability': 'schedule.week', 'ttlSeconds': 3600},
+        {
+          'capability': 'notice.list',
+          'params': {'scope': 'home'},
+          'ttlSeconds': 3600,
+          'preload': true,
+        },
+      ],
+    },
+    'source': '''export const capabilities={
     'generic.section':async(ctx,p)=>{
       await ctx.credentials.set('amount',String(p.amount ?? 1234));
+      if(p.failNotices) await ctx.credentials.set('noticeFailure','true');
       return {sectionId:'login',title:'Synthetic login'};
     },
     'card.balance':async(ctx)=>{
@@ -74,14 +80,15 @@ ScriptPackage schoolPackage(String id, {String version = '1.0.0'}) =>
     'calendar.academic':async()=>({term:'SYNTHETIC-OLD-TERM',currentWeek:8}),
     'schedule.week':async(ctx,p)=>({term:'2026-2027-1',week:p.week,days:[]}),
     'notice.list':async(ctx)=>{
+      if((await ctx.credentials.get('noticeFailure'))?.value==='true') throw new Error('SYNTHETIC_NOTICE_FAILURE');
       const old=await ctx.credentials.get('noticeCount');
       const count=Number(old?.value ?? 0)+1;
       await ctx.credentials.set('noticeCount',String(count));
       return {items:[{id:'notice',title:'Synthetic notice '+count,category:'academic',source:'Synthetic'}]};
     }
   };''',
-      }),
-    );
+  }),
+);
 
 Future<SessionController> prepare(
   WidgetTester tester, {
@@ -400,6 +407,102 @@ void main() {
         tester,
         () => find.text('Synthetic notice 1').evaluate().isNotEmpty,
       );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'SDK7 header follows school and retains actual success time after failure',
+    (tester) async {
+      final session = await prepare(tester);
+      await tester.runAsync(() async {
+        final renamed = schoolPackage(
+          'cache-alpha',
+          version: '1.0.1',
+          homeTitle: 'Synthetic campus home',
+        );
+        await session.installTrustedScript(
+          renamed,
+          approvedDigest: renamed.digest,
+        );
+        final candidateJson =
+            jsonDecode(renamed.encode()) as Map<String, dynamic>;
+        final candidateManifest =
+            candidateJson['manifest'] as Map<String, dynamic>;
+        candidateManifest['id'] = 'cache-alpha-enhancement';
+        candidateManifest['name'] = 'Later enhancement';
+        candidateManifest['homeTitle'] = 'Unselected header';
+        final candidate = ScriptPackage.parse(jsonEncode(candidateJson));
+        await session.installTrustedScript(
+          candidate,
+          approvedDigest: candidate.digest,
+        );
+        expect(session.selectedSchool!.adapterId, 'script:cache-alpha');
+      });
+      final empty = await tester.runAsync(
+        () => loadCampusSnapshot(session, preferCacheOnly: true),
+      );
+      expect(empty!.homeTitle, 'Synthetic campus home');
+      expect(empty.updatedAt, isNull);
+      await tester.runAsync(() => session.refreshHomeData(force: true));
+      final successful = await tester.runAsync(
+        () => loadCampusSnapshot(session, preferCacheOnly: true),
+      );
+      expect(successful!.updatedAt, isNotNull);
+      await tester.runAsync(() async {
+        final result = await session.runTrustedScript(
+          'cache-alpha',
+          'generic.section',
+          params: {'amount': 'fail', 'failNotices': true},
+        );
+        expect(result.ok, isTrue);
+        await session.refreshHomeData(force: true);
+      });
+      final failed = await tester.runAsync(
+        () => loadCampusSnapshot(session, preferCacheOnly: true),
+      );
+      expect(failed!.updatedAt, successful.updatedAt);
+      expect(
+        failed.notices!.items.first.title,
+        successful.notices!.items.first.title,
+      );
+      await tester.pumpWidget(
+        SessionScope(
+          controller: session,
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: const EleconHomePage(),
+          ),
+        ),
+      );
+      await until(
+        tester,
+        () => find.text('Synthetic campus home').evaluate().isNotEmpty,
+      );
+      expect(find.text('elecon'), findsNothing);
+      final shownTime = tester
+          .widget<Text>(find.byKey(const ValueKey('home-updated-at')))
+          .data;
+      await tester.runAsync(() => session.refreshHomeData(force: true));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('home-updated-at'))).data,
+        shownTime,
+      );
+      await tester.runAsync(
+        () => session.selectTrustedScriptSchool('cache-beta'),
+      );
+      await until(
+        tester,
+        () => find.text('Synthetic cache-beta').evaluate().isNotEmpty,
+      );
+      expect(find.text('Synthetic campus home'), findsNothing);
+      await until(
+        tester,
+        () => find.text('Synthetic notice 1').evaluate().isNotEmpty,
+      );
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );

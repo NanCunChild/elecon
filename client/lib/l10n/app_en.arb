@@ -335,5 +335,9 @@
   "homeLayoutHide": "Hide from home",
   "homeLayoutEmpty": "No cards are showing. Add some in Home cards.",
   "homeLayoutPreset": "Display style",
-  "homeLayoutPresetStandard": "Standard"
+  "homeLayoutPresetStandard": "Standard",
+  "homeRefresh": "Refresh",
+  "homeDataNotUpdated": "No successful data update yet",
+  "scriptsHomeTitle": "Home title: {title}",
+  "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}}
 }

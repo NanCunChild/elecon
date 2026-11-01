@@ -19,7 +19,7 @@ const manifest = {
 };
 const source = "throw new Error('SYNTHETIC_SOURCE_MUST_NEVER_EXECUTE');\n";
 const packaged = packageScript(manifest, source);
-for (const sdkVersion of [1, 2, 3, 4, 5, 6]) {
+for (const sdkVersion of [1, 2, 3, 4, 5, 6, 7]) {
   assert.equal(
     JSON.parse(packageScript({ ...manifest, sdkVersion }, source)).manifest.sdkVersion,
     sdkVersion,
@@ -36,7 +36,7 @@ for (const invalid of ["", "   \n", null, 42, "abc\0def"]) {
 for (const invalid of [
   { ...manifest, capabilities: [...manifest.capabilities, { ...manifest.capabilities[0]! }] },
   { ...manifest, version: "01.2.3" },
-  { ...manifest, sdkVersion: 7 },
+  { ...manifest, sdkVersion: 8 },
   { ...manifest, browser: "true" },
   { ...manifest, unknown: true },
   { ...manifest, capabilities: [{ id: "notice.list", schema: "elecon.notice.list", schemaVersion: "99.0" }] },

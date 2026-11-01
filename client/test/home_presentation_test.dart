@@ -59,7 +59,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('测试大学 · 更新于 2026-07-07 00:05'), findsOneWidget);
+      expect(find.text('测试大学'), findsOneWidget);
+      expect(find.text('更新于 2026-07-07 00:05'), findsOneWidget);
+      expect(find.text('elecon'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('home-card:notice')));
       await tester.pumpAndSettle();
       expect(find.text('测试部门 · 行政 · 2026-07-07'), findsOneWidget);

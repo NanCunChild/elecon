@@ -54,6 +54,7 @@ class ScriptManifest {
     required this.version,
     required this.schoolId,
     required this.name,
+    required this.homeTitle,
     required this.network,
     required this.browser,
     required this.capabilities,
@@ -69,6 +70,7 @@ class ScriptManifest {
       'version',
       'schoolId',
       'name',
+      if (json.containsKey('homeTitle')) 'homeTitle',
       'network',
       'browser',
       'capabilities',
@@ -76,9 +78,24 @@ class ScriptManifest {
       if (json.containsKey('actions')) 'actions',
       if (json.containsKey('cards')) 'cards',
     }, 'manifest');
-    if (!const {1, 2, 3, 4, 5, 6}.contains(json['sdkVersion']) ||
+    if (!const {1, 2, 3, 4, 5, 6, 7}.contains(json['sdkVersion']) ||
         json['sdkVersion'] is! int) {
       throw const FormatException('unsupported script SDK version');
+    }
+    String? homeTitle;
+    if (json.containsKey('homeTitle')) {
+      if (json['sdkVersion'] != 7) {
+        throw const FormatException('homeTitle requires SDK 7');
+      }
+      homeTitle = _text(json, 'homeTitle', 160);
+      if (homeTitle.runes.length > 80) {
+        throw const FormatException('homeTitle exceeds 80 characters');
+      }
+      if (RegExp(
+        r'[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]',
+      ).hasMatch(homeTitle)) {
+        throw const FormatException('homeTitle must be single-line plain text');
+      }
     }
     final id = _text(json, 'id', 128);
     final schoolId = _text(json, 'schoolId', 128);
@@ -125,7 +142,7 @@ class ScriptManifest {
     // ADR-043 §3: presentation suggestions do not declare new capabilities.
     final rawCards = json['cards'];
     if (json.containsKey('cards') &&
-        (json['sdkVersion'] != 6 ||
+        ((json['sdkVersion'] as int) < 6 ||
             rawCards is! List ||
             rawCards.length > 10)) {
       throw const FormatException('invalid script cards declaration');
@@ -169,6 +186,7 @@ class ScriptManifest {
       version: version,
       schoolId: schoolId,
       name: _text(json, 'name', 160),
+      homeTitle: homeTitle,
       network: network,
       browser: json['browser'] as bool,
       capabilities: List.unmodifiable(caps),
@@ -183,6 +201,7 @@ class ScriptManifest {
   final String version;
   final String schoolId;
   final String name;
+  final String? homeTitle;
   final ScriptNetworkPolicy network;
   final bool browser;
   final List<ScriptCapability> capabilities;

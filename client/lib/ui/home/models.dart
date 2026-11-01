@@ -30,6 +30,7 @@ class CampusSnapshot {
   const CampusSnapshot({
     required this.schoolName,
     required this.updatedAt,
+    this.homeTitle,
     this.grades,
     this.gpaSummary,
     this.schedule,
@@ -39,7 +40,10 @@ class CampusSnapshot {
   });
 
   final String schoolName;
-  final DateTime updatedAt;
+
+  /// Latest successful data fetch; null means no successful data is available.
+  final DateTime? updatedAt;
+  final String? homeTitle;
   final GradesList? grades;
 
   /// 学校官方绩点汇总（`gpa.summary`）。存在即权威，本体不得用自算值覆盖

@@ -403,5 +403,9 @@
   "homeLayoutHide": "从主页隐藏",
   "homeLayoutEmpty": "还没有显示的卡片，可在“主页展示”中添加。",
   "homeLayoutPreset": "展示样式",
-  "homeLayoutPresetStandard": "标准样式"
+  "homeLayoutPresetStandard": "标准样式",
+  "homeRefresh": "刷新",
+  "homeDataNotUpdated": "暂无成功更新的数据",
+  "scriptsHomeTitle": "首页标题：{title}",
+  "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}}
 }

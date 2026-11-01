@@ -197,6 +197,33 @@ class ScriptRegistry {
 
   ScriptInstallation? find(String id) => _entries[id];
 
+  /// Header branding belongs to the school's own package or stable base route,
+  /// never to an override or an unselected candidate.
+  String? homeTitleForSchool(String schoolId, {String? packageId}) {
+    if (packageId != null) {
+      final installation = find(packageId);
+      return installation?.enabled == true &&
+              installation!.package.manifest.schoolId == schoolId
+          ? installation.package.manifest.homeTitle
+          : null;
+    }
+    for (final capability in const [
+      'notice.list',
+      'schedule.week',
+      'grades.list',
+      'card.balance',
+      'exam.list',
+      'library.loans',
+      'energy.meters',
+      'climate.devices',
+      'classroom.buildings',
+    ]) {
+      final base = baseProvider(schoolId, capability);
+      if (base != null) return base.manifest.homeTitle;
+    }
+    return null;
+  }
+
   /// Stable base route for display defaults; overrides do not own layout.
   ScriptPackage? baseProvider(String schoolId, String capability) {
     final binding = _bindings[_key(schoolId, capability)];

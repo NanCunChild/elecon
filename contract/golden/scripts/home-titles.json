@@ -1,0 +1,219 @@
+{
+  "baseManifest": {
+    "sdkVersion": 7,
+    "id": "school.header",
+    "version": "1.0.0",
+    "schoolId": "header-school",
+    "name": "Synthetic package",
+    "network": {
+      "origins": []
+    },
+    "browser": false,
+    "capabilities": [
+      {
+        "id": "notice.list",
+        "schema": "elecon.notice.list",
+        "schemaVersion": "1.1"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "absent_falls_back",
+      "valid": true,
+      "manifest": {}
+    },
+    {
+      "name": "school_title",
+      "valid": true,
+      "manifest": {
+        "homeTitle": "合成大学"
+      }
+    },
+    {
+      "name": "literal_text",
+      "valid": true,
+      "manifest": {
+        "homeTitle": "<b>Synthetic campus</b>"
+      }
+    },
+    {
+      "name": "unicode_80",
+      "valid": true,
+      "manifest": {
+        "homeTitle": "校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校"
+      }
+    },
+    {
+      "name": "non_bmp_80",
+      "valid": true,
+      "manifest": {
+        "homeTitle": "🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓"
+      }
+    },
+    {
+      "name": "unicode_81",
+      "valid": false,
+      "manifest": {
+        "homeTitle": "校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校校"
+      }
+    },
+    {
+      "name": "non_bmp_81",
+      "valid": false,
+      "manifest": {
+        "homeTitle": "🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓🎓"
+      }
+    },
+    {
+      "name": "null_rejected",
+      "valid": false,
+      "manifest": {
+        "homeTitle": null
+      }
+    },
+    {
+      "name": "blank_rejected",
+      "valid": false,
+      "manifest": {
+        "homeTitle": "   "
+      }
+    },
+    {
+      "name": "empty_rejected",
+      "valid": false,
+      "manifest": {
+        "homeTitle": ""
+      }
+    },
+    {
+      "name": "not_string",
+      "valid": false,
+      "manifest": {
+        "homeTitle": 7
+      }
+    },
+    {
+      "name": "sdk1_rejects_title",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 1,
+        "homeTitle": "Synthetic"
+      }
+    },
+    {
+      "name": "sdk2_rejects_title",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 2,
+        "homeTitle": "Synthetic"
+      }
+    },
+    {
+      "name": "sdk3_rejects_title",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 3,
+        "homeTitle": "Synthetic"
+      }
+    },
+    {
+      "name": "sdk4_rejects_title",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 4,
+        "homeTitle": "Synthetic"
+      }
+    },
+    {
+      "name": "sdk5_rejects_title",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 5,
+        "homeTitle": "Synthetic"
+      }
+    },
+    {
+      "name": "sdk6_rejects_title",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 6,
+        "homeTitle": "Synthetic"
+      }
+    },
+    {
+      "name": "newline",
+      "valid": false,
+      "manifest": {
+        "homeTitle": "a\nb"
+      }
+    },
+    {
+      "name": "tab",
+      "valid": false,
+      "manifest": {
+        "homeTitle": "a\tb"
+      }
+    },
+    {
+      "name": "null",
+      "valid": false,
+      "manifest": {
+        "homeTitle": "a\u0000b"
+      }
+    },
+    {
+      "name": "bidi",
+      "valid": false,
+      "manifest": {
+        "homeTitle": "a‮b"
+      }
+    },
+    {
+      "name": "isolate",
+      "valid": false,
+      "manifest": {
+        "homeTitle": "a⁦b"
+      }
+    },
+    {
+      "name": "line_separator",
+      "valid": false,
+      "manifest": {
+        "homeTitle": "a b"
+      }
+    },
+    {
+      "name": "c1",
+      "valid": false,
+      "manifest": {
+        "homeTitle": "ab"
+      }
+    },
+    {
+      "name": "sdk8_rejected",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 8
+      }
+    },
+    {
+      "name": "sdk7_inherits_home_and_cards",
+      "valid": true,
+      "manifest": {
+        "home": [
+          {
+            "capability": "notice.list",
+            "ttlSeconds": 3600
+          }
+        ],
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "compact"
+          }
+        ]
+      }
+    }
+  ]
+}

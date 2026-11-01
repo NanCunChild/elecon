@@ -227,7 +227,10 @@ extension TrustedScriptSession on SessionController {
       for (final s in _availableSchools)
         if (!s.adapterId.startsWith('script:')) s,
     ];
-    for (final installation in registry.installations) {
+    // The first enabled school package owns its local school descriptor.
+    // The workbench lists newest first; a later enhancement must not rename
+    // an existing school or replace its header owner merely by installation.
+    for (final installation in registry.installations.reversed) {
       if (!installation.enabled) continue;
       final m = installation.package.manifest;
       if (schools.any((school) => school.id == m.schoolId)) continue;

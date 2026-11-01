@@ -22,6 +22,8 @@ Future<bool> confirmScriptInstall(
                   Text(
                     '${package.manifest.name} · ${package.manifest.version}\n${package.manifest.id} · ${package.manifest.schoolId}',
                   ),
+                  if (package.manifest.homeTitle != null)
+                    Text(l10n.scriptsHomeTitle(package.manifest.homeTitle!)),
                   ExpansionTile(
                     title: Text(l10n.scriptsViewSource),
                     children: [SelectableText(package.source)],

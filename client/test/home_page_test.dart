@@ -64,7 +64,8 @@ void main() {
     await tester.tap(find.text('成绩'));
     await tester.pumpAndSettle();
 
-    expect(find.text('elecon'), findsWidgets);
+    expect(find.text('elecon'), findsNothing);
+    expect(find.byKey(const ValueKey('home-title')), findsOneWidget);
     expect(find.textContaining('测试大学'), findsOneWidget);
     expect(find.text('成绩'), findsOneWidget);
     expect(find.text('测试课程'), findsOneWidget);

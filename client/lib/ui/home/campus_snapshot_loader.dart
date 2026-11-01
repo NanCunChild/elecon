@@ -25,10 +25,33 @@ Future<CampusSnapshot> loadCampusSnapshot(
     ...school.capabilityCredentials.keys,
     ...await session.trustedScriptCapabilities(),
   };
+  String? homeTitle;
+  try {
+    homeTitle = (await session.scriptRegistry).homeTitleForSchool(
+      school.id,
+      packageId: school.adapterId.startsWith('script:')
+          ? school.adapterId.substring(7)
+          : null,
+    );
+  } catch (_) {
+    // Optional presentation metadata must not prevent legacy data loading.
+  }
+  DateTime? updatedAt = cached?.fetchedAt;
+  for (final data in await Future.wait([
+    for (final capability in capabilities)
+      if (capability != 'notice.list' && capability != 'climate.command')
+        session.latestCachedCapability(capability),
+  ])) {
+    if (data != null &&
+        (updatedAt == null || data.fetchedAt.isAfter(updatedAt))) {
+      updatedAt = data.fetchedAt;
+    }
+  }
   if (cachedNotices != null) {
     return CampusSnapshot(
       schoolName: school.displayName,
-      updatedAt: cached!.fetchedAt,
+      homeTitle: homeTitle,
+      updatedAt: updatedAt,
       notices: cachedNotices,
       supportedCapabilities: capabilities,
     );
@@ -54,7 +77,8 @@ Future<CampusSnapshot> loadCampusSnapshot(
   if (declaredPreload) {
     return CampusSnapshot(
       schoolName: school.displayName,
-      updatedAt: DateTime.now().toUtc(),
+      homeTitle: homeTitle,
+      updatedAt: updatedAt,
       supportedCapabilities: capabilities,
     );
   }
@@ -62,7 +86,8 @@ Future<CampusSnapshot> loadCampusSnapshot(
   if (!run.ok) {
     return CampusSnapshot(
       schoolName: school.displayName,
-      updatedAt: DateTime.now().toUtc(),
+      homeTitle: homeTitle,
+      updatedAt: updatedAt,
       supportedCapabilities: {
         ...school.capabilityCredentials.keys,
         ...await session.trustedScriptCapabilities(),
@@ -75,6 +100,7 @@ Future<CampusSnapshot> loadCampusSnapshot(
   }
   return CampusSnapshot(
     schoolName: school.displayName,
+    homeTitle: homeTitle,
     updatedAt: DateTime.now().toUtc(),
     notices: notices,
     supportedCapabilities: {
