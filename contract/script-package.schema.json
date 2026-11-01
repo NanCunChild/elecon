@@ -42,7 +42,8 @@
             4,
             5,
             6,
-            7
+            7,
+            8
           ],
           "type": "integer"
         },
@@ -75,6 +76,10 @@
           "maxLength": 80,
           "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
           "description": "SDK 7 optional single-line homepage title. Omitted: use the school name. Maximum 80 Unicode code points; no control or bidi control characters. Does not rename the package or grant authority."
+        },
+        "scanner": {
+          "type": "boolean",
+          "description": "SDK 8: allow foreground native QR text scanning. Omitted/false denies camera access; does not submit check-in or open URLs."
         },
         "browser": {
           "type": "boolean"
@@ -883,7 +888,8 @@
         }
       },
       "allOf": [
-        {"if": {"required": ["homeTitle"], "properties": {"homeTitle": {}}}, "then": {"properties": {"sdkVersion": {"const": 7}}}},
+        {"if": {"required": ["scanner"], "properties": {"scanner": {}}}, "then": {"properties": {"sdkVersion": {"const": 8}}}},
+        {"if": {"required": ["homeTitle"], "properties": {"homeTitle": {}}}, "then": {"properties": {"sdkVersion": {"enum": [7, 8]}}}},
         {
           "if": {
             "required": [
@@ -900,13 +906,14 @@
                   4,
                   5,
                   6,
-                  7
+                  7,
+                  8
                 ]
               }
             }
           }
         },
-        {"if": {"required": ["cards"], "properties": {"cards": {}}}, "then": {"properties": {"sdkVersion": {"enum": [6, 7]}}}},
+        {"if": {"required": ["cards"], "properties": {"cards": {}}}, "then": {"properties": {"sdkVersion": {"enum": [6, 7, 8]}}}},
         {
           "if": {
             "required": ["cards"],

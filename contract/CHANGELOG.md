@@ -6,6 +6,9 @@
 
 - **2026-11-01 · ADR-046（所有者废除 action 授权）**：移除新包 `manifest.actions` 与 SDK action 声明；Dart/TS 新包解析明确拒绝旧字段，已有安装仅保留原始内容/digest 并等待显式更新。普通 capability 使用通用 `ctx.fetch`，空调按钮触发一次控制后查询一次状态；不额外确认或自动重发。包格式及 SDK 其它 API 不变，西电本科包升至 0.15.0。V1 控制门不变。
 
+
+- **2026-11-01 · ADR-045（所有者扫码接口授权）**：SDK 8 新增可选 `manifest.scanner` 与前台 `ctx.ui.scanQRCode()`，返回最多 4096 UTF-8 字节的 QR 文本或取消 null；受 digest、当前 Profile/学校、前台与调用预算约束。SDK 1–7 不接受 scanner 字段，旧宿主拒绝 SDK 8；SDK 8 继承原 homeTitle/home/actions/cards。未新增签到业务 capability 或绕过控制确认。
+
 - **2026-11-01 · ADR-043 §2.2（所有者视觉修订要求）**：SDK 7 新增可选静态 `homeTitle`，允许受信学校包声明首页单行标题，名称缺省回退学校名；保留 package `name`、SDK 1–6 字段含义和现有能力权限。更新须重新确认 digest。标题不声明布局、数据时间或控制行为。
 
 - **2026-10-31 · ADR-043（所有者确认落地）**：新增 SDK 6 可选 `cards` 静态展示建议，有限业务类型与 `defaultVariant`，按类型验证能力依赖、重复类型和已实现的呈现档位；用户布局优先，宿主拥有渲染。继承 SDK 5 action 与 SDK 4 home，不增加权限、业务输出或远程布局代码，旧 SDK 1–5 保持原行为；实际学校包不随之自动升级。

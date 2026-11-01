@@ -2,6 +2,8 @@
     <!-- release/main 也需要出网：WebView 登录 + DirectTransport（此前只写在 debug/profile，
          导致 release 构建的 APK 无法登录）。 -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <!-- ADR-034 §4: explicitly declared HTTP school origins are admitted by host policy. -->
     <application
         android:allowBackup="false"

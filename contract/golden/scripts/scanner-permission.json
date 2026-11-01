@@ -1,0 +1,194 @@
+{
+  "baseManifest": {
+    "sdkVersion": 8,
+    "id": "scanner.synthetic",
+    "schoolId": "synthetic",
+    "version": "1.0.0",
+    "name": "Synthetic scanner",
+    "browser": false,
+    "network": {
+      "origins": []
+    },
+    "capabilities": [
+      {
+        "id": "notice.list",
+        "schema": "elecon.notice.list",
+        "schemaVersion": "1.1"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "omitted",
+      "manifest": {},
+      "valid": true
+    },
+    {
+      "name": "allowed",
+      "manifest": {
+        "scanner": true
+      },
+      "valid": true
+    },
+    {
+      "name": "denied",
+      "manifest": {
+        "scanner": false
+      },
+      "valid": true
+    },
+    {
+      "name": "string",
+      "manifest": {
+        "scanner": "true"
+      },
+      "valid": false
+    },
+    {
+      "name": "null",
+      "manifest": {
+        "scanner": null
+      },
+      "valid": false
+    },
+    {
+      "name": "object",
+      "manifest": {
+        "scanner": {}
+      },
+      "valid": false
+    },
+    {
+      "name": "future_sdk",
+      "manifest": {
+        "sdkVersion": 9
+      },
+      "valid": false
+    },
+    {
+      "name": "inherits_presentation",
+      "manifest": {
+        "scanner": true,
+        "homeTitle": "Synthetic home",
+        "home": [
+          {
+            "capability": "notice.list",
+            "ttlSeconds": 30
+          }
+        ],
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "compact"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "sdk1_omitted",
+      "manifest": {
+        "sdkVersion": 1
+      },
+      "valid": true
+    },
+    {
+      "name": "sdk1_rejects_permission",
+      "manifest": {
+        "sdkVersion": 1,
+        "scanner": false
+      },
+      "valid": false
+    },
+    {
+      "name": "sdk2_omitted",
+      "manifest": {
+        "sdkVersion": 2
+      },
+      "valid": true
+    },
+    {
+      "name": "sdk2_rejects_permission",
+      "manifest": {
+        "sdkVersion": 2,
+        "scanner": false
+      },
+      "valid": false
+    },
+    {
+      "name": "sdk3_omitted",
+      "manifest": {
+        "sdkVersion": 3
+      },
+      "valid": true
+    },
+    {
+      "name": "sdk3_rejects_permission",
+      "manifest": {
+        "sdkVersion": 3,
+        "scanner": false
+      },
+      "valid": false
+    },
+    {
+      "name": "sdk4_omitted",
+      "manifest": {
+        "sdkVersion": 4
+      },
+      "valid": true
+    },
+    {
+      "name": "sdk4_rejects_permission",
+      "manifest": {
+        "sdkVersion": 4,
+        "scanner": false
+      },
+      "valid": false
+    },
+    {
+      "name": "sdk5_omitted",
+      "manifest": {
+        "sdkVersion": 5
+      },
+      "valid": true
+    },
+    {
+      "name": "sdk5_rejects_permission",
+      "manifest": {
+        "sdkVersion": 5,
+        "scanner": false
+      },
+      "valid": false
+    },
+    {
+      "name": "sdk6_omitted",
+      "manifest": {
+        "sdkVersion": 6
+      },
+      "valid": true
+    },
+    {
+      "name": "sdk6_rejects_permission",
+      "manifest": {
+        "sdkVersion": 6,
+        "scanner": false
+      },
+      "valid": false
+    },
+    {
+      "name": "sdk7_omitted",
+      "manifest": {
+        "sdkVersion": 7
+      },
+      "valid": true
+    },
+    {
+      "name": "sdk7_rejects_permission",
+      "manifest": {
+        "sdkVersion": 7,
+        "scanner": false
+      },
+      "valid": false
+    }
+  ]
+}

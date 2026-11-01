@@ -652,7 +652,7 @@
       "name": "unknown_sdk",
       "valid": false,
       "manifest": {
-        "sdkVersion": 8
+        "sdkVersion": 9
       }
     },
     {

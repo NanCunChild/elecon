@@ -14,12 +14,16 @@ typedef ScriptInputPresenter =
       Future<Object?> Function(ScriptInputCall input) execute,
     );
 
+typedef ScriptScannerPresenter =
+    Future<Object?> Function(ScriptPackage package, bool Function() isActive);
+
 class _ScriptSessionState {
   Future<ScriptRegistry>? registry;
   Future<void> queue = Future.value();
   bool recoveredRegistry = false;
   ScriptBrowserPresenter? presenter;
   ScriptInputPresenter? inputPresenter;
+  ScriptScannerPresenter? scannerPresenter;
   Future<bool> Function()? storageConsent;
   int generation = 0;
   bool disposed = false;
@@ -50,6 +54,11 @@ extension TrustedScriptSession on SessionController {
   set scriptInputPresenter(ScriptInputPresenter? presenter) =>
       _scripts.inputPresenter = presenter;
 
+  ScriptScannerPresenter? get scriptScannerPresenter =>
+      _scripts.scannerPresenter;
+  set scriptScannerPresenter(ScriptScannerPresenter? presenter) =>
+      _scripts.scannerPresenter = presenter;
+
   Future<ScriptRegistry> get scriptRegistry =>
       _scripts.registry ??= _openScriptRegistry();
 
@@ -76,6 +85,7 @@ extension TrustedScriptSession on SessionController {
       state.disposed = true;
       state.presenter = null;
       state.inputPresenter = null;
+      state.scannerPresenter = null;
     }
     for (final transport in state.transports.toList()) {
       transport.close();
@@ -441,6 +451,9 @@ extension TrustedScriptSession on SessionController {
         fetch: transport.fetch,
         browserCall: browser,
         inputCall: input,
+        scanCall: interactive && state.scannerPresenter != null
+            ? (valid) => state.scannerPresenter!(package, valid)
+            : null,
         isActive: active,
         htmlStdlib: htmlStdlib ?? await loadHtmlStdlib(),
         wallTimeout: Duration(

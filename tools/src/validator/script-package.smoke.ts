@@ -45,7 +45,7 @@ function sample(): Sample {
     source: "throw new Error('schema must not execute source');",
   };
 }
-for (const sdkVersion of [1, 2, 3, 4, 5, 6, 7]) {
+for (const sdkVersion of [1, 2, 3, 4, 5, 6, 7, 8]) {
   const p = sample();
   p.manifest.sdkVersion = sdkVersion;
   assert.equal(validate(p), true, JSON.stringify(validate.errors));
@@ -56,7 +56,7 @@ for (const mutate of [
     p.format = "elecon-script/2";
   },
   (p: Sample) => {
-    p.manifest.sdkVersion = 8;
+    p.manifest.sdkVersion = 9;
   },
   (p: Sample) => {
     p.manifest.version = "01.0.0";
@@ -112,3 +112,23 @@ for (const actions of [
   commandPackage.manifest.actions = actions;
   assert.equal(validate(commandPackage), false, "retired actions must require a package update");
 }
+
+// ADR-045: shared native camera permission and SDK migration matrix.
+const scannerGolden = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL("../../../contract/golden/scripts/scanner-permission.json", import.meta.url)),
+    "utf8",
+  ),
+) as {
+  baseManifest: Record<string, unknown>;
+  cases: Array<{ name: string; manifest: Record<string, unknown>; valid: boolean }>;
+};
+for (const row of scannerGolden.cases) {
+  const input = {
+    format: "elecon-script/1",
+    manifest: { ...scannerGolden.baseManifest, ...row.manifest },
+    source: "export const capabilities={};",
+  };
+  assert.equal(validate(input), row.valid, `${row.name}: ${JSON.stringify(validate.errors)}`);
+}
+console.log(`SDK8 scanner: ${scannerGolden.cases.length} shared admission cases passed`);

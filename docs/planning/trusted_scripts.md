@@ -306,3 +306,13 @@ CPH2653 在本轮 14:23–14:24 UTC 的脱敏日志确认：新版官方 WebView
 最初手机锁屏时保留未验收状态；随后本轮 14:33–14:34 UTC 脱敏日志已确认 0.12.1：`calendar.academic ok`、`card.transactions ok`、`schedule.week ok`、`exam.list ok`，余额最终 `xidian_card_stage:account_ready → card.balance ok`。表明本轮本科手机的校历/课表/考试、账户余额/流水查询成功；不能扩展为研究生、Apple 平台或所有学校响应形态都已实测，也不以缺少参数的日志宣称具体教学周或实际密码输入已单独验收。
 
 没有代点源码安装授权或覆盖旧 digest，没有读取/输出手机凭据、真实金额或响应正文。最终检查日志为 `/tmp/elecon-input-*-patch.log`，脱敏手机日志为 `/tmp/elecon-input-device.log`；人工核心安全审阅仍开放。
+
+
+## 2026-11-01：Profiles、扫码 SDK 8 与保护研究
+
+- [ADR-044](../adr/adr_044_local_profiles.md) 已实现本地 Profiles：旧库原位归属 Profile 1；新用户独立会话、凭据/业务缓存与安装授权，重新选择脚本。切换取消旧调用并重建导航，设置逐 Profile 展示脚本/状态和保护图标。
+- [ADR-045](../adr/adr_045_script_qr_scanner.md) 已实现可选 `scanner` 权限和 `ctx.ui.scanQRCode()`；前台 Android/iOS 相机返回 QR 文本/null，后台与 action 拒绝。现有学校包未提升 SDK；没有新增签到提交能力。
+- [保护研究](../research/script_protection_feasibility.md) 已核对 flutter_qjs_next 1.2.1 本地原生源与官方资料：可 fork QuickJS 或对少数纯函数做 VM 保护；当前未实现加密包、引擎补丁或 VMP。格式/授权变化须另立 ADR。
+- 自动验证：session、scripts、启动、凭据 UI 边界、网格/拖动/真实首页与 l10n 共 **417 项通过**；Flutter analyze 无问题；TS schema 共享扫码准入 **22 项**、打包 smoke、tools typecheck/Biome、54 个 schema 生成物检查及契约 CHANGELOG 门通过。生成器仍提示既有 27 处 description 缺失，本轮未扩修历史字段。
+- 构建与文档：当前代码 Android Debug APK 构建成功；主/Apple lockfile 均锁定 mobile_scanner 7.4.3，Apple 依赖单独 `--enforce-lockfile` 解析通过；本地文档链接及 iOS 相机用途资源静态检查通过。Linux 未编译 iOS。首页向上重力的行为修订和验证见 ADR-043 §2.3。
+- 剩余验收：相机真机、Profile 切换时原生认证/硬件密钥生命周期及核心/权限人工实质审阅。自动测试、APK 构建和研究结论不替代这些签收，也不代表真实学校签到已可用。

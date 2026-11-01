@@ -44,6 +44,8 @@ dependencies:
   path_provider: ^2.1.5
   # ADR-034: native script-package import; MIT (file_picker LICENSE).
   file_picker: 13.1.0
+  # ADR-045: foreground QR camera; pub.dev / juliansteenbakker/mobile_scanner, BSD-3-Clause.
+  mobile_scanner: 7.4.3
   # contract/schema 生成的 Dart 类型（tools codegen 产物包；审阅 P0-1 接线）。
   # UI 模型消费此包，消除手写模型与 schema 的漂移（红线 #6 契约单源）。
   elecon_contract:

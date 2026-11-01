@@ -15,6 +15,7 @@ import '../../session/session_scope.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import 'script_presenter.dart';
 import 'script_input_presenter.dart';
+import 'script_scanner_page.dart';
 import '../../core/scripts/input.dart';
 import 'script_install_dialog.dart';
 import 'bundled_scripts.dart';
@@ -160,6 +161,11 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
     // from onboarding before MainShell exists.
     final previous = session.scriptBrowserPresenter;
     final previousInput = session.scriptInputPresenter;
+    final previousScanner = session.scriptScannerPresenter;
+    Future<Object?> temporaryScanner(
+      ScriptPackage package,
+      bool Function() valid,
+    ) => presentScriptScanner(context, package, valid);
     Future<Object?> temporaryInput(
       ScriptPackage package,
       Future<Object?> Function(ScriptInputCall) execute,
@@ -188,6 +194,7 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
     );
     session.scriptBrowserPresenter = temporary;
     session.scriptInputPresenter = temporaryInput;
+    session.scriptScannerPresenter = temporaryScanner;
     setState(() {
       _result = null;
       _logs.clear();
@@ -214,6 +221,9 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
         );
       }
     } finally {
+      if (identical(session.scriptScannerPresenter, temporaryScanner)) {
+        session.scriptScannerPresenter = previousScanner;
+      }
       if (identical(session.scriptInputPresenter, temporaryInput)) {
         session.scriptInputPresenter = previousInput;
       }

@@ -20,6 +20,8 @@ dependencies:
   path_provider: ^2.1.5
   # Same script import surface as the default manifest; MIT (ADR-034).
   file_picker: 13.1.0
+  # ADR-045: foreground QR camera; pub.dev / juliansteenbakker/mobile_scanner, BSD-3-Clause.
+  mobile_scanner: 7.4.3
   elecon_contract:
     path: ../contract/generated/dart
   # Apple-only UI chrome. MIT; does not participate in credential/adapter paths.

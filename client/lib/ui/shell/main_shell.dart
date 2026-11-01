@@ -10,6 +10,7 @@ import '../../session/session_scope.dart';
 import '../../session/session_controller.dart';
 import '../scripts/script_presenter.dart';
 import '../scripts/script_input_presenter.dart';
+import '../scripts/script_scanner_page.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import '../home/home_page.dart';
 import '../settings/settings_page.dart';
@@ -30,6 +31,7 @@ class _MainShellState extends State<MainShell> {
   SessionController? _scriptSession;
   ScriptBrowserPresenter? _presenter;
   ScriptInputPresenter? _inputPresenter;
+  ScriptScannerPresenter? _scannerPresenter;
 
   @override
   void didChangeDependencies() {
@@ -48,6 +50,12 @@ class _MainShellState extends State<MainShell> {
       if (identical(_scriptSession?.scriptInputPresenter, _inputPresenter)) {
         _scriptSession?.scriptInputPresenter = null;
       }
+      if (identical(
+        _scriptSession?.scriptScannerPresenter,
+        _scannerPresenter,
+      )) {
+        _scriptSession?.scriptScannerPresenter = null;
+      }
       _scriptSession = session;
       _presenter = (package, execute) => presentScriptBrowser(
         context,
@@ -63,6 +71,9 @@ class _MainShellState extends State<MainShell> {
         onCancel: session?.cancelTrustedScriptRuns,
       );
       session?.scriptInputPresenter = _inputPresenter;
+      _scannerPresenter = (package, valid) =>
+          presentScriptScanner(context, package, valid);
+      session?.scriptScannerPresenter = _scannerPresenter;
       session?.scriptStorageConsent = () async {
         if (!mounted) return false;
         return await showNoHardwareWarningDialog(context) ==
@@ -80,6 +91,9 @@ class _MainShellState extends State<MainShell> {
     if (identical(_scriptSession?.scriptBrowserPresenter, _presenter)) {
       _scriptSession?.scriptBrowserPresenter = null;
       _scriptSession?.scriptStorageConsent = null;
+    }
+    if (identical(_scriptSession?.scriptScannerPresenter, _scannerPresenter)) {
+      _scriptSession?.scriptScannerPresenter = null;
     }
     super.dispose();
   }

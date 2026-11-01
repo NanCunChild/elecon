@@ -178,6 +178,22 @@ SDK 6 在 SDK 5 上增加可选静态 cards，供学校包建议宿主已实现�
 
 SDK 7 可选静态 `manifest.homeTitle` 为学校首页命名，与安装包 `name` 分开。最多 80 个 Unicode 字符、单行纯文本，缺省回退学校名；安装时展示并绑定授权 digest。SDK 7 继承现有 home/cards 与执行权限，旧宿主拒绝未知 SDK。更新既有包须提升 version 并重新确认，不能仅修改本地已授权字节。声明示例、标题来源与实际数据更新时间见[首页标题](card_layout_and_overrides.md#首页标题)。
 
+## SDK 8 二维码扫描与本地 Profiles
+
+[ADR-045](../adr/adr_045_script_qr_scanner.md)：包提升 `sdkVersion: 8` 并声明 `scanner: true`，重新安装/更新确认后可调用 `await ctx.ui.scanQRCode()`。成功返回 `{text, format: "qrCode"}`，取消返回 `null`。只允许前台交互执行，首片支持 Android/iOS；后台返回 `scanner_unavailable`。每次执行最多三次顺序扫描，结果最多 4096 UTF-8 字节；错误通过 `error.code` 给出固定 `scanner_*` 或 `invocation_cancelled`，不含二维码内容。SDK 8 继承原有 homeTitle/home/cards，现有学校包不会自动升级。
+
+```js
+const qr = await ctx.ui.scanQRCode();
+if (qr === null) return { items: [] }; // 用户取消，由脚本决定结束当前流程
+// 按学校协议解析 qr.text；扫描不会打开 URL、保存数据或自动提交签到。
+```
+
+扫码不代表已签到；真实提交使用脚本通用请求，后续产品化再明确领域数据及用户交互；当前没有签到 capability。未知结果不能自动重试。扫描文本由宿主加入日志遮蔽集合，脚本作者也应避免输出临时票据。
+
+[ADR-044](../adr/adr_044_local_profiles.md)：设置的账户区域每个 Profile 显示一行，点击后可添加用户、激活、登录或重新选脚本。新 Profile 重新选择并授权安装，凭据、安装授权/来源和缓存独立；切换保留原登录并取消原调用，退出只影响当前 Profile。旧数据原位迁为 Profile 1。保护图标及 tooltip 来自实际凭据 metadata，Profile 名称不包含推断的用户身份。首页学校布局仍是非密共享展示偏好。
+
+脚本保护的事实、选项与限制见[混淆/加密与 QuickJS 研究](../research/script_protection_feasibility.md)；当前没有加密包或 VMP 接口。
+
 ## 功能查看与校园卡二维码（ADR-047）
 
 首页图标和摘要打开原生功能页面，全宽卡片提供“查看”入口；只有编辑模式调整卡片大小。课表页面为七日时段网格，首页全宽为今天时间线，日期不确定时不假报今天课程。

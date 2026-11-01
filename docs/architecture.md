@@ -15,13 +15,17 @@ flowchart TD
   Data --> UI
 ```
 
-`school-scripts/` 是新学校源码；`adapters/_template/trusted/` 是现有源码模板。`contract/script-package.schema.json` 和 `contract/script-sdk/` 定义包与宿主 API；`contract/schema/` 定义数据，不能用模板名替代领域语义。客户端已按 [ADR-043](adr/adr_043_card_layout_and_overrides.md) 保存逐能力的默认/覆盖来源，更新不抢占；主包无需识别增强包。SDK 6 cards 仅建议有限展示，SDK 7 homeTitle 可命名学校首页。首页采用固定单元格，图标与名称占 1×1、半宽摘要占 2×2，全宽详情按整行对齐；长按吸附拖动及显隐/尺寸/样式/格位按学校保存。逐卡片展示样式扩展入口已预留。
+`school-scripts/` 是新学校源码；`adapters/_template/trusted/` 是现有源码模板。`contract/script-package.schema.json` 和 `contract/script-sdk/` 定义包与宿主 API；`contract/schema/` 定义数据，不能用模板名替代领域语义。客户端已按 [ADR-043](adr/adr_043_card_layout_and_overrides.md) 保存逐能力的默认/覆盖来源，更新不抢占；主包无需识别增强包。SDK 6 cards 仅建议有限展示，SDK 7 homeTitle 可命名学校首页。首页固定单元格沿列向上补空，拖动时暂时固定落点；图标与名称占 1×1、半宽摘要占 2×2，全宽详情按整行对齐；长按吸附拖动及显隐/尺寸/样式/格位按学校保存。逐卡片展示样式扩展入口已预留。
 
 脚本可见本校授权凭据。SDK 2 namespace 只避免存储键冲突，同校共享是显式寻址，不是隔离权限。客户端保管主密钥、安装授权与执行代际；脚本不得读取其他学校身份或任意原生能力。输出 schema 校验不等于能识别任意秘密的防泄漏过滤。
 
 公网 `server/src/public` 目前提供签名产物静态分发；`server/src/campus` 仍返回 501。新源码脚本没有生产服务端执行器。现有 V1 official/Broker/Masker 路径按[兼容边界](reference/legacy_compatibility.md)继续维护。
 
 [ADR-046](adr/adr_046_triggered_script_requests.md) 废除新源码 action 通道。空调控件直接触发普通能力的一次控制 POST，结束后查询一次状态；不额外确认、不自动重发、不乐观更新。旧 action 包保留原安装内容与 digest，但需更新后才能执行；V1 边界不变。签到可使用脚本通用请求，具体学校签到仍未实现。
+
+[ADR-044](adr/adr_044_local_profiles.md) 的本地 Profiles 各自拥有会话、凭据/缓存和脚本安装授权；旧根目录原位归属 Profile 1，新用户重新选脚本。切换取消旧调用并重建页面导航；设置按 Profile 展示，保护状态用图标表达。非密学校首页布局与主题继续共享。
+
+[ADR-045](adr/adr_045_script_qr_scanner.md) 的 SDK 8 可声明 `scanner` 并前台调用 `ctx.ui.scanQRCode()`，返回二维码文本或取消 null；后台拒绝，首片 Android/iOS，未实现学校签到提交。脚本保护仅完成[研究](research/script_protection_feasibility.md)，没有加密包或 VMP 加载器。
 
 ## 后续方向
 

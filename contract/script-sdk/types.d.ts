@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1/2/3/4/5/6/7 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
+/** Trusted school script SDK 1/2/3/4/5/6/7/8 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -64,6 +64,11 @@ export interface ScriptContext {
   /** SDK 3+: fixed transient native form; no automatic persistence/retry. */
   readonly ui?: {
     requestInput(request: ScriptInputRequest): Promise<Record<string, string> | null>;
+    /** SDK8 + manifest.scanner=true; foreground only. Cancel returns null.
+     * QR text ≤4096 UTF-8 bytes; max 3 serial calls/run. No image, navigation,
+     * persistence or check-in submission.
+     */
+    scanQRCode?(): Promise<{ text: string; format: "qrCode" } | null>;
   };
   /** Current authorized school only; revoked sessions are unavailable.
    * SDK2 list retains every namespace; get(record.key,{namespace:record.namespace}) round-trips.
@@ -147,6 +152,9 @@ export type ScriptCardEntry =
 export interface ScriptHomePresentation {
   homeTitle?: string;
 }
+
+/** SDK8 manifest permission; omitted/false denies scanning. Digest authorized. */
+export interface ScriptScannerPermission { scanner?: boolean; }
 
 /** ADR-047: card.qr uses elecon.card.qr 1.0. PNG imageBase64, issuedAt and
  * expiresAt are required; purpose is optional. Foreground display only; never

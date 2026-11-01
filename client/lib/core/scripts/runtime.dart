@@ -16,6 +16,7 @@ import 'credentials.dart';
 import 'browser.dart';
 import 'manifest.dart';
 import 'input.dart';
+import 'scanner.dart';
 
 class ScriptRunException implements Exception {
   const ScriptRunException(this.code);
@@ -36,6 +37,7 @@ class TrustedScriptRuntime {
     fetch,
     Future<Object?> Function(String, Map<String, Object?>)? browserCall,
     ScriptInputCall? inputCall,
+    ScriptScanCall? scanCall,
     bool Function()? isActive,
     String? htmlStdlib,
     void Function(String level, String message)? onLog,
@@ -88,6 +90,8 @@ class TrustedScriptRuntime {
     var logBytes = 0;
     var inputRequests = 0;
     var inputPending = false;
+    var scans = 0;
+    var scanPending = false;
     ScriptRunException? fatal;
     void check({bool count = true}) {
       if (fatal != null) throw fatal!;
@@ -114,12 +118,50 @@ class TrustedScriptRuntime {
       hostPromiseRejectionHandler: (_) {},
     );
     qjs.setHostFunctions({
+      '__script_scan': (dynamic argumentCount) async {
+        check();
+        if (package.manifest.sdkVersion < 8 ||
+            !package.manifest.scanner ||
+            scanCall == null) {
+          throw const ScriptRunException('scanner_unavailable');
+        }
+        if (argumentCount != 0) {
+          throw const ScriptRunException('scanner_invalid_request');
+        }
+        if (scanPending || inputPending) {
+          throw const ScriptRunException('scanner_busy');
+        }
+        if (++scans > 3) throw const ScriptRunException('scanner_limit');
+        scanPending = true;
+        try {
+          final raw = await scanCall(
+            () => running && (isActive?.call() ?? true),
+          );
+          check(count: false);
+          if (raw is Map &&
+              raw['text'] is String &&
+              (raw['text'] as String).isNotEmpty) {
+            knownSecrets.add(raw['text'] as String);
+          }
+          return jsonEncode(validateScanResult(raw));
+        } on ScriptScannerException catch (error) {
+          throw ScriptRunException(error.code);
+        } on ScriptRunException {
+          rethrow;
+        } catch (_) {
+          throw const ScriptRunException('scanner_unavailable');
+        } finally {
+          scanPending = false;
+        }
+      },
       '__script_input': (dynamic encoded) async {
         check();
         if (package.manifest.sdkVersion < 3) {
           throw const ScriptRunException('input_unavailable');
         }
-        if (inputPending) throw const ScriptRunException('input_busy');
+        if (inputPending || scanPending) {
+          throw const ScriptRunException('input_busy');
+        }
         if (++inputRequests > 8) {
           fatal = const ScriptRunException('input_limit');
           throw fatal!;
@@ -380,6 +422,8 @@ class TrustedScriptRuntime {
             browser: package.manifest.browser,
             browserBusy: package.manifest.sdkVersion >= 4,
             input: package.manifest.sdkVersion >= 3,
+            scanner:
+                package.manifest.sdkVersion >= 8 && package.manifest.scanner,
             maxOutputBytes: maxOutputBytes,
           ),
         );
@@ -429,6 +473,7 @@ String _bootstrap({
   required bool browser,
   required bool browserBusy,
   required bool input,
+  required bool scanner,
   required int maxOutputBytes,
 }) =>
     '''
@@ -486,7 +531,7 @@ String _bootstrap({
     },
   };
   if ($input) {
-    ctx.ui = Object.freeze({requestInput: async request => {
+    ctx.ui = {requestInput: async request => {
       try {
         return JSON.parse(await globalThis.__script_input(String(JSON.stringify(request))));
       } catch (error) {
@@ -498,7 +543,18 @@ String _bootstrap({
         failure.code = code;
         throw failure;
       }
-    }});
+    }};
+    if ($scanner) ctx.ui.scanQRCode = async (...args) => {
+      try { return JSON.parse(await globalThis.__script_scan(args.length)); }
+      catch (error) {
+        const codes = ['scanner_unavailable','scanner_invalid_request','scanner_invalid_result',
+          'scanner_busy','scanner_limit','scanner_permission_denied','invocation_cancelled'];
+        const code = codes.find(value => String(error).includes('ScriptRunException(' + value + ')'));
+        if (!code) throw error;
+        const failure = new Error(code); failure.code = code; throw failure;
+      }
+    };
+    Object.freeze(ctx.ui);
   }
   if ($browser) {
     const call = async (method,args) => {

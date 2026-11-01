@@ -78,6 +78,7 @@ class ScriptManifest {
     required this.homeTitle,
     required this.network,
     required this.browser,
+    required this.scanner,
     required this.capabilities,
     required this.home,
     required this.cards,
@@ -93,17 +94,18 @@ class ScriptManifest {
       if (json.containsKey('homeTitle')) 'homeTitle',
       'network',
       'browser',
+      if (json.containsKey('scanner')) 'scanner',
       'capabilities',
       if (json.containsKey('home')) 'home',
       if (json.containsKey('cards')) 'cards',
     }, 'manifest');
-    if (!const {1, 2, 3, 4, 5, 6, 7}.contains(json['sdkVersion']) ||
+    if (!const {1, 2, 3, 4, 5, 6, 7, 8}.contains(json['sdkVersion']) ||
         json['sdkVersion'] is! int) {
       throw const FormatException('unsupported script SDK version');
     }
     String? homeTitle;
     if (json.containsKey('homeTitle')) {
-      if (json['sdkVersion'] != 7) {
+      if ((json['sdkVersion'] as int) < 7) {
         throw const FormatException('homeTitle requires SDK 7');
       }
       homeTitle = _text(json, 'homeTitle', 160);
@@ -115,6 +117,10 @@ class ScriptManifest {
       ).hasMatch(homeTitle)) {
         throw const FormatException('homeTitle must be single-line plain text');
       }
+    }
+    if (json.containsKey('scanner') &&
+        ((json['sdkVersion'] as int) < 8 || json['scanner'] is! bool)) {
+      throw const FormatException('scanner requires SDK 8 and a boolean');
     }
     final id = _text(json, 'id', 128);
     final schoolId = _text(json, 'schoolId', 128);
@@ -197,6 +203,7 @@ class ScriptManifest {
       homeTitle: homeTitle,
       network: network,
       browser: json['browser'] as bool,
+      scanner: json['scanner'] == true,
       capabilities: List.unmodifiable(caps),
       home: List.unmodifiable(home),
       cards: List.unmodifiable(cards),
@@ -211,6 +218,7 @@ class ScriptManifest {
   final String? homeTitle;
   final ScriptNetworkPolicy network;
   final bool browser;
+  final bool scanner;
   final List<ScriptCapability> capabilities;
   final List<ScriptHomeEntry> home;
   final List<ScriptCardEntry> cards;

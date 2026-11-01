@@ -40,6 +40,10 @@ Future<bool> confirmScriptInstall(
                     package.manifest.network.ipAllow?.join('\n') ??
                         l10n.scriptsIpNone,
                   ),
+                  if (package.manifest.scanner) ...[
+                    const SizedBox(height: 12),
+                    Text(l10n.scannerPermission),
+                  ],
                   if (package.manifest.browser) ...[
                     const SizedBox(height: 12),
                     Text(l10n.scriptsBrowserPermission),
