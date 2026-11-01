@@ -11,6 +11,10 @@
       "emits": { "schema": "elecon.schedule.week", "schemaVersion": "1.0" },
       "params": { "schema": "elecon.params.schedule.week", "schemaVersion": "1.0" }
     },
+    "card.qr": {
+      "description": "获取短时校园卡二维码图片（ADR-047；禁止预加载与持久缓存）",
+      "emits": { "schema": "elecon.card.qr", "schemaVersion": "1.0" }
+    },
     "card.balance": {
       "description": "获取一卡通余额",
       "emits": { "schema": "elecon.card.balance", "schemaVersion": "1.0" }

@@ -11,6 +11,7 @@ const Set<String> kCapabilityIds = {
   'calendar.academic',
   'campus.network',
   'card.balance',
+  'card.qr',
   'card.transactions',
   'classroom.available',
   'classroom.buildings',

@@ -82,6 +82,7 @@ export function packageScript(manifest: unknown, source: unknown): string {
       typed.home.some(
         (entry) =>
           entry.capability === "climate.command" ||
+          entry.capability === "card.qr" ||
           !typed.capabilities.some((cap) => cap.id === entry.capability) ||
           Buffer.byteLength(JSON.stringify(entry.params ?? {}), "utf8") > 4096,
       ))

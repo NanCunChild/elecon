@@ -164,6 +164,26 @@
                 ],
                 "properties": {
                   "id": {
+                    "const": "card.qr"
+                  },
+                  "schema": {
+                    "const": "elecon.card.qr"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
                     "const": "card.balance"
                   },
                   "schema": {
@@ -815,7 +835,8 @@
               "capability": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 128
+                "maxLength": 128,
+                "not": {"const": "card.qr"}
               },
               "ttlSeconds": {
                 "type": "integer",
@@ -977,7 +998,7 @@
               },
               "capabilities": {
                 "type": "array",
-                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "card.balance"}}}}]
+                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"enum": ["card.balance", "card.transactions", "card.qr"]}}}}]
               }
             }
           }

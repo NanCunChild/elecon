@@ -147,3 +147,13 @@ export type ScriptCardEntry =
 export interface ScriptHomePresentation {
   homeTitle?: string;
 }
+
+/** ADR-047: card.qr uses elecon.card.qr 1.0. PNG imageBase64, issuedAt and
+ * expiresAt are required; purpose is optional. Foreground display only; never
+ * declare this capability in home. No balance or transactions prerequisite. */
+export interface CardQr {
+  imageBase64: string;
+  issuedAt: string;
+  expiresAt: string;
+  purpose?: string;
+}

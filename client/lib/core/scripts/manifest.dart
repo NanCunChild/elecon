@@ -154,6 +154,7 @@ class ScriptManifest {
         home.any(
           (e) =>
               e.capability == 'climate.command' ||
+              e.capability == 'card.qr' ||
               !caps.any((c) => c.id == e.capability),
         )) {
       throw const FormatException('duplicate or undeclared home capability');
@@ -171,7 +172,17 @@ class ScriptManifest {
         .toList(growable: false);
     final capabilityIds = caps.map((c) => c.id).toSet();
     if (cards.map((c) => c.type).toSet().length != cards.length ||
-        cards.any((c) => !capabilityIds.containsAll(c.requiredCapabilities))) {
+        cards.any(
+          (c) => !(c.type == 'card'
+              ? capabilityIds.any(
+                  const {
+                    'card.balance',
+                    'card.transactions',
+                    'card.qr',
+                  }.contains,
+                )
+              : capabilityIds.containsAll(c.requiredCapabilities)),
+        )) {
       throw const FormatException('duplicate or unsupported script card');
     }
     final network = ScriptNetworkPolicy.fromJson(
