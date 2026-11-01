@@ -132,7 +132,10 @@ void main() {
       expect(find.textContaining('Morning'), findsOneWidget);
       expect(find.textContaining('Overlap'), findsOneWidget);
       expect(find.textContaining('Sun'), findsOneWidget);
-      await tester.tap(find.textContaining('Morning'));
+      await tester.tap(find.textContaining('Overlap'));
+      await tester.pumpAndSettle();
+      expect(find.text('Overlapping classes'), findsOneWidget);
+      await tester.tap(find.text('Morning'));
       await tester.pumpAndSettle();
       expect(find.text('Room A'), findsOneWidget);
       expect(tester.takeException(), isNull);

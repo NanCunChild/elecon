@@ -26,6 +26,7 @@ import 'card_preview_list.dart';
 import 'home_page.dart' show GradesCard, ScheduleCard;
 import 'models.dart';
 import 'schema_decode.dart';
+import 'schedule_view.dart' show ScheduleWeekPicker;
 import 'section_card.dart';
 
 /// 一次能力取数 + 解码的归一化结果。
@@ -430,6 +431,7 @@ class _ScheduleSectionState extends State<ScheduleSection>
     _week = data.week;
     _term = data.term;
     _calendarLoaded = true;
+    _rememberPreviews(data);
   }
 
   @override
@@ -437,9 +439,12 @@ class _ScheduleSectionState extends State<ScheduleSection>
     _data = null;
     _phase = _Phase.idle;
     _week = 1;
+    _request++;
     _term = null;
     _calendarLoaded = false;
     _manualWeek = false;
+    _previews.clear();
+    _previewTerm = null;
   }
 
   @override
@@ -450,12 +455,63 @@ class _ScheduleSectionState extends State<ScheduleSection>
     if (_term != null) 'term': _term,
   };
 
-  int get _maxWeek => _week > 25 ? _week : 25;
+  int get _maxWeek =>
+      _previews.keys.fold(_week > 25 ? _week : 25, (a, b) => a > b ? a : b);
+  final _previews = <int, ScheduleWeekWeekPreviews>{};
+  String? _previewTerm;
+
+  void _rememberPreviews(ScheduleWeek data) {
+    if (_previewTerm != data.term) _previews.clear();
+    _previewTerm = data.term;
+    for (final preview in data.weekPreviews ?? <ScheduleWeekWeekPreviews>[]) {
+      _previews[preview.week] = preview;
+    }
+    _previews[data.week] = ScheduleWeekWeekPreviews(
+      week: data.week,
+      days: [
+        for (final day in data.days)
+          ScheduleWeekWeekPreviewsDays(
+            dayOfWeek: day.dayOfWeek,
+            courseCount: day.slots
+                .where(
+                  (s) =>
+                      (s.weeks == null || s.weeks!.contains(data.week)) &&
+                      !(s.weekExceptions?.contains(data.week) ?? false),
+                )
+                .length,
+          ),
+      ],
+    );
+  }
+
+  Future<void> _selectWeek(int week) async {
+    if (_phase == _Phase.loading ||
+        week == _week ||
+        week < 1 ||
+        week > _maxWeek) {
+      return;
+    }
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    _request++;
+    setState(() {
+      _week = week;
+      _manualWeek = true;
+      _data = null;
+      _cacheFetchedAt = null;
+      _phase = _Phase.loading;
+      _error = null;
+    });
+    await restoreCache();
+    if (!mounted || !_isCurrentSession(this, session, generation)) return;
+    if (_data == null) await _load();
+  }
 
   _Phase _phase = _Phase.idle;
   int _week = 1;
   bool _calendarLoaded = false;
   bool _manualWeek = false;
+  int _request = 0;
   String? _term;
   bool get _queryCurrentWeek => widget.calendarEnabled && !_manualWeek;
   bool get _needsCurrentWeek => _queryCurrentWeek && !_calendarLoaded;
@@ -465,7 +521,11 @@ class _ScheduleSectionState extends State<ScheduleSection>
   Future<void> _load() async {
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
-    setState(() => _phase = _Phase.loading);
+    final request = ++_request;
+    setState(() {
+      _phase = _Phase.loading;
+      _error = null;
+    });
     if (_queryCurrentWeek) {
       final calendar = await _runDecoded<CalendarAcademic>(
         context,
@@ -473,7 +533,11 @@ class _ScheduleSectionState extends State<ScheduleSection>
         'calendar.academic',
         decode: calendarAcademicFromDynamic,
       );
-      if (!mounted || !_isCurrentSession(this, session, generation)) return;
+      if (!mounted ||
+          request != _request ||
+          !_isCurrentSession(this, session, generation)) {
+        return;
+      }
       if (calendar.data == null) {
         setState(() {
           _phase = calendar.needLogin ? _Phase.needLogin : _Phase.error;
@@ -494,7 +558,11 @@ class _ScheduleSectionState extends State<ScheduleSection>
       params: {'week': _week, if (_term != null) 'term': _term},
       decode: scheduleWeekFromDynamic,
     );
-    if (!mounted || !_isCurrentSession(this, session, generation)) return;
+    if (!mounted ||
+        request != _request ||
+        !_isCurrentSession(this, session, generation)) {
+      return;
+    }
     setState(() {
       if (outcome.needLogin) {
         _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
@@ -504,6 +572,11 @@ class _ScheduleSectionState extends State<ScheduleSection>
       } else {
         _phase = _Phase.loaded;
         _data = outcome.data;
+        if (_data != null) {
+          _week = _data!.week;
+          _term = _data!.term;
+          _rememberPreviews(_data!);
+        }
       }
     });
   }
@@ -542,18 +615,12 @@ class _ScheduleSectionState extends State<ScheduleSection>
                   child: Text(l10n.homeScheduleSelectWeek),
                 )
               else
-                _WeekPicker(
+                ScheduleWeekPicker(
                   week: _week,
                   maxWeek: _maxWeek,
                   enabled: !busy,
-                  onChanged: (w) => setState(() {
-                    _week = w;
-                    _manualWeek = true;
-                    _data = null;
-                    _cacheFetchedAt = null;
-                    _phase = _Phase.idle;
-                    unawaited(restoreCache());
-                  }),
+                  previews: _previews.values.toList(),
+                  onChanged: _selectWeek,
                 ),
               const SizedBox(height: 8),
               _PhaseBody(
@@ -569,40 +636,14 @@ class _ScheduleSectionState extends State<ScheduleSection>
             ],
           ),
         ),
-        if (_data != null) withCacheTime(ScheduleCard(_data!)),
-      ],
-    );
-  }
-}
-
-class _WeekPicker extends StatelessWidget {
-  const _WeekPicker({
-    required this.week,
-    required this.maxWeek,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  final int week;
-  final int maxWeek;
-  final bool enabled;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        IconButton(
-          onPressed: enabled && week > 1 ? () => onChanged(week - 1) : null,
-          icon: const Icon(Icons.remove_circle_outline),
-        ),
-        Text('第 $week 周', style: Theme.of(context).textTheme.titleMedium),
-        IconButton(
-          onPressed: enabled && week < maxWeek
-              ? () => onChanged(week + 1)
-              : null,
-          icon: const Icon(Icons.add_circle_outline),
-        ),
+        if (_data != null)
+          withCacheTime(
+            ScheduleCard(
+              _data!,
+              onWeekChanged: busy ? null : _selectWeek,
+              maxWeek: _maxWeek,
+            ),
+          ),
       ],
     );
   }

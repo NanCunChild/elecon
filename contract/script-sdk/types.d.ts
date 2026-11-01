@@ -165,3 +165,9 @@ export interface CardQr {
   expiresAt: string;
   purpose?: string;
 }
+
+/** ADR-048: schedule.week output 1.1 optionally includes school-local HH:mm
+ * timeSegments and known per-week/day course counts in weekPreviews. Omitted
+ * previews mean unknown, not zero. These are standard data, never layout code.
+ * Existing 1.0 packages remain supported; query params and host API are unchanged. */
+export type ScheduleWeek = import("../generated/ts/schedule.week.js").ScheduleWeek;

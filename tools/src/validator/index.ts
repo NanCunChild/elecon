@@ -70,7 +70,7 @@ export interface Finding {
 }
 
 interface RegistryEntry {
-  emits: { schema: string; schemaVersion: string };
+  emits: { schema: string; schemaVersion: string; previousVersions?: string[] };
   params?: { schema: string; schemaVersion: string };
 }
 
@@ -146,7 +146,7 @@ interface Contract {
   responseMaskerValidate: ValidateFunction;
   registry: Record<string, RegistryEntry>;
   /** 按 schema $id 取域 schema 的校验函数；未落盘的返回 undefined。 */
-  schemaFor: (id: string) => ValidateFunction | undefined;
+  schemaFor: (id: string, version?: string) => ValidateFunction | undefined;
   /** 当前可用的 elecon:html stdlib 版本（读自 adapters/_stdlib/package.json）；读不到=null（C10 降级为 warn）。 */
   stdlibVersion: string | null;
 }
@@ -198,6 +198,26 @@ export function loadContract(): Contract {
     }
   }
 
+  // ADR-048: previousVersions is an explicit compatibility list, never an
+  // inferred same-major range. Keep the exact historical output descriptor.
+  const outputVersions = new Map<string, ValidateFunction>();
+  for (const [capability, entry] of Object.entries(registryRaw.capabilities)) {
+    const current = ajv.getSchema(entry.emits.schema);
+    if (current) outputVersions.set(`${entry.emits.schema}\0${entry.emits.schemaVersion}`, current);
+    for (const version of entry.emits.previousVersions ?? []) {
+      if (!/^[a-z][a-z0-9.]*$/.test(capability) || !/^\d+\.\d+$/.test(version)) {
+        throw new Error("invalid historical schema reference");
+      }
+      const historical = readJson<Record<string, unknown>>(
+        join(contractDir, "schema-versions", capability, `${version}.schema.json`),
+      );
+      if (historical.$id !== entry.emits.schema) throw new Error("historical schema identity mismatch");
+      const historicalAjv = new Ajv2020({ allErrors: true, strict: false });
+      addFormats(historicalAjv);
+      outputVersions.set(`${entry.emits.schema}\0${version}`, historicalAjv.compile(historical));
+    }
+  }
+
   // 当前 stdlib 版本（供 C10 stdlibMin 校验）。读不到不致命 → null，C10 降级 warn。
   let stdlibVersion: string | null = null;
   try {
@@ -211,7 +231,10 @@ export function loadContract(): Contract {
     manifestValidate,
     responseMaskerValidate,
     registry: registryRaw.capabilities,
-    schemaFor: (id) => ajv.getSchema(id) as ValidateFunction | undefined,
+    schemaFor: (id, version) =>
+      version == null
+        ? (ajv.getSchema(id) as ValidateFunction | undefined)
+        : outputVersions.get(`${id}\0${version}`),
     stdlibVersion,
   };
 }
@@ -391,7 +414,11 @@ export function checkManifest(
       continue;
     }
     // C2 emits 与 registry 一致（防 schema 漂移）
-    if (cap.emits?.schema !== reg.emits.schema || cap.emits?.schemaVersion !== reg.emits.schemaVersion) {
+    if (
+      cap.emits?.schema !== reg.emits.schema ||
+      (cap.emits?.schemaVersion !== reg.emits.schemaVersion &&
+        !reg.emits.previousVersions?.includes(cap.emits?.schemaVersion))
+    ) {
       findings.push({
         level: "error",
         code: "C2_emits_mismatch",
@@ -949,7 +976,7 @@ function checkFixtures(dir: string, manifest: Manifest, contract: Contract): Fin
         });
       }
     }
-    const validate = contract.schemaFor(cap.emits.schema);
+    const validate = contract.schemaFor(cap.emits.schema, cap.emits.schemaVersion);
     if (!validate) {
       findings.push({
         level: "warn",

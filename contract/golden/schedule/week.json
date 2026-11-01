@@ -1,0 +1,108 @@
+{
+  "description": "ADR-048 synthetic versioned schedule output cases shared by Dart and TypeScript.",
+  "cases": [
+    {
+      "name": "old-minimal",
+      "version": "1.0",
+      "valid": true,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": []
+      }
+    },
+    {
+      "name": "new-minimal",
+      "version": "1.1",
+      "valid": true,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": []
+      }
+    },
+    {
+      "name": "new-segments-and-preview",
+      "version": "1.1",
+      "valid": true,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "timeSegments": [
+          {
+            "label": "A",
+            "timeStart": "08:00",
+            "timeEnd": "09:00"
+          }
+        ],
+        "weekPreviews": [
+          {
+            "week": 1,
+            "days": [
+              {
+                "dayOfWeek": 1,
+                "courseCount": 2
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "new-invalid-clock",
+      "version": "1.1",
+      "valid": false,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "timeSegments": [
+          {
+            "label": "A",
+            "timeStart": "25:00",
+            "timeEnd": "26:00"
+          }
+        ]
+      }
+    },
+    {
+      "name": "new-negative-count",
+      "version": "1.1",
+      "valid": false,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "weekPreviews": [
+          {
+            "week": 1,
+            "days": [
+              {
+                "dayOfWeek": 1,
+                "courseCount": -1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "old-unrecognized-extension-remains-open",
+      "version": "1.0",
+      "valid": true,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "timeSegments": [
+          {
+            "label": "A",
+            "timeStart": "25:00",
+            "timeEnd": "26:00"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -8,7 +8,7 @@
     },
     "schedule.week": {
       "description": "获取指定周课表",
-      "emits": { "schema": "elecon.schedule.week", "schemaVersion": "1.0" },
+      "emits": { "schema": "elecon.schedule.week", "schemaVersion": "1.1", "previousVersions": ["1.0"] },
       "params": { "schema": "elecon.params.schedule.week", "schemaVersion": "1.0" }
     },
     "card.qr": {

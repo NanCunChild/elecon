@@ -238,10 +238,85 @@ ScheduleWeek? scheduleWeekFromDynamic(Object? raw) {
     academicYear: map['academicYear']?.toString(),
     termStartDate: map['termStartDate']?.toString(),
     termEndDate: map['termEndDate']?.toString(),
+    teachingWeekStart: map['teachingWeekStart']?.toString(),
+    teachingWeekEnd: map['teachingWeekEnd']?.toString(),
+    weekType: map['weekType']?.toString(),
+    timeSegments: _scheduleSegments(map['timeSegments']),
+    weekPreviews: _schedulePreviews(map['weekPreviews']),
     updatedAt: map['updatedAt']?.toString(),
     sourceSystem: map['sourceSystem']?.toString(),
     days: days,
   );
+}
+
+List<ScheduleWeekTimeSegments>? _scheduleSegments(Object? raw) {
+  if (raw is! List || raw.length > 48) return null;
+  final result = <ScheduleWeekTimeSegments>[];
+  var previousEnd = '';
+  final clock = RegExp(r'^(?:[01][0-9]|2[0-3]):[0-5][0-9]$');
+  for (final entry in raw) {
+    final map = _asStringKeyedMap(entry);
+    final label = map?['label'];
+    final start = map?['timeStart'];
+    final end = map?['timeEnd'];
+    if (label is! String ||
+        label.isEmpty ||
+        label.length > 40 ||
+        start is! String ||
+        end is! String ||
+        !clock.hasMatch(start) ||
+        !clock.hasMatch(end) ||
+        start.compareTo(end) >= 0 ||
+        start.compareTo(previousEnd) < 0) {
+      // A broken hint must never erase valid courses or invent their times.
+      return null;
+    }
+    previousEnd = end;
+    result.add(
+      ScheduleWeekTimeSegments(label: label, timeStart: start, timeEnd: end),
+    );
+  }
+  return result;
+}
+
+List<ScheduleWeekWeekPreviews>? _schedulePreviews(Object? raw) {
+  if (raw is! List || raw.length > 100) return null;
+  final result = <ScheduleWeekWeekPreviews>[];
+  final seenWeeks = <int>{};
+  for (final entry in raw) {
+    final map = _asStringKeyedMap(entry);
+    final week = _asInt(map?['week']);
+    final days = map?['days'];
+    if (week == null ||
+        week < 1 ||
+        week > 100 ||
+        !seenWeeks.add(week) ||
+        days is! List ||
+        days.length > 7) {
+      return null;
+    }
+    final knownDays = <ScheduleWeekWeekPreviewsDays>[];
+    final seenDays = <int>{};
+    for (final rawDay in days) {
+      final day = _asStringKeyedMap(rawDay);
+      final weekday = _asInt(day?['dayOfWeek']);
+      final count = _asInt(day?['courseCount']);
+      if (weekday == null ||
+          weekday < 1 ||
+          weekday > 7 ||
+          !seenDays.add(weekday) ||
+          count == null ||
+          count < 0 ||
+          count > 1000) {
+        return null;
+      }
+      knownDays.add(
+        ScheduleWeekWeekPreviewsDays(dayOfWeek: weekday, courseCount: count),
+      );
+    }
+    result.add(ScheduleWeekWeekPreviews(week: week, days: knownDays));
+  }
+  return result;
 }
 
 ScheduleWeekDays? _scheduleDay(Object? raw) {
@@ -289,6 +364,25 @@ ScheduleWeekDaysSlots? _scheduleSlot(Object? raw) {
     classNo: map['classNo']?.toString(),
     teacher: map['teacher']?.toString(),
     location: map['location']?.toString(),
+    roomCapacity: _asInt(map['roomCapacity']),
+    language: map['language']?.toString(),
+    courseUrl: map['courseUrl']?.toString(),
+    group: map['group']?.toString(),
+    onlineUrl: map['onlineUrl']?.toString(),
+    meetingNumberPresent: map['meetingNumberPresent'] is bool
+        ? map['meetingNumberPresent'] as bool
+        : null,
+    meetingPasswordPresent: map['meetingPasswordPresent'] is bool
+        ? map['meetingPasswordPresent'] as bool
+        : null,
+    changeType: map['changeType']?.toString(),
+    changeReason: map['changeReason']?.toString(),
+    weeks: map['weeks'] is List
+        ? (map['weeks'] as List).map(_asInt).whereType<int>().toList()
+        : null,
+    weekExceptions: map['weekExceptions'] is List
+        ? (map['weekExceptions'] as List).map(_asInt).whereType<int>().toList()
+        : null,
   );
 }
 

@@ -440,5 +440,23 @@
         "type": "int"
       }
     }
+  },
+  "scheduleOverlapHint": "有 {count} 门课程时间重叠，点击查看全部。",
+  "@scheduleOverlapHint": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "scheduleOverlappingCourses": "重叠课程",
+  "schedulePreviewUnavailable": "尚无课程预览",
+  "schedulePreviewCourses": "{count} 门课",
+  "@schedulePreviewCourses": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }

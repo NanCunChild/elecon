@@ -372,5 +372,23 @@
         "type": "int"
       }
     }
+  },
+  "scheduleOverlapHint": "{count} classes overlap. Tap to view all.",
+  "@scheduleOverlapHint": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "scheduleOverlappingCourses": "Overlapping classes",
+  "schedulePreviewUnavailable": "Preview unavailable",
+  "schedulePreviewCourses": "{count} classes",
+  "@schedulePreviewCourses": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }

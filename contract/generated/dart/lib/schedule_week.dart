@@ -16,6 +16,8 @@ class ScheduleWeek {
     this.sourceSystem,
     required this.week,
     required this.days,
+    this.timeSegments,
+    this.weekPreviews,
   });
 
   /// 学期标识，如 2025-2026-2。
@@ -40,6 +42,10 @@ class ScheduleWeek {
   final int week;
   /// 本周按星期组织的课表。
   final List<ScheduleWeekDays> days;
+  /// 学校本地墙钟的上课时间分段，按开始时间升序且不重叠；缺失或空表示使用宿主时间轴，次序或范围无效时回退且保留全部课程。
+  final List<ScheduleWeekTimeSegments>? timeSegments;
+  /// 同学期各周已知排课摘要；缺失的周或日表示未知，不表示无课；不声明学期总周数。
+  final List<ScheduleWeekWeekPreviews>? weekPreviews;
 }
 
 class ScheduleWeekDays {
@@ -52,6 +58,33 @@ class ScheduleWeekDays {
   final int dayOfWeek;
   /// 当天的课程时段列表。
   final List<ScheduleWeekDaysSlots> slots;
+}
+
+class ScheduleWeekTimeSegments {
+  const ScheduleWeekTimeSegments({
+    required this.label,
+    required this.timeStart,
+    required this.timeEnd,
+  });
+
+  /// 该分段的学校节次或时段名称。
+  final String label;
+  /// 同日分段开始墙钟时间 HH:mm，必须早于 timeEnd。
+  final String timeStart;
+  /// 同日分段结束墙钟时间 HH:mm，必须晚于 timeStart。
+  final String timeEnd;
+}
+
+class ScheduleWeekWeekPreviews {
+  const ScheduleWeekWeekPreviews({
+    required this.week,
+    required this.days,
+  });
+
+  /// 摘要对应教学周序号，从 1 开始；同一周不重复。
+  final int week;
+  /// 已知星期的连续排课项数量；同一星期不重复。
+  final List<ScheduleWeekWeekPreviewsDays> days;
 }
 
 class ScheduleWeekDaysSlots {
@@ -132,4 +165,16 @@ class ScheduleWeekDaysSlots {
   final String? location;
   /// 该课程实际上课的教学周序号列表；缺失表示来源未提供。
   final List<int>? weeks;
+}
+
+class ScheduleWeekWeekPreviewsDays {
+  const ScheduleWeekWeekPreviewsDays({
+    required this.dayOfWeek,
+    required this.courseCount,
+  });
+
+  /// 星期序号，1 至 7。
+  final int dayOfWeek;
+  /// 该日调停课后去重的连续排课项数；0 表示已知无课，不是课时数。
+  final int courseCount;
 }
