@@ -1,0 +1,248 @@
+import 'package:flutter/material.dart';
+import '../../core/scripts/manifest.dart';
+import '../../l10n/gen/app_localizations.dart';
+import '../../session/profile_controller.dart';
+import '../../session/profile_scope.dart';
+import '../../session/session_controller.dart';
+import '../../session/session_scope.dart';
+
+Future<void> changeProfile(
+  BuildContext context,
+  Future<void> Function() change,
+) async {
+  try {
+    await change();
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).profilesChangeFailed),
+        ),
+      );
+    }
+  }
+}
+
+Future<void> showProfiles(BuildContext context) async {
+  final profiles = ProfileScope.maybeOf(context);
+  if (profiles == null) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: ListenableBuilder(
+        listenable: profiles,
+        builder: (_, _) => ListView(
+          shrinkWrap: true,
+          children: [
+            for (final profile in profiles.profiles)
+              ListTile(
+                leading: Icon(
+                  profile.id == profiles.active.id
+                      ? Icons.account_circle
+                      : Icons.account_circle_outlined,
+                ),
+                title: Text(profile.name),
+                subtitle: Text(
+                  profile.session.selectedSchool?.displayName ??
+                      AppLocalizations.of(context).settingsNoSchool,
+                ),
+                enabled: !profiles.busy,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  changeProfile(context, () => profiles.activate(profile.id));
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.person_add_alt),
+              title: Text(AppLocalizations.of(context).profilesAdd),
+              enabled: !profiles.busy,
+              onTap: () {
+                Navigator.pop(sheetContext);
+                changeProfile(context, profiles.add);
+              },
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class ProfileAccounts extends StatelessWidget {
+  const ProfileAccounts({
+    super.key,
+    required this.onLogin,
+    required this.onLogout,
+    required this.onSelectScript,
+  });
+  final VoidCallback onLogin, onLogout, onSelectScript;
+
+  void _details(BuildContext context, SessionProfile? profile) {
+    final profiles = ProfileScope.maybeOf(context);
+    final session = profile?.session ?? SessionScope.of(context);
+    final l10n = AppLocalizations.of(context);
+    final current = profile == null || profile.id == profiles?.active.id;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              title: Text(profile?.name ?? 'Profile 1'),
+              subtitle: Text(
+                session.selectedSchool?.displayName ?? l10n.settingsNoSchool,
+              ),
+            ),
+            if (!current)
+              ListTile(
+                leading: const Icon(Icons.switch_account),
+                title: Text(l10n.profilesActivate),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  changeProfile(context, () => profiles!.activate(profile.id));
+                },
+              ),
+            if (current) ...[
+              ListTile(
+                leading: const Icon(Icons.login),
+                title: Text(
+                  session.isLoggedIn
+                      ? l10n.settingsRelogin
+                      : l10n.settingsActionLogin,
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  onLogin();
+                },
+              ),
+              if (session.isLoggedIn)
+                ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: Text(l10n.settingsActionLogout),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    onLogout();
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.code),
+                title: Text(l10n.profilesSelectScript),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  onSelectScript();
+                },
+              ),
+            ],
+            if (profiles != null)
+              ListTile(
+                leading: const Icon(Icons.person_add_alt),
+                title: Text(l10n.profilesAdd),
+                onTap: profiles.busy
+                    ? null
+                    : () {
+                        Navigator.pop(sheetContext);
+                        changeProfile(context, profiles.add);
+                      },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profiles = ProfileScope.maybeOf(context);
+    final current = SessionScope.of(context);
+    return Column(
+      children: [
+        if (profiles == null)
+          _ProfileRow(
+            name: 'Profile 1',
+            session: current,
+            active: true,
+            onTap: () => _details(context, null),
+          )
+        else
+          for (final profile in profiles.profiles)
+            _ProfileRow(
+              key: ValueKey('profile:${profile.id}'),
+              name: profile.name,
+              session: profile.session,
+              active: profile.id == profiles.active.id,
+              onTap: profiles.busy ? null : () => _details(context, profile),
+            ),
+      ],
+    );
+  }
+}
+
+class _ProfileRow extends StatelessWidget {
+  const _ProfileRow({
+    super.key,
+    required this.name,
+    required this.session,
+    required this.active,
+    this.onTap,
+  });
+  final String name;
+  final SessionController session;
+  final bool active;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final protection = session.credentialProtection;
+    final (icon, label) = switch (protection) {
+      SessionCredentialProtection.hardware => (
+        Icons.verified_user_outlined,
+        l10n.settingsProtectionHardware,
+      ),
+      SessionCredentialProtection.software => (
+        Icons.lock_outline,
+        l10n.settingsProtectionSoftware,
+      ),
+      SessionCredentialProtection.mixed => (
+        Icons.security_outlined,
+        l10n.settingsProtectionMixed,
+      ),
+      _ => (Icons.lock_open_outlined, l10n.settingsProtectionMemory),
+    };
+    return FutureBuilder<ScriptPackage?>(
+      future: session.scriptRegistry.then(
+        (r) => r.provider(session.selectedSchool?.id ?? '', 'generic.section'),
+      ),
+      builder: (_, snapshot) {
+        final script =
+            snapshot.data?.manifest.name ??
+            session.selectedSchool?.displayName ??
+            l10n.settingsNoSchool;
+        return ListTile(
+          leading: Icon(
+            active ? Icons.account_circle : Icons.account_circle_outlined,
+          ),
+          title: Text(name),
+          subtitle: Text(
+            '$script · ${session.isLoggedIn ? l10n.settingsLoggedIn : l10n.settingsLoggedOut}',
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (session.isLoggedIn)
+                Tooltip(
+                  message: label,
+                  child: Icon(icon, semanticLabel: label, size: 20),
+                ),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+          onTap: onTap,
+        );
+      },
+    );
+  }
+}

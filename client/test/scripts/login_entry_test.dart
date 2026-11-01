@@ -193,6 +193,8 @@ void main() {
       final session = await prepare(tester, slowLogin: true);
       await tester.pumpWidget(app(session, const SettingsPage()));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Profile 1'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Sign in'));
       await until(
         tester,
@@ -208,6 +210,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(session.credentialCount, 0);
+      await tester.tap(find.text('Profile 1'));
+      await tester.pumpAndSettle();
       expect(find.text('Sign in'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -218,15 +222,23 @@ void main() {
       final session = await prepare(tester);
       await tester.pumpWidget(app(session, const SettingsPage()));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Profile 1'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Sign in'));
       await until(
         tester,
         () =>
             session.isLoggedIn &&
-            find.text('Sign in again').evaluate().isNotEmpty,
+            find
+                .text('Starting the selected school’s login…')
+                .evaluate()
+                .isEmpty,
       );
       await tester.pumpAndSettle();
       expect(find.byType(ScriptWorkbenchPage), findsNothing);
+      await tester.tap(find.text('Profile 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sign in again'), findsOneWidget);
       expect(session.credentialCount, 1);
       await tester.runAsync(() => session.selectTrustedScriptSchool('beta'));
       expect(session.credentialCount, 0);
@@ -239,6 +251,8 @@ void main() {
     (tester) async {
       final session = await prepare(tester, login: false);
       await tester.pumpWidget(app(session, const SettingsPage()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Profile 1'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Sign in'));
       await until(

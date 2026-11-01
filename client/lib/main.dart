@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,8 @@ import 'core/trust/trust_profile.dart' show kSideloadEnabled;
 import 'l10n/gen/app_localizations.dart';
 import 'session/session_controller.dart';
 import 'session/session_scope.dart';
+import 'session/profile_controller.dart';
+import 'session/profile_scope.dart';
 import 'ui/i18n/locale_options.dart';
 import 'ui/home/home_page.dart';
 import 'ui/login/login_flow.dart';
@@ -73,12 +76,14 @@ class EleconApp extends StatefulWidget {
     super.key,
     this.startupTrace,
     this.sessionController,
+    this.profileController,
     this.loginRunner = runSchoolLogin,
     this.loadHomeSnapshot,
   });
 
   final PerfTrace? startupTrace;
   final SessionController? sessionController;
+  final ProfileController? profileController;
   final SchoolLoginRunner loginRunner;
   final CampusSnapshotLoader? loadHomeSnapshot;
 
@@ -87,25 +92,33 @@ class EleconApp extends StatefulWidget {
 }
 
 class _EleconAppState extends State<EleconApp> {
-  late final SessionController _session;
+  late final ProfileController _profiles;
+  late final Future<void> _profilesLoad;
   late final ThemeController _theme = ThemeController();
-  late final Future<void> _themeLoad = _theme.load();
 
   @override
   void initState() {
     super.initState();
-    _session =
-        widget.sessionController ??
-        SessionController(
-          hardware: const BackedHardwareKeyStore(),
-          blobStoreProvider: _blobStoreProvider,
-          adapterServiceProvider: _adapterServiceProvider,
+    _profiles =
+        widget.profileController ??
+        ProfileController(
+          initialSession: widget.sessionController,
+          blobStoreProvider: widget.sessionController == null
+              ? _blobStoreProvider
+              : null,
+          createSession: (blobs) => SessionController(
+            hardware: const BackedHardwareKeyStore(),
+            blobStoreProvider: () async => blobs,
+            adapterServiceProvider: _adapterServiceProvider,
+          ),
         );
+    _profilesLoad = _profiles.bootstrap();
+    unawaited(_theme.load());
   }
 
   @override
   void dispose() {
-    _session.dispose();
+    _profiles.dispose();
     _theme.dispose();
     super.dispose();
   }
@@ -114,35 +127,65 @@ class _EleconAppState extends State<EleconApp> {
   Widget build(BuildContext context) {
     return ThemeScope(
       controller: _theme,
-      child: SessionScope(
-        controller: _session,
+      child: ProfileScope(
+        controller: _profiles,
         child: FutureBuilder<void>(
-          future: _themeLoad,
-          builder: (context, _) {
+          future: _profilesLoad,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              if (kSideloadEnabled) {
+                return const MaterialApp(home: DevSideloadStartupWarning());
+              }
+              return const MaterialApp(
+                home: Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                ),
+              );
+            }
+            if (snapshot.hasError) {
+              return MaterialApp(
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
+                home: Builder(
+                  builder: (context) => Scaffold(
+                    body: Center(
+                      child: Text(
+                        AppLocalizations.of(context).profilesLoadFailed,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
             // 偏好未落盘前用默认；load 完成后 ThemeController.notify 触发重建。
             return ListenableBuilder(
-              listenable: _theme,
+              listenable: Listenable.merge([_theme, _profiles]),
               builder: (context, _) {
                 final p = _theme.prefs;
-                return MaterialApp(
-                  // 任务切换器标题也走 l10n（文案单源）。
-                  onGenerateTitle: (context) =>
-                      AppLocalizations.of(context).appName,
-                  debugShowCheckedModeBanner: false,
-                  // 语言：偏好为空（默认）时传 null → 由系统语言在
-                  // supportedLocales 中协商，未命中则回落模板语言 zh。
-                  locale: resolveAppLocale(p.localeTag),
-                  localizationsDelegates:
-                      AppLocalizations.localizationsDelegates,
-                  supportedLocales: AppLocalizations.supportedLocales,
-                  themeMode: p.themeMode,
-                  theme: AppTheme.light(p),
-                  darkTheme: AppTheme.dark(p),
-                  home: _BootGate(
-                    session: _session,
-                    startupTrace: widget.startupTrace,
-                    loginRunner: widget.loginRunner,
-                    loadHomeSnapshot: widget.loadHomeSnapshot,
+                final session = _profiles.active.session;
+                return SessionScope(
+                  controller: session,
+                  child: MaterialApp(
+                    key: ValueKey(_profiles.active.id),
+                    // 任务切换器标题也走 l10n（文案单源）。
+                    onGenerateTitle: (context) =>
+                        AppLocalizations.of(context).appName,
+                    debugShowCheckedModeBanner: false,
+                    // 语言：偏好为空（默认）时传 null → 由系统语言在
+                    // supportedLocales 中协商，未命中则回落模板语言 zh。
+                    locale: resolveAppLocale(p.localeTag),
+                    localizationsDelegates:
+                        AppLocalizations.localizationsDelegates,
+                    supportedLocales: AppLocalizations.supportedLocales,
+                    themeMode: p.themeMode,
+                    theme: AppTheme.light(p),
+                    darkTheme: AppTheme.dark(p),
+                    home: _BootGate(
+                      session: session,
+                      startupTrace: widget.startupTrace,
+                      loginRunner: widget.loginRunner,
+                      loadHomeSnapshot: widget.loadHomeSnapshot,
+                    ),
                   ),
                 );
               },

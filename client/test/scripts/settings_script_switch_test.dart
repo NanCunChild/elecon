@@ -84,10 +84,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('School credentials saved'), findsOneWidget);
+      expect(find.textContaining('School credentials saved'), findsOneWidget);
+      expect(find.text('Profile 1'), findsOneWidget);
       expect(find.text('Signed in'), findsNothing);
-      expect(find.textContaining('1 credentials saved:'), findsOneWidget);
-      await tester.tap(find.text('Switch school'));
+      expect(find.byIcon(Icons.lock_open_outlined), findsOneWidget);
+      await tester.tap(find.text('Profile 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choose school and script again'));
       await tester.pumpAndSettle();
       expect(
         find.textContaining('keep saved credentials for all schools'),

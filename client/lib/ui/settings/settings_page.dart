@@ -9,7 +9,6 @@ import 'package:flutter/foundation.dart';
 
 import '../../app_info.dart';
 import '../../l10n/gen/app_localizations.dart';
-import '../../session/session_controller.dart' show SessionCredentialProtection;
 import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
 import '../debug/helloworld_test_page.dart';
@@ -19,6 +18,7 @@ import 'about_page.dart';
 import 'appearance_section.dart';
 import 'dev_log_page.dart';
 import 'privacy_policy_page.dart';
+import 'profile_accounts.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -95,8 +95,6 @@ class SettingsPage extends StatelessWidget {
     // 监听会话变化，状态更新时本页重建。
     final l10n = AppLocalizations.of(context);
     final session = SessionScope.of(context);
-    final school = session.selectedSchool;
-    final loggedIn = session.isLoggedIn;
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
@@ -116,78 +114,10 @@ class SettingsPage extends StatelessWidget {
           ),
           _SectionTitle(title: l10n.settingsSectionAccount),
           LiquidGlassSurface(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.school),
-                  title: Text(school?.displayName ?? l10n.settingsNoSchool),
-                  subtitle: Text(
-                    school?.subtitle ?? l10n.settingsNoSchoolSubtitle,
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(
-                    loggedIn ? Icons.verified_user : Icons.lock_outline,
-                    color: loggedIn
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.outline,
-                  ),
-                  title: Text(
-                    loggedIn ? l10n.settingsLoggedIn : l10n.settingsLoggedOut,
-                  ),
-                  subtitle: Text(
-                    loggedIn
-                        ? l10n.settingsCredentialSummary(
-                            session.credentialCount,
-                            session.credentialRefs.join(
-                              l10n.commonListSeparator,
-                            ),
-                          )
-                        : l10n.settingsLoginPrompt,
-                  ),
-                  trailing: loggedIn
-                      ? TextButton(
-                          onPressed: () => _logout(context),
-                          child: Text(l10n.settingsActionLogout),
-                        )
-                      : FilledButton.tonal(
-                          onPressed: () => _login(context),
-                          child: Text(l10n.settingsActionLogin),
-                        ),
-                ),
-                if (loggedIn) ...[
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.security_outlined),
-                    title: Text(l10n.settingsProtectionTitle),
-                    subtitle: Text(switch (session.credentialProtection) {
-                      SessionCredentialProtection.hardware =>
-                        l10n.settingsProtectionHardware,
-                      SessionCredentialProtection.software =>
-                        l10n.settingsProtectionSoftware,
-                      SessionCredentialProtection.memory =>
-                        l10n.settingsProtectionMemory,
-                      SessionCredentialProtection.mixed =>
-                        l10n.settingsProtectionMixed,
-                      null => l10n.settingsProtectionMemory,
-                    }),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.refresh),
-                    title: Text(l10n.settingsRelogin),
-                    subtitle: Text(l10n.settingsReloginSubtitle),
-                    onTap: () => _login(context),
-                  ),
-                ],
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.swap_horiz),
-                  title: Text(l10n.settingsSwitchSchool),
-                  onTap: () => _switchSchool(context),
-                ),
-              ],
+            child: ProfileAccounts(
+              onLogin: () => _login(context),
+              onLogout: () => _logout(context),
+              onSelectScript: () => _switchSchool(context),
             ),
           ),
           const SizedBox(height: 16),

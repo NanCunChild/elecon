@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 
 import '../../catalog/schools.dart';
 import '../../session/session_scope.dart';
+import '../../session/profile_scope.dart';
+import '../settings/profile_accounts.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../scripts/script_workbench_page.dart';
 import '../scripts/bundled_scripts.dart';
@@ -87,6 +89,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
               padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
               shrinkWrap: true,
               children: [
+                if (ProfileScope.maybeOf(context) case final profiles?)
+                  TextButton.icon(
+                    onPressed: _busy ? null : () => showProfiles(context),
+                    icon: const Icon(Icons.switch_account),
+                    label: Text(profiles.active.name),
+                  ),
                 Icon(
                   Icons.school_rounded,
                   size: 56,
