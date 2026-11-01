@@ -7,6 +7,7 @@
  * and lib/model/xidian_ids/{classtable,score,exam}.dart. See ../LICENSE.
  */
 
+import { classroomDirectory } from "./classroom_directory.js";
 import { failure } from "./errors.js";
 import { dateOnly, integer, number, schoolDateTime, text } from "./normalize.js";
 import { createClient, parseUrl } from "./session.js";
@@ -470,8 +471,8 @@ export async function scheduleWeek(ctx, params = {}) {
     { unpublished: true },
   );
   const base = mergeAdjacent(rows.map((row) => arrangement(row, pg)));
-  let slots;
-  if (pg) slots = base.filter((slot) => slot.weeks.includes(week));
+  let allSlots;
+  if (pg) allSlots = base.flatMap((slot) => slot.weeks.map((week) => ({ ...slot, week })));
   else {
     const changes = await pages(
       client,
@@ -479,8 +480,9 @@ export async function scheduleWeek(ctx, params = {}) {
       { XNXQDM: term, "*order": "+SQSJ" },
       "xsdkkc",
     );
-    slots = applyChanges(base, changes).filter((slot) => slot.week === week);
+    allSlots = applyChanges(base, changes);
   }
+  const slots = allSlots.filter((slot) => slot.week === week);
   const days = Array.from({ length: 7 }, (_, i) => ({ dayOfWeek: i + 1, slots: [] }));
   const seen = new Set();
   for (const slot of slots) {
@@ -491,6 +493,19 @@ export async function scheduleWeek(ctx, params = {}) {
   }
   for (const day of days)
     day.slots.sort((a, b) => Number(a.start) - Number(b.start) || a.courseName.localeCompare(b.courseName));
+  // The API returned the complete term. Summarize that same result without
+  // fetching each week, using the selected week's exact deduplication rule.
+  const previewWeeks = new Map();
+  let previewEnd = Math.max(25, week);
+  for (const slot of allSlots) {
+    previewEnd = Math.max(previewEnd, slot.week);
+    if (!previewWeeks.has(slot.week))
+      previewWeeks.set(
+        slot.week,
+        Array.from({ length: 7 }, () => new Set()),
+      );
+    previewWeeks.get(slot.week)[slot.day - 1].add(JSON.stringify(slotOutput(slot, startDate, slot.week)));
+  }
   return {
     term,
     week,
@@ -499,6 +514,21 @@ export async function scheduleWeek(ctx, params = {}) {
     teachingWeekStart: addDays(startDate, (week - 1) * 7),
     teachingWeekEnd: addDays(startDate, week * 7 - 1),
     sourceSystem: pg ? "西电研究生院" : "西电本科教务",
+    timeSegments: TIMES.map(([timeStart, timeEnd], index) => ({
+      label: String(index + 1),
+      timeStart,
+      timeEnd,
+    })),
+    weekPreviews: Array.from({ length: previewEnd }, (_, index) => {
+      const previewWeek = index + 1;
+      return {
+        week: previewWeek,
+        days: Array.from({ length: 7 }, (_, index) => ({
+          dayOfWeek: index + 1,
+          courseCount: previewWeeks.get(previewWeek)?.[index].size ?? 0,
+        })),
+      };
+    }),
     days,
   };
 }
@@ -677,16 +707,6 @@ export async function examList(ctx, params = {}) {
   return { term, items };
 }
 
-async function buildings(client) {
-  const rows = await pages(client, `${CLASSROOM}/jxlcx.do`, { "*order": "+XXXQDM,+PX,+JXLDM" }, "jxlcx");
-  return rows.map((row) => {
-    const item = { building: text(row.JXLJC) || text(row.JXLMC) || "-" };
-    optional(item, "buildingId", row.JXLDM);
-    optional(item, "campus", row.XXXQMC ?? row.XXXQDM);
-    return item;
-  });
-}
-
 function campusFilter(items, campus) {
   return campus
     ? items.filter(
@@ -698,11 +718,9 @@ function campusFilter(items, campus) {
     : items;
 }
 
-export async function classroomBuildings(ctx, params = {}) {
+export async function classroomBuildings(_ctx, params = {}) {
   postgraduate(params); // Both roles use the shared undergraduate classroom app.
-  const client = await createClient(ctx, "ehall");
-  await openApp(client, false, "4768402106681759");
-  const output = { items: campusFilter(await buildings(client), text(params.campus)) };
+  const output = { items: campusFilter(classroomDirectory(), text(params.campus)) };
   optional(output, "campus", params.campus);
   if (text(params.term)) output.term = termCode(params.term);
   return output;
@@ -747,7 +765,7 @@ export async function classroomAvailable(ctx, params = {}) {
     building = { buildingId, building: buildingName || buildingId };
     optional(building, "campus", params.campus);
   } else {
-    const choices = campusFilter(await buildings(client), text(params.campus));
+    const choices = campusFilter(classroomDirectory(), text(params.campus));
     const exact = choices.filter((b) => b.building === buildingName);
     const matches = exact.length ? exact : choices.filter((b) => b.building.includes(buildingName));
     if (matches.length !== 1 || !matches[0].buildingId) throw new Error("classroom_building_not_unique");
@@ -796,8 +814,10 @@ export async function classroomAvailable(ctx, params = {}) {
     "cxjsqk",
   );
   let items = rows.map((row) => {
+    // Explicit null cells are observed on-device; follow PDA's occupancy
+    // predicate for present fields. An absent key remains unknown.
     const sections = TIMES.flatMap(([timeStart, timeEnd], i) =>
-      row[`JC${i + 1}`] == null
+      !Object.hasOwn(row, `JC${i + 1}`)
         ? []
         : [
             {

@@ -1,7 +1,7 @@
 {
   "sdkVersion": 5,
   "id": "school-xidian-undergraduate",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "schoolId": "xidian_undergraduate",
   "name": "西安电子科技大学（本科生）",
   "network": {
@@ -15,7 +15,8 @@
       "https://tyrzfw.chaoxing.com",
       "https://mfindxidian.libsp.cn",
       "https://ignypt.xidian.edu.cn",
-      "https://gxkt.juhaolian.cn"
+      "https://gxkt.juhaolian.cn",
+      "https://faculty.xidian.edu.cn"
     ]
   },
   "browser": true,
@@ -33,7 +34,7 @@
     {
       "id": "schedule.week",
       "schema": "elecon.schedule.week",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.1"
     },
     {
       "id": "grades.list",
@@ -113,6 +114,11 @@
     {
       "id": "card.qr",
       "schema": "elecon.card.qr",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "faculty.search",
+      "schema": "elecon.faculty.search",
       "schemaVersion": "1.0"
     }
   ],

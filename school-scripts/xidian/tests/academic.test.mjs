@@ -120,6 +120,12 @@ test("UG bitmap week indexing, actual dates, empty week, and exact student id", 
   assert.equal(result.days[1].slots[0].date, "2025-09-16");
   assert.deepEqual(result.days[1].slots[0].weeks, [1, 3]);
   assert.equal(result.days[1].slots[0].timeStart, "08:30");
+  assert.equal(result.timeSegments.length, 11);
+  assert.deepEqual(result.timeSegments[0], { label: "1", timeStart: "08:30", timeEnd: "09:15" });
+  assert.equal(result.weekPreviews[0].days[1].courseCount, 1);
+  assert.equal(result.weekPreviews[1].days[1].courseCount, 0);
+  assert.equal(result.weekPreviews[2].days[1].courseCount, 1);
+  assert.equal(ctx.calls.filter((c) => c.url.pathname.endsWith("/xskcb.do")).length, 1);
   const empty = await scheduleWeek(ctx, { term: TERM, week: 2 });
   assert.equal(empty.days.flatMap((day) => day.slots).length, 0);
 });
@@ -227,9 +233,41 @@ test("UG partial stop, chained moves, different class numbers, and a new makeup 
   const week3 = valid("schedule.week", await scheduleWeek(ctx, { term: TERM, week: 3 }));
   assert.equal(week3.days[0].slots.length, 1);
   assert.equal(week3.days[2].slots.length, 0);
+  assert.equal(week2.weekPreviews[1].days[0].courseCount, week2.days[0].slots.length);
+  assert.equal(week2.weekPreviews[2].days[0].courseCount, week3.days[0].slots.length);
+  assert.equal(week2.weekPreviews[2].days[2].courseCount, 0);
   assert.deepEqual(
     week3.days[4].slots.map((s) => [s.start, s.end, s.room, s.changeType]),
     [["7", "8", "合成教室三", "rescheduled"]],
+  );
+});
+
+test("schedule schema retains 1.0 and rejects malformed 1.1 hints", () => {
+  const schema = JSON.parse(
+    readFileSync(new URL("../../../contract/schema/schedule.week.schema.json", import.meta.url), "utf8"),
+  );
+  const validate = new Ajv2020({ strict: false, validateFormats: false }).compile(schema);
+  const oldSchema = JSON.parse(
+    readFileSync(
+      new URL("../../../contract/schema-versions/schedule.week/1.0.schema.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const validateOld = new Ajv2020({ strict: false, validateFormats: false }).compile(oldSchema);
+  const data = { term: TERM, week: 1, days: [] };
+  assert.ok(validate(data));
+  assert.ok(validateOld(data));
+  assert.equal(
+    validate({ ...data, timeSegments: [{ label: "1", timeStart: "25:00", timeEnd: "26:00" }] }),
+    false,
+  );
+  assert.equal(
+    validate({ ...data, weekPreviews: [{ week: 1, days: [{ dayOfWeek: 8, courseCount: 0 }] }] }),
+    false,
+  );
+  assert.equal(
+    validate({ ...data, weekPreviews: [{ week: 1, days: [{ dayOfWeek: 1, courseCount: -1 }] }] }),
+    false,
   );
 });
 
@@ -499,14 +537,18 @@ function classroomsRoute(call) {
     const filters = JSON.parse(call.form.querySetting);
     assert.equal(filters.filter((filter) => filter.name === "ZC").length, 1);
     assert.equal(filters.find((filter) => filter.name === "XQ").value, 2);
-    return payload("cxjsqk", [room(1, { JC2: "1_course" }), room(2), room(3, { JC1: null })]);
+    const missing = room(3);
+    delete missing.JC1;
+    return payload("cxjsqk", [room(1, { JC2: "1_course" }), room(2), missing]);
   }
 }
 
 test("classroom building/campus and date conversion with correct XQ filter", async () => {
   const ctx = fake(classroomsRoute);
-  const list = valid("classroom.buildings", await classroomBuildings(ctx, { campus: "南校区" }));
-  assert.equal(list.items[0].buildingId, "demo-building");
+  const list = valid("classroom.buildings", await classroomBuildings(ctx, { campus: "S" }));
+  assert.ok(list.items.some((item) => item.buildingId === "A" && item.building === "A教学楼"));
+  assert.ok(list.items.every((item) => item.campus === "S"));
+  assert.equal(ctx.calls.length, 0, "the built-in directory needs no school request");
   const result = valid(
     "classroom.available",
     await classroomAvailable(ctx, {
@@ -535,7 +577,7 @@ test("classroom supports week/day and wall-clock window with onlyAvailable", asy
       term: TERM,
       week: 3,
       weekday: 2,
-      building: "测试楼",
+      building: "A教学楼",
       start: "08:30",
       end: "10:05",
       onlyAvailable: true,
@@ -561,7 +603,7 @@ test("classroom does not silently choose an ambiguous building or conflicting da
       : classroomsRoute(call),
   );
   await assert.rejects(
-    classroomAvailable(ambiguous, { term: TERM, date: "2025-09-16", building: "测试楼" }),
+    classroomAvailable(ambiguous, { term: TERM, date: "2025-09-16", building: "E教学楼" }),
     /classroom_building_not_unique/,
   );
   await assert.rejects(
@@ -668,8 +710,39 @@ test("invalid role/week and missing required student id fail explicitly", async 
   );
 });
 
- test("classroom id query does not refetch the building directory", async () => {
+test("classroom id query does not refetch the building directory", async () => {
   const ctx = fake(classroomsRoute);
-  await classroomAvailable(ctx, { term: TERM, date: "2025-09-16", buildingId: "demo-building", building: "测试楼" });
-  assert.equal(ctx.calls.some((call) => call.url.pathname.endsWith("/jxlcx.do")), false);
+  await classroomAvailable(ctx, {
+    term: TERM,
+    date: "2025-09-16",
+    buildingId: "demo-building",
+    building: "测试楼",
+  });
+  assert.equal(
+    ctx.calls.some((call) => call.url.pathname.endsWith("/jxlcx.do")),
+    false,
+  );
+});
+
+test("explicit null sections are free; absent sections remain unknown", async () => {
+  const ctx = fake((call) => {
+    if (call.url.pathname.endsWith("/cxjsqk.do")) {
+      const empty = room(1, Object.fromEntries(Array.from({ length: 11 }, (_, i) => [`JC${i + 1}`, null])));
+      const missing = { ...empty, JASMC: "Synthetic missing room" };
+      delete missing.JC4;
+      return payload("cxjsqk", [empty, missing, { ...empty, JC2: "1_synthetic" }]);
+    }
+    return classroomsRoute(call);
+  });
+  const result = valid(
+    "classroom.available",
+    await classroomAvailable(ctx, { term: TERM, week: 3, weekday: 2, buildingId: "demo-building" }),
+  );
+  assert.deepEqual(
+    result.items.map((item) => item.status),
+    ["available", "unknown", "partial"],
+  );
+  assert.equal(result.items[0].sections.length, 11);
+  assert.ok(result.items[0].sections.every((section) => section.occupied === false));
+  assert.equal(result.items[1].occupied, undefined);
 });

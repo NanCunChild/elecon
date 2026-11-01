@@ -10,6 +10,7 @@ import {
   termList,
 } from "./academic.js";
 import { cardBalance, cardQr, cardTransactions, libraryLoans } from "./campus.js";
+import { facultySearch } from "./faculty.js";
 import { createLogin } from "./login.js";
 import { noticeDetail, noticeList } from "./notices.js";
 
@@ -37,6 +38,7 @@ function authenticated(handler, role) {
 export function createCapabilities(role) {
   if (role !== "undergraduate" && role !== "postgraduate") throw new Error("academic_role_invalid");
   return {
+    "faculty.search": facultySearch,
     "notice.list": noticeList,
     "notice.detail": noticeDetail,
     "generic.section": createLogin(role),

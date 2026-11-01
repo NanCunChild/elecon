@@ -14,10 +14,16 @@ assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildXidianPackages())]);
 for (const role of ["undergraduate", "postgraduate"]) {
   const data = JSON.parse(first.get(`school-xidian-${role}.elecon.json`)!);
-  assert.equal(data.manifest.version, role === "undergraduate" ? "0.14.0" : "0.13.1");
+  assert.equal(data.manifest.version, "0.17.0");
   assert.equal(data.manifest.sdkVersion, role === "undergraduate" ? 5 : 4);
   assert.equal(data.manifest.browser, true);
-  assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 18 : 13);
+  assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 20 : 15);
+  assert.ok(data.manifest.network.origins.includes("https://faculty.xidian.edu.cn"));
+  assert.ok(data.manifest.capabilities.some((cap: { id: string }) => cap.id === "faculty.search"));
+  assert.equal(
+    data.manifest.capabilities.find((cap: { id: string }) => cap.id === "schedule.week").schemaVersion,
+    "1.1",
+  );
   assert.equal(data.manifest.network.origins.includes("https://gxkt.juhaolian.cn"), role === "undergraduate");
   assert.equal(
     data.manifest.network.origins.includes("https://ignypt.xidian.edu.cn"),
