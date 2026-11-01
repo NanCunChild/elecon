@@ -11,6 +11,7 @@
 | 通知/教室/水电中继 | [研究](../research/relay_enhancement_feasibility.md)、[实施切片](../planning/platform_evolution.md) |
 | 旧代码兼容维护 | [legacy_compatibility](legacy_compatibility.md)、[Masker 退役审计](masker_retirement_audit.md) |
 | 浏览器认证观察 | [browser_auth_trace](browser_auth_trace.md)、[西电认证对照](xidian_pda_auth_comparison.md) |
+| Chaoxing 扫码签到、配置/位置与 Profile 多平台登录 | [可行性考察](../research/chaoxing_checkin_feasibility.md)（研究，未接入签到） |
 | 西电能力对照及探针 | [xidian_script_update](xidian_script_update.md)、[历史 smoke runbook](xidian_smoke_runbook.md)（注意其 V1 范围） |
 | 依赖许可 | [trusted_scripts_dependencies](trusted_scripts_dependencies.md) |
 | 发布与日志 | [release_workflow](release_workflow.md)、[cross_end_logging](cross_end_logging.md)（按执行路线选择） |
