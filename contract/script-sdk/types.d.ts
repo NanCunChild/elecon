@@ -123,17 +123,6 @@ export interface ScriptHomeEntry {
   preload?: boolean;
 }
 
-/** ADR-040 §4 / ADR-043 §3: SDK5+; no action grant is exposed to JavaScript.
- * Known mutation capabilities cannot run through ordinary/background entries.
- * The host admits one exact POST after fixed native confirmation; no redirects.
- */
-export interface ScriptActionDeclaration {
-  capability: "climate.command";
-  method: "POST";
-  /** Exact HTTPS URL without query, fragment or userinfo; origin must be declared. */
-  url: string;
-}
-
 /** ADR-043 §3: optional SDK6+ manifest.cards entry (at most ten distinct types).
  * Suggestions never override saved user layout. The host owns geometry,
  * rendering and stable card identity; this is not a runtime JS layout API.

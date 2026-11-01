@@ -1,4 +1,5 @@
 {
+  "scriptsUpdateRequired": "This installed script uses retired actions. Import a newer version before running it.",
   "@@locale": "en",
 
   "appName": "elecon",
@@ -282,14 +283,10 @@
   "climateFanLow": "Low",
   "climateFanMedium": "Medium",
   "climateFanHigh": "High",
-  "climateConfirmTitle": "Confirm device operation",
-  "climateConfirmBody": "Check the device and all settings below. The actual state will be checked after sending. Commands are never retried automatically.",
-  "climateConfirmSend": "Send command",
   "climateApplied": "Verified: the device state matches the requested settings.",
   "climateAccepted": "Command accepted. Its effect has not been verified; check the actual state.",
-  "climateRejected": "Operation cancelled or rejected. Check the device state.",
+  "climateRejected": "Operation rejected. Check the device state.",
   "climateUncertain": "The result is unknown and may not have taken effect. Check the state before trying again.",
-  "climatePermission": "This package includes device controls. Each operation requires confirmation of the device and settings and can physically operate it.",
   "climateError": "The device reports an error. Check it before operating.",
   "climateIndoorClean": "Indoor cleaning",
   "climateOutdoorClean": "Outdoor cleaning",

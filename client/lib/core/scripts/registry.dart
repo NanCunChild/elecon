@@ -121,7 +121,7 @@ class ScriptRegistry {
           item['enabled'] is! bool) {
         throw const FormatException('script_registry_entry');
       }
-      final package = ScriptPackage.parse(item['package'] as String);
+      final package = ScriptPackage.restore(item['package'] as String);
       if (package.digest != item['digest'] ||
           registry._entries.containsKey(package.manifest.id)) {
         throw const FormatException('script_registry_digest');
@@ -230,7 +230,9 @@ class ScriptRegistry {
     if (binding == null) return null;
     final base = _entries[binding.baseId];
     if (base?.enabled == true) {
-      return binding.accepts(base!.package) ? base.package : null;
+      return !base!.package.requiresUpdate && binding.accepts(base.package)
+          ? base.package
+          : null;
     }
     // Do not promote an unselected candidate when the base disappears.
     return null;
@@ -242,7 +244,10 @@ class ScriptRegistry {
     final override = _entries[binding.overrideId];
     if (override?.enabled == true) {
       // An incompatible update cannot inherit a previous source selection.
-      return binding.accepts(override!.package) ? override.package : null;
+      return !override!.package.requiresUpdate &&
+              binding.accepts(override.package)
+          ? override.package
+          : null;
     }
     return baseProvider(schoolId, capability);
   }
@@ -304,6 +309,7 @@ class ScriptRegistry {
     final installation = entries[packageId];
     if (installation == null ||
         !installation.enabled ||
+        installation.package.requiresUpdate ||
         installation.package.manifest.schoolId != schoolId) {
       throw StateError('script_not_authorized');
     }
@@ -334,6 +340,9 @@ class ScriptRegistry {
     ScriptPackage package, {
     required String approvedDigest,
   }) => _change((entries, bindings) {
+    if (package.requiresUpdate) {
+      throw StateError('script_update_required');
+    }
     if (approvedDigest != package.digest) {
       throw StateError('script_not_approved');
     }

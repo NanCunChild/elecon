@@ -1,4 +1,5 @@
 {
+  "scriptsUpdateRequired": "此脚本使用已废除的 actions，请导入更高版本后再运行。",
   "@@locale": "zh",
   "@@x-notes": "文案单源（模板语言）。新增显示字段一律先加键再用 l10n.<key> 引用，不在 widget 里写字面量；改键须同步 app_en.arb，否则 gen_l10n 会把缺口写进 l10n_untranslated.json。",
 
@@ -350,14 +351,10 @@
   "climateFanLow": "低风",
   "climateFanMedium": "中风",
   "climateFanHigh": "高风",
-  "climateConfirmTitle": "确认空调操作",
-  "climateConfirmBody": "请核对设备和下列全部设置。发送后会查询实际状态，指令不会自动重发。",
-  "climateConfirmSend": "确认发送",
   "climateApplied": "已核验：设备状态符合本次设置。",
   "climateAccepted": "指令已接收，尚未核验生效，请检查实际状态。",
-  "climateRejected": "操作已取消或被拒绝；请检查设备状态。",
+  "climateRejected": "操作被拒绝；请检查设备状态。",
   "climateUncertain": "操作结果未知，可能尚未生效；请检查设备状态后决定是否再次操作。",
-  "climatePermission": "此包包含设备控制能力。每次控制须在前台确认设备和完整设置，可能产生实际物理操作。",
   "climateError": "设备报告异常，请检查实际设备。",
   "climateIndoorClean": "室内清洁",
   "climateOutdoorClean": "室外清洁",

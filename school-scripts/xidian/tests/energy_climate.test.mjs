@@ -283,7 +283,7 @@ test("invalid/unbound devices and wrong school roles fail before device traffic"
     await assert.rejects(capabilities[capability](h.ctx, { role: "postgraduate" }));
   assert.equal(h.calls.length, 0);
 });
-test("command wire matches all confirmed mode effects, sends once and never claims applied", async () => {
+test("command wire matches all selected mode effects, sends once and never claims applied", async () => {
   const h = harness();
   const device = (await capabilities["climate.devices"](h.ctx)).items[0];
   h.calls.length = 0;

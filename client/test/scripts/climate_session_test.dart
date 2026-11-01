@@ -1,59 +1,27 @@
-// ADR-040 session proof, fixed confirmation, cancellation and identity tests.
-import 'dart:async';
-import 'package:elecon/core/scripts/action.dart';
+// ADR-046: ordinary commands, target validation and retired-install migration.
+import 'dart:convert';
+import 'package:elecon/core/credential/blob_store.dart';
+import 'package:elecon/core/scripts/manifest.dart';
+import 'package:elecon/core/scripts/registry.dart';
 import 'package:elecon/session/session_controller.dart';
-import 'package:flutter/foundation.dart';
+import 'package:elecon/ui/home/climate_controls.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../support/climate_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.android);
-  tearDown(() => debugDefaultTargetPlatformOverride = null);
-  test(
-    'transport uncertainty is preserved until an independent observation',
-    () {
-      for (final status in ['accepted', 'applied', 'rejected', 'unknown']) {
-        expect(
-          climateCommandOutcome(
-            requestStarted: true,
-            ok: true,
-            output: {'status': status},
-          ),
-          status == 'applied' ? 'accepted' : status,
-        );
-      }
-      expect(climateCommandOutcome(requestStarted: true, ok: false), 'unknown');
+  test('unverified command output does not establish applied state', () {
+    for (final status in ['accepted', 'applied', 'rejected', 'unknown']) {
       expect(
-        climateCommandOutcome(
-          requestStarted: false,
-          ok: true,
-          output: {'status': 'applied'},
-        ),
-        'rejected',
+        climateCommandOutcome(ok: true, output: {'status': status}),
+        status == 'applied' ? 'accepted' : status,
       );
-    },
-  );
-  Future<SessionController> prepare() async {
-    final session = SessionController();
-    addTearDown(session.dispose);
-    final p = syntheticClimatePackage();
-    await session.installTrustedScript(p, approvedDigest: p.digest);
-    await session.selectTrustedScriptSchool(p.manifest.id);
-    expect((await session.runCapability('profile.me')).ok, isTrue);
-    expect((await session.runCapability('climate.devices')).ok, isTrue);
-    expect(
-      (await session.runCapability(
-        'climate.status',
-        params: {'deviceId': syntheticDeviceId},
-      )).ok,
-      isTrue,
-    );
-    return session;
-  }
-
+    }
+    expect(climateCommandOutcome(ok: false), 'unknown');
+    expect(climateCommandOutcome(ok: true, output: {}), 'unknown');
+  });
   test(
-    'normalization exposes complete mode/power effects and rejects unsupported values',
+    'target normalization retains coupled effects and rejects invalid input',
     () {
       final device = syntheticClimateDevice();
       expect(climateTarget(device, 'mode', 'heat'), {
@@ -74,170 +42,121 @@ void main() {
       for (final value in [17, 33, 26.5]) {
         expect(
           () => climateTarget(device, 'temperature', value),
-          throwsA(isA<ScriptActionException>()),
+          throwsA(isA<ClimateControlException>()),
         );
       }
       expect(
         () => climateTarget(device, 'mode', 'unsafe'),
-        throwsA(isA<ScriptActionException>()),
+        throwsA(isA<ClimateControlException>()),
       );
     },
   );
   test(
-    'unverified device and non-Android cannot obtain a reviewable action',
+    'session and workbench use ordinary command invocation without grants',
     () async {
       final session = SessionController();
       addTearDown(session.dispose);
+      final p = syntheticClimatePackage();
+      await session.installTrustedScript(p, approvedDigest: p.digest);
+      await session.selectTrustedScriptSchool(p.manifest.id);
+      final params = {
+        'deviceId': syntheticDeviceId,
+        'command': 'power',
+        'settings': {'power': true},
+      };
+      expect(
+        (await session.runCapability(
+          'climate.command',
+          params: params,
+          interactive: false,
+        )).data,
+        {'status': 'accepted'},
+      );
+      expect(
+        (await session.runTrustedScript(
+          p.manifest.id,
+          'climate.command',
+          params: params,
+        )).ok,
+        isTrue,
+      );
+    },
+  );
+  test(
+    'retired installs retain bytes/digest and other packages until explicit update',
+    () async {
+      final raw =
+          jsonDecode(syntheticClimatePackage().encode())
+              as Map<String, dynamic>;
+      (raw['manifest'] as Map)['actions'] = [
+        {
+          'capability': 'climate.command',
+          'method': 'POST',
+          'url': 'https://device.example.invalid/command',
+        },
+      ];
+      final retired = ScriptPackage.restore(jsonEncode(raw));
+      final other = syntheticClimatePackage(id: 'other-climate');
+      final blobs = InMemoryBlobStore();
+      await blobs.write(
+        'trusted-scripts.json',
+        utf8.encode(
+          jsonEncode({
+            'version': 1,
+            'entries': [
+              {
+                'package': retired.encode(),
+                'digest': retired.digest,
+                'enabled': true,
+              },
+              {
+                'package': other.encode(),
+                'digest': other.digest,
+                'enabled': true,
+              },
+            ],
+          }),
+        ),
+      );
+      var registry = await ScriptRegistry.open(blobs);
+      expect(registry.installations, hasLength(2));
+      expect(
+        registry.find(retired.manifest.id)!.package.encode(),
+        retired.encode(),
+      );
+      expect(
+        registry.provider(retired.manifest.schoolId, 'climate.command'),
+        isNull,
+      );
+      expect(
+        registry.blocksLegacyFallback(
+          retired.manifest.schoolId,
+          'climate.command',
+        ),
+        isTrue,
+      );
+      expect(
+        registry.provider(other.manifest.schoolId, 'climate.command')!.digest,
+        other.digest,
+      );
       await expectLater(
-        session.prepareClimateCommand(syntheticDeviceId, 'power', true),
-        throwsA(isA<ScriptActionException>()),
+        registry.install(retired, approvedDigest: retired.digest),
+        throwsStateError,
       );
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      await expectLater(
-        session.prepareClimateCommand(syntheticDeviceId, 'power', true),
-        throwsA(isA<ScriptActionException>()),
+      await registry.setEnabled(other.manifest.id, false);
+      registry = await ScriptRegistry.open(blobs);
+      expect(
+        registry.find(retired.manifest.id)!.package.digest,
+        retired.digest,
       );
+      final updated = syntheticClimatePackage(version: '1.0.1');
+      await registry.install(updated, approvedDigest: updated.digest);
+      registry = await ScriptRegistry.open(blobs);
+      expect(
+        registry.provider(updated.manifest.schoolId, 'climate.command')!.digest,
+        updated.digest,
+      );
+      expect(registry.find(other.manifest.id), isNotNull);
     },
   );
-  test(
-    'cancelled confirmation and replay cannot run command or alter old state',
-    () async {
-      final session = await prepare();
-      final request = await session.prepareClimateCommand(
-        syntheticDeviceId,
-        'power',
-        true,
-      );
-      var confirmations = 0;
-      final cancelled = await session.runClimateCommand(
-        request,
-        confirm: (_) async {
-          confirmations++;
-          return false;
-        },
-        isCurrent: () => true,
-      );
-      expect(cancelled.status, 'rejected');
-      expect(cancelled.observed, isNull);
-      final replay = await session.runClimateCommand(
-        request,
-        confirm: (_) async {
-          confirmations++;
-          return true;
-        },
-        isCurrent: () => true,
-      );
-      expect(replay.status, 'rejected');
-      expect(confirmations, 1);
-    },
-  );
-  test(
-    'one pending action blocks a second confirmation for the same device',
-    () async {
-      final session = await prepare();
-      final first = await session.prepareClimateCommand(
-            syntheticDeviceId,
-            'power',
-            true,
-          ),
-          second = await session.prepareClimateCommand(
-            syntheticDeviceId,
-            'power',
-            true,
-          );
-      final gate = Completer<bool>();
-      var confirmations = 0;
-      final pending = session.runClimateCommand(
-        first,
-        confirm: (_) async {
-          confirmations++;
-          return gate.future;
-        },
-        isCurrent: () => true,
-      );
-      final duplicate = await session.runClimateCommand(
-        second,
-        confirm: (_) async {
-          confirmations++;
-          return true;
-        },
-        isCurrent: () => true,
-      );
-      expect(duplicate.status, 'rejected');
-      expect(confirmations, 1);
-      gate.complete(false);
-      expect((await pending).status, 'rejected');
-    },
-  );
-  for (final change in ['logout', 'update', 'switch', 'dispose']) {
-    test('confirmation is invalidated by $change', () async {
-      final session = await prepare();
-      final request = await session.prepareClimateCommand(
-        syntheticDeviceId,
-        'power',
-        true,
-      );
-      final gate = Completer<bool>();
-      final pending = session.runClimateCommand(
-        request,
-        confirm: (_) => gate.future,
-        isCurrent: () => true,
-      );
-      if (change == 'logout') session.logout();
-      if (change == 'update') {
-        final p = syntheticClimatePackage(version: '1.0.1');
-        await session.installTrustedScript(p, approvedDigest: p.digest);
-      }
-      if (change == 'switch') {
-        final p = syntheticClimatePackage(id: 'other-climate');
-        await session.installTrustedScript(p, approvedDigest: p.digest);
-        await session.selectTrustedScriptSchool(p.manifest.id);
-        expect((await session.runCapability('profile.me')).ok, isTrue);
-      }
-      if (change == 'dispose') {
-        session.cancelTrustedScriptRuns();
-      }
-      gate.complete(true);
-      final result = await pending;
-      expect(result.status, 'rejected');
-      expect(result.observed, isNull);
-    });
-  }
-  test(
-    'no-request script is rejected and followed by independent real-state read',
-    () async {
-      final session = await prepare();
-      final request = await session.prepareClimateCommand(
-        syntheticDeviceId,
-        'power',
-        true,
-      );
-      final result = await session.runClimateCommand(
-        request,
-        confirm: (_) async => true,
-        isCurrent: () => true,
-      );
-      expect(result.status, 'rejected');
-      expect(result.observed!.ok, isTrue);
-      expect((result.observed!.data as Map)['power'], isFalse);
-    },
-  );
-  test('caller leaving the page invalidates a confirmed operation', () async {
-    final session = await prepare();
-    final request = await session.prepareClimateCommand(
-      syntheticDeviceId,
-      'power',
-      true,
-    );
-    var current = true;
-    final result = await session.runClimateCommand(
-      request,
-      confirm: (_) async {
-        current = false;
-        return true;
-      },
-      isCurrent: () => current,
-    );
-    expect(result.status, 'rejected');
-  });
 }

@@ -2,7 +2,7 @@
 
 日期：2026-11-01。状态：研究，未接入学校签到。范围包括 Quasar-core 的二维码解析、登录、config、地理位置及其在 elecon 受信脚本中的适配条件。
 
-**协议编排可以留在学校脚本内；当前还不能把 SDK 8 扫码入口直接当作正式签到入口。** 登录、Cookie、二维码规则、位置表、设备参数、请求体及响应解释都应由脚本负责。宿主已有扫描、输入、浏览器和受限 HTTP，但尚无签到领域契约；现有 action 只支持 `climate.command`，需要另立 ADR 设计可复用的确认与副作用执行边界。如果后续要求连通用宿主入口也完全不改，当前只能做登录与只读研究，不能以普通查询夹带签到。
+**协议编排可以留在学校脚本内，通过普通 capability 与 `ctx.fetch` 接入。** [ADR-046](../adr/adr_046_triggered_script_requests.md) 已按所有者要求废除 action 通道；签到不再有 action 或额外宿主确认前置。登录、Cookie、二维码规则、位置表、设备参数、请求体及响应解释由脚本负责，宿主继续约束身份、网络和预算。具体协议尚未实现或在线核验。
 
 同一 Profile 下保存教务、校园卡、Chaoxing 等多个平台会话已有存储基础；逐平台登录状态、独立退出和同平台切号尚未形成完整产品语义。它们与“为不同使用者新建 Profile”是两件事。
 
@@ -21,7 +21,7 @@ elecon 阅读基线是 `5c57feb082ab219c1a53caa4ed855f36c0fe005a` 加本轮开�
 | Quasar `chaoxing/types/config.go`、`chaoxing/util/config.go`、`xidian/types/config.go`、`xidian/util/config.go` | config 字段、默认值和转换不对称 |
 | Quasar `xidian/ids.go`、`chaoxing/util/deviceid.go`、`util/net/cookie.go`、`util/net/client.go` | IDS 登录链、设备字符串、Cookie 降维和网络行为 |
 | Quasar `xidian/data/locations.go`、`chaoxing/util/location.go`、`chaoxing/types/location.go` | 30 条地点记录、坐标扰动、地址回退与范围单位 |
-| elecon [SDK](../../contract/script-sdk/types.d.ts)、[runtime](../../client/lib/core/scripts/runtime.dart)、[action](../../client/lib/core/scripts/action.dart)、[manifest](../../client/lib/core/scripts/manifest.dart) | 宿主能力、预算、输出校验与 action 准入 |
+| elecon [SDK](../../contract/script-sdk/types.d.ts)、[runtime](../../client/lib/core/scripts/runtime.dart)、[HTTP transport](../../client/lib/core/scripts/http_transport.dart)、[manifest](../../client/lib/core/scripts/manifest.dart) | 宿主能力、预算、输出校验与通用请求 |
 | elecon [学校会话](../../school-scripts/xidian/src/session.js)、[登录](../../school-scripts/xidian/src/login.js)、[浏览器目标](../../school-scripts/xidian/src/browser_login.js) | 当前服务白名单、凭据 namespace、Cookie 与现有登录系统 |
 | elecon [ProfileController](../../client/lib/session/profile_controller.dart)、[SessionController](../../client/lib/session/session_controller.dart)、[脚本会话](../../client/lib/session/script_session.dart)、[缓存](../../client/lib/core/scripts/data_cache.dart) | 身份隔离、登录状态、退出及缓存键 |
 
@@ -36,7 +36,7 @@ Quasar 的扫码入口接收字符串与可选 `Location`；它本身没有相�
 | 解析二维码 | `CheckinCheckinQrcodeURL` 用 `id=(\d+).*?([0-9A-F]{32})` 取活动 ID 和 enc | 只匹配片段，未验证 scheme、host、path、参数名及重复参数，不能照搬为输入校验 |
 | 查询与 analysis | 启动 `analysis → analysis2`，查询 `getAttendInfo`，读取 `getPPTActiveInfo` | 活动是否结束、是否已签到应明确区分；analysis 有服务端交互，不能仅因 GET 就认定无副作用 |
 | 定位课程 | 从活动取 classId，通过内存课程表或 `getClassDetail` 得到 courseId | 二维码路径可按需查课程，不必先枚举全部课程与会议 |
-| 预签到 | `newsign/preSign`，携带课程、班级、UID/TID 和活动 ID；页面含 `zsign_success` 时视为已完成 | 源码不能证明此 GET 永远只读；确认边界必须先核验其效果 |
+| 预签到 | `newsign/preSign`，携带课程、班级、UID/TID 和活动 ID；页面含 `zsign_success` 时视为已完成 | 源码不能证明此 GET 永远只读；实现前需核验其实际效果 |
 | 准备最终数据 | 再读 Renwu 活动信息及位置，填入账号、enc、设备字符串、位置等 | 平台字段及编码全部留在脚本；以活动实际类型为准，不能仅信扫码入口预设类型 |
 | 提交 | POST `pptSign/stuSignajax`，解释文本结果；特定设备重复提示后再查询状态 | HTTP 成功、请求已接收和签到已完成不能混为一类；传输不确定保留 unknown |
 | 验证码续提 | 响应含 validate 时，解旋转验证码并最多再提交三次 | 与现行禁自动重试边界不一致；不能直接迁移自动续提 |
@@ -89,7 +89,7 @@ elecon 当前的参数通路是 [工作台](../../client/lib/ui/scripts/script_w
 
 静态地点、平台端点和协议常量随源码；会话、设备字符串及个人配置留在当前 Profile/学校的授权凭据记录；二维码 enc 和短期票据默认只在当前准备/提交流程存活。现有凭据记录上限为 64 KiB，不把地点表或图片塞入凭据，也不把配置伪装成 token 来获得平台“已登录”状态。若需要独立的非密配置持久化能力，应另行设计，现有 SDK 未提供该接口。
 
-`home.params` 会随安装包分发，业务缓存也保存实际 params；原始二维码、密码、临时票据和完整配置不应出现在这些位置。本次操作最终选择的账号、位置与配置版本必须在确认前确定，提交阶段重验一致，不能确认后再从可变配置换成另一套参数。
+`home.params` 会随安装包分发，业务缓存也保存实际 params；原始二维码、密码、临时票据和完整配置不应出现在这些位置。本次操作选择的账号、位置与配置版本应在用户触发时固定，提交阶段重验一致，不在流程中默默换成另一套参数。
 
 ## Chaoxing 登录与现有西电登录的关系
 
@@ -115,25 +115,18 @@ Quasar 把 Cookie 导出成 name→value map，丢失 domain/path、有效期等
 | 请求和会话 | `ctx.fetch`、完整响应头/Set-Cookie、凭据 API、可见浏览器 | JS 认证、Cookie jar、表单/JSON 编码及响应解释；无 Go、Node、FFI 或远程模块加载 |
 | 协议计算 | 现有 [energy_crypto.js](../../school-scripts/xidian/src/energy_crypto.js) 有纯 JS AES-128-CBC/UTF-8 示例 | Chaoxing 所需 MD5、ECB、Base64 等在脚本内独立实现或选定许可明确的 JS 依赖；不能假定 Node crypto、浏览器 WebCrypto、URL 或 URLSearchParams 全局可用 |
 | 位置 | 可显示脚本提供的候选地点 | 当前没有 GPS 能力；坐标系、来源、缺失值和地点选择需先确定 |
-| 控制边界 | `ScriptActionScope` 绑定 digest/params/代际，单次精确 HTTPS POST，禁止交互/重定向 | 现有代码硬性限制 climate；签到需新的领域含义及通用执行入口，核心不解析 Chaoxing 参数 |
-| 输出 | 标准 registry/schema 与真实 QuickJS 输出验证 | 现有 `attendance.summary` 是考勤记录/汇总，不是签到活动、待确认操作或提交结果；不能改其含义，也不能用 `generic.section` 执行提交 |
+| 执行边界 | ADR-046 的普通 capability 与 ctx.fetch，共用身份/digest/网络/预算/取消 | 签到协议与请求步骤由脚本实现，不新增专用授权通道；具体领域输出按产品需要设计 |
+| 输出 | 标准 registry/schema 与真实 QuickJS 输出验证 | 现有 `attendance.summary` 是考勤记录/汇总，不表达签到活动或提交结果；产品化时不能改变它的含义，学校协议仍可直接使用通用请求 |
 
 网络预算也不等价：Quasar 配置请求超时 300 秒，活动查询 worker 数为 16；elecon 当前交互调用最长 120 秒，运行时 HTTP 次数上限按浏览器权限为 40/20，transport 并发上限 4、单请求 30 秒且跳转计入预算。移植应按单活动按需请求、限制分页与登录尝试，不批量搬入课程枚举、会议循环、验证码识别和跨域兜底，也不为迁移直接扩大核心预算。请求压缩声明要与 transport 实际解码能力一致，不能盲抄 Quasar 的 `Accept-Encoding`。
 
-### 待 ADR 确定的提交边界
+### 通用请求的后续实现条件
 
-拟议流程是：登录与配置 → 前台扫描 → 活动/账号/位置核验 → 固定宿主确认 → 脚本执行已确认操作 → 独立状态核验。以下是设计条件，不是新 SDK 接口：
+ADR-046 已废除本研究初稿沿用的 action/grant、单次 POST 宿主作用域及固定额外确认方案。签到直接使用受信脚本的普通请求；扫描、认证、活动核验、提交及状态同步可由同一脚本流程编排，核心不解析平台协议。
 
-1. 先分类参考链中每个请求的实际效果，尤其 analysis 和 preSign。若确认可能触发签到，就把它放到确认之后；不能为了满足现有“一次 POST”而把有副作用 GET 提前塞入准备阶段。若协议确需多个有副作用请求，现有 action 不足，应先独立设计有限步骤、可取消且不自动重发的通用边界。
-2. 准备结果绑定 Profile、schoolId、平台账号及会话代际、包 digest、活动 ID、扫码票据、位置来源/值、配置版本和期限。敏感数据留在私有短期上下文；固定 UI 只收到确认所需的标准摘要，不收到完整 Cookie、密码或票据。
-3. 确认显示平台账号掩码、活动/课程、签到或签退、位置来源与实际效果；不能把扫码或选地点当作确认提交。提交前检查上下文仍一致，过期或改变后重新准备，不默默换号/换位置。
-4. 提交阶段不打开相机、浏览器或输入表单，不隐式重登，不自动解验证码后重发。副作用请求在异步发送前原子占位，DNS/连接失败也消耗授权；超时、断连、取消或不可识别响应保留 unknown，查询失败不能转成“未签到，可以自动重试”。挑战续提若将来支持，须有独立确认和新上下文。
-5. 独立只读状态检查区分未提交、已接收、已完成、已签到、被拒绝、需额外验证和未知；明确签到与签退各自的状态证据，不能把其中一个的已完成状态用于另一个。仅收到 2xx 或结束 JS 不作为签到成功依据。
-6. 签到准备、提交、原始 QR/票据不进入首页 preload/查询缓存。平台认证或配置变化使旧准备结果失效；切 Profile、切校、退出、包更新、禁用及离页继续撤销执行。
+仍需明确 analysis/preSign 的实际效果、活动与账号绑定、二维码时效、位置来源和配置版本。远端副作用发出后无法回滚；超时、取消或不可识别响应保持未知，不在脚本中自动重发提交。签到与签退分别核验状态。原始 QR/票据和提交结果不加入首页 preload/查询缓存，切身份、更新或离页后不继续提交与应用迟到结果。
 
-通用宿主只约束身份、期限、确认、网络范围、请求数及结果语义；平台 URI、UID/TID 选择、位置编码和成功文本仍是脚本逻辑。与 ADR-034/040 相同，这不能把受信脚本变成逐请求只读沙箱，也不能由通用 grant 证明脚本请求体一定符合确认摘要；协议映射须由代码审阅和合成夹具核对。
-
-平台原始响应留在脚本内判定，UI 只收到标准结果和有界原因。扫码及原生输入值会加入已知秘密集合，但任意 params 不会自动全部成为秘密；脚本仍须避免日志/输出回显二维码、Cookie、设备字符串及其编码值，不依赖通用日志遮蔽识别所有派生值。
+平台原始响应留在脚本内判定。扫码及原生输入值会加入已知秘密集合，任意 params 不会自动全部成为秘密；脚本须避免日志/输出回显二维码、Cookie、设备字符串及其编码值。
 
 ## 一个 Profile 内的多个平台账号
 
@@ -167,7 +160,7 @@ Quasar 根 LICENSE 是 GNU GPL v3 文本；elecon 现有西电脚本声明 MPL-2
 | 登录与只读核验 | 许可路线、学校 SSO/独立账号入口、精确 origins、账户 ID 和 Cookie 作用域 | 脚本会话模块；合成失效/轮换/取消测试及真实 QuickJS 桥接；之后另做小预算、明确账号的真实只读核验 |
 | 配置与地点 | config 版本/优先级、允许字段、地点来源/坐标系、缺失/范围语义 | 脚本解析器和候选地点资源；字段负例、Unicode、迁移、多地点选择和来源标识；不提交签到 |
 | 平台账号模型 | 每平台一个活动账号还是多个槽位、逐平台退出、SSO 复用、缓存失效 | ADR 与迁移方案、通用账户元数据/入口；同 Profile 多平台及跨 Profile 隔离回归 |
-| 签到契约与执行 | analysis/preSign 的效果、确认位置、单/多副作用请求、签到与签退证据、平台门 | ADR、领域 schema、通用 action 增量和固定原生交互；学校协议仅在 JS |
-| 首片签到 | 明确支持的活动类型、票据时效、未支持挑战、人工审阅范围 | 合成全链与真实 QuickJS；确认/连点/第二次请求/过期/切号/取消/unknown 负例；另行授权一次真实签到验收 |
+| 签到协议与执行 | analysis/preSign 的效果、用户触发时机、票据与身份绑定、签到/签退证据 | 使用普通 capability/ctx.fetch 的学校 JS；产品所需标准数据再按 ADR 建模，不增加 action 通道 |
+| 首片签到 | 明确支持的活动类型、票据时效、未支持挑战、人工审阅范围 | 合成全链与真实 QuickJS；连点/禁自动重发/过期/切号/取消/unknown 负例；另行授权一次真实签到验收 |
 
-本轮产物限于研究文档和参考入口。没有改 contract、核心、学校源码、manifest 或生成包；没有把自动检查写成真实学校验收、平台真机或人工安全签收。
+本研究初稿只涉及文档，后续 action 移除按 ADR-046 单独实施。具体 Chaoxing 登录和签到仍未落地；代码观察和自动检查不构成真实学校验收、平台真机或人工安全签收。

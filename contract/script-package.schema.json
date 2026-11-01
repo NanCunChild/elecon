@@ -831,32 +831,6 @@
             }
           }
         },
-        "actions": {
-          "type": "array",
-          "maxItems": 4,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "capability",
-              "method",
-              "url"
-            ],
-            "properties": {
-              "capability": {
-                "const": "climate.command"
-              },
-              "method": {
-                "const": "POST"
-              },
-              "url": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 2048
-              }
-            }
-          }
-        },
         "cards": {
           "description": "SDK 6 only: optional host-owned card suggestions. User preferences take precedence; no executable layout or new data access.",
           "type": "array",
@@ -907,23 +881,6 @@
                   6,
                   7
                 ]
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "required": [
-              "actions"
-            ],
-            "properties": {
-              "actions": {}
-            }
-          },
-          "then": {
-            "properties": {
-              "sdkVersion": {
-                "enum": [5, 6, 7]
               }
             }
           }

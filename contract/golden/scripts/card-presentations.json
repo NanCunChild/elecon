@@ -618,8 +618,46 @@
       }
     },
     {
-      "name": "sdk6_inherits_home_and_action",
+      "name": "sdk6_inherits_home_and_ordinary_command",
       "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "notice.list",
+            "schema": "elecon.notice.list",
+            "schemaVersion": "1.1"
+          },
+          {
+            "id": "climate.command",
+            "schema": "elecon.climate.command",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "expanded"
+          }
+        ],
+        "home": [
+          {
+            "capability": "notice.list",
+            "ttlSeconds": 60,
+            "preload": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown_sdk",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 8
+      }
+    },
+    {
+      "name": "sdk6_retired_actions_require_update",
+      "valid": false,
       "manifest": {
         "capabilities": [
           {
@@ -653,13 +691,6 @@
             "url": "https://school.example/command"
           }
         ]
-      }
-    },
-    {
-      "name": "unknown_sdk",
-      "valid": false,
-      "manifest": {
-        "sdkVersion": 8
       }
     }
   ]

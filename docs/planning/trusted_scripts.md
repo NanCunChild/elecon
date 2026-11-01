@@ -1,5 +1,12 @@
 # 受信学校脚本实施记录
 
+## 通用请求与触发控制 2026-11-01
+
+依据 [ADR-046](../adr/adr_046_triggered_script_requests.md)，新源码 action/grant 和额外确认已废除；下文 action 相关记录仅反映历史实施。空调通过普通 capability/ctx.fetch：一次控件事件发送一次控制 POST，结束后独立查询一次状态，执行中防重复触发，失败不自动重发。协议留在学校 JS，签到不再有 action 前置，但实际 Chaoxing 逻辑仍未实现。
+
+旧 action 安装保留原始内容与 digest，不能作为 provider 或执行；用户导入更高版本无 actions 包后恢复。西电本科包升为 0.15.0；研究生不新增控制。隔离于原有未提交改动的 316 项 Flutter 回归、9 项学校合成协议测试、Dart 静态分析、TS typecheck、包/schema/共享展示夹具校验通过；验证仅使用合成数据与现有同版本 QuickJS Linux 测试库。人工核心/网络审阅及实际设备验收仍开放。
+
+
 依据：ADR-034 / ADR-035。独立分支 feat/trusted-school-scripts，基线 a60db9f；原工作区已有登录代码修改未纳入，已验签 bundle 字节的只读复用见下文。
 
 **当前工作目录（2026-10-30 所有者指定）**：`/home/nancunchild/projects/elecon`，分支 `feat/trusted-school-scripts`。已接入原新工作区的 `33bcdc4`；原 `elecon-trusted-scripts` 工作树留在 detached HEAD，后续开发在本目录进行。切换前全部已跟踪及未跟踪改动保存于 stash `1837515ffa21666526fe05d1ee1cf4fb493b6a1d`，并由固定引用 `refs/backups/elecon-before-trusted-scripts-20261030` 保留；未把旧登录实现混入新路线。

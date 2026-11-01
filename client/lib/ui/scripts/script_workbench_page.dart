@@ -412,6 +412,11 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
                       () => _session!.enableTrustedScript(m.id, enabled),
                     ),
             ),
+            if (installation.package.requiresUpdate)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(l10n.scriptsUpdateRequired),
+              ),
             DropdownButtonFormField<String>(
               initialValue: capability,
               key: ValueKey('${m.id}:${m.version}:$capability'),
@@ -433,7 +438,10 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
               children: [
                 OutlinedButton.icon(
                   key: ValueKey('script-provider-${m.id}'),
-                  onPressed: _busy || !installation.enabled
+                  onPressed:
+                      _busy ||
+                          !installation.enabled ||
+                          installation.package.requiresUpdate
                       ? null
                       : () => _guard(
                           () => _session!.selectTrustedScriptProvider(
@@ -475,7 +483,10 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
                     child: Text(l10n.scriptsRestoreProvider),
                   ),
                 TextButton(
-                  onPressed: _busy || !installation.enabled
+                  onPressed:
+                      _busy ||
+                          !installation.enabled ||
+                          installation.package.requiresUpdate
                       ? null
                       : () => _guard(
                           () => _session!.selectTrustedScriptSchool(m.id),
@@ -483,7 +494,10 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
                   child: Text(l10n.scriptsUseSchool),
                 ),
                 FilledButton(
-                  onPressed: _busy || !installation.enabled
+                  onPressed:
+                      _busy ||
+                          !installation.enabled ||
+                          installation.package.requiresUpdate
                       ? null
                       : () => _run(installation),
                   child: Text(_busy ? l10n.scriptsRunning : l10n.scriptsRun),

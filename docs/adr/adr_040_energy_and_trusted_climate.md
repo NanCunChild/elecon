@@ -1,5 +1,7 @@
 # ADR-040：宿舍水电查询与受信学校脚本空调控制
 
+> 2026-11-01：专用 action、grant 和额外确认方案已由 [ADR-046](adr_046_triggered_script_requests.md) 废除。新源码控制改为普通请求的一次触发与随后状态查询；下文相关内容保留为历史设计，不能继续作为新实现要求。水电与空调领域数据契约继续有效。
+
 - **Decision**：Accepted（2026-10-31；所有者明确确认本方案并要求继续完成；规格接受不代表实现人工安全签收）
 - **Landing**：契约、SDK 5 action、本科包与固定客户端卡片已实现；执行及待人工/真机验收记录见 `docs/planning/trusted_scripts.md`。
 - **范围**：跨校标准数据契约、ADR-034 新受信脚本的独立 action 入口、固定客户端卡片；首个提供者仅 `school-xidian-undergraduate`。

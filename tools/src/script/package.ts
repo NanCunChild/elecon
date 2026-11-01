@@ -63,7 +63,6 @@ export function packageScript(manifest: unknown, source: unknown): string {
     capabilities: Array<{ id: string }>;
     home?: Array<{ capability: string; params?: Record<string, unknown> }>;
     sdkVersion: number;
-    actions?: Array<{ capability: string; method: string; url: string }>;
     cards?: Array<{ type: string; defaultVariant: string }>;
   };
   if (
@@ -89,35 +88,6 @@ export function packageScript(manifest: unknown, source: unknown): string {
   ) {
     throw new ScriptPackageError("script_package_manifest_invalid");
   }
-  // ADR-040 §4: mirror the client's action admission before packaging.
-  const actions = typed.actions ?? [];
-  if (
-    new Set(actions.map((a) => a.capability)).size !== actions.length ||
-    typed.capabilities.some(
-      (c) => c.id === "climate.command" && !actions.some((a) => a.capability === c.id),
-    ) ||
-    actions.some((a) => {
-      try {
-        const url = new URL(a.url);
-        return (
-          typed.sdkVersion < 5 ||
-          a.capability !== "climate.command" ||
-          a.method !== "POST" ||
-          !typed.capabilities.some((c) => c.id === a.capability) ||
-          url.protocol !== "https:" ||
-          url.username !== "" ||
-          url.password !== "" ||
-          a.url.includes("?") ||
-          a.url.includes("#") ||
-          url.href !== a.url ||
-          !typed.network.origins.some((o) => new URL(o).origin === url.origin)
-        );
-      } catch {
-        return true;
-      }
-    })
-  )
-    throw new ScriptPackageError("script_package_manifest_invalid");
   try {
     validateScriptNetwork(typed.network);
   } catch (error) {

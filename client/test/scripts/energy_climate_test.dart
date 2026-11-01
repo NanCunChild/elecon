@@ -4,13 +4,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:elecon/core/credential/secure_store.dart';
 import 'package:elecon/core/credential/store.dart';
-import 'package:elecon/core/scripts/action.dart';
 import 'package:elecon/core/scripts/credentials.dart';
 import 'package:elecon/core/scripts/manifest.dart';
 import 'package:elecon/core/scripts/runtime.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:elecon_contract/output_validator_registry.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const endpoint = 'https://device.example.invalid/command';
@@ -39,9 +37,6 @@ Map<String, dynamic> packageJson(String source) => {
         'schemaVersion': '1.0',
       },
     ],
-    'actions': [
-      {'capability': 'climate.command', 'method': 'POST', 'url': endpoint},
-    ],
   },
   'source': source,
 };
@@ -62,44 +57,30 @@ const validSource =
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.android);
-  tearDown(() => debugDefaultTargetPlatformOverride = null);
-  test(
-    'SDK5 action parsing rejects older SDK, undeclared endpoint, duplicates and home mutation',
-    () {
-      for (final mutate in <void Function(Map<String, dynamic>)>[
-        (j) => (j['manifest'] as Map)['sdkVersion'] = 4,
-        (j) => ((j['manifest'] as Map)['actions'] as List).clear(),
-        (j) => ((j['manifest'] as Map)['actions'] as List).add({
-          'capability': 'climate.command',
-          'method': 'POST',
-          'url': endpoint,
-        }),
-        (j) =>
-            (((j['manifest'] as Map)['actions'] as List).first as Map)['url'] =
-                'https://other.example.invalid/command',
-        (j) =>
-            (((j['manifest'] as Map)['actions'] as List).first as Map)['url'] =
-                '$endpoint?token=synthetic',
-        (j) =>
-            (((j['manifest'] as Map)['actions'] as List).first as Map)['url'] =
-                '$endpoint#fragment',
-        (j) => (j['manifest'] as Map)['home'] = [
-          {'capability': 'climate.command', 'ttlSeconds': 30},
+  test('ordinary commands need no action declaration in supported SDKs', () {
+    for (var sdk = 1; sdk <= 7; sdk++) {
+      final raw = packageJson(validSource);
+      (raw['manifest'] as Map)['sdkVersion'] = sdk;
+      expect(ScriptPackage.parse(jsonEncode(raw)).requiresUpdate, isFalse);
+      for (final actions in [
+        [],
+        [
+          {'capability': 'climate.command', 'method': 'POST', 'url': endpoint},
         ],
       ]) {
-        final j = packageJson(validSource);
-        mutate(j);
-        expect(() => ScriptPackage.parse(jsonEncode(j)), throwsFormatException);
+        (raw['manifest'] as Map)['actions'] = actions;
+        expect(
+          () => ScriptPackage.parse(jsonEncode(raw)),
+          throwsFormatException,
+        );
       }
-      expect(
-        ScriptPackage.parse(
-          jsonEncode(packageJson(validSource)),
-        ).manifest.actions.single.url,
-        endpoint,
-      );
-    },
-  );
+    }
+    final raw = packageJson(validSource);
+    (raw['manifest'] as Map)['home'] = [
+      {'capability': 'climate.command', 'ttlSeconds': 30},
+    ];
+    expect(() => ScriptPackage.parse(jsonEncode(raw)), throwsFormatException);
+  });
   test(
     'old energy usage validator is preserved and new fields are validated',
     () {
@@ -136,229 +117,111 @@ void main() {
       );
     },
   );
-  test(
-    'runtime refuses command before evaluating top-level code without confirmation',
-    () async {
-      final p = ScriptPackage.parse(
-        jsonEncode(packageJson("throw Error('must not evaluate');")),
-      );
-      await expectLater(
-        const TrustedScriptRuntime().run(
-          package: p,
-          capability: 'climate.command',
-          credentials: credentials(p),
-          fetch: (_, _) async => throw StateError('no traffic'),
+  test('restored action packages cannot evaluate source', () async {
+    final raw = packageJson("throw Error('must not evaluate');");
+    (raw['manifest'] as Map)['actions'] = [];
+    final retired = ScriptPackage.restore(jsonEncode(raw));
+    expect(retired.requiresUpdate, isTrue);
+    expect(jsonDecode(retired.encode())['manifest']['actions'], []);
+    await expectLater(
+      const TrustedScriptRuntime().run(
+        package: retired,
+        capability: 'climate.command',
+        credentials: credentials(retired),
+        fetch: (_, _) async => throw StateError('must not send'),
+      ),
+      throwsA(
+        isA<ScriptRunException>().having(
+          (e) => e.code,
+          'code',
+          'script_update_required',
         ),
-        throwsA(
-          isA<ScriptRunException>().having(
-            (e) => e.code,
-            'code',
-            'action_confirmation_required',
-          ),
+      ),
+    );
+  });
+  test('commands share ordinary fetch and can query after sending', () async {
+    final p = ScriptPackage.parse(
+      jsonEncode(
+        packageJson(
+          "export const capabilities={'climate.command':async(ctx)=>{await ctx.fetch('$endpoint',{method:'POST',redirect:'error'});await ctx.fetch('$endpoint/state');return {status:'accepted'}}};",
         ),
-      );
-    },
-  );
-  test(
-    'scope is one use and binds package, normalized params, platform and lifetime',
-    () {
-      final p = ScriptPackage.parse(jsonEncode(packageJson(validSource)));
-      for (final wrong in [true, false]) {
-        final scope = ScriptActionScope(
-          package: p,
-          params: commandParams(),
-          isActive: () => true,
-        );
-        final other = ScriptPackage.parse(
-          jsonEncode(packageJson('$validSource\n// different digest')),
-        );
-        expect(
-          () => scope.consume(
-            wrong ? other : p,
-            'climate.command',
-            wrong ? commandParams() : {'deviceId': 'other'},
-          ),
-          throwsA(isA<ScriptActionException>()),
-        );
-      }
-      final scope = ScriptActionScope(
-        package: p,
-        params: commandParams(),
-        isActive: () => true,
-      );
-      scope.consume(p, 'climate.command', commandParams());
-      expect(
-        () => scope.consume(p, 'climate.command', commandParams()),
-        throwsA(isA<ScriptActionException>()),
-      );
-      final expired = ScriptActionScope(
-        package: p,
-        params: commandParams(),
-        isActive: () => true,
-        lifetime: Duration.zero,
-      );
-      expect(
-        () => expired.consume(p, 'climate.command', commandParams()),
-        throwsA(isA<ScriptActionException>()),
-      );
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      expect(
-        () => ScriptActionScope(
-          package: p,
-          params: commandParams(),
-          isActive: () => true,
-        ).consume(p, 'climate.command', commandParams()),
-        throwsA(isA<ScriptActionException>()),
-      );
-    },
-  );
-  for (final (name, body, expectedCalls) in [
-    ('second request', "await send();try{await send()}catch(_){}", 1),
-    ('concurrent requests', "await Promise.allSettled([send(),send()])", 1),
-    (
-      'wrong endpoint',
-      "await ctx.fetch('$endpoint/other',{method:'POST',redirect:'error'})",
-      0,
-    ),
-    (
-      'redirect mode',
-      "await ctx.fetch('$endpoint',{method:'POST',redirect:'follow'})",
-      0,
-    ),
-    (
-      'wrong method',
-      "await ctx.fetch('$endpoint',{method:'GET',redirect:'error'})",
-      0,
-    ),
-  ]) {
-    test('action denies $name even if the script catches host errors', () async {
-      final p = ScriptPackage.parse(
-        jsonEncode(
-          packageJson(
-            "export const capabilities={'climate.command':async ctx=>{const send=()=>ctx.fetch('$endpoint',{method:'POST',redirect:'error'});$body;return {status:'accepted'}}};",
-          ),
-        ),
-      );
-      var calls = 0;
-      await expectLater(
-        const TrustedScriptRuntime().run(
-          package: p,
-          capability: 'climate.command',
-          params: commandParams(),
-          credentials: credentials(p),
-          actionScope: ScriptActionScope(
-            package: p,
-            params: commandParams(),
-            isActive: () => true,
-          ),
-          fetch: (url, _) async {
-            calls++;
-            return response(url, {});
-          },
-        ),
-        throwsA(isA<ScriptRunException>()),
-      );
-      expect(calls, expectedCalls);
-    });
-  }
-  test('redirect response and timeout produce no command retry', () async {
-    final p = ScriptPackage.parse(jsonEncode(packageJson(validSource)));
-    var calls = 0;
-    Future<Object?> run(
-      Future<Map<String, Object?>> Function(String, Map<String, dynamic>) fetch,
-    ) => const TrustedScriptRuntime().run(
+      ),
+    );
+    final calls = <String>[];
+    final result = await const TrustedScriptRuntime().run(
       package: p,
       capability: 'climate.command',
-      params: commandParams(),
       credentials: credentials(p),
-      actionScope: ScriptActionScope(
-        package: p,
-        params: commandParams(),
-        isActive: () => true,
-      ),
-      wallTimeout: const Duration(milliseconds: 200),
-      fetch: fetch,
-    );
-    await expectLater(
-      run((url, _) async {
-        calls++;
-        return response(url, {}, status: 302);
-      }),
-      throwsA(isA<ScriptRunException>()),
-    );
-    expect(calls, 1);
-    calls = 0;
-    await expectLater(
-      run((url, _) async {
-        calls++;
-        await Future<void>.delayed(const Duration(milliseconds: 500));
+      fetch: (url, init) async {
+        calls.add('${init['method'] ?? 'GET'} $url');
         return response(url, {});
-      }),
-      throwsA(
-        isA<ScriptRunException>().having((e) => e.code, 'code', 'wall_timeout'),
+      },
+    );
+    expect(result, {'status': 'accepted'});
+    expect(calls, ['POST $endpoint', 'GET $endpoint/state']);
+  });
+  test('ordinary commands retain network authorization', () async {
+    final p = ScriptPackage.parse(
+      jsonEncode(
+        packageJson(
+          "export const capabilities={'climate.command':async ctx=>{await ctx.fetch('https://other.example.invalid/command',{method:'POST'});return {status:'accepted'}}};",
+        ),
       ),
     );
-    expect(calls, 1);
-  });
-  test(
-    'cancellation during an in-flight command cannot yield a successful result',
-    () async {
-      final p = ScriptPackage.parse(jsonEncode(packageJson(validSource)));
-      var active = true, calls = 0;
-      final gate = Completer<void>();
-      final future = const TrustedScriptRuntime().run(
+    var calls = 0;
+    await expectLater(
+      const TrustedScriptRuntime().run(
         package: p,
         capability: 'climate.command',
-        params: commandParams(),
         credentials: credentials(p),
-        actionScope: ScriptActionScope(
-          package: p,
-          params: commandParams(),
-          isActive: () => active,
-        ),
         fetch: (url, _) async {
           calls++;
-          gate.complete();
-          await Future<void>.delayed(const Duration(milliseconds: 150));
+          return response(url, {});
+        },
+      ),
+      throwsA(isA<ScriptRunException>()),
+    );
+    expect(calls, 0);
+  });
+  test('timeout and cancellation do not retry an ordinary command', () async {
+    for (final cancel in [false, true]) {
+      final p = ScriptPackage.parse(jsonEncode(packageJson(validSource)));
+      var active = true, calls = 0;
+      final started = Completer<void>();
+      final pending = const TrustedScriptRuntime().run(
+        package: p,
+        capability: 'climate.command',
+        credentials: credentials(p),
+        isActive: () => active,
+        wallTimeout: const Duration(milliseconds: 200),
+        fetch: (url, _) async {
+          calls++;
+          started.complete();
+          await Future<void>.delayed(const Duration(milliseconds: 500));
           return response(url, {});
         },
       );
-      final assertion = expectLater(future, throwsA(isA<ScriptRunException>()));
-      await gate.future;
-      active = false;
+      final assertion = expectLater(
+        pending,
+        throwsA(isA<ScriptRunException>()),
+      );
+      await started.future;
+      if (cancel) active = false;
       await assertion;
       expect(calls, 1);
-    },
-  );
-  test(
-    'ordinary session/workbench and legacy entries cannot execute command',
-    () async {
-      final session = SessionController();
-      addTearDown(session.dispose);
-      expect(
-        (await session.runCapability(
-          'climate.command',
-          params: commandParams(),
-        )).reason,
-        'action_confirmation_required',
-      );
-      expect(
-        (await session.runTrustedScript(
-          'school.synthetic',
-          'climate.command',
-          params: commandParams(),
-        )).reason,
-        'action_confirmation_required',
-      );
-      expect(
-        (await session.runAdapterCapability(
-          adapterId: 'synthetic',
-          capability: 'climate.command',
-        )).reason,
-        'action_confirmation_required',
-      );
-    },
-  );
+    }
+  });
+  test('legacy adapter command remains unavailable', () async {
+    final session = SessionController();
+    addTearDown(session.dispose);
+    expect(
+      (await session.runAdapterCapability(
+        adapterId: 'synthetic',
+        capability: 'climate.command',
+      )).reason,
+      'legacy_command_unavailable',
+    );
+  });
 
   group('actual undergraduate package in QuickJS', () {
     late ScriptPackage school;
@@ -473,7 +336,7 @@ void main() {
       },
     );
     test(
-      'actual device state and admitted command preserve identity and one request',
+      'actual device command preserves identity and sends exactly one ordinary POST',
       () async {
         final creds = credentials(school);
         creds.set(
@@ -489,11 +352,6 @@ void main() {
           params: params,
           credentials: creds,
           htmlStdlib: await File('assets/stdlib/html.bundle.js').readAsString(),
-          actionScope: ScriptActionScope(
-            package: school,
-            params: params,
-            isActive: () => true,
-          ),
           fetch: (url, init) async {
             calls++;
             expect(url, 'https://gxkt.juhaolian.cn/api/device/direct/command');

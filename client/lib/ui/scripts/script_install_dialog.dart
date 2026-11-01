@@ -30,10 +30,6 @@ Future<bool> confirmScriptInstall(
                   ),
                   const SizedBox(height: 16),
                   Text(l10n.scriptsTrustBody),
-                  if (package.manifest.actions.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text(l10n.climatePermission),
-                  ],
                   const SizedBox(height: 16),
                   Text(l10n.scriptsNetwork),
                   for (final origin in package.manifest.network.origins)

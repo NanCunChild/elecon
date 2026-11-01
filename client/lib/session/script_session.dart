@@ -26,9 +26,6 @@ class _ScriptSessionState {
   int homeRevision = 0;
   Future<void>? refreshingHome;
   final Set<ScriptHttpTransport> transports = {};
-  final Map<String, Map<String, dynamic>> climateDevices = {};
-  final Map<String, Map<String, dynamic>> climateStates = {};
-  final Set<String> busyActions = {};
 }
 
 final _scriptStates = Expando<_ScriptSessionState>();
@@ -38,132 +35,6 @@ extension TrustedScriptSession on SessionController {
       _scriptStates[this] ??= _ScriptSessionState();
 
   int get trustedScriptViewGeneration => _scripts.generation;
-
-  /// 🔒 ADR-040 §4: the UI can review this immutable request, not issue grants.
-  Future<ClimateActionRequest> prepareClimateCommand(
-    String deviceId,
-    String command,
-    Object value,
-  ) async {
-    if (!climateControlAvailable || !climateActionForeground) {
-      throw const ScriptActionException('action_platform_unavailable');
-    }
-    final generation = _scripts.generation;
-    final school = _school;
-    if (school == null) {
-      throw const ScriptActionException('action_not_authorized');
-    }
-    final package = (await scriptRegistry).provider(
-      school.id,
-      'climate.command',
-    );
-    final device = _scripts.climateDevices[deviceId];
-    final observed = _scripts.climateStates[deviceId];
-    if (_scripts.generation != generation ||
-        package == null ||
-        device == null ||
-        observed == null ||
-        observed['power'] is! bool ||
-        observed['mode'] is! String ||
-        observed['fanSpeed'] is! String ||
-        observed['targetTemperature'] is! int ||
-        observed['online'] == false ||
-        observed['errorCode'] != null ||
-        device['_packageDigest'] != package.digest ||
-        DateTime.now().millisecondsSinceEpoch - (device['_verifiedAt'] as int) >
-            300000) {
-      throw const ScriptActionException('action_device_not_verified');
-    }
-    final settings = climateTarget(device, command, value);
-    return ClimateActionRequest._(
-      this,
-      generation,
-      package,
-      deviceId,
-      device['label'] as String,
-      command,
-      settings,
-    );
-  }
-
-  Future<ClimateActionResult> runClimateCommand(
-    ClimateActionRequest request, {
-    required Future<bool> Function(ClimateActionRequest) confirm,
-    required bool Function() isCurrent,
-  }) async {
-    final state = _scripts;
-    final key = '${request._generation}:${request.deviceId}';
-    bool valid() =>
-        climateActionForeground &&
-        identical(request._owner, this) &&
-        !state.disposed &&
-        state.generation == request._generation &&
-        state.climateDevices[request.deviceId]?['_packageDigest'] ==
-            request._package.digest &&
-        state.climateStates[request.deviceId] != null &&
-        _school?.id == request._package.manifest.schoolId &&
-        isCurrent() &&
-        DateTime.now().isBefore(request._expiresAt);
-    if (!climateControlAvailable ||
-        request._used ||
-        !valid() ||
-        !state.busyActions.add(key)) {
-      return const ClimateActionResult('rejected');
-    }
-    request._used = true;
-    try {
-      if (!await confirm(request) || !valid()) {
-        return const ClimateActionResult('rejected');
-      }
-      final current = (await scriptRegistry).provider(
-        request._package.manifest.schoolId,
-        'climate.command',
-      );
-      if (!valid() || current?.digest != request._package.digest) {
-        return const ClimateActionResult('rejected');
-      }
-      final scope = ScriptActionScope(
-        package: request._package,
-        params: request._params,
-        isActive: valid,
-      );
-      final result = await _queueTrustedScript(
-        request._package.manifest.id,
-        'climate.command',
-        params: request._params,
-        interactive: false,
-        actionScope: scope,
-      );
-      var status = climateCommandOutcome(
-        requestStarted: scope.requestStarted,
-        ok: result.ok,
-        output: result.data,
-      );
-      CapabilityRun? observed;
-      if (valid()) {
-        // Exactly one independent read; never retry a command, even on unknown.
-        observed = await runTrustedScript(
-          request._package.manifest.id,
-          'climate.status',
-          params: {'deviceId': request.deviceId},
-          interactive: false,
-        );
-        if (observed.ok &&
-            observed.data is Map &&
-            (observed.data as Map)['deviceId'] == request.deviceId &&
-            request.settings.entries.every(
-              (entry) => (observed!.data as Map)[entry.key] == entry.value,
-            )) {
-          if (status == 'accepted' || status == 'unknown') status = 'applied';
-        }
-      }
-      return ClimateActionResult(status, observed: valid() ? observed : null);
-    } catch (_) {
-      return const ClimateActionResult('unknown');
-    } finally {
-      state.busyActions.remove(key);
-    }
-  }
 
   set scriptStorageConsent(Future<bool> Function()? consent) =>
       _scripts.storageConsent = consent;
@@ -199,9 +70,6 @@ extension TrustedScriptSession on SessionController {
     final state = _scriptStates[this];
     if (state == null) return;
     state.generation++;
-    state.climateDevices.clear();
-    state.climateStates.clear();
-    state.busyActions.clear();
     state.homeRevision++;
     state.refreshingHome = null;
     if (dispose) {
@@ -450,7 +318,6 @@ extension TrustedScriptSession on SessionController {
     ScriptBrowserCall? browserCall,
     ScriptInputCall? inputCall,
     void Function(String, String)? onLog,
-    ScriptActionScope? actionScope,
   }) {
     final state = _scripts;
     final generation = state.generation;
@@ -471,7 +338,6 @@ extension TrustedScriptSession on SessionController {
         browserCall: browserCall,
         inputCall: inputCall,
         onLog: onLog,
-        actionScope: actionScope,
       );
     });
     state.queue = pending.then<void>((_) {}, onError: (Object _) {});
@@ -488,14 +354,7 @@ extension TrustedScriptSession on SessionController {
     ScriptBrowserCall? browserCall,
     ScriptInputCall? inputCall,
     void Function(String, String)? onLog,
-    ScriptActionScope? actionScope,
   }) async {
-    if (capability == 'climate.command' && actionScope == null) {
-      return const CapabilityRun.failed(
-        CapabilityFailureKind.run,
-        'action_confirmation_required',
-      );
-    }
     final state = _scripts;
     final ScriptRegistry registry;
     try {
@@ -593,12 +452,7 @@ extension TrustedScriptSession on SessionController {
         ),
         // ADR-034 §6: use the existing bounded SDK maximum for interactive
         // authentication (captcha/MFA plus a redirect chain).
-        maxRequests: actionScope != null
-            ? 1
-            : interactive && package.manifest.browser
-            ? 40
-            : 20,
-        actionScope: actionScope,
+        maxRequests: interactive && package.manifest.browser ? 40 : 20,
         onLog: (level, message) {
           DevLog.instance.adapter(level, message);
           onLog?.call(level, message);
@@ -643,32 +497,6 @@ extension TrustedScriptSession on SessionController {
       if (!active()) {
         throw const ScriptRunException('script_cancelled');
       }
-      if (capability == 'climate.devices' &&
-          data is Map &&
-          data['items'] is List) {
-        state.climateDevices.clear();
-        state.climateStates.clear();
-        for (final device in data['items'] as List) {
-          if (device is Map && device['deviceId'] is String) {
-            state.climateDevices[device['deviceId'] as String] =
-                Map<String, dynamic>.from(jsonDecode(jsonEncode(device)) as Map)
-                  ..['_packageDigest'] = package.digest;
-            state.climateDevices[device['deviceId'] as String]!['_verifiedAt'] =
-                DateTime.now().millisecondsSinceEpoch;
-          }
-        }
-      }
-      if (capability == 'climate.status' &&
-          data is Map &&
-          data['deviceId'] == params?['deviceId']) {
-        final deviceId = data['deviceId'] as String;
-        if (state.climateDevices[deviceId]?['_packageDigest'] ==
-            package.digest) {
-          state.climateStates[deviceId] = Map<String, dynamic>.from(data);
-          state.climateDevices[deviceId]!['_verifiedAt'] =
-              DateTime.now().millisecondsSinceEpoch;
-        }
-      }
       if (ScriptDataCache(
         store,
       ).write(package, capability, params ?? const {}, data)) {
@@ -681,9 +509,6 @@ extension TrustedScriptSession on SessionController {
         },
       );
     } catch (error) {
-      if (capability == 'climate.status') {
-        state.climateStates.remove(params?['deviceId']);
-      }
       // Adapter-controlled exception messages may contain credentials.
       final code = switch (error) {
         ScriptRunException() => error.code,
@@ -712,74 +537,10 @@ extension TrustedScriptSession on SessionController {
         'script_cancelled',
       );
     }
-    if (result.ok &&
-        active() &&
-        capability == 'generic.section' &&
-        registry.provider(school.id, 'climate.devices')?.digest ==
-            package.digest) {
-      // ADR-030 §5.1 / ADR-040 §5: login lifecycle sync, never a timer/preload.
-      Future<void>(() async {
-        if (!active()) return;
-        final devices = await runTrustedScript(
-          id,
-          'climate.devices',
-          interactive: false,
-        );
-        if (!active() ||
-            !devices.ok ||
-            registry.provider(school.id, 'climate.status')?.digest !=
-                package.digest) {
-          return;
-        }
-        for (final device in state.climateDevices.keys.toList()) {
-          if (!active()) return;
-          await runTrustedScript(
-            id,
-            'climate.status',
-            params: {'deviceId': device},
-            interactive: false,
-          );
-        }
-      });
-    }
     if (!state.disposed) onCredentialsChanged();
     DevLog.instance.runtime(
       'script end: $id $capability ${result.ok ? "ok" : result.reason}',
     );
     return result;
   }
-}
-
-class ClimateActionRequest {
-  ClimateActionRequest._(
-    this._owner,
-    this._generation,
-    this._package,
-    this.deviceId,
-    this.deviceLabel,
-    this.command,
-    this.settings,
-  ) : _expiresAt = DateTime.now().add(const Duration(minutes: 1));
-  final SessionController _owner;
-  final int _generation;
-  final ScriptPackage _package;
-  final DateTime _expiresAt;
-  bool _used = false;
-  final String deviceId, deviceLabel, command;
-  final Map<String, dynamic> settings;
-  String get packageName => _package.manifest.name;
-  String get maskedDevice => deviceId.length <= 4
-      ? '••••'
-      : '••••${deviceId.substring(deviceId.length - 4)}';
-  Map<String, dynamic> get _params => Map.unmodifiable({
-    'deviceId': deviceId,
-    'command': command,
-    'settings': settings,
-  });
-}
-
-class ClimateActionResult {
-  const ClimateActionResult(this.status, {this.observed});
-  final String status;
-  final CapabilityRun? observed;
 }

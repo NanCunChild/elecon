@@ -54,8 +54,6 @@ import '../core/scripts/input.dart';
 import '../core/scripts/http_transport.dart';
 import '../core/scripts/browser.dart' show ScriptBrowserException;
 import '../core/scripts/data_cache.dart';
-import '../core/scripts/action.dart';
-export '../core/scripts/action.dart' show climateControlAvailable;
 export '../core/scripts/data_cache.dart' show ScriptCachedData;
 
 part 'script_session.dart';
@@ -451,12 +449,6 @@ class SessionController extends ChangeNotifier {
     void Function(String level, String message)? onLog,
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) async {
-    if (capability == 'climate.command') {
-      return const CapabilityRun.failed(
-        CapabilityFailureKind.run,
-        'action_confirmation_required',
-      );
-    }
     final school = _school;
     if (school == null) {
       return const CapabilityRun.failed(CapabilityFailureKind.load, '未选校');
@@ -620,7 +612,7 @@ class SessionController extends ChangeNotifier {
     if (capability == 'climate.command') {
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
-        'action_confirmation_required',
+        'legacy_command_unavailable',
       );
     }
     final service = await _resolveAdapterService();

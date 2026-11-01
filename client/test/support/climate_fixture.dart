@@ -69,13 +69,6 @@ ScriptPackage syntheticClimatePackage({
             'schemaVersion': '1.0',
           },
       ],
-      'actions': [
-        {
-          'capability': 'climate.command',
-          'method': 'POST',
-          'url': 'https://device.example.invalid/command',
-        },
-      ],
     },
     'source':
         '''export const capabilities={
@@ -84,7 +77,7 @@ ScriptPackage syntheticClimatePackage({
           'items': [syntheticClimateDevice()],
         })}):{items:[]},
  'climate.status':async(ctx,p)=>({deviceId:p.deviceId,power:false,mode:'cool',fanSpeed:'auto',targetTemperature:26,verticalSwing:false,turbo:false,auxiliaryHeat:false}),
- // A no-op script must never be reported as having physically sent a command.
+ // Accepted output alone is not evidence of a changed device state.
  'climate.command':async()=>({status:'accepted'})
  };''',
   }),

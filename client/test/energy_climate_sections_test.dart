@@ -1,3 +1,4 @@
+import 'dart:async';
 // ADR-040: fixed schema cards, adaptive layout and no optimistic device changes.
 import 'package:elecon/core/adapter_service.dart';
 import 'package:elecon/core/loader/diagnostics.dart';
@@ -58,6 +59,58 @@ class EnergySession extends SessionController {
         },
       ],
     });
+  }
+}
+
+class ClimateSession extends SessionController {
+  final calls = <String>[];
+  Map<String, dynamic>? commandParams;
+  Completer<CapabilityRun>? sendGate, readGate;
+  bool failSend = false, failRead = false, loggedOut = false;
+  Map<String, dynamic> state = {
+    'deviceId': syntheticDeviceId,
+    'power': false,
+    'mode': 'cool',
+    'fanSpeed': 'auto',
+    'targetTemperature': 26,
+  };
+  @override
+  void logout() {
+    loggedOut = true;
+    super.logout();
+  }
+
+  @override
+  Future<CapabilityRun> runCapability(
+    String capability, {
+    Map<String, dynamic>? params,
+    bool interactive = true,
+    String? htmlStdlib,
+    void Function(String, String)? onLog,
+    void Function(AdapterDiagnostic)? onDiagnostic,
+  }) async {
+    calls.add(capability);
+    if (capability == 'climate.devices') {
+      return CapabilityRun.ok({
+        'items': loggedOut ? [] : [syntheticClimateDevice()],
+      });
+    }
+    if (capability == 'climate.command') {
+      commandParams = params;
+      if (failSend) throw TimeoutException('synthetic send timeout');
+      return sendGate == null
+          ? const CapabilityRun.ok({'status': 'accepted'})
+          : await sendGate!.future;
+    }
+    if (failRead) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'synthetic read failure',
+      );
+    }
+    return readGate == null
+        ? CapabilityRun.ok(Map<String, dynamic>.from(state))
+        : await readGate!.future;
   }
 }
 
@@ -208,47 +261,50 @@ void main() {
     },
   );
 
-  androidTest('climate summary opens existing confirmed control path', (
-    tester,
-  ) async {
-    final session = await prepare(tester);
-    await tester.pumpWidget(
-      app(
-        session,
-        EditableCardBoard(
-          scopeId: 'synthetic',
-          store: _LayoutMemory(),
-          cards: [
-            HomeCardEntry(
-              id: 'climate',
-              label: 'Climate',
-              icon: Icons.ac_unit,
-              builder: (_) => const ClimateSection(),
-            ),
-          ],
+  androidTest(
+    'climate summary triggers an ordinary command without a confirmation dialog',
+    (tester) async {
+      final session = await prepare(tester);
+      await tester.pumpWidget(
+        app(
+          session,
+          EditableCardBoard(
+            scopeId: 'synthetic',
+            store: _LayoutMemory(),
+            cards: [
+              HomeCardEntry(
+                id: 'climate',
+                label: 'Climate',
+                icon: Icons.ac_unit,
+                builder: (_) => const ClimateSection(),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-    await until(tester, () => find.text('26 ℃').evaluate().isNotEmpty);
-    expect(powerSwitch(), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('home-card:climate')));
-    await until(
-      tester,
-      () =>
-          powerSwitch().evaluate().isNotEmpty &&
-          tester.widget<SwitchListTile>(powerSwitch()).onChanged != null,
-    );
-    expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(powerSwitch());
-    await tester.pumpAndSettle();
-    await tester.tap(powerSwitch());
-    await until(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty);
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await until(tester, () => find.text('26 ℃').evaluate().isNotEmpty);
+      expect(powerSwitch(), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('home-card:climate')));
+      await until(
+        tester,
+        () =>
+            powerSwitch().evaluate().isNotEmpty &&
+            tester.widget<SwitchListTile>(powerSwitch()).onChanged != null,
+      );
+      expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(powerSwitch());
+      await tester.pumpAndSettle();
+      await tester.tap(powerSwitch());
+      await until(
+        tester,
+        () => find.byType(LinearProgressIndicator).evaluate().isEmpty,
+      );
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   androidTest(
     'water card selects an actual meter and keeps values visible after read failure',
@@ -289,95 +345,132 @@ void main() {
     },
   );
   androidTest(
-    'power stays unchanged through confirmation and cancelled control',
+    'one event sends once then reads once, without optimistic state',
     (tester) async {
-      final session = await prepare(tester);
+      final session = ClimateSession();
+      addTearDown(session.dispose);
       await tester.pumpWidget(app(session, const ClimateSection()));
-      await until(
-        tester,
-        () =>
-            powerSwitch().evaluate().isNotEmpty &&
-            tester.widget<SwitchListTile>(powerSwitch()).onChanged != null,
-      );
-      expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
-      await tester.tap(powerSwitch());
-      await until(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty);
-      expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
-      await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
+      session.calls.clear();
+      session.sendGate = Completer<CapabilityRun>();
+      session.readGate = Completer<CapabilityRun>();
+      final trigger = tester.widget<SwitchListTile>(powerSwitch()).onChanged!;
+      trigger(true);
+      trigger(true);
+      await tester.pump();
+      expect(session.calls, ['climate.command']);
+      expect(find.byType(AlertDialog), findsNothing);
       expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
-      expect(find.textContaining('Operation cancelled'), findsOneWidget);
-    },
-  );
-  androidTest(
-    'mode selection keeps verified old value while showing every coupled setting',
-    (tester) async {
-      final session = await prepare(tester);
-      await tester.pumpWidget(app(session, const ClimateSection()));
-      await until(
-        tester,
-        () =>
-            find.byType(DropdownButton<String>).evaluate().length >= 2 &&
-            powerSwitch().evaluate().isNotEmpty &&
-            tester.widget<SwitchListTile>(powerSwitch()).onChanged != null,
+      expect(tester.widget<SwitchListTile>(powerSwitch()).onChanged, isNull);
+      session.sendGate!.complete(
+        const CapabilityRun.ok({'status': 'accepted'}),
       );
-      final mode = find.byWidgetPredicate(
-        (w) => w is DropdownButton<String> && w.value == 'cool',
+      await tester.pump();
+      expect(session.calls, ['climate.command', 'climate.status']);
+      expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
+      session.readGate!.complete(
+        CapabilityRun.ok({...session.state, 'power': true}),
       );
-      await tester.ensureVisible(mode);
-      await tester.tap(mode);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Heat').last);
-      await until(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty);
-      expect(tester.widget<DropdownButton<String>>(mode).value, 'cool');
-      final dialog = find.byType(AlertDialog);
-      for (final label in [
-        'Target temperature',
-        'Fan speed',
-        'Turbo',
-        'Auxiliary heat',
-        'Indoor cleaning',
-        'Outdoor cleaning',
-      ]) {
-        expect(
-          find.descendant(of: dialog, matching: find.text(label)),
-          findsOneWidget,
-        );
-      }
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-      expect(tester.widget<DropdownButton<String>>(mode).value, 'cool');
+      expect(tester.widget<SwitchListTile>(powerSwitch()).value, isTrue);
+      expect(session.commandParams, {
+        'deviceId': syntheticDeviceId,
+        'command': 'power',
+        'settings': {'power': true},
+      });
       expect(tester.takeException(), isNull);
     },
   );
-  androidTest('logout closes pending confirmation and hides old device state', (
-    tester,
-  ) async {
-    final session = await prepare(tester);
-    await tester.pumpWidget(app(session, const ClimateSection()));
-    await until(
-      tester,
-      () =>
-          powerSwitch().evaluate().isNotEmpty &&
-          tester.widget<SwitchListTile>(powerSwitch()).onChanged != null,
+  for (final failure in ['send', 'read', 'rejected']) {
+    androidTest(
+      '$failure failure never resends control and synchronizes once',
+      (tester) async {
+        final session = ClimateSession();
+        addTearDown(session.dispose);
+        await tester.pumpWidget(app(session, const ClimateSection()));
+        await tester.pumpAndSettle();
+        session.calls.clear();
+        session.failSend = failure == 'send';
+        session.failRead = failure == 'read';
+        if (failure == 'rejected') {
+          session.sendGate = Completer<CapabilityRun>()
+            ..complete(const CapabilityRun.ok({'status': 'rejected'}));
+        }
+        tester.widget<SwitchListTile>(powerSwitch()).onChanged!(true);
+        await tester.pumpAndSettle();
+        expect(session.calls, ['climate.command', 'climate.status']);
+        expect(find.byType(AlertDialog), findsNothing);
+        if (failure == 'read') {
+          expect(powerSwitch(), findsNothing);
+          expect(
+            find.text('State unknown. Refresh before operating.'),
+            findsWidgets,
+          );
+        } else {
+          expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
+        }
+        expect(tester.takeException(), isNull);
+      },
     );
-    await tester.tap(powerSwitch());
-    await until(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty);
-    session.logout();
-    await tester.pump();
-    await until(
-      tester,
-      () => find.byType(LinearProgressIndicator).evaluate().isEmpty,
+  }
+  androidTest(
+    'mode sends complete coupled settings through ordinary capability',
+    (tester) async {
+      final session = ClimateSession();
+      addTearDown(session.dispose);
+      await tester.pumpWidget(app(session, const ClimateSection()));
+      await tester.pumpAndSettle();
+      session.calls.clear();
+      final mode = find.byWidgetPredicate(
+        (w) => w is DropdownButton<String> && w.value == 'cool',
+      );
+      tester.widget<DropdownButton<String>>(mode).onChanged!('heat');
+      await tester.pumpAndSettle();
+      expect(session.calls, ['climate.command', 'climate.status']);
+      expect(session.commandParams!['settings'], {
+        'mode': 'heat',
+        'targetTemperature': 23,
+        'fanSpeed': 'auto',
+        'turbo': false,
+        'auxiliaryHeat': false,
+        'indoorClean': false,
+        'outdoorClean': false,
+      });
+      expect(tester.widget<DropdownButton<String>>(mode).value, 'cool');
+      expect(find.byType(AlertDialog), findsNothing);
+    },
+  );
+  for (final leave in ['logout', 'page']) {
+    androidTest(
+      '$leave invalidates a pending send and prevents its follow-up read',
+      (tester) async {
+        final session = ClimateSession();
+        addTearDown(session.dispose);
+        await tester.pumpWidget(app(session, const ClimateSection()));
+        await tester.pumpAndSettle();
+        session.calls.clear();
+        session.sendGate = Completer<CapabilityRun>();
+        tester.widget<SwitchListTile>(powerSwitch()).onChanged!(true);
+        await tester.pump();
+        if (leave == 'logout') {
+          session.logout();
+        } else {
+          await tester.pumpWidget(app(session, const SizedBox()));
+        }
+        await tester.pump();
+        session.sendGate!.complete(
+          const CapabilityRun.ok({'status': 'accepted'}),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          session.calls.where((c) => c == 'climate.command'),
+          hasLength(1),
+        );
+        expect(session.calls.where((c) => c == 'climate.status'), isEmpty);
+        expect(tester.takeException(), isNull);
+      },
     );
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
-    expect(powerSwitch(), findsNothing);
-    expect(tester.takeException(), isNull);
-    await until(
-      tester,
-      () => find.byType(LinearProgressIndicator).evaluate().isEmpty,
-    );
-  });
+  }
   iosTest(
     'non Android still reads device state but exposes disabled controls',
     (tester) async {

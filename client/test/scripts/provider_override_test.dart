@@ -26,14 +26,6 @@ ScriptPackage package(
         ],
       },
       'browser': false,
-      if (capabilities.containsKey('climate.command'))
-        'actions': [
-          {
-            'capability': 'climate.command',
-            'method': 'POST',
-            'url': 'https://device.example.invalid/command',
-          },
-        ],
       'capabilities': [
         for (final cap in capabilities.entries)
           {

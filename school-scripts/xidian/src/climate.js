@@ -1,7 +1,7 @@
 /*! Copyright 2026 elecon contributors; 2026 Traintime PDA authors, originally aqqkad.
  * SPDX-License-Identifier: MPL-2.0
  * Protocol: PDA miscellaneous_session/aircon_session.dart and aircon_remote_page.dart.
- * ADR-040 §3–§4: user-bound device, finite normalized commands, never retry.
+ * ADR-040 §3 / ADR-046: bound device, one ordinary control POST, never retry.
  */
 
 import { failure } from "./errors.js";

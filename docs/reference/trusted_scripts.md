@@ -2,13 +2,13 @@
 
 依据 [ADR-034](../adr/adr_034_trusted_school_scripts.md) 与 [ADR-035](../adr/adr_035_script_credential_identity.md)。这条路径已接入客户端，不依赖 V2 分支、签名仪式、旧 requestGraph、Masker 或不透明句柄。旧 official bundle 作为迁移兼容路径保留，Masker 尚未全仓删除，见 [退役审计](masker_retirement_audit.md)。不把新脚本送到服务端执行。
 
-## SDK 5：已确认的设备操作（ADR-040）
+## 通用请求与按钮触发控制（ADR-046）
 
-SDK 5 继承 SDK 4 的凭据、输入、浏览器与 home；可选 actions 将已知 mutation 能力绑定至已声明 origin 下的精确 HTTPS POST endpoint（无 query/fragment）。当前支持 climate.command，禁止作为 home 缓存/预加载能力；SDK 1–4 不接受 actions，旧客户端拒绝 SDK 5。
+所有受信脚本能力统一使用普通调用与 `ctx.fetch`，不再声明 `actions` 或取得额外 grant。空调控件触发一次 `climate.command`，脚本校验参数后发送一次控制 POST；调用结束后页面查询一次 `climate.status`。操作期间禁用重复点击，不乐观改状态，失败/超时不重发。命令仍不得放入 home 缓存或预加载；空调产品页面保持 Android 范围，V1 不开放新控制。
 
-普通 runCapability、工作台直接执行或运行脚本不能调用 climate.command。固定客户端入口先校验已核验设备和标准目标，再确认学校/包/设备掩码及全部联动设置；宿主 grant 绑定身份、digest、命令、端点与调用生命周期，只允许一次请求、禁止重定向/重试。超时/中断为 unknown，完成后独立只读同步状态，禁止乐观更新。当前仅 Android 执行控制。该约束不将 ADR-034 的任意受信脚本改造成只读沙箱，原有安装信任边界仍适用。
+这是开发阶段的显式迁移：当前解析器/打包器拒绝任何 `actions` 字段，包括空数组；旧已安装包只保留来源、版本及原 digest，标为需要更新且不能执行，不自动修改已授权源码或清空其它安装。西电本科升级至 0.15.0 后需重新检查并授权。各已支持 SDK 的其它接口与领域数据版本不变。
 
-西电本科 0.14.0 及客户端 0.5.0+8 提供首个实现；水电使用 energy.meters / energy.usage@1.1，设备为 climate.devices/status，详细操作见学校 README。规格与实现的人工安全审阅、真机验收分开记录。
+签到可以在受信脚本内使用通用请求，无 action 前置；SDK 8 只提供扫码输入。当前没有 Chaoxing 登录或签到实现。具体协议考察见[研究](../research/chaoxing_checkin_feasibility.md)。
 
 ## SDK 4 首页数据接口
 
@@ -176,4 +176,4 @@ SDK 6 在 SDK 5 上增加可选静态 cards，供学校包建议宿主已实现�
 
 ## SDK 7 首页命名
 
-SDK 7 可选静态 `manifest.homeTitle` 为学校首页命名，与安装包 `name` 分开。最多 80 个 Unicode 字符、单行纯文本，缺省回退学校名；安装时展示并绑定授权 digest。SDK 7 继承现有 home/actions/cards 与执行权限，旧宿主拒绝未知 SDK。更新既有包须提升 version 并重新确认，不能仅修改本地已授权字节。声明示例、标题来源与实际数据更新时间见[首页标题](card_layout_and_overrides.md#首页标题)。
+SDK 7 可选静态 `manifest.homeTitle` 为学校首页命名，与安装包 `name` 分开。最多 80 个 Unicode 字符、单行纯文本，缺省回退学校名；安装时展示并绑定授权 digest。SDK 7 继承现有 home/cards 与执行权限，旧宿主拒绝未知 SDK。更新既有包须提升 version 并重新确认，不能仅修改本地已授权字节。声明示例、标题来源与实际数据更新时间见[首页标题](card_layout_and_overrides.md#首页标题)。

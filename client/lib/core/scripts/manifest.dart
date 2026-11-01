@@ -13,9 +13,21 @@ const scriptPackageFormat = 'elecon-script/1';
 const maxScriptPackageBytes = 1024 * 1024;
 
 class ScriptPackage {
-  ScriptPackage._(this.manifest, this.source, this.digest, this._encoded);
+  ScriptPackage._(
+    this.manifest,
+    this.source,
+    this.digest,
+    this._encoded,
+    this.requiresUpdate,
+  );
 
-  factory ScriptPackage.parse(String text) {
+  factory ScriptPackage.parse(String text) => ScriptPackage._parse(text);
+
+  /// ADR-046: retain retired installs for review/update, never for execution.
+  factory ScriptPackage.restore(String text) =>
+      ScriptPackage._parse(text, restoring: true);
+
+  static ScriptPackage _parse(String text, {bool restoring = false}) {
     if (text.length > maxScriptPackageBytes ||
         utf8.encode(text).length > maxScriptPackageBytes) {
       throw const FormatException('script package exceeds 1 MiB');
@@ -26,8 +38,15 @@ class ScriptPackage {
     if (root['format'] != scriptPackageFormat) {
       throw const FormatException('unsupported script package format');
     }
+    final rawManifest = _object(root['manifest'], 'manifest');
+    final retired = rawManifest.containsKey('actions');
+    if (retired && !restoring) {
+      throw const FormatException('actions removed; update the script package');
+    }
     final manifest = ScriptManifest.fromJson(
-      _object(root['manifest'], 'manifest'),
+      retired
+          ? (Map<String, dynamic>.of(rawManifest)..remove('actions'))
+          : rawManifest,
     );
     final source = _text(root, 'source', maxScriptPackageBytes);
     final canonical = jsonEncode(_canonical(root));
@@ -36,6 +55,7 @@ class ScriptPackage {
       source,
       sha256.convert(utf8.encode(canonical)).toString(),
       canonical,
+      retired,
     );
   }
 
@@ -43,6 +63,7 @@ class ScriptPackage {
   final String source;
   final String digest;
   final String _encoded;
+  final bool requiresUpdate;
 
   String encode() => _encoded;
 }
@@ -59,7 +80,6 @@ class ScriptManifest {
     required this.browser,
     required this.capabilities,
     required this.home,
-    required this.actions,
     required this.cards,
   });
 
@@ -75,7 +95,6 @@ class ScriptManifest {
       'browser',
       'capabilities',
       if (json.containsKey('home')) 'home',
-      if (json.containsKey('actions')) 'actions',
       if (json.containsKey('cards')) 'cards',
     }, 'manifest');
     if (!const {1, 2, 3, 4, 5, 6, 7}.contains(json['sdkVersion']) ||
@@ -158,28 +177,6 @@ class ScriptManifest {
     final network = ScriptNetworkPolicy.fromJson(
       _object(json['network'], 'network'),
     );
-    final rawActions = json['actions'];
-    if (json.containsKey('actions') &&
-        ((json['sdkVersion'] as int) < 5 ||
-            rawActions is! List ||
-            rawActions.length > 4)) {
-      throw const FormatException('invalid script actions');
-    }
-    final actions = (rawActions as List? ?? const [])
-        .map(
-          (raw) =>
-              ScriptActionDeclaration.fromJson(_object(raw, 'action'), network),
-        )
-        .toList(growable: false);
-    if (actions.map((a) => a.capability).toSet().length != actions.length ||
-        actions.any((a) => !caps.any((c) => c.id == a.capability)) ||
-        caps.any(
-          (c) =>
-              c.id == 'climate.command' &&
-              !actions.any((a) => a.capability == c.id),
-        )) {
-      throw const FormatException('action capability mismatch');
-    }
     return ScriptManifest._(
       sdkVersion: json['sdkVersion'] as int,
       id: id,
@@ -191,7 +188,6 @@ class ScriptManifest {
       browser: json['browser'] as bool,
       capabilities: List.unmodifiable(caps),
       home: List.unmodifiable(home),
-      actions: List.unmodifiable(actions),
       cards: List.unmodifiable(cards),
     );
   }
@@ -206,15 +202,7 @@ class ScriptManifest {
   final bool browser;
   final List<ScriptCapability> capabilities;
   final List<ScriptHomeEntry> home;
-  final List<ScriptActionDeclaration> actions;
   final List<ScriptCardEntry> cards;
-
-  ScriptActionDeclaration? action(String capability) {
-    for (final action in actions) {
-      if (action.capability == capability) return action;
-    }
-    return null;
-  }
 
   ScriptCapability? capability(String id) {
     for (final c in capabilities) {
@@ -222,33 +210,6 @@ class ScriptManifest {
     }
     return null;
   }
-}
-
-/// 🔒 ADR-040 §4: exact action destination is part of the approved digest.
-class ScriptActionDeclaration {
-  const ScriptActionDeclaration._(this.capability, this.method, this.url);
-  factory ScriptActionDeclaration.fromJson(
-    Map<String, dynamic> json,
-    ScriptNetworkPolicy network,
-  ) {
-    _keys(json, {'capability', 'method', 'url'}, 'action');
-    final url = _text(json, 'url', 2048);
-    final uri = Uri.tryParse(url);
-    if (json['capability'] != 'climate.command' ||
-        json['method'] != 'POST' ||
-        uri == null ||
-        uri.scheme != 'https' ||
-        uri.hasQuery ||
-        uri.hasFragment ||
-        uri.userInfo.isNotEmpty ||
-        !network.allowsUrl(uri) ||
-        uri.path.isEmpty ||
-        url != uri.toString()) {
-      throw const FormatException('invalid action endpoint');
-    }
-    return ScriptActionDeclaration._('climate.command', 'POST', url);
-  }
-  final String capability, method, url;
 }
 
 class ScriptCapability {

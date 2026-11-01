@@ -7,6 +7,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import '../../session/session_scope.dart';
 import 'display_date.dart';
+import 'climate_controls.dart';
 import 'section_card.dart';
 
 Map<String, dynamic>? _map(Object? data) =>
@@ -333,7 +334,6 @@ class _ClimateSectionState extends State<ClimateSection>
   Map<String, dynamic>? _status;
   String? _selected, _outcome;
   bool _busy = false, _failed = false, _acting = false;
-  BuildContext? _confirmation;
   @override
   void initState() {
     super.initState();
@@ -343,29 +343,14 @@ class _ClimateSectionState extends State<ClimateSection>
   @override
   void dispose() {
     _actionEpoch++;
-    _closeConfirmation();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-  }
-
-  void _closeConfirmation() {
-    final dialog = _confirmation;
-    _confirmation = null;
-    if (dialog != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (dialog.mounted && (ModalRoute.of(dialog)?.isCurrent ?? false)) {
-          Navigator.of(dialog).pop(false);
-        }
-      });
-    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) {
       _actionEpoch++;
-      final dialog = _confirmation;
-      if (dialog != null && dialog.mounted) Navigator.of(dialog).pop(false);
       if (mounted) setState(() => _status = null);
     } else if (_selected != null && !_acting) {
       unawaited(_load(statusOnly: true));
@@ -378,7 +363,6 @@ class _ClimateSectionState extends State<ClimateSection>
     final session = SessionScope.of(context);
     if (_session != session ||
         _generation != session.trustedScriptViewGeneration) {
-      _closeConfirmation();
       _actionEpoch++;
       _request++;
       _session = session;
@@ -454,96 +438,84 @@ class _ClimateSectionState extends State<ClimateSection>
   }
 
   Future<void> _command(String command, Object value) async {
-    if (_busy || _acting || _status == null || _selected == null) return;
+    if (_busy ||
+        _acting ||
+        _status == null ||
+        _selected == null ||
+        !climateControlAvailable) {
+      return;
+    }
+    final session = _session!;
+    final deviceId = _selected!;
+    final device = _devices.where((d) => d['deviceId'] == deviceId).firstOrNull;
+    if (device == null) return;
     final epoch = ++_actionEpoch, generation = _generation;
     bool current() =>
         mounted &&
+        identical(session, _session) &&
         epoch == _actionEpoch &&
-        generation == _session?.trustedScriptViewGeneration &&
+        generation == session.trustedScriptViewGeneration &&
         (ModalRoute.of(context)?.isCurrent ?? false) &&
         (WidgetsBinding.instance.lifecycleState == null ||
             WidgetsBinding.instance.lifecycleState ==
                 AppLifecycleState.resumed);
+    if (!current()) return;
+    Map<String, dynamic> settings;
+    try {
+      settings = climateTarget(device, command, value);
+    } on ClimateControlException {
+      return;
+    }
     setState(() {
       _acting = true;
       _outcome = null;
     });
     try {
-      final request = await _session!.prepareClimateCommand(
-        _selected!,
-        command,
-        value,
-      );
-      if (!current()) return;
-      final result = await _session!.runClimateCommand(
-        request,
-        isCurrent: current,
-        confirm: (request) async {
-          if (!current()) return false;
-          final l10n = AppLocalizations.of(context);
-          try {
-            return await showDialog<bool>(
-                  context: context,
-                  builder: (dialog) {
-                    _confirmation = dialog;
-                    return AlertDialog(
-                      title: Text(l10n.climateConfirmTitle),
-                      content: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(request.packageName),
-                            Text(
-                              '${request.deviceLabel} · ${request.maskedDevice}',
-                            ),
-                            const SizedBox(height: 12),
-                            Text(l10n.climateConfirmBody),
-                            for (final entry in request.settings.entries)
-                              _DataLine(
-                                _settingLabel(l10n, entry.key),
-                                _settingValue(l10n, entry.key, entry.value),
-                              ),
-                          ],
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(dialog, false),
-                          child: Text(l10n.commonCancel),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(dialog, true),
-                          child: Text(l10n.climateConfirmSend),
-                        ),
-                      ],
-                    );
-                  },
-                ) ??
-                false;
-          } finally {
-            _confirmation = null;
-          }
-        },
-      );
-      if (!current()) return;
-      setState(() {
-        _outcome = result.status;
-        if (result.observed != null || result.status != 'rejected') {
-          _status = result.observed?.ok == true
-              ? _map(result.observed!.data)
-              : null;
-        }
-      });
-    } catch (_) {
-      if (current()) {
-        setState(() {
-          _outcome = 'rejected';
-          _status = null;
-        });
+      var outcome = 'unknown';
+      try {
+        final result = await session.runCapability(
+          'climate.command',
+          params: {
+            'deviceId': deviceId,
+            'command': command,
+            'settings': settings,
+          },
+          interactive: false,
+        );
+        outcome = climateCommandOutcome(ok: result.ok, output: result.data);
+      } catch (_) {
+        // A failed/uncertain send is never retried. Read the state once below.
       }
+      if (!current()) return;
+      Map<String, dynamic>? observed;
+      try {
+        final result = await session.runCapability(
+          'climate.status',
+          params: {'deviceId': deviceId},
+          interactive: false,
+        );
+        if (result.ok) observed = _map(result.data);
+        if (observed?['deviceId'] != deviceId) observed = null;
+      } catch (_) {
+        // A failed state read cannot justify another command.
+      }
+      if (!current()) return;
+      if ((outcome == 'accepted' || outcome == 'unknown') &&
+          observed != null &&
+          settings.entries.every((e) => observed![e.key] == e.value)) {
+        outcome = 'applied';
+      }
+      setState(() {
+        _outcome = outcome;
+        _status = observed;
+        _failed = observed == null;
+      });
     } finally {
-      if (mounted && generation == _generation) setState(() => _acting = false);
+      if (mounted &&
+          identical(session, _session) &&
+          generation == _generation) {
+        setState(() => _acting = false);
+      }
     }
   }
 

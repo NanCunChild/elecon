@@ -96,17 +96,19 @@ for (const mutate of [
 }
 console.log(`script-package schema: valid source package + ${rejected} rejections passed`);
 
-// ADR-040: SDK5 action shape is explicit; unknown SDKs remain rejected above.
-const actionPackage = sample();
-actionPackage.manifest.sdkVersion = 5;
-actionPackage.manifest.capabilities[0] = {
+// ADR-046: commands use the ordinary bridge; retired actions are rejected.
+const commandPackage = sample();
+commandPackage.manifest.sdkVersion = 5;
+commandPackage.manifest.capabilities[0] = {
   id: "climate.command",
   schema: "elecon.climate.command",
   schemaVersion: "1.0",
 };
-actionPackage.manifest.actions = [
-  { capability: "climate.command", method: "POST", url: "https://school.example/command" },
-];
-assert.equal(validate(actionPackage), true, JSON.stringify(validate.errors));
-actionPackage.manifest.sdkVersion = 4;
-assert.equal(validate(actionPackage), false, "older SDK must reject action declarations");
+assert.equal(validate(commandPackage), true, JSON.stringify(validate.errors));
+for (const actions of [
+  [],
+  [{ capability: "climate.command", method: "POST", url: "https://school.example/command" }],
+]) {
+  commandPackage.manifest.actions = actions;
+  assert.equal(validate(commandPackage), false, "retired actions must require a package update");
+}
