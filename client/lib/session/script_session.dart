@@ -17,6 +17,17 @@ typedef ScriptInputPresenter =
 typedef ScriptScannerPresenter =
     Future<Object?> Function(ScriptPackage package, bool Function() isActive);
 
+/// ADR-053: one page may revoke its own work without revoking school identity.
+class ScriptRunCancellation extends ChangeNotifier {
+  bool _cancelled = false;
+  bool get isCancelled => _cancelled;
+  void cancel() {
+    if (_cancelled) return;
+    _cancelled = true;
+    notifyListeners();
+  }
+}
+
 class _ScriptSessionState {
   Future<ScriptRegistry>? registry;
   Future<void> queue = Future.value();
@@ -312,6 +323,7 @@ extension TrustedScriptSession on SessionController {
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
     ScriptInputCall? inputCall,
+    ScriptRunCancellation? cancellation,
     void Function(String, String)? onLog,
   }) => _queueTrustedScript(
     id,
@@ -321,6 +333,7 @@ extension TrustedScriptSession on SessionController {
     htmlStdlib: htmlStdlib,
     browserCall: browserCall,
     inputCall: inputCall,
+    cancellation: cancellation,
     onLog: onLog,
   );
 
@@ -332,12 +345,15 @@ extension TrustedScriptSession on SessionController {
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
     ScriptInputCall? inputCall,
+    ScriptRunCancellation? cancellation,
     void Function(String, String)? onLog,
   }) {
     final state = _scripts;
     final generation = state.generation;
     final pending = state.queue.then<CapabilityRun>((_) {
-      if (state.disposed || state.generation != generation) {
+      if (state.disposed ||
+          state.generation != generation ||
+          cancellation?.isCancelled == true) {
         return const CapabilityRun.failed(
           CapabilityFailureKind.run,
           'script_cancelled',
@@ -352,6 +368,7 @@ extension TrustedScriptSession on SessionController {
         htmlStdlib: htmlStdlib,
         browserCall: browserCall,
         inputCall: inputCall,
+        cancellation: cancellation,
         onLog: onLog,
       );
     });
@@ -368,6 +385,7 @@ extension TrustedScriptSession on SessionController {
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
     ScriptInputCall? inputCall,
+    ScriptRunCancellation? cancellation,
     void Function(String, String)? onLog,
   }) async {
     final state = _scripts;
@@ -386,7 +404,9 @@ extension TrustedScriptSession on SessionController {
         'script_registry_unavailable',
       );
     }
-    if (state.disposed || state.generation != expectedGeneration) {
+    if (state.disposed ||
+        state.generation != expectedGeneration ||
+        cancellation?.isCancelled == true) {
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
         'script_cancelled',
@@ -419,6 +439,7 @@ extension TrustedScriptSession on SessionController {
     }
     if (state.disposed ||
         state.generation != expectedGeneration ||
+        cancellation?.isCancelled == true ||
         registry.epoch != admissionEpoch ||
         _school?.id != school.id) {
       return const CapabilityRun.failed(
@@ -433,6 +454,7 @@ extension TrustedScriptSession on SessionController {
     final backend = _secure;
     bool active() =>
         !state.disposed &&
+        cancellation?.isCancelled != true &&
         state.generation == generation &&
         registry.epoch == epoch &&
         identical(store, _store) &&
@@ -445,6 +467,12 @@ extension TrustedScriptSession on SessionController {
       policy: package.manifest.websocketNetwork,
     );
     state.sockets.add(socket);
+    void closeTransports() {
+      transport.close();
+      socket.close();
+    }
+
+    cancellation?.addListener(closeTransports);
     DevLog.instance.runtime('script start: $id $capability');
     CapabilityRun result;
     try {
@@ -546,6 +574,7 @@ extension TrustedScriptSession on SessionController {
       };
       result = CapabilityRun.failed(CapabilityFailureKind.run, code);
     } finally {
+      cancellation?.removeListener(closeTransports);
       transport.close();
       state.transports.remove(transport);
       socket.close();

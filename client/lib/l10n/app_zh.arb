@@ -531,7 +531,6 @@
     }
   },
   "scriptsWebsocketPermission": "允许前台有界 WebSocket 连接：",
-  "scriptsChaoxingEnhancement": "导入学习通增强包",
   "forumAccountDescription": "连接独立的瑞思论坛账号。当前支持登录与本地退出，帖子浏览正在准备。",
   "messagesWindowDescription": "手动获取学习通当前窗口的群消息，不包含完整历史或私信；接收回执不表示你已读。扫码签到仅支持无需定位、人脸、照片或验证码的活动。",
   "communitySignedOut": "尚未连接此服务账号",

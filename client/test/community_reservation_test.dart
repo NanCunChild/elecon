@@ -16,6 +16,7 @@ ScriptPackage package(
   String id,
   List<String> capabilities, {
   String school = 'synthetic',
+  String? source,
 }) => ScriptPackage.parse(
   jsonEncode({
     'format': 'elecon-script/1',
@@ -37,6 +38,7 @@ ScriptPackage package(
       ],
     },
     'source':
+        source ??
         "export const capabilities={'forum.session':async()=>({serviceId:'synthetic',serviceName:'Synthetic',status:'signedOut'}),'messages.list':async()=>{throw new Error('should be manually invoked')}};",
   }),
 );
@@ -52,6 +54,40 @@ Future<void> pumpSources(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'leaving a busy forum preserves the school execution generation',
+    (tester) async {
+      final session = SessionController();
+      addTearDown(session.dispose);
+      final service = package(
+        'forum',
+        ['forum.session'],
+        source: '''export const capabilities={'forum.session':async()=>{
+        await new Promise(resolve=>setTimeout(resolve,10000));
+        return {serviceId:'synthetic',serviceName:'Synthetic',status:'signedOut'};
+      }};''',
+      );
+      await tester.runAsync(() async {
+        await install(session, service);
+        await session.selectTrustedScriptSchool('forum');
+      });
+      final generation = session.trustedScriptViewGeneration;
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ForumPage(session: session, package: service),
+        ),
+      );
+      await tester.pump();
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(session.trustedScriptViewGeneration, generation);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final language in ['zh', 'en']) {
     for (final brightness in Brightness.values) {
       testWidgets(

@@ -1,16 +1,13 @@
 /** ADR-052: deterministic enhancement packages and offline protocol fixtures. */
 import { strict as assert } from "node:assert";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { buildChaoxingPackages } from "./chaoxing.js";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const first = await buildChaoxingPackages();
-assert.equal(
-  readFileSync(`${root}/client/assets/school-scripts/CHAOXING-LICENSE.txt`, "utf8"),
-  readFileSync(`${root}/school-scripts/xidian-chaoxing/LICENSE`, "utf8"),
-);
+assert.ok(!readdirSync(`${root}/client/assets/school-scripts`).some((name) => /chaoxing/i.test(name)));
 assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildChaoxingPackages())]);
 for (const [name, content] of first) {
@@ -24,7 +21,9 @@ for (const [name, content] of first) {
   assert.deepEqual(p.manifest.websocketOrigins, ["wss://im-api-wechat-vip6.easemob.com"]);
   assert.equal(p.manifest.home, undefined);
   assert.equal(p.manifest.id, `enhancement-${p.manifest.schoolId.replaceAll("_", "-")}-chaoxing`);
-  assert.equal(readFileSync(`${root}/client/assets/school-scripts/${name}`, "utf8"), content);
+  if (p.manifest.schoolId === "xidian_undergraduate") {
+    assert.equal(readFileSync(`${root}/client/test/fixtures/community/${name}`, "utf8"), content);
+  }
 }
 execFileSync(
   process.execPath,

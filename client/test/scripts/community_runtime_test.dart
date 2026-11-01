@@ -16,7 +16,7 @@ void main() {
   setUp(() {
     enhancement = ScriptPackage.parse(
       File(
-        'assets/school-scripts/enhancement-xidian-undergraduate-chaoxing.elecon.json',
+        'test/fixtures/community/enhancement-xidian-undergraduate-chaoxing.elecon.json',
       ).readAsStringSync(),
     );
     store = CredentialStore(store: InMemorySecureStore(releaseMode: false));

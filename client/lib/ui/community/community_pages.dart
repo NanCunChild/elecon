@@ -1,9 +1,12 @@
 import 'package:elecon_contract/messages_list.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/adapter_service.dart';
 import '../../core/scripts/manifest.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
+import '../scripts/script_input_presenter.dart';
+import '../scripts/script_presenter.dart';
 
 class ForumPage extends StatelessWidget {
   const ForumPage({super.key, required this.session, required this.package});
@@ -44,6 +47,7 @@ class _ServicePageState extends State<_ServicePage>
   String? _error;
   String? _checkin;
   int _request = 0;
+  ScriptRunCancellation? _cancellation;
   String get _accountCapability =>
       widget.messages ? 'messages.session' : 'forum.session';
   bool get _hasAccount =>
@@ -67,7 +71,7 @@ class _ServicePageState extends State<_ServicePage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _request++;
-    if (_busy) widget.session.cancelTrustedScriptRuns();
+    _cancellation?.cancel();
     super.dispose();
   }
 
@@ -80,6 +84,7 @@ class _ServicePageState extends State<_ServicePage>
     // Frames stop while paused. Clear private state immediately, without waiting
     // for the shell's rebuild to dispose this page. The shell cancels execution.
     _request++;
+    _cancellation?.cancel();
     setState(() {
       _account = null;
       _messages = null;
@@ -93,6 +98,8 @@ class _ServicePageState extends State<_ServicePage>
     if (_busy) return;
     final request = ++_request;
     final generation = widget.session.trustedScriptViewGeneration;
+    final cancellation = ScriptRunCancellation();
+    _cancellation = cancellation;
     setState(() {
       _busy = true;
       _error = null;
@@ -102,11 +109,28 @@ class _ServicePageState extends State<_ServicePage>
       if (operation != null) _account = null;
     });
     try {
-      final result = await widget.session.runTrustedScript(
-        widget.package.manifest.id,
-        capability,
-        params: operation == null ? const {} : {'operation': operation},
-      );
+      final result =
+          await presentScriptInput(
+                context,
+                widget.package,
+                (input) => presentScriptBrowser(
+                  context,
+                  widget.package,
+                  (browser) => widget.session.runTrustedScript(
+                    widget.package.manifest.id,
+                    capability,
+                    params: operation == null
+                        ? const {}
+                        : {'operation': operation},
+                    inputCall: input,
+                    browserCall: browser,
+                    cancellation: cancellation,
+                  ),
+                  onCancel: cancellation.cancel,
+                ),
+                onCancel: cancellation.cancel,
+              )
+              as CapabilityRun;
       if (!mounted ||
           request != _request ||
           generation != widget.session.trustedScriptViewGeneration) {
@@ -150,6 +174,8 @@ class _ServicePageState extends State<_ServicePage>
         setState(() => _error = 'script_failed');
       }
     } finally {
+      if (identical(_cancellation, cancellation)) _cancellation = null;
+      cancellation.dispose();
       if (mounted && request == _request) setState(() => _busy = false);
     }
   }
