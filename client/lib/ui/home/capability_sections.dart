@@ -726,7 +726,17 @@ class _ClassroomSectionState extends State<ClassroomSection>
       if (_buildings.isEmpty) {
         _buildingsError = AppLocalizations.of(context).classroomNoBuildings;
       }
-      if (!_buildings.contains(_selected)) {
+      if (_selected != null) {
+        final selected = _selected!;
+        _selected = _buildings
+            .where(
+              (item) => selected.buildingId != null
+                  ? item.buildingId == selected.buildingId
+                  : item.building == selected.building,
+            )
+            .firstOrNull;
+      }
+      if (_selected == null) {
         final matches = _buildings.where(
           (item) =>
               item.buildingId == _restoredParams['buildingId'] &&
@@ -741,7 +751,8 @@ class _ClassroomSectionState extends State<ClassroomSection>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_prepared && (HomeCardPresentation.maybeOf(context)?.isPage ?? false)) {
+    if (!_prepared &&
+        (HomeCardPresentation.maybeOf(context)?.isPage ?? false)) {
       _prepared = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
