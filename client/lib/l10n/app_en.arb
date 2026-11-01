@@ -299,7 +299,7 @@
   "homeLayoutDone": "Done",
   "homeLayoutReset": "Reset layout",
   "homeLayoutHint": "Hold and drag a card; pause to move its neighbours. Tap a card to change size or order.",
-  "homeLayoutCompact": "Icon only",
+  "homeLayoutCompact": "Icon and label",
   "homeLayoutRegular": "Half width",
   "homeLayoutExpanded": "Full width",
   "homeLayoutMoveBefore": "Move earlier",
@@ -329,5 +329,11 @@
   "homeCardNeedsLogin": "Sign in to view",
   "homeCardAvailableRooms": "Known available rooms",
   "homeCardTableRows": "{count} records",
-  "@homeCardTableRows": {"placeholders": {"count": {"type": "int"}}}
+  "@homeCardTableRows": {"placeholders": {"count": {"type": "int"}}},
+  "homeLayoutManage": "Home cards",
+  "homeLayoutManageHint": "Choose which cards appear on your home screen. Hidden cards keep their size, style and order.",
+  "homeLayoutHide": "Hide from home",
+  "homeLayoutEmpty": "No cards are showing. Add some in Home cards.",
+  "homeLayoutPreset": "Display style",
+  "homeLayoutPresetStandard": "Standard"
 }

@@ -224,9 +224,10 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
   };
 
   Future<void> _menu(HomeCardEntry card) async {
+    if (_dragging != null) return;
     final generation = _generation;
     final l10n = AppLocalizations.of(context);
-    final cards = _layout.arrange(widget.cards);
+    final cards = _layout.visible(widget.cards);
     final index = cards.indexWhere((c) => c.id == card.id);
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -253,8 +254,28 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                   trailing: card.supportedSize(_layout.sizes[card.id]) == size
                       ? const Icon(Icons.check)
                       : null,
-                  onTap: () => Navigator.pop(context, size.name),
+                  onTap: () => Navigator.pop(context, 'size:${size.name}'),
                 ),
+              if (card.presets.isNotEmpty) ...[
+                const Divider(),
+                ListTile(title: Text(l10n.homeLayoutPreset)),
+                for (final preset in [
+                  (HomeCardPreset.standard, l10n.homeLayoutPresetStandard),
+                  for (final preset in card.presets) (preset.id, preset.label),
+                ])
+                  ListTile(
+                    key: ValueKey('home-card-preset:${preset.$1}'),
+                    leading: const Icon(Icons.style_outlined),
+                    title: Text(preset.$2),
+                    trailing:
+                        card.supportedPreset(_layout.presets[card.id]) ==
+                            preset.$1
+                        ? const Icon(Icons.check)
+                        : null,
+                    onTap: () => Navigator.pop(context, 'preset:${preset.$1}'),
+                  ),
+                const Divider(),
+              ],
               ListTile(
                 key: ValueKey('home-card-before:${card.id}'),
                 enabled: index > 0,
@@ -272,6 +293,12 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                 onTap: index < cards.length - 1
                     ? () => Navigator.pop(context, 'after')
                     : null,
+              ),
+              ListTile(
+                key: ValueKey('home-card-hide:${card.id}'),
+                leading: const Icon(Icons.visibility_off_outlined),
+                title: Text(l10n.homeLayoutHide),
+                onTap: () => Navigator.pop(context, 'hide'),
               ),
             ],
           ),
@@ -292,17 +319,94 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
           widget.cards,
         ),
       );
-    } else {
+    } else if (result == 'hide') {
       setState(() => _opened = null);
-      _change(_layout.resize(card.id, HomeCardSize.values.byName(result)));
+      _change(_layout.show(card.id, false));
+    } else if (result.startsWith('preset:')) {
+      _change(_layout.selectPreset(card.id, result.substring(7)));
+    } else if (result.startsWith('size:')) {
+      setState(() => _opened = null);
+      _change(
+        _layout.resize(
+          card.id,
+          HomeCardSize.values.byName(result.substring(5)),
+        ),
+      );
     }
+  }
+
+  Future<void> _manage() async {
+    if (_dragging != null) return;
+    final generation = _generation;
+    FocusScope.of(context).unfocus();
+    final l10n = AppLocalizations.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .85,
+      ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, updateSheet) {
+          void change(HomeCardLayout layout) {
+            if (!mounted || generation != _generation) {
+              Navigator.pop(sheetContext);
+              return;
+            }
+            setState(() => _opened = null);
+            _change(layout);
+            updateSheet(() {});
+          }
+
+          return SafeArea(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ListTile(
+                    title: Text(l10n.homeLayoutManage),
+                    subtitle: Text(l10n.homeLayoutManageHint),
+                  ),
+                  for (final card in _layout.arrange(widget.cards))
+                    SwitchListTile(
+                      key: ValueKey('home-card-visible:${card.id}'),
+                      secondary: Icon(card.icon),
+                      title: Text(card.label),
+                      value: !_layout.hidden.contains(card.id),
+                      onChanged: (visible) {
+                        if (widget.cards.any((c) => c.id == card.id)) {
+                          change(_layout.show(card.id, visible));
+                        }
+                      },
+                    ),
+                  ListTile(
+                    leading: const Icon(Icons.restore),
+                    title: Text(l10n.homeLayoutReset),
+                    onTap: () => change(HomeCardLayout()),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      child: Text(l10n.homeLayoutDone),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final cards = _layout.arrange(widget.cards);
-    if (cards.isEmpty) return const SizedBox.shrink();
+    final cards = _layout.visible(widget.cards);
+    if (widget.cards.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -310,21 +414,20 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
           alignment: AlignmentDirectional.centerEnd,
           child: Wrap(
             children: [
-              if (_editing)
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() => _opened = null);
-                    _change(HomeCardLayout());
-                  },
-                  icon: const Icon(Icons.restore),
-                  label: Text(l10n.homeLayoutReset),
-                ),
+              TextButton.icon(
+                key: const ValueKey('home-layout-manage'),
+                onPressed: _dragging == null ? _manage : null,
+                icon: const Icon(Icons.tune),
+                label: Text(l10n.homeLayoutManage),
+              ),
               TextButton.icon(
                 key: const ValueKey('home-layout-edit'),
                 // Keep the grid stationary as the first long press picks up a card.
                 // Gesture guidance is available without adding an editing frame.
                 // The same menu is reachable by keyboard and screen readers.
-                onPressed: _editing
+                onPressed: _dragging != null
+                    ? null
+                    : _editing
                     ? () => setState(() => _editing = false)
                     : _edit,
                 icon: Icon(
@@ -346,6 +449,11 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                 child: Text(l10n.homeLayoutRetry),
               ),
             ],
+          ),
+        if (cards.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+            child: Text(l10n.homeLayoutEmpty, textAlign: TextAlign.center),
           ),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -377,7 +485,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
               final tileWidth = unit * span + gap * (span - 1);
               final height =
                   _heights[card.id] ??
-                  (size == HomeCardSize.compact ? 80.0 : 168.0);
+                  (size == HomeCardSize.compact ? 104.0 : 168.0);
               _slots[card.id] = Rect.fromLTWH(x, y, tileWidth, height);
               rowHeight = math.max(rowHeight, height);
               x += tileWidth + gap;
@@ -433,7 +541,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
     final size = _opened == card.id
         ? HomeCardSize.expanded
         : card.supportedSize(_layout.sizes[card.id]);
-    final iconOnly = size == HomeCardSize.compact;
+    final compact = size == HomeCardSize.compact;
     final colors = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     void open() => setState(() => _opened = card.id);
@@ -481,28 +589,38 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (iconOnly)
-                  SizedBox(
-                    height: 80,
-                    child: Center(
-                      child: TooltipTheme(
-                        // Leave the long-press gesture to the launcher drag.
-                        // The tooltip still provides hover and semantic labels.
-                        data: TooltipTheme.of(
-                          context,
-                        ).copyWith(triggerMode: TooltipTriggerMode.manual),
-                        child: IconButton.filledTonal(
-                          key: ValueKey('home-card-open:${card.id}'),
-                          tooltip: card.label,
-                          onPressed: _editing ? () => _menu(card) : open,
-                          style: IconButton.styleFrom(
-                            minimumSize: const Size(56, 56),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                          icon: Icon(card.icon, size: 28),
+                if (compact)
+                  Tooltip(
+                    // Leave long press to the launcher drag recognizer.
+                    triggerMode: TooltipTriggerMode.manual,
+                    excludeFromSemantics: true,
+                    message: card.label,
+                    child: FilledButton.tonal(
+                      key: ValueKey('home-card-open:${card.id}'),
+                      onPressed: _editing ? () => _menu(card) : open,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 16,
                         ),
+                        minimumSize: const Size(0, 104),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(card.icon, size: 36),
+                          const SizedBox(height: 8),
+                          Text(
+                            card.label,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -519,23 +637,24 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                     ),
                   ),
                 Offstage(
-                  offstage: iconOnly,
+                  offstage: compact,
                   child: TickerMode(
-                    enabled: !iconOnly,
+                    enabled: !compact,
                     child: OverflowBox(
                       fit: OverflowBoxFit.deferToChild,
-                      minWidth: iconOnly ? boardWidth : null,
-                      maxWidth: iconOnly ? boardWidth : null,
+                      minWidth: compact ? boardWidth : null,
+                      maxWidth: compact ? boardWidth : null,
                       child: HomeCardPresentation(
                         size: size,
+                        preset: card.supportedPreset(_layout.presets[card.id]),
                         icon: card.icon,
                         onOpen: open,
                         child: AbsorbPointer(
-                          absorbing: _editing || iconOnly,
+                          absorbing: _editing || compact,
                           child: ExcludeFocus(
-                            excluding: _editing || iconOnly,
+                            excluding: _editing || compact,
                             child: ExcludeSemantics(
-                              excluding: _editing || iconOnly,
+                              excluding: _editing || compact,
                               child: KeyedSubtree(
                                 key: ValueKey('home-card-content:${card.id}'),
                                 child: Builder(builder: card.builder),

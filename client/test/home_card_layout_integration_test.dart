@@ -95,6 +95,47 @@ void main() {
     });
   }
 
+  testWidgets(
+    'real home visibility survives restart and restores the chosen size',
+    (tester) async {
+      final store = LayoutMemory();
+      store.values['preview'] = HomeCardLayout(
+        sizes: {'notice': HomeCardSize.compact},
+      );
+      await tester.pumpWidget(app(store));
+      await tester.pumpAndSettle();
+      expect(find.text('通知'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('home-layout-manage')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('home-card-visible:notice')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('home-card:notice')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('home-card:generic:extra')),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(app(store));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('home-card:notice')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('home-layout-manage')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('home-card-visible:notice')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+      expect(find.text('通知'), findsOneWidget);
+      expect(find.text('Notice 1'), findsNothing);
+      expect(store.values['preview']!.sizes['notice'], HomeCardSize.compact);
+      await tester.tap(find.byKey(const ValueKey('home-card-open:notice')));
+      await tester.pumpAndSettle();
+      expect(find.text('Notice 1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('full preview clears when identity or data source changes', (
     tester,
   ) async {

@@ -367,7 +367,7 @@
   "homeLayoutDone": "完成",
   "homeLayoutReset": "恢复默认",
   "homeLayoutHint": "长按并拖动卡片，停留片刻即可让位；点卡片调整尺寸或顺序。",
-  "homeLayoutCompact": "仅图标",
+  "homeLayoutCompact": "图标与名称",
   "homeLayoutRegular": "半宽摘要",
   "homeLayoutExpanded": "全宽详情",
   "homeLayoutMoveBefore": "向前移动",
@@ -397,5 +397,11 @@
   "homeCardNeedsLogin": "登录后查看",
   "homeCardAvailableRooms": "已知空闲教室",
   "homeCardTableRows": "{count} 条记录",
-  "@homeCardTableRows": {"placeholders": {"count": {"type": "int"}}}
+  "@homeCardTableRows": {"placeholders": {"count": {"type": "int"}}},
+  "homeLayoutManage": "主页展示",
+  "homeLayoutManageHint": "选择显示在主页上的卡片。隐藏后会保留尺寸、样式和顺序。",
+  "homeLayoutHide": "从主页隐藏",
+  "homeLayoutEmpty": "还没有显示的卡片，可在“主页展示”中添加。",
+  "homeLayoutPreset": "展示样式",
+  "homeLayoutPresetStandard": "标准样式"
 }

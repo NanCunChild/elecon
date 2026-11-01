@@ -74,6 +74,7 @@ class _CounterCardState extends State<_CounterCard> {
     child: Column(
       children: [
         Text('${widget.id}:${HomeCardPresentation.of(context).name}:$count'),
+        Text('preset:${widget.id}:${HomeCardPresentation.presetOf(context)}'),
         TextButton(
           key: ValueKey('action:${widget.id}'),
           onPressed: () => setState(() => count++),
@@ -145,6 +146,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('action:notice')));
       final g = await pickup(tester, 'notice');
       expect(find.text('完成'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('home-layout-manage')));
+      await tester.pump();
+      expect(find.byType(SwitchListTile), findsNothing);
       await g.moveTo(tester.getCenter(card('schedule')));
       await tester.pump(const Duration(milliseconds: 160));
       await tester.pump(const Duration(milliseconds: 250));
@@ -262,6 +266,15 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.getSize(card('notice')).width, 91);
+    expect(tester.getSize(control('open', 'notice')).width, 91);
+    expect(
+      tester.getSize(control('open', 'notice')).height,
+      greaterThanOrEqualTo(104),
+    );
+    expect(
+      find.descendant(of: card('notice'), matching: find.text('notice')),
+      findsOneWidget,
+    );
     expect(tester.getSize(card('schedule')).width, 194);
     expect(tester.getSize(card('library')).width, 400);
     await tester.pumpWidget(app(store, scale: 2));
@@ -307,6 +320,8 @@ void main() {
     await tester.tap(find.text('重试保存'));
     await tester.pumpAndSettle();
     expect(find.text('布局暂未保存，请重试'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('home-layout-manage')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('恢复默认'));
     await tester.pumpAndSettle();
     expect(store.layouts['a']!.order, isEmpty);
@@ -346,4 +361,178 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('notice:regular:0'), findsOneWidget);
   });
+  testWidgets('quarter tile opens from its edge and exposes a visible label', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryLayoutStore();
+    store.layouts['a'] = HomeCardLayout(
+      sizes: {'notice': HomeCardSize.compact},
+    );
+    await tester.pumpWidget(app(store));
+    await tester.pumpAndSettle();
+    expect(find.text('notice'), findsOneWidget);
+    expect(
+      tester.getSize(control('open', 'notice')).width,
+      tester.getSize(card('notice')).width,
+    );
+    await tester.tapAt(
+      tester.getTopLeft(control('open', 'notice')) + const Offset(4, 50),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('notice:expanded:0'), findsOneWidget);
+    expect(store.layouts['a']!.sizes['notice'], HomeCardSize.compact);
+  });
+
+  testWidgets('all cards can be hidden, reopened after restart and reset', (
+    tester,
+  ) async {
+    final store = MemoryLayoutStore();
+    store.layouts['a'] = HomeCardLayout(
+      order: ['schedule', 'notice'],
+      sizes: {'notice': HomeCardSize.compact},
+      presets: {'notice': 'future-style'},
+    );
+    await tester.pumpWidget(app(store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('home-layout-manage')));
+    await tester.pumpAndSettle();
+    await tester.tap(control('visible', 'notice'));
+    await tester.pumpAndSettle();
+    await tester.tap(control('visible', 'schedule'));
+    await tester.pumpAndSettle();
+    expect(store.layouts['a']!.hidden, {'notice', 'schedule'});
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(card('notice'), findsNothing);
+    expect(card('schedule'), findsNothing);
+    expect(find.byType(_CounterCard, skipOffstage: false), findsNothing);
+    expect(find.text('还没有显示的卡片，可在“主页展示”中添加。'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(app(store));
+    await tester.pumpAndSettle();
+    expect(card('notice'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('home-layout-manage')));
+    await tester.pumpAndSettle();
+    await tester.tap(control('visible', 'notice'));
+    await tester.pumpAndSettle();
+    expect(store.layouts['a']!.hidden, {'schedule'});
+    expect(store.layouts['a']!.sizes['notice'], HomeCardSize.compact);
+    expect(store.layouts['a']!.presets['notice'], 'future-style');
+    expect(store.layouts['a']!.order, ['schedule', 'notice']);
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(find.text('notice'), findsOneWidget);
+    await tester.pumpWidget(app(store, school: 'b'));
+    await tester.pumpAndSettle();
+    expect(card('schedule'), findsOneWidget);
+    await tester.pumpWidget(app(store));
+    await tester.pumpAndSettle();
+    expect(card('schedule'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('home-layout-manage')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('恢复默认'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(card('schedule'), findsOneWidget);
+    expect(store.layouts['a']!.hidden, isEmpty);
+    expect(store.layouts['a']!.presets, isEmpty);
+    expect(store.layouts['a']!.sizes, isEmpty);
+    expect(store.layouts['a']!.order, isEmpty);
+  });
+
+  testWidgets(
+    'hidden card menu preserves draft on save failure and can retry',
+    (tester) async {
+      final store = MemoryLayoutStore()..fail = true;
+      await tester.pumpWidget(app(store));
+      await tester.pumpAndSettle();
+      await edit(tester);
+      await tester.tap(card('notice'));
+      await tester.pumpAndSettle();
+      expect(find.text('展示样式'), findsNothing);
+      await tester.ensureVisible(control('hide', 'notice'));
+      await tester.tap(control('hide', 'notice'));
+      await tester.pumpAndSettle();
+      expect(card('notice'), findsNothing);
+      expect(find.text('布局暂未保存，请重试'), findsOneWidget);
+      store.fail = false;
+      await tester.tap(find.text('重试保存'));
+      await tester.pumpAndSettle();
+      expect(store.layouts['a']!.hidden, {'notice'});
+      expect(find.text('布局暂未保存，请重试'), findsNothing);
+    },
+  );
+
+  testWidgets('old school visibility sheet cannot edit a new school', (
+    tester,
+  ) async {
+    final store = MemoryLayoutStore();
+    await tester.pumpWidget(app(store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('home-layout-manage')));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(app(store, school: 'b'));
+    await tester.pumpAndSettle();
+    await tester.tap(control('visible', 'notice'));
+    await tester.pumpAndSettle();
+    expect(store.layouts, isEmpty);
+    expect(card('notice'), findsOneWidget);
+    expect(find.byType(SwitchListTile), findsNothing);
+  });
+
+  testWidgets(
+    'registered presets share card state and fall back without losing preferences',
+    (tester) async {
+      final store = MemoryLayoutStore();
+      final configured = [
+        HomeCardEntry(
+          id: 'notice',
+          label: 'notice',
+          defaultSize: HomeCardSize.expanded,
+          presets: const [
+            HomeCardPreset(id: 'preview', label: 'Synthetic preview'),
+          ],
+          builder: (_) => const _CounterCard('notice'),
+        ),
+      ];
+      await tester.pumpWidget(app(store, cards: configured));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('action:notice')));
+      await edit(tester);
+      await choose(tester, 'notice', 'home-card-preset:preview');
+      expect(find.text('preset:notice:preview'), findsOneWidget);
+      expect(find.text('notice:expanded:1'), findsOneWidget);
+      expect(store.layouts['a']!.presets['notice'], 'preview');
+      await choose(tester, 'notice', 'home-card-size:compact');
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+      await tester.tap(control('open', 'notice'));
+      await tester.pumpAndSettle();
+      expect(find.text('preset:notice:preview'), findsOneWidget);
+      expect(find.text('notice:expanded:1'), findsOneWidget);
+      await tester.pumpWidget(app(store));
+      await tester.pumpAndSettle();
+      expect(find.text('preset:notice:standard'), findsOneWidget);
+      expect(store.layouts['a']!.presets['notice'], 'preview');
+      await tester.pumpWidget(app(store, cards: configured));
+      await tester.pumpAndSettle();
+      expect(find.text('preset:notice:preview'), findsOneWidget);
+      expect(find.text('notice:expanded:1'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(app(store, cards: configured));
+      await tester.pumpAndSettle();
+      await tester.tap(control('open', 'notice'));
+      await tester.pumpAndSettle();
+      expect(find.text('preset:notice:preview'), findsOneWidget);
+      await edit(tester);
+      await choose(tester, 'notice', 'home-card-preset:standard');
+      expect(store.layouts['a']!.presets, isEmpty);
+      expect(find.text('preset:notice:standard'), findsOneWidget);
+    },
+  );
 }
