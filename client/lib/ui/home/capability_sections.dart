@@ -8,6 +8,9 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:elecon_contract/card_qr.dart';
 
 import 'package:flutter/material.dart';
 
@@ -402,6 +405,20 @@ class ScheduleSection extends StatefulWidget {
 
 class _ScheduleSectionState extends State<ScheduleSection>
     with _CachedSection<ScheduleSection, ScheduleWeek> {
+  bool _opened = false;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_opened && (HomeCardPresentation.maybeOf(context)?.isPage ?? false)) {
+      _opened = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await restoreCache();
+        if (mounted && _data == null && _phase == _Phase.idle) await _load();
+      });
+    }
+  }
+
   @override
   String get cacheCapability => 'schedule.week';
   @override
@@ -501,7 +518,9 @@ class _ScheduleSectionState extends State<ScheduleSection>
 
   @override
   Widget build(BuildContext context) {
-    if (_data != null && HomeCardPresentation.isPreview(context)) {
+    if (_data != null &&
+        HomeCardPresentation.maybeOf(context) != null &&
+        !(HomeCardPresentation.maybeOf(context)?.isPage ?? false)) {
       return withCacheTime(ScheduleCard(_data!));
     }
     final busy = _phase == _Phase.loading;
@@ -603,6 +622,8 @@ class ClassroomSection extends StatefulWidget {
 class _ClassroomSectionState extends State<ClassroomSection>
     with _CachedSection<ClassroomSection, ClassroomAvailable> {
   bool _manualSelection = false;
+  bool _prepared = false;
+  String _room = "";
   @override
   String get cacheCapability => 'classroom.available';
   @override
@@ -613,10 +634,9 @@ class _ClassroomSectionState extends State<ClassroomSection>
   @override
   Map<String, dynamic>? get cacheParams => {
     'date': _formatDate(_date),
-    if (_selected?.buildingId != null)
-      'buildingId': _selected!.buildingId
-    else if (_selected != null)
-      'building': _selected!.building,
+    if (_selected?.buildingId != null) 'buildingId': _selected!.buildingId,
+    if (_selected != null) 'building': _selected!.building,
+    if (_selected?.campus != null) 'campus': _selected!.campus,
   };
   @override
   void applyCache(ClassroomAvailable data) {
@@ -631,6 +651,8 @@ class _ClassroomSectionState extends State<ClassroomSection>
 
   @override
   void clearCache() {
+    _prepared = false;
+    _room = "";
     _buildingsPhase = _Phase.idle;
     _buildings = const [];
     _selected = null;
@@ -657,7 +679,10 @@ class _ClassroomSectionState extends State<ClassroomSection>
     if (decoded == null) return;
     setState(() {
       _buildings = decoded.items ?? const [];
-      _buildingsPhase = _Phase.loaded;
+      _buildingsPhase = _buildings.isEmpty ? _Phase.error : _Phase.loaded;
+      if (_buildings.isEmpty) {
+        _buildingsError = AppLocalizations.of(context).classroomNoBuildings;
+      }
       if (!_buildings.contains(_selected)) {
         final matches = _buildings.where(
           (item) =>
@@ -668,6 +693,19 @@ class _ClassroomSectionState extends State<ClassroomSection>
         _selected = matches.firstOrNull ?? _buildings.firstOrNull;
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_prepared && (HomeCardPresentation.maybeOf(context)?.isPage ?? false)) {
+      _prepared = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await restoreCache();
+        if (mounted && _buildingsPhase == _Phase.idle) await _loadBuildings();
+      });
+    }
   }
 
   // 教学楼列表阶段
@@ -702,6 +740,10 @@ class _ClassroomSectionState extends State<ClassroomSection>
       } else {
         _buildingsPhase = _Phase.loaded;
         _buildings = outcome.data?.items ?? const [];
+        if (_buildings.isEmpty) {
+          _buildingsPhase = _Phase.error;
+          _buildingsError = AppLocalizations.of(context).classroomNoBuildings;
+        }
         _selected = _buildings.isNotEmpty ? _buildings.first : null;
       }
     });
@@ -724,6 +766,8 @@ class _ClassroomSectionState extends State<ClassroomSection>
     final params = <String, dynamic>{'date': _formatDate(_date)};
     if (building.buildingId != null && building.buildingId!.isNotEmpty) {
       params['buildingId'] = building.buildingId;
+      params['building'] = building.building;
+      if (building.campus != null) params['campus'] = building.campus;
     } else {
       params['building'] = building.building;
     }
@@ -782,7 +826,7 @@ class _ClassroomSectionState extends State<ClassroomSection>
           _PromptCard(
             title: '空教室',
             summary: _querySummary(context, _buildingsPhase),
-            subtitle: '先加载教学楼列表',
+            subtitle: AppLocalizations.of(context).classroomPreparing,
             child: _PhaseBody(
               phase: _buildingsPhase,
               error: _buildingsError,
@@ -803,7 +847,7 @@ class _ClassroomSectionState extends State<ClassroomSection>
         _PromptCard(
           title: '空教室',
           summary: _querySummary(context, _availPhase),
-          subtitle: '选择教学楼与日期后查询',
+          subtitle: AppLocalizations.of(context).classroomSearchHint,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -861,20 +905,32 @@ class _ClassroomSectionState extends State<ClassroomSection>
             ],
           ),
         ),
-        if (_avail != null) withCacheTime(_ClassroomResultCard(data: _avail!)),
+        if (_avail != null) ...[
+          TextField(
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              labelText: AppLocalizations.of(context).classroomRoomHint,
+            ),
+            onChanged: (value) => setState(() => _room = value.trim()),
+          ),
+          withCacheTime(_ClassroomResultCard(data: _avail!, roomFilter: _room)),
+        ],
       ],
     );
   }
 }
 
 class _ClassroomResultCard extends StatelessWidget {
-  const _ClassroomResultCard({required this.data});
+  const _ClassroomResultCard({required this.data, this.roomFilter = ""});
+  final String roomFilter;
 
   final ClassroomAvailable data;
 
   @override
   Widget build(BuildContext context) {
-    final items = data.items ?? const [];
+    final items = (data.items ?? const <ClassroomAvailableItems>[])
+        .where((item) => item.room.contains(roomFilter))
+        .toList();
     final free = items
         .where(
           (i) =>
@@ -940,7 +996,15 @@ String _roomStatusText(String status) => switch (status) {
 // ===========================================================================
 
 class CardSection extends StatefulWidget {
-  const CardSection({super.key, this.transactionsEnabled = true});
+  const CardSection({
+    super.key,
+    this.transactionsEnabled = true,
+    this.balanceEnabled = true,
+    this.qrEnabled = false,
+  });
+
+  final bool balanceEnabled;
+  final bool qrEnabled;
 
   final bool transactionsEnabled;
 
@@ -1009,79 +1073,320 @@ class _CardSectionState extends State<CardSection>
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    if (data == null) {
-      return _PromptCard(
-        title: '一卡通',
-        summary: _querySummary(context, _phase),
-        subtitle: widget.transactionsEnabled ? '仅在你点击后查询余额和交易记录' : '仅在你点击后查询余额',
-        child: _PhaseBody(
-          phase: _phase,
-          error: _error,
-          idleLabel: '查看余额',
-          onLoad: _load,
-          onLogin: _login,
-        ),
-      );
-    }
-
-    return withCacheTime(
-      SectionCard(
-        title: '一卡通',
-        summary: CardSummary(
-          data.errorStatus == null
-              ? _money(data.balance.amountMinor, data.balance.currency)
-              : _balanceErrorText(data.errorStatus!),
-          detail: data.status == null ? null : _cardStatusText(data.status!),
-        ),
-        // 即使 adapter 错把完整卡号填进 cardNumberMasked，UI 也只从权威 cardNumber 派生末四位。
-        subtitle: data.cardNumber == null
-            ? AppLocalizations.of(context).cardAccountLabel
-            : _maskCardNumber(data.cardNumber!),
-        child: data.errorStatus == null
-            ? Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _money(
-                            data.balance.amountMinor,
-                            data.balance.currency,
-                          ),
-                          style: Theme.of(context).textTheme.headlineMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        if (data.status != null)
-                          Text(
-                            _cardStatusText(data.status!),
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                      ],
+    final l10n = AppLocalizations.of(context);
+    final preview = HomeCardPresentation.isPreview(context);
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.balanceEnabled)
+          if (data == null)
+            _PhaseBody(
+              phase: _phase,
+              error: _error,
+              idleLabel: '查看余额',
+              onLoad: _load,
+              onLogin: _login,
+            )
+          else if (data.errorStatus != null)
+            Text(_balanceErrorText(data.errorStatus!))
+          else ...[
+            Text(
+              _money(data.balance.amountMinor, data.balance.currency),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            if (data.status != null) Text(_cardStatusText(data.status!)),
+          ],
+        if (widget.qrEnabled || widget.transactionsEnabled) ...[
+          if (widget.balanceEnabled) const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (widget.qrEnabled)
+                FilledButton.tonalIcon(
+                  onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(builder: (_) => const CardQrPage()),
+                  ),
+                  icon: const Icon(Icons.qr_code),
+                  label: Text(l10n.cardQrShow),
+                ),
+              if (widget.transactionsEnabled)
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => const CardTransactionsPage(),
                     ),
                   ),
-                  if (widget.transactionsEnabled)
-                    FilledButton.tonalIcon(
-                      onPressed: () => Navigator.of(context).push<void>(
-                        MaterialPageRoute(
-                          builder: (_) => const CardTransactionsPage(),
+                  icon: const Icon(Icons.receipt_long_outlined),
+                  label: Text(l10n.cardTransactions),
+                ),
+            ],
+          ),
+        ],
+        if (widget.balanceEnabled && data != null)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: _phase == _Phase.loading ? null : _load,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重新查询'),
+            ),
+          ),
+      ],
+    );
+    final card = SectionCard(
+      title: l10n.homeCardTitle,
+      subtitle: data == null
+          ? null
+          : data.cardNumber == null
+          ? l10n.cardAccountLabel
+          : _maskCardNumber(data.cardNumber!),
+      summary: data != null && widget.balanceEnabled
+          ? CardSummary(
+              data.errorStatus == null
+                  ? _money(data.balance.amountMinor, data.balance.currency)
+                  : _balanceErrorText(data.errorStatus!),
+            )
+          : widget.qrEnabled
+          ? Text(l10n.cardQrHint)
+          : widget.transactionsEnabled
+          ? Text(l10n.cardTransactions)
+          : _querySummary(context, _phase),
+      child: content,
+    );
+    return data != null && (!preview || widget.balanceEnabled)
+        ? withCacheTime(card)
+        : card;
+  }
+}
+
+/// QR data has no persistent cache and is destroyed on expiry/background/exit.
+class CardQrPage extends StatefulWidget {
+  const CardQrPage({super.key});
+  @override
+  State<CardQrPage> createState() => _CardQrPageState();
+}
+
+class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
+  Uint8List? _image;
+  Timer? _expiry;
+  String? _purpose;
+  _Phase _phase = _Phase.idle;
+  String? _error;
+  SessionController? _session;
+  int? _generation;
+  int _request = 0;
+  bool _started = false;
+  bool _foreground = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final session = SessionScope.of(context);
+    if (!_started) {
+      _started = true;
+      _session = session;
+      _generation = session.trustedScriptViewGeneration;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    } else if (!identical(session, _session) ||
+        session.trustedScriptViewGeneration != _generation ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      _clear();
+    }
+  }
+
+  void _clear() {
+    _request++;
+    _expiry?.cancel();
+    if (_image != null) unawaited(MemoryImage(_image!).evict());
+    _image = null;
+    _purpose = null;
+    _phase = _Phase.idle;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground && mounted) setState(_clear);
+  }
+
+  @override
+  void dispose() {
+    _clear();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final session = _session!;
+    if (!_foreground || session.trustedScriptViewGeneration != _generation) {
+      return;
+    }
+    _clear();
+    final request = _request;
+    setState(() {
+      _phase = _Phase.loading;
+      _error = null;
+    });
+    final outcome = await _runDecoded<CardQr>(
+      context,
+      session,
+      'card.qr',
+      decode: (raw) {
+        if (raw is! Map ||
+            raw['imageBase64'] is! String ||
+            raw['issuedAt'] is! String ||
+            raw['expiresAt'] is! String) {
+          return null;
+        }
+        return CardQr(
+          imageBase64: raw['imageBase64'] as String,
+          issuedAt: raw['issuedAt'] as String,
+          expiresAt: raw['expiresAt'] as String,
+          purpose: raw['purpose'] as String?,
+        );
+      },
+    );
+    if (!mounted ||
+        request != _request ||
+        !_foreground ||
+        !_isCurrentSession(this, session, _generation!)) {
+      return;
+    }
+    try {
+      if (outcome.data == null) {
+        setState(() {
+          _phase = outcome.needLogin ? _Phase.needLogin : _Phase.error;
+          _error = outcome.error;
+        });
+        return;
+      }
+      final data = outcome.data!;
+      final issued = DateTime.parse(data.issuedAt),
+          expires = DateTime.parse(data.expiresAt),
+          now = DateTime.now();
+      if (!expires.isAfter(issued) ||
+          !expires.isAfter(now) ||
+          issued.isAfter(now.add(const Duration(seconds: 5)))) {
+        throw const FormatException();
+      }
+      final bytes = base64Decode(data.imageBase64);
+      const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+      if (bytes.length < 24 ||
+          bytes.length > 262144 ||
+          !List.generate(8, (i) => bytes[i] == signature[i]).every((v) => v)) {
+        throw const FormatException();
+      }
+      final header = ByteData.sublistView(bytes);
+      final width = header.getUint32(16), height = header.getUint32(20);
+      if (width == 0 || height == 0 || width > 2048 || height > 2048) {
+        throw const FormatException();
+      }
+      final remaining = expires.difference(now);
+      setState(() {
+        _image = bytes;
+        _purpose = data.purpose;
+        _phase = _Phase.loaded;
+      });
+      _expiry = Timer(
+        remaining < const Duration(seconds: 60)
+            ? remaining
+            : const Duration(seconds: 60),
+        () {
+          if (mounted) setState(_clear);
+        },
+      );
+    } catch (_) {
+      setState(() {
+        _phase = _Phase.error;
+        _error = AppLocalizations.of(context).cardQrInvalid;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final session = SessionScope.of(context);
+    final current =
+        identical(session, _session) &&
+        session.trustedScriptViewGeneration == _generation;
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.cardQrShow)),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!current)
+                Text(l10n.homeCardDataChanged)
+              else ...[
+                if (_image != null)
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 320),
+                      child: ColoredBox(
+                        color: Colors.white,
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Image.memory(
+                            _image!,
+                            gaplessPlayback: false,
+                            semanticLabel: l10n.cardQrShow,
+                            errorBuilder: (_, _, _) => Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Text(
+                                l10n.cardQrInvalid,
+                                style: const TextStyle(color: Colors.black),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                      icon: const Icon(Icons.receipt_long_outlined),
-                      label: const Text('交易明细'),
                     ),
-                ],
-              )
-            : Row(
-                children: [
-                  Expanded(child: Text(_balanceErrorText(data.errorStatus!))),
-                  OutlinedButton.icon(
+                  ),
+                if (_purpose != null)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(_purpose!, textAlign: TextAlign.center),
+                  ),
+                if (_phase == _Phase.idle) Text(l10n.cardQrExpired),
+                _PhaseBody(
+                  phase: _phase,
+                  error: _error,
+                  idleLabel: l10n.cardQrRefresh,
+                  onLoad: _load,
+                  onLogin: () async {
+                    _clear();
+                    final ok = await _promptVisibleLogin(
+                      context,
+                      session,
+                      targetRef: 'card-session',
+                    );
+                    if (mounted && current && ok) await _load();
+                  },
+                ),
+                if (_phase == _Phase.loaded)
+                  TextButton.icon(
                     onPressed: _load,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('重新查询'),
+                    label: Text(l10n.cardQrRefresh),
                   ),
-                ],
-              ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

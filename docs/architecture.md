@@ -27,7 +27,7 @@ flowchart TD
 
 [ADR-042](adr/adr_042_providers_pages_enhancements.md)提出：用显式 provider 绑定连接学校包与增强包，以业务 feature 组合多个查询和页面，以固定原生模板复用展示。公开通知缓存优先试点；鉴权空教室和账户水电分别验证授权与隔离，不共享学生会话。
 
-同名能力覆盖与有限卡片的首片已由 ADR-043 实施；独立业务页面、匿名增强权限及中继仍为 **Proposed**。代码观察与切片见[接口审计](reference/interface_evolution.md)、[中继研究](research/relay_enhancement_feasibility.md)及[实施计划](planning/platform_evolution.md)。
+同名能力覆盖与有限卡片的首片已由 ADR-043 实施；通用页面注册、匿名增强权限及中继仍为 **Proposed**。现有能力的原生查看页、周课表与今日时间线按 [ADR-047](adr/adr_047_feature_pages_and_card_qr.md) 实施；普通首页点击不改尺寸。校园卡二维码独立于余额/流水，不持久缓存。代码观察与切片见[接口审计](reference/interface_evolution.md)、[中继研究](research/relay_enhancement_feasibility.md)及[实施计划](planning/platform_evolution.md)。
 
 ## 状态来源
 

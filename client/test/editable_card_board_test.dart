@@ -218,7 +218,7 @@ void main() {
     },
   );
   testWidgets(
-    'icon opens same child and collapses without rewriting size; school isolation',
+    'icon opens feature page and returns without rewriting size; school isolation',
     (tester) async {
       final store = MemoryLayoutStore();
       await tester.pumpWidget(app(store));
@@ -233,7 +233,7 @@ void main() {
       await tester.tap(control('open', 'notice'));
       await tester.pumpAndSettle();
       expect(find.text('notice:expanded:1'), findsOneWidget);
-      await tester.tap(control('close', 'notice'));
+      await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
       expect(store.layouts['a']!.sizes['notice'], HomeCardSize.compact);
       await tester.pumpWidget(const SizedBox());
@@ -514,6 +514,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('preset:notice:preview'), findsOneWidget);
       expect(find.text('notice:expanded:1'), findsOneWidget);
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      await edit(tester);
+      await choose(tester, 'notice', 'home-card-size:expanded');
       await tester.pumpWidget(app(store));
       await tester.pumpAndSettle();
       expect(find.text('preset:notice:standard'), findsOneWidget);
@@ -525,9 +529,15 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(app(store, cards: configured));
       await tester.pumpAndSettle();
+      await edit(tester);
+      await choose(tester, 'notice', 'home-card-size:compact');
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
       await tester.tap(control('open', 'notice'));
       await tester.pumpAndSettle();
       expect(find.text('preset:notice:preview'), findsOneWidget);
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
       await edit(tester);
       await choose(tester, 'notice', 'home-card-preset:standard');
       expect(store.layouts['a']!.presets, isEmpty);

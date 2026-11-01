@@ -408,5 +408,28 @@
   "homeLayoutMoveLeft": "左移一格",
   "homeLayoutMoveRight": "右移一格",
   "scriptsHomeTitle": "首页标题：{title}",
-  "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}}
+  "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}},
+  "homeFeatureView": "查看",
+  "scheduleToday": "今日课程",
+  "scheduleTodayEmpty": "今天没有课程",
+  "scheduleTodayUnavailable": "暂无今天的课表，请查看或更新本周课表",
+  "scheduleWeekEmpty": "本周没有课程",
+  "scheduleWeekLabel": "第 {week} 周",
+  "cardQrShow": "显示二维码",
+  "cardQrRefresh": "刷新二维码",
+  "cardQrExpired": "二维码已隐藏，请刷新后使用",
+  "cardQrInvalid": "无法显示二维码，请重试",
+  "cardQrHint": "打开后获取校园卡二维码",
+  "cardTransactions": "交易明细",
+  "classroomSearchHint": "选择教学楼与日期，搜索空教室",
+  "classroomRoomHint": "筛选教室名称",
+  "classroomPreparing": "正在准备教学楼…",
+  "classroomNoBuildings": "暂无教学楼，请重试",
+  "@scheduleWeekLabel": {
+    "placeholders": {
+      "week": {
+        "type": "int"
+      }
+    }
+  }
 }

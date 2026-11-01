@@ -35,11 +35,13 @@ class HomeCardPresentation extends InheritedWidget {
     required this.size,
     this.preset = HomeCardPreset.standard,
     this.previewHeight,
+    this.isPage = false,
     this.onOpen,
     this.icon = Icons.dashboard_outlined,
     required super.child,
   });
 
+  final bool isPage;
   final HomeCardSize size;
   final String preset;
   final double? previewHeight;
@@ -63,6 +65,7 @@ class HomeCardPresentation extends InheritedWidget {
 
   @override
   bool updateShouldNotify(HomeCardPresentation oldWidget) =>
+      isPage != oldWidget.isPage ||
       size != oldWidget.size ||
       preset != oldWidget.preset ||
       previewHeight != oldWidget.previewHeight ||

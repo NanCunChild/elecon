@@ -189,7 +189,7 @@ class _LayoutMemory extends CardLayoutStore {
 
 void main() {
   androidTest(
-    'launcher summaries expand without querying and retain meter selection and history',
+    'launcher opens feature page without querying and retain meter selection and history',
     (tester) async {
       tester.view.physicalSize = const Size(400, 1600);
       tester.view.devicePixelRatio = 1;
@@ -231,7 +231,7 @@ void main() {
       await tester.tap(find.text('View usage history'));
       await tester.pumpAndSettle();
       expect(find.byType(DataTable), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('home-card-close:energy')));
+      await tester.pageBack();
       await tester.pumpAndSettle();
       expect(find.text('12.5 m³'), findsOneWidget);
       expect(find.byType(DataTable), findsNothing);

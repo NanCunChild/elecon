@@ -19,5 +19,6 @@ ADR-000–033 已废弃为新开发总纲，正文移至 [archived](../archived/
 | [042](adr_042_providers_pages_enhancements.md) | 部分由 043 接受，其余 Proposed | 同名覆盖与卡片首片；完整平台未实现 | 待人工实现审阅 | 独立页面、匿名增强与中继仍待实施 |
 | [043](adr_043_card_layout_and_overrides.md) | Accepted（本轮所有者要求落地） | 同名覆盖、SDK 6 cards、长按编辑/排序/有限缩放已实现 | 待真机手势及人工核心审阅 | 回归见 ADR 正文，未部署中继 |
 | [046](adr_046_triggered_script_requests.md) | Accepted（2026-11-01 所有者废除 action 授权） | 统一普通请求，空调触发发送后查询；见受信脚本计划 | 待人工核心审阅/真机 | 取代 040 action 与额外确认；旧包显式更新，V1 不变 |
+| [047](adr_047_feature_pages_and_card_qr.md) | Accepted（本轮功能查看授权） | 原生查看页、周课表/今日时间线、独立校园卡二维码；空教室目录待提供 | 待真机及核心人工审阅 | 无消费学校不伪造余额；二维码禁止持久缓存 |
 
 ADR 编号不回收：021 仍是历史预留。更新决策、实现与签收时分别修改对应列，不用自动测试替代人工复核。

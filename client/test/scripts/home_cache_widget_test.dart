@@ -1,3 +1,4 @@
+import 'package:elecon/ui/home/card_layout.dart';
 // ADR-038: synthetic data through the actual cache, runtime and fixed cards.
 import 'dart:async';
 import 'dart:convert';
@@ -354,7 +355,16 @@ void main() {
       () => session.runCapability('schedule.week', params: {'week': 6}),
     );
     expect(result!.ok, isTrue);
-    await tester.pumpWidget(app(session, const ScheduleSection()));
+    await tester.pumpWidget(
+      app(
+        session,
+        const HomeCardPresentation(
+          size: HomeCardSize.expanded,
+          isPage: true,
+          child: ScheduleSection(),
+        ),
+      ),
+    );
     await until(tester, () => find.byType(ScheduleCard).evaluate().isNotEmpty);
     expect(tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week, 6);
     expect(find.text('View week 6'), findsOneWidget);

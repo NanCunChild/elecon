@@ -25,6 +25,8 @@ import 'display_date.dart';
 import 'models.dart';
 import 'notice_detail_page.dart';
 import 'section_card.dart';
+import 'schedule_view.dart';
+export 'schedule_view.dart' show ScheduleCard;
 import 'energy_climate_sections.dart';
 
 export 'demo_data.dart';
@@ -230,11 +232,18 @@ class _EleconHomePageState extends State<EleconHomePage>
           (_) => GenericSectionCard(section),
           type: 'generic',
         ),
-      if (_liveSections && data.supportsAll(const ['card.balance']))
+      if (_liveSections &&
+          const [
+            'card.balance',
+            'card.transactions',
+            'card.qr',
+          ].any(data.supportedCapabilities.contains))
         entry(
           'card',
           l10n.homeCardTitle,
           (_) => CardSection(
+            balanceEnabled: data.supportsAll(const ['card.balance']),
+            qrEnabled: data.supportsAll(const ['card.qr']),
             transactionsEnabled: data.supportsAll(const ['card.transactions']),
           ),
         ),
@@ -404,47 +413,6 @@ class _SnapshotHeader extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class ScheduleCard extends StatelessWidget {
-  const ScheduleCard(this.data, {super.key});
-
-  final ScheduleWeek data;
-
-  @override
-  Widget build(BuildContext context) {
-    final count = data.days.fold<int>(0, (sum, day) => sum + day.slots.length);
-    return SectionCard(
-      title: '本周课表',
-      subtitle: '${data.term} · 第 ${data.week} 周 · $count 节课',
-      summary: CardSummary(
-        data.days.expand((day) => day.slots).firstOrNull?.courseName ?? '—',
-        detail: '${data.term} · 第 ${data.week} 周 · $count 节课',
-      ),
-      child: CardPreviewList(
-        title: '本周课表',
-        children: [
-          for (final day in data.days)
-            for (final slot in day.slots)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading:
-                    HomeCardPresentation.of(context) == HomeCardSize.compact
-                    ? null
-                    : CircleAvatar(child: Text('周${_weekText(day.dayOfWeek)}')),
-                title: Text(slot.courseName),
-                subtitle: Text(
-                  [
-                    '${slot.start}-${slot.end}',
-                    if (slot.location != null) slot.location!,
-                    if (slot.teacher != null) slot.teacher!,
-                  ].join(' · '),
-                ),
-              ),
-        ],
-      ),
     );
   }
 }
@@ -901,17 +869,6 @@ String _formatGenericValue(Object? value, GenericRole role) {
   }
   return value.toString();
 }
-
-String _weekText(int day) => switch (day) {
-  1 => '一',
-  2 => '二',
-  3 => '三',
-  4 => '四',
-  5 => '五',
-  6 => '六',
-  7 => '日',
-  _ => '?',
-};
 
 String _categoryText(String category) => switch (category) {
   'required' => '必修',

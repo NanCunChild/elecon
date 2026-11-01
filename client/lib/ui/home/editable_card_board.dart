@@ -10,6 +10,9 @@ import 'package:flutter/rendering.dart';
 
 import '../../l10n/gen/app_localizations.dart';
 import 'card_layout.dart';
+import 'feature_page.dart';
+import '../../session/session_scope.dart';
+import '../../session/session_controller.dart';
 import 'card_grid.dart';
 import 'card_layout_store.dart';
 
@@ -39,6 +42,8 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
   final _owner = Object();
   final _gridKey = GlobalKey();
   final _heights = <String, double>{};
+  final _contentKeys = <String, GlobalKey>{};
+  final _activePages = <String, ValueNotifier<bool>>{};
   final _slots = <String, Rect>{};
   HomeCardLayout _layout = HomeCardLayout();
   HomeCardLayout? _beforeDrag;
@@ -47,7 +52,6 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
   int _generation = 0;
   int _revision = 0;
   String? _dragging;
-  String? _opened;
   HomeCardPosition? _hovered;
   HomeCardGrid? _grid;
   Map<String, HomeCardPosition> _locations = {};
@@ -76,7 +80,8 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
       _stopDrag();
       _layout = HomeCardLayout();
       _heights.clear();
-      _opened = null;
+      _contentKeys.clear();
+      _activePages.clear();
       _editing = false;
       _saveFailed = false;
       _load();
@@ -153,7 +158,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
     _edit();
     setState(() {
       _beforeDrag = _layout;
-      // Temporary detail expansion must not become the next saved layout.
+      // Drag geometry follows the saved home layout.
       final spans = {
         for (final card in _layout.visible(widget.cards))
           card.id: _grid!.span(
@@ -162,13 +167,6 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
           ),
       };
       _dragLocations = _grid!.place(spans, _layout.positions);
-      if (_opened == drag.id) {
-        _pickupOffset = Offset(
-          _pickupOffset.dx.clamp(0, _grid!.widthOf(spans[drag.id]!) / 2),
-          _pickupOffset.dy.clamp(0, _grid!.heightOf(spans[drag.id]!) / 2),
-        );
-      }
-      _opened = null;
       _dragging = drag.id;
     });
     _scrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
@@ -422,12 +420,10 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
       }, preferred);
       _change(moved.locate(placed));
     } else if (result == 'hide') {
-      setState(() => _opened = null);
       _change(_layout.show(card.id, false));
     } else if (result.startsWith('preset:')) {
       _change(_layout.selectPreset(card.id, result.substring(7)));
     } else if (result.startsWith('size:')) {
-      setState(() => _opened = null);
       final resized = _layout.resize(
         card.id,
         HomeCardSize.values.byName(result.substring(5)),
@@ -464,7 +460,6 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
               Navigator.pop(sheetContext);
               return;
             }
-            setState(() => _opened = null);
             _change(layout);
             updateSheet(() {});
           }
@@ -577,9 +572,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
             _spans = {
               for (final card in cards)
                 card.id: grid.span(
-                  _opened == card.id
-                      ? HomeCardSize.expanded
-                      : card.supportedSize(_layout.sizes[card.id]),
+                  card.supportedSize(_layout.sizes[card.id]),
                   contentHeight: _heights[card.id] ?? 0,
                 ),
             };
@@ -658,11 +651,10 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                             child: _MeasureSize(
                               onChange: (size) {
                                 if (mounted &&
-                                    (_opened == card.id ||
-                                        card.supportedSize(
-                                              _layout.sizes[card.id],
-                                            ) ==
-                                            HomeCardSize.expanded) &&
+                                    (card.supportedSize(
+                                          _layout.sizes[card.id],
+                                        ) ==
+                                        HomeCardSize.expanded) &&
                                     _heights[card.id] != size.height) {
                                   setState(
                                     () => _heights[card.id] = size.height,
@@ -686,13 +678,39 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
 
   Widget _tile(HomeCardEntry card, double boardWidth) {
     final drag = _CardDrag(_owner, widget.scopeId, card.id);
-    final size = _opened == card.id
-        ? HomeCardSize.expanded
-        : card.supportedSize(_layout.sizes[card.id]);
+    final size = card.supportedSize(_layout.sizes[card.id]);
     final compact = size == HomeCardSize.compact;
     final colors = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context);
-    void open() => setState(() => _opened = card.id);
+    final contentKey = _contentKeys.putIfAbsent(card.id, GlobalKey.new);
+    final active = _activePages.putIfAbsent(
+      card.id,
+      () => ValueNotifier(false),
+    );
+    void open() {
+      final session = context
+          .getInheritedWidgetOfExactType<SessionScope>()
+          ?.notifier;
+      setState(() => active.value = true);
+      Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => HomeFeaturePage(
+            card: card,
+            contentKey: contentKey,
+            active: active,
+            preset: card.supportedPreset(_layout.presets[card.id]),
+            session: session,
+            generation: session?.trustedScriptViewGeneration,
+            onClosed: () {
+              if (mounted) setState(() {});
+            },
+          ),
+        ),
+      );
+    }
+
+    if (active.value) {
+      return SizedBox(height: _slots[card.id]!.height);
+    }
     return LongPressDraggable<_CardDrag>(
       data: drag,
       dragAnchorStrategy: (draggable, context, position) {
@@ -780,18 +798,6 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                       ),
                     ),
                   ),
-                if (_opened == card.id)
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: TextButton.icon(
-                      key: ValueKey('home-card-close:${card.id}'),
-                      onPressed: _editing
-                          ? null
-                          : () => setState(() => _opened = null),
-                      icon: const Icon(Icons.unfold_less),
-                      label: Text(l10n.homeCardCollapse),
-                    ),
-                  ),
                 Offstage(
                   offstage: compact,
                   child: TickerMode(
@@ -815,7 +821,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                             child: ExcludeSemantics(
                               excluding: _editing || compact,
                               child: KeyedSubtree(
-                                key: ValueKey('home-card-content:${card.id}'),
+                                key: contentKey,
                                 child: Builder(builder: card.builder),
                               ),
                             ),

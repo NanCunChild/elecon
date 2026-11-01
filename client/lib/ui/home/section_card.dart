@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'card_layout.dart';
+import '../../l10n/gen/app_localizations.dart';
 
-/// A single business surface: a half-width summary opens the same mounted card.
+/// A business surface whose preview opens its native feature page.
 class SectionCard extends StatelessWidget {
   const SectionCard({
     super.key,
@@ -100,11 +101,23 @@ class SectionCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
               ],
-              Text(
-                title,
-                style: preview
-                    ? theme.textTheme.titleMedium
-                    : theme.textTheme.titleLarge,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: preview
+                          ? theme.textTheme.titleMedium
+                          : theme.textTheme.titleLarge,
+                    ),
+                  ),
+                  if (!preview && presentation?.onOpen != null)
+                    TextButton.icon(
+                      onPressed: presentation!.onOpen,
+                      icon: const Icon(Icons.arrow_forward, size: 18),
+                      label: Text(AppLocalizations.of(context).homeFeatureView),
+                    ),
+                ],
               ),
               if (!preview && subtitle != null && subtitle.isNotEmpty) ...[
                 const SizedBox(height: 4),

@@ -340,5 +340,28 @@
   "homeLayoutMoveLeft": "Move left one cell",
   "homeLayoutMoveRight": "Move right one cell",
   "scriptsHomeTitle": "Home title: {title}",
-  "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}}
+  "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}},
+  "homeFeatureView": "View",
+  "scheduleToday": "Today’s classes",
+  "scheduleTodayEmpty": "No classes today",
+  "scheduleTodayUnavailable": "Today’s timetable is unavailable. Open or refresh this week.",
+  "scheduleWeekEmpty": "No classes this week",
+  "scheduleWeekLabel": "Week {week}",
+  "cardQrShow": "Show QR code",
+  "cardQrRefresh": "Refresh QR code",
+  "cardQrExpired": "QR code hidden. Refresh to use it.",
+  "cardQrInvalid": "Unable to display QR code. Try again.",
+  "cardQrHint": "Open to load your campus card QR code",
+  "cardTransactions": "Transactions",
+  "classroomSearchHint": "Choose a building and date to search",
+  "classroomRoomHint": "Filter by room name",
+  "classroomPreparing": "Preparing buildings…",
+  "classroomNoBuildings": "No buildings available. Try again.",
+  "@scheduleWeekLabel": {
+    "placeholders": {
+      "week": {
+        "type": "int"
+      }
+    }
+  }
 }
