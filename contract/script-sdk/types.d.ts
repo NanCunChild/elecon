@@ -166,6 +166,17 @@ export interface CardQr {
   purpose?: string;
 }
 
+/** ADR-050: faculty.search 1.0 is a foreground public-directory query.
+ * No new host API; result types are generated from contract/schema.
+ * At least one nonblank query/researchArea; page starts at 1. */
+export interface FacultySearchParams {
+  query?: string;
+  researchArea?: string;
+  page?: number;
+  /** 1–20, defaults to 10. */
+  pageSize?: number;
+}
+
 /** ADR-048: schedule.week output 1.1 optionally includes school-local HH:mm
  * timeSegments and known per-week/day course counts in weekPreviews. Omitted
  * previews mean unknown, not zero. These are standard data, never layout code.

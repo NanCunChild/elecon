@@ -484,5 +484,40 @@
   "cardTransactionPending": "处理中",
   "cardTransactionFailed": "失败",
   "cardTransactionCancelled": "已取消",
-  "cardTransactionUnknown": "未知"
+  "cardTransactionUnknown": "未知",
+  "facultyTitle": "教师查询",
+  "facultyName": "教师姓名或关键词",
+  "facultyDirection": "研究方向（选填）",
+  "facultySearch": "查询",
+  "facultyHint": "输入姓名或研究方向查询学校公开教师信息。",
+  "facultyEmpty": "没有找到匹配的教师。",
+  "facultyFailed": "教师信息暂时无法获取，请重试。",
+  "facultyPrevious": "上一页",
+  "facultyNext": "下一页",
+  "facultyPage": "第 {page} 页",
+  "@facultyPage": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "facultyResultCount": "共 {total} 条结果",
+  "@facultyResultCount": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "facultyProfile": "公开主页",
+  "facultyNoSummary": "学校未提供个人简介。",
+  "facultySource": "来源：{source}",
+  "@facultySource": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  }
 }

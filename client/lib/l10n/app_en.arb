@@ -416,5 +416,40 @@
   "cardTransactionPending": "Pending",
   "cardTransactionFailed": "Failed",
   "cardTransactionCancelled": "Cancelled",
-  "cardTransactionUnknown": "Unknown"
+  "cardTransactionUnknown": "Unknown",
+  "facultyTitle": "Faculty search",
+  "facultyName": "Name or keyword",
+  "facultyDirection": "Research area (optional)",
+  "facultySearch": "Search",
+  "facultyHint": "Search public faculty information by name or research area.",
+  "facultyEmpty": "No matching faculty found.",
+  "facultyFailed": "Faculty information is unavailable. Please try again.",
+  "facultyPrevious": "Previous",
+  "facultyNext": "Next",
+  "facultyPage": "Page {page}",
+  "@facultyPage": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "facultyResultCount": "{total} results",
+  "@facultyResultCount": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "facultyProfile": "Public profile",
+  "facultyNoSummary": "No profile summary provided.",
+  "facultySource": "Source: {source}",
+  "@facultySource": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  }
 }

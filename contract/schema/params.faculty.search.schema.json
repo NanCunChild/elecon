@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.faculty.search",
+  "title": "教师查询参数",
+  "type": "object",
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": [
+        "query"
+      ]
+    },
+    {
+      "required": [
+        "researchArea"
+      ]
+    }
+  ],
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "来源支持的教师姓名或关键词；不承诺精确匹配，须含非空白字符。与 researchArea 至少提供一项。",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "\\S"
+    },
+    "researchArea": {
+      "type": "string",
+      "description": "研究方向关键词；须含非空白字符，与 query 同时存在时按来源的组合筛选语义查询。",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "\\S"
+    },
+    "page": {
+      "type": "integer",
+      "description": "从 1 开始的查询页码，缺失默认为 1。",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "pageSize": {
+      "type": "integer",
+      "description": "单页数量上限，单位为条，缺失默认为 10。",
+      "minimum": 1,
+      "maximum": 20
+    }
+  }
+}

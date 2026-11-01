@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.faculty.search",
+  "title": "教师查询结果",
+  "type": "object",
+  "required": [
+    "items",
+    "page",
+    "pageSize",
+    "hasMore",
+    "sourceSystem",
+    "sourceUrl"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "当前查询页的教师；空数组表示本页无匹配结果，不能用于表示查询失败。",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "学校和 sourceSystem 作用域内稳定的教师标识；同名教师不得合并。",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "name": {
+            "type": "string",
+            "description": "教师公开显示姓名，纯文本。",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "department": {
+            "type": "string",
+            "description": "公开所属学院或单位，纯文本；缺失表示来源未提供。",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "title": {
+            "type": "string",
+            "description": "公开职称，纯文本；缺失表示来源未提供。",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "disciplines": {
+            "type": "array",
+            "description": "公开学科名称，纯文本；缺失表示来源未提供。",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "researchAreas": {
+            "type": "array",
+            "description": "公开研究方向，纯文本；缺失表示来源未提供。",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "summary": {
+            "type": "string",
+            "description": "公开简介摘录，纯文本，可能有截断；缺失表示来源未提供。",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "profileUrl": {
+            "type": "string",
+            "description": "教师公开主页的绝对 HTTPS URL；缺失表示来源未提供，不作为教师身份。",
+            "format": "uri",
+            "pattern": "^https://",
+            "maxLength": 2048
+          }
+        }
+      }
+    },
+    "page": {
+      "type": "integer",
+      "description": "本页对应的请求页码，从 1 开始。",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "pageSize": {
+      "type": "integer",
+      "description": "本次请求每页教师数量上限，单位为条；实际 items 可少于此值。",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "hasMore": {
+      "type": "boolean",
+      "description": "来源是否确认当前查询还有下一页；false 表示没有下一页。"
+    },
+    "sourceSystem": {
+      "type": "string",
+      "description": "校内来源系统的稳定标识，与学校共同限定教师 id。",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "sourceUrl": {
+      "type": "string",
+      "description": "查询来源的公开 HTTPS 页面，供核对数据来源。",
+      "format": "uri",
+      "pattern": "^https://",
+      "maxLength": 2048
+    },
+    "total": {
+      "type": "integer",
+      "description": "来源报告的本次筛选结果总条数；缺失表示来源未提供，不从当前页推测。",
+      "minimum": 0
+    }
+  }
+}

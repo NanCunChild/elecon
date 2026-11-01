@@ -26,6 +26,7 @@ const Set<String> kCapabilityIds = {
   'energy.meters',
   'energy.usage',
   'exam.list',
+  'faculty.search',
   'generic.section',
   'gpa.summary',
   'grades.list',

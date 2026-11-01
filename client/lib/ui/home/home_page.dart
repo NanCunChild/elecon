@@ -28,6 +28,7 @@ import 'section_card.dart';
 import 'schedule_view.dart';
 export 'schedule_view.dart' show ScheduleCard;
 import 'energy_climate_sections.dart';
+import 'faculty_search_section.dart';
 
 export 'demo_data.dart';
 export 'models.dart';
@@ -185,6 +186,7 @@ class _EleconHomePageState extends State<EleconHomePage>
         'card' => Icons.account_balance_wallet_outlined,
         'exam' => Icons.event_note_outlined,
         'classroom' => Icons.meeting_room_outlined,
+        'faculty' => Icons.person_search_outlined,
         'energy' => Icons.bolt_outlined,
         'climate' => Icons.ac_unit,
         _ => Icons.widgets_outlined,
@@ -249,6 +251,12 @@ class _EleconHomePageState extends State<EleconHomePage>
         ),
       if (_liveSections && data.supportsAll(const ['exam.list']))
         entry('exam', l10n.homeExamTitle, (_) => const ExamSection()),
+      if (_liveSections && data.supportsAll(const ['faculty.search']))
+        entry(
+          'faculty',
+          l10n.facultyTitle,
+          (_) => const FacultySearchSection(),
+        ),
       if (_liveSections && data.supportsAll(const ['library.loans']))
         entry(
           'library',

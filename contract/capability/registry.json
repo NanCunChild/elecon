@@ -1,6 +1,7 @@
 {
   "description": "所有合法 capability id 的注册表。新增 id 或改其语义需走 ADR。",
   "capabilities": {
+    "faculty.search": { "description": "检索学校公开教师资料（ADR-050）", "emits": { "schema": "elecon.faculty.search", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.faculty.search", "schemaVersion": "1.0" } },
     "grades.list": {
       "description": "获取学期成绩列表",
       "emits": { "schema": "elecon.grades.list", "schemaVersion": "1.1" },

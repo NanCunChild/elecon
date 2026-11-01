@@ -169,6 +169,26 @@
                 ],
                 "properties": {
                   "id": {
+                    "const": "faculty.search"
+                  },
+                  "schema": {
+                    "const": "elecon.faculty.search"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
                     "const": "card.qr"
                   },
                   "schema": {
