@@ -13,7 +13,7 @@ import { decode, encode, one, str, sub } from "../src/protobuf.js";
 const QR =
   "https://mobilelearn.chaoxing.com/widget/sign/e?id=12345678901234567890&enc=0123456789ABCDEF0123456789ABCDEF";
 const flags = { ifopenAddress: 0, openCheckFaceFlag: 0, ifNeedVcode: 0 };
-const ajv = new Ajv2020({ strict: true });
+const ajv = new Ajv2020({ strict: true, addUsedSchema: false });
 addFormats(ajv);
 const validate = (cap, data) =>
   assert.equal(
@@ -22,7 +22,18 @@ const validate = (cap, data) =>
     )(data),
     true,
   );
-function harness({ challenge = {}, postFailure = false, finalStatus = 1, cancel = false, scan = QR } = {}) {
+function harness({
+  challenge = {},
+  latestChallenge = challenge,
+  postFailure = false,
+  finalStatus = 1,
+  finalReadFailure = false,
+  cancel = false,
+  scan = QR,
+  responseText = "success",
+  elapsedBeforeSubmit = 0,
+  preflightFailure = false,
+} = {}) {
   let now = 1800000000000;
   let submitted = false;
   const calls = [];
@@ -53,8 +64,10 @@ function harness({ challenge = {}, postFailure = false, finalStatus = 1, cancel 
         data = {
           msg: { puid: 123456, uid: 456789, fid: 789012, name: "Synthetic", hxToken: "SYNTHETIC_TOKEN" },
         };
-      else if (path.endsWith("getAttendInfo")) data = { data: { status: submitted ? finalStatus : 0 } };
-      else if (path.endsWith("getPPTActiveInfo"))
+      else if (path.endsWith("getAttendInfo")) {
+        if (submitted && finalReadFailure) throw new Error("SYNTHETIC_STATUS_FAILURE");
+        data = { data: { status: submitted ? finalStatus : 0 } };
+      } else if (path.endsWith("getPPTActiveInfo"))
         data = {
           data: {
             status: 1,
@@ -64,16 +77,19 @@ function harness({ challenge = {}, postFailure = false, finalStatus = 1, cancel 
             content: JSON.stringify({ ...flags, ...challenge }),
           },
         };
-      else if (path.endsWith("getClassDetail")) data = { data: { courseid: 987654 } };
-      else if (path.endsWith("/analysis")) data = "0123456789abcdef0123456789abcdef";
+      else if (path.endsWith("getClassDetail")) {
+        if (preflightFailure) throw new Error("SYNTHETIC_PREPARATION_FAILURE");
+        data = { data: { courseid: 987654 } };
+      } else if (path.endsWith("/analysis")) data = "0123456789abcdef0123456789abcdef";
       else if (path.endsWith("/analysis2")) data = "success";
       else if (path.endsWith("/preSign")) data = "<html>sign form</html>";
-      else if (path.endsWith("/getActive"))
-        data = { classId: 567890, courseId: 2, content: { ...flags, ...challenge } };
-      else if (path.endsWith("/stuSignajax")) {
+      else if (path.endsWith("/getActive")) {
+        now += elapsedBeforeSubmit;
+        data = { classId: 567890, courseId: 2, content: { ...flags, ...latestChallenge } };
+      } else if (path.endsWith("/stuSignajax")) {
         submitted = true;
         if (postFailure) throw new Error("SYNTHETIC_TIMEOUT");
-        data = "success";
+        data = responseText;
       } else throw new Error("unexpected endpoint");
       return {
         ok: true,
@@ -144,6 +160,8 @@ test("supported QR sends exactly once and confirms through independent status", 
   const posts = h.calls.filter(([, i]) => i.method === "POST");
   assert.equal(posts.length, 1);
   assert.ok(!posts[0][1].body.includes("locationResult"));
+  assert.equal(posts[0][1].headers["X-Requested-With"], "XMLHttpRequest");
+  assert.equal(posts[0][1].headers.Referer, h.calls.find(([u]) => u.includes("/preSign"))[0]);
 });
 test("lost POST response may be confirmed, never resubmitted", async () => {
   const h = harness({ postFailure: true });
@@ -154,6 +172,131 @@ test("uncertain delivery remains unknown", async () => {
   const h = harness({ postFailure: true, finalStatus: 0 });
   assert.equal((await attendanceCheckin(h.ctx)).status, "unknown");
   assert.equal(h.calls.filter(([, i]) => i.method === "POST").length, 1);
+});
+const location = {
+  latitude: 12.3456,
+  longitude: 45.6789,
+  address: "Synthetic classroom",
+  coordinateSystem: "service",
+};
+test("explicit location supports ranged QR with one submit and independent confirmation", async () => {
+  const h = harness({ challenge: { ifopenAddress: 1 } });
+  const result = await attendanceCheckin(h.ctx, { location });
+  validate("attendance.checkin", result);
+  assert.equal(result.status, "confirmed");
+  const posts = h.calls.filter(([, i]) => i.method === "POST");
+  assert.equal(posts.length, 1);
+  const body = new URLSearchParams(posts[0][1].body);
+  assert.equal(body.get("latitude"), "12.3456");
+  assert.equal(body.get("longitude"), "45.6789");
+  assert.equal(body.get("address"), location.address);
+  assert.equal(body.get("ifTiJiao"), "1");
+  assert.deepEqual(JSON.parse(body.get("location")), {
+    latitude: "12.3456",
+    longitude: "45.6789",
+    address: location.address,
+    result: "1",
+  });
+  assert.equal(body.get("locationResult"), body.get("location"));
+  assert.ok(!body.toString().includes("mockData"));
+});
+test("unranged QR uses only the user selected position and does not invent one", async () => {
+  const h = harness();
+  await attendanceCheckin(h.ctx, { location });
+  const body = new URLSearchParams(h.calls.find(([, i]) => i.method === "POST")[1].body);
+  assert.equal(body.get("latitude"), String(location.latitude));
+  assert.equal(body.has("location"), false);
+  assert.equal(body.get("ifTiJiao"), "0");
+});
+test("a newly required location prevents submission until a place is selected", async () => {
+  const h = harness({ latestChallenge: { ifopenAddress: 1 } });
+  assert.equal((await attendanceCheckin(h.ctx)).reason, "location_required");
+  assert.equal(h.calls.filter(([, i]) => i.method === "POST").length, 0);
+});
+test("selected coordinates cannot override facial, photo, validation or unknown requirements", async () => {
+  for (const [challenge, reason] of [
+    [{ openCheckFaceFlag: 1 }, "face_required"],
+    [{ ifNeedVcode: 1 }, "verification_required"],
+    [{ ifphoto: 1 }, "photo_required"],
+    [{ ifNeedVcode: undefined }, "requirements_unknown"],
+  ]) {
+    const h = harness({ latestChallenge: challenge });
+    assert.equal((await attendanceCheckin(h.ctx, { location })).reason, reason);
+    assert.equal(h.calls.filter(([, i]) => i.method === "POST").length, 0);
+  }
+});
+test("bad coordinates and unrecognized input fail before authentication or scanning", async () => {
+  for (const invalid of [
+    null,
+    {},
+    { ...location, latitude: NaN },
+    { ...location, longitude: Infinity },
+    { ...location, latitude: 91 },
+    { ...location, longitude: -181 },
+    { ...location, address: "  " },
+    { ...location, coordinateSystem: "guessed" },
+    { ...location, mockData: 0 },
+  ]) {
+    const h = harness();
+    await assert.rejects(attendanceCheckin(h.ctx, { location: invalid }), { code: "input_invalid_request" });
+    assert.equal(h.calls.length, 0);
+  }
+});
+test("expired QR and preparation failure cannot send a check-in", async () => {
+  for (const [options, reason] of [
+    [{ elapsedBeforeSubmit: 31000 }, "qr_expired"],
+    [{ preflightFailure: true }, "request_failed"],
+  ]) {
+    const h = harness(options);
+    assert.equal((await attendanceCheckin(h.ctx)).reason, reason);
+    assert.equal(h.calls.filter(([, i]) => i.method === "POST").length, 0);
+  }
+});
+test("known remote rejection is explained but no final submission is retried", async () => {
+  for (const [responseText, reason] of [
+    ["validate_TOKEN", "verification_required"],
+    ["不在定位范围", "location_rejected"],
+    ["二维码已过期", "qr_expired"],
+    ["签到失败", "submission_rejected"],
+  ]) {
+    const h = harness({ finalStatus: 0, responseText });
+    assert.equal((await attendanceCheckin(h.ctx)).reason, reason);
+    assert.equal(h.calls.filter(([, i]) => i.method === "POST").length, 1);
+  }
+  const h = harness({ finalReadFailure: true });
+  assert.equal((await attendanceCheckin(h.ctx)).status, "unknown");
+  assert.equal(h.calls.filter(([, i]) => i.method === "POST").length, 1);
+});
+test("check-in input 1.0 remains empty and 1.1 validates explicit service coordinates", () => {
+  const old = ajv.compile(
+    JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../contract/schema-versions/params.attendance.checkin/1.0.schema.json",
+          import.meta.url,
+        ),
+      ),
+    ),
+  );
+  assert.equal(old({}), true);
+  assert.equal(old({ location }), false);
+  const current = ajv.compile(
+    JSON.parse(
+      readFileSync(
+        new URL("../../../contract/schema/params.attendance.checkin.schema.json", import.meta.url),
+      ),
+    ),
+  );
+  assert.equal(current({}), true);
+  assert.equal(current({ location }), true);
+  for (const value of [
+    { qr: QR },
+    { location: { ...location, latitude: 91 } },
+    { location: { ...location, address: " " } },
+    { location: { ...location, coordinateSystem: "guessed" } },
+  ]) {
+    assert.equal(current(value), false);
+  }
 });
 for (const key of ["ifopenAddress", "openCheckFaceFlag", "ifNeedVcode", "ifphoto"])
   test(`challenge ${key} prevents presign and submit`, async () => {

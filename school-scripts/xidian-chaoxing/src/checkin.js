@@ -37,18 +37,47 @@ export function parseCheckinQr(text) {
     throw serviceError("input_invalid_request");
   return { id: values.id, enc: values.enc };
 }
-function unchallenged(content) {
-  if (!content || typeof content !== "object" || Array.isArray(content)) return false;
-  // Explicit negative flags only; an unrecognized/partial response must not
-  // silently downgrade a location, face, photo or validation requirement.
-  return (
-    ["ifopenAddress", "openCheckFaceFlag", "ifNeedVcode"].every(
-      (k) => content[k] === 0 || content[k] === "0",
-    ) &&
-    !["ifphoto", "photo", "ifNeedPhoto", "isPhoto"].some(
-      (k) => content[k] != null && ![0, "0", false].includes(content[k]),
-    )
-  );
+// Location comes only from the explicit foreground selection. The coordinate
+// system is the service's native one, not inferred GPS or converted map data.
+function selectedLocation(params) {
+  requireParams(params, ["location"]);
+  if (params.location === undefined) return undefined;
+  const v = params.location;
+  requireParams(v, ["latitude", "longitude", "address", "coordinateSystem"]);
+  if (
+    !Number.isFinite(v.latitude) ||
+    Math.abs(v.latitude) > 90 ||
+    !Number.isFinite(v.longitude) ||
+    Math.abs(v.longitude) > 180 ||
+    typeof v.address !== "string" ||
+    !v.address.trim() ||
+    v.address.length > 200 ||
+    v.coordinateSystem !== "service"
+  )
+    throw serviceError("input_invalid_request");
+  return { latitude: v.latitude, longitude: v.longitude, address: v.address.trim() };
+}
+function contentObject(value) {
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+const flag = (value) => ([0, "0", false].includes(value) ? 0 : [1, "1", true].includes(value) ? 1 : null);
+function requirement(content, location) {
+  if (!content) return "requirements_unknown";
+  if (flag(content.openCheckFaceFlag) === 1) return "face_required";
+  if (flag(content.ifNeedVcode) === 1) return "verification_required";
+  if (
+    ["ifphoto", "photo", "ifNeedPhoto", "isPhoto"].some((k) => content[k] != null && flag(content[k]) !== 0)
+  )
+    return "photo_required";
+  if (["ifopenAddress", "openCheckFaceFlag", "ifNeedVcode"].some((k) => flag(content[k]) === null))
+    return "requirements_unknown";
+  if (flag(content.ifopenAddress) === 1 && !location) return "location_required";
+  return null;
 }
 const urlFor = (path, params) => `${MOBILE}${path}?${encodeForm(params)}`;
 async function attended(client, id) {
@@ -57,7 +86,7 @@ async function attended(client, id) {
   return String(v.data.status) === "1";
 }
 export async function attendanceCheckin(ctx, params = {}) {
-  requireParams(params);
+  const location = selectedLocation(params);
   // Authentication is explicit in the messages page; no surprise account
   // switching or login retry after scanning a short-lived ticket.
   const { client, account } = await chaoxingClient(ctx);
@@ -65,7 +94,23 @@ export async function attendanceCheckin(ctx, params = {}) {
   const scan = await ctx.ui.scanQRCode();
   if (!scan) return { status: "cancelled" };
   const activity = parseCheckinQr(scan.text);
-  const result = (status) => ({ status, activityId: activity.id });
+  const result = (status, reason) => {
+    try {
+      ctx.log?.("info", `checkin_${status}${reason ? `_${reason}` : ""}`);
+    } catch {
+      // Diagnostics must never turn a verified/delivered submission into a
+      // preflight failure when the log channel has reached its budget.
+    }
+    return { status, activityId: activity.id, ...(reason ? { reason } : {}) };
+  };
+  try {
+    return await submitScanned(ctx, client, account, activity, location, result);
+  } catch (error) {
+    if (error.code === "authentication_required") throw error;
+    return result("rejected", "request_failed");
+  }
+}
+async function submitScanned(ctx, client, account, activity, location, result) {
   const scanTime = ctx.now();
   if (await attended(client, activity.id)) return result("already");
   const info = (await client.json(urlFor("/v2/apis/active/getPPTActiveInfo", { activeId: activity.id })))
@@ -73,13 +118,9 @@ export async function attendanceCheckin(ctx, params = {}) {
   if (!info || ![0, 1, "0", "1"].includes(info.status) || ![0, 1, "0", "1"].includes(info.isdelete))
     throw serviceError();
   if (String(info.status) !== "1" || String(info.isdelete) !== "0") return result("ended");
-  let content;
-  try {
-    content = typeof info.content === "string" ? JSON.parse(info.content) : info.content;
-  } catch {
-    throw serviceError();
-  }
-  if (Number(info.otherId) !== 2 || !unchallenged(content)) return result("unsupported");
+  if (Number(info.otherId) !== 2) return result("unsupported", "activity_unsupported");
+  const reason = requirement(contentObject(info.content), location);
+  if (reason) return result("unsupported", reason);
   const classId = remoteId(info.clazzid);
   const detail = (await client.json(urlFor("/v2/apis/class/getClassDetail", { classId, courseId: "" })))
     ?.data;
@@ -108,31 +149,55 @@ export async function attendanceCheckin(ctx, params = {}) {
   await client.text(preSign);
   if (await attended(client, activity.id)) return result("already");
   const latest = await client.json(urlFor("/ppt/renwuAPI/getActive", { aid: activity.id }));
-  if (remoteId(latest.classId) !== classId || Number(latest.courseId) !== 2 || !unchallenged(latest.content))
-    return result("unsupported");
-  if (ctx.now() - scanTime > 30000) return result("rejected");
+  if (remoteId(latest.classId) !== classId || Number(latest.courseId) !== 2)
+    return result("unsupported", "activity_unsupported");
+  const latestContent = contentObject(latest.content);
+  const latestReason = requirement(latestContent, location);
+  if (latestReason) return result("unsupported", latestReason);
+  if (ctx.now() - scanTime > 30000) return result("rejected", "qr_expired");
+  const fields = {
+    name: account.label,
+    uid: account.id,
+    fid: account.fid,
+    appType: 15,
+    ifCFP: 0,
+    currentFaceId: "",
+    clientip: "",
+    latitude: location ? String(location.latitude) : "-1",
+    longitude: location ? String(location.longitude) : "-1",
+    address: location?.address ?? "",
+    ifTiJiao: 0,
+    vpProbability: "",
+    vpStrategy: "",
+    activeId: activity.id,
+    enc: activity.enc,
+    deviceCode: clientIdentity(account.id).deviceCode,
+  };
+  if (flag(latestContent.ifopenAddress) === 1) {
+    const position = JSON.stringify({
+      address: location.address,
+      latitude: String(location.latitude),
+      longitude: String(location.longitude),
+      result: "1",
+    });
+    fields.location = position;
+    fields.locationResult = position;
+    fields.ifTiJiao = 1;
+  }
   // From this point a failed transport can have delivered a side effect. Never
   // repeat this POST, including CAPTCHA, redirects, cancellation or timeouts.
   let response = "";
   try {
     response = (
-      await client.post(`${MOBILE}/pptSign/stuSignajax`, {
-        name: account.label,
-        uid: account.id,
-        fid: account.fid,
-        appType: 15,
-        ifCFP: 0,
-        currentFaceId: "",
-        clientip: "",
-        latitude: "-1",
-        longitude: "-1",
-        address: "",
-        ifTiJiao: 0,
-        vpProbability: "",
-        vpStrategy: "",
-        activeId: activity.id,
-        enc: activity.enc,
-        deviceCode: clientIdentity(account.id).deviceCode,
+      await client.text(`${MOBILE}/pptSign/stuSignajax`, {
+        method: "POST",
+        redirect: "error",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Requested-With": "XMLHttpRequest",
+          Referer: preSign,
+        },
+        body: encodeForm(fields),
       })
     ).trim();
   } catch {
@@ -143,7 +208,11 @@ export async function attendanceCheckin(ctx, params = {}) {
   } catch {
     return result("unknown");
   }
-  if (/validate|验证码|人脸|定位/.test(response)) return result("unsupported");
-  if (["签到已结束", "活动已结束", "签到失败"].includes(response)) return result("rejected");
+  if (/validate|验证码/.test(response)) return result("unsupported", "verification_required");
+  if (/人脸/.test(response)) return result("unsupported", "face_required");
+  if (/定位|位置|范围/.test(response)) return result("rejected", "location_rejected");
+  if (/二维码.*(过期|失效)|enc.*(invalid|expired)/i.test(response)) return result("rejected", "qr_expired");
+  if (["签到已结束", "活动已结束"].includes(response)) return result("ended");
+  if (response === "签到失败") return result("rejected", "submission_rejected");
   return result("unknown");
 }

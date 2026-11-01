@@ -71,7 +71,7 @@ export interface Finding {
 
 interface RegistryEntry {
   emits: { schema: string; schemaVersion: string; previousVersions?: string[] };
-  params?: { schema: string; schemaVersion: string };
+  params?: { schema: string; schemaVersion: string; previousVersions?: string[] };
 }
 
 interface CapabilityDecl {
@@ -198,23 +198,35 @@ export function loadContract(): Contract {
     }
   }
 
-  // ADR-048: previousVersions is an explicit compatibility list, never an
-  // inferred same-major range. Keep the exact historical output descriptor.
-  const outputVersions = new Map<string, ValidateFunction>();
+  // ADR-048/055: previousVersions is explicit for both output and parameters,
+  // never an inferred same-major range. Keep exact historical descriptors.
+  const schemaVersions = new Map<string, ValidateFunction>();
   for (const [capability, entry] of Object.entries(registryRaw.capabilities)) {
-    const current = ajv.getSchema(entry.emits.schema);
-    if (current) outputVersions.set(`${entry.emits.schema}\0${entry.emits.schemaVersion}`, current);
-    for (const version of entry.emits.previousVersions ?? []) {
-      if (!/^[a-z][a-z0-9.]*$/.test(capability) || !/^\d+\.\d+$/.test(version)) {
-        throw new Error("invalid historical schema reference");
+    for (const descriptor of [entry.emits, entry.params]) {
+      if (!descriptor) continue;
+      const current = ajv.getSchema(descriptor.schema);
+      if (current) schemaVersions.set(`${descriptor.schema}\0${descriptor.schemaVersion}`, current);
+      for (const version of descriptor.previousVersions ?? []) {
+        if (
+          !/^[a-z][a-z0-9.]*$/.test(capability) ||
+          !/^elecon\.[a-z][a-z0-9.]*$/.test(descriptor.schema) ||
+          !/^\d+\.\d+$/.test(version)
+        ) {
+          throw new Error("invalid historical schema reference");
+        }
+        const historical = readJson<Record<string, unknown>>(
+          join(
+            contractDir,
+            "schema-versions",
+            descriptor.schema.slice("elecon.".length),
+            `${version}.schema.json`,
+          ),
+        );
+        if (historical.$id !== descriptor.schema) throw new Error("historical schema identity mismatch");
+        const historicalAjv = new Ajv2020({ allErrors: true, strict: false });
+        addFormats(historicalAjv);
+        schemaVersions.set(`${descriptor.schema}\0${version}`, historicalAjv.compile(historical));
       }
-      const historical = readJson<Record<string, unknown>>(
-        join(contractDir, "schema-versions", capability, `${version}.schema.json`),
-      );
-      if (historical.$id !== entry.emits.schema) throw new Error("historical schema identity mismatch");
-      const historicalAjv = new Ajv2020({ allErrors: true, strict: false });
-      addFormats(historicalAjv);
-      outputVersions.set(`${entry.emits.schema}\0${version}`, historicalAjv.compile(historical));
     }
   }
 
@@ -234,7 +246,7 @@ export function loadContract(): Contract {
     schemaFor: (id, version) =>
       version == null
         ? (ajv.getSchema(id) as ValidateFunction | undefined)
-        : outputVersions.get(`${id}\0${version}`),
+        : schemaVersions.get(`${id}\0${version}`),
     stdlibVersion,
   };
 }
@@ -437,7 +449,8 @@ export function checkManifest(
       registeredParams &&
       declaredParams &&
       (declaredParams.schema !== registeredParams.schema ||
-        declaredParams.schemaVersion !== registeredParams.schemaVersion)
+        (declaredParams.schemaVersion !== registeredParams.schemaVersion &&
+          !registeredParams.previousVersions?.includes(declaredParams.schemaVersion)))
     ) {
       findings.push({
         level: "error",

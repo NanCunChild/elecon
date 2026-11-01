@@ -133,6 +133,117 @@ void main() {
     },
   );
   test(
+    'real QuickJS submits selected location once with protocol headers and verifies status',
+    () async {
+      final c = credentials(enhancement);
+      c.set(
+        'chaoxing',
+        jsonEncode({
+          'version': 1,
+          'serviceId': 'chaoxing',
+          'accountId': '123456',
+          'accountLabel': 'Synthetic',
+          'cookies': [],
+        }),
+        namespace: 'xidian.services',
+      );
+      var posts = 0;
+      final flags = {
+        'ifopenAddress': 1,
+        'openCheckFaceFlag': 0,
+        'ifNeedVcode': 0,
+      };
+      String? preSign;
+      final result = await const TrustedScriptRuntime().run(
+        package: enhancement,
+        capability: 'attendance.checkin',
+        credentials: c,
+        params: {
+          'location': {
+            'latitude': 12.3456,
+            'longitude': 45.6789,
+            'address': 'Synthetic address',
+            'coordinateSystem': 'service',
+          },
+        },
+        scanCall: (_) async => {
+          'text':
+              'https://mobilelearn.chaoxing.com/widget/sign/e?id=123456789&enc=0123456789abcdef0123456789abcdef',
+          'format': 'qrCode',
+        },
+        fetch: (url, init) async {
+          Object body;
+          final path = Uri.parse(url).path;
+          if (path.endsWith('getUserImToken')) {
+            body = {
+              'msg': {
+                'puid': 123456,
+                'uid': 456789,
+                'fid': 789012,
+                'name': 'Synthetic',
+                'hxToken': 'SYNTHETIC_TOKEN',
+              },
+            };
+          } else if (path.endsWith('getAttendInfo')) {
+            body = {
+              'data': {'status': posts == 0 ? 0 : 1},
+            };
+          } else if (path.endsWith('getPPTActiveInfo')) {
+            body = {
+              'data': {
+                'status': 1,
+                'isdelete': 0,
+                'otherId': 2,
+                'clazzid': 567890,
+                'content': jsonEncode(flags),
+              },
+            };
+          } else if (path.endsWith('getClassDetail')) {
+            body = {
+              'data': {'courseid': 987654},
+            };
+          } else if (path.endsWith('/analysis')) {
+            body = '0123456789abcdef0123456789abcdef';
+          } else if (path.endsWith('/analysis2')) {
+            body = 'success';
+          } else if (path.endsWith('/preSign')) {
+            preSign = url;
+            body = '<html>synthetic</html>';
+          } else if (path.endsWith('/getActive')) {
+            body = {'classId': 567890, 'courseId': 2, 'content': flags};
+          } else {
+            expect(path, '/pptSign/stuSignajax');
+            expect(init['method'], 'POST');
+            posts++;
+            expect(posts, 1);
+            expect((init['headers'] as Map)['Referer'], preSign);
+            expect(
+              (init['headers'] as Map)['X-Requested-With'],
+              'XMLHttpRequest',
+            );
+            final form = Uri.splitQueryString(init['body'] as String);
+            expect(jsonDecode(form['location']!), {
+              'latitude': '12.3456',
+              'longitude': '45.6789',
+              'address': 'Synthetic address',
+              'result': '1',
+            });
+            expect(form['locationResult'], form['location']);
+            body = 'success';
+          }
+          return {
+            'status': 200,
+            'url': url,
+            'headers': <String, List<String>>{},
+            'body': body is String ? body : jsonEncode(body),
+          };
+        },
+      );
+      expect((result as Map)['status'], 'confirmed');
+      expect(posts, 1);
+    },
+  );
+  test(
     'built base package performs Ruisi form login through real DOM/input/credential bridges',
     () async {
       final p = ScriptPackage.parse(

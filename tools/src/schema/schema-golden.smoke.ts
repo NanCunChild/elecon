@@ -15,8 +15,8 @@ import addFormats from "ajv-formats";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const schemaDir = join(repoRoot, "contract/schema");
 const registryPath = join(repoRoot, "contract/capability/registry.json");
-const expectedSchemaCount = 54;
-const expectedRegistryReferenceCount = 52;
+const expectedSchemaCount = 65;
+const expectedRegistryReferenceCount = 63;
 
 interface InvalidGolden {
   behavior: string;
@@ -46,6 +46,119 @@ function validatorFor(schemaId: string) {
 }
 
 const cases: Record<string, SchemaGolden> = {
+  "elecon.card.qr": {
+    valid: {
+      imageBase64: "iVBORw0KGgoAAA==",
+      issuedAt: "2026-11-02T00:00:00Z",
+      expiresAt: "2026-11-02T00:00:30Z",
+    },
+    invalid: [
+      {
+        behavior: "only a PNG base64 payload is accepted",
+        value: {
+          imageBase64: "https://example.invalid/qr",
+          issuedAt: "2026-11-02T00:00:00Z",
+          expiresAt: "2026-11-02T00:00:30Z",
+        },
+      },
+    ],
+  },
+  "elecon.faculty.search": {
+    valid: {
+      items: [],
+      page: 1,
+      pageSize: 10,
+      hasMore: false,
+      sourceSystem: "synthetic",
+      sourceUrl: "https://example.invalid/faculty",
+    },
+    invalid: [
+      {
+        behavior: "page must identify the request and source",
+        value: { items: [], page: 1, pageSize: 10, hasMore: false },
+      },
+    ],
+  },
+  "elecon.params.faculty.search": {
+    valid: { query: "Synthetic", page: 1 },
+    invalid: [{ behavior: "empty search cannot enumerate the directory", value: {} }],
+  },
+  "elecon.forum.session": {
+    valid: { serviceId: "synthetic", serviceName: "Synthetic", status: "signedOut" },
+    invalid: [
+      {
+        behavior: "authentication is an explicit state",
+        value: { serviceId: "synthetic", serviceName: "Synthetic", status: true },
+      },
+    ],
+  },
+  "elecon.params.forum.session": {
+    valid: { operation: "login" },
+    invalid: [{ behavior: "remote posting is not an account operation", value: { operation: "post" } }],
+  },
+  "elecon.messages.session": {
+    valid: {
+      serviceId: "synthetic",
+      serviceName: "Synthetic",
+      status: "authenticated",
+      accountId: "synthetic-id",
+    },
+    invalid: [{ behavior: "service identity is required", value: { status: "signedOut" } }],
+  },
+  "elecon.params.messages.session": {
+    valid: { operation: "logout" },
+    invalid: [{ behavior: "account operations cannot send messages", value: { operation: "send" } }],
+  },
+  "elecon.messages.list": {
+    valid: {
+      serviceId: "synthetic",
+      accountId: "synthetic-id",
+      accountLabel: "Synthetic",
+      windowStartedAt: "2026-11-02T00:00:00Z",
+      fetchedAt: "2026-11-02T00:00:10Z",
+      coverage: "window",
+      items: [],
+    },
+    invalid: [{ behavior: "an empty array cannot hide a missing account or window", value: { items: [] } }],
+  },
+  "elecon.params.messages.list": {
+    valid: {},
+    invalid: [{ behavior: "a receive window cannot post a message", value: { text: "Synthetic" } }],
+  },
+  "elecon.attendance.checkin": {
+    valid: { status: "unsupported", reason: "location_required" },
+    invalid: [
+      { behavior: "raw responses are not a confirmed status", value: { status: "success" } },
+      {
+        behavior: "diagnostics are a bounded enum",
+        value: { status: "rejected", reason: "raw source response" },
+      },
+    ],
+  },
+  "elecon.params.attendance.checkin": {
+    valid: {
+      location: {
+        latitude: 12.3456,
+        longitude: 45.6789,
+        address: "Synthetic classroom",
+        coordinateSystem: "service",
+      },
+    },
+    invalid: [
+      { behavior: "QR tickets only enter through the scanner", value: { qr: "synthetic-ticket" } },
+      {
+        behavior: "latitude is a bounded degree coordinate",
+        value: {
+          location: {
+            latitude: 91,
+            longitude: 45.6789,
+            address: "Synthetic classroom",
+            coordinateSystem: "service",
+          },
+        },
+      },
+    ],
+  },
   "elecon.envelope": {
     valid: {
       schema: "elecon.notice.list",

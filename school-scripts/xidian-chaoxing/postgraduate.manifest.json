@@ -1,7 +1,7 @@
 {
   "sdkVersion": 9,
   "id": "enhancement-xidian-postgraduate-chaoxing",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "schoolId": "xidian_postgraduate",
   "name": "西电学习通增强（研究生）",
   "network": {
@@ -34,7 +34,7 @@
     {
       "id": "attendance.checkin",
       "schema": "elecon.attendance.checkin",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.1"
     }
   ]
 }

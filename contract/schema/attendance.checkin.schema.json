@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "elecon.attendance.checkin",
   "title": "扫码签到结果",
-  "description": "ADR-052：前台调用，不预加载或持久缓存。",
+  "description": "ADR-055：前台调用，不预加载或持久缓存；reason 为不含源站私密内容的固定诊断。",
   "type": "object",
   "properties": {
     "status": {
@@ -22,6 +22,22 @@
       "type": "string",
       "description": "已严格解析的活动 ID；取消或无有效二维码时省略。",
       "maxLength": 128
+    },
+    "reason": {
+      "type": "string",
+      "description": "已知的未完成原因；无法判断时省略。unknown 仍不可自动重发。",
+      "enum": [
+        "location_required",
+        "location_rejected",
+        "face_required",
+        "photo_required",
+        "verification_required",
+        "activity_unsupported",
+        "requirements_unknown",
+        "qr_expired",
+        "request_failed",
+        "submission_rejected"
+      ]
     }
   },
   "required": [

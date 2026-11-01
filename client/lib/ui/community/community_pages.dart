@@ -7,6 +7,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import '../scripts/script_input_presenter.dart';
 import '../scripts/script_presenter.dart';
+import 'checkin_locations.dart';
 
 class ForumPage extends StatelessWidget {
   const ForumPage({super.key, required this.session, required this.package});
@@ -45,7 +46,10 @@ class _ServicePageState extends State<_ServicePage>
   MessagesList? _messages;
   bool _busy = false;
   String? _error;
+  String? _lastCapability;
   String? _checkin;
+  String? _checkinReason;
+  AttendancePlace? _place;
   int _request = 0;
   ScriptRunCancellation? _cancellation;
   String get _accountCapability =>
@@ -89,7 +93,10 @@ class _ServicePageState extends State<_ServicePage>
       _account = null;
       _messages = null;
       _error = null;
+      _lastCapability = null;
       _checkin = null;
+      _checkinReason = null;
+      _place = null;
       _busy = false;
     });
   }
@@ -103,7 +110,9 @@ class _ServicePageState extends State<_ServicePage>
     setState(() {
       _busy = true;
       _error = null;
+      _lastCapability = capability;
       _checkin = null;
+      _checkinReason = null;
       // Never retain old-account messages across login, logout or failed refresh.
       _messages = null;
       if (operation != null) _account = null;
@@ -119,9 +128,11 @@ class _ServicePageState extends State<_ServicePage>
                   (browser) => widget.session.runTrustedScript(
                     widget.package.manifest.id,
                     capability,
-                    params: operation == null
-                        ? const {}
-                        : {'operation': operation},
+                    params: operation != null
+                        ? {'operation': operation}
+                        : capability == 'attendance.checkin' && _place != null
+                        ? {'location': _place!.location}
+                        : const {},
                     inputCall: input,
                     browserCall: browser,
                     cancellation: cancellation,
@@ -165,6 +176,13 @@ class _ServicePageState extends State<_ServicePage>
           );
         } else if (capability == 'attendance.checkin') {
           _checkin = data['status'] as String;
+          _checkinReason =
+              widget.package.manifest
+                      .capability('attendance.checkin')
+                      ?.schemaVersion ==
+                  '1.1'
+              ? data['reason'] as String?
+              : null;
         } else {
           _account = data;
         }
@@ -192,6 +210,19 @@ class _ServicePageState extends State<_ServicePage>
       'cancelled' => l10n.checkinCancelled,
       'rejected' => l10n.checkinRejected,
       'unknown' => l10n.checkinUnknown,
+      _ => null,
+    };
+    final reasonText = switch (_checkinReason) {
+      'location_required' => l10n.checkinLocationRequired,
+      'location_rejected' => l10n.checkinLocationRejected,
+      'face_required' => l10n.checkinFaceRequired,
+      'photo_required' => l10n.checkinPhotoRequired,
+      'verification_required' => l10n.checkinVerificationRequired,
+      'requirements_unknown' => l10n.checkinRequirementsUnknown,
+      'activity_unsupported' => l10n.checkinActivityUnsupported,
+      'qr_expired' => l10n.checkinQrExpired,
+      'request_failed' => l10n.checkinPreflightFailed,
+      'submission_rejected' => l10n.checkinRejected,
       _ => null,
     };
     return Scaffold(
@@ -253,6 +284,17 @@ class _ServicePageState extends State<_ServicePage>
                           ),
                       ],
                     ),
+                  if (widget.messages &&
+                      widget.package.manifest
+                              .capability('attendance.checkin')
+                              ?.schemaVersion ==
+                          '1.1')
+                    CheckinLocations(
+                      session: widget.session,
+                      package: widget.package,
+                      enabled: !_busy,
+                      onSelected: (place) => _place = place,
+                    ),
                   if (widget.messages)
                     Wrap(
                       spacing: 12,
@@ -291,6 +333,9 @@ class _ServicePageState extends State<_ServicePage>
                             ? l10n.communityLoginRequired
                             : _error == 'input_cancelled'
                             ? l10n.checkinCancelled
+                            : _error == 'input_invalid_request' &&
+                                  _lastCapability == 'attendance.checkin'
+                            ? l10n.checkinQrInvalid
                             : l10n.communityRequestFailed,
                         style: TextStyle(color: theme.colorScheme.error),
                       ),
@@ -298,7 +343,7 @@ class _ServicePageState extends State<_ServicePage>
                   if (checkinText != null)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(checkinText),
+                      child: Text(reasonText ?? checkinText),
                     ),
                   if (_messages case final messages?) ...[
                     const SizedBox(height: 16),

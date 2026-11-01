@@ -30,4 +30,6 @@ ADR-000–033 已废弃为新开发总纲，正文移至 [archived](../archived/
 
 | [054](adr_054_schedule_term_cache.md) | Accepted（整学期缓存与后台刷新） | schedule.week 1.2、按周本地投影、非阻塞过期刷新 | 待更新包真机与人工核心审阅 | 保留原始时间、digest 隔离和旧 1.0/1.1 校验 |
 
+| [055](adr_055_checkin_locations_and_diagnostics.md) | Accepted（签到排查与指定位置） | attendance.checkin 1.1、可编辑地点矩阵、单次提交与固定诊断 | 待真实活动验收与人工核心/网络审阅 | 用户选择服务坐标；旧参数/输出版本保留，不自动重发 |
+
 ADR 编号不回收：021 仍是历史预留。更新决策、实现与签收时分别修改对应列，不用自动测试替代人工复核。

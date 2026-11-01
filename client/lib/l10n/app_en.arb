@@ -512,5 +512,29 @@
         "type": "String"
       }
     }
-  }
+  },
+  "checkinPlacesTitle": "Check-in location",
+  "checkinPlacesHelp": "Choose a location for this check-in. Save up to 16 places using coordinates from the check-in service.",
+  "checkinNoPlace": "No location",
+  "checkinPlaceAdd": "Add place",
+  "checkinPlaceEdit": "Edit place",
+  "checkinPlaceDelete": "Delete place",
+  "checkinPlaceSave": "Save place",
+  "checkinPlaceName": "Place name",
+  "checkinPlaceAddress": "Address",
+  "checkinLatitude": "Latitude (service coordinates)",
+  "checkinLongitude": "Longitude (service coordinates)",
+  "checkinPlaceRequired": "This field is required",
+  "checkinCoordinateInvalid": "Enter a valid coordinate: latitude −90 to 90, longitude −180 to 180",
+  "checkinPlacesSaveFailed": "Places could not be loaded or saved. Please try again.",
+  "checkinLocationRequired": "This activity requires a location. Select a place, then scan the current QR code.",
+  "checkinLocationRejected": "The service did not accept the selected location. Check the place and coordinates.",
+  "checkinFaceRequired": "This activity requires face verification. Complete it in Chaoxing.",
+  "checkinPhotoRequired": "This activity requires a photo. Complete it in Chaoxing.",
+  "checkinVerificationRequired": "The service requires a verification code. Complete verification in Chaoxing.",
+  "checkinRequirementsUnknown": "The activity requirements could not be verified. Check the activity in Chaoxing.",
+  "checkinActivityUnsupported": "This activity is not a supported QR check-in. Check it in Chaoxing.",
+  "checkinQrExpired": "The QR code has expired. Scan the currently displayed code.",
+  "checkinPreflightFailed": "The check-in preparation failed before submission. Check your connection and scan again.",
+  "checkinQrInvalid": "This is not a valid Chaoxing check-in QR code."
 }

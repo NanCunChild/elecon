@@ -580,5 +580,29 @@
         "type": "String"
       }
     }
-  }
+  },
+  "checkinPlacesTitle": "签到位置",
+  "checkinPlacesHelp": "选择本次使用的地点；可保存最多 16 个地点。坐标请从签到服务的地点数据取得。",
+  "checkinNoPlace": "不指定位置",
+  "checkinPlaceAdd": "添加地点",
+  "checkinPlaceEdit": "编辑地点",
+  "checkinPlaceDelete": "删除地点",
+  "checkinPlaceSave": "保存地点",
+  "checkinPlaceName": "地点名称",
+  "checkinPlaceAddress": "地址",
+  "checkinLatitude": "纬度（服务坐标）",
+  "checkinLongitude": "经度（服务坐标）",
+  "checkinPlaceRequired": "请填写此项",
+  "checkinCoordinateInvalid": "请输入有效坐标：纬度 −90～90，经度 −180～180",
+  "checkinPlacesSaveFailed": "地点未能读取或保存，请稍后重试。",
+  "checkinLocationRequired": "此活动要求定位，请先选择地点，再扫描当前二维码。",
+  "checkinLocationRejected": "签到服务未接受所选位置，请检查地点和坐标。",
+  "checkinFaceRequired": "此活动要求人脸验证，请在学习通完成。",
+  "checkinPhotoRequired": "此活动要求拍照，请在学习通完成。",
+  "checkinVerificationRequired": "签到服务要求验证码，请在学习通完成验证。",
+  "checkinRequirementsUnknown": "未能确认此活动的签到要求，请在学习通查看。",
+  "checkinActivityUnsupported": "此活动不是当前支持的二维码签到，请在学习通查看。",
+  "checkinQrExpired": "二维码已过期，请扫描当前显示的二维码。",
+  "checkinPreflightFailed": "签到准备请求未完成，尚未提交签到，请检查网络后重新扫码。",
+  "checkinQrInvalid": "未识别为有效的学习通签到二维码。"
 }
