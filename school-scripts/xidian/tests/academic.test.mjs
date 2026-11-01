@@ -125,6 +125,9 @@ test("UG bitmap week indexing, actual dates, empty week, and exact student id", 
   assert.equal(result.weekPreviews[0].days[1].courseCount, 1);
   assert.equal(result.weekPreviews[1].days[1].courseCount, 0);
   assert.equal(result.weekPreviews[2].days[1].courseCount, 1);
+  assert.deepEqual(result.termWeeks[2].days, result.days);
+  assert.equal(result.termWeeks[1].days.flatMap((day) => day.slots).length, 0);
+  assert.equal(result.termWeeks[2].teachingWeekStart, result.teachingWeekStart);
   assert.equal(ctx.calls.filter((c) => c.url.pathname.endsWith("/xskcb.do")).length, 1);
   const empty = await scheduleWeek(ctx, { term: TERM, week: 2 });
   assert.equal(empty.days.flatMap((day) => day.slots).length, 0);
@@ -235,6 +238,7 @@ test("UG partial stop, chained moves, different class numbers, and a new makeup 
   assert.equal(week3.days[2].slots.length, 0);
   assert.equal(week2.weekPreviews[1].days[0].courseCount, week2.days[0].slots.length);
   assert.equal(week2.weekPreviews[2].days[0].courseCount, week3.days[0].slots.length);
+  assert.deepEqual(week2.termWeeks[2].days, week3.days);
   assert.equal(week2.weekPreviews[2].days[2].courseCount, 0);
   assert.deepEqual(
     week3.days[4].slots.map((s) => [s.start, s.end, s.room, s.changeType]),

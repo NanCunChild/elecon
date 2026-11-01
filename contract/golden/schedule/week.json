@@ -103,6 +103,81 @@
           }
         ]
       }
+    },
+    {
+      "name": "term-empty-week",
+      "version": "1.2",
+      "valid": true,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "termWeeks": [
+          {
+            "week": 2,
+            "teachingWeekStart": "2026-11-09",
+            "teachingWeekEnd": "2026-11-15",
+            "days": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "term-invalid-week",
+      "version": "1.2",
+      "valid": false,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "termWeeks": [
+          {
+            "week": 0,
+            "teachingWeekStart": "2026-11-09",
+            "teachingWeekEnd": "2026-11-15",
+            "days": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "term-missing-date",
+      "version": "1.2",
+      "valid": false,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "termWeeks": [
+          {
+            "week": 2,
+            "days": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "term-invalid-days",
+      "version": "1.2",
+      "valid": false,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "termWeeks": [
+          {
+            "week": 2,
+            "teachingWeekStart": "2026-11-09",
+            "teachingWeekEnd": "2026-11-15",
+            "days": [
+              {
+                "dayOfWeek": 8,
+                "slots": []
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

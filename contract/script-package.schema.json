@@ -247,7 +247,7 @@
                     "const": "elecon.schedule.week"
                   },
                   "schemaVersion": {
-                    "enum": ["1.0", "1.1"]
+                    "enum": ["1.0", "1.1", "1.2"]
                   }
                 }
               },

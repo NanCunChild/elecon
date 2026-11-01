@@ -17,11 +17,13 @@ class ScriptCachedData {
     required this.fetchedAt,
     required this.isStale,
     required this.params,
+    this.freshUntil,
   });
   final Object? data;
   final DateTime fetchedAt;
   final bool isStale;
   final Map<String, dynamic> params;
+  final DateTime? freshUntil;
 }
 
 class ScriptDataCache {
@@ -63,6 +65,20 @@ class ScriptDataCache {
     Map<String, dynamic> params = const {},
   }) {
     final ref = _ref(package, capability, params);
+    // ADR-054: only 1.2 defines complete term weeks. Older open schemas may
+    // contain an unrelated extension with this name and must not be projected.
+    if (capability == 'schedule.week' &&
+        package.manifest.capability(capability)?.schemaVersion == '1.2' &&
+        params['week'] is int &&
+        params.keys.every((key) => key == 'week' || key == 'term')) {
+      for (final entry in _entries(package, capability)) {
+        final cached = _decode(package, capability, entry);
+        if (cached == null) continue;
+        if (entry.ref == ref) return cached;
+        final projected = _projectWeek(cached, params);
+        if (projected != null) return projected;
+      }
+    }
     return _decode(
       package,
       capability,
@@ -71,17 +87,57 @@ class ScriptDataCache {
   }
 
   ScriptCachedData? latest(ScriptPackage package, String capability) {
-    final entries =
-        store
-            .list()
-            .where((e) => e.ref.startsWith('${_prefix(package)}$capability:'))
-            .toList()
-          ..sort((a, b) => b.acquiredAt.compareTo(a.acquiredAt));
-    for (final entry in entries) {
+    for (final entry in _entries(package, capability)) {
       final data = _decode(package, capability, entry);
       if (data != null) return data;
     }
     return null;
+  }
+
+  List<CredentialEntry> _entries(ScriptPackage package, String capability) =>
+      store
+          .list()
+          .where((e) => e.ref.startsWith('${_prefix(package)}$capability:'))
+          .toList()
+        ..sort((a, b) => b.acquiredAt.compareTo(a.acquiredAt));
+
+  ScriptCachedData? _projectWeek(
+    ScriptCachedData cached,
+    Map<String, dynamic> params,
+  ) {
+    if (cached.params.keys.any((key) => key != 'week' && key != 'term')) {
+      return null;
+    }
+    final data = cached.data;
+    if (data is! Map<String, dynamic> ||
+        (params['term'] != null && params['term'] != data['term'])) {
+      return null;
+    }
+    final weeks = data['termWeeks'];
+    if (weeks is! List) return null;
+    final matches = weeks
+        .whereType<Map>()
+        .where((row) => row['week'] == params['week'])
+        .toList();
+    if (matches.length != 1) return null;
+    final row = matches.single;
+    final projected = Map<String, dynamic>.from(data)..remove('weekType');
+    for (final key in [
+      'week',
+      'days',
+      'teachingWeekStart',
+      'teachingWeekEnd',
+      'weekType',
+    ]) {
+      if (row.containsKey(key)) projected[key] = row[key];
+    }
+    return ScriptCachedData(
+      data: projected,
+      fetchedAt: cached.fetchedAt,
+      isStale: cached.isStale,
+      freshUntil: cached.freshUntil,
+      params: Map.unmodifiable(params),
+    );
   }
 
   ScriptCachedData? _decode(
@@ -121,6 +177,10 @@ class ScriptDataCache {
           isUtc: true,
         ),
         isStale: now() - entry.acquiredAt >= policy.ttlSeconds * 1000,
+        freshUntil: DateTime.fromMillisecondsSinceEpoch(
+          entry.acquiredAt + policy.ttlSeconds * 1000,
+          isUtc: true,
+        ),
       );
     } on Object {
       return null;

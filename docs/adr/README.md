@@ -28,4 +28,6 @@ ADR-000–033 已废弃为新开发总纲，正文移至 [archived](../archived/
 | [052](adr_052_community_accounts_and_chaoxing.md) | Accepted（本轮服务接入授权） | 睿思账号、学习通增强包、SDK 9 有界前台 WebSocket 与动态 Tab | 待人工核心/网络审阅与真实账号/真机 | 无历史私信/推送；签到限定无额外挑战的 QR 活动 |
 | [053](adr_053_provider_updates_and_service_cancellation.md) | Accepted（修复课表与独立服务） | registry v3 旧绑定恢复、基础包契约升级、单次调用取消；社区包手动导入 | 自动回归与设备结果另记；核心人工审阅待完成 | 保留批准 digest 和显式覆盖选择，不提升 namespace 权限 |
 
+| [054](adr_054_schedule_term_cache.md) | Accepted（整学期缓存与后台刷新） | schedule.week 1.2、按周本地投影、非阻塞过期刷新 | 待更新包真机与人工核心审阅 | 保留原始时间、digest 隔离和旧 1.0/1.1 校验 |
+
 ADR 编号不回收：021 仍是历史预留。更新决策、实现与签收时分别修改对应列，不用自动测试替代人工复核。

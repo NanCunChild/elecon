@@ -1,4 +1,4 @@
-/** ADR-048: source package versions and exact V1 output compatibility. */
+/** ADR-048/054: source package versions and exact V1 output compatibility. */
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { checkManifest, loadContract } from "../validator/index.js";
@@ -17,7 +17,7 @@ for (const entry of golden.cases) {
 }
 assert.equal(contract.schemaFor("elecon.schedule.week", "2.0"), undefined);
 
-for (const version of ["1.0", "1.1"]) {
+for (const version of ["1.0", "1.1", "1.2"]) {
   const manifest = {
     sdkVersion: 6,
     id: "synthetic-schedule",

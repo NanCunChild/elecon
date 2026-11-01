@@ -529,6 +529,22 @@ export async function scheduleWeek(ctx, params = {}) {
         })),
       };
     }),
+    // ADR-054 / schedule.week 1.2: the same term response supplies complete
+    // week details, including empty weeks. The host can switch weeks locally.
+    termWeeks: Array.from({ length: previewEnd }, (_, index) => {
+      const cachedWeek = index + 1;
+      return {
+        week: cachedWeek,
+        teachingWeekStart: addDays(startDate, (cachedWeek - 1) * 7),
+        teachingWeekEnd: addDays(startDate, cachedWeek * 7 - 1),
+        days: Array.from({ length: 7 }, (_, day) => ({
+          dayOfWeek: day + 1,
+          slots: [...(previewWeeks.get(cachedWeek)?.[day] ?? [])]
+            .map((encoded) => JSON.parse(encoded))
+            .sort((a, b) => Number(a.start) - Number(b.start) || a.courseName.localeCompare(b.courseName)),
+        })),
+      };
+    }),
     days,
   };
 }

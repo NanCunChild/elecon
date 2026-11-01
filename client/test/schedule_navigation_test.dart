@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:elecon/core/adapter_service.dart';
 import 'package:elecon/core/loader/diagnostics.dart';
+import 'package:elecon/core/scripts/manifest.dart';
 import 'package:elecon/l10n/gen/app_localizations.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:elecon/session/session_scope.dart';
@@ -101,7 +102,141 @@ class ScheduleSession extends SessionController {
   }
 }
 
+class CachedScheduleSession extends SessionController {
+  final requests = <({int week, bool interactive})>[];
+  final refresh = Completer<CapabilityRun>();
+  @override
+  Future<CapabilityRun> runCapability(
+    String capability, {
+    Map<String, dynamic>? params,
+    bool interactive = true,
+    String? htmlStdlib,
+    void Function(String, String)? onLog,
+    void Function(AdapterDiagnostic)? onDiagnostic,
+  }) {
+    expect(capability, 'schedule.week');
+    requests.add((week: params!['week'] as int, interactive: interactive));
+    return refresh.future;
+  }
+}
+
 void main() {
+  testWidgets(
+    'term cache switches weeks offline while one expired refresh runs',
+    (tester) async {
+      final session = CachedScheduleSession();
+      addTearDown(session.dispose);
+      final data = {
+        ...payload(1),
+        'termWeeks': [
+          for (var week = 1; week <= 3; week++)
+            {...payload(week), 'teachingWeekEnd': '2026-11-08'},
+        ],
+      };
+      final package = ScriptPackage.parse(
+        jsonEncode({
+          'format': 'elecon-script/1',
+          'manifest': {
+            'sdkVersion': 4,
+            'id': 'synthetic-schedule',
+            'schoolId': 'synthetic',
+            'version': '1.0.0',
+            'name': 'Synthetic',
+            'network': {'origins': []},
+            'browser': false,
+            'capabilities': [
+              {
+                'id': 'schedule.week',
+                'schema': 'elecon.schedule.week',
+                'schemaVersion': '1.2',
+              },
+            ],
+            'home': [
+              {'capability': 'schedule.week', 'ttlSeconds': 30},
+            ],
+          },
+          'source':
+              'export const capabilities={"schedule.week":async()=>(${jsonEncode(data)})};',
+        }),
+      );
+      await tester.runAsync(() async {
+        await session.installTrustedScript(
+          package,
+          approvedDigest: package.digest,
+        );
+        await session.selectTrustedScriptSchool(package.manifest.id);
+        expect(
+          (await session.runTrustedScript(
+            package.manifest.id,
+            'schedule.week',
+            interactive: false,
+          )).ok,
+          isTrue,
+        );
+        expect(
+          await session.cachedCapability(
+            'schedule.week',
+            params: {'week': 2, 'term': 'synthetic'},
+          ),
+          isNotNull,
+        );
+      });
+      await tester.pumpWidget(
+        app(
+          const HomeCardPresentation(
+            size: HomeCardSize.expanded,
+            isPage: true,
+            child: ScheduleSection(),
+          ),
+          session: session,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(session.requests, isEmpty);
+      await tester.tap(find.byKey(const ValueKey('schedule-week-2')));
+      await tester.runAsync(() async {});
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<WeekScheduleView>(find.byType(WeekScheduleView))
+            .data
+            .week,
+        2,
+      );
+      expect(session.requests, isEmpty);
+      await tester.pump(const Duration(seconds: 31));
+      await tester.pump();
+      expect(session.requests, [(week: 2, interactive: false)]);
+      expect(find.byType(WeekScheduleView), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('schedule-week-3')));
+      await tester.runAsync(() async {});
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester
+            .widget<WeekScheduleView>(find.byType(WeekScheduleView))
+            .data
+            .week,
+        3,
+      );
+      expect(session.requests, hasLength(1));
+      session.refresh.complete(
+        const CapabilityRun.failed(CapabilityFailureKind.run, 'offline'),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<WeekScheduleView>(find.byType(WeekScheduleView))
+            .data
+            .week,
+        3,
+      );
+      expect(session.requests, hasLength(1));
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test('shared Dart/TypeScript versioned schedule output cases', () {
     final golden =
         jsonDecode(

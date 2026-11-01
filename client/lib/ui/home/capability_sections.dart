@@ -46,9 +46,14 @@ Future<_Outcome<T>> _runOnceDecoded<T>(
   SessionController session,
   String capability, {
   Map<String, dynamic>? params,
+  bool interactive = true,
   required T? Function(Object?) decode,
 }) async {
-  final run = await session.runCapability(capability, params: params);
+  final run = await session.runCapability(
+    capability,
+    params: params,
+    interactive: interactive,
+  );
   if (!run.ok) {
     if (run.failureKind == CapabilityFailureKind.auth ||
         run.reason == 'authentication_required') {
@@ -73,12 +78,14 @@ Future<_Outcome<T>> _runDecoded<T>(
   SessionController session,
   String capability, {
   Map<String, dynamic>? params,
+  bool interactive = true,
   required T? Function(Object?) decode,
 }) async {
   final first = await _runOnceDecoded(
     session,
     capability,
     params: params,
+    interactive: interactive,
     decode: decode,
   );
   if (context.mounted) {
@@ -138,6 +145,7 @@ mixin _CachedSection<W extends StatefulWidget, D> on State<W> {
   int? _cacheGeneration;
   int _cacheRead = 0;
   DateTime? _cacheFetchedAt;
+  DateTime? _cacheFreshUntil;
   bool _cacheStale = false;
   Map<String, dynamic> _restoredParams = const {};
 
@@ -147,6 +155,7 @@ mixin _CachedSection<W extends StatefulWidget, D> on State<W> {
   bool get useLatestCache => cacheParams == null;
   void applyCache(D data);
   void clearCache();
+  void onCacheRestored() {}
 
   @override
   void didChangeDependencies() {
@@ -204,9 +213,11 @@ mixin _CachedSection<W extends StatefulWidget, D> on State<W> {
       setState(() {
         _restoredParams = cached!.params;
         _cacheFetchedAt = cached.fetchedAt;
+        _cacheFreshUntil = cached.freshUntil;
         _cacheStale = cached.isStale;
         applyCache(decoded);
       });
+      onCacheRestored();
     } catch (_) {
       // Cache read failure must not erase a successful visible result.
     }
@@ -411,6 +422,40 @@ class _ScheduleSectionState extends State<ScheduleSection>
   bool _opened = false;
   bool? _home;
   ScheduleWeek? _homeData;
+  Timer? _staleTimer;
+  DateTime? _autoRefreshAttempt;
+  bool _refreshing = false;
+
+  @override
+  void dispose() {
+    _staleTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void onCacheRestored() {
+    _staleTimer?.cancel();
+    if (_home! || _data == null) return;
+    void refresh() {
+      if (!mounted ||
+          _home! ||
+          _refreshing ||
+          _autoRefreshAttempt == _cacheFetchedAt) {
+        return;
+      }
+      _autoRefreshAttempt = _cacheFetchedAt;
+      setState(() => _cacheStale = true);
+      unawaited(_load(background: true));
+    }
+
+    final until = _cacheFreshUntil;
+    if (_cacheStale || (until != null && !until.isAfter(DateTime.now()))) {
+      refresh();
+    } else if (until != null) {
+      _staleTimer = Timer(until.difference(DateTime.now()), refresh);
+    }
+  }
+
   @override
   void didChangeDependencies() {
     final presentation = HomeCardPresentation.maybeOf(context);
@@ -457,6 +502,9 @@ class _ScheduleSectionState extends State<ScheduleSection>
 
   @override
   void clearCache() {
+    _staleTimer?.cancel();
+    _autoRefreshAttempt = null;
+    _refreshing = false;
     _homeData = null;
     _data = null;
     _phase = _Phase.idle;
@@ -538,15 +586,17 @@ class _ScheduleSectionState extends State<ScheduleSection>
   ScheduleWeek? _data;
   String? _error;
 
-  Future<void> _load() async {
+  Future<void> _load({bool background = false}) async {
+    if (_refreshing) return;
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     final request = ++_request;
     setState(() {
-      _phase = _Phase.loading;
+      _refreshing = background || _data != null;
+      if (_data == null) _phase = _Phase.loading;
       _error = null;
     });
-    if (_queryCurrentWeek) {
+    if (_queryCurrentWeek && !background) {
       final calendar = await _runDecoded<CalendarAcademic>(
         context,
         session,
@@ -560,7 +610,12 @@ class _ScheduleSectionState extends State<ScheduleSection>
       }
       if (calendar.data == null) {
         setState(() {
-          _phase = calendar.needLogin ? _Phase.needLogin : _Phase.error;
+          _refreshing = false;
+          _phase = _data != null
+              ? _Phase.loaded
+              : calendar.needLogin
+              ? _Phase.needLogin
+              : _Phase.error;
           _error = calendar.error;
         });
         return;
@@ -575,19 +630,27 @@ class _ScheduleSectionState extends State<ScheduleSection>
       context,
       session,
       'schedule.week',
+      interactive: !background,
       params: {'week': _week, if (_term != null) 'term': _term},
       decode: scheduleWeekFromDynamic,
     );
+    if (mounted && _isCurrentSession(this, session, generation)) {
+      setState(() => _refreshing = false);
+    }
     if (!mounted ||
         request != _request ||
         !_isCurrentSession(this, session, generation)) {
+      if (mounted && _isCurrentSession(this, session, generation)) {
+        await restoreCache();
+        if (!_home! && _data == null && _phase == _Phase.loading) await _load();
+      }
       return;
     }
     setState(() {
       if (outcome.needLogin) {
-        _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
+        _phase = _Phase.needLogin;
       } else if (outcome.error != null) {
-        _phase = _data == null ? _Phase.error : _Phase.loaded;
+        _phase = _Phase.error;
         _error = outcome.error;
       } else {
         _phase = _Phase.loaded;
@@ -599,6 +662,9 @@ class _ScheduleSectionState extends State<ScheduleSection>
         }
       }
     });
+    // Cache timestamps belong to the successful source request. A refresh may
+    // finish after a local week change; restore the currently selected week.
+    if (outcome.data != null) await restoreCache();
   }
 
   Future<void> _login() async {
@@ -668,6 +734,7 @@ class _ScheduleSectionState extends State<ScheduleSection>
               maxWeek: _maxWeek,
             ),
           ),
+        if (_refreshing) const LinearProgressIndicator(),
       ],
     );
   }
