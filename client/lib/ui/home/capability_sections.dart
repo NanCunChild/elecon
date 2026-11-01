@@ -409,15 +409,30 @@ class ScheduleSection extends StatefulWidget {
 class _ScheduleSectionState extends State<ScheduleSection>
     with _CachedSection<ScheduleSection, ScheduleWeek> {
   bool _opened = false;
+  bool? _home;
+  ScheduleWeek? _homeData;
   @override
   void didChangeDependencies() {
+    final presentation = HomeCardPresentation.maybeOf(context);
+    final home = presentation != null && !presentation.isPage;
+    final changedPresentation = _home != null && _home != home;
+    _home = home;
+    if (changedPresentation) {
+      // The board lends this state to the page. Its selected week and the
+      // default home query have independent cache addresses and timestamps.
+      _cacheRead++;
+      _cacheFetchedAt = null;
+    }
     super.didChangeDependencies();
+    if (changedPresentation) unawaited(restoreCache());
     if (!_opened && (HomeCardPresentation.maybeOf(context)?.isPage ?? false)) {
       _opened = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
+        if (!mounted || _home!) return;
         await restoreCache();
-        if (mounted && _data == null && _phase == _Phase.idle) await _load();
+        if (mounted && !_home! && _data == null && _phase == _Phase.idle) {
+          await _load();
+        }
       });
     }
   }
@@ -428,6 +443,10 @@ class _ScheduleSectionState extends State<ScheduleSection>
   ScheduleWeek? decodeCache(Object? value) => scheduleWeekFromDynamic(value);
   @override
   void applyCache(ScheduleWeek data) {
+    if (_home!) {
+      _homeData = data;
+      return;
+    }
     _data = data;
     _phase = _Phase.loaded;
     _week = data.week;
@@ -438,6 +457,7 @@ class _ScheduleSectionState extends State<ScheduleSection>
 
   @override
   void clearCache() {
+    _homeData = null;
     _data = null;
     _phase = _Phase.idle;
     _week = 1;
@@ -450,12 +470,10 @@ class _ScheduleSectionState extends State<ScheduleSection>
   }
 
   @override
-  bool get useLatestCache => !_manualWeek;
+  bool get useLatestCache => !_home! && !_manualWeek;
   @override
-  Map<String, dynamic>? get cacheParams => {
-    'week': _week,
-    if (_term != null) 'term': _term,
-  };
+  Map<String, dynamic>? get cacheParams =>
+      _home! ? const {} : {'week': _week, if (_term != null) 'term': _term};
 
   int get _maxWeek =>
       _previews.keys.fold(_week > 25 ? _week : 25, (a, b) => a > b ? a : b);
@@ -593,13 +611,17 @@ class _ScheduleSectionState extends State<ScheduleSection>
 
   @override
   Widget build(BuildContext context) {
-    if (_data != null &&
-        HomeCardPresentation.maybeOf(context) != null &&
-        !(HomeCardPresentation.maybeOf(context)?.isPage ?? false)) {
-      return withCacheTime(ScheduleCard(_data!));
+    final l10n = AppLocalizations.of(context);
+    if (_home!) {
+      return _homeData != null
+          ? withCacheTime(ScheduleCard(_homeData!))
+          : SectionCard(
+              title: l10n.homeScheduleTitle,
+              summary: CardSummary(l10n.scheduleTodayUnavailable),
+              child: Text(l10n.scheduleTodayUnavailable),
+            );
     }
     final busy = _phase == _Phase.loading;
-    final l10n = AppLocalizations.of(context);
     return Column(
       children: [
         _PromptCard(

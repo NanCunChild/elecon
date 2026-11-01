@@ -65,7 +65,8 @@ ScriptPackage schoolPackage(
         },
       ],
     },
-    'source': '''export const capabilities={
+    'source':
+        '''export const capabilities={
     'generic.section':async(ctx,p)=>{
       await ctx.credentials.set('amount',String(p.amount ?? 1234));
       if(p.failNotices) await ctx.credentials.set('noticeFailure','true');
@@ -79,7 +80,13 @@ ScriptPackage schoolPackage(
     'grades.list':async()=>({term:'SYNTHETIC-OLD-TERM',items:[]}),
     'gpa.summary':async()=>({gpa:3.5,gradePointScale:'4.0'}),
     'calendar.academic':async()=>({term:'SYNTHETIC-OLD-TERM',currentWeek:8}),
-    'schedule.week':async(ctx,p)=>({term:'2026-2027-1',week:p.week,days:[]}),
+    'schedule.week':async(ctx,p)=>({
+      term:'2026-2027-1',week:p.week ?? 8,
+      teachingWeekStart:'${DateTime.now().subtract(Duration(days: DateTime.now().weekday - 1)).toIso8601String().substring(0, 10)}',
+      days:[{dayOfWeek:${DateTime.now().weekday},slots:[{
+        start:'1',end:'2',courseName:p.week == null ? 'Current home course' : 'Selected week course'
+      }]}]
+    }),
     'notice.list':async(ctx)=>{
       if((await ctx.credentials.get('noticeFailure'))?.value==='true') throw new Error('SYNTHETIC_NOTICE_FAILURE');
       const old=await ctx.credentials.get('noticeCount');
@@ -343,6 +350,73 @@ void main() {
       );
       await tester.pump();
       expect(find.textContaining('56.78'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'home timetable uses the default current week while the page retains selected weeks',
+    (tester) async {
+      final session = await prepare(tester);
+      await tester.runAsync(() async {
+        expect((await session.runCapability('schedule.week')).ok, isTrue);
+        expect(
+          (await session.runCapability(
+            'schedule.week',
+            params: {'week': 6},
+          )).ok,
+          isTrue,
+        );
+      });
+      final page = ValueNotifier(false);
+      addTearDown(page.dispose);
+      await tester.pumpWidget(
+        app(
+          session,
+          ValueListenableBuilder<bool>(
+            valueListenable: page,
+            child: const ScheduleSection(),
+            builder: (_, isPage, child) => HomeCardPresentation(
+              size: HomeCardSize.expanded,
+              isPage: isPage,
+              child: child!,
+            ),
+          ),
+        ),
+      );
+      await until(
+        tester,
+        () => find.byType(ScheduleCard).evaluate().isNotEmpty,
+      );
+      expect(
+        tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week,
+        8,
+      );
+      expect(find.text('Current home course'), findsOneWidget);
+      expect(find.text('Selected week course'), findsNothing);
+      page.value = true;
+      await tester.pumpAndSettle();
+      await until(
+        tester,
+        () =>
+            find.byType(ScheduleCard).evaluate().isNotEmpty &&
+            tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week ==
+                6,
+      );
+      page.value = false;
+      await tester.pumpAndSettle();
+      await until(
+        tester,
+        () =>
+            find.byType(ScheduleCard).evaluate().isNotEmpty &&
+            tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week ==
+                8,
+      );
+      expect(find.text('Current home course'), findsOneWidget);
+      session.logout();
+      await tester.pumpAndSettle();
+      expect(find.text('Current home course'), findsNothing);
+      expect(find.byType(ScheduleCard), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
