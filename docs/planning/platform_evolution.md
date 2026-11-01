@@ -28,7 +28,7 @@ flowchart LR
 | A1 匿名增强 profile | 新 SDK/profile、宿主能力裁剪、安装说明、模板及负例 | 无凭据API、无浏览器/学校会话/私密参数；所有出网限审计过的公开端点/方法；旧SDK保留 | 旧宿主拒绝新SDK；不得降级到高信任模板 |
 | N1 公开通知服务 | 独立采集部署、匿名公开源、共享纯解析、快照、条件请求、限流熔断 | 合成故障/负载测试、有限真实源核验、数据公开许可确认、实测指标 | 用户一键禁用增强恢复原通知；不删除直连 |
 | N2 客户端通知增强 | 安装 → 检查 → 绑定 list/detail → 显示来源时间 → 离线/失效 → 禁用 | 同源实体、原始采集时间、撤回、硬过期、只读回退演示 | 主包独立可用；无需更换学校身份 |
-| L1 领域增量 | 图书 search/detail/holdings 与论坛 board/thread/reply 各有 schema ADR；只读页；论坛/消息另按 [ADR-051](../adr/adr_051_forum_and_messages_reservation.md) 与[专项计划](forum_and_messages.md)推进 | ID语义、分页、过滤、富正文、错误和权限独立验证 | 不改变 library.loans / notice 含义 |
+| L1 领域增量 | 图书 search/detail/holdings 与论坛 board/thread/reply 各有 schema ADR；只读页；论坛/消息另按 [ADR-051](../adr/adr_051_forum_and_messages_reservation.md) 、[ADR-052](../adr/adr_052_community_accounts_and_chaoxing.md)与[专项计划](forum_and_messages.md)推进 | ID语义、分页、过滤、富正文、错误和权限独立验证 | 不改变 library.loans / notice 含义 |
 | R1 条件性私密/校内服务 | 空教室共享授权、账户模型；水电本地缓存先行 | 学校授权证据、身份隔离、预算、实际可用性与撤销 | 缺授权则保持直连；不提供全校水电缓存 |
 | W1 后续写操作 | 论坛发帖/回复、消息发送/已读、图书续借/预约等独立副作用设计；新源码沿 ADR-046 通用请求 | 确认、幂等/未知态、取消、不跨源重试、人工审阅 | 不混入 query 或复用 climate 特定 payload |
 
@@ -73,3 +73,7 @@ N1/N2 完成后，用户先安装并验证主学校包，再独立安装通知�
 ## 论坛与消息入口预留
 
 [ADR-051](../adr/adr_051_forum_and_messages_reservation.md) 接受本轮四导航与本地占位页；额外服务账号、论坛/消息领域契约、写操作和推送仍为 Proposed，状态与依赖唯一维护于[专项计划](forum_and_messages.md)。已有课表原生页面由 ADR-047/048 实施，不再以 ADR-043 当时的缺口推断当前没有独立课表。首页本周查询缓存与详情选周缓存分别使用，防止历史周遮住今日摘要；不新增学校请求或重解释 schema。
+
+## 瑞思/学习通首片（2026-11-01）
+
+[ADR-052](../adr/adr_052_community_accounts_and_chaoxing.md)已落地独立服务账号、SDK 9 有界前台 WebSocket、学习通增强包及按能力显示的 Tab。瑞思基本包只交付登录/本地退出；消息窗口和无额外挑战的扫码签到在独立增强包。此片不实现 A1 匿名权限、中继、自建论坛、历史私信或推送；来源选择和后续切片以[专项计划](forum_and_messages.md)为准。

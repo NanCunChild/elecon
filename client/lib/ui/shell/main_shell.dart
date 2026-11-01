@@ -5,6 +5,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../core/scripts/manifest.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_scope.dart';
 import '../../session/session_controller.dart';
@@ -27,12 +28,33 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
-  int _index = 0;
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
+  bool _suspended = false;
+  String _tab = 'home';
+  Object? _sourceKey;
+  Future<({ScriptPackage? forum, ScriptPackage? messages})>? _sources;
+
   SessionController? _scriptSession;
   ScriptBrowserPresenter? _presenter;
   ScriptInputPresenter? _inputPresenter;
   ScriptScannerPresenter? _scannerPresenter;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _scriptSession?.cancelTrustedScriptRuns();
+      if (mounted) setState(() => _suspended = true);
+    } else if (state == AppLifecycleState.resumed && mounted) {
+      setState(() => _suspended = false);
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -85,6 +107,7 @@ class _MainShellState extends State<MainShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scriptSession?.cancelTrustedScriptRuns();
     if (identical(_scriptSession?.scriptInputPresenter, _inputPresenter)) {
       _scriptSession?.scriptInputPresenter = null;
@@ -100,67 +123,133 @@ class _MainShellState extends State<MainShell> {
   }
 
   /// 标签文案随语言变，故在 build 里按当前 l10n 组装（图标是常量）。
-  static List<LiquidGlassTabSpec> _tabsOf(AppLocalizations l10n) =>
-      <LiquidGlassTabSpec>[
-        LiquidGlassTabSpec(
-          label: l10n.navHome,
-          icon: Icons.home_outlined,
-          selectedIcon: Icons.home,
-        ),
-        LiquidGlassTabSpec(
-          label: l10n.navForum,
-          icon: Icons.forum_outlined,
-          selectedIcon: Icons.forum,
-        ),
-        LiquidGlassTabSpec(
-          label: l10n.navMessages,
-          icon: Icons.chat_bubble_outline,
-          selectedIcon: Icons.chat_bubble,
-        ),
-        LiquidGlassTabSpec(
-          label: l10n.navSettings,
-          icon: Icons.settings_outlined,
-          selectedIcon: Icons.settings,
-        ),
-      ];
+  static List<LiquidGlassTabSpec> _tabsOf(
+    AppLocalizations l10n, {
+    required bool forum,
+    required bool messages,
+  }) => <LiquidGlassTabSpec>[
+    LiquidGlassTabSpec(
+      label: l10n.navHome,
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home,
+    ),
+    if (forum)
+      LiquidGlassTabSpec(
+        label: l10n.navForum,
+        icon: Icons.forum_outlined,
+        selectedIcon: Icons.forum,
+      ),
+    if (messages)
+      LiquidGlassTabSpec(
+        label: l10n.navMessages,
+        icon: Icons.chat_bubble_outline,
+        selectedIcon: Icons.chat_bubble,
+      ),
+    LiquidGlassTabSpec(
+      label: l10n.navSettings,
+      icon: Icons.settings_outlined,
+      selectedIcon: Icons.settings,
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
     final session = context
         .dependOnInheritedWidgetOfExactType<SessionScope>()
         ?.notifier;
-    final tabs = _tabsOf(AppLocalizations.of(context));
-    final glassBar = buildLiquidGlassShellBar(
-      context: context,
-      tabs: tabs,
-      selectedIndex: _index,
-      onSelected: (i) => setState(() => _index = i),
+    final sourceKey = (
+      session,
+      session?.selectedSchool?.id,
+      session?.trustedScriptViewGeneration,
     );
-
-    return Scaffold(
-      // 内容延伸到底栏后，玻璃折射才有内容可采样。
-      extendBody: glassBar != null,
-      body: IndexedStack(
-        index: _index,
-        children: [
-          EleconHomePage(
-            key: ValueKey(
-              '${session?.selectedSchool?.id}:${session?.trustedScriptViewGeneration}',
-            ),
-            loadSnapshot: widget.loadHomeSnapshot,
+    if (_sourceKey != sourceKey) {
+      _sourceKey = sourceKey;
+      final school = session?.selectedSchool?.id;
+      _sources = () async {
+        if (session == null || school == null) {
+          return (forum: null, messages: null);
+        }
+        try {
+          final registry = await session.scriptRegistry;
+          return (
+            forum: registry.provider(school, 'forum.session'),
+            messages: registry.provider(school, 'messages.list'),
+          );
+        } catch (_) {
+          return (forum: null, messages: null);
+        }
+      }();
+    }
+    return FutureBuilder<({ScriptPackage? forum, ScriptPackage? messages})>(
+      key: ValueKey(sourceKey),
+      future: _sources,
+      builder: (context, snapshot) {
+        final forum = snapshot.data?.forum;
+        final messages = snapshot.data?.messages;
+        final ids = [
+          'home',
+          if (forum != null) 'forum',
+          if (messages != null) 'messages',
+          'settings',
+        ];
+        // Stable tab identity survives insertion before Settings. An obsolete
+        // community source is never kept alive using its previous index.
+        if (!ids.contains(_tab) &&
+            snapshot.connectionState == ConnectionState.done) {
+          _tab = 'home';
+        }
+        final index = ids.contains(_tab) ? ids.indexOf(_tab) : 0;
+        final tabs = _tabsOf(
+          AppLocalizations.of(context),
+          forum: forum != null,
+          messages: messages != null,
+        );
+        void select(int i) => setState(() => _tab = ids[i]);
+        final glassBar = buildLiquidGlassShellBar(
+          context: context,
+          tabs: tabs,
+          selectedIndex: index,
+          onSelected: select,
+        );
+        return Scaffold(
+          extendBody: glassBar != null,
+          body: IndexedStack(
+            index: index,
+            children: [
+              EleconHomePage(
+                key: ValueKey(
+                  '${session?.selectedSchool?.id}:${session?.trustedScriptViewGeneration}',
+                ),
+                loadSnapshot: widget.loadHomeSnapshot,
+              ),
+              if (forum != null)
+                _tab == 'forum' && !_suspended
+                    ? ForumPage(
+                        key: ValueKey(('forum', sourceKey, forum.digest)),
+                        session: session!,
+                        package: forum,
+                      )
+                    : const SizedBox.shrink(),
+              if (messages != null)
+                _tab == 'messages' && !_suspended
+                    ? MessagesPage(
+                        key: ValueKey(('messages', sourceKey, messages.digest)),
+                        session: session!,
+                        package: messages,
+                      )
+                    : const SizedBox.shrink(),
+              const SettingsPage(key: ValueKey('settings')),
+            ],
           ),
-          const ForumPage(),
-          const MessagesPage(),
-          const SettingsPage(),
-        ],
-      ),
-      bottomNavigationBar:
-          glassBar ??
-          _MaterialShellBar(
-            tabs: tabs,
-            selectedIndex: _index,
-            onSelected: (i) => setState(() => _index = i),
-          ),
+          bottomNavigationBar:
+              glassBar ??
+              _MaterialShellBar(
+                tabs: tabs,
+                selectedIndex: index,
+                onSelected: select,
+              ),
+        );
+      },
     );
   }
 }

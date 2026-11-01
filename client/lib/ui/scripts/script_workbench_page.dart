@@ -296,6 +296,14 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
                   }),
             child: Text(l10n.scriptsInstallBundled),
           ),
+          OutlinedButton(
+            onPressed: _busy
+                ? null
+                : () => _guard(() async {
+                    await installBundledChaoxing(context, _session!, _bundled);
+                  }),
+            child: Text(l10n.scriptsChaoxingEnhancement),
+          ),
           if (_session?.scriptRegistryRecovered ?? false)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),

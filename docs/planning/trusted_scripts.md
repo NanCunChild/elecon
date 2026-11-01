@@ -330,3 +330,12 @@ CPH2653 在本轮 14:23–14:24 UTC 的脱敏日志确认：新版官方 WebView
 验证：相关组合 Flutter 100 项通过，后补复制链接/空教室真实缓存链组合 10 项通过；最终实际包真实 QuickJS 26 项与学校 155 项 Node 夹具通过。Dart/TS 共享课表版本化 golden、V1 validator、学校确定性打包/PII smoke、tools typecheck、Flutter analyze、相关 Biome、文档链接及 CHANGELOG 门通过。Android ARM64 Release 构建及覆盖安装完成；未执行 iOS 构建。
 
 上述手机结果来自其当时已授权旧脚本及新版客户端；新版源码的学校端到端验收须在用户确认新 digest 后继续，不能把合成回归或字段形态观察宣称为教室现场空置、教师真机查询或人工安全签收。核心/网络/契约人工审阅、研究生和其他平台仍开放；未推送、合并或发布。
+
+## 瑞思与学习通增强（2026-11-01，ADR-052）
+
+- 基本包 0.18.0：`forum.session` 独立瑞思账号，表单 MD5 协议与验证码原站回退；仅在当前用户 UID 核验后存 Cookie，BSD 来源许可随包。
+- 增强包 0.1.0：分别绑定本科/研究生，学习通原站登录、`messages.list` 当前群消息窗口和 `attendance.checkin` 受限 QR；独立安装，默认基本包不授予相机/消息网络。
+- SDK 9：单独声明 wss origins，有界二进制通道、固定 DNS/TLS、禁止跳转/压缩/自动重连；退出/更新/切身份/后台/离页关闭。新能力禁止 home/cache/background。
+- 主壳依据可执行 provider 显示论坛/消息 Tab，按稳定身份保持当前导航。消息和账号由同一包处理，页面离开清除敏感内容。
+
+自动验证包括实际模块及编译包、真实 QuickJS、合成 TLS/帧限制/取消、动态导航及既有脚本回归；详细支持范围见[增强包](../../school-scripts/xidian-chaoxing/README.md)。未访问真实学校/服务、未提交真实签到；协议在线兼容、原生平台及人工安全审阅仍开放。

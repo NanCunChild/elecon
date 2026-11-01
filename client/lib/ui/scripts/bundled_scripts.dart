@@ -107,3 +107,27 @@ Future<bool> installBundledSchool(
   await session.selectTrustedScriptSchool(school.dataId);
   return true;
 }
+
+/// Optional enhancement; it never changes the selected school or its base package.
+Future<bool> installBundledChaoxing(
+  BuildContext context,
+  SessionController session,
+  BundledScriptSchool school,
+) async {
+  if (session.selectedSchool?.id != school.id) {
+    throw StateError('script_school_not_selected');
+  }
+  final id = 'enhancement-${school.id.replaceAll('_', '-')}-chaoxing';
+  final package = ScriptPackage.parse(
+    await rootBundle.loadString('assets/school-scripts/$id.elecon.json'),
+  );
+  if (package.manifest.id != id || package.manifest.schoolId != school.id) {
+    throw StateError('bundled_script_identity_mismatch');
+  }
+  if (!context.mounted || !await confirmScriptInstall(context, [package])) {
+    return false;
+  }
+  await session.installTrustedScript(package, approvedDigest: package.digest);
+  await session.enableTrustedScript(id, true);
+  return true;
+}

@@ -21,17 +21,17 @@ flowchart TD
 
 公网 `server/src/public` 目前提供签名产物静态分发；`server/src/campus` 仍返回 501。新源码脚本没有生产服务端执行器。现有 V1 official/Broker/Masker 路径按[兼容边界](reference/legacy_compatibility.md)继续维护。
 
-[ADR-046](adr/adr_046_triggered_script_requests.md) 废除新源码 action 通道。空调控件直接触发普通能力的一次控制 POST，结束后查询一次状态；不额外确认、不自动重发、不乐观更新。旧 action 包保留原安装内容与 digest，但需更新后才能执行；V1 边界不变。签到可使用脚本通用请求，具体学校签到仍未实现。
+[ADR-046](adr/adr_046_triggered_script_requests.md) 废除新源码 action 通道。空调控件直接触发普通能力的一次控制 POST，结束后查询一次状态；不额外确认、不自动重发、不乐观更新。旧 action 包保留原安装内容与 digest，但需更新后才能执行；V1 边界不变。签到同样使用通用请求；学习通 QR 首片见 ADR-052。
 
 [ADR-044](adr/adr_044_local_profiles.md) 的本地 Profiles 各自拥有会话、凭据/缓存和脚本安装授权；旧根目录原位归属 Profile 1，新用户重新选脚本。切换取消旧调用并重建页面导航；设置按 Profile 展示，保护状态用图标表达。非密学校首页布局与主题继续共享。
 
-[ADR-045](adr/adr_045_script_qr_scanner.md) 的 SDK 8 可声明 `scanner` 并前台调用 `ctx.ui.scanQRCode()`，返回二维码文本或取消 null；后台拒绝，首片 Android/iOS，未实现学校签到提交。脚本保护仅完成[研究](research/script_protection_feasibility.md)，没有加密包或 VMP 加载器。
+[ADR-045](adr/adr_045_script_qr_scanner.md) 的 SDK 8 可声明 `scanner` 并前台调用 `ctx.ui.scanQRCode()`，返回二维码文本或取消 null；后台拒绝，首片 Android/iOS，学习通增强包的受限扫码提交见 ADR-052。脚本保护仅完成[研究](research/script_protection_feasibility.md)，没有加密包或 VMP 加载器。
 
 [ADR-048](adr/adr_048_schedule_navigation_and_segments.md) 的 `schedule.week` 1.1 提供学校时间分段与逐周课程预览，客户端拥有周按钮、滑动切周、满宽网格和重叠提示；1.0 继续按历史 schema 校验。西电教学楼目录已核实并内置于学校脚本，占用情况仍实时查询。
 
 [ADR-050](adr/adr_050_faculty_search.md) 的 `faculty.search` 1.0 提供公开教师检索，西电按官网单页查询；原生页面保留教师身份、分页、来源和简介，不获取凭据、不预加载或持久缓存检索结果。
 
-按 [ADR-051](adr/adr_051_forum_and_messages_reservation.md) 预留“首页 / 论坛 / 消息 / 设置”原生导航。论坛与消息目前仅显示筹备状态；无服务接入、额外账号登录、消息计数或后台请求。独立服务账号、只读内容及后续写操作见[实施规划](planning/forum_and_messages.md)，均需按各切片另行设计与验证。
+按 [ADR-052](adr/adr_052_community_accounts_and_chaoxing.md)，论坛和消息 Tab 仅在当前学校有对应可执行包时显示。基本包提供瑞思独立账号登录及本地退出；学习通增强包提供独立登录、前台群消息窗口和受限 QR 签到。SDK 9 WebSocket 单独声明 wss origins，固定 DNS/TLS、长度/流量/时长预算，取消销毁；协议、token 和 protobuf 留在脚本。账号操作、消息和签到禁止预加载/持久缓存。论坛帖子、消息历史/私信/未读和推送仍待实施，见[专项计划](planning/forum_and_messages.md)。
 
 ## 后续方向
 
