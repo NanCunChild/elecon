@@ -30,6 +30,7 @@ void main() {
   Future<(ThemeController, _MemoryThemeStore)> pumpSection(
     WidgetTester tester, {
     Locale locale = const Locale('zh'),
+    double textScale = 1,
   }) async {
     final store = _MemoryThemeStore();
     final ctrl = ThemeController(store: store);
@@ -40,6 +41,12 @@ void main() {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         theme: ThemeData(useMaterial3: true),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
         home: ThemeScope(
           controller: ctrl,
           child: const Scaffold(
@@ -79,6 +86,16 @@ void main() {
 
     expect(ctrl.localeTag, 'en');
     expect(store.saved?.localeTag, 'en', reason: '偏好已提交落盘');
+  });
+
+  testWidgets('窄屏两倍字号的语言选择器不挤占整行', (tester) async {
+    tester.view.physicalSize = const Size(320, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await pumpSection(tester, textScale: 2);
+    expect(find.byType(DropdownButton<String?>), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('en locale 下文案切换', (tester) async {

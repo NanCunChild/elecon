@@ -91,7 +91,11 @@ class AppearanceSection extends StatelessWidget {
                 leading: const Icon(Icons.translate_outlined),
                 title: Text(l10n.appearanceLanguageTitle),
                 subtitle: Text(appLocaleLabel(l10n, prefs.localeTag)),
-                trailing: DropdownButton<String?>(
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: DropdownButton<String?>(
+                  isExpanded: true,
                   value: resolveAppLocale(prefs.localeTag) == null
                       // 未知/已失效的标签在 UI 上回落到「跟随系统」。
                       ? kSystemLocaleTag
@@ -101,7 +105,11 @@ class AppearanceSection extends StatelessWidget {
                     for (final tag in appLocaleTags())
                       DropdownMenuItem<String?>(
                         value: tag,
-                        child: Text(appLocaleLabel(l10n, tag)),
+                        child: Text(
+                          appLocaleLabel(l10n, tag),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                   ],
                   onChanged: themeCtrl.setLocaleTag,
