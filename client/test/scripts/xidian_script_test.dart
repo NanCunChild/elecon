@@ -386,7 +386,7 @@ process.stdout.write(result.outputFiles[0].text);''',
     'source packages bind SDK 5 and combine browser login with authenticated data',
     () {
       expect(school.manifest.sdkVersion, 5);
-      expect(school.manifest.version, '0.18.0');
+      expect(school.manifest.version, '0.18.1');
       expect(school.manifest.browser, isTrue);
       expect(school.manifest.capabilities, hasLength(21));
       expect(school.manifest.capability('notice.detail'), isNotNull);
@@ -949,6 +949,48 @@ process.stdout.write(result.outputFiles[0].text);''',
       expect(fixture.cookieReads, 12);
       final cached = await run('term.list', fetch: fixture.fetch);
       expect((cached as Map)['currentTerm'], '2026-2027-1');
+    },
+  );
+
+  test(
+    'compiled login ignores legacy public-suffix cookies and still verifies SSO',
+    () async {
+      seed(
+        'ids',
+        cookies: [
+          for (final domain in ['edu.cn', 'cn'])
+            {
+              'name': 'LEGACY',
+              'value': 'SYNTHETIC-INVALID',
+              'domain': domain,
+              'path': '/',
+              'hostOnly': false,
+              'isSecure': false,
+              'isHttpOnly': true,
+            },
+        ],
+      );
+      final fixture = WebViewFixture();
+      final out = await runtime.run(
+        package: school,
+        capability: 'generic.section',
+        credentials: credentials,
+        htmlStdlib: htmlStdlib,
+        fetch: (url, init) {
+          expect('${init['headers']}', isNot(contains('SYNTHETIC-INVALID')));
+          return fixture.fetch(url, init);
+        },
+        browserCall: (method, args) {
+          if (method == 'setCookies') {
+            expect('${args['cookies']}', isNot(contains('SYNTHETIC-INVALID')));
+          }
+          return fixture.browser(method, args);
+        },
+        onLog: (_, message) => fixture.logs.add(message),
+      );
+      expect((out as Map)['sectionId'], 'xidian.login');
+      expect(fixture.logs, contains('xidian_login_saved:ids'));
+      expect(fixture.logs, contains('xidian_login_saved:ehall'));
     },
   );
 

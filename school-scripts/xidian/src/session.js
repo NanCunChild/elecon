@@ -50,7 +50,16 @@ export function resolveUrl(value, base) {
 }
 
 function domainMatches(host, domain) {
-  return host === domain || host.endsWith(`.${domain}`);
+  // School-owned cookie sites, not a general public-suffix implementation.
+  // A legacy response may have stored Domain=edu.cn / cn. Native browsers
+  // reject those cookies; never replay them in HTTP or restore them to a page.
+  const site = ["xidian.edu.cn", "chaoxing.com", "libsp.cn", "juhaolian.cn"].find(
+    (root) => host === root || host.endsWith(`.${root}`),
+  );
+  return (
+    (host === domain || host.endsWith(`.${domain}`)) &&
+    (site ? domain === site || domain.endsWith(`.${site}`) : host === domain)
+  );
 }
 function pathMatches(path, prefix) {
   return (

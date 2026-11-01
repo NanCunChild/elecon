@@ -74,6 +74,8 @@ N1/N2 完成后，用户先安装并验证主学校包，再独立安装通知�
 
 [ADR-051](../adr/adr_051_forum_and_messages_reservation.md) 接受本轮四导航与本地占位页；额外服务账号、论坛/消息领域契约、写操作和推送仍为 Proposed，状态与依赖唯一维护于[专项计划](forum_and_messages.md)。已有课表原生页面由 ADR-047/048 实施，不再以 ADR-043 当时的缺口推断当前没有独立课表。首页本周查询缓存与详情选周缓存分别使用，防止历史周遮住今日摘要；不新增学校请求或重解释 schema。
 
-## 瑞思/学习通首片（2026-11-01）
+## 睿思/学习通首片（2026-11-01）
 
-[ADR-052](../adr/adr_052_community_accounts_and_chaoxing.md)已落地独立服务账号、SDK 9 有界前台 WebSocket、学习通增强包及按能力显示的 Tab。瑞思基本包只交付登录/本地退出；消息窗口和无额外挑战的扫码签到在独立增强包。此片不实现 A1 匿名权限、中继、自建论坛、历史私信或推送；来源选择和后续切片以[专项计划](forum_and_messages.md)为准。
+[ADR-052](../adr/adr_052_community_accounts_and_chaoxing.md)已落地独立服务账号、SDK 9 有界前台 WebSocket、学习通增强包及按能力显示的 Tab。睿思基本包只交付登录/本地退出；消息窗口和无额外挑战的扫码签到在独立增强包。此片不实现 A1 匿名权限、中继、自建论坛、历史私信或推送；来源选择和后续切片以[专项计划](forum_and_messages.md)为准。
+
+后续修复按 [ADR-053](../adr/adr_053_provider_updates_and_service_cancellation.md)：社区包不随学校导入分发，页面取消不影响学校代际；已批准基础包升级同步其能力版本，读取旧注册表恢复失效的课表来源。

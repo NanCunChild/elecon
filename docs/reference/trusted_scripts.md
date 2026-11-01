@@ -208,4 +208,4 @@ if (qr === null) return { items: [] }; // 用户取消，由脚本决定结束�
 
 `forum.session` / `messages.session` 的 `operation=status|login|logout` 表示核验、显式登录、本地退出，不等于远端注销。`messages.list` 只返回明确账号下的前台消息窗口（不是完整历史或未读数）；`attendance.checkin` 在当前调用中取得 QR 输入并返回 confirmed/already/ended/unsupported/cancelled/rejected/unknown。四能力禁止 home/cache/preload 及后台调用。
 
-基本包 0.18.0 提供瑞思账号，SDK 9 学习通增强包单独导入。论坛 Tab 要求当前可执行 `forum.session`，消息 Tab 要求 `messages.list`；无支持则隐藏。登录/消息/签到绑定同一选中包，不自动借用其他包的账号 handler。每平台一个当前会话，先本地退出再换号；当前 Profile/学校仍是授权边界，namespace 不是权限沙箱。
+基本包 0.18.1 提供睿思账号；SDK 9 学习通包作为第三方社区包，由用户自行获取后通过通用文件入口导入，客户端不内置产物或推荐提示。论坛 Tab 要求当前可执行 `forum.session`，消息 Tab 要求 `messages.list`；无支持则隐藏。登录/消息/签到绑定同一选中包，不自动借用其他包的账号 handler。每平台一个当前会话，先本地退出再换号；当前 Profile/学校仍是授权边界，namespace 不是权限沙箱。

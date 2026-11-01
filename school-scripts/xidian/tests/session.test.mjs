@@ -8,6 +8,7 @@ import {
   createClient,
   mergeCookies,
   normalizeBrowserCookies,
+  parseSetCookie,
   readSession,
   replaceBrowserCookiesForUrl,
   resolveUrl,
@@ -174,6 +175,47 @@ test("cookie identities preserve path, domain, SameSite and duplicate unknown na
   assert.equal(native.find((c) => c.value === "ROOT").isHttpOnly, true);
   assert.equal(native.find((c) => c.value === "UNKNOWN_A").domain, undefined);
   assert.equal(mergeCookies(combined, cookies).length, 4);
+});
+
+test("legacy public-suffix cookies are neither restored nor sent to another school service", () => {
+  const url = "https://ids.xidian.edu.cn/authserver/login";
+  const cookies = [
+    ...["cn", "edu.cn", "com"].map((domain) => ({
+      name: "LEGACY",
+      value: "SYNTHETIC",
+      domain,
+      hostOnly: false,
+      path: "/",
+      isSecure: false,
+      isHttpOnly: true,
+    })),
+    parseSetCookie("SID=SYNTHETIC_SSO; Domain=.xidian.edu.cn; Path=/; Secure", url, 0),
+  ];
+  const saved = session("ids", cookies);
+  assert.deepEqual(
+    browserCookiesForUrl(saved, url, 0).map((c) => c.name),
+    ["SID"],
+  );
+  assert.equal(cookieHeader(saved, "https://rs.xidian.edu.cn/", 0), "SID=SYNTHETIC_SSO");
+  assert.equal(cookieHeader(saved, "https://mfindxidian.libsp.cn/", 0), "");
+  for (const domain of ["cn", "edu.cn", "com", "xidian.edu.cn.evil.invalid"])
+    assert.equal(parseSetCookie(`BAD=SYNTHETIC; Domain=${domain}; Path=/`, url, 0), null);
+  assert.throws(
+    () =>
+      normalizeBrowserCookies(url, [
+        {
+          name: "BAD",
+          value: "SYNTHETIC",
+          domain: "edu.cn",
+          path: "/",
+        },
+      ]),
+    /domain_mismatch/,
+  );
+  assert.equal(
+    parseSetCookie("CX=SYNTHETIC; Domain=.chaoxing.com; Path=/", "https://learn.chaoxing.com/", 0).domain,
+    "chaoxing.com",
+  );
 });
 
 test("authenticated redirects use each host's own cookies and save rotated credentials", async () => {

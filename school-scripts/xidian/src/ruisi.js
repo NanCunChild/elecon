@@ -40,7 +40,7 @@ import { browserCookiesForUrl, replaceBrowserCookiesForUrl } from "./session.js"
 const ORIGIN = "https://rs.xidian.edu.cn";
 const LOGIN = `${ORIGIN}/member.php?mod=logging&action=login`;
 const SPACE = `${ORIGIN}/home.php?mod=space`;
-const config = { id: "xidian.ruisi", name: "瑞思学术论坛", origins: [ORIGIN] };
+const config = { id: "xidian.ruisi", name: "睿思学术论坛", origins: [ORIGIN] };
 
 export function ruisiAccount(html) {
   const doc = parseDocument(html);
@@ -73,6 +73,9 @@ async function browserLogin(ctx, client) {
       });
     } catch (e) {
       if (!/browser_navigation_changed|browser_not_loaded/.test(String(e))) throw e;
+      // Navigation rejects evaluate before its in-page timer can run. Yield in
+      // the script too, otherwise a redirect consumes every retry immediately.
+      await new Promise((resolve) => setTimeout(resolve, 250));
       continue;
     }
     if (typeof html !== "string" || !ruisiAccount(html)) continue;
@@ -112,11 +115,11 @@ export async function forumSession(ctx, params = {}) {
   const loginhash = /[?&]loginhash=(\w+)/.exec(form ? getAttributeValue(form, "action") || "" : "")?.[1];
   if (!formhash || !loginhash) throw serviceError();
   const input = await ctx.ui.requestInput({
-    title: "登录瑞思",
-    message: "请输入瑞思论坛账号，与学校统一认证账号分别保存。",
+    title: "登录睿思",
+    message: "请输入睿思论坛账号，与学校统一认证账号分别保存。",
     fields: [
-      { id: "username", label: "瑞思用户名", maxLength: 80 },
-      { id: "password", label: "瑞思密码", type: "password", maxLength: 256 },
+      { id: "username", label: "睿思用户名", maxLength: 80 },
+      { id: "password", label: "睿思密码", type: "password", maxLength: 256 },
     ],
   });
   if (!input) throw serviceError("input_cancelled");

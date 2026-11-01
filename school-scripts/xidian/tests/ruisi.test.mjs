@@ -103,6 +103,24 @@ test("CAPTCHA switches to visible original page without password protocol attemp
   assert.equal(h.calls.filter((c) => c[0] === "browser").length, 1);
   assert.ok(!h.calls.some((c) => c[1]?.method === "POST"));
 });
+test("CAPTCHA login waits through an asynchronous page navigation", async () => {
+  const h = harness({ captcha: true });
+  h.records.set("school-session", "SYNTHETIC_SCHOOL");
+  let navigating = true;
+  const finished = setTimeout(() => {
+    navigating = false;
+  }, 50);
+  h.ctx.browser.evaluate = async () => {
+    if (navigating) throw new Error("browser_navigation_changed");
+    return own;
+  };
+  try {
+    assert.equal((await forumSession(h.ctx, { operation: "login" })).status, "authenticated");
+    assert.equal(h.records.get("school-session"), "SYNTHETIC_SCHOOL");
+  } finally {
+    clearTimeout(finished);
+  }
+});
 for (const [name, options] of [
   ["cancel", { cancel: true }],
   ["rejected", { rejected: true }],

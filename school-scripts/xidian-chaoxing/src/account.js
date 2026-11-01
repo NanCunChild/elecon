@@ -84,6 +84,9 @@ export async function chaoxingClient(ctx, { login = false } = {}) {
       });
     } catch (e) {
       if (!/browser_navigation_changed|browser_not_loaded/.test(String(e))) throw e;
+      // Navigation rejects evaluate before its in-page timer can run. Yield in
+      // the script too, otherwise a redirect consumes every retry immediately.
+      await new Promise((resolve) => setTimeout(resolve, 250));
       continue;
     }
     if (!ready) continue;

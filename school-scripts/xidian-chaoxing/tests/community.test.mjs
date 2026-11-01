@@ -174,6 +174,43 @@ test("logout removes only the platform account", async () => {
   assert.equal(h.records.get("other"), "OTHER");
   await assert.rejects(messagesList(h.ctx), { code: "authentication_required" });
 });
+test("login survives an asynchronous redirect and verifies the service account", async () => {
+  const h = harness();
+  let navigating = true;
+  const finished = setTimeout(() => {
+    navigating = false;
+  }, 50);
+  h.ctx.browser = {
+    setCookies: async (_, cookies) => assert.deepEqual(cookies, []),
+    open: async () => {},
+    evaluate: async () => {
+      if (navigating) throw new Error("browser_not_loaded");
+      return true;
+    },
+    cookies: async () => [{ name: "SESSION", value: "SYNTHETIC", path: "/", isSecure: true }],
+  };
+  try {
+    assert.equal((await messagesSession(h.ctx, { operation: "login" })).status, "authenticated");
+    assert.ok(h.calls.some(([url]) => url === ACCOUNT_URL));
+    assert.equal(h.records.get("other"), "OTHER");
+  } finally {
+    clearTimeout(finished);
+  }
+});
+test("cancelled login preserves the previous platform and unrelated account", async () => {
+  const h = harness();
+  const before = [...h.records];
+  h.ctx.browser = {
+    setCookies: async () => {},
+    open: async () => {},
+    evaluate: async () => {
+      throw new Error("browser_closed");
+    },
+  };
+  await assert.rejects(messagesSession(h.ctx, { operation: "login" }), /browser_closed/);
+  assert.deepEqual([...h.records], before);
+  assert.equal(h.calls.length, 0);
+});
 test("protobuf codec keeps uint64 exact, processes all metadata, skips private ACK", () => {
   const result = incoming(batch());
   assert.deepEqual(
