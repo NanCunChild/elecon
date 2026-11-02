@@ -52,10 +52,12 @@ import '../core/scripts/registry.dart';
 import '../core/scripts/credentials.dart';
 import '../core/scripts/runtime.dart';
 import '../core/scripts/input.dart';
+import '../core/scripts/device_input.dart';
 import '../core/scripts/http_transport.dart';
 import '../core/scripts/websocket_transport.dart';
 import '../core/scripts/browser.dart' show ScriptBrowserException;
 import '../core/scripts/data_cache.dart';
+import '../core/scripts/readiness.dart';
 export '../core/scripts/data_cache.dart' show ScriptCachedData;
 export '../core/attendance_places.dart' show AttendancePlace;
 
@@ -98,6 +100,7 @@ class SessionController extends ChangeNotifier {
        _blobStoreProvider = blobStoreProvider,
        _adapterServiceProvider = adapterServiceProvider,
        _availableSchools = List.unmodifiable(initialSchools),
+       _legacySchoolsLoaded = initialSchools.isNotEmpty,
        _ssoMinter = ssoMinter,
        _ssoMinterInjected = ssoMinter != null,
        _onVisibleLogin = onVisibleLogin;
@@ -150,11 +153,15 @@ class SessionController extends ChangeNotifier {
   SecureStore? _secure; // 已裁定的底层后端（用于 flush 等能力探测）
   BlobStore? _blobs;
   Future<void> _sessionPersistChain = Future<void>.value();
-  bool _bootstrapped = false;
+  Future<void>? _bootstrapFuture;
+  bool _isRestored = false;
+  bool get isRestored => _isRestored;
   bool _storeResolved = false;
 
   SchoolDescriptor? _school;
   List<SchoolDescriptor> _availableSchools;
+  bool _legacySchoolsLoaded;
+  Future<void>? _schoolCatalogLoad;
   bool _debugLog = kDebugMode;
 
   /// H 档启动解不开时置位；UI 提示后 [acknowledgeHardwareUnlockFailure] 清除。
@@ -169,6 +176,7 @@ class SessionController extends ChangeNotifier {
       _store.list().where(
         (entry) =>
             entry.type != ScriptDataCache.type &&
+            entry.type != ScriptReadinessStore.type &&
             entry.type != AttendancePlacesStore.type &&
             (_school == null || entry.schoolId == _school!.id),
       );
@@ -219,9 +227,9 @@ class SessionController extends ChangeNotifier {
   ///
   /// H 档存在但 TEE/SE 无法 unwrap / 密文库损坏 → 抹除 H blob，置
   /// [hardwareUnlockFailed]，保留选校，回到未登录。
-  Future<void> bootstrap() async {
-    if (_bootstrapped) return;
-    _bootstrapped = true;
+  Future<void> bootstrap() => _bootstrapFuture ??= _bootstrapLocal();
+
+  Future<void> _bootstrapLocal() async {
     final blobs = await _resolveBlobs();
     if (blobs != null && await HardwareSecureStore.hasPersisted(blobs)) {
       if (!await _hardware.isAvailable()) {
@@ -238,13 +246,48 @@ class SessionController extends ChangeNotifier {
       _replaceStore(await SoftwareSecureStore.open(blobs));
       _storeResolved = true;
     }
-    if (_availableSchools.isEmpty) {
-      _availableSchools = await _loadAvailableSchools();
-    }
+    // ADR-060: approved local scripts and protected caches never wait for the
+    // unrelated V1 distribution network. Its original loader remains in use
+    // when the saved school actually belongs to that compatibility path.
     await _restoreScriptSchools();
     _school = blobs == null ? null : await _loadSelectedSchool(blobs);
+    if (_school == null &&
+        blobs != null &&
+        await blobs.read(_sessionMetaBlob) != null) {
+      await loadSchoolChoices();
+      _school = await _loadSelectedSchool(blobs);
+    }
     _wireSsoMinterFor(_school);
+    _isRestored = true;
     notifyListeners();
+  }
+
+  /// ADR-060: the school picker can populate V1 choices after it is visible.
+  /// This never changes the current school or authorizes execution.
+  Future<void> loadSchoolChoices() {
+    if (_legacySchoolsLoaded || _scripts.disposed) return Future.value();
+    if (_schoolCatalogLoad != null) return _schoolCatalogLoad!;
+    final future = () async {
+      try {
+        final legacy = await _loadAvailableSchools();
+        if (_scripts.disposed) return;
+        _availableSchools = List.unmodifiable([
+          ..._availableSchools,
+          for (final school in legacy)
+            if (!_availableSchools.any((existing) => existing.id == school.id))
+              school,
+        ]);
+        _legacySchoolsLoaded = true;
+        notifyListeners();
+      } catch (_) {
+        // Optional distribution failure leaves local choices usable and may
+        // be retried on a later visit to the picker.
+      }
+    }();
+    _schoolCatalogLoad = future;
+    return future.whenComplete(() {
+      if (identical(_schoolCatalogLoad, future)) _schoolCatalogLoad = null;
+    });
   }
 
   Future<List<SchoolDescriptor>> _loadAvailableSchools() async {
@@ -455,6 +498,7 @@ class SessionController extends ChangeNotifier {
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) async {
     final school = _school;
+    final generation = trustedScriptViewGeneration;
     if (school == null) {
       return const CapabilityRun.failed(CapabilityFailureKind.load, '未选校');
     }
@@ -476,6 +520,10 @@ class SessionController extends ChangeNotifier {
         );
       }
       // Optional local registry I/O must not stop the legacy official path.
+    }
+    if (_school?.id != school.id ||
+        generation != trustedScriptViewGeneration || _scripts.disposed) {
+      return const CapabilityRun.failed(CapabilityFailureKind.run, 'script_cancelled');
     }
     if (local != null) {
       return runTrustedScript(

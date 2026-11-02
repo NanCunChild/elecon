@@ -63,11 +63,16 @@ const bool kDistributionOverrideActive =
 /// 覆盖值畸形（非绝对 URL）时**不回退到官方端点**而是照样交给 [HttpDistributionSource]，
 /// 由它拒拉 + 遥测——DEV 里给错参数应当可见，而不是静默连到线上。
 Uri get effectiveDistributionBaseUrl => Uri.parse(
-  kDistributionOverrideActive ? kDistributionBaseUrlOverride : kDistributionBaseUrl,
+  kDistributionOverrideActive
+      ? kDistributionBaseUrlOverride
+      : kDistributionBaseUrl,
 );
 
 /// 一次 capability 执行的结果：成功携产出；失败分档（加载 / 接线 / 运行 / 认证）供 UI 分流。
 enum CapabilityFailureKind {
+  /// ADR-059: user setup is incomplete; automatic refresh must skip it.
+  configuration,
+
   /// 加载链失败（无可信 catalog/revocation、内容寻址/验签不符、adapter 缺失、网络+基线均无……）。
   load,
 
@@ -135,7 +140,9 @@ class AdapterService {
     void Function(AdapterDiagnostic)? reportDiagnostic;
     late AdapterLoader loader;
     if (allowInsecureHttp) {
-      onWarning?.call('DEV：分发 base 已被 dart-define 覆盖为 $distributionBaseUrl（允许 http；验签门不变）');
+      onWarning?.call(
+        'DEV：分发 base 已被 dart-define 覆盖为 $distributionBaseUrl（允许 http；验签门不变）',
+      );
     }
     final source = HttpDistributionSource(
       baseUrl: distributionBaseUrl,

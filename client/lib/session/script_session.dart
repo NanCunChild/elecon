@@ -14,6 +14,14 @@ typedef ScriptInputPresenter =
       Future<Object?> Function(ScriptInputCall input) execute,
     );
 
+typedef ScriptDeviceInputPresenter =
+    Future<Object?> Function(
+      ScriptPackage package,
+      String kind,
+      bool Function() isActive,
+      ScriptSystemInputLease lease,
+    );
+
 typedef ScriptScannerPresenter =
     Future<Object?> Function(ScriptPackage package, bool Function() isActive);
 
@@ -35,6 +43,8 @@ class _ScriptSessionState {
   ScriptBrowserPresenter? presenter;
   ScriptInputPresenter? inputPresenter;
   ScriptScannerPresenter? scannerPresenter;
+  ScriptDeviceInputPresenter? deviceInputPresenter;
+  final deviceInputLease = ScriptSystemInputLease();
   Future<bool> Function()? storageConsent;
   int generation = 0;
   bool disposed = false;
@@ -71,6 +81,14 @@ extension TrustedScriptSession on SessionController {
   set scriptScannerPresenter(ScriptScannerPresenter? presenter) =>
       _scripts.scannerPresenter = presenter;
 
+  ScriptDeviceInputPresenter? get scriptDeviceInputPresenter =>
+      _scripts.deviceInputPresenter;
+  set scriptDeviceInputPresenter(ScriptDeviceInputPresenter? value) =>
+      _scripts.deviceInputPresenter = value;
+  bool get scriptSystemInputPending => _scripts.deviceInputLease.active;
+  set scriptAppForeground(bool value) =>
+      _scripts.deviceInputLease.foreground = value;
+
   Future<ScriptRegistry> get scriptRegistry =>
       _scripts.registry ??= _openScriptRegistry();
 
@@ -90,6 +108,7 @@ extension TrustedScriptSession on SessionController {
   void _cancelTrustedScripts({bool dispose = false}) {
     final state = _scriptStates[this];
     if (state == null) return;
+    state.deviceInputLease.revoke();
     state.generation++;
     state.homeRevision++;
     state.refreshingHome = null;
@@ -98,6 +117,7 @@ extension TrustedScriptSession on SessionController {
       state.presenter = null;
       state.inputPresenter = null;
       state.scannerPresenter = null;
+      state.deviceInputPresenter = null;
     }
     for (final transport in state.transports.toList()) {
       transport.close();
@@ -268,6 +288,26 @@ extension TrustedScriptSession on SessionController {
     }
   }
 
+  /// ADR-059: only the current selected provider can supply setup state.
+  Future<bool> capabilityNeedsConfiguration(
+    String capability, {
+    Map<String, dynamic>? params,
+  }) async {
+    final school = _school;
+    final generation = _scripts.generation;
+    if (school == null || _scripts.disposed) return false;
+    final package = (await scriptRegistry).provider(school.id, capability);
+    if (package == null ||
+        generation != _scripts.generation ||
+        _school?.id != school.id ||
+        _scripts.disposed) {
+      return false;
+    }
+    return ScriptReadinessStore(
+      _store,
+    ).needsConfiguration(package, capability, params ?? const {});
+  }
+
   Future<void> refreshHomeData({bool force = false}) {
     final state = _scripts;
     if (state.refreshingHome != null) return state.refreshingHome!;
@@ -292,6 +332,11 @@ extension TrustedScriptSession on SessionController {
                 state.generation != generation ||
                 _school?.id != school.id) {
               return;
+            }
+            if (ScriptReadinessStore(
+              _store,
+            ).needsConfiguration(package, query.capability, query.params)) {
+              continue;
             }
             final cached = ScriptDataCache(
               _store,
@@ -424,6 +469,17 @@ extension TrustedScriptSession on SessionController {
         'script_not_authorized',
       );
     }
+    if (!interactive &&
+        ScriptReadinessStore(_store).needsConfiguration(
+          installation.package,
+          capability,
+          params ?? const {},
+        )) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.configuration,
+        'configuration_required',
+      );
+    }
     final admissionEpoch = registry.epoch;
     try {
       if (interactive) {
@@ -452,15 +508,24 @@ extension TrustedScriptSession on SessionController {
     final epoch = admissionEpoch;
     final store = _store;
     final backend = _secure;
-    bool active() =>
-        !state.disposed &&
-        cancellation?.isCancelled != true &&
-        state.generation == generation &&
-        registry.epoch == epoch &&
-        identical(store, _store) &&
-        _school?.id == school.id &&
-        registry.find(id)?.enabled == true &&
-        registry.find(id)?.package.digest == package.digest;
+    var foregroundRevoked = false;
+    bool active() {
+      // A picker lease only suspends lifecycle cancellation while native input
+      // is pending. Null/error/timeout must never resume script work offscreen.
+      if (interactive && !state.deviceInputLease.executionAllowed) {
+        foregroundRevoked = true;
+      }
+      return !foregroundRevoked &&
+          !state.disposed &&
+          cancellation?.isCancelled != true &&
+          state.generation == generation &&
+          registry.epoch == epoch &&
+          identical(store, _store) &&
+          _school?.id == school.id &&
+          registry.find(id)?.enabled == true &&
+          registry.find(id)?.package.digest == package.digest;
+    }
+
     final transport = ScriptHttpTransport(policy: package.manifest.network);
     state.transports.add(transport);
     final socket = ScriptWebSocketTransport(
@@ -475,6 +540,7 @@ extension TrustedScriptSession on SessionController {
     cancellation?.addListener(closeTransports);
     DevLog.instance.runtime('script start: $id $capability');
     CapabilityRun result;
+    List<CredentialEntry>? previousCachedData;
     try {
       final credentials = ScriptCredentials(
         store: store,
@@ -495,6 +561,14 @@ extension TrustedScriptSession on SessionController {
         websocketCall: interactive ? socket.call : null,
         browserCall: browser,
         inputCall: input,
+        deviceInputCall: interactive && state.deviceInputPresenter != null
+            ? (kind, valid) => state.deviceInputPresenter!(
+                package,
+                kind,
+                valid,
+                state.deviceInputLease,
+              )
+            : null,
         scanCall: interactive && state.scannerPresenter != null
             ? (valid) => state.scannerPresenter!(package, valid)
             : null,
@@ -511,7 +585,11 @@ extension TrustedScriptSession on SessionController {
         // authentication (captcha/MFA plus a redirect chain).
         maxRequests: interactive && package.manifest.browser ? 40 : 20,
         onLog: (level, message) {
-          DevLog.instance.adapter(level, message);
+          if (message.startsWith('probe/1')) {
+            DevLog.instance.log(DevLogCategory.probe, message);
+          } else {
+            DevLog.instance.adapter(level, message);
+          }
           onLog?.call(level, message);
         },
       );
@@ -554,9 +632,18 @@ extension TrustedScriptSession on SessionController {
       if (!active()) {
         throw const ScriptRunException('script_cancelled');
       }
+      final cachedBeforeWrite = store
+          .list()
+          .where(
+            (entry) =>
+                entry.type == ScriptDataCache.type &&
+                entry.schoolId == school.id,
+          )
+          .toList();
       if (ScriptDataCache(
         store,
       ).write(package, capability, params ?? const {}, data)) {
+        previousCachedData = cachedBeforeWrite;
         state.homeRevision++;
       }
       result = CapabilityRun.ok(
@@ -572,7 +659,12 @@ extension TrustedScriptSession on SessionController {
         ScriptBrowserException() => error.code,
         _ => 'script_failed',
       };
-      result = CapabilityRun.failed(CapabilityFailureKind.run, code);
+      result = CapabilityRun.failed(
+        code == 'configuration_required'
+            ? CapabilityFailureKind.configuration
+            : CapabilityFailureKind.run,
+        code,
+      );
     } finally {
       cancellation?.removeListener(closeTransports);
       transport.close();
@@ -580,12 +672,53 @@ extension TrustedScriptSession on SessionController {
       socket.close();
       state.sockets.remove(socket);
     }
+    List<CredentialEntry> clearedReadiness = const [];
+    if (active()) {
+      final readiness = ScriptReadinessStore(store);
+      if (result.ok && interactive) {
+        clearedReadiness = readiness.entries(package, capability);
+      }
+      final changed = result.failureKind == CapabilityFailureKind.configuration
+          ? readiness.mark(package, capability, params ?? const {})
+          : result.ok && interactive
+          ? readiness.clear(package, capability)
+          : false;
+      if (changed) state.homeRevision++;
+    }
     // ADR-035 §3: authentication may already have rotated remotely even when
     // parsing/output fails. Persist completed writes without rolling them back.
     // Await the backend bound to this invocation, never a later replacement.
     try {
       await _flushCredentialBackend(backend);
     } catch (_) {
+      // Setup is not complete until its writes are durable. Restore display
+      // cache and prerequisite markers, never roll back school credentials.
+      if (active() &&
+          (clearedReadiness.isNotEmpty || previousCachedData != null)) {
+        for (final entry in clearedReadiness) {
+          store.put(entry);
+        }
+        if (previousCachedData != null) {
+          for (final entry
+              in store
+                  .list()
+                  .where(
+                    (entry) =>
+                        entry.type == ScriptDataCache.type &&
+                        entry.schoolId == school.id,
+                  )
+                  .toList()) {
+            store.delete(entry.ref);
+          }
+          for (final entry in previousCachedData) {
+            store.put(entry);
+          }
+          state.homeRevision++;
+        }
+        try {
+          await _flushCredentialBackend(backend);
+        } catch (_) {}
+      }
       result = const CapabilityRun.failed(
         CapabilityFailureKind.run,
         'credential_persist_failed',

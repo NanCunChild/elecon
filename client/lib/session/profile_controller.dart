@@ -38,6 +38,8 @@ class ProfileController extends ChangeNotifier {
   String _activeId = 'default';
   Future<void>? _bootstrap;
   bool _busy = false;
+  bool _isRestored = false;
+  bool get isRestored => _isRestored;
   bool get busy => _busy;
   List<SessionProfile> get profiles => List.unmodifiable(_profiles);
   SessionProfile get active => _profiles.firstWhere((p) => p.id == _activeId);
@@ -98,8 +100,11 @@ class ProfileController extends ChangeNotifier {
       );
       await _persist(_profiles, _activeId);
     }
+    // ADR-060: inactive identities neither unlock their stores nor load
+    // school runtimes until the user selects them.
+    await active.session.bootstrap();
+    _isRestored = true;
     for (final p in _profiles) {
-      await p.session.bootstrap();
       p.session.addListener(_changed);
     }
     notifyListeners();
