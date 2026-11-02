@@ -1,4 +1,4 @@
-# 通用签到源码模板（SDK 10）
+# 通用签到源码模板（SDK 11）
 
 这是可打包、可回归的开发模板，默认 `configured:false`，直接运行返回 `configuration_required`，不会访问示例站点或报告假成功。它不绑定学习通，也不实现或替代任何服务的人脸活体流程。
 
@@ -18,3 +18,5 @@ node --test adapters/_template/trusted/attendance/template.test.mjs
 ```
 
 所有测试使用合成输入与假的 fetch；不会请求学校、读取设备相机或操作真实签到。
+
+SDK 11 账号声明目前为 `accounts:[]`，因为此未配置模板没有认证实现。适配真实服务时必须同步声明实际所需账号、登录说明及可选的同包登录绑定，不能把此空声明带入需要认证的生产脚本。

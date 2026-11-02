@@ -14,10 +14,17 @@ assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildXidianPackages())]);
 for (const role of ["undergraduate", "postgraduate"]) {
   const data = JSON.parse(first.get(`school-xidian-${role}.elecon.json`)!);
-  assert.equal(data.manifest.version, "0.20.1");
-  assert.equal(data.manifest.sdkVersion, role === "undergraduate" ? 5 : 4);
+  assert.equal(data.manifest.version, "0.22.0");
+  assert.equal(data.manifest.sdkVersion, 12);
+  assert.deepEqual(
+    data.manifest.accounts.map((account: { id: string }) => account.id),
+    ["school", "ruisi", "apptunnel"],
+  );
+  assert.ok(!data.manifest.accounts[0].capabilities.includes("classroom.buildings"));
+  assert.ok(!data.manifest.accounts[0].capabilities.some((id: string) => id.startsWith("climate.")));
+  assert.deepEqual(data.manifest.accounts[1].capabilities, ["forum.session", "account.session"]);
   assert.equal(data.manifest.browser, true);
-  assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 21 : 16);
+  assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 22 : 17);
   assert.ok(data.manifest.network.origins.includes("https://faculty.xidian.edu.cn"));
   assert.ok(data.manifest.capabilities.some((cap: { id: string }) => cap.id === "faculty.search"));
   assert.equal(
@@ -101,5 +108,5 @@ try {
   rmSync(out, { recursive: true, force: true });
 }
 console.log(
-  "Xidian SDK4/5 source packages: deterministic build, explicit trust and real module fixtures passed",
+  "Xidian SDK12 source packages: deterministic build, explicit trust and real module fixtures passed",
 );

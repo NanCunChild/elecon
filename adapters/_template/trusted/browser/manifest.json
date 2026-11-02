@@ -1,12 +1,33 @@
 {
-  "sdkVersion": 2,
+  "sdkVersion": 11,
   "id": "school-browser-example",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "schoolId": "example",
   "name": "Example School Browser",
-  "network": { "origins": ["https://campus.example.edu"] },
+  "network": {
+    "origins": [
+      "https://campus.example.edu"
+    ]
+  },
   "browser": true,
   "capabilities": [
-    { "id": "notice.list", "schema": "elecon.notice.list", "schemaVersion": "1.1" }
+    {
+      "id": "notice.list",
+      "schema": "elecon.notice.list",
+      "schemaVersion": "1.1"
+    }
+  ],
+  "accounts": [
+    {
+      "id": "campus",
+      "name": "示例学校账号",
+      "instructions": "打开示例学校官方页面登录，脚本核验后保存会话，供同校 HTTP 模板共享。请替换为真实学校的登录说明。",
+      "capabilities": [
+        "notice.list"
+      ],
+      "login": {
+        "capability": "notice.list"
+      }
+    }
   ]
 }

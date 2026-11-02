@@ -383,12 +383,12 @@ process.stdout.write(result.outputFiles[0].text);''',
   );
 
   test(
-    'source packages bind SDK 5 and combine browser login with authenticated data',
+    'source packages bind SDK 12 and combine browser login with authenticated data',
     () {
-      expect(school.manifest.sdkVersion, 5);
-      expect(school.manifest.version, '0.20.1');
+      expect(school.manifest.sdkVersion, 12);
+      expect(school.manifest.version, '0.22.0');
       expect(school.manifest.browser, isTrue);
-      expect(school.manifest.capabilities, hasLength(21));
+      expect(school.manifest.capabilities, hasLength(22));
       expect(school.manifest.capability('notice.detail'), isNotNull);
       expect(login.manifest.browser, isTrue);
       expect(login.manifest.schoolId, school.manifest.schoolId);
@@ -688,7 +688,7 @@ process.stdout.write(result.outputFiles[0].text);''',
         store: store,
         schoolId: school.manifest.schoolId,
         scriptId: school.manifest.id,
-        sdkVersion: 4,
+        sdkVersion: school.manifest.sdkVersion,
       );
       seed('ids', data: {'role': 'undergraduate'});
       seed('yjspt', data: {'studentId': 'SYNTHETIC_PG'});
@@ -1069,7 +1069,7 @@ process.stdout.write(result.outputFiles[0].text);''',
         store: store,
         schoolId: postgraduate.manifest.schoolId,
         scriptId: postgraduate.manifest.id,
-        sdkVersion: 4,
+        sdkVersion: postgraduate.manifest.sdkVersion,
       );
       final fixture = WebViewFixture(pg: true);
       await runtime.run(
@@ -1203,7 +1203,7 @@ process.stdout.write(result.outputFiles[0].text);''',
           store: store,
           schoolId: package.manifest.schoolId,
           scriptId: package.manifest.id,
-          sdkVersion: 4,
+          sdkVersion: package.manifest.sdkVersion,
         );
         await expectLater(
           runtime.run(

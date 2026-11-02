@@ -1,7 +1,7 @@
 {
-  "sdkVersion": 5,
+  "sdkVersion": 12,
   "id": "school-xidian-undergraduate",
-  "version": "0.20.1",
+  "version": "0.22.0",
   "schoolId": "xidian_undergraduate",
   "name": "西安电子科技大学（本科生）",
   "network": {
@@ -126,6 +126,11 @@
       "id": "forum.session",
       "schema": "elecon.forum.session",
       "schemaVersion": "1.0"
+    },
+    {
+      "id": "account.session",
+      "schema": "elecon.account.session",
+      "schemaVersion": "1.0"
     }
   ],
   "home": [
@@ -194,5 +199,90 @@
       "ttlSeconds": 900,
       "preload": false
     }
+  ],
+  "accounts": [
+    {
+      "id": "school",
+      "name": "西电统一认证账号",
+      "instructions": "使用学校统一认证账号在官方登录页面完成登录与验证。教务、一卡通、图书馆分别建立会话，首次查看对应服务时可能需要再次授权。水电查询还需完善房间信息；空调仅需绑定自己的设备，不使用此账号。",
+      "capabilities": [
+        "schedule.week",
+        "grades.list",
+        "exam.list",
+        "classroom.available",
+        "card.balance",
+        "card.transactions",
+        "library.loans",
+        "term.list",
+        "calendar.academic",
+        "generic.section",
+        "energy.meters",
+        "energy.usage",
+        "card.qr",
+        "account.session"
+      ],
+      "login": {
+        "capability": "account.session",
+        "params": {
+          "account": "school",
+          "operation": "login"
+        }
+      },
+      "status": {
+        "capability": "account.session",
+        "params": {
+          "account": "school",
+          "operation": "status"
+        }
+      }
+    },
+    {
+      "id": "ruisi",
+      "name": "睿思论坛账号",
+      "instructions": "使用睿思论坛独立注册的用户名和密码登录；此账号独立于学校统一认证。遇到验证码时在睿思官方页面完成验证。",
+      "capabilities": [
+        "forum.session",
+        "account.session"
+      ],
+      "login": {
+        "capability": "account.session",
+        "params": {
+          "account": "ruisi",
+          "operation": "login"
+        }
+      },
+      "status": {
+        "capability": "account.session",
+        "params": {
+          "account": "ruisi",
+          "operation": "status"
+        }
+      }
+    },
+    {
+      "id": "apptunnel",
+      "name": "APPTunnel · Hermes",
+      "instructions": "由内置 Hermes 管理 aTrust 校园接入账号。登录后可在 APPTunnel 设置中选择连接；不会自动切换网络。",
+      "capabilities": [
+        "account.session"
+      ],
+      "status": {
+        "capability": "account.session",
+        "params": {
+          "account": "apptunnel",
+          "operation": "status"
+        }
+      },
+      "login": {
+        "capability": "account.session",
+        "params": {
+          "account": "apptunnel",
+          "operation": "login"
+        }
+      }
+    }
+  ],
+  "appTunnels": [
+    "hermes-atrust"
   ]
 }

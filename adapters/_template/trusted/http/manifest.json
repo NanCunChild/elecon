@@ -1,12 +1,30 @@
 {
-  "sdkVersion": 2,
+  "sdkVersion": 11,
   "id": "school-http-example",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "schoolId": "example",
   "name": "Example School HTTP",
-  "network": { "origins": ["https://campus.example.edu"] },
+  "network": {
+    "origins": [
+      "https://campus.example.edu"
+    ]
+  },
   "browser": false,
   "capabilities": [
-    { "id": "notice.list", "schema": "elecon.notice.list", "schemaVersion": "1.1" }
+    {
+      "id": "notice.list",
+      "schema": "elecon.notice.list",
+      "schemaVersion": "1.1"
+    }
+  ],
+  "accounts": [
+    {
+      "id": "campus",
+      "name": "示例学校账号",
+      "instructions": "先在浏览器模板中使用学校官方页面登录；此 HTTP 模板显式共享同校 campus.session 会话。",
+      "capabilities": [
+        "notice.list"
+      ]
+    }
   ]
 }

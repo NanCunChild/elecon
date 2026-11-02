@@ -1,9 +1,9 @@
 {
   "format": "elecon-script/1",
   "manifest": {
-    "sdkVersion": 2,
+    "sdkVersion": 11,
     "id": "school-example",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "schoolId": "example",
     "name": "Example School",
     "network": {
@@ -16,7 +16,8 @@
         "schema": "elecon.notice.list",
         "schemaVersion": "1.1"
       }
-    ]
+    ],
+    "accounts": []
   },
   "source": "export const capabilities = {\n  async \"notice.list\"(ctx, params) {\n    return {items: [{id: \"welcome\", title: \"Trusted school scripts are ready\", category: \"academic\", source: \"Local example\"}]};\n  }\n};"
 }

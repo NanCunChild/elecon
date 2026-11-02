@@ -39,7 +39,7 @@ export async function webviewLogin(ctx, params, role) {
 export async function loginIds(ctx, params, role) {
   if (!ctx.browser) throw new Error("xidian_login_browser_required");
   const deadline = ctx.now() + 100000;
-  const ids = await readSession(ctx, "ids");
+  const ids = params.forceLogin ? null : await readSession(ctx, "ids");
   const progress = {};
   await restore(ctx, ids, IDS_ACCOUNT_URLS);
   ctx.log?.("info", "xidian_login_open:ids");

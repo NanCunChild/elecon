@@ -1,14 +1,27 @@
 {
-  "sdkVersion": 10,
+  "sdkVersion": 11,
   "id": "school-attendance-example",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "schoolId": "example",
   "name": "通用签到模板（未配置）",
-  "network": {"origins": ["https://attendance.example.invalid"]},
+  "network": {
+    "origins": [
+      "https://attendance.example.invalid"
+    ]
+  },
   "browser": false,
   "scanner": true,
-  "deviceInputs": ["camera", "image", "location"],
+  "deviceInputs": [
+    "camera",
+    "image",
+    "location"
+  ],
   "capabilities": [
-    {"id": "attendance.checkin", "schema": "elecon.attendance.checkin", "schemaVersion": "1.1"}
-  ]
+    {
+      "id": "attendance.checkin",
+      "schema": "elecon.attendance.checkin",
+      "schemaVersion": "1.1"
+    }
+  ],
+  "accounts": []
 }

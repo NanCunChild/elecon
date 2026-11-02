@@ -9,6 +9,7 @@ import {
   scheduleWeek,
   termList,
 } from "./academic.js";
+import { createAccountSession } from "./accounts.js";
 import { cardBalance, cardQr, cardTransactions, libraryLoans } from "./campus.js";
 import { facultySearch } from "./faculty.js";
 import { createLogin } from "./login.js";
@@ -39,6 +40,7 @@ function authenticated(handler, role) {
 export function createCapabilities(role) {
   if (role !== "undergraduate" && role !== "postgraduate") throw new Error("academic_role_invalid");
   return {
+    "account.session": createAccountSession(role),
     "forum.session": forumSession,
     "faculty.search": facultySearch,
     "notice.list": noticeList,

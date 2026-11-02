@@ -279,10 +279,10 @@ for (const kind of ["http", "browser"]) {
   const directory = new URL(`../../../adapters/_template/trusted/${kind}/`, import.meta.url);
   const manifest = JSON.parse(readFileSync(new URL("manifest.json", directory), "utf8"));
   const source = readFileSync(new URL("index.js", directory), "utf8");
-  assert.equal(manifest.sdkVersion, 2);
-  assert.equal(manifest.version, "0.2.0");
+  assert.equal(manifest.sdkVersion, 11);
+  assert.equal(manifest.version, "0.3.0");
   assert.equal(JSON.parse(packageScript(manifest, source)).format, "elecon-script/1");
 }
 console.log(
-  "SDK2 real templates: explicit shared namespace, business-URL Cookie snapshots, path order and metadata passed",
+  "SDK11 real templates: explicit shared namespace, business-URL Cookie snapshots, path order and metadata passed",
 );
