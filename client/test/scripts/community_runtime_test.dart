@@ -81,7 +81,7 @@ void main() {
         credentials: c,
         scanCall: (_) async => {
           'text':
-              'https://mobilelearn.chaoxing.com/widget/sign/e?id=123456789&enc=0123456789abcdef0123456789abcdef',
+              'https://mobilelearn.chaoxing.com/widget/sign/e?id=123456789&enc=0123456789abcdef0123456789abcdef&c=123456&DB_STRATEGY=PRIMARY_KEY&STRATEGY_PARA=id',
           'format': 'qrCode',
         },
         fetch: (url, init) async {
@@ -168,7 +168,7 @@ void main() {
         },
         scanCall: (_) async => {
           'text':
-              'https://mobilelearn.chaoxing.com/widget/sign/e?id=123456789&enc=0123456789abcdef0123456789abcdef',
+              'https://mobilelearn.chaoxing.com/widget/sign/e?id=123456789&enc=0123456789abcdef0123456789abcdef&c=123456&DB_STRATEGY=PRIMARY_KEY&STRATEGY_PARA=id',
           'format': 'qrCode',
         },
         fetch: (url, init) async {

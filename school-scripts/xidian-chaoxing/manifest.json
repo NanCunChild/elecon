@@ -1,7 +1,7 @@
 {
   "sdkVersion": 9,
   "id": "enhancement-xidian-undergraduate-chaoxing",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "schoolId": "xidian_undergraduate",
   "name": "西电学习通增强（本科生）",
   "network": {

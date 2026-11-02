@@ -37,6 +37,7 @@ function harness({
   let now = 1800000000000;
   let submitted = false;
   const calls = [];
+  const logs = [];
   const saved = {
     version: 1,
     serviceId: "chaoxing",
@@ -49,6 +50,7 @@ function harness({
     ["other", "OTHER"],
   ]);
   const ctx = {
+    log: (level, message) => logs.push([level, message]),
     now: () => now++,
     credentials: {
       get: async (k) => (records.has(k) ? { value: records.get(k) } : null),
@@ -100,7 +102,7 @@ function harness({
       };
     },
   };
-  return { ctx, calls, records };
+  return { ctx, calls, records, logs };
 }
 const provision = (code = 0) =>
   encode([
@@ -149,8 +151,22 @@ test("QR validation preserves large IDs and rejects origin/path/duplicate/encodi
     QR.replace("enc=", "enc=%"),
     QR + "#fragment",
     QR.replace("https://", "https://user@"),
+    QR + "&STRATEGY_PARA=id&STRATEGY_PARA=id",
+    QR + "&STRATEGY_PARA=id&%53TRATEGY_PARA=id",
+    QR + "&redirect=https%3A%2F%2Fevil.invalid",
   ])
     assert.throws(() => parseCheckinQr(qr));
+});
+test("current primary-key QR routing hints are accepted without forwarding them", async () => {
+  const scan = QR + "&c=123456&DB_STRATEGY=PRIMARY_KEY&STRATEGY_PARA=id";
+  assert.deepEqual(parseCheckinQr(scan), parseCheckinQr(QR));
+  const h = harness({ scan });
+  assert.equal((await attendanceCheckin(h.ctx)).status, "confirmed");
+  assert.equal(h.calls.filter(([, init]) => init.method === "POST").length, 1);
+  for (const [url, init] of h.calls) {
+    assert.equal(new URL(url).searchParams.has("STRATEGY_PARA"), false);
+    assert.ok(!String(init.body).includes("STRATEGY_PARA"));
+  }
 });
 test("supported QR sends exactly once and confirms through independent status", async () => {
   const h = harness();
@@ -172,6 +188,107 @@ test("uncertain delivery remains unknown", async () => {
   const h = harness({ postFailure: true, finalStatus: 0 });
   assert.equal((await attendanceCheckin(h.ctx)).status, "unknown");
   assert.equal(h.calls.filter(([, i]) => i.method === "POST").length, 1);
+});
+const probeRecords = (h) =>
+  h.logs.map(([, message]) => message).filter((message) => message.startsWith("probe/1 "));
+test("probe identifies preparation failure and only emits bounded anonymous fields", async () => {
+  const h = harness({ preflightFailure: true });
+  assert.equal((await attendanceCheckin(h.ctx)).reason, "request_failed");
+  assert.ok(probeRecords(h).some((line) => line.includes("stage=7 event=failed")));
+  assert.ok(!probeRecords(h).some((line) => line.includes("stage=13 ")));
+  for (const line of probeRecords(h))
+    assert.match(
+      line,
+      /^probe\/1 stage=([1-9]|[12][0-9]|3[0-2]) event=(begin|ok|failed|unknown|skipped) http=(0|[1-5][0-9]{2}) ms=([0-9]{1,5}|1[01][0-9]{4}|120000) flags=[01?]{8}$/,
+    );
+  const logs = JSON.stringify(h.logs);
+  for (const secret of [
+    QR,
+    "12345678901234567890",
+    "0123456789ABCDEF",
+    "SYNTHETIC",
+    "SYNTHETIC_PREPARATION_FAILURE",
+    "123456",
+    "456789",
+    "789012",
+    "567890",
+    "987654",
+  ])
+    assert.ok(!logs.includes(secret), secret);
+});
+test("probe captures authentication HTTP failure before scanning without raw error details", async () => {
+  const h = harness();
+  h.ctx.fetch = async () => ({
+    ok: false,
+    status: 401,
+    headers: { getSetCookie: () => [] },
+    text: async () => "SYNTHETIC_SECRET_TOKEN",
+  });
+  h.ctx.ui.scanQRCode = async () => assert.fail("must not scan without a verified account");
+  await assert.rejects(attendanceCheckin(h.ctx), { code: "source_response_invalid" });
+  assert.ok(probeRecords(h).some((line) => line.includes("stage=2 event=failed http=401")));
+  assert.ok(!JSON.stringify(h.logs).includes("SYNTHETIC_SECRET_TOKEN"));
+});
+test("probe reports QR validation and scan cancellation without recording QR", async () => {
+  const invalid = harness({ scan: QR + "&secret=SYNTHETIC_SECRET_TOKEN" });
+  await assert.rejects(attendanceCheckin(invalid.ctx), { code: "input_invalid_request" });
+  assert.ok(probeRecords(invalid).some((line) => line.includes("stage=4 event=failed")));
+  assert.ok(!JSON.stringify(invalid.logs).includes("SYNTHETIC_SECRET_TOKEN"));
+  const cancelled = harness({ cancel: true });
+  await attendanceCheckin(cancelled.ctx);
+  assert.ok(probeRecords(cancelled).some((line) => line.includes("stage=3 event=skipped")));
+});
+test("probe preserves uncertain delivery and classifies bodies without exposing secrets", async () => {
+  const h = harness({ finalStatus: 0, responseText: "SYNTHETIC_SECRET_TOKEN" });
+  assert.equal((await attendanceCheckin(h.ctx)).status, "unknown");
+  assert.ok(probeRecords(h).some((line) => line.includes("stage=13 event=unknown")));
+  assert.ok(probeRecords(h).at(-1).includes("stage=14 event=unknown"));
+  assert.ok(!JSON.stringify(h.logs).includes("SYNTHETIC_SECRET_TOKEN"));
+  assert.equal(h.calls.filter(([, init]) => init.method === "POST").length, 1);
+  assert.ok(h.logs.length < 100);
+});
+test("timeout probes preserve submission uncertainty and final verification stage", async () => {
+  for (const options of [
+    { postFailure: true, finalStatus: 0 },
+    { finalReadFailure: true },
+    { postFailure: true, finalReadFailure: true },
+  ]) {
+    const h = harness(options);
+    assert.equal((await attendanceCheckin(h.ctx)).status, "unknown");
+    const records = probeRecords(h);
+    assert.ok(records.some((line) => line.includes("stage=13 event=begin")));
+    assert.ok(records.some((line) => line.includes("stage=14 event=begin")));
+    assert.match(records.at(-1), /stage=14 event=unknown .* flags=[01?]{5}1[0?][01?]$/);
+    assert.equal(h.calls.filter(([, init]) => init.method === "POST").length, 1);
+  }
+});
+test("redirect-heavy preflight leaves room for verification within host log budget", async () => {
+  const h = harness();
+  const fetch = h.ctx.fetch;
+  const counts = new Map();
+  const redirectPaths = ["getUserImToken", "getPPTActiveInfo", "getClassDetail", "/analysis"];
+  let requests = 0;
+  h.ctx.fetch = async (url, init) => {
+    requests++;
+    const path = new URL(url).pathname;
+    const count = counts.get(path) ?? 0;
+    counts.set(path, count + 1);
+    if (redirectPaths.some((p) => path.endsWith(p)) && count < 7)
+      return { status: 302, headers: { get: () => url, getSetCookie: () => [] } };
+    return fetch(url, init);
+  };
+  assert.equal((await attendanceCheckin(h.ctx)).status, "confirmed");
+  assert.ok(requests <= 40);
+  assert.ok(h.logs.length < 100);
+  assert.match(probeRecords(h).at(-1), /stage=14 event=ok/);
+});
+test("broken diagnostic sink cannot affect delivery or independent confirmation", async () => {
+  const h = harness({ postFailure: true });
+  h.ctx.log = () => {
+    throw new Error("log budget exhausted");
+  };
+  assert.equal((await attendanceCheckin(h.ctx)).status, "confirmed");
+  assert.equal(h.calls.filter(([, init]) => init.method === "POST").length, 1);
 });
 const location = {
   latitude: 12.3456,
@@ -198,6 +315,10 @@ test("explicit location supports ranged QR with one submit and independent confi
     result: "1",
   });
   assert.equal(body.get("locationResult"), body.get("location"));
+  const logs = JSON.stringify(h.logs);
+  for (const secret of [location.address, String(location.latitude), String(location.longitude)])
+    assert.ok(!logs.includes(secret));
+  assert.match(probeRecords(h).at(-1), /flags=10001111$/);
   assert.ok(!body.toString().includes("mockData"));
 });
 test("unranged QR uses only the user selected position and does not invent one", async () => {
