@@ -115,8 +115,16 @@ class GradesCard extends StatelessWidget {
 }
 
 class NoticeCard extends StatelessWidget {
-  const NoticeCard(this.data, {super.key, this.trailing});
+  const NoticeCard(
+    this.data, {
+    super.key,
+    this.trailing,
+    this.status,
+    this.statusSummary,
+  });
   final Widget? trailing;
+  final Widget? status;
+  final Widget? statusSummary;
 
   final NoticeList data;
 
@@ -127,48 +135,59 @@ class NoticeCard extends StatelessWidget {
       title: l10n.homeNoticeTitle,
       trailing: trailing,
       subtitle: l10n.homeNoticeCount(data.items.length),
-      summary: CardSummary(
-        data.items.firstOrNull?.title ?? l10n.homeNoticeCount(0),
-        detail: data.items.isEmpty
-            ? null
-            : [
-                data.items.first.source,
-                if (data.items.first.publishedAtDateTime != null)
-                  formatLocalDate(data.items.first.publishedAtDateTime!),
-              ].where((s) => s.trim().isNotEmpty).join(' · '),
-      ),
-      child: CardPreviewList(
-        title: l10n.homeNoticeTitle,
+      summary:
+          statusSummary ??
+          CardSummary(
+            data.items.firstOrNull?.title ?? l10n.homeNoticeCount(0),
+            detail: data.items.isEmpty
+                ? null
+                : [
+                    data.items.first.source,
+                    if (data.items.first.publishedAtDateTime != null)
+                      formatLocalDate(data.items.first.publishedAtDateTime!),
+                  ].where((s) => s.trim().isNotEmpty).join(' · '),
+          ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final item in data.items)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(item.title),
-              subtitle: Text(
-                [
-                      item.source,
-                      _noticeCategoryText(l10n, item.category),
-                      // 契约 publishedAt 为 RFC3339 字符串；经视图扩展转 DateTime 展示。
-                      if (item.publishedAtDateTime != null)
-                        formatLocalDate(item.publishedAtDateTime!),
-                      if (item.summary != null) item.summary!,
-                    ]
-                    .map((value) => value.trim())
-                    .where((value) => value.isNotEmpty)
-                    .join(' · '),
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              // App 内下钻：由通知标识 + 本详情视图闸门，不依赖外链（ADR-025 §2.6）。
-              onTap: () {
-                final source = CapabilitySourceScope.maybeOf(context)?.source;
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) =>
-                        NoticeDetailPage(item: item, source: source),
+          if (status != null)
+            Padding(padding: const EdgeInsets.only(bottom: 12), child: status!),
+          CardPreviewList(
+            title: l10n.homeNoticeTitle,
+            children: [
+              for (final item in data.items)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(item.title),
+                  subtitle: Text(
+                    [
+                          item.source,
+                          _noticeCategoryText(l10n, item.category),
+                          // 契约 publishedAt 为 RFC3339 字符串；经视图扩展转 DateTime 展示。
+                          if (item.publishedAtDateTime != null)
+                            formatLocalDate(item.publishedAtDateTime!),
+                          if (item.summary != null) item.summary!,
+                        ]
+                        .map((value) => value.trim())
+                        .where((value) => value.isNotEmpty)
+                        .join(' · '),
                   ),
-                );
-              },
-            ),
+                  trailing: const Icon(Icons.chevron_right),
+                  // App 内下钻：由通知标识 + 本详情视图闸门，不依赖外链（ADR-025 §2.6）。
+                  onTap: () {
+                    final source = CapabilitySourceScope.maybeOf(
+                      context,
+                    )?.source;
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            NoticeDetailPage(item: item, source: source),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
         ],
       ),
     );

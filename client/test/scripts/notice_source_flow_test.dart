@@ -52,9 +52,9 @@ ScriptPackage source(
         '''
     const count=async(ctx,key)=>{const n=Number((await ctx.credentials.get(key))?.value??0)+1;await ctx.credentials.set(key,String(n));return n;};
     export const capabilities={
-      'notice.list':async ctx=>{await count(ctx,'lists');if($fail){const e=new Error('authentication_required');e.code='authentication_required';throw e;}if($delayMs)await new Promise(r=>setTimeout(r,$delayMs));return {items:[{id:'shared-id',title:'$id notice',category:'academic',source:'$id'}]};},
+      'notice.list':async ctx=>{await count(ctx,'lists');if($fail||(await ctx.credentials.get('expired'))?.value==='true'){const e=new Error('authentication_required');e.code='authentication_required';throw e;}if($delayMs)await new Promise(r=>setTimeout(r,$delayMs));return {items:[{id:'shared-id',title:'$id notice',category:'academic',source:'$id'}]};},
       'notice.detail':async(ctx,p)=>{await count(ctx,'details');return {id:p.id,title:'$id detail',content:'$id body'};},
-      'generic.section':async(ctx,p)=>({sectionId:'counts',title:(await ctx.credentials.get(p.key??'lists'))?.value??'0'})
+      'generic.section':async(ctx,p)=>{if(p.expire)await ctx.credentials.set('expired','true');return {sectionId:'counts',title:(await ctx.credentials.get(p.key??'lists'))?.value??'0'};}
     };
   ''',
   }),
@@ -129,6 +129,44 @@ class MemoryLayouts extends CardLayoutStore {
 }
 
 void main() {
+  testWidgets('authentication failure remains visible beside cached notices', (
+    t,
+  ) async {
+    final p = source('cached-login');
+    final s = await prepare(t, [p]);
+    await t.runAsync(() => s.refreshHomeData());
+    await t.pumpWidget(
+      app(
+        s,
+        Scaffold(
+          body: CapabilitySourceScope(
+            source: binding(p),
+            child: const NoticeSection(),
+          ),
+        ),
+      ),
+    );
+    await until(
+      t,
+      () => find.text('cached-login notice').evaluate().isNotEmpty,
+    );
+    await t.runAsync(
+      () => s.runTrustedScript(
+        p.manifest.id,
+        'generic.section',
+        params: {'expire': true},
+        interactive: false,
+      ),
+    );
+    await t.tap(find.byTooltip('Refresh'));
+    await until(t, () => find.text('登录并查看').evaluate().isNotEmpty);
+    expect(find.text('cached-login notice'), findsOneWidget);
+    await t.pump(const Duration(seconds: 1));
+    expect(find.text('登录并查看'), findsOneWidget);
+    expect(t.takeException(), isNull);
+    await t.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets(
     'default notice card freezes list source when another detail candidate exists',
     (t) async {

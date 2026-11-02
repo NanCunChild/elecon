@@ -103,7 +103,7 @@ class _NoticeSectionState extends State<NoticeSection>
   @override
   void applyCache(NoticeList data) {
     _data = data;
-    _phase = QueryPhase.loaded;
+    if (_phase != QueryPhase.needLogin) _phase = QueryPhase.loaded;
   }
 
   @override
@@ -163,7 +163,18 @@ class _NoticeSectionState extends State<NoticeSection>
       onPressed: _phase == QueryPhase.loading ? null : _load,
     );
     if (_data != null) {
-      return withCacheTime(NoticeCard(_data!, trailing: refresh));
+      return withCacheTime(
+        NoticeCard(
+          _data!,
+          trailing: refresh,
+          statusSummary: _phase == QueryPhase.needLogin
+              ? querySummary(context, _phase)
+              : null,
+          status: _phase == QueryPhase.needLogin
+              ? QueryPhaseBody(phase: _phase, error: _error, onLogin: _login)
+              : null,
+        ),
+      );
     }
     return SectionCard(
       title: l10n.homeNoticeTitle,
