@@ -5,6 +5,7 @@
 export function failure(message) {
   const error = new Error(message);
   if (message === "card_number_required") error.code = "input_required_card_number";
+  else if (message === "configuration_required") error.code = "configuration_required";
   else if (message === "input_cancelled") error.code = "input_cancelled";
   else if (message === "student_id_required") error.code = "input_required_student_id";
   else if (/^xidian_login_required_(ehall|yjspt|card|library)$/.test(message))

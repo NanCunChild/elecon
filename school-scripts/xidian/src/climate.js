@@ -97,7 +97,8 @@ async function status(ctx, id) {
 
 export async function climateDevices(ctx, params = {}) {
   let device = await binding(ctx);
-  if (!device || params.configure === true) {
+  if (!device && params.configure !== true) throw failure("configuration_required");
+  if (params.configure === true) {
     if (!ctx.ui) throw new Error("input_unavailable");
     const input = await ctx.ui.requestInput({
       title: "绑定宿舍空调",

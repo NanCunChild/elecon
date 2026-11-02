@@ -375,6 +375,7 @@ void main() {
         final data = await const TrustedScriptRuntime().run(
           package: school,
           capability: 'climate.devices',
+          params: const {'configure': true},
           credentials: creds,
           htmlStdlib: await File('assets/stdlib/html.bundle.js').readAsString(),
           inputCall: (_) async => {

@@ -257,9 +257,36 @@ test("empty account is valid; malformed, duplicate and truncated school results 
     }),
   );
 });
+test("unconfigured device discovery fails explicitly without input, network or writes", async () => {
+  for (const params of [{}, { configure: false }]) {
+    const h = harness();
+    const before = [...h.records];
+    h.ctx.ui.requestInput = async () => assert.fail("discovery must not prompt for a device");
+    h.ctx.fetch = async () => assert.fail("discovery must not contact a device");
+    await assert.rejects(capabilities["climate.devices"](h.ctx, params), {
+      code: "configuration_required",
+    });
+    assert.deepEqual([...h.records], before);
+  }
+  const h = harness();
+  delete h.ctx.ui;
+  await assert.rejects(capabilities["climate.devices"](h.ctx), {
+    code: "configuration_required",
+  });
+  assert.equal(h.calls.length, 0);
+});
+test("configured discovery reuses its binding without opening the input form", async () => {
+  const h = harness();
+  const configured = await capabilities["climate.devices"](h.ctx, { configure: true });
+  h.ctx.ui.requestInput = async () => assert.fail("an existing binding must not prompt again");
+  h.calls.length = 0;
+  assert.deepEqual(await capabilities["climate.devices"](h.ctx), configured);
+  assert.equal(h.calls.length, 1);
+  assert.ok(h.calls[0].url.pathname.endsWith("/state"));
+});
 test("device binding is verified before save; state has no inferred remaining energy", async () => {
   const h = harness();
-  const devices = (await capabilities["climate.devices"](h.ctx)).items;
+  const devices = (await capabilities["climate.devices"](h.ctx, { configure: true })).items;
   assert.equal(devices[0].deviceId, ID);
   assert.equal(devices[0].minTemperature, 18);
   assert.equal(devices[0].maxTemperature, 32);
@@ -272,7 +299,7 @@ test("device binding is verified before save; state has no inferred remaining en
   assert.equal(status.outdoorClean, false);
   assert.equal(status.remainingEnergy, undefined);
   const bad = harness({ rawState: { imei: "9".repeat(15), switchStatus: 1 } });
-  await assert.rejects(capabilities["climate.devices"](bad.ctx));
+  await assert.rejects(capabilities["climate.devices"](bad.ctx, { configure: true }));
   assert.equal(bad.records.has("xidian.climate:device"), false);
 });
 test("invalid/unbound devices and wrong school roles fail before device traffic", async () => {
@@ -285,7 +312,7 @@ test("invalid/unbound devices and wrong school roles fail before device traffic"
 });
 test("command wire matches all selected mode effects, sends once and never claims applied", async () => {
   const h = harness();
-  const device = (await capabilities["climate.devices"](h.ctx)).items[0];
+  const device = (await capabilities["climate.devices"](h.ctx, { configure: true })).items[0];
   h.calls.length = 0;
   const settings = device.modeDefaults.find((m) => m.mode === "heat");
   assert.deepEqual(
@@ -307,7 +334,7 @@ test("command wire matches all selected mode effects, sends once and never claim
 });
 test("invalid command and temperature never send; 5xx and timeouts never retry", async () => {
   const h = harness();
-  await capabilities["climate.devices"](h.ctx);
+  await capabilities["climate.devices"](h.ctx, { configure: true });
   h.calls.length = 0;
   for (const settings of [{ targetTemperature: 33 }, { targetTemperature: 26, raw: "unsafe" }])
     await assert.rejects(
@@ -315,7 +342,7 @@ test("invalid command and temperature never send; 5xx and timeouts never retry",
     );
   assert.equal(h.calls.length, 0);
   const uncertain = harness({ commandStatus: 500 });
-  await capabilities["climate.devices"](uncertain.ctx);
+  await capabilities["climate.devices"](uncertain.ctx, { configure: true });
   uncertain.calls.length = 0;
   assert.deepEqual(
     await capabilities["climate.command"](uncertain.ctx, {
