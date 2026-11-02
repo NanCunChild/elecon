@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:elecon/core/scripts/manifest.dart';
 import 'package:elecon/l10n/gen/app_localizations.dart';
 import 'package:elecon/session/session_controller.dart';
+import 'package:elecon/session/session_scope.dart';
 import 'package:elecon/ui/community/checkin_locations.dart';
-import 'package:elecon/ui/community/community_pages.dart';
+import 'package:elecon/ui/home/card_layout.dart';
+import 'package:elecon/ui/home/checkin_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -33,7 +35,10 @@ ScriptPackage package({String schema = '1.1'}) => ScriptPackage.parse(
       ],
     },
     'source': '''export const capabilities={
-    'messages.session':async()=>({serviceId:'synthetic',serviceName:'Synthetic',status:'authenticated',accountId:'synthetic'}),
+    'messages.session':async(ctx,p)=>{
+      if(p.location) throw new Error('location must not reach account requests');
+      return {serviceId:'synthetic',serviceName:'Synthetic',status:'authenticated',accountId:'synthetic'};
+    },
     'attendance.checkin':async(ctx,p)=>{
       if(Object.keys(p).length===0) return {status:'unsupported',reason:'location_required'};
       await ctx.credentials.set('submitted','synthetic');
@@ -61,6 +66,22 @@ Widget app(
   ),
   home: home,
 );
+
+Widget checkinPage(SessionController session) => SessionScope(
+  controller: session,
+  child: app(
+    const Scaffold(
+      body: SingleChildScrollView(
+        child: HomeCardPresentation(
+          size: HomeCardSize.expanded,
+          isPage: true,
+          child: CheckinSection(),
+        ),
+      ),
+    ),
+  ),
+);
+
 Future<void> settle(WidgetTester tester) async {
   // Registry and QuickJS work use the real zone; don't wait on an animated
   // progress indicator while starving its native completion.
@@ -165,7 +186,7 @@ void main() {
     }
   }
   testWidgets(
-    'only scan passes the selected place and displays a bounded failure reason',
+    'only starting check-in passes the selected place and displays a bounded failure reason',
     (tester) async {
       final session = SessionController();
       addTearDown(session.dispose);
@@ -183,14 +204,20 @@ void main() {
           ),
         ]);
       });
-      await tester.pumpWidget(app(MessagesPage(session: session, package: p)));
+      await tester.pumpWidget(checkinPage(session));
       await settle(tester);
       final l10n = AppLocalizations.of(
-        tester.element(find.byType(MessagesPage)),
+        tester.element(find.byType(CheckinSection)),
       );
       await tapText(tester, 'Synthetic classroom');
       expect(session.credentialCount, 0);
-      await tapText(tester, l10n.checkinScan);
+      await tapText(tester, l10n.communityConnect);
+      expect(
+        find.text(l10n.communityConnected('Synthetic', '')),
+        findsOneWidget,
+      );
+      expect(session.credentialCount, 0);
+      await tapText(tester, l10n.checkinStart);
       expect(find.text(l10n.checkinLocationRejected), findsOneWidget);
       expect(session.credentialCount, 1);
       expect(tester.takeException(), isNull);
@@ -206,12 +233,16 @@ void main() {
       await session.installTrustedScript(p, approvedDigest: p.digest);
       await session.selectTrustedScriptSchool('synthetic');
     });
-    await tester.pumpWidget(app(MessagesPage(session: session, package: p)));
+    await tester.pumpWidget(checkinPage(session));
     await settle(tester);
     expect(find.byType(CheckinLocations), findsNothing);
-    final l10n = AppLocalizations.of(tester.element(find.byType(MessagesPage)));
-    await tapText(tester, l10n.checkinScan);
+    final l10n = AppLocalizations.of(
+      tester.element(find.byType(CheckinSection)),
+    );
+    expect(session.credentialCount, 0);
+    await tapText(tester, l10n.checkinStart);
     expect(find.text(l10n.checkinUnsupported), findsOneWidget);
+    expect(session.credentialCount, 0);
     expect(tester.takeException(), isNull);
   });
 }

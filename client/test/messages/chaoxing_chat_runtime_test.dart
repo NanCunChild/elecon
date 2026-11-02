@@ -22,7 +22,7 @@ void main() {
         store: CredentialStore(store: InMemorySecureStore(releaseMode: false)),
         schoolId: package.manifest.schoolId,
         scriptId: package.manifest.id,
-        sdkVersion: 9,
+        sdkVersion: package.manifest.sdkVersion,
       );
       credentials.set(
         'chaoxing',

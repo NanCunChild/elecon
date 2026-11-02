@@ -216,9 +216,19 @@ void main() {
       await tester.pump();
       expect(refreshDone, isFalse);
       expect(find.textContaining('初始大学'), findsOneWidget);
+      expect(calls, 2);
 
-      await tester.tap(find.byIcon(Icons.refresh));
+      // Query cards have their own refresh actions; exercise the whole-home
+      // action beside the school title for this overlapping-generation case.
+      final header = find.ancestor(
+        of: find.byKey(const ValueKey('home-title')),
+        matching: find.byType(Row),
+      );
+      await tester.tap(
+        find.descendant(of: header, matching: find.byType(IconButton)),
+      );
       await tester.pump();
+      expect(calls, 3);
       firstRefresh.complete(_snapshot('过期大学'));
       await tester.pump();
       expect(refreshDone, isFalse);
