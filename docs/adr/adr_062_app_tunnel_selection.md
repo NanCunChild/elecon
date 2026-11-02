@@ -24,6 +24,8 @@ VPN 在本决策中仅指 APPTunnel：elecon 自己的请求通过应用内 TCP 
 
 Dart 侧 HTTPS 显式 SecureSocket 升级，不能沿用旧 ADR 对 connectionFactory 自动 TLS 的假设。当前固定每次执行一个会话，按网关资源授权域名/IP，校内 DNS 走隧道；资源不匹配不自动分流直连。一般学校登录可先在直连完成，再启用 APPTunnel；普通 WebView 经隧道接线、其他平台打包及真实学校网关验收仍待实施。
 
+后续 [ADR-064](adr_064_script_accounts_and_tunnel_credentials.md) 扩展设置中的隧道账号凭证与主动密码认证；上文仅网页登录为初始切片的记录。原生库、TLS、路由与 WebView 边界保持。
+
 ## 验证与回滚
 
 合成基座通过真实本机 HTTP/TLS/WSS 测试解析/拨号、原目标证书校验、拒绝越界、无直连回落、取消及晚到连接销毁；设置覆盖持久化失败、损坏、Profile/学校隔离与中英文页面。没有真实网关登录、真实学校请求或系统 VPN 操作。恢复直连需用户明确选择；核心/网络实现须人工实质审阅后合并。

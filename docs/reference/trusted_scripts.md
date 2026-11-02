@@ -80,7 +80,7 @@ npm run scripts:package -w tools -- \
 
 打包器不执行源码、不签名、不猜测版本，验证失败不覆盖已有输出。`version` 是严格的 `主.次.修订` 三个非负整数，禁止前导零；当前不接受 prerelease/build metadata。按整数段比较，`1.10.0 > 1.9.0`，不按字符串排序。
 
-三类版本各司其职：`format:elecon-script/1` 是包容器；`sdkVersion` 是宿主 API/凭据语义（2 为完整凭据地址，3 在此基础上增加原生输入）；`manifest.version` 是作者发布的脚本版本。输出的 `schemaVersion` 另属于标准数据契约，不是脚本版本。宿主识别 SDK 1–10，未知格式/SDK 在执行前拒绝（各版本增量见下文）。SDK 1 保留首版预览的同校共享键/旧 ref 隐式查找；需要输入接口的新包使用 SDK 3；纯 HTTP/浏览器 SDK 2 包仍可继续使用。迁移时同时修改 SDK、源码，并提升脚本版本后重新确认，不能只改 SDK 或同版本替换字节。脚本更新/修复/权限变化都需提升版本；卸载后重装不保留版本防回退历史，不把本地更新规则描述为全局反回滚系统。
+三类版本各司其职：`format:elecon-script/1` 是包容器；`sdkVersion` 是宿主 API/凭据语义（2 为完整凭据地址，3 在此基础上增加原生输入）；`manifest.version` 是作者发布的脚本版本。输出的 `schemaVersion` 另属于标准数据契约，不是脚本版本。宿主识别 SDK 1–12，未知格式/SDK 在执行前拒绝（各版本增量见下文）。SDK 1 保留首版预览的同校共享键/旧 ref 隐式查找；需要输入接口的新包使用 SDK 3；纯 HTTP/浏览器 SDK 2 包仍可继续使用。迁移时同时修改 SDK、源码，并提升脚本版本后重新确认，不能只改 SDK 或同版本替换字节。脚本更新/修复/权限变化都需提升版本；卸载后重装不保留版本防回退历史，不把本地更新规则描述为全局反回滚系统。
 
 身份、权限、源码都进入 canonical SHA-256 内容身份；安装恢复时重新解析并核对 digest。文件排版变化不改变内容身份，源码文本变化会改变。规范中的三段数值版本是当前接受的 SemVer 子集，不宣称支持完整 SemVer 2.0。
 
@@ -246,3 +246,46 @@ const position = await ctx.ui.getCurrentPosition(); // 当前 WGS84；取消 nul
 三种输入都只在前台允许，与扫码/表单互斥，每次运行最多四次。SDK10 `ctx.fetch` 可接受最多1MiB的 Uint8Array body，用于脚本组装 multipart；无自动上传或重试，旧 string body不变。使用固定 `device_input_*` 和 `invocation_cancelled` 错误码；未满足服务配置使用 [ADR-059](../adr/adr_059_capability_configuration_state.md) 的 `configuration_required`，不伪造空结果。
 
 完整 [签到模板](../../adapters/_template/trusted/attendance/README.md) 演示按钮、QR、拍照、选取本人图片、定位和一次二进制提交后独立核验。模板默认未配置，不访问 `.invalid` 示例域名。真实服务的活动要求、认证、坐标转换和人脸验证仍由学校适配决定；不能仅因SDK有输入API就宣称学习通照片/人脸签到已实现。
+
+
+## SDK 11：账号需求与设置入口
+
+[ADR-064](../adr/adr_064_script_accounts_and_tunnel_credentials.md) 要求 SDK 11 manifest 必填 `accounts`，空数组明确无需账号。SDK 1–10 的省略只表示尚未声明。当前学校各已安装脚本的账号说明在「设置 → 脚本所需账号」查看，安装确认也展示声明；此读取不运行脚本、不检查远端登录状态。
+
+```json
+"accounts": [{
+  "id": "campus",
+  "name": "学校统一认证账号",
+  "instructions": "使用学校官方页面登录；遇到验证码或多因素验证时按页面完成。",
+  "capabilities": ["schedule.week", "grades.list"],
+  "login": {"capability": "generic.section"}
+}]
+```
+
+每包最多 16 项，ID 唯一；依赖能力及登录能力须由同包声明。name 最多160、instructions最多2048个 UTF-16 代码单元，单行纯文本；登录参数是最多4KiB UTF-8 JSON对象。`login` 可省略，此时必须在说明中交代外部或共享登录的做法，页面不显示登录按钮。需要主动调用的认证绑定现有能力（如 `forum.session`/`messages.session` 的 `operation:login`），不下发 Widget 或宿主协议。
+
+登录按钮固定到用户查看的包及 digest，在前台调用，离页/切身份/撤销取消；不跟随 provider 覆盖去另一个包。账号名不是凭据 namespace 或权限，声明不会限制或扩大同校受信脚本的现有凭据可见性。升 SDK/修改声明需提升包版本、重新确认；不改写旧安装字节。
+
+## APPTunnel 账号配置
+
+「设置 → APPTunnel」可保存 Hermes/aTrust 的 HTTPS 网关、可选节点证书 SHA256、账号、密码和可选认证域。账号与会话分别保存在当前 Profile/学校的 H/S/M 后端，普通脚本不可读；界面不回显已保存密码。空密码仅保留同一网关/用户名/认证域的原密码，修改身份需重新输入。保存账号会清除本地旧会话并撤销旧路由，不等于已登录。
+
+点击「使用已保存账号登录」只尝试一次密码认证；空认证域仅接受网关唯一的密码域。验证码、MFA或需要指定认证域时显示需要交互，用户可核对认证域或主动选择官方网页登录。清除同时删除账号和会话；认证及保存可取消，失败不自动重试或回落直连。普通学校 WebView 尚不能经隧道运行，仍按 ADR-062 拒绝直连；真网关/移动端验收单独完成。
+
+## SDK 12：多来源卡片、账号状态与 APPTunnel（ADR-066）
+
+显式 `cards` 实例绑定声明包与批准 digest，同类型可重复，但包内 id 必须唯一。例如超星增强包：
+
+```json
+"cards": [{"id":"learning-notices","type":"notice","title":"学习通知","defaultVariant":"regular"}]
+```
+
+模板要求的能力必须同包声明。客户端保存每个实例的布局、尺寸和显隐；刷新、缓存、详情与重新登录保留该来源，不修改全局同名能力覆盖。无显式 id 的旧声明保持默认 provider 语义。完整卡片的内容高度不再向整数格高度补白，小卡片仍保持固定几何尺寸。
+
+账号可声明 `status: {"capability":"account.session","params":{"account":"<账号id>","operation":"status"}}`，同时声明 `account.session` 1.0。账号页前台检查只允许无交互查询；后台执行会被拒绝，返回 `status` 为 authenticated/signedOut/expired/unknown，以及可选 `accountId/accountLabel/checkedAt`。网络错误必须 unknown；只有源站失效证据才能 expired。普通账号登录须由脚本在 login 返回 authenticated，返回账号页后再查询 status；APPTunnel 在凭据更新后的新代际查询 status 再判定成功。保存凭据本身不算认证。
+
+内置 Hermes/aTrust 由宿主维护密码和会话。声明 `appTunnels: ["hermes-atrust"]` 的 SDK 12 包可以调用 `ctx.appTunnel.status("hermes-atrust")`、`ctx.appTunnel.login("hermes-atrust")` 并建模为脚本账号；登录仅允许用户主动账号登录入口，通过固定 APPTunnel 页面完成。状态只返回账号语义，管理端口不暴露密码/会话、不替脚本开放直连、不自动选择路由。认证发布会撤销旧脚本执行，登录页等待管理页返回后以新代际重查同包状态；仅打开后返回属于取消，即使旧会话仍有效也不报告新登录成功。
+
+消息新版本为 `messages.list` 1.1、`messages.history` 1.1、`messages.conversations` 1.2。活动/指令仅标识与展示；群历史的 `sendPermission` 缺失或 unknown 不允许发送，muted 明确提示禁言，停用群以 `sendPermissionReason: group_disabled` 保留原因。页面依据当前在线历史结果授权，离线快照不授权；脚本在实际发送前复核。旧 schema 快照独立保留。
+
+西电基础包 0.22.0 与超星增强包 0.5.1 采用 SDK 12，更新需要重新检查安装。超星 HTTP 学习通知独立于环信消息：通过官方 PC 前端 `POST /pc/notice/getNoticeList` 读取当前上海年份的收件通知，列表正文供详情，不标已读、不发送；Quasar-core 用于确认独立 HTTP 模块，其 `myNotices_v2` 在实站拒绝来源 IP。实际字段和分页依据官方前端及真机结构验证，未复制 Quasar 的 GPL 实现。

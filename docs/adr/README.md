@@ -37,6 +37,8 @@ ADR-000–033 已废弃为新开发总纲，正文移至 [archived](../archived/
 | [061](adr_061_message_history_and_storage.md) | Accepted（聊天历史与 SQLite 适配） | 会话/群私聊历史、文本单次发送、核心受保护 SQLite 与原生页面 | 待真实账号/真机及人工核心/网络审阅 | 作业/课程/任务仅摘要；无未读推断、后台监听或自动重发 |
 | [062](adr_062_app_tunnel_selection.md) | Accepted（应用内 VPN 选择，首版 Hermes） | Profile/学校选择、HTTP/WSS 连接、Hermes 原生桥和受保护网关登录 | 自动协议/平台验证与真实网关验收分别记录；待人工网络/FFI审阅 | 无系统 VPN；目标 TLS 保留，失败不改直连；普通 WebView 尚不可经隧道 |
 | [063](adr_063_conversation_names_and_order.md) | Accepted（群名称与有内容会话排序） | conversations 1.1、批量群详情/最近会话、本地证据合并与离线排序 | 待真实账号与人工契约/网络审阅 | 保留1.0，未知不推断为空，补全403降级，不遍历每群历史 |
+| [064](adr_064_script_accounts_and_tunnel_credentials.md) | Accepted（统一脚本账号与隧道凭证设置） | SDK 11 声明、按脚本账号设置、Hermes 账号与主动密码认证 | 待真实网关/账号及人工核心/网络审阅 | 不返回密码、不自动重试、不改变同校脚本权限 |
 | [065](adr_065_repository_cleanup.md) | Accepted（开放脚本主线整理授权） | 旧文档归档、V1 模板退役与测试隔离、Android 构建修复 | 构建与设备验证另记；不新增人工签收 | 活跃 V1 运行时仍保留，旧模板仅作回归夹具；不要求旧数据迁移 |
+| [066](adr_066_feature_sources_and_account_state.md) | Accepted（本轮功能与抽象授权） | SDK 12 多来源卡片、账号状态、APPTunnel 端口、HTTP 学习通知与消息语义 | 合成验证与设备记录见 trusted_scripts；真实账号/网关及人工审阅分开验收 | 固定 digest、无交互检查、禁未知发送 |
 
 ADR 编号不回收：021 仍是历史预留。更新决策、实现与签收时分别修改对应列，不用自动测试替代人工复核。

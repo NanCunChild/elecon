@@ -49,6 +49,8 @@ flowchart TD
 
 [ADR-063](adr/adr_063_conversation_names_and_order.md) 的 `messages.conversations` 1.1 支持确认有内容和源站最新消息时刻；超星 0.3.1 批量补全群名，核心与脚本按有内容优先、已知最新源站时间排序，离线使用同样证据，未知群组不等于空群。
 
+[ADR-064](adr/adr_064_script_accounts_and_tunnel_credentials.md) 的 SDK 11 统一声明脚本账号名称、用途、登录说明及可选同包登录绑定，设置按当前学校展示并固定来源调用。旧包仍为未声明，更新需重新批准。Hermes 设置支持独立的受保护账号凭证与主动单次密码登录；验证码/MFA 保留官方网页登录，保存账号不等于登录，普通脚本不能取得隧道密码或会话。
+
 ## 后续方向
 
 [ADR-042](adr/adr_042_providers_pages_enhancements.md)提出：用显式 provider 绑定连接学校包与增强包，以业务 feature 组合多个查询和页面，以固定原生模板复用展示。公开通知缓存优先试点；鉴权空教室和账户水电分别验证授权与隔离，不共享学生会话。
@@ -66,3 +68,11 @@ flowchart TD
 | 历史论证与签收 | [archived](archived/README.md) |
 
 决策接受、代码存在、自动测试、真机与人工签收分别记录；任何一项不能推导其余项已完成。
+
+### ADR-066：领域查询、账号状态和多来源
+
+SDK 12 的显式卡片 id/title 支持同类型多个实例，各实例查询/缓存/详情/登录固定包与批准 digest，不改变默认 capability 覆盖。领域组件与标准数据解码器已拆分，`CapabilityQueries` 和 `CachedQuerySection` 承担共同来源与生命周期。
+
+`account.session` 区分 authenticated/signedOut/expired/unknown；只读检查禁用交互，重登必须重新验证。脚本可声明内置 APPTunnel 服务并包装账号，宿主固定页面管理 Hermes 密钥/会话。消息活动/指令仅标识；发送权限由当前在线结果和脚本实际发送前复核共同约束。
+
+细节见 [ADR-066](adr/adr_066_feature_sources_and_account_state.md) 与[功能边界](reference/core_script_boundaries.md)。这不实施任意页面注册、增强包独立沙箱或脚本侧原生模块加载。

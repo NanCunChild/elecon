@@ -50,3 +50,12 @@ Android uses API 21, installed Rust targets, and an explicit NDK directory (`--n
 On 2026-11-02 the eight native tests passed: fixed C ABI errors, cancel before registration, cancellation during real loopback TLS initialization, private directory handling, DNS framing/identity validation, correct/wrong certificate pins with real TLS signatures, gateway-cookie scope tightening, and an actual synthetic Hermes handshake with pinned destination plus one-shot UDS echo and cleanup. Linux and Android ARM64 libraries compiled. Test certificates/keys are synthetic fixtures reused from the client's WebSocket tests. No real gateway, school account or system VPN was accessed. These checks do not replace native/network review or real-gateway/device acceptance.
 
 ADR-064 adds the host-only `authenticatePassword` operation. Credentials remain in the protected Profile/school store, separate from verified sessions. An explicit action runs authConfig → one encrypted password attempt → reportEnv/authCheck → onlineInfo/SID capture. Ambiguous domains, captcha and MFA stop with `hermes_interaction_required`; no credential retry or automatic web fallback occurs. Password input is never included in returned session JSON or diagnostics. The existing `authenticateCookies` web flow remains available. No additional dependencies are introduced.
+
+ADR-066 adds host-only `checkSession` with `gatewayUrl` and a protected `session`.
+It checks `auth_config` and `online_info` against the stored username, returning
+only `authenticated` (with an optional account label), `expired`, or `unknown`.
+Network errors stay unknown; a confirmed invalid session or account mismatch is
+expired. It does not open a tunnel or submit a password. SDK 12 scripts receive
+this reduced account state through the declared APPTunnel port, never the native
+request, stored session, or credentials. Authentication publication revokes the
+old script invocation; the native login page rechecks in the new generation.
