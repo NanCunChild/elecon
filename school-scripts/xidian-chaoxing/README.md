@@ -1,16 +1,20 @@
 # 西电学习通增强包
 
-`0.5.0 / SDK 12`，分别绑定 `xidian_undergraduate` 和 `xidian_postgraduate`。提供学习通账号登录/本地退出、群聊与私聊会话、历史分页、纯文本发送及扫码签到。安装授权、凭据、网络和取消边界见 [ADR-052](../../docs/adr/adr_052_community_accounts_and_chaoxing.md) 与 [ADR-061](../../docs/adr/adr_061_message_history_and_storage.md)。不覆盖基本包的教务登录和能力。manifest accounts 声明学习通账号、用途、登录说明及本包 account.session 状态与登录入口，导入后在设置查看；旧安装需用户重新批准更新。
+`0.5.1 / SDK 12`，分别绑定 `xidian_undergraduate` 和 `xidian_postgraduate`。提供学习通账号登录/本地退出、群聊与私聊会话、历史分页、纯文本发送及扫码签到。安装授权、凭据、网络和取消边界见 [ADR-052](../../docs/adr/adr_052_community_accounts_and_chaoxing.md) 与 [ADR-061](../../docs/adr/adr_061_message_history_and_storage.md)。不覆盖基本包的教务登录和能力。manifest accounts 声明学习通账号、用途、登录说明及本包 account.session 状态与登录入口，导入后在设置查看；旧安装需用户重新批准更新。
 
 ## 0.5.0 学习通知与消息权限
 
-新增独立“学习通知”首页卡片，使用 `notice.list` 1.1。只读 HTTP GET `notice.chaoxing.com/apis/notice/myNotices_v2`，携带当前学习通 Cookie/puid；首页一基页码转源站零基，合并置顶/普通通知并按精确 ID 去重。正文转纯文本，列表内正文直接用于本地详情；不标记已读，不调用通知发送、回复或环信消息获取通知。首页保护缓存 300 秒；缺少服务证据时不推测总数、下一页或未读。来源变更须重新批准新增网络范围。
+新增独立“学习通知”首页卡片，使用 `notice.list` 1.1。0.5.1 按[官方 PC 通知前端](https://notice.chaoxing.com/res/pc/template/notice/notice.util.js)的协议，向 `https://notice.chaoxing.com/pc/notice/getNoticeList` 发只读表单 POST，携带当前学习通 Cookie，查询收件通知（`type=2`）与当前上海年份。响应为根级 `status`、`topNotices`、`urgentNotices`、`notices.list`，实体按 `idCode/sendTag` 去重。列表正文转纯文本，供本地详情；不标记已读，不调用通知发送、回复或环信消息获取通知。
+
+沿用标准一基 `page/size`，脚本内部使用 `lastGetId` 游标，单次最多 8 个列表请求；请求窗口上限 160 条，超过预算明确失败。首页默认第一页仅一次列表 POST。只根据 `lastPage` 的明确 0/1 或 boolean 判断是否有下一页，短页/空页不代表已结束；不输出猜测的总数、未读或不可续用的游标。首页保护缓存 300 秒。官方登录重定向映射为需登录，访问限制/风控/限流显示通用源站失败，不撤销有效账号；POST 不跟随重定向或自动重发。
+
+0.5.0 参考 Quasar-core 的 `apis/notice/myNotices_v2` 在本次授权真机验证中返回源站 IP 访问限制，未进入列表解析。0.5.1 改用该服务正常登录网页自身的列表接口，网络 origin 不变；未扩大 Cookie 的域或路径，不修改服务访问控制。该次验证仅证明当前设备与已授权账号能够读取通知，不代表全部学校/账户验收。
 
 `messages.history` / `messages.list` 1.1 将活动与指令区分为 `activity` / `command`；指令只显示固定标识，不暴露或执行远端 action。历史返回当前发言权限，核心未知/禁言时禁用发送并提示。每次真正发送之前脚本再次只读核验，避免沿用旧历史或本地缓存许可；权限不能确认时不会打开发送连接。
 
 群权限依据 [Easemob 群详情](https://doc.easemob.com/document/server-side/group_obtain_detail.html) 的 `mute` / `disabled`，以及 Web SDK 4.12 的 `isInGroupMutelist`、`isInGroupAllowlist` 接口事实。个人查询返回明确 boolean；白名单响应必须匹配当前 `member` 及 boolean `white`。群主/管理员由服务自动加入白名单，个人禁言仍优先于豁免，见[官方成员管理说明](https://doc.easemob.com/document/ios/group_members.html)。缺失字段、权限限制、网络故障均保持 unknown；只有源站确认允许才可发送。列表不逐群扇出权限请求，核验发生在打开历史和点击发送时。
 
-通知协议依据本地 Quasar-core `notice.go` 的端点/字段事实独立实现，参考版本与 GPL 边界见下方来源说明；未复制 Go 代码或引入参考项目依赖。HTML 规范化复用已有 `elecon:html`，没有新增外部依赖。
+通知模块最初研究本地 Quasar-core `notice.go` 的协议事实；当前 PC 端点、参数、响应包装与实体去重规则另以官方前端 `notice.util.js`、`pull_notice.util.js` 核验。仅独立实现协议事实，不复制、翻译或打包官方前端代码。参考版本与 GPL 边界见下方来源说明；未复制 Go 代码或引入参考项目依赖。HTML 规范化复用已有 `elecon:html`，没有新增外部依赖。
 
 ## 使用与支持范围
 

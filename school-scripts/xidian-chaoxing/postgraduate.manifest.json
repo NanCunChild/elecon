@@ -1,7 +1,7 @@
 {
   "sdkVersion": 12,
   "id": "enhancement-xidian-postgraduate-chaoxing",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "schoolId": "xidian_postgraduate",
   "name": "西电学习通增强（研究生）",
   "network": {

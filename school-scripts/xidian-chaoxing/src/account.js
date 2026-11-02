@@ -19,7 +19,7 @@ export const ORIGINS = [
 const config = { id: "chaoxing", name: "学习通", origins: ORIGINS };
 const cookieUrls = [
   ACCOUNT_URL,
-  "https://notice.chaoxing.com/apis/notice/myNotices_v2",
+  "https://notice.chaoxing.com/pc/notice/getNoticeList",
   ...[
     "/v2/apis/sign/getAttendInfo",
     "/v2/apis/active/getPPTActiveInfo",

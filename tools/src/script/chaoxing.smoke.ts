@@ -13,7 +13,7 @@ assert.deepEqual([...first], [...(await buildChaoxingPackages())]);
 for (const [name, content] of first) {
   const p = JSON.parse(content);
   assert.equal(p.manifest.sdkVersion, 12);
-  assert.equal(p.manifest.version, "0.5.0");
+  assert.equal(p.manifest.version, "0.5.1");
   assert.equal(
     p.manifest.capabilities.find((c: { id: string }) => c.id === "attendance.checkin").schemaVersion,
     "1.1",

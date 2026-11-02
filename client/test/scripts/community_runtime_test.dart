@@ -78,22 +78,23 @@ void main() {
                 fetch: (url, init) async {
                   if (url.contains('getUserImToken')) return fetch(url, init);
                   expect(Uri.parse(url).host, 'notice.chaoxing.com');
-                  expect(init['method'], 'GET');
+                  expect(init['method'], 'POST');
+                  expect(Uri.parse(url).path, '/pc/notice/getNoticeList');
                   return {
                     'status': 200,
                     'url': url,
                     'headers': <String, List<String>>{},
                     'body':
-                        '{"result":1,"data":{"topNotices":[{"id":9007199254740993,"title":"Synthetic notice","content":"<p>Plain &amp; text</p><script>SECRET_ACTION()</script>"}],"notices":{"list":[]}}}',
+                        '{"status":true,"topNotices":[{"idCode":"synthetic-notice","sendTag":0,"title":"Synthetic notice","content":"<p>Plain &amp; text</p><script>SECRET_ACTION()</script>"}],"notices":{"list":[],"lastPage":1}}',
                   };
                 },
               )
               as Map;
       final notice = (notices['items'] as List).single as Map;
-      expect(notice['id'], '9007199254740993');
+      expect(jsonDecode(notice['id'] as String), ['synthetic-notice', '0']);
       expect(notice['content'], 'Plain & text');
       expect(notice['pinned'], isTrue);
-      expect(notices.containsKey('hasNext'), isFalse);
+      expect(notices['hasNext'], isFalse);
 
       final cancelled = await const TrustedScriptRuntime().run(
         package: enhancement,

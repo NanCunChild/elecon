@@ -1,11 +1,12 @@
+// biome-ignore-all lint/suspicious/noControlCharactersInRegex: Reject control characters in remote protocol identifiers.
 /*! Copyright 2026 elecon contributors. SPDX-License-Identifier: MPL-2.0 */
-// ADR-066: independent implementation of notice.go protocol facts in
-// Quasar-core 96f36b38a2b01b810a2b45d66f0364183a4b7b87 (GPL-3.0).
+// ADR-066: independently implement the official PC notification frontend protocol.
+// Protocol source and the restricted Quasar API are documented in ../README.md.
 import { parseDocument } from "elecon:html";
-import { remoteId, requireParams, serviceError } from "../../xidian/src/service_session.js";
+import { requireParams, serviceError } from "../../xidian/src/service_session.js";
 import { chaoxingClient } from "./account.js";
 
-export const NOTICES_URL = "https://notice.chaoxing.com/apis/notice/myNotices_v2";
+export const NOTICES_URL = "https://notice.chaoxing.com/pc/notice/getNoticeList";
 function text(value, limit) {
   if (typeof value !== "string") return "";
   function walk(node) {
@@ -37,6 +38,41 @@ function time(value) {
     if (Number.isFinite(n)) return new Date(n).toISOString();
   }
 }
+const PAGE_URL = "https://notice.chaoxing.com/pc/notice/myNotice";
+const MAX_PAGES = 8;
+function opaque(value, limit = 256) {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= limit &&
+    !/[\u0000-\u001f\u007f]/.test(value)
+  );
+}
+function entityId(row) {
+  if (!opaque(row.idCode)) throw serviceError();
+  // The official frontend deduplicates by idCode + sendTag, not a numeric id.
+  const tag = row.sendTag;
+  if (
+    tag !== undefined &&
+    !(typeof tag === "number" && Number.isSafeInteger(tag)) &&
+    !(typeof tag === "string" && tag.length <= 32 && !/[\u0000-\u001f\u007f]/.test(tag))
+  )
+    throw serviceError();
+  return JSON.stringify([row.idCode, tag === undefined ? null : String(tag)]);
+}
+function rejectResponse(value) {
+  const msg = typeof value?.msg === "string" ? value.msg : "";
+  // Only confirmed authentication failures ask for login. Source ACL/risk/rate
+  // failures do not revoke an otherwise valid account, and never echo the body.
+  if (
+    /未登录|请.{0,12}登录|登录.{0,12}(?:失效|过期)|not logged|unauthenticated|session.{0,12}expired/i.test(
+      msg,
+    )
+  )
+    throw serviceError("authentication_required");
+
+  throw serviceError();
+}
 export async function noticeList(ctx, params = {}) {
   requireParams(params, ["page", "size", "category"]);
   const page = params.page ?? 1,
@@ -44,89 +80,137 @@ export async function noticeList(ctx, params = {}) {
   if (
     !Number.isSafeInteger(page) ||
     page < 1 ||
-    page > 10000 ||
     !Number.isInteger(size) ||
     size < 1 ||
     size > 100 ||
+    page * size > 160 ||
     (params.category !== undefined && !["academic", "admin", "event", "unknown"].includes(params.category))
   )
     throw serviceError("input_invalid_request");
-  const { client, account } = await chaoxingClient(ctx);
-  const query = {
-    puid: account.id,
-    lastGetId: "",
-    type: "",
-    notice_type: "",
-    from: "",
-    folderId: "",
-    read: "",
-    kw: "",
-    tag: "",
-    pageSize: size,
-    page: page - 1,
-    mMaxW: "10",
-    contSize: "30",
-  };
-  const response = await client.request(
-    `${NOTICES_URL}?${Object.entries(query)
-      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-      .join("&")}`,
-  );
-  if ([401, 403].includes(response.status)) throw serviceError("authentication_required");
-  if (!response.ok) throw serviceError();
-  const raw = await response.text();
-  if (raw.length > 1024 * 1024) throw serviceError();
-  let value;
-  try {
-    value = JSON.parse(raw.replace(/("id"\s*:\s*)([0-9]+)(?=\s*[,}])/g, '$1"$2"'));
-  } catch {
-    throw serviceError();
-  }
-  const data = value?.data;
-  if (value?.result !== 1 || !data || typeof data !== "object") throw serviceError();
-  const ordinary = Array.isArray(data.notices) ? data.notices : data.notices?.list;
-  const pinned = data.topNotices ?? [];
-  if (!Array.isArray(ordinary) || !Array.isArray(pinned) || ordinary.length > 200 || pinned.length > 200)
-    throw serviceError();
+  // Limit redirect classification to this read-only POST. serviceClient still
+  // owns Cookie scope, Set-Cookie, origins and the no-POST-replay boundary.
+  const { client } = await chaoxingClient({
+    ...ctx,
+    fetch: async (url, init) => {
+      const response = await ctx.fetch(url, init);
+      if (url === NOTICES_URL && response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location") || "";
+        if (/^https:\/\/passport2\.chaoxing\.com\/(?:login|fanyalogin)(?:[/?#]|$)/.test(location))
+          throw serviceError("authentication_required");
+        throw serviceError("source_response_invalid");
+      }
+      return response;
+    },
+  });
+  const year = new Date(ctx.now() + 8 * 60 * 60 * 1000).getUTCFullYear();
   const items = new Map();
-  for (const [list, isPinned] of [
-    [pinned, true],
-    [ordinary, false],
-  ]) {
-    for (const row of list) {
-      if (!row || typeof row !== "object") throw serviceError();
-      const id = remoteId(row.id);
-      if (items.has(id)) continue;
-      const title = text(row.title, 1000) || "学习通知";
-      const content = text(row.content, 50000);
-      const author = text(row.createrName, 160);
-      const course = text(row.course_name, 160);
-      const category =
-        ["homework", "topicDiscuss"].includes(row.tag) || course
-          ? "academic"
-          : [4000, 4001, 4002].includes(row.sourceType)
-            ? "admin"
-            : "unknown";
-      const publishedAt = time(row.sendTime) ?? time(row.insertTime);
-      items.set(id, {
-        id,
-        title,
-        category,
-        source: "学习通",
-        pinned: isPinned,
-        ...(content ? { content, summary: content.slice(0, 240) } : {}),
-        ...(author ? { author } : {}),
-        ...(course ? { tags: [course] } : {}),
-        ...(publishedAt ? { publishedAt } : {}),
-      });
+  const seenCursors = new Set();
+  let lastValue = "",
+    hasMore;
+  for (let requestPage = 0; requestPage < MAX_PAGES; requestPage++) {
+    const query = {
+      type: "2",
+      notice_type: "",
+      lastValue,
+      sort: "",
+      folderUUID: "",
+      kw: "",
+      startTime: "",
+      endTime: "",
+      gKw: "",
+      gName: "",
+      year,
+      tag: "",
+      fidsCode: "",
+      queryFolderNoticePrevYear: "0",
+      filterSenderPuids: "",
+      filterTags: "",
+    };
+    const response = await client.request(NOTICES_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Requested-With": "XMLHttpRequest",
+        Referer: PAGE_URL,
+      },
+      body: Object.entries(query)
+        .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+        .join("&"),
+    });
+    if (response.status === 401) throw serviceError("authentication_required");
+    if (response.status === 429) throw serviceError("source_response_invalid");
+    if (!response.ok) throw serviceError("source_response_invalid");
+    const raw = await response.text();
+    if (raw.length > 1024 * 1024) throw serviceError();
+    let value;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      throw serviceError();
     }
+    if (value?.status !== true) rejectResponse(value);
+    const ordinary = value.notices?.list;
+    const pinned = value.topNotices ?? [];
+    const urgent = value.urgentNotices ?? [];
+    if (![ordinary, pinned, urgent].every((list) => Array.isArray(list) && list.length <= 200))
+      throw serviceError();
+    for (const [list, isPinned, isUrgent] of [
+      [pinned, true, false],
+      [urgent, false, true],
+      [ordinary, false, false],
+    ]) {
+      for (const row of list) {
+        if (!row || typeof row !== "object" || Array.isArray(row)) throw serviceError();
+        const id = entityId(row);
+        if (items.has(id)) continue;
+        const title = text(row.title, 1000) || "学习通知";
+        const content = text(row.content, 50000);
+        const author = text(row.createrName, 160);
+        const course = text(row.course_name, 160);
+        const category =
+          ["homework", "topicDiscuss"].includes(row.tag) || course
+            ? "academic"
+            : [4000, 4001, 4002].includes(row.sourceType)
+              ? "admin"
+              : "unknown";
+        const publishedAt = time(row.sendTime) ?? time(row.insertTime);
+        items.set(id, {
+          id,
+          title,
+          category,
+          source: "学习通",
+          pinned: isPinned,
+          ...(isUrgent ? { importance: "urgent" } : {}),
+          ...(content ? { content, summary: content.slice(0, 240) } : {}),
+          ...(author ? { author } : {}),
+          ...(course ? { tags: [course] } : {}),
+          ...(publishedAt ? { publishedAt } : {}),
+        });
+      }
+    }
+    const lastPage = value.notices.lastPage;
+    hasMore =
+      lastPage === true || lastPage === 1 ? false : lastPage === false || lastPage === 0 ? true : undefined;
+    if (items.size >= page * size || hasMore === false || (page === 1 && size <= 20)) break;
+    const next = value.notices.lastGetId;
+    // A short page alone is not completion. Missing/looping cursor cannot
+    // silently turn an incomplete requested page into an empty success.
+    if (!opaque(next, 2048) || seenCursors.has(next)) {
+      if (hasMore === undefined && page === 1 && requestPage === 0) break;
+      throw serviceError();
+    }
+    seenCursors.add(next);
+    lastValue = next;
+    if (requestPage === MAX_PAGES - 1) throw serviceError("source_response_invalid");
   }
-  // Neither a short page nor lastGetId proves completeness. Do not invent
-  // hasNext/total; do not mark notifications read while listing or caching.
+  const all = [...items.values()];
   return {
     page,
     size,
     sourceSystem: "chaoxing-notice",
-    items: [...items.values()].filter((row) => !params.category || row.category === params.category),
+    ...(all.length > page * size ? { hasNext: true } : hasMore === undefined ? {} : { hasNext: hasMore }),
+    items: all
+      .slice((page - 1) * size, page * size)
+      .filter((row) => !params.category || row.category === params.category),
   };
 }
