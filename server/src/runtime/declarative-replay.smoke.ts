@@ -8,7 +8,7 @@ const repoRoot = resolveRepoRoot(import.meta.url);
 async function main(): Promise<void> {
   await replayDeclarativeFixture(
     import.meta.url,
-    `${repoRoot}adapters/_template/declarative`,
+    `${repoRoot}tests/fixtures/legacy-adapters/declarative`,
     "fixtures/grades.list.json",
   );
   console.log("  ✓ template declarative fixture：golden + schema");

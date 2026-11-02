@@ -2,7 +2,7 @@
  * scanner：夹具 PII 扫描（脱敏检查，CI 闸门）。
  *
  * 红线 #8：不提交真实学生数据。本工具在提交/CI 时扫描 `adapters/**\/fixtures/`
- * 与 `adapters_tests/**` 下的文本，拦截疑似**未脱敏**的真实身份信息：
+ * 与 `adapters_tests/**`、`tests/fixtures/**` 下的文本，拦截疑似**未脱敏**的真实身份信息：
  *  P1 中国大陆居民身份证号（18 位，末位校验）
  *  P2 中国大陆手机号（1[3-9] + 9 位）
  *  P3 学号（连续 8–12 位数字，且上下文含 学号/studentId/xh 等提示词）
@@ -222,7 +222,7 @@ export function scanLine(line: string): PiiFinding[] {
 
 // ---- 文件系统扫描 ----
 
-const SCAN_ROOTS = ["adapters", "adapters_tests"];
+const SCAN_ROOTS = ["adapters", "adapters_tests", "tests/fixtures"];
 const TEXT_EXT = /\.(json|html?|txt|md|mjs|js|ts|csv|xml|py)$/i;
 const SKIP_DIR = /(^|\/)(node_modules|\.venv|\.git|build|dist|\.dart_tool)(\/|$)/;
 

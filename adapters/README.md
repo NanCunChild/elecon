@@ -1,47 +1,13 @@
-# adapters/ — 学校 adapter 目录
+# 学校脚本模板与共用资源
 
-> adapter 是吸收学校接口差异的 shim：把原始数据归一化成标准 schema，并承接脏数据清洗与校本派生。
-> **能力/信任面越薄越好，工程功能面越完整越好**。adapter 不持凭证、不决定网络授权、不驱动渲染，也不做跨数据源编排（ADR-000 §3.1）。
+新学校接入使用受信源码包：从 [`_template/trusted/`](_template/trusted/) 选择 HTTP、浏览器或签到模板，实际学校源码放在 [`school-scripts/`](../school-scripts/)。包格式、SDK 和安装步骤见[受信脚本文档](../docs/reference/trusted_scripts.md)。学校脚本可以处理当前授权学校的凭据；宿主负责执行授权、身份、网络和资源边界。
 
-## 目录约定
+| 目录 | 用途 |
+|---|---|
+| `_template/trusted/http` | 受限 HTTP 与本校授权凭据示例 |
+| `_template/trusted/browser` | 前台可见浏览器认证示例 |
+| `_template/trusted/attendance` | 通用前台请求与签到输入示例 |
+| `_stdlib` | 固定版本 HTML 解析器；当前脚本和保留的 V1 运行时共用 |
+| `school-helloworld` | 仍被签名分发诊断使用的 V1 示例，不是新接入起点 |
 
-```
-adapters/
-  _template/          脚手架模板（两种 requestGraph）
-    imperative/       → imperative 模板（official 或 DEV-Sideload 调试）
-    declarative/      → declarative 模板（official 或 DEV-Sideload 调试）
-  school-<id>/        各学校 adapter
-    manifest.json
-    index.js
-    fixtures/         脱敏的抓包样本
-    README.md         该校信息与已知坑
-```
-
-## 快速开始
-
-```bash
-# 按目标 capability 选择模板；DEV-Sideload 可调试两种 requestGraph
-cp -r adapters/_template/imperative adapters/school-<你的学校id>
-# 或
-cp -r adapters/_template/declarative adapters/school-<你的学校id>
-
-# 修改 manifest.json：每 capability 声明 requestGraph + 域名白名单
-# 在 index.js 实现归一化
-# 在 fixtures/ 放入脱敏抓包样本
-
-# 校验（tools 为 Node/TS 工具链）
-cd tools && npm run validate -- --adapter=../adapters/school-<id>
-```
-
-## 信任级别与 requestGraph
-
-| trustTier | requestGraph（每 capability） | 能做什么 |
-|---|---|---|
-| `official` | `imperative` 和/或 `declarative` | imperative：受限 `ctx.fetch`（白名单内注入凭证）；declarative：核心代取 + 纯解析 |
-| `sideload` / DEV-Sideload | `imperative` 和/或 `declarative` | 全能力开发调试；imperative 可驱动核心使用开发者测试凭证，但凭证值仍不离核心；不可分发 |
-
-> `community` 档已于 ADR-002（2026-06-14 修订）移除，`manifest.schema.json` 的
-> `trustTier` enum 仅 `official` / `sideload`。
->
-> **当前实现差异**：validator 仍有 `C3_sideload_must_declarative`，会拒绝 sideload + imperative；
-> ADR-033（已接受）将退役 C3，但**尚未落地**：在它随 DEPLOY official-only 负例同批提交前，不要通过放宽断言绕过，DEV imperative 的完整预检链待该批落地。
+旧 declarative/imperative 模板和引擎 canary 已转为 [`tests/fixtures/legacy-adapters`](../tests/fixtures/legacy-adapters/README.md) 测试资产，不再作为新学校模板或随模板镜像分发。现有 V1 执行器、签名 bootstrap 和公开仓 adapter 回归仍保留，见[兼容维护边界](../docs/reference/legacy_compatibility.md)及 [ADR-065](../docs/adr/adr_065_repository_cleanup.md)。

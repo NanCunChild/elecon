@@ -28,7 +28,7 @@
  * adapter-fixture-replay.smoke.ts 执行；本文件负责在执行前关闭 fixture 输入形状。
  *
  *   运行：cd tools && npm run validate                  # 校验 adapters/ 下全部
- *         cd tools && npm run validate -- --adapter=../adapters/_template/declarative
+ *         cd tools && npm run validate -- --adapter=../tests/fixtures/legacy-adapters/declarative
  */
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";

@@ -4,7 +4,7 @@
  *  - **漂移闸门**：重跑生成器的产物须与已提交 `contract/golden/catalog/catalog.json` **逐字节相同**
  *    （生成器确定性）。改了生成器却忘重跑 → 此处红，避免 Dart 消费的是陈旧向量。
  *  - **TS 自验**：TS `verifyCatalog` 应验过 valid、拒 tampered/wrong-key/bad-algo，与 Dart 侧同判
- *    （`client/test/loader_catalog_golden_test.dart`）。
+ *    （`client/test/legacy/loader_catalog_golden_test.dart`）。
  *
  *   运行：cd tools && npx tsx src/catalog/catalog-golden.smoke.ts（或 npm run smoke:all 自动发现）
  */

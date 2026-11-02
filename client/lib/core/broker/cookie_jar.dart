@@ -120,7 +120,7 @@ class EphemeralReject extends EphemeralWriteDecision {
 ///
 /// 单一事实源在 `contract/broker/public-suffixes.json`（TS 侧运行时直接加载）；
 /// 客户端运行时无仓库文件，故此处为编译期常量，由
-/// `test/broker_cookie_jar_test.dart` 与 contract JSON 做集合相等断言钉死——
+/// `test/legacy/broker_cookie_jar_test.dart` 与 contract JSON 做集合相等断言钉死——
 /// 单边增删条目即 CI 红。公开仅为供该测试比对，非 API 面。
 const Set<String> knownMultiLabelPublicSuffixes = {
   'ac.cn',

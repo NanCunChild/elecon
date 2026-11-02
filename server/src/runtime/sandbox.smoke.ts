@@ -19,7 +19,7 @@ import { adapterDirIfPresent, resolveRepoRoot, runMain } from "./__testutils__/s
 import { runDeclarativeAdapter, SandboxError } from "./sandbox.js";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
-const declarativeDir = `${repoRoot}adapters/_template/declarative`;
+const declarativeDir = `${repoRoot}tests/fixtures/legacy-adapters/declarative`;
 const schemaPath = `${repoRoot}contract/schema/grades.list.schema.json`;
 
 interface Fixture {
@@ -62,7 +62,7 @@ async function testGoldenAndSchema(): Promise<void> {
 
 /** 引擎地板漂移哨兵（服务端半边）。详见 ADR-008 §3。 */
 async function testEngineFloorCanary(): Promise<void> {
-  const canaryDir = `${repoRoot}adapters/_canary/declarative`;
+  const canaryDir = `${repoRoot}tests/fixtures/legacy-adapters/canary/declarative`;
   const source = readFileSync(`${canaryDir}/index.js`, "utf8");
   const fixture = readJson<Fixture>(`${canaryDir}/fixtures/engine_floor.json`);
 

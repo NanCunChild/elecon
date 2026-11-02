@@ -4,7 +4,7 @@
  *   contract/golden/broker/url-match.json  →  {urlCoveredByAllow, scopeMatches, scopePrefix}  →  逐例等于 expected
  *
  * TS 侧实现已收敛为共享包（审阅 P2-4，原 server/tools 各持内联拷贝）；同一份 golden
- * 由 client（Dart `test/broker_url_match_test.dart`）与 tools 校验器
+ * 由 client（Dart `test/legacy/broker_url_match_test.dart`）与 tools 校验器
  * （`tools/src/validator/url-match.smoke.ts`，经其 re-export 面）照样跑——TS 单源 +
  * Dart 镜像共享一份事实源，任一处正则/转义漂移即 CI 红（ADR-001 §8）。
  *

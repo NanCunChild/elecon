@@ -35,8 +35,8 @@ String repoPath(String relPath) => '${repoRoot()}/$relPath';
 /// 优先级（ADR-018 §2.11.1，按需拉取取代子模块）：env `ELECON_ADAPTERS_REPO`
 /// → 按需拉取缓存 `.adapters-cache/elecon-adapters`（scripts/fetch-adapters.sh 默认落点） → 并排检出
 /// `../elecon-adapters`。缺仓（CI 未拉子模块 / 本地无并排检出）返回 null，调用方 **skip-if-absent**，
-/// 与服务端 `smoke-utils.adapterDirIfPresent` 一致。核心仓自有的 `_stdlib`/`_canary`/`_template`/
-/// `school-helloworld` 仍用 [repoPath]（不经本函数）。
+/// 与服务端 `smoke-utils.adapterDirIfPresent` 一致。核心仓的 `tests/fixtures/legacy-adapters`、
+/// `adapters/_stdlib` 和 `adapters/school-helloworld` 仍用 [repoPath]（不经本函数）。
 String? schoolAdapterDir(String adapterId, {bool? requireAdapters}) {
   final root = repoRoot();
   final envRepo = Platform.environment['ELECON_ADAPTERS_REPO'];

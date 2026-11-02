@@ -43,7 +43,7 @@ V1 adapter 在客户端用 QuickJS（`flutter_qjs_next`）执行，服务端使�
 
 V1 两端的绑定、
 版本和编译配置可能不同，只对共享 golden/canary 覆盖的已使用语义承诺一致（ADR-008 §3.2）。
-`test/dual_run_test.dart` 用同一份 declarative 夹具验证客户端产出 == golden，服务端侧由
+`test/legacy/dual_run_test.dart` 用同一份 declarative 夹具验证客户端产出 == golden，服务端侧由
 `server/src/runtime/sandbox.smoke.ts` 验证同一 golden。
 
 `flutter_qjs_next` 是经典 FFI 插件，纯 `flutter test` 不会构建其原生库。先一次性构建：
@@ -51,7 +51,7 @@ V1 两端的绑定、
 ```bash
 fvm flutter pub get
 tool/build_qjs_test_lib.sh        # 输出 FLUTTER_QJS_NEXT_LIBRARY 路径（仅 Linux）
-FLUTTER_QJS_NEXT_LIBRARY=/path/to/libflutter_qjs_next_plugin.so fvm flutter test test/dual_run_test.dart
+FLUTTER_QJS_NEXT_LIBRARY=/path/to/libflutter_qjs_next_plugin.so fvm flutter test test/legacy/dual_run_test.dart
 ```
 
 > **依赖说明**：`flutter_qjs_next` 是迁移后的 QuickJS 绑定（非 flutter_js——后者 iOS 用

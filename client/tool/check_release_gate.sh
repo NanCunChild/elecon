@@ -20,7 +20,7 @@
 set -euo pipefail
 
 # 侧载入口哨兵。**必须与 lib/core/trust/trust_profile.dart 的 kSideloadEntryMarker
-# 逐字一致**；test/trust_profile_test.dart 钉死 Dart 侧常量值，下面的静态检查钉死
+# 逐字一致**；test/legacy/trust_profile_test.dart 钉死 Dart 侧常量值，下面的静态检查钉死
 # 两处相等——否则本断言会退化成永远为真的空检查。
 SIDELOAD_ENTRY_MARKER="ELECON_SIDELOAD_ENTRY_A7F3"
 TRUST_PROFILE_DART="lib/core/trust/trust_profile.dart"

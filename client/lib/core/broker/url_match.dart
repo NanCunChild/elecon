@@ -3,7 +3,7 @@
 /// 与 TS 侧 `server/src/runtime/broker/url-match.ts` **语义逐字对齐**（含正则转义集合），
 /// 并与 tools 校验器（C4/C6/C7）同约定。三方行为由
 /// `contract/golden/broker/inject-policy.json` 的共享向量钉死（见
-/// `test/broker_inject_policy_test.dart`）——钉死的是**行为**，不是源文件
+/// `test/legacy/broker_inject_policy_test.dart`）——钉死的是**行为**，不是源文件
 /// （ADR-001 §8 两端双跑哲学）。
 ///
 /// 约定：白名单 / scope 为「尾随 `*` 的前缀型」模板（`https://host/path/*`），`*` 为唯一

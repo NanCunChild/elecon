@@ -14,7 +14,7 @@
       "adapters/school-xjt/*.js",
       "adapters/school-xidian/*.js",
       "adapters/_template/**/*.js",
-      "adapters/_canary/**/*.js",
+      "tests/fixtures/legacy-adapters/**/*.js",
       "adapters/_stdlib/src/**",
       "adapters/_stdlib/build.mjs"
     ]
@@ -59,7 +59,7 @@
     {
       // adapter capability 的 `(ctx, params, responses)` 签名由契约固定
       // （contract/adapter-sdk），实现未用尽参数是常态，不按未用参数报警。
-      "includes": ["adapters/**"],
+      "includes": ["adapters/**", "tests/fixtures/legacy-adapters/**"],
       "linter": {
         "rules": {
           "correctness": {

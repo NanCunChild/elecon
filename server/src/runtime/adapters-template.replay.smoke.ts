@@ -1,4 +1,4 @@
-/** 核心仓 template 的真实 QuickJS fixture replay；防止示例代码与契约静默漂移。 */
+/** V1 退役模板的真实 QuickJS fixture replay；保留旧执行器的契约回归。 */
 
 import { join } from "node:path";
 import { replayDeclarativeFixture } from "./__testutils__/declarative-replay.js";
@@ -10,15 +10,15 @@ const repoRoot = resolveRepoRoot(import.meta.url);
 async function main(): Promise<void> {
   await replayDeclarativeFixture(
     import.meta.url,
-    join(repoRoot, "adapters/_template/declarative"),
+    join(repoRoot, "tests/fixtures/legacy-adapters/declarative"),
     "fixtures/grades.list.json",
   );
   await replayImperativeFixture(
     import.meta.url,
-    join(repoRoot, "adapters/_template/imperative"),
+    join(repoRoot, "tests/fixtures/legacy-adapters/imperative"),
     "fixtures/grades.list.json",
   );
-  console.log("adapter templates：declarative/imperative fixture replay 通过");
+  console.log("legacy adapter fixtures：declarative/imperative fixture replay 通过");
 }
 
 runMain(main);
