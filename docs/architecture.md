@@ -2,6 +2,8 @@
 
 当前主线是**受信学校脚本、宿主能力边界、标准业务数据和客户端页面**。学校变化集中在脚本，跨学校可复用的业务含义留在契约。决策基线见 [ADR-041](adr/adr_041_current_architecture.md)，开发入口见 [AGENTS](../AGENTS.md)。
 
+逐功能的宿主、脚本、契约与页面职责见[核心与脚本边界](reference/core_script_boundaries.md)。旧文档与测试整理依 [ADR-065](adr/adr_065_repository_cleanup.md)，归档和夹具迁移不表示活跃 V1 执行器已删除。
+
 ## 已有实现
 
 ```mermaid

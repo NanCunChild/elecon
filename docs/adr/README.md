@@ -27,19 +27,16 @@ ADR-000–033 已废弃为新开发总纲，正文移至 [archived](../archived/
 | [051](adr_051_forum_and_messages_reservation.md) | 入口预留 Accepted；后续由 052 细化 | 历史四导航/占位首片；当前为按能力显示 | 后续认证/网络仍待人工审阅 | 保留规划历史，当前状态见 052 |
 | [052](adr_052_community_accounts_and_chaoxing.md) | Accepted（本轮服务接入授权） | 睿思账号、学习通增强包、SDK 9 有界前台 WebSocket 与动态 Tab | 待人工核心/网络审阅与真实账号/真机 | 无历史私信/推送；签到限定无额外挑战的 QR 活动 |
 | [053](adr_053_provider_updates_and_service_cancellation.md) | Accepted（修复课表与独立服务） | registry v3 旧绑定恢复、基础包契约升级、单次调用取消；社区包手动导入 | 自动回归与设备结果另记；核心人工审阅待完成 | 保留批准 digest 和显式覆盖选择，不提升 namespace 权限 |
-
 | [054](adr_054_schedule_term_cache.md) | Accepted（整学期缓存与后台刷新） | schedule.week 1.2、按周本地投影、非阻塞过期刷新 | 待更新包真机与人工核心审阅 | 保留原始时间、digest 隔离和旧 1.0/1.1 校验 |
-
 | [055](adr_055_checkin_locations_and_diagnostics.md) | Accepted（签到排查与指定位置） | attendance.checkin 1.1、可编辑地点矩阵、单次提交与固定诊断 | 待真实活动验收与人工核心/网络审阅 | 用户选择服务坐标；旧参数/输出版本保留，不自动重发 |
-
 | [056](adr_056_foreground_request_cards.md) | Accepted（首页签到与通用卡片） | 通用前台请求组件、同来源登录/扫码入口、临时状态取消 | 待真实活动/真机与人工审阅 | 沿用已有 schema/扫码权限，无签到预加载与重发 |
 | [057](adr_057_bounded_script_probes.md) | Accepted（失败签到探针） | 通用有界阶段日志、正式版筛选/复制、社区包 0.2.1 | 待真实活动复现与人工日志/网络审阅 | 无响应原文、凭据、QR 或地点，不以探针推断成功 |
-
-ADR 编号不回收：021 仍是历史预留。更新决策、实现与签收时分别修改对应列，不用自动测试替代人工复核。
-
 | [058](adr_058_foreground_device_inputs.md) | Accepted（通用签到与前台输入补全） | SDK 10 原生拍照/选图/位置、二进制上传与标准模板 | 待原生真机与人工核心/权限审阅 | 学校协议留在脚本，不把人脸图片当作活体认证 |
 | [059](adr_059_capability_configuration_state.md) | Accepted（区分缺配与请求失败） | 通用缺配状态、受保护标记、自动刷新跳过与显式完善 | 待人工核心审阅 | 失败不刷新成功缓存、不解除缺配标记 |
 | [060](adr_060_cache_first_startup.md) | Accepted（缓存桌面先显示） | 当前 Profile 本地恢复、布局缓存、首帧后查询 | 待真机与人工核心审阅 | 不将布局当执行授权，不复制私密数据到明文缓存 |
 | [061](adr_061_message_history_and_storage.md) | Accepted（聊天历史与 SQLite 适配） | 会话/群私聊历史、文本单次发送、核心受保护 SQLite 与原生页面 | 待真实账号/真机及人工核心/网络审阅 | 作业/课程/任务仅摘要；无未读推断、后台监听或自动重发 |
 | [062](adr_062_app_tunnel_selection.md) | Accepted（应用内 VPN 选择，首版 Hermes） | Profile/学校选择、HTTP/WSS 连接、Hermes 原生桥和受保护网关登录 | 自动协议/平台验证与真实网关验收分别记录；待人工网络/FFI审阅 | 无系统 VPN；目标 TLS 保留，失败不改直连；普通 WebView 尚不可经隧道 |
 | [063](adr_063_conversation_names_and_order.md) | Accepted（群名称与有内容会话排序） | conversations 1.1、批量群详情/最近会话、本地证据合并与离线排序 | 待真实账号与人工契约/网络审阅 | 保留1.0，未知不推断为空，补全403降级，不遍历每群历史 |
+| [065](adr_065_repository_cleanup.md) | Accepted（开放脚本主线整理授权） | 旧文档归档、V1 模板退役与测试隔离、Android 构建修复 | 构建与设备验证另记；不新增人工签收 | 活跃 V1 运行时仍保留，旧模板仅作回归夹具；不要求旧数据迁移 |
+
+ADR 编号不回收：021 仍是历史预留。更新决策、实现与签收时分别修改对应列，不用自动测试替代人工复核。

@@ -2,7 +2,7 @@
 
 面向学生整合课表、成绩、通知、校园卡、图书等服务。学校差异由可更新的受信学校脚本处理，客户端负责授权、标准数据、异步执行和统一页面。
 
-**当前开发入口**：[AGENTS](AGENTS.md) → [架构](docs/architecture.md) → [ADR 状态](docs/adr/README.md)。旧 ADR-000–033 与总则已[废弃归档](docs/archived/README.md)，不再作为新接入的默认指南；未迁移 V1 按[兼容边界](docs/reference/legacy_compatibility.md)维护。
+**当前开发入口**：[AGENTS](AGENTS.md) → [架构](docs/architecture.md) → [ADR 状态](docs/adr/README.md)。各功能的宿主、学校脚本和契约归属见[核心与脚本边界](docs/reference/core_script_boundaries.md)。旧 ADR-000–033 与总则已[废弃归档](docs/archived/README.md)，不再作为新接入的默认指南；未迁移 V1 按[兼容边界](docs/reference/legacy_compatibility.md)维护。
 
 ## 当前路线
 
@@ -10,7 +10,7 @@
 
 使用、模板与打包见[受信脚本参考](docs/reference/trusted_scripts.md)，学校源码见 [school-scripts](school-scripts/README.md)，西电接入见[学校说明](school-scripts/xidian/README.md)。客户端平台、真实学校与人工验收状态见[实施记录](docs/planning/trusted_scripts.md)，不以代码存在推断发布已完成。
 
-**2026-10-31 本科宿舍功能**：客户端 0.5.0+8、SDK 5 本科包 0.14.0 增加校园网水电多表/历史查询和空调状态/确认控制；研究生不新增这些能力。方案见 [ADR-040](docs/adr/adr_040_energy_and_trusted_climate.md)，使用与平台边界见[学校说明](school-scripts/xidian/README.md)。校园网/真实设备与核心人工安全验收另行记录。
+**本科宿舍功能**：支持校园网水电多表/历史查询及空调状态与控制；研究生包不声明这些能力。新源码空调按 [ADR-046](docs/adr/adr_046_triggered_script_requests.md) 由按钮触发一次控制发送后查询状态，不额外确认、不自动重发，未知结果保留。使用与平台边界见[学校说明](school-scripts/xidian/README.md)，真实设备与核心人工验收另行记录。
 
 ## 下一步规划
 
@@ -29,7 +29,8 @@
 | `adapters/_template/trusted/` | 当前受信源码模板；HTTP 示例有学校凭据权限 |
 | `client/` | Flutter 页面、会话、宿主与背景脚本运行时 |
 | `server/` | public 静态签名产物分发、campus 501 stub；没有新业务中继缓存 |
-| `adapters/` | V1 模板/stdlib/canary；真实 V1 学校包由 adapters.pin 固定外部仓 |
+| `adapters/` | 当前受信源码模板和共享 stdlib；真实 V1 学校包由 adapters.pin 固定外部仓 |
+| `tests/fixtures/legacy-adapters/`、`client/test/legacy/` | V1 专用模板夹具与回归测试；整理范围见 [ADR-065](docs/adr/adr_065_repository_cleanup.md) |
 | `tools/` | 打包、校验、生成器及旧签名发布工具 |
 | `docs/` | 当前架构、ADR、规则、研究、规划与 archived 历史 |
 
@@ -37,8 +38,8 @@
 
 ```bash
 cd client
-flutter pub get
-flutter run
+fvm flutter pub get
+fvm flutter run
 ```
 
 Apple 构建使用 `bash tool/with_apple_pubspec.sh flutter run --target lib/main_apple.dart`。HarmonyOS 见 [client/ohos](client/ohos/README.md)，平台能力以实际验收为准。

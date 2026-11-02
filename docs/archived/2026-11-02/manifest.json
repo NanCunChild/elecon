@@ -1,0 +1,60 @@
+{
+  "date": "2026-11-02",
+  "basis": "ADR-041; owner-requested project cleanup",
+  "entries": [
+    {
+      "source": "docs/notes/hardware_persistence_plan.md",
+      "archive": "docs/archived/2026-11-02/docs/notes/hardware_persistence_plan.md",
+      "operation": "archive-with-redirect",
+      "sourceSha256": "de16669117ebc061402458dc3b5dd6336cc7ba6d20718ca55ad8ef3988b53b74"
+    },
+    {
+      "source": "docs/notes/pr86_security_review_checklist.md",
+      "archive": "docs/archived/2026-11-02/docs/notes/pr86_security_review_checklist.md",
+      "operation": "archive-with-redirect",
+      "sourceSha256": "a220551ddd707fd2a5d025c030decae1a48b36b7acab230f5234a39a80a7a025"
+    },
+    {
+      "source": "docs/probes/probe_001_ohos_webview_harvest.md",
+      "archive": "docs/archived/2026-11-02/docs/probes/probe_001_ohos_webview_harvest.md",
+      "operation": "archive-with-redirect",
+      "sourceSha256": "8dce1db934094602fbf89ce578daa93df4c9f3a515207bd3cc1ff3bff2833e8c"
+    },
+    {
+      "source": "docs/probes/probe_001_research_findings.md",
+      "archive": "docs/archived/2026-11-02/docs/probes/probe_001_research_findings.md",
+      "operation": "archive-with-redirect",
+      "sourceSha256": "2b59780973aed912121c759e5770ceb3f9165b207c161640eb300e8a9c05c9f7"
+    },
+    {
+      "source": "docs/probes/probe_001_research_outline.md",
+      "archive": "docs/archived/2026-11-02/docs/probes/probe_001_research_outline.md",
+      "operation": "archive-with-redirect",
+      "sourceSha256": "d3a2ffafbc7d1d61112ff8e8340f965340c234ddef18e50961de0d899e012558"
+    },
+    {
+      "source": "docs/probes/probe_001_smoke_plan.md",
+      "archive": "docs/archived/2026-11-02/docs/probes/probe_001_smoke_plan.md",
+      "operation": "archive-with-redirect",
+      "sourceSha256": "c3b60a431f866b5ebfff3dad5681a41b22b437b4fea530054ce9dfd828b77708"
+    },
+    {
+      "source": "docs/probes/probe_002_atrust_tunnel.md",
+      "archive": "docs/archived/2026-11-02/docs/probes/probe_002_atrust_tunnel.md",
+      "operation": "archive-with-redirect",
+      "sourceSha256": "63efa0cb4ead2fc0e42b58fb8603099c354e95f1eddfdefc4b014650c577ee46"
+    },
+    {
+      "source": "docs/reference/gradepoint_ownership_landing.md",
+      "archive": "docs/archived/2026-11-02/docs/reference/gradepoint_ownership_landing.md",
+      "operation": "archive-with-redirect",
+      "sourceSha256": "a03e4eeb56a7a88a5e110b3651a0a254d4da325ef4967fd65336b1f74997cd1c"
+    },
+    {
+      "source": "docs/reference/xidian_smoke_runbook.md",
+      "archive": "docs/archived/2026-11-02/docs/reference/xidian_smoke_runbook.md",
+      "operation": "archive-with-redirect",
+      "sourceSha256": "852106cd1b4ccb278c46b2755b4cae39a3eb01f2f829db4ef7c1fdd0f6ad8c06"
+    }
+  ]
+}
