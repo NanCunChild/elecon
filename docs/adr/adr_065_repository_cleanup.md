@@ -23,3 +23,13 @@ Android 默认 `fvm flutter build apk` 必须构建请求的全部 ABI，不能�
 检查归档清单、相对链接、活动入口、移动前后文件与回归断言；运行受影响的服务端 smoke、客户端测试及静态分析。构建验证使用未附加 ABI 参数的 `fvm flutter build apk`，核对 APK 内三种 ABI 的 Hermes 库与许可资产。授权设备用于安装、启动与原生设置交互，真实学校账号、远程控制、网关登录是否验证分别记录，不从启动成功推断。
 
 按文档、测试隔离、构建修复分别提交，可按提交回滚。本次没有新增学校脚本 API 或业务 schema，没有凭据数据迁移。自动检查、设备冒烟与人工核心/网络审阅分别记录；仍须人工实质审阅后合并。
+
+## 本轮实施记录（2026-11-02）
+
+- 归档 9 份旧计划/研究/手册，原路径保留跳转；[清单](../archived/2026-11-02/manifest.json)保存原文 SHA-256。新增功能边界文档，修复活动入口与 ADR 索引表格；23 份相关 Markdown 的本地链接检查通过。
+- 两套 V1 模板与 canary 转为测试夹具，36 个 V1 测试文件迁入 `client/test/legacy/`；保留全部断言。DEPLOY/DEV 针对回归分别 744/753 项通过，条件跳过分别 11/2 项，另 22 项签票回归通过。PII 扫描 127 个文件无告警。
+- 全量客户端回归发现并修复 4 项旧用例失配：首页整页刷新定位、签到移入首页后的两个用例、聊天夹具 SDK 身份。最终 `bash tool/flutter_test.sh fvm flutter test --reporter expanded` 为 1537 项通过、11 项原有条件跳过；未放宽运行时身份门。Dart analyze 无问题。
+- Node 服务端 smoke 29/29、工具 smoke 30/30 通过。修正把 SDK 9 当非法的旧 schema 测试；清理 5 个源码/测试文件的格式并同步包生成物，Biome 与 workspace typecheck 通过。
+- 默认 `fvm flutter build apk` 生成 100.9 MB release APK，最终日志无 WARNING/BUILD FAILED；三种 ABI 的 Hermes 库及许可文件均在包内。缺失 ARMv7 Rust 目标已安装，Gradle 9.1 wrapper 入库、官方 JAR 校验与分发 checksum 固定，NDK 由 Gradle 显式传入。JDK 25 实际构建、JDK 17 wrapper 与无网络构建编排检查通过。
+- 所有者授权的 Android 15 真机上完成覆盖安装、冷启动、首页/设置导航、应用内 VPN 页面与账号页面查看，进程仍存活且本轮日志无 fatal 标记。没有执行真实学校登录、签到、空调控制或网关认证；页面可打开不等于这些业务已经验收。设备地址和页面私密数据不入库。
+- 开始时已有的 51 个受跟踪文件改动及 6 个未跟踪文件均保留；只提交本次整理差异。既有 SDK 11/账号/隧道工作仍留在工作区，以上构建与全量测试针对当前工作区，不能冒充仅这些整理提交的独立 CI 结果。全部本次提交不签名并附 `Assisted-by: Codex`。
