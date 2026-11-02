@@ -7,7 +7,7 @@ import { chaoxingClient } from "./account.js";
 import { incoming, loginPacket } from "./messages.js";
 import { decode, encode, one, str, sub } from "./protobuf.js";
 
-const REST = "https://a1-vip6.easemob.com/cx-dev/cxstudy/users/";
+const REST = "https://a1-vip6.easemob.com/cx-dev/cxstudy/";
 const SOCKET = "wss://im-api-wechat-vip6.easemob.com/websocket";
 const PROFILES = "https://useryd.chaoxing.com/apis/user/getUsers4C";
 const decimal = (value) => typeof value === "string" && /^[1-9][0-9]{0,39}$/.test(value);
@@ -39,24 +39,110 @@ function parseJson(raw) {
   if (typeof raw !== "string" || raw.length > 1024 * 1024) throw serviceError();
   try {
     return JSON.parse(
-      raw.replace(/("(?:next_key|groupid|id|uid|puid)"\s*:\s*)([0-9]+)(?=\s*[,}])/g, '$1"$2"'),
+      raw.replace(/("(?:next_key|groupid|id|uid|puid|session_to)"\s*:\s*)([0-9]+)(?=\s*[,}])/g, '$1"$2"'),
     );
   } catch {
     throw serviceError();
   }
 }
-async function rest(ctx, account, suffix, body) {
-  const response = await ctx.fetch(`${REST}${encodeURIComponent(account.tid)}/${suffix}`, {
+async function apiRest(ctx, account, path, body, { optional = false } = {}) {
+  const response = await ctx.fetch(`${REST}${path}`, {
     method: body === undefined ? "GET" : "POST",
     redirect: "manual",
     headers: { Authorization: `Bearer ${account.token}`, "Content-Type": "application/json" },
     ...(body === undefined ? {} : { body }),
   });
-  if ([401, 403].includes(response.status)) throw serviceError("authentication_required");
+  // Optional enrichment may be disabled by a feature/ACL policy. A 403 there
+  // must not revoke the account that successfully fetched the joined directory.
+  if (response.status === 401 || (response.status === 403 && !optional))
+    throw serviceError("authentication_required");
   if (!response.ok) throw serviceError();
   const value = parseJson(await response.text());
   if (!value || value.error || value.error_description || value.data == null) throw serviceError();
   return value.data;
+}
+const rest = (ctx, account, suffix, body) =>
+  apiRest(ctx, account, `users/${encodeURIComponent(account.tid)}/${suffix}`, body);
+
+async function groupNames(ctx, account, items) {
+  const ids = [...items.values()]
+    .filter((row) => row.conversationKind === "group" && decimal(row.conversationId))
+    .map((row) => row.conversationId);
+  for (let offset = 0; offset < ids.length; offset += 50) {
+    const batch = ids.slice(offset, offset + 50);
+    const admitted = new Set(batch);
+    try {
+      // Official SDK getGroupInfo supports a bounded comma-separated ID batch.
+      const data = await apiRest(ctx, account, `chatgroups/${batch.join(",")}?joined_time=true`, undefined, {
+        optional: true,
+      });
+      if (!Array.isArray(data) || data.length > 50) continue;
+      for (const detail of data) {
+        const id = detail?.id ?? detail?.groupid;
+        const title = bounded(detail?.name || detail?.groupname, 160).trim();
+        if (!admitted.has(id) || !title) continue;
+        items.get(`group:${id}`).title = title;
+      }
+    } catch (error) {
+      if (error.code === "authentication_required") throw error;
+      // Names are optional; a failed batch must not erase the joined directory.
+    }
+  }
+}
+
+async function recentConversations(ctx, account, items) {
+  const seen = new Set();
+  let cursor = "";
+  for (let page = 0; page < 5; page++) {
+    try {
+      const path = `sdk/user/${encodeURIComponent(account.tid)}/user_channels/list?limit=100&cursor=${encodeURIComponent(cursor)}`;
+      const data = await apiRest(ctx, account, path, undefined, { optional: true });
+      if (!Array.isArray(data.channel_infos) || data.channel_infos.length > 100) return;
+      for (const channel of data.channel_infos) {
+        const kind =
+          channel?.session_type === "chat"
+            ? "direct"
+            : ["groupchat", "groupChat"].includes(channel?.session_type)
+              ? "group"
+              : undefined;
+        const row = kind && items.get(`${kind}:${channel.session_to}`);
+        const meta = channel?.meta;
+        if (!row || !meta || typeof meta !== "object") continue;
+        let payload = meta.payload;
+        try {
+          if (typeof payload === "string" && payload.length <= 65536) payload = JSON.parse(payload);
+        } catch {
+          continue;
+        }
+        if (!payload || !Array.isArray(payload.bodies) || payload.bodies.length > 20) continue;
+        const types = payload.bodies.map((body) => body?.type);
+        if (
+          types.some((type) => ["cmd", "read", "delivery", "recall"].includes(type)) ||
+          !types.some((type) => ["txt", "img", "video", "audio", "file", "loc", "custom"].includes(type))
+        )
+          continue;
+        // Only matching directory entries receive metadata, never new strangers.
+        if (kind === "group" && payload.to !== undefined && payload.to !== row.conversationId) continue;
+        row.hasContent = true;
+        const rawTime = meta.timestamp;
+        if (
+          (typeof rawTime === "number" && Number.isSafeInteger(rawTime)) ||
+          (typeof rawTime === "string" && /^[0-9]{1,16}$/.test(rawTime))
+        ) {
+          const time = stamp(BigInt(rawTime));
+          if (time && (!row.lastMessageAt || time > row.lastMessageAt)) row.lastMessageAt = time;
+        }
+      }
+      const next = data.cursor;
+      if (next === undefined || next === null || next === "") return;
+      if (typeof next !== "string" || next.length > 512 || next === cursor || seen.has(next)) return;
+      seen.add(next);
+      cursor = next;
+    } catch (error) {
+      if (error.code === "authentication_required") throw error;
+      return; // No per-group history fallback or automatic retry.
+    }
+  }
 }
 async function names(client, account, ids) {
   const result = new Map();
@@ -101,7 +187,7 @@ export async function messagesConversations(ctx, params = {}) {
         items.set(`${kind}:${id}`, {
           conversationId: id,
           conversationKind: kind,
-          title: kind === "group" ? bounded(row.groupname || row.name, 160) || id : id,
+          title: kind === "group" ? bounded(row.groupname || row.name, 160).trim() || id : id,
         });
       }
       successful++;
@@ -111,6 +197,8 @@ export async function messagesConversations(ctx, params = {}) {
     }
   }
   if (!successful) throw serviceError();
+  await groupNames(ctx, account, items);
+  await recentConversations(ctx, account, items);
   const labels = await names(
     client,
     account,
@@ -121,7 +209,13 @@ export async function messagesConversations(ctx, params = {}) {
   return {
     ...identity(ctx, account),
     coverage: partial ? "partial" : "complete",
-    items: [...items.values()],
+    items: [...items.values()].sort(
+      (a, b) =>
+        Number(b.hasContent === true) - Number(a.hasContent === true) ||
+        (a.hasContent === true && b.hasContent === true
+          ? (b.lastMessageAt || "").localeCompare(a.lastMessageAt || "")
+          : 0),
+    ),
   };
 }
 

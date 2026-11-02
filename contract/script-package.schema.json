@@ -195,7 +195,7 @@
                     "const": "elecon.messages.conversations"
                   },
                   "schemaVersion": {
-                    "const": "1.0"
+                    "enum": ["1.0", "1.1"]
                   }
                 }
               },

@@ -60,6 +60,34 @@ void main() {
           body = {
             'data': ['456780'],
           };
+        } else if (url.contains('/chatgroups/')) {
+          expect((init['headers'] as Map)['Cookie'], isNull);
+          body = {
+            'data': [
+              {'id': '789012', 'name': 'Resolved group name'},
+              {'id': '999999', 'name': 'Unrelated group'},
+            ],
+          };
+        } else if (url.contains('user_channels/list')) {
+          body = {
+            'data': {
+              'channel_infos': [
+                {
+                  'session_type': 'groupchat',
+                  'session_to': '789012',
+                  'meta': {
+                    'timestamp': 1800000000100,
+                    'payload': jsonEncode({
+                      'to': '789012',
+                      'bodies': [
+                        {'type': 'txt', 'msg': 'Synthetic last message'},
+                      ],
+                    }),
+                  },
+                },
+              ],
+            },
+          };
         } else if (url.contains('getUsers4C')) {
           body = {
             'result': 1,
@@ -92,6 +120,36 @@ void main() {
               )
               as Map;
       expect((conversations['items'] as List).length, 2);
+      final group = (conversations['items'] as List).first as Map;
+      expect(group['title'], 'Resolved group name');
+      expect(group['hasContent'], isTrue);
+      expect(group['lastMessageAt'], '2027-01-15T08:00:00.100Z');
+      final unavailableEnrichment =
+          await const TrustedScriptRuntime().run(
+                package: package,
+                capability: 'messages.conversations',
+                credentials: credentials,
+                params: {'accountId': '123456'},
+                fetch: (url, init) async {
+                  if (url.contains('/chatgroups/') ||
+                      url.contains('user_channels/list')) {
+                    return {
+                      'status': 403,
+                      'url': url,
+                      'headers': <String, List<String>>{},
+                      'body': '',
+                    };
+                  }
+                  return fetch(url, init);
+                },
+              )
+              as Map;
+      expect(unavailableEnrichment['accountId'], '123456');
+      expect(unavailableEnrichment['coverage'], 'complete');
+      final fallbackGroup =
+          (unavailableEnrichment['items'] as List).first as Map;
+      expect(fallbackGroup['title'], 'Synthetic group');
+      expect(fallbackGroup.containsKey('hasContent'), isFalse);
       final params = {
         'accountId': '123456',
         'conversationId': '789012',

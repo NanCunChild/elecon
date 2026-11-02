@@ -7,6 +7,7 @@ ScriptPackage chatPackage({
   String version = '1.0.0',
   String sendStatus = 'sent',
   bool offlineAfterSend = false,
+  List<Map<String, dynamic>>? conversationRows,
 }) => ScriptPackage.parse(
   jsonEncode({
     'format': 'elecon-script/1',
@@ -25,7 +26,11 @@ ScriptPackage chatPackage({
           'messages.history',
           'messages.send',
         ])
-          {'id': cap, 'schema': 'elecon.$cap', 'schemaVersion': '1.0'},
+          {
+            'id': cap,
+            'schema': 'elecon.$cap',
+            'schemaVersion': cap == 'messages.conversations' ? '1.1' : '1.0',
+          },
       ],
     },
     'source':
@@ -40,10 +45,10 @@ ScriptPackage chatPackage({
           ? {serviceId:'synthetic',serviceName:'Synthetic service',status:'signedOut'}
           : {...who(ctx),serviceName:'Synthetic service',status:'authenticated'};
       },
-      'messages.conversations': async ctx => ({...who(ctx),coverage:'complete',items:[
+      'messages.conversations': async ctx => ({...who(ctx),coverage:'complete',items:${conversationRows == null ? '''[
         {conversationId:'group-1',conversationKind:'group',title:'Synthetic group'},
         {conversationId:'group-1',conversationKind:'direct',title:'Synthetic peer'}
-      ]}),
+      ]''' : jsonEncode(conversationRows)}}),
       'messages.history': async (ctx,p) => {
         if((await ctx.credentials.get('offline'))?.value === 'yes') throw new Error('synthetic_offline');
         if(p.cursor === 'wait') {ctx.log('info','synthetic_waiting');await new Promise(resolve=>setTimeout(resolve,10000));}

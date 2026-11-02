@@ -71,7 +71,7 @@
     ,"messages.session": {"description": "messages.session（ADR-052；仅前台、不缓存）", "emits": {"schema": "elecon.messages.session", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.session", "schemaVersion": "1.0"}}
     ,"messages.list": {"description": "messages.list（ADR-052；仅前台、不缓存）", "emits": {"schema": "elecon.messages.list", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.list", "schemaVersion": "1.0"}}
     ,"attendance.checkin": {"description": "attendance.checkin（ADR-055；仅前台、不缓存）", "emits": {"schema": "elecon.attendance.checkin", "schemaVersion": "1.1", "previousVersions": ["1.0"]}, "params": {"schema": "elecon.params.attendance.checkin", "schemaVersion": "1.1", "previousVersions": ["1.0"]}}
-    ,"messages.conversations": {"description": "messages.conversations（ADR-061；前台消息）", "emits": {"schema": "elecon.messages.conversations", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.conversations", "schemaVersion": "1.0"}}
+    ,"messages.conversations": {"description": "messages.conversations（ADR-063；前台消息与内容排序）", "emits": {"schema": "elecon.messages.conversations", "schemaVersion": "1.1", "previousVersions": ["1.0"]}, "params": {"schema": "elecon.params.messages.conversations", "schemaVersion": "1.0"}}
     ,"messages.history": {"description": "messages.history（ADR-061；前台消息）", "emits": {"schema": "elecon.messages.history", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.history", "schemaVersion": "1.0"}}
     ,"messages.send": {"description": "messages.send（ADR-061；前台消息）", "emits": {"schema": "elecon.messages.send", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.send", "schemaVersion": "1.0"}}
     }

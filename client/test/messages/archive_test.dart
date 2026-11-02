@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 ScriptPackage package({
   String version = '1.0.0',
   String school = 'synthetic',
+  String conversationsVersion = '1.0',
 }) => ScriptPackage.parse(
   jsonEncode({
     'format': 'elecon-script/1',
@@ -28,7 +29,13 @@ ScriptPackage package({
           'messages.session',
           ...MessageArchiveStore.capabilities,
         ])
-          {'id': cap, 'schema': 'elecon.$cap', 'schemaVersion': '1.0'},
+          {
+            'id': cap,
+            'schema': 'elecon.$cap',
+            'schemaVersion': cap == 'messages.conversations'
+                ? conversationsVersion
+                : '1.0',
+          },
       ],
     },
     'source': 'export const capabilities = {};',
@@ -138,6 +145,122 @@ void main() {
         ))!.messages.length,
         3,
       );
+    },
+  );
+  test(
+    'known content is first, uses source times, retains names and survives recovery',
+    () async {
+      final updated = package(conversationsVersion: '1.1');
+      archive.saveAccount(updated, account);
+      Future<void> directory(List<Map<String, dynamic>> items) => archive.merge(
+        updated,
+        'messages.conversations',
+        {'accountId': account['accountId']},
+        {
+          'serviceId': account['serviceId'],
+          'accountId': account['accountId'],
+          'accountLabel': account['accountLabel'],
+          'fetchedAt': stamp,
+          'coverage': 'complete',
+          'items': items,
+        },
+        isActive: () => true,
+      );
+      final rows = [
+        {
+          'conversationId': 'unknown',
+          'conversationKind': 'group',
+          'title': 'Unknown group',
+        },
+        {
+          'conversationId': 'old',
+          'conversationKind': 'group',
+          'title': 'Older remote group',
+          'hasContent': true,
+          'lastMessageAt': '2026-10-30T08:00:00Z',
+        },
+        {
+          'conversationId': target['conversationId'],
+          'conversationKind': 'group',
+          'title': 'Preserved group name',
+        },
+        {
+          'conversationId': 'recent',
+          'conversationKind': 'group',
+          'title': 'Recent remote group',
+          'hasContent': true,
+          'lastMessageAt': '2026-11-02T08:01:00Z',
+        },
+        {
+          'conversationId': target['conversationId'],
+          'conversationKind': 'direct',
+          'title': 'Different direct conversation',
+        },
+      ];
+      await directory(rows);
+      await archive.merge(
+        updated,
+        'messages.history',
+        target,
+        history(),
+        isActive: () => true,
+      );
+      await directory([
+        for (final row in rows)
+          {
+            ...row,
+            if (row['conversationId'] == target['conversationId'] &&
+                row['conversationKind'] == 'group')
+              'title': target['conversationId'],
+          },
+      ]);
+      final recovered = (await MessageArchiveStore(
+        credentials,
+        now: () => time,
+      ).read(updated))!;
+      expect(recovered.conversations.map((row) => row.conversationId), [
+        'recent',
+        target['conversationId'],
+        'old',
+        'unknown',
+        target['conversationId'],
+      ]);
+      expect(recovered.conversations[1].title, 'Preserved group name');
+      expect(recovered.conversations[1].hasContent, isTrue);
+      expect(recovered.conversations[1].lastMessageAt, stamp);
+      expect(recovered.conversations[3].hasContent, isNull);
+      expect(recovered.conversations[4].hasContent, isNull);
+      final malformed = {
+        'serviceId': account['serviceId'],
+        'accountId': account['accountId'],
+        'accountLabel': account['accountLabel'],
+        'fetchedAt': stamp,
+        'coverage': 'complete',
+        'items': [
+          {...rows.first, 'hasContent': 'yes'},
+        ],
+      };
+      expect(
+        archive.accepts(updated, 'messages.conversations', {
+          'accountId': account['accountId'],
+        }, malformed),
+        isFalse,
+      );
+      archive.saveAccount(p, account);
+      expect(
+        archive.accepts(p, 'messages.conversations', {
+          'accountId': account['accountId'],
+        }, malformed),
+        isTrue,
+      );
+      await archive.merge(
+        p,
+        'messages.conversations',
+        {'accountId': account['accountId']},
+        malformed,
+        isActive: () => true,
+      );
+      expect((await archive.read(p))!.conversations.single.hasContent, isNull);
     },
   );
   test(

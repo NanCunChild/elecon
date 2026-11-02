@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "elecon.messages.conversations",
   "title": "消息会话列表",
-  "description": "ADR-061：仅前台；由核心按服务账号保护本地消息，脚本不访问数据库。",
+  "description": "ADR-063：仅前台会话目录；内容是否存在与最后消息时间仅来自服务证据或本地已加载消息，不推断未读。",
   "type": "object",
   "properties": {
     "serviceId": {
@@ -62,6 +62,15 @@
             "description": "会话显示名；服务未提供时使用会话 ID。",
             "minLength": 1,
             "maxLength": 160
+          },
+          "hasContent": {
+            "type": "boolean",
+            "description": "已确认会话存在可展示的内容消息时为 true；仅明确核验为空时为 false；缺失表示未知，不能据此推断未读。"
+          },
+          "lastMessageAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "已确认内容消息中最新的源站发送时刻，RFC3339；未知省略，不用群资料更新时间或本地抓取时刻代替。"
           }
         },
         "required": [

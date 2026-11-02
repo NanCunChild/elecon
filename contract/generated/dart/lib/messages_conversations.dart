@@ -32,6 +32,8 @@ class MessagesConversationsItems {
     required this.conversationId,
     required this.conversationKind,
     required this.title,
+    this.hasContent,
+    this.lastMessageAt,
   });
 
   /// 源站会话 ID；由 serviceId/accountId/conversationKind 共同限定。
@@ -40,4 +42,8 @@ class MessagesConversationsItems {
   final String conversationKind;
   /// 会话显示名；服务未提供时使用会话 ID。
   final String title;
+  /// 已确认会话存在可展示的内容消息时为 true；仅明确核验为空时为 false；缺失表示未知，不能据此推断未读。
+  final bool? hasContent;
+  /// 已确认内容消息中最新的源站发送时刻，RFC3339；未知省略，不用群资料更新时间或本地抓取时刻代替。
+  final String? lastMessageAt;
 }

@@ -255,20 +255,33 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           if (data['status'] != 'authenticated') _clearAccount();
           _account = data;
         } else if (capability == 'messages.conversations') {
-          final rows = <String, MessagesConversationsItems>{
-            if (data['coverage'] == 'partial')
-              for (final row in _conversations)
-                '${row.conversationKind}:${row.conversationId}': row,
-          };
-          for (final row in data['items'] as List) {
-            rows['${row['conversationKind']}:${row['conversationId']}'] =
-                MessagesConversationsItems(
-                  conversationId: row['conversationId'] as String,
-                  conversationKind: row['conversationKind'] as String,
-                  title: row['title'] as String,
-                );
-          }
-          _conversations = rows.values.toList();
+          final rows = <MessagesConversationsItems>[
+            for (final row in data['items'] as List)
+              MessagesConversationsItems(
+                conversationId: row['conversationId'] as String,
+                conversationKind: row['conversationKind'] as String,
+                title: row['title'] as String,
+                hasContent:
+                    widget.package.manifest
+                            .capability(capability)
+                            ?.schemaVersion ==
+                        '1.1'
+                    ? row['hasContent'] as bool?
+                    : null,
+                lastMessageAt:
+                    widget.package.manifest
+                            .capability(capability)
+                            ?.schemaVersion ==
+                        '1.1'
+                    ? row['lastMessageAt'] as String?
+                    : null,
+              ),
+          ];
+          _conversations = MessageArchiveView.mergeConversations(
+            rows,
+            _conversations,
+            preserveMissing: data['coverage'] == 'partial',
+          );
           _coverage = data['coverage'] as String;
         } else if (capability == 'messages.history') {
           for (final row in data['items'] as List) {

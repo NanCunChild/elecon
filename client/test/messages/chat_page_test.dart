@@ -118,6 +118,86 @@ void main() {
     }
   }
   testWidgets(
+    'inbox prefers confirmed content, merges saved messages and keeps the same order offline',
+    (tester) async {
+      final session = SessionController();
+      addTearDown(session.dispose);
+      final package = chatPackage(
+        offlineAfterSend: true,
+        sendStatus: 'unknown',
+        conversationRows: [
+          {
+            'conversationId': 'unknown',
+            'conversationKind': 'group',
+            'title': 'Unknown group',
+          },
+          {
+            'conversationId': 'older',
+            'conversationKind': 'group',
+            'title': 'Older group',
+            'hasContent': true,
+            'lastMessageAt': '2026-10-30T08:00:00Z',
+          },
+          {
+            'conversationId': 'group-1',
+            'conversationKind': 'group',
+            'title': 'Local content group',
+          },
+          {
+            'conversationId': 'recent',
+            'conversationKind': 'group',
+            'title': 'Recent group',
+            'hasContent': true,
+            'lastMessageAt': '2026-11-02T08:00:00Z',
+          },
+        ],
+      );
+      await tester.runAsync(() async {
+        await prepareChat(session, package);
+        await session.runTrustedScript(
+          package.manifest.id,
+          'messages.conversations',
+          params: {'accountId': 'synthetic-account'},
+        );
+        await session.runTrustedScript(
+          package.manifest.id,
+          'messages.history',
+          params: chatTarget,
+        );
+        await session.runTrustedScript(
+          package.manifest.id,
+          'messages.send',
+          params: {
+            ...chatTarget,
+            'clientId': '123',
+            'text': 'Synthetic outgoing',
+          },
+        );
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ChatPage(session: session, package: package),
+        ),
+      );
+      await finishRequests(tester);
+      final titles = tester
+          .widgetList<ListTile>(find.byType(ListTile))
+          .map((tile) => (tile.title! as Text).data)
+          .toList();
+      expect(titles, [
+        'Recent group',
+        'Local content group',
+        'Older group',
+        'Unknown group',
+      ]);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+  testWidgets(
     'offline reopening keeps the saved source/account and historical text',
     (tester) async {
       final session = SessionController();

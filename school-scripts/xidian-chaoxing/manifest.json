@@ -1,7 +1,7 @@
 {
   "sdkVersion": 9,
   "id": "enhancement-xidian-undergraduate-chaoxing",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "schoolId": "xidian_undergraduate",
   "name": "西电学习通增强（本科生）",
   "network": {
@@ -36,7 +36,7 @@
     {
       "id": "messages.conversations",
       "schema": "elecon.messages.conversations",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.1"
     },
     {
       "id": "messages.history",

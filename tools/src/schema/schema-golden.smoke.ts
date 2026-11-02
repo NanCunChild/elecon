@@ -76,7 +76,15 @@ const cases: Record<string, SchemaGolden> = {
     valid: {
       ...messageAccount,
       coverage: "partial",
-      items: [{ conversationId: "synthetic-conversation", conversationKind: "direct", title: "Synthetic" }],
+      items: [
+        {
+          conversationId: "synthetic-conversation",
+          conversationKind: "direct",
+          title: "Synthetic",
+          hasContent: true,
+          lastMessageAt: "2026-11-02T08:00:00Z",
+        },
+      ],
     },
     invalid: [
       {
@@ -86,6 +94,29 @@ const cases: Record<string, SchemaGolden> = {
       {
         behavior: "conversation kind cannot be inferred from the ID",
         value: { ...messageAccount, coverage: "complete", items: [{ conversationId: "c", title: "C" }] },
+      },
+      {
+        behavior: "content evidence is boolean, never an inferred unread count",
+        value: {
+          ...messageAccount,
+          coverage: "complete",
+          items: [{ conversationId: "c", conversationKind: "group", title: "C", hasContent: 3 }],
+        },
+      },
+      {
+        behavior: "last content time is a valid source timestamp",
+        value: {
+          ...messageAccount,
+          coverage: "complete",
+          items: [
+            {
+              conversationId: "c",
+              conversationKind: "group",
+              title: "C",
+              lastMessageAt: "2026-02-30T00:00:00Z",
+            },
+          ],
+        },
       },
     ],
   },

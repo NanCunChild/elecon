@@ -86,6 +86,8 @@ function harness({
   history,
   groups = [{ groupid: "789012", groupname: "Synthetic group" }],
   contacts = ["456780"],
+  groupDetails = [],
+  channels = { channel_infos: [] },
   fail,
   events = [],
 } = {}) {
@@ -117,7 +119,10 @@ function harness({
     fetch: async (url, init) => {
       calls.push({ url, init });
       const path = new URL(url).pathname;
-      if (fail?.(url)) throw new Error("SYNTHETIC_FAILURE");
+      const failure = fail?.(url);
+      if (failure === "unauthenticated") return { ok: false, status: 401 };
+      if (typeof failure === "number") return { ok: false, status: failure };
+      if (failure) throw new Error("SYNTHETIC_FAILURE");
       let body;
       if (url === ACCOUNT_URL)
         body = {
@@ -125,6 +130,15 @@ function harness({
         };
       else if (path.endsWith("joined_chatgroups")) body = { data: groups };
       else if (path.endsWith("contacts/users")) body = { data: contacts };
+      else if (path.includes("/chatgroups/"))
+        body =
+          typeof groupDetails === "string"
+            ? groupDetails
+            : {
+                data: typeof groupDetails === "function" ? groupDetails(url) : groupDetails,
+              };
+      else if (path.endsWith("user_channels/list"))
+        body = { data: typeof channels === "function" ? channels(url) : channels };
       else if (path.endsWith("messageroaming")) body = history;
       else if (path.endsWith("getUsers4C"))
         body = {
@@ -179,6 +193,137 @@ test("partial discovery is explicit; total failure is not an empty list", async 
   await assert.rejects(
     messagesConversations(harness({ fail: (u) => u.includes("easemob") }).ctx, { accountId: "123456" }),
   );
+});
+test("batched group details fill missing names by exact admitted ID only", async () => {
+  const h = harness({
+    groups: [{ groupid: "9007199254740993" }, { groupid: "789012", groupname: "Known directory name" }],
+    groupDetails:
+      '{"data":[{"id":9007199254740993,"name":"Resolved group"},{"id":"789012","name":"   "},{"id":"999999","name":"Stranger"}]}',
+  });
+  const result = await messagesConversations(h.ctx, { accountId: "123456" });
+  valid("messages.conversations", result);
+  assert.equal(result.items[0].conversationId, "9007199254740993");
+  assert.equal(result.items[0].title, "Resolved group");
+  assert.equal(result.items[1].title, "Known directory name");
+  assert.ok(!JSON.stringify(result).includes("Stranger"));
+  const request = h.calls.find(({ url }) => url.includes("/chatgroups/"));
+  assert.match(request.url, /chatgroups\/9007199254740993,789012\?joined_time=true$/);
+  assert.equal(request.init.headers.Cookie, undefined);
+});
+test("recent conversation evidence orders content first without treating unknown groups as empty", async () => {
+  const channel = (id, time, type = "txt", to = id) => ({
+    session_to: id,
+    session_type: "groupchat",
+    unread_num: 123,
+    meta: { timestamp: time, payload: JSON.stringify({ to, bodies: [{ type, msg: "SECRET_PREVIEW" }] }) },
+  });
+  const h = harness({
+    groups: [
+      { groupid: "100", groupname: "Unknown" },
+      { groupid: "200", groupname: "Old content" },
+      { groupid: "300", groupname: "Recent content" },
+      { groupid: "400", groupname: "Only command" },
+      { groupid: "500", groupname: "Wrong target" },
+    ],
+    channels: {
+      channel_infos: [
+        channel("200", 1800000000000),
+        channel("300", "1800000000100"),
+        channel("400", 1800000000200, "cmd"),
+        channel("500", 1800000000300, "txt", "999"),
+        channel("999", 1800000000400),
+      ],
+    },
+  });
+  const result = await messagesConversations(h.ctx, { accountId: "123456" });
+  valid("messages.conversations", result);
+  assert.deepEqual(
+    result.items.slice(0, 2).map((row) => row.conversationId),
+    ["300", "200"],
+  );
+  assert.equal(result.items[0].hasContent, true);
+  assert.equal(result.items[0].lastMessageAt, new Date(1800000000100).toISOString());
+  for (const row of result.items.slice(2)) {
+    assert.equal(row.hasContent, undefined);
+    assert.equal(row.lastMessageAt, undefined);
+  }
+  assert.ok(!JSON.stringify(result).includes("SECRET_PREVIEW"));
+  assert.ok(!JSON.stringify(result).includes("unread"));
+  assert.equal(h.calls.filter(({ url }) => url.endsWith("messageroaming")).length, 0);
+});
+test("optional enrichment failures preserve the directory but authentication expiry stops it", async () => {
+  const failed = (url) => url.includes("/chatgroups/") || url.includes("user_channels/list");
+  const h = harness({ fail: failed });
+  const result = await messagesConversations(h.ctx, { accountId: "123456" });
+  assert.equal(result.coverage, "complete");
+  assert.equal(result.items[0].title, "Synthetic group");
+  assert.equal(result.items[0].hasContent, undefined);
+  await assert.rejects(
+    messagesConversations(
+      harness({
+        fail: (url) => (url.includes("user_channels/list") ? "unauthenticated" : false),
+      }).ctx,
+      { accountId: "123456" },
+    ),
+    (error) => error.code === "authentication_required",
+  );
+});
+test("optional detail/recent 403 preserves the joined directory and account; 401 still expires it", async () => {
+  for (const endpoint of ["/chatgroups/", "user_channels/list"]) {
+    const h = harness({ fail: (url) => (url.includes(endpoint) ? 403 : false) });
+    const result = await messagesConversations(h.ctx, { accountId: "123456" });
+    valid("messages.conversations", result);
+    assert.equal(result.coverage, "complete");
+    assert.equal(result.accountId, "123456");
+    assert.equal(result.items[0].title, "Synthetic group");
+    assert.equal(result.items[0].hasContent, undefined);
+    assert.equal(JSON.parse(h.records.get("chaoxing")).accountId, "123456");
+    assert.ok(h.calls.every(({ url }) => !url.includes("messageroaming")));
+    await assert.rejects(
+      messagesConversations(
+        harness({
+          fail: (url) => (url.includes(endpoint) ? 401 : false),
+        }).ctx,
+        { accountId: "123456" },
+      ),
+      (error) => error.code === "authentication_required",
+    );
+  }
+  await assert.rejects(
+    messagesConversations(
+      harness({
+        fail: (url) => (url.endsWith("joined_chatgroups") ? 403 : false),
+      }).ctx,
+      { accountId: "123456" },
+    ),
+    (error) => error.code === "authentication_required",
+  );
+});
+test("name batches and recent pagination stay bounded; repeated cursors stop without history scans", async () => {
+  const groups = Array.from({ length: 121 }, (_, i) => ({ groupid: `${1000 + i}` }));
+  const h = harness({
+    groups,
+    contacts: [],
+    groupDetails: (url) =>
+      new URL(url).pathname
+        .split("/")
+        .at(-1)
+        .split(",")
+        .map((id) => ({ id, name: `Synthetic ${id}` })),
+    channels: (url) => ({
+      channel_infos: [],
+      cursor: `${+(new URL(url).searchParams.get("cursor") || 0) + 1}`,
+    }),
+  });
+  const result = await messagesConversations(h.ctx, { accountId: "123456" });
+  assert.equal(result.items.length, 121);
+  assert.equal(h.calls.filter(({ url }) => url.includes("/chatgroups/")).length, 3);
+  assert.equal(h.calls.filter(({ url }) => url.includes("user_channels/list")).length, 5);
+  assert.ok(h.calls.length < 40);
+  assert.ok(h.calls.every(({ url }) => !url.includes("messageroaming")));
+  const cycle = harness({ channels: { channel_infos: [], cursor: "same" } });
+  await messagesConversations(cycle.ctx, { accountId: "123456" });
+  assert.equal(cycle.calls.filter(({ url }) => url.includes("user_channels/list")).length, 2);
 });
 test("history keeps uint64 cursor exact, deduplicates messages and filters receipts/commands", async () => {
   const rows = [

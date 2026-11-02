@@ -49,6 +49,35 @@ class MessageArchiveView {
   final bool? hasMoreRemote;
   final String? nextCursor;
   final bool hasMoreLocal;
+
+  /// The same evidence-based merge is used online and after SQLite recovery.
+  /// Unknown content is kept unknown; an ID fallback never erases a known name.
+  static List<MessagesConversationsItems> mergeConversations(
+    List<MessagesConversationsItems> incoming,
+    List<MessagesConversationsItems> previous, {
+    bool preserveMissing = false,
+  }) {
+    Map<String, dynamic> data(MessagesConversationsItems row) => {
+      'conversationId': row.conversationId,
+      'conversationKind': row.conversationKind,
+      'title': row.title,
+      if (row.hasContent != null) 'hasContent': row.hasContent,
+      if (row.lastMessageAt != null) 'lastMessageAt': row.lastMessageAt,
+    };
+    final old = {
+      for (final row in previous)
+        '${row.conversationKind}:${row.conversationId}': data(row),
+    };
+    final rows = <String, Map<String, dynamic>>{if (preserveMissing) ...old};
+    for (final row in incoming) {
+      final key = '${row.conversationKind}:${row.conversationId}';
+      rows[key] = _mergeConversationData(data(row), old[key]);
+    }
+    return [
+      for (final row in _orderedConversationData(rows.values.toList()))
+        _conversation(row),
+    ];
+  }
 }
 
 class MessageArchiveStore {
@@ -168,12 +197,23 @@ class MessageArchiveStore {
         params['accountId'] != current['accountId'] ||
         data['accountId'] != current['accountId'] ||
         data['serviceId'] != current['serviceId'] ||
-        outputValidatorFor('elecon.$capability', '1.0')?.call(data) != true) {
+        outputValidatorFor(
+              'elecon.$capability',
+              package.manifest.capability(capability)?.schemaVersion ?? '1.0',
+            )?.call(data) !=
+            true) {
       return false;
     }
     if (capability != 'messages.conversations' &&
         (data['conversationId'] != params['conversationId'] ||
             data['conversationKind'] != params['conversationKind'])) {
+      return false;
+    }
+    if (capability == 'messages.conversations' &&
+        package.manifest.capability(capability)?.schemaVersion == '1.1' &&
+        (data['items'] as List).any(
+          (row) => row['lastMessageAt'] != null && row['hasContent'] != true,
+        )) {
       return false;
     }
     if (capability == 'messages.history') {
@@ -219,6 +259,19 @@ class MessageArchiveStore {
     final bytes = _bytes(package, current);
     final scope = _scope(package, current);
     final time = now();
+    final normalizedData =
+        capability == 'messages.conversations' &&
+            package.manifest.capability(capability)?.schemaVersion == '1.0'
+        ? {
+            ...data,
+            'items': [
+              for (final row in data['items'] as List)
+                Map<String, dynamic>.from(row as Map)
+                  ..remove('hasContent')
+                  ..remove('lastMessageAt'),
+            ],
+          }
+        : data;
     final result = await Isolate.run(
       () => _databaseWork(
         bytes,
@@ -226,7 +279,7 @@ class MessageArchiveStore {
         time,
         capability: capability,
         params: params,
-        data: data,
+        data: normalizedData,
       ),
     );
     if (!isActive() ||
@@ -273,11 +326,7 @@ class MessageArchiveStore {
       account: current,
       conversations: [
         for (final row in rows)
-          MessagesConversationsItems(
-            conversationId: row['conversationId'] as String,
-            conversationKind: row['conversationKind'] as String,
-            title: row['title'] as String,
-          ),
+          _conversation(Map<String, dynamic>.from(row as Map)),
       ],
       messages: [
         for (final row in result['messages'] as List)
@@ -300,6 +349,66 @@ class MessageArchiveStore {
       hasMoreLocal: result['hasMoreLocal'] == true,
     );
   }
+}
+
+MessagesConversationsItems _conversation(Map<String, dynamic> row) =>
+    MessagesConversationsItems(
+      conversationId: row['conversationId'] as String,
+      conversationKind: row['conversationKind'] as String,
+      title: row['title'] as String,
+      hasContent: row['hasContent'] as bool?,
+      lastMessageAt: row['lastMessageAt'] as String?,
+    );
+
+Map<String, dynamic> _mergeConversationData(
+  Map<String, dynamic> incoming,
+  Map<String, dynamic>? previous,
+) {
+  final result = Map<String, dynamic>.from(incoming);
+  if (previous == null) return result;
+  if (incoming['title'] == incoming['conversationId'] &&
+      previous['title'] != previous['conversationId']) {
+    result['title'] = previous['title'];
+  }
+  if (previous['hasContent'] == true) result['hasContent'] = true;
+  if (result['hasContent'] == true) {
+    final oldTime = DateTime.tryParse(
+      previous['lastMessageAt'] as String? ?? '',
+    );
+    final newTime = DateTime.tryParse(
+      incoming['lastMessageAt'] as String? ?? '',
+    );
+    if (oldTime != null && (newTime == null || oldTime.isAfter(newTime))) {
+      result['lastMessageAt'] = previous['lastMessageAt'];
+    }
+  }
+  return result;
+}
+
+List<Map<String, dynamic>> _orderedConversationData(
+  List<Map<String, dynamic>> rows,
+) {
+  final positions = {for (var i = 0; i < rows.length; i++) rows[i]: i};
+  rows.sort((a, b) {
+    final hasA = a['hasContent'] == true;
+    final hasB = b['hasContent'] == true;
+    if (hasA != hasB) return hasA ? -1 : 1;
+    if (hasA) {
+      final timeA = DateTime.tryParse(
+        a['lastMessageAt'] as String? ?? '',
+      )?.millisecondsSinceEpoch;
+      final timeB = DateTime.tryParse(
+        b['lastMessageAt'] as String? ?? '',
+      )?.millisecondsSinceEpoch;
+      if (timeA != timeB) {
+        if (timeA == null) return 1;
+        if (timeB == null) return -1;
+        return timeB.compareTo(timeA);
+      }
+    }
+    return positions[a]!.compareTo(positions[b]!);
+  });
+  return rows;
 }
 
 MessagesHistoryItems _message(Map<String, dynamic> row) => MessagesHistoryItems(
@@ -400,16 +509,30 @@ Map<String, Object?> _databaseWork(
     }
 
     if (capability == 'messages.conversations') {
+      final previous = <String, Map<String, dynamic>>{
+        for (final row in db.select('SELECT kind,id,body FROM conversations'))
+          '${row['kind']}:${row['id']}': Map<String, dynamic>.from(
+            jsonDecode(row['body'] as String) as Map,
+          ),
+      };
       if (data['coverage'] == 'complete') {
         db.execute('DELETE FROM conversations');
       }
       for (final row in data['items'] as List) {
-        db.execute('INSERT OR REPLACE INTO conversations VALUES (?,?,?,?)', [
-          row['conversationKind'],
-          row['conversationId'],
-          jsonEncode(row),
-          now,
-        ]);
+        final value = _mergeConversationData(
+          Map<String, dynamic>.from(row as Map),
+          previous['${row['conversationKind']}:${row['conversationId']}'],
+        );
+        db.execute(
+          '''INSERT INTO conversations VALUES (?,?,?,?)
+          ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body,seen=excluded.seen''',
+          [
+            row['conversationKind'],
+            row['conversationId'],
+            jsonEncode(value),
+            now,
+          ],
+        );
       }
       db.execute('INSERT OR REPLACE INTO pages VALUES (?,?,?,?)', [
         '',
@@ -484,7 +607,30 @@ Map<String, Object?> _databaseWork(
       }
       return {'bytes': output};
     }
-    final list = db.select('SELECT body FROM conversations ORDER BY kind,id');
+    final localContent = <String, Map<String, dynamic>>{
+      for (final row in db.select('''
+        SELECT kind,conversation,COUNT(*) AS count,
+        MAX(unixepoch(sent_at,'subsec')) AS latest
+        FROM messages WHERE body IS NOT NULL GROUP BY kind,conversation
+      '''))
+        '${row['kind']}:${row['conversation']}': {
+          'hasContent': true,
+          if (row['latest'] case final num timestamp)
+            'lastMessageAt': DateTime.fromMillisecondsSinceEpoch(
+              (timestamp * 1000).round(),
+              isUtc: true,
+            ).toIso8601String(),
+        },
+    };
+    final list = <Map<String, dynamic>>[
+      for (final row in db.select(
+        'SELECT kind,id,body FROM conversations ORDER BY rowid',
+      ))
+        _mergeConversationData(
+          Map<String, dynamic>.from(jsonDecode(row['body'] as String) as Map),
+          localContent['${row['kind']}:${row['id']}'],
+        ),
+    ];
     final page = db.select(
       'SELECT value FROM pages WHERE kind=? AND conversation=?',
       [conversationKind ?? '', conversationId ?? ''],
@@ -504,9 +650,7 @@ Map<String, Object?> _databaseWork(
               .toList();
     return {
       ...metadata,
-      'conversations': [
-        for (final row in list) jsonDecode(row['body'] as String),
-      ],
+      'conversations': _orderedConversationData(list),
       'messages': messages.take(limit).toList().reversed.toList(),
       'hasMoreLocal': messages.length > limit,
     };
