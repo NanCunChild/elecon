@@ -36,6 +36,10 @@ void main() {
       'Cookie: sid=$secret',
     );
 
+    const probe = 'probe/1 stage=13 event=unknown http=0 ms=120 flags=?????1??';
+    log.log(DevLogCategory.probe, probe);
+    log.log(DevLogCategory.probe, '$probe $secret');
+
     await tester.pumpWidget(
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -54,5 +58,10 @@ void main() {
     expect(copied, isNotNull);
     expect(copied, isNot(contains(secret)));
     expect(copied, isNot(contains('u:p')));
+    expect(copied, contains(probe));
+    await tester.tap(find.text(l10n.devLogFilterProbes));
+    await tester.pump();
+    expect(find.text(probe), findsOneWidget);
+    expect(find.textContaining('GET '), findsNothing);
   });
 }

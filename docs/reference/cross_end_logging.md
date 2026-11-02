@@ -14,6 +14,7 @@
 | 类别 | release 写入 | debug 写入 | 典型来源 |
 |------|-------------|-----------|----------|
 | `network` | ✅ | ✅ | `DirectTransport` |
+| `probe` | ✅ | ✅ | ADR-057 严格有界脚本阶段记录，无自由文本 |
 | `runtime` | ❌ | ✅ | 会话/装载诊断摘要 |
 | `webview` | ❌ | ✅ | WebView 登录页（已打码消息） |
 | `adapter` | ❌ | ✅ | QJS `onLog` / 运行时诊断 |
@@ -31,8 +32,9 @@
 
 1. **Transport**：`DirectTransport` → `DevLog.network`（始终走 `formatUrlForLog(..., redact: log.redact)`）。
 2. **Adapter 执行**：`SessionController._runOn` 默认把 `onLog` → `DevLog.adapter`、`onDiagnostic` → `DevLog.runtime`；调用方可叠加自己的回调。
-3. **WebView 登录**：页面本地面板 + `DevLog.webview`；URL/cookie 用 `formatUrlForLog` / `maskCookieValue`。
-4. **UI**：`DevLogPage` 只提供类别筛选；UI 与剪贴板消费的均为 sink 内已净化副本。
+3. **WebView 登录**：页面本地面板 + `DevLog.webview`；URL/cookie 用 `formatUrlForLog` / `maskCookieValue`。受信脚本浏览器拒绝导航时额外以 network/NAVIGATE 记录固定错误码及目标 origin，正式版可诊断未声明节点；不包含 path/query/fragment 或 Cookie。
+4. **受信脚本探针**：`probe/1` 整行严格校验并重建后才进入 `probe` 类别；越界或附带原文直接丢弃。见 [ADR-057](../adr/adr_057_bounded_script_probes.md)。
+5. **UI**：`DevLogPage` 只提供类别筛选；UI 与剪贴板消费的均为 sink 内已净化副本。
 
 ### 禁止
 
@@ -50,7 +52,7 @@
 ## 与「复制到剪贴板」
 
 - debug：可复制可见条目（用户知情后用于 issue）；条目已先经过永久净化。
-- release：网络日志本身已无参；复制仍不得包含 body/凭证（因写入路径已保证）。
+- release：网络日志无参，脚本探针只有阶段、事件、HTTP 状态、耗时与八个条件位；两者均可筛选/复制。没有 body/凭证与自动上传。
 
 ## 相关代码
 

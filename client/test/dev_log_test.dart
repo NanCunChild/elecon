@@ -123,6 +123,33 @@ void main() {
     });
   });
 
+  group('bounded script probes', () {
+    const valid = 'probe/1 stage=13 event=ok http=200 ms=12 flags=01??100?';
+    test('only a complete bounded record enters the sink', () {
+      expect(normalizeScriptProbe(valid), valid);
+      final log = DevLog();
+      for (final malformed in [
+        '$valid token=SECRET',
+        '$valid\n',
+        '$valid\nSECRET',
+        valid.replaceFirst('stage=13', 'stage=33'),
+        valid.replaceFirst('stage=13', 'stage=0'),
+        valid.replaceFirst('http=200', 'http=600'),
+        valid.replaceFirst('ms=12', 'ms=120001'),
+        valid.replaceFirst('ms=12', 'ms=-1'),
+        valid.replaceFirst('event=ok', 'event=SECRET'),
+        valid.replaceFirst('flags=01??100?', 'flags=SECRET00'),
+        'SECRET $valid',
+      ]) {
+        expect(normalizeScriptProbe(malformed), isNull);
+        log.log(DevLogCategory.probe, malformed);
+      }
+      expect(log.entries, isEmpty);
+      log.log(DevLogCategory.probe, valid);
+      expect(log.visible(only: DevLogCategory.probe).single.message, valid);
+    });
+  });
+
   group('DevLog', () {
     late DevLog log;
 

@@ -1,6 +1,6 @@
 /// Settings → 运行时日志查看页。
 ///
-/// release：仅网络条目（无参 URL + 状态）；debug：可切换全部 / 仅网络。
+/// release：网络与有界脚本探针；debug：另可查看普通日志。
 library;
 
 import 'package:flutter/foundation.dart';
@@ -22,7 +22,7 @@ class DevLogPage extends StatefulWidget {
 
 class _DevLogPageState extends State<DevLogPage> {
   late final DevLog _log = widget.log ?? DevLog.instance;
-  bool _networkOnly = !kDebugMode;
+  DevLogCategory? _category;
 
   @override
   void initState() {
@@ -40,8 +40,7 @@ class _DevLogPageState extends State<DevLogPage> {
     if (mounted) setState(() {});
   }
 
-  List<DevLogEntry> get _visible =>
-      _log.visible(only: _networkOnly ? DevLogCategory.network : null);
+  List<DevLogEntry> get _visible => _log.visible(only: _category);
 
   Future<void> _copyAll() async {
     final l10n = AppLocalizations.of(context);
@@ -88,22 +87,26 @@ class _DevLogPageState extends State<DevLogPage> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  if (kDebugMode)
-                    FilterChip(
-                      label: Text(l10n.devLogFilterAll),
-                      selected: !_networkOnly,
-                      onSelected: (_) => setState(() => _networkOnly = false),
-                    ),
+                  FilterChip(
+                    label: Text(l10n.devLogFilterAll),
+                    selected: _category == null,
+                    onSelected: (_) => setState(() => _category = null),
+                  ),
                   FilterChip(
                     label: Text(
                       kDebugMode
                           ? l10n.devLogFilterNetworkOnly
                           : l10n.devLogFilterNetworkRelease,
                     ),
-                    selected: _networkOnly,
-                    onSelected: kDebugMode
-                        ? (_) => setState(() => _networkOnly = true)
-                        : null,
+                    selected: _category == DevLogCategory.network,
+                    onSelected: (_) =>
+                        setState(() => _category = DevLogCategory.network),
+                  ),
+                  FilterChip(
+                    label: Text(l10n.devLogFilterProbes),
+                    selected: _category == DevLogCategory.probe,
+                    onSelected: (_) =>
+                        setState(() => _category = DevLogCategory.probe),
                   ),
                 ],
               ),

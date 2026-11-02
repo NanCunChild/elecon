@@ -3,6 +3,7 @@
 /// 策略（红线 #1；跨端约定见 `docs/reference/cross_end_logging.md`）：
 ///  - **network**：任意 build 可记；仅记录无参 URL + 成败/状态码，永不记
 ///    header / body / cookie 值。
+///  - **probe**：任意 build 可记；仅 ADR-057 的有界阶段/状态/耗时/条件位。
 ///  - **runtime / webview / adapter**：仅 [kDebugMode] 写入；release 丢弃。
 ///  - 凭证脱敏不可关闭；所有类别在进入内存、控制台或 UI 前统一净化。
 ///
@@ -13,8 +14,11 @@ import 'package:flutter/foundation.dart';
 
 /// 日志类别。
 enum DevLogCategory {
-  /// 出站 HTTP（transport）；release 唯一可见类别。
+  /// 出站 HTTP（transport）。
   network,
+
+  /// Strictly normalized script stage probes, available in release.
+  probe,
 
   /// 会话 / 存储 / 收割元数据 / loader 等（仅 debug）。
   runtime,
@@ -72,11 +76,15 @@ class DevLog extends ChangeNotifier {
   /// 新→旧。
   List<DevLogEntry> get entries => List<DevLogEntry>.unmodifiable(_entries);
 
-  /// release 仅 network；debug 可全量。
+  /// release 仅 network/probe；debug 可全量。
   List<DevLogEntry> visible({DevLogCategory? only}) {
     Iterable<DevLogEntry> it = _entries;
     if (!kDebugMode) {
-      it = it.where((e) => e.category == DevLogCategory.network);
+      it = it.where(
+        (e) =>
+            e.category == DevLogCategory.network ||
+            e.category == DevLogCategory.probe,
+      );
     }
     if (only != null) {
       it = it.where((e) => e.category == only);
@@ -90,15 +98,22 @@ class DevLog extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 通用写入。非 network 在 release 直接丢弃。
+  /// 通用写入。probe 每次严格重建；其他非 network 类别仅 debug。
   void log(
     DevLogCategory category,
     String message, {
     bool? ok,
     int? statusCode,
   }) {
-    if (category != DevLogCategory.network && !kDebugMode) return;
-    final safeMessage = sanitizeLogMessage(message);
+    if (category != DevLogCategory.network &&
+        category != DevLogCategory.probe &&
+        !kDebugMode) {
+      return;
+    }
+    final safeMessage = category == DevLogCategory.probe
+        ? normalizeScriptProbe(message)
+        : sanitizeLogMessage(message);
+    if (safeMessage == null) return;
     final entry = DevLogEntry(
       time: DateTime.now(),
       category: category,
@@ -226,4 +241,19 @@ String _shortError(String error) {
   final one = sanitizeLogMessage(error).split('\n').first.trim();
   if (one.length <= 80) return one;
   return '${one.substring(0, 77)}...';
+}
+
+/// ADR-057: no free text, extra keys, identifiers, URLs or response bodies.
+/// Numeric phase/flag meanings belong to each script, never to the host.
+String? normalizeScriptProbe(String message) {
+  if (message.length > 120) return null;
+  final match = RegExp(
+    r'^probe/1 stage=([1-9][0-9]?) event=(begin|ok|failed|unknown|skipped) http=(0|[1-5][0-9]{2}) ms=(0|[1-9][0-9]{0,5}) flags=([01?]{8})$',
+  ).firstMatch(message);
+  if (match == null || match.end != message.length) return null;
+  final stage = int.parse(match.group(1)!);
+  final elapsed = int.parse(match.group(4)!);
+  if (stage > 32 || elapsed > 120000) return null;
+  return 'probe/1 stage=$stage event=${match.group(2)} '
+      'http=${match.group(3)} ms=$elapsed flags=${match.group(5)}';
 }

@@ -33,6 +33,16 @@ Future<Object?> presentScriptBrowser(
     if (trace != lastTrace) {
       lastTrace = trace;
       DevLog.instance.webview(trace);
+      // A denied browser destination is a network-boundary failure. Keep its
+      // origin (never path/query/cookies) available in release diagnostics.
+      if (state.phase == ScriptBrowserPhase.blocked && state.origin != null) {
+        DevLog.instance.network(
+          method: 'NAVIGATE',
+          url: state.origin!,
+          ok: false,
+          error: 'browser_navigation_blocked',
+        );
+      }
       onTrace?.call(trace);
     }
     if (!completed && state.phase == ScriptBrowserPhase.closed) {
