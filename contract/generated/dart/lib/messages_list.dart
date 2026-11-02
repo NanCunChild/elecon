@@ -38,6 +38,7 @@ class MessagesListItems {
     required this.text,
     this.sentAt,
     this.activityId,
+    required this.kind,
   });
 
   /// 源站稳定消息 ID，十进制大整数不得转浮点。
@@ -52,4 +53,6 @@ class MessagesListItems {
   final String? sentAt;
   /// 可用时的关联签到活动 ID；不能据此自动提交签到。
   final String? activityId;
+  /// ADR-066：有限内容类型；activity/command只展示标识与纯文本摘要，不执行指令或活动。
+  final String kind;
 }

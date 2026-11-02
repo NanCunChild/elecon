@@ -27,6 +27,100 @@ for (const sdkVersion of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
 }
 assert.equal(JSON.parse(packaged).manifest.version, "1.2.3");
 assert.equal(JSON.parse(packaged).source, source);
+// ADR-064: requirements are metadata, not a new credential permission grant.
+const account = {
+  id: "campus",
+  name: "Synthetic account",
+  instructions: "Sign in on the official page.",
+  capabilities: ["notice.list"],
+  login: { capability: "notice.list", params: { operation: "login" } },
+};
+const accountsManifest = { ...manifest, sdkVersion: 11, accounts: [account] };
+assert.equal(JSON.parse(packageScript(accountsManifest, source)).manifest.accounts[0].id, "campus");
+assert.deepEqual(
+  JSON.parse(packageScript({ ...accountsManifest, accounts: [] }, source)).manifest.accounts,
+  [],
+);
+// ADR-066: fixed account state, declaration-gated provider and distinct cards.
+const sdk12 = {
+  ...accountsManifest,
+  sdkVersion: 12,
+  capabilities: [
+    ...manifest.capabilities,
+    { id: "account.session", schema: "elecon.account.session", schemaVersion: "1.0" },
+  ],
+  accounts: [
+    {
+      ...account,
+      status: { capability: "account.session", params: { account: "campus", operation: "status" } },
+    },
+  ],
+  appTunnels: ["hermes-atrust"],
+  cards: [
+    { id: "first", type: "notice", title: "School", defaultVariant: "regular" },
+    { id: "second", type: "notice", title: "Learning", defaultVariant: "regular" },
+  ],
+};
+assert.ok(packageScript(sdk12, source));
+for (const invalid of [
+  { ...sdk12, sdkVersion: 11 },
+  { ...sdk12, appTunnels: ["unreviewed"] },
+  { ...sdk12, appTunnels: ["hermes-atrust", "hermes-atrust"] },
+  { ...sdk12, cards: sdk12.cards.map((card) => ({ ...card, id: "duplicate" })) },
+  {
+    ...sdk12,
+    cards: [
+      { type: "notice", defaultVariant: "regular" },
+      { type: "notice", defaultVariant: "compact" },
+    ],
+  },
+  {
+    ...sdk12,
+    accounts: [
+      {
+        ...account,
+        status: { capability: "account.session", params: { account: "other", operation: "status" } },
+      },
+    ],
+  },
+  {
+    ...sdk12,
+    accounts: [
+      {
+        ...account,
+        status: { capability: "account.session", params: { account: "campus", operation: "login" } },
+      },
+    ],
+  },
+  {
+    ...sdk12,
+    accounts: [
+      {
+        ...account,
+        login: { capability: "account.session", params: { account: "other", operation: "login" } },
+      },
+    ],
+  },
+  { ...sdk12, home: [{ capability: "account.session", ttlSeconds: 60, preload: true }] },
+])
+  assert.throws(() => packageScript(invalid, source), ScriptPackageError);
+const { login: _login, ...externalAccount } = account;
+assert.ok(packageScript({ ...accountsManifest, accounts: [externalAccount] }, source));
+for (const invalid of [
+  { ...accountsManifest, sdkVersion: 10 },
+  { ...manifest, sdkVersion: 11 },
+  { ...accountsManifest, accounts: null },
+  { ...accountsManifest, accounts: [account, account] },
+  { ...accountsManifest, accounts: [{ ...account, instructions: "a\nb" }] },
+  { ...accountsManifest, accounts: [{ ...account, capabilities: ["messages.list"] }] },
+  { ...accountsManifest, accounts: [{ ...account, login: { capability: "messages.session" } }] },
+  {
+    ...accountsManifest,
+    accounts: [{ ...account, login: { ...account.login, params: { value: "汉".repeat(1400) } } }],
+  },
+]) {
+  assert.throws(() => packageScript(invalid, source), ScriptPackageError);
+}
 const reordered = Object.fromEntries(Object.entries(manifest).reverse());
 assert.equal(packageScript(reordered, source), packaged);
 assert.equal(packageScript(manifest, source), packaged);

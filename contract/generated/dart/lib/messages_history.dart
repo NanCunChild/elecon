@@ -15,6 +15,8 @@ class MessagesHistory {
     this.nextCursor,
     required this.items,
     required this.recalledIds,
+    this.sendPermission,
+    this.sendPermissionReason,
   });
 
   /// 稳定服务标识；不按显示名合并。
@@ -37,6 +39,10 @@ class MessagesHistory {
   final List<MessagesHistoryItems> items;
   /// 已撤回消息 ID；墓碑覆盖所有已存和后续补到的旧正文。
   final List<String> recalledIds;
+  /// ADR-066：当前账号发送权限；allowed须来自当前源站核验，muted表示确认禁言/停用，unknown表示缺少证据。历史缓存不能授权发送。
+  final String? sendPermission;
+  /// 固定原因；不含源站异常或敏感信息。缺失时仅按sendPermission展示。
+  final String? sendPermissionReason;
 }
 
 class MessagesHistoryItems {
@@ -54,7 +60,7 @@ class MessagesHistoryItems {
   final String id;
   /// 纯文本消息或附件摘要，不是 HTML/可执行链接；撤回记录不含原文。
   final String text;
-  /// 内容类型只决定有限展示；业务实体与附件均不可点击。
+  /// ADR-066：有限内容类型；activity/command只展示标识与纯文本摘要，不执行指令或活动。
   final String kind;
   /// 相对于本次核验账号的发送方向。
   final String direction;

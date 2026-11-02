@@ -64,7 +64,15 @@ export function packageScript(manifest: unknown, source: unknown): string {
     capabilities: Array<{ id: string }>;
     home?: Array<{ capability: string; params?: Record<string, unknown> }>;
     sdkVersion: number;
-    cards?: Array<{ type: string; defaultVariant: string }>;
+    cards?: Array<{ type: string; defaultVariant: string; id?: string; title?: string }>;
+    accounts?: Array<{
+      id: string;
+      name: string;
+      instructions: string;
+      capabilities: string[];
+      login?: { capability: string; params?: Record<string, unknown> };
+      status?: { capability: string; params?: Record<string, unknown> };
+    }>;
   };
   if (
     typed.name.includes("\0") ||
@@ -74,6 +82,33 @@ export function packageScript(manifest: unknown, source: unknown): string {
   ) {
     throw new ScriptPackageError("script_package_manifest_invalid");
   }
+  const capabilityIds = new Set(typed.capabilities.map((capability) => capability.id));
+  if (
+    typed.accounts &&
+    (new Set(typed.accounts.map((account) => account.id)).size !== typed.accounts.length ||
+      typed.accounts.some(
+        (account) =>
+          account.name.length > 160 ||
+          account.instructions.length > 2048 ||
+          (account.login && !capabilityIds.has(account.login.capability)) ||
+          (account.login?.capability === "account.session" &&
+            (account.login.params?.account !== account.id ||
+              account.login.params?.operation !== "login" ||
+              Object.keys(account.login.params ?? {}).length !== 2)) ||
+          (account.status &&
+            (account.status.capability !== "account.session" ||
+              !capabilityIds.has(account.status.capability) ||
+              account.status.params?.operation !== "status" ||
+              account.status.params?.account !== account.id ||
+              Object.keys(account.status.params ?? {}).length !== 2)) ||
+          account.capabilities.some((id) => !capabilityIds.has(id)) ||
+          Buffer.byteLength(JSON.stringify(account.login?.params ?? {}), "utf8") > 4096,
+      ))
+  ) {
+    throw new ScriptPackageError("script_package_manifest_invalid");
+  }
+  if (typed.cards && new Set(typed.cards.map((card) => card.id ?? card.type)).size !== typed.cards.length)
+    throw new ScriptPackageError("script_package_manifest_invalid");
   // ADR-043 §3: the JSON schema checks card types, variants, uniqueness and
   // capability dependencies. Keep suggestions inside the approved manifest.
   // ADR-038 §1: semantic bounds mirror the client parser.
@@ -85,6 +120,7 @@ export function packageScript(manifest: unknown, source: unknown): string {
           entry.capability === "climate.command" ||
           entry.capability === "card.qr" ||
           [
+            "account.session",
             "forum.session",
             "messages.session",
             "messages.list",

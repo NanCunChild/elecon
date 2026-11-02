@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.account.session",
+  "title": "脚本账号状态",
+  "description": "ADR-066：脚本验证的账号状态，未知不推断失效。",
+  "type": "object",
+  "required": [
+    "status"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "authenticated",
+        "signedOut",
+        "expired",
+        "unknown"
+      ],
+      "description": "authenticated 仅源站验证成功；signedOut 无凭据；expired 仅明确失效；网络错误/未验证为 unknown。"
+    },
+    "accountId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "源站账号标识，可选，不能包含认证材料。"
+    },
+    "accountLabel": {
+      "type": "string",
+      "maxLength": 160,
+      "description": "账号显示名，可选纯文本。"
+    },
+    "checkedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "本次源站验证时刻；未完成验证时省略。"
+    }
+  }
+}

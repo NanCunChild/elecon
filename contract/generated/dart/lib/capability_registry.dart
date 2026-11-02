@@ -6,6 +6,7 @@ library;
 /// 所有合法 capability id —— 契约单源 contract/capability/registry.json。
 /// 客户端加载器据此拒绝 catalog 引入 registry 之外的新能力（ADR-010 §3.3.2(a)，红线 #6）。
 const Set<String> kCapabilityIds = {
+  'account.session',
   'app.announcement',
   'attendance.checkin',
   'attendance.summary',

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.account.session",
+  "title": "脚本账号操作",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "account",
+    "operation"
+  ],
+  "properties": {
+    "account": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "包内账号声明的稳定 id。"
+    },
+    "operation": {
+      "type": "string",
+      "enum": [
+        "status",
+        "login"
+      ],
+      "description": "status 只读验证；login 用户明确触发且不自动重试。"
+    }
+  }
+}

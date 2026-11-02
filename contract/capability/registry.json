@@ -69,10 +69,11 @@
 
     ,"forum.session": {"description": "forum.session（ADR-052；仅前台、不缓存）", "emits": {"schema": "elecon.forum.session", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.forum.session", "schemaVersion": "1.0"}}
     ,"messages.session": {"description": "messages.session（ADR-052；仅前台、不缓存）", "emits": {"schema": "elecon.messages.session", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.session", "schemaVersion": "1.0"}}
-    ,"messages.list": {"description": "messages.list（ADR-052；仅前台、不缓存）", "emits": {"schema": "elecon.messages.list", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.list", "schemaVersion": "1.0"}}
+    ,"messages.list": {"description": "messages.list（ADR-052；仅前台、不缓存）", "emits": {"schema": "elecon.messages.list", "schemaVersion": "1.1", "previousVersions": ["1.0"]}, "params": {"schema": "elecon.params.messages.list", "schemaVersion": "1.0"}}
     ,"attendance.checkin": {"description": "attendance.checkin（ADR-055；仅前台、不缓存）", "emits": {"schema": "elecon.attendance.checkin", "schemaVersion": "1.1", "previousVersions": ["1.0"]}, "params": {"schema": "elecon.params.attendance.checkin", "schemaVersion": "1.1", "previousVersions": ["1.0"]}}
-    ,"messages.conversations": {"description": "messages.conversations（ADR-063；前台消息与内容排序）", "emits": {"schema": "elecon.messages.conversations", "schemaVersion": "1.1", "previousVersions": ["1.0"]}, "params": {"schema": "elecon.params.messages.conversations", "schemaVersion": "1.0"}}
-    ,"messages.history": {"description": "messages.history（ADR-061；前台消息）", "emits": {"schema": "elecon.messages.history", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.history", "schemaVersion": "1.0"}}
+    ,"messages.conversations": {"description": "messages.conversations（ADR-063；前台消息与内容排序）", "emits": {"schema": "elecon.messages.conversations", "schemaVersion": "1.2", "previousVersions": ["1.0", "1.1"]}, "params": {"schema": "elecon.params.messages.conversations", "schemaVersion": "1.0"}}
+    ,"messages.history": {"description": "messages.history（ADR-061；前台消息）", "emits": {"schema": "elecon.messages.history", "schemaVersion": "1.1", "previousVersions": ["1.0"]}, "params": {"schema": "elecon.params.messages.history", "schemaVersion": "1.0"}}
     ,"messages.send": {"description": "messages.send（ADR-061；前台消息）", "emits": {"schema": "elecon.messages.send", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.send", "schemaVersion": "1.0"}}
+    ,"account.session": {"description": "脚本声明账号状态及显式登录（ADR-066）；状态检查无交互，禁止预加载与缓存。", "emits": {"schema": "elecon.account.session", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.account.session", "schemaVersion": "1.0"}}
     }
   }

@@ -27,4 +27,8 @@ export interface MessagesConversationsItems {
   hasContent?: boolean;
   /** 已确认内容消息中最新的源站发送时刻，RFC3339；未知省略，不用群资料更新时间或本地抓取时刻代替。 */
   lastMessageAt?: string;
+  /** ADR-066：当前账号发送权限；allowed须来自当前源站核验，muted表示确认禁言/停用，unknown表示缺少证据。历史缓存不能授权发送。 */
+  sendPermission?: "allowed" | "muted" | "unknown";
+  /** 固定原因；不含源站异常或敏感信息。缺失时仅按sendPermission展示。 */
+  sendPermissionReason?: "member_muted" | "group_muted" | "group_disabled" | "verification_failed";
 }

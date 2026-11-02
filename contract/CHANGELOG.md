@@ -1,5 +1,17 @@
 # `contract/` 变更流水
 
+## 2026-11-03 · ADR-066 SDK 12 来源实例与账号状态
+
+SDK 12 支持 `cards[].id/title`，同型实例使用不同包内 id 并固定声明包/digest；旧声明维持按类型唯一。`accounts[].status` 绑定同包 `account.session` 1.0，区分 authenticated/signedOut/expired/unknown，主动重登后重新核验。新增参数契约只接受 account 与 status/login 操作。声明 `appTunnels: ["hermes-atrust"]` 后可调用宿主固定状态/登录端口，凭据与会话仍不返回脚本；只读检查禁止交互，权限不由卡片或账号名称推导。包必须升版并重新批准，旧 SDK 不接受新字段。
+
+## 2026-11-03 · ADR-066 消息类型与发言权限
+
+`messages.list` / `messages.history` 1.1 明确 `command` 类型，活动/指令只作惰性展示。`messages.conversations` 1.2 与历史 1.1 增加 `sendPermission`（allowed/muted/unknown）及固定原因；缺失和旧版本均不授权发送。发送前脚本再核验，已存历史不成为权限证据。保留原版本 schema 快照与参数版本，包更新须重新批准。
+
+## 2026-11-02 · ADR-064 脚本账号声明
+
+SDK 11 必填有界 `accounts`：账号名称、说明、所需能力及同包登录绑定。空数组表示无需账号，SDK 1–10 保留未声明状态及原始 digest；新包需升版本与重新批准。声明不授予凭据或网络权限，登录仅前台、固定来源。App Tunnel 账号为核心受保护配置，不进入脚本契约。
+
 ## 2026-11-02 · ADR-063 会话名称与内容排序
 
 `messages.conversations` 1.1 新增可选 `hasContent` 和 `lastMessageAt`；未知内容状态省略，不推断未读或把未查询群组标为空。保留 1.0 schema/旧包校验，参数仍为 1.0。核心合并服务证据与 SQLite 中未撤回消息，按有内容优先及最新源站时间排序，保留有效群名；超星增强包 0.3.1 使用有界批量群详情与最近会话补全，不逐群扫描历史。

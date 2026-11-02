@@ -45,7 +45,9 @@
             7,
             8,
             9,
-            10
+            10,
+            11,
+            12
           ],
           "type": "integer"
         },
@@ -72,6 +74,96 @@
           "maxLength": 160,
           "pattern": "\\S"
         },
+        "accounts": {
+          "type": "array",
+          "maxItems": 16,
+          "description": "SDK 11 必填账号需求；[] 明确无需账号。旧 SDK 省略表示尚未声明，不表示无账号。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "instructions",
+              "capabilities"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                "description": "包内稳定账号 ID，不表示凭据 namespace 或权限。"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
+                "description": "账号名称，纯文本。"
+              },
+              "instructions": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
+                "description": "账号来源、登录方法与独立性说明，纯文本，不含秘密。"
+              },
+              "capabilities": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 64,
+                "uniqueItems": true,
+                "description": "需要此账号的同包能力 ID；宿主/打包器核对均已声明。",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                }
+              },
+              "login": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability"
+                ],
+                "description": "仅用户主动触发的同包前台登录绑定，不经过 provider 覆盖选择。",
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "description": "同包已声明的登录能力 ID。"
+                  },
+                  "params": {
+                    "type": "object",
+                    "description": "登录的固定参数，默认 {}；编码后最多 4 KiB UTF-8。"
+                  }
+                }
+              },
+              "status": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability"
+                ],
+                "description": "SDK12 固定同包只读 account.session 状态调用，不允许浏览器或表单。",
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "description": "同包已声明的登录能力 ID。"
+                  },
+                  "params": {
+                    "type": "object",
+                    "description": "登录的固定参数，默认 {}；编码后最多 4 KiB UTF-8。"
+                  }
+                }
+              }
+            }
+          }
+        },
         "homeTitle": {
           "type": "string",
           "minLength": 1,
@@ -95,7 +187,14 @@
           "description": "SDK 10: explicit foreground camera, selected image and current WGS84 location permissions. Omitted means none; no background access.",
           "maxItems": 3,
           "uniqueItems": true,
-          "items": {"enum": ["camera", "image", "location"], "type": "string"}
+          "items": {
+            "enum": [
+              "camera",
+              "image",
+              "location"
+            ],
+            "type": "string"
+          }
         },
         "scanner": {
           "type": "boolean",
@@ -195,7 +294,11 @@
                     "const": "elecon.messages.conversations"
                   },
                   "schemaVersion": {
-                    "enum": ["1.0", "1.1"]
+                    "enum": [
+                      "1.0",
+                      "1.1",
+                      "1.2"
+                    ]
                   }
                 }
               },
@@ -215,7 +318,10 @@
                     "const": "elecon.messages.history"
                   },
                   "schemaVersion": {
-                    "const": "1.0"
+                    "enum": [
+                      "1.0",
+                      "1.1"
+                    ]
                   }
                 }
               },
@@ -255,7 +361,10 @@
                     "const": "elecon.messages.list"
                   },
                   "schemaVersion": {
-                    "const": "1.0"
+                    "enum": [
+                      "1.0",
+                      "1.1"
+                    ]
                   }
                 }
               },
@@ -275,7 +384,10 @@
                     "const": "elecon.attendance.checkin"
                   },
                   "schemaVersion": {
-                    "enum": ["1.0", "1.1"]
+                    "enum": [
+                      "1.0",
+                      "1.1"
+                    ]
                   }
                 }
               },
@@ -315,7 +427,11 @@
                     "const": "elecon.schedule.week"
                   },
                   "schemaVersion": {
-                    "enum": ["1.0", "1.1", "1.2"]
+                    "enum": [
+                      "1.0",
+                      "1.1",
+                      "1.2"
+                    ]
                   }
                 }
               },
@@ -1001,6 +1117,26 @@
                     "const": "1.0"
                   }
                 }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "account.session"
+                  },
+                  "schema": {
+                    "const": "elecon.account.session"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
               }
             ]
           },
@@ -1021,7 +1157,20 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 128,
-                "not": {"const": "card.qr"}
+                "not": {
+                  "enum": [
+                    "card.qr",
+                    "climate.command",
+                    "account.session",
+                    "forum.session",
+                    "messages.session",
+                    "messages.list",
+                    "messages.conversations",
+                    "messages.history",
+                    "messages.send",
+                    "attendance.checkin"
+                  ]
+                }
               },
               "ttlSeconds": {
                 "type": "integer",
@@ -1038,38 +1187,138 @@
           }
         },
         "cards": {
-          "description": "SDK 6 only: optional host-owned card suggestions. User preferences take precedence; no executable layout or new data access.",
+          "description": "SDK 6+ host-owned card suggestions; SDK 12 adds distinct same-type instances with stable ids and optional plain titles.",
           "type": "array",
           "maxItems": 10,
           "uniqueItems": true,
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["type", "defaultVariant"],
+            "required": [
+              "type",
+              "defaultVariant"
+            ],
             "properties": {
               "type": {
                 "type": "string",
-                "enum": ["notice", "schedule", "grades", "card", "library", "exam", "classroom", "energy", "climate", "generic"],
+                "enum": [
+                  "notice",
+                  "schedule",
+                  "grades",
+                  "card",
+                  "library",
+                  "exam",
+                  "classroom",
+                  "energy",
+                  "climate",
+                  "generic"
+                ],
                 "description": "Stable host business-card type; the package must provide all its required capabilities."
               },
               "defaultVariant": {
                 "type": "string",
-                "enum": ["compact", "regular", "expanded"],
+                "enum": [
+                  "compact",
+                  "regular",
+                  "expanded"
+                ],
                 "description": "Suggested host presentation; only notice, schedule, grades and library support compact/expanded in this version."
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                "description": "SDK12 包内卡片实例标识；缺省为 type。"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
+                "description": "SDK12 卡片显示名称；省略使用核心本地化名称。"
               }
             },
             "allOf": [
               {
-                "if": {"properties": {"type": {"enum": ["notice", "schedule", "grades", "library"]}}},
-                "else": {"properties": {"defaultVariant": {"const": "regular"}}}
+                "if": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "notice",
+                        "schedule",
+                        "grades",
+                        "library"
+                      ]
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "defaultVariant": {
+                      "const": "regular"
+                    }
+                  }
+                }
               }
             ]
           }
+        },
+        "appTunnels": {
+          "type": "array",
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "hermes-atrust"
+            ]
+          },
+          "description": "SDK12: explicit host-owned APPTunnel management ports. No native code or secrets are returned."
         }
       },
       "allOf": [
-        {"if": {"required": ["scanner"], "properties": {"scanner": {}}}, "then": {"properties": {"sdkVersion": {"type": "integer", "minimum": 8}}}},
-        {"if": {"required": ["homeTitle"], "properties": {"homeTitle": {}}}, "then": {"properties": {"sdkVersion": {"enum": [7, 8, 9, 10]}}}},
+        {
+          "if": {
+            "required": [
+              "scanner"
+            ],
+            "properties": {
+              "scanner": {}
+            }
+          },
+          "then": {
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "minimum": 8
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "homeTitle"
+            ],
+            "properties": {
+              "homeTitle": {}
+            }
+          },
+          "then": {
+            "properties": {
+              "sdkVersion": {
+                "enum": [
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12
+                ]
+              }
+            }
+          }
+        },
         {
           "if": {
             "required": [
@@ -1089,44 +1338,58 @@
                   7,
                   8,
                   9,
-                  10
+                  10,
+                  11,
+                  12
                 ]
               }
             }
           }
         },
-        {"if": {"required": ["cards"], "properties": {"cards": {}}}, "then": {"properties": {"sdkVersion": {"enum": [6, 7, 8, 9, 10]}}}},
         {
           "if": {
-            "required": ["cards"],
+            "required": [
+              "cards"
+            ],
             "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "notice"}}}
-              }
+              "cards": {}
             }
           },
           "then": {
             "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "notice"}}},
-                "maxContains": 1
-              },
-              "capabilities": {
-                "type": "array",
-                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "notice.list"}}}}]
+              "sdkVersion": {
+                "enum": [
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12
+                ]
               }
             }
           }
         },
         {
           "if": {
-            "required": ["cards"],
+            "required": [
+              "cards"
+            ],
             "properties": {
               "cards": {
                 "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "schedule"}}}
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "notice"
+                    }
+                  }
+                }
               }
             }
           },
@@ -1134,150 +1397,92 @@
             "properties": {
               "cards": {
                 "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "schedule"}}},
-                "maxContains": 1
-              },
-              "capabilities": {
-                "type": "array",
-                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "schedule.week"}}}}]
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "required": ["cards"],
-            "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "grades"}}}
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "grades"}}},
-                "maxContains": 1
-              },
-              "capabilities": {
-                "type": "array",
-                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "grades.list"}}}}]
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "required": ["cards"],
-            "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "card"}}}
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "card"}}},
-                "maxContains": 1
-              },
-              "capabilities": {
-                "type": "array",
-                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"enum": ["card.balance", "card.transactions", "card.qr"]}}}}]
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "required": ["cards"],
-            "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "library"}}}
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "library"}}},
-                "maxContains": 1
-              },
-              "capabilities": {
-                "type": "array",
-                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "library.loans"}}}}]
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "required": ["cards"],
-            "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "exam"}}}
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "exam"}}},
-                "maxContains": 1
-              },
-              "capabilities": {
-                "type": "array",
-                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "exam.list"}}}}]
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "required": ["cards"],
-            "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "classroom"}}}
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "cards": {
-                "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "classroom"}}},
-                "maxContains": 1
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "notice"
+                    }
+                  }
+                }
               },
               "capabilities": {
                 "type": "array",
                 "allOf": [
                   {
-                    "contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "classroom.buildings"}}}
-                  },
-                  {
-                    "contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "classroom.available"}}}
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "notice.list"
+                        }
+                      }
+                    }
                   }
                 ]
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "sdkVersion": {
+                      "type": "integer",
+                      "maximum": 11
+                    }
+                  },
+                  "required": [
+                    "sdkVersion"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "cards": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "notice"
+                          }
+                        }
+                      },
+                      "maxContains": 1
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         {
           "if": {
-            "required": ["cards"],
+            "required": [
+              "cards"
+            ],
             "properties": {
               "cards": {
                 "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "energy"}}}
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "schedule"
+                    }
+                  }
+                }
               }
             }
           },
@@ -1285,26 +1490,92 @@
             "properties": {
               "cards": {
                 "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "energy"}}},
-                "maxContains": 1
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "schedule"
+                    }
+                  }
+                }
               },
               "capabilities": {
                 "type": "array",
                 "allOf": [
-                  {"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "energy.meters"}}}},
-                  {"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "energy.usage"}}}}
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "schedule.week"
+                        }
+                      }
+                    }
+                  }
                 ]
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "sdkVersion": {
+                      "type": "integer",
+                      "maximum": 11
+                    }
+                  },
+                  "required": [
+                    "sdkVersion"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "cards": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "schedule"
+                          }
+                        }
+                      },
+                      "maxContains": 1
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         {
           "if": {
-            "required": ["cards"],
+            "required": [
+              "cards"
+            ],
             "properties": {
               "cards": {
                 "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "climate"}}}
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "grades"
+                    }
+                  }
+                }
               }
             }
           },
@@ -1312,26 +1583,92 @@
             "properties": {
               "cards": {
                 "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "climate"}}},
-                "maxContains": 1
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "grades"
+                    }
+                  }
+                }
               },
               "capabilities": {
                 "type": "array",
                 "allOf": [
-                  {"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "climate.devices"}}}},
-                  {"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "climate.status"}}}}
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "grades.list"
+                        }
+                      }
+                    }
+                  }
                 ]
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "sdkVersion": {
+                      "type": "integer",
+                      "maximum": 11
+                    }
+                  },
+                  "required": [
+                    "sdkVersion"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "cards": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "grades"
+                          }
+                        }
+                      },
+                      "maxContains": 1
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         {
           "if": {
-            "required": ["cards"],
+            "required": [
+              "cards"
+            ],
             "properties": {
               "cards": {
                 "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "generic"}}}
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "card"
+                    }
+                  }
+                }
               }
             }
           },
@@ -1339,18 +1676,814 @@
             "properties": {
               "cards": {
                 "type": "array",
-                "contains": {"type": "object", "required": ["type"], "properties": {"type": {"const": "generic"}}},
-                "maxContains": 1
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "card"
+                    }
+                  }
+                }
               },
               "capabilities": {
                 "type": "array",
-                "allOf": [{"contains": {"type": "object", "required": ["id"], "properties": {"id": {"const": "generic.section"}}}}]
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "enum": [
+                            "card.balance",
+                            "card.transactions",
+                            "card.qr"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "sdkVersion": {
+                      "type": "integer",
+                      "maximum": 11
+                    }
+                  },
+                  "required": [
+                    "sdkVersion"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "cards": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "card"
+                          }
+                        }
+                      },
+                      "maxContains": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "cards"
+            ],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "library"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "library"
+                    }
+                  }
+                }
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "library.loans"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "sdkVersion": {
+                      "type": "integer",
+                      "maximum": 11
+                    }
+                  },
+                  "required": [
+                    "sdkVersion"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "cards": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "library"
+                          }
+                        }
+                      },
+                      "maxContains": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "cards"
+            ],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "exam"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "exam"
+                    }
+                  }
+                }
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "exam.list"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "sdkVersion": {
+                      "type": "integer",
+                      "maximum": 11
+                    }
+                  },
+                  "required": [
+                    "sdkVersion"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "cards": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "exam"
+                          }
+                        }
+                      },
+                      "maxContains": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "cards"
+            ],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "classroom"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "classroom"
+                    }
+                  }
+                }
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "classroom.buildings"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "classroom.available"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "sdkVersion": {
+                      "type": "integer",
+                      "maximum": 11
+                    }
+                  },
+                  "required": [
+                    "sdkVersion"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "cards": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "classroom"
+                          }
+                        }
+                      },
+                      "maxContains": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "cards"
+            ],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "energy"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "energy"
+                    }
+                  }
+                }
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "energy.meters"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "energy.usage"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "sdkVersion": {
+                      "type": "integer",
+                      "maximum": 11
+                    }
+                  },
+                  "required": [
+                    "sdkVersion"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "cards": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "energy"
+                          }
+                        }
+                      },
+                      "maxContains": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "cards"
+            ],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "climate"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "climate"
+                    }
+                  }
+                }
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "climate.devices"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "climate.status"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "sdkVersion": {
+                      "type": "integer",
+                      "maximum": 11
+                    }
+                  },
+                  "required": [
+                    "sdkVersion"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "cards": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "climate"
+                          }
+                        }
+                      },
+                      "maxContains": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "cards"
+            ],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "generic"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "generic"
+                    }
+                  }
+                }
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "generic.section"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "sdkVersion": {
+                      "type": "integer",
+                      "maximum": 11
+                    }
+                  },
+                  "required": [
+                    "sdkVersion"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "cards": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "generic"
+                          }
+                        }
+                      },
+                      "maxContains": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "deviceInputs"
+            ],
+            "properties": {
+              "deviceInputs": {}
+            }
+          },
+          "then": {
+            "properties": {
+              "sdkVersion": {
+                "minimum": 10,
+                "type": "integer"
               }
             }
           }
         },
-        {"if": {"required": ["deviceInputs"], "properties": {"deviceInputs": {}}}, "then": {"properties": {"sdkVersion": {"minimum": 10, "type": "integer"}}}},
-        {"if": {"required": ["websocketOrigins"], "properties": {"websocketOrigins": {}}}, "then": {"properties": {"sdkVersion": {"minimum": 9, "type": "integer"}}}}
+        {
+          "if": {
+            "required": [
+              "websocketOrigins"
+            ],
+            "properties": {
+              "websocketOrigins": {}
+            }
+          },
+          "then": {
+            "properties": {
+              "sdkVersion": {
+                "minimum": 9,
+                "type": "integer"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "accounts"
+            ],
+            "properties": {
+              "accounts": {}
+            }
+          },
+          "then": {
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "minimum": 11
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "minimum": 11
+              }
+            },
+            "required": [
+              "sdkVersion"
+            ]
+          },
+          "then": {
+            "required": [
+              "accounts"
+            ],
+            "properties": {
+              "accounts": {}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "maximum": 11
+              }
+            },
+            "required": [
+              "sdkVersion"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "appTunnels"
+              ],
+              "properties": {
+                "appTunnels": {}
+              }
+            },
+            "properties": {
+              "cards": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "id"
+                        ],
+                        "properties": {
+                          "id": {}
+                        }
+                      },
+                      {
+                        "required": [
+                          "title"
+                        ],
+                        "properties": {
+                          "title": {}
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "not": {
+                    "required": [
+                      "status"
+                    ],
+                    "properties": {
+                      "status": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       ]
     }
   }

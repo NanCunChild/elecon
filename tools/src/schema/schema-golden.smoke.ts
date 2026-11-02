@@ -15,8 +15,8 @@ import addFormats from "ajv-formats";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const schemaDir = join(repoRoot, "contract/schema");
 const registryPath = join(repoRoot, "contract/capability/registry.json");
-const expectedSchemaCount = 71;
-const expectedRegistryReferenceCount = 69;
+const expectedSchemaCount = 73;
+const expectedRegistryReferenceCount = 71;
 
 interface InvalidGolden {
   behavior: string;
@@ -72,6 +72,34 @@ const historyPage = {
 const sendParams = { ...messageTarget, clientId: "9007199254740993", text: "Synthetic message" };
 
 const cases: Record<string, SchemaGolden> = {
+  "elecon.account.session": {
+    valid: { status: "authenticated", accountId: "synthetic-account", checkedAt: "2026-11-03T00:00:00Z" },
+    invalid: [
+      { behavior: "credential presence is not a verified login state", value: { status: "saved" } },
+      {
+        behavior: "account identifiers are nonempty strings",
+        value: { status: "authenticated", accountId: 42 },
+      },
+      {
+        behavior: "check time must be a valid timestamp",
+        value: { status: "expired", checkedAt: "yesterday" },
+      },
+    ],
+  },
+  "elecon.params.account.session": {
+    valid: { account: "school", operation: "status" },
+    invalid: [
+      { behavior: "an account target is explicit", value: { operation: "status" } },
+      {
+        behavior: "status checking cannot carry password inputs",
+        value: { account: "school", operation: "status", password: "synthetic" },
+      },
+      {
+        behavior: "unimplemented account operations are rejected",
+        value: { account: "school", operation: "refresh" },
+      },
+    ],
+  },
   "elecon.messages.conversations": {
     valid: {
       ...messageAccount,
@@ -131,8 +159,16 @@ const cases: Record<string, SchemaGolden> = {
     ],
   },
   "elecon.messages.history": {
-    valid: historyPage,
+    valid: { ...historyPage, sendPermission: "muted", items: [{ ...textMessage, kind: "command" }] },
     invalid: [
+      {
+        behavior: "send permission is explicit domain data",
+        value: { ...historyPage, sendPermission: true },
+      },
+      {
+        behavior: "unknown message kinds cannot become commands",
+        value: { ...historyPage, items: [{ ...textMessage, kind: "execute" }] },
+      },
       {
         behavior: "message IDs never use floating point",
         value: { ...historyPage, items: [{ ...textMessage, id: 42 }] },

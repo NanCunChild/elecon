@@ -13,6 +13,7 @@ const scriptPackageFormat = 'elecon-script/1';
 
 /// ADR-052: authentication, private windows and side effects stay foreground.
 const foregroundCommunityCapabilities = {
+  'account.session',
   'forum.session',
   'messages.session',
   'messages.list',
@@ -95,6 +96,8 @@ class ScriptManifest {
     required this.capabilities,
     required this.home,
     required this.cards,
+    required this.accounts,
+    required this.appTunnels,
   });
 
   factory ScriptManifest.fromJson(Map<String, dynamic> json) {
@@ -113,8 +116,23 @@ class ScriptManifest {
       'capabilities',
       if (json.containsKey('home')) 'home',
       if (json.containsKey('cards')) 'cards',
+      if (json.containsKey('accounts')) 'accounts',
+      if (json.containsKey('appTunnels')) 'appTunnels',
     }, 'manifest');
-    if (!const {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}.contains(json['sdkVersion']) ||
+    if (!const {
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+        }.contains(json['sdkVersion']) ||
         json['sdkVersion'] is! int) {
       throw const FormatException('unsupported script SDK version');
     }
@@ -226,10 +244,15 @@ class ScriptManifest {
       throw const FormatException('invalid script cards declaration');
     }
     final cards = (rawCards as List? ?? const [])
-        .map((raw) => ScriptCardEntry.fromJson(_object(raw, 'card entry')))
+        .map(
+          (raw) => ScriptCardEntry.fromJson(
+            _object(raw, 'card entry'),
+            sdkVersion: json['sdkVersion'] as int,
+          ),
+        )
         .toList(growable: false);
     final capabilityIds = caps.map((c) => c.id).toSet();
-    if (cards.map((c) => c.type).toSet().length != cards.length ||
+    if (cards.map((c) => c.id).toSet().length != cards.length ||
         cards.any(
           (c) => !(c.type == 'card'
               ? capabilityIds.any(
@@ -242,6 +265,42 @@ class ScriptManifest {
               : capabilityIds.containsAll(c.requiredCapabilities)),
         )) {
       throw const FormatException('duplicate or unsupported script card');
+    }
+    final rawAccounts = json['accounts'];
+    if (((json['sdkVersion'] as int) >= 11 && !json.containsKey('accounts')) ||
+        (json.containsKey('accounts') &&
+            ((json['sdkVersion'] as int) < 11 ||
+                rawAccounts is! List ||
+                rawAccounts.length > 16))) {
+      throw const FormatException('accounts requires SDK 11 and an array');
+    }
+    final accounts = (rawAccounts as List? ?? const [])
+        .map(
+          (raw) => ScriptAccount.fromJson(
+            _object(raw, 'account'),
+            sdkVersion: json['sdkVersion'] as int,
+          ),
+        )
+        .toList(growable: false);
+    if (accounts.map((a) => a.id).toSet().length != accounts.length ||
+        accounts.any(
+          (a) =>
+              (a.loginCapability != null &&
+                  !capabilityIds.contains(a.loginCapability)) ||
+              (a.statusCapability != null &&
+                  a.statusCapability != 'account.session') ||
+              (a.statusCapability != null &&
+                  !capabilityIds.contains(a.statusCapability)) ||
+              !capabilityIds.containsAll(a.capabilities),
+        )) {
+      throw const FormatException('duplicate account or undeclared capability');
+    }
+    final appTunnels = json['appTunnels'] ?? const [];
+    if (appTunnels is! List ||
+        appTunnels.length > 1 ||
+        (json.containsKey('appTunnels') && (json['sdkVersion'] as int) < 12) ||
+        appTunnels.any((v) => v != 'hermes-atrust')) {
+      throw const FormatException('invalid APPTunnel declaration');
     }
     return ScriptManifest._(
       sdkVersion: json['sdkVersion'] as int,
@@ -258,6 +317,8 @@ class ScriptManifest {
       capabilities: List.unmodifiable(caps),
       home: List.unmodifiable(home),
       cards: List.unmodifiable(cards),
+      accounts: List.unmodifiable(accounts),
+      appTunnels: Set.unmodifiable(appTunnels.cast<String>()),
     );
   }
 
@@ -267,6 +328,11 @@ class ScriptManifest {
   final String schoolId;
   final String name;
   final String? homeTitle;
+
+  /// Use [declaresAccounts] to distinguish an older SDK from explicit [].
+  final List<ScriptAccount> accounts;
+  final Set<String> appTunnels;
+  bool get declaresAccounts => sdkVersion >= 11;
   final ScriptNetworkPolicy network;
   final ScriptNetworkPolicy websocketNetwork;
   final bool browser;
@@ -409,6 +475,108 @@ class ScriptHomeEntry {
   final bool preload;
 }
 
+/// ADR-064: descriptive requirements and one explicit same-package login call.
+/// This is not a credential access policy or a server-side account status.
+class ScriptAccount {
+  const ScriptAccount._({
+    required this.id,
+    required this.name,
+    required this.instructions,
+    required this.capabilities,
+    required this.loginCapability,
+    required this.loginParams,
+    required this.statusCapability,
+    required this.statusParams,
+  });
+
+  factory ScriptAccount.fromJson(
+    Map<String, dynamic> json, {
+    int sdkVersion = 11,
+  }) {
+    _keys(json, {
+      'id',
+      'name',
+      'instructions',
+      'capabilities',
+      if (json.containsKey('login')) 'login',
+      if (sdkVersion >= 12 && json.containsKey('status')) 'status',
+    }, 'account');
+    final id = _text(json, 'id', 128);
+    final name = _text(json, 'name', 160);
+    final instructions = _text(json, 'instructions', 2048);
+    final plainText = RegExp(
+      r'[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]',
+    );
+    final capabilities = json['capabilities'];
+    if (!_identifier.hasMatch(id) ||
+        plainText.hasMatch(name) ||
+        plainText.hasMatch(instructions) ||
+        capabilities is! List ||
+        capabilities.isEmpty ||
+        capabilities.length > 64 ||
+        capabilities.any((c) => c is! String || c.isEmpty || c.length > 128) ||
+        capabilities.toSet().length != capabilities.length) {
+      throw const FormatException('invalid account declaration');
+    }
+    final login = json.containsKey('login')
+        ? _object(json['login'], 'account login')
+        : <String, dynamic>{};
+    _keys(login, {
+      if (json.containsKey('login')) 'capability',
+      if (login.containsKey('params')) 'params',
+    }, 'account login');
+    final params = login.containsKey('params')
+        ? _object(login['params'], 'account login params')
+        : <String, dynamic>{};
+    if (login['capability'] == 'account.session' &&
+        (params['account'] != id ||
+            params['operation'] != 'login' ||
+            params.length != 2)) {
+      throw const FormatException('invalid account login binding');
+    }
+    if (utf8.encode(jsonEncode(params)).length > 4096) {
+      throw const FormatException('account login params exceed limit');
+    }
+    final status = json.containsKey('status')
+        ? _object(json['status'], 'account status')
+        : <String, dynamic>{};
+    _keys(status, {
+      if (json.containsKey('status')) 'capability',
+      if (status.containsKey('params')) 'params',
+    }, 'account status');
+    final statusParams = status.containsKey('params')
+        ? _object(status['params'], 'account status params')
+        : <String, dynamic>{};
+    if (utf8.encode(jsonEncode(statusParams)).length > 4096 ||
+        (json.containsKey('status') &&
+            (status['capability'] != 'account.session' ||
+                statusParams['operation'] != 'status' ||
+                statusParams['account'] != id ||
+                statusParams.length != 2))) {
+      throw const FormatException('invalid read-only account status binding');
+    }
+    return ScriptAccount._(
+      id: id,
+      name: name,
+      instructions: instructions,
+      capabilities: List.unmodifiable(capabilities.cast<String>()),
+      loginCapability: json.containsKey('login')
+          ? _text(login, 'capability', 128)
+          : null,
+      loginParams: _immutableJson(params) as Map<String, dynamic>,
+      statusCapability: status['capability'] as String?,
+      statusParams: _immutableJson(statusParams) as Map<String, dynamic>,
+    );
+  }
+
+  final String id, name, instructions;
+  final String? loginCapability;
+  final String? statusCapability;
+  final Map<String, dynamic> statusParams;
+  final List<String> capabilities;
+  final Map<String, dynamic> loginParams;
+}
+
 // ADR-038 §1 / ADR-034 §2: nested declaration parameters are digest-bound too.
 Object? _immutableJson(Object? value) {
   if (value is Map<String, dynamic>) {
@@ -424,21 +592,47 @@ Object? _immutableJson(Object? value) {
 
 /// ADR-043 §3: finite host-owned presentation, never executable layout.
 class ScriptCardEntry {
-  const ScriptCardEntry._(this.type, this.defaultVariant);
+  const ScriptCardEntry._(
+    this.type,
+    this.defaultVariant,
+    this.id,
+    this.title,
+    this.hasExplicitId,
+  );
 
-  factory ScriptCardEntry.fromJson(Map<String, dynamic> json) {
-    _keys(json, {'type', 'defaultVariant'}, 'card entry');
+  factory ScriptCardEntry.fromJson(
+    Map<String, dynamic> json, {
+    int sdkVersion = 6,
+  }) {
+    _keys(json, {
+      'type',
+      'defaultVariant',
+      if (sdkVersion >= 12 && json.containsKey('id')) 'id',
+      if (sdkVersion >= 12 && json.containsKey('title')) 'title',
+    }, 'card entry');
     final type = _text(json, 'type', 32);
     final variant = _text(json, 'defaultVariant', 32);
     if (!requiredCapabilitiesByType.containsKey(type) ||
         !variantsFor(type).contains(variant)) {
       throw const FormatException('unsupported script card presentation');
     }
-    return ScriptCardEntry._(type, variant);
+    final id = json.containsKey('id') ? _text(json, 'id', 128) : type;
+    final title = json.containsKey('title') ? _text(json, 'title', 160) : null;
+    if (!_identifier.hasMatch(id) ||
+        (title != null &&
+            RegExp(
+              r'[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]',
+            ).hasMatch(title))) {
+      throw const FormatException('invalid card instance identity or title');
+    }
+    return ScriptCardEntry._(type, variant, id, title, json.containsKey('id'));
   }
 
   final String type;
   final String defaultVariant;
+  final String id;
+  final String? title;
+  final bool hasExplicitId;
 
   static const requiredCapabilitiesByType = <String, List<String>>{
     'notice': ['notice.list'],

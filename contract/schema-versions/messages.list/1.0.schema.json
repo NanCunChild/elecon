@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.messages.list",
+  "title": "当前消息窗口",
+  "description": "ADR-052：前台调用，不预加载或持久缓存。",
+  "type": "object",
+  "properties": {
+    "serviceId": {
+      "type": "string",
+      "description": "稳定服务标识；消息 ID 在服务及账号内唯一。",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "accountId": {
+      "type": "string",
+      "description": "本次核验的远端账号 ID。",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "accountLabel": {
+      "type": "string",
+      "description": "本次核验的账号展示名。",
+      "maxLength": 160
+    },
+    "windowStartedAt": {
+      "type": "string",
+      "description": "本次前台读取窗口开始时刻，RFC3339。",
+      "format": "date-time"
+    },
+    "fetchedAt": {
+      "type": "string",
+      "description": "本次读取完成时刻，RFC3339。",
+      "format": "date-time"
+    },
+    "coverage": {
+      "type": "string",
+      "description": "window 仅涵盖当前接收窗口；不是历史完整性、未读数或用户已读状态。",
+      "enum": [
+        "window"
+      ]
+    },
+    "items": {
+      "type": "array",
+      "description": "此窗口收到的群消息；无记录不代表无历史/未读消息。",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "源站稳定消息 ID，十进制大整数不得转浮点。",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "conversationId": {
+            "type": "string",
+            "description": "源站会话 ID；按服务/账号限定。",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "senderId": {
+            "type": "string",
+            "description": "可用时的源站发送人 ID，否则省略。",
+            "maxLength": 128
+          },
+          "text": {
+            "type": "string",
+            "description": "纯文本消息摘要；不包含附件凭据或任意 HTML。",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "sentAt": {
+            "type": "string",
+            "description": "源站明确提供时的发送时刻，RFC3339；未知省略。",
+            "format": "date-time"
+          },
+          "activityId": {
+            "type": "string",
+            "description": "可用时的关联签到活动 ID；不能据此自动提交签到。",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "id",
+          "conversationId",
+          "text"
+        ]
+      }
+    }
+  },
+  "required": [
+    "serviceId",
+    "accountId",
+    "accountLabel",
+    "windowStartedAt",
+    "fetchedAt",
+    "coverage",
+    "items"
+  ]
+}

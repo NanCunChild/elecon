@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1/2/3/4/5/6/7/8/9/10 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
+/** Trusted school script SDK 1/2/3/4/5/6/7/8/9/10/11/12 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -105,6 +105,13 @@ export interface ScriptContext {
   }): Promise<ScriptResponse>;
   /** Present only when browser=true; host platform limitations still apply. */
   readonly browser?: ScriptBrowser;
+  /** SDK12 + manifest.appTunnels; host-owned credentials never returned. */
+  readonly appTunnel?: {
+    status(provider: "hermes-atrust"): Promise<ScriptAccountState>;
+    /** Explicit account-page operation. Publishing new credentials revokes the
+     * invoking run; the native account page then rechecks this approved source. */
+    login(provider: "hermes-atrust"): Promise<ScriptAccountState>;
+  };
   now(): number;
   log(level: "debug" | "info" | "warn" | "error", message: string): void;
 }
@@ -145,13 +152,14 @@ export interface ScriptHomeEntry {
   preload?: boolean;
 }
 
-/** ADR-043 §3: optional SDK6+ manifest.cards entry (at most ten distinct types).
+/** ADR-043 §3: optional SDK6+ manifest.cards entry (at most ten entries).
+ * SDK12 permits repeated types with distinct ids; older SDKs require unique types.
  * Suggestions never override saved user layout. The host owns geometry,
  * rendering and stable card identity; this is not a runtime JS layout API.
  * Each type requires its corresponding standard capabilities. This does not
  * change manifest.home cache/preload policy or grant any additional access.
  */
-export type ScriptCardEntry =
+export type ScriptCardEntry = { id?: string; title?: string } & (
   | {
       type: "notice" | "schedule" | "grades" | "library";
       defaultVariant: "compact" | "regular" | "expanded";
@@ -159,7 +167,7 @@ export type ScriptCardEntry =
   | {
       type: "card" | "exam" | "classroom" | "energy" | "climate" | "generic";
       defaultVariant: "regular";
-    };
+    });
 
 /** ADR-043 §2.2: optional SDK7 manifest presentation metadata.
  * homeTitle is single-line plain text, at most 80 Unicode code points, without
@@ -227,3 +235,18 @@ export interface ScriptPosition { latitude: number; longitude: number; accuracyM
  * invalid_result / busy / limit / timeout (all prefixed device_input_), invocation_cancelled.
  * ADR-059 configuration_required denotes missing explicit service configuration,
  * independent of authentication; not a fabricated empty business result. */
+
+/** SDK 11/12 manifest metadata (ADR-064/066); no additional runtime authority. */
+export interface ScriptAccountRequirement {
+  id: string;
+  name: string;
+  instructions: string;
+  capabilities: string[];
+  login?: { capability: string; params?: Record<string, unknown> };
+  /** SDK12, account.session with {account:id,operation:"status"}; no interaction. */
+  status?: { capability: "account.session"; params: {account: string; operation: "status"} };
+}
+
+/** ADR-066: source-verified status; network failure is unknown, never expired. */
+export type ScriptAccountState = import("../generated/ts/account.session.js").AccountSession;
+export interface ScriptAppTunnelPermission { appTunnels?: ["hermes-atrust"]; }

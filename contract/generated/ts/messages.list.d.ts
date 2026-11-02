@@ -31,4 +31,6 @@ export interface MessagesListItems {
   sentAt?: string;
   /** 可用时的关联签到活动 ID；不能据此自动提交签到。 */
   activityId?: string;
+  /** ADR-066：有限内容类型；activity/command只展示标识与纯文本摘要，不执行指令或活动。 */
+  kind: "text" | "image" | "video" | "voice" | "file" | "location" | "activity" | "command" | "course" | "homework" | "task" | "unknown";
 }

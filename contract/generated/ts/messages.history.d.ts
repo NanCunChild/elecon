@@ -22,6 +22,10 @@ export interface MessagesHistory {
   items: MessagesHistoryItems[];
   /** 已撤回消息 ID；墓碑覆盖所有已存和后续补到的旧正文。 */
   recalledIds: string[];
+  /** ADR-066：当前账号发送权限；allowed须来自当前源站核验，muted表示确认禁言/停用，unknown表示缺少证据。历史缓存不能授权发送。 */
+  sendPermission?: "allowed" | "muted" | "unknown";
+  /** 固定原因；不含源站异常或敏感信息。缺失时仅按sendPermission展示。 */
+  sendPermissionReason?: "member_muted" | "group_muted" | "group_disabled" | "verification_failed";
 }
 
 export interface MessagesHistoryItems {
@@ -29,8 +33,8 @@ export interface MessagesHistoryItems {
   id: string;
   /** 纯文本消息或附件摘要，不是 HTML/可执行链接；撤回记录不含原文。 */
   text: string;
-  /** 内容类型只决定有限展示；业务实体与附件均不可点击。 */
-  kind: "text" | "image" | "video" | "voice" | "file" | "location" | "activity" | "course" | "homework" | "task" | "unknown";
+  /** ADR-066：有限内容类型；activity/command只展示标识与纯文本摘要，不执行指令或活动。 */
+  kind: "text" | "image" | "video" | "voice" | "file" | "location" | "activity" | "command" | "course" | "homework" | "task" | "unknown";
   /** 相对于本次核验账号的发送方向。 */
   direction: "incoming" | "outgoing";
   /** 源站发送者 ID，未知省略。 */

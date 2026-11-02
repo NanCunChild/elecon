@@ -34,6 +34,8 @@ class MessagesConversationsItems {
     required this.title,
     this.hasContent,
     this.lastMessageAt,
+    this.sendPermission,
+    this.sendPermissionReason,
   });
 
   /// 源站会话 ID；由 serviceId/accountId/conversationKind 共同限定。
@@ -46,4 +48,8 @@ class MessagesConversationsItems {
   final bool? hasContent;
   /// 已确认内容消息中最新的源站发送时刻，RFC3339；未知省略，不用群资料更新时间或本地抓取时刻代替。
   final String? lastMessageAt;
+  /// ADR-066：当前账号发送权限；allowed须来自当前源站核验，muted表示确认禁言/停用，unknown表示缺少证据。历史缓存不能授权发送。
+  final String? sendPermission;
+  /// 固定原因；不含源站异常或敏感信息。缺失时仅按sendPermission展示。
+  final String? sendPermissionReason;
 }
