@@ -464,7 +464,7 @@
   },
   "scriptsWebsocketPermission": "Allow bounded foreground WebSocket connections:",
   "forumAccountDescription": "Connect your separate Ruisi account. Sign-in and local sign-out are available; forum browsing is in preparation.",
-  "messagesWindowDescription": "Fetch Chaoxing group messages for a short foreground window. History and private messages are not included; delivery receipts do not mean you have read them. QR check-in supports activities without location, face, photo or CAPTCHA requirements.",
+  "messagesWindowDescription": "Fetch Chaoxing group messages for a short foreground window. History and private messages are not included; delivery receipts do not mean you have read them.",
   "communitySignedOut": "No account connected for this service",
   "communityConnect": "Sign in to service",
   "communityDisconnect": "Sign out locally",
