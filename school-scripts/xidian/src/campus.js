@@ -448,12 +448,18 @@ export async function cardQr(ctx) {
     // Only extract the id. Never follow an arbitrary link from the page.
     if (!/^(?:https:\/\/v8scan\.xidian\.edu\.cn)?\/virtualcard\/openVirtualcard\?/.test(href)) continue;
     const match = /[?&]id=([^&]+)/.exec(href);
-    if (match) { id = decodeURIComponent(match[1]); break; }
+    if (match) {
+      id = decodeURIComponent(match[1]);
+      break;
+    }
   }
   if (!id || id.length > 256) fail("card_qr_missing");
-  const html = await responseText(await client.request(
-    `${CARD}/virtualcard/openVirtualcard?openid=${encodeURIComponent(openid)}&displayflag=1&id=${encodeURIComponent(id)}`,
-  ), "xidian_login_required_card");
+  const html = await responseText(
+    await client.request(
+      `${CARD}/virtualcard/openVirtualcard?openid=${encodeURIComponent(openid)}&displayflag=1&id=${encodeURIComponent(id)}`,
+    ),
+    "xidian_login_required_card",
+  );
   const source = selectAll("#qrcode", parseDocument(html))[0]?.attribs?.src || "";
   const match = /^data:image\/png;base64,(iVBORw0KGgo[A-Za-z0-9+/]*={0,2})$/.exec(source.replace(/\s/g, ""));
   if (!match || match[1].length > 349528) fail("card_qr_invalid");
