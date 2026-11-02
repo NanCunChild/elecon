@@ -6,9 +6,96 @@
 library;
 
 import 'package:elecon/ui/home/schema_decode.dart';
+import 'package:elecon/ui/home/models.dart' show GenericRole;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'notice decoding preserves pagination and source metadata without guessing',
+    () {
+      final data = noticeListFromDynamic({
+        'page': 2,
+        'size': 20,
+        'cursor': 'next-page',
+        'total': 23,
+        'hasNext': false,
+        'sourceSystem': 'synthetic-learning',
+        'items': [
+          {
+            'id': 'notice-1',
+            'title': 'Synthetic notice',
+            'category': 'general',
+            'source': 'Synthetic course',
+            'content': 'Body from the HTTP list',
+            'audience': ['students'],
+            'tags': ['course'],
+            'pinned': true,
+            'importance': 'high',
+            'status': 'published',
+          },
+        ],
+      })!;
+      expect(data.page, 2);
+      expect(data.size, 20);
+      expect(data.cursor, 'next-page');
+      expect(data.total, 23);
+      expect(data.hasNext, false);
+      expect(data.sourceSystem, 'synthetic-learning');
+      expect(data.items.single.content, 'Body from the HTTP list');
+      expect(data.items.single.audience, ['students']);
+      expect(data.items.single.tags, ['course']);
+      expect(data.items.single.pinned, true);
+      final missing = noticeListFromDynamic({'items': [], 'cursor': 42})!;
+      expect(missing.page, isNull);
+      expect(missing.total, isNull);
+      expect(missing.hasNext, isNull);
+      expect(missing.cursor, isNull);
+    },
+  );
+
+  test(
+    'generic decoder retains data roles and rejects malformed table rows',
+    () {
+      final data = genericSectionFromDynamic({
+        'sectionId': 'synthetic',
+        'title': 'Synthetic data',
+        'fields': [
+          {'label': 'Unknown', 'role': 'future', 'value': null},
+        ],
+        'table': {
+          'columns': [
+            {'label': 'Quantity', 'role': 'quantity'},
+          ],
+          'rows': [
+            [0],
+          ],
+        },
+      })!;
+      expect(data.fields.single.role, GenericRole.unknown);
+      expect(data.fields.single.value, isNull);
+      expect(data.table!.rows.single.single, 0);
+      for (final row in [
+        42,
+        [],
+        [1, 2],
+      ]) {
+        expect(
+          genericSectionFromDynamic({
+            'sectionId': 'synthetic',
+            'title': 'Synthetic data',
+            'table': {
+              'columns': [
+                {'label': 'One', 'role': 'label'},
+              ],
+              'rows': [row],
+            },
+          }),
+          isNull,
+        );
+      }
+    },
+  );
+
   test(
     'card account results need money or transactions, not an invented physical card id',
     () {

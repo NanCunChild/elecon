@@ -108,7 +108,7 @@ class HomeCardEntry {
   }
 }
 
-/// Only order and presentation are stored; never business data or provider IDs.
+/// Only order and presentation are stored; never business data or execution authority.
 class HomeCardLayout {
   HomeCardLayout({
     List<String> order = const [],
@@ -207,7 +207,7 @@ class HomeCardLayout {
   }
 
   static bool _validId(Object? id) =>
-      id is String && id.isNotEmpty && id.length <= 256;
+      id is String && id.isNotEmpty && id.length <= 512;
 
   Map<String, Object> toJson() => {
     'version': 4,

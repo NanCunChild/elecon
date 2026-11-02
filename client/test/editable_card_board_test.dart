@@ -113,6 +113,127 @@ void order(WidgetTester tester, String first, String second) => expect(
   lessThan(tester.getTopLeft(card(second)).dy),
 );
 void main() {
+  testWidgets('dropping unequal expanded cards preserves the previewed order', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryLayoutStore();
+    await tester.pumpWidget(
+      app(
+        store,
+        cards: [
+          for (final (id, height) in [('notice', 120.0), ('schedule', 375.0)])
+            HomeCardEntry(
+              id: id,
+              label: id,
+              defaultSize: HomeCardSize.expanded,
+              builder: (_) => SizedBox(height: height),
+            ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    final gesture = await pickup(tester, 'notice');
+    await gesture.moveTo(tester.getCenter(card('schedule')));
+    await tester.pump(const Duration(milliseconds: 180));
+    await tester.pump(const Duration(milliseconds: 250));
+    order(tester, 'schedule', 'notice');
+    await gesture.up();
+    await tester.pumpAndSettle();
+    order(tester, 'schedule', 'notice');
+    expect(store.layouts['a']!.order, ['schedule', 'notice']);
+  });
+
+  testWidgets(
+    'measured full-width cards compact mixed rows, drag and restore without overlap',
+    (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final height = ValueNotifier(73.0);
+      addTearDown(height.dispose);
+      final store = MemoryLayoutStore();
+      store.layouts['a'] = HomeCardLayout(
+        sizes: {
+          for (final id in ['a', 'b', 'c', 'd']) id: HomeCardSize.compact,
+        },
+      );
+      final cards = [
+        HomeCardEntry(
+          id: 'first',
+          label: 'First',
+          defaultSize: HomeCardSize.expanded,
+          builder: (_) => ValueListenableBuilder<double>(
+            valueListenable: height,
+            builder: (_, value, _) => SizedBox(height: value),
+          ),
+        ),
+        HomeCardEntry(
+          id: 'summary',
+          label: 'Summary',
+          builder: (_) => const SectionCard(
+            title: 'Summary',
+            summary: CardSummary('Synthetic summary'),
+            child: Text('Full details'),
+          ),
+        ),
+        ...entries(['a', 'b', 'c', 'd']),
+        HomeCardEntry(
+          id: 'last',
+          label: 'Last',
+          defaultSize: HomeCardSize.expanded,
+          builder: (_) => const SizedBox(height: 127),
+        ),
+      ];
+      Rect slot(String id) => tester.getRect(control('slot', id));
+      void checkGeometry() {
+        expect(slot('first').height, height.value);
+        expect(slot('summary').top - slot('first').bottom, 12);
+        expect(slot('last').top - slot('summary').bottom, 12);
+        expect(slot('last').height, 127);
+        expect(slot('a').height * 2 + 12, slot('summary').height);
+        for (var i = 0; i < cards.length; i++) {
+          for (var j = i + 1; j < cards.length; j++) {
+            expect(
+              slot(cards[i].id).overlaps(slot(cards[j].id)),
+              isFalse,
+              reason: '${cards[i].id} overlaps ${cards[j].id}',
+            );
+          }
+        }
+      }
+
+      await tester.pumpWidget(app(store, cards: cards));
+      await tester.pumpAndSettle();
+      checkGeometry();
+      final gesture = await tester.startGesture(
+        tester.getCenter(control('open', 'a')),
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await gesture.moveTo(tester.getCenter(control('open', 'b')));
+      await tester.pump(const Duration(milliseconds: 180));
+      await tester.pump(const Duration(milliseconds: 250));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(store.layouts['a']!.positions['a']!.column, 3);
+      expect(store.layouts['a']!.positions['a']!.row, 2);
+      checkGeometry();
+      height.value = 177;
+      await tester.pumpAndSettle();
+      checkGeometry();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(app(store, cards: cards));
+      await tester.pumpAndSettle();
+      expect(store.layouts['a']!.positions['a'], const HomeCardPosition(3, 2));
+      checkGeometry();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('icon centre long press picks up and reorders horizontally', (
     tester,
   ) async {
@@ -593,65 +714,61 @@ void main() {
     },
   );
 
-  testWidgets(
-    'empty-cell drop settles upward and cancelled drag rolls back',
-    (tester) async {
-      tester.view.physicalSize = const Size(400, 1200);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final store = MemoryLayoutStore();
-      store.layouts['a'] = HomeCardLayout(
-        sizes: {
-          'notice': HomeCardSize.compact,
-          'schedule': HomeCardSize.compact,
-        },
-      );
-      await tester.pumpWidget(app(store));
-      await tester.pumpAndSettle();
-      final origin = tester.getTopLeft(card('notice'));
-      final small = tester.getSize(card('notice'));
-      final delta = Offset(3 * (small.width + 12), 2 * (small.height + 12));
-      final gesture = await tester.startGesture(
-        tester.getCenter(control('open', 'notice')),
-      );
-      await tester.pump(const Duration(milliseconds: 600));
-      await gesture.moveBy(delta);
-      await tester.pump(const Duration(milliseconds: 180));
-      await tester.pump(const Duration(milliseconds: 250));
-      expect(tester.getTopLeft(card('notice')), origin + delta);
-      expect(store.layouts['a']!.positions, isEmpty);
-      await gesture.up();
-      await tester.pumpAndSettle();
-      expect(
-        store.layouts['a']!.positions['notice'],
-        const HomeCardPosition(3, 0),
-      );
-      await tester.pumpWidget(const SizedBox());
-      await tester.pumpWidget(app(store));
-      await tester.pumpAndSettle();
-      expect(tester.getTopLeft(card('notice')), origin + Offset(delta.dx, 0));
-      final cancel = await tester.startGesture(
-        tester.getCenter(control('open', 'notice')),
-      );
-      await tester.pump(const Duration(milliseconds: 600));
-      await cancel.moveBy(-delta);
-      await tester.pump(const Duration(milliseconds: 180));
-      await tester.pump(const Duration(milliseconds: 250));
-      await cancel.cancel();
-      await tester.pumpAndSettle();
-      expect(tester.getTopLeft(card('notice')), origin + Offset(delta.dx, 0));
-      expect(
-        store.layouts['a']!.positions['notice'],
-        const HomeCardPosition(3, 0),
-      );
-      await choose(tester, 'notice', 'home-card-grid:up');
-      expect(
-        store.layouts['a']!.positions['notice'],
-        const HomeCardPosition(3, 0),
-      );
-    },
-  );
+  testWidgets('empty-cell drop settles upward and cancelled drag rolls back', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = MemoryLayoutStore();
+    store.layouts['a'] = HomeCardLayout(
+      sizes: {'notice': HomeCardSize.compact, 'schedule': HomeCardSize.compact},
+    );
+    await tester.pumpWidget(app(store));
+    await tester.pumpAndSettle();
+    final origin = tester.getTopLeft(card('notice'));
+    final small = tester.getSize(card('notice'));
+    final delta = Offset(3 * (small.width + 12), 2 * (small.height + 12));
+    final gesture = await tester.startGesture(
+      tester.getCenter(control('open', 'notice')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveBy(delta);
+    await tester.pump(const Duration(milliseconds: 180));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.getTopLeft(card('notice')), origin + delta);
+    expect(store.layouts['a']!.positions, isEmpty);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(
+      store.layouts['a']!.positions['notice'],
+      const HomeCardPosition(3, 0),
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(app(store));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(card('notice')), origin + Offset(delta.dx, 0));
+    final cancel = await tester.startGesture(
+      tester.getCenter(control('open', 'notice')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await cancel.moveBy(-delta);
+    await tester.pump(const Duration(milliseconds: 180));
+    await tester.pump(const Duration(milliseconds: 250));
+    await cancel.cancel();
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(card('notice')), origin + Offset(delta.dx, 0));
+    expect(
+      store.layouts['a']!.positions['notice'],
+      const HomeCardPosition(3, 0),
+    );
+    await choose(tester, 'notice', 'home-card-grid:up');
+    expect(
+      store.layouts['a']!.positions['notice'],
+      const HomeCardPosition(3, 0),
+    );
+  });
   testWidgets('RTL drag mirrors columns while preserving logical coordinates', (
     tester,
   ) async {

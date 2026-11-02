@@ -1,6 +1,8 @@
 /// Fixed schema renderers and foreground controls (ADR-004 §2 / ADR-040).
 library;
 
+import 'capability_source.dart';
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../l10n/gen/app_localizations.dart';
@@ -25,6 +27,7 @@ class EnergySection extends StatefulWidget {
 
 class _EnergySectionState extends State<EnergySection> {
   SessionController? _session;
+  CapabilitySource? _source;
   int? _generation;
   int _request = 0;
   List<Map<String, dynamic>>? _meters, _history;
@@ -37,9 +40,12 @@ class _EnergySectionState extends State<EnergySection> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final session = SessionScope.of(context);
-    if (_session != session ||
+    final source = CapabilitySourceScope.maybeOf(context)?.source;
+    if (_source != source ||
+        _session != session ||
         _generation != session.trustedScriptViewGeneration) {
       _session = session;
+      _source = source;
       _generation = session.trustedScriptViewGeneration;
       _request++;
       _meters = null;
@@ -61,18 +67,25 @@ class _EnergySectionState extends State<EnergySection> {
       _session?.trustedScriptViewGeneration == _generation;
   Future<void> _restore() async {
     final request = _request;
-    final cached = await _session!.cachedCapability('energy.meters');
+    final cached = await CapabilityQueries(
+      _session!,
+      source: _source,
+    ).cachedCapability('energy.meters');
     if (!_current(request)) return;
     if (cached == null) {
-      final needsConfiguration = await _session!.capabilityNeedsConfiguration(
-        'energy.meters',
-      );
+      final needsConfiguration = await CapabilityQueries(
+        _session!,
+        source: _source,
+      ).capabilityNeedsConfiguration('energy.meters');
       if (_current(request)) {
         setState(() => _needsConfiguration = needsConfiguration);
       }
       return;
     }
-    final history = await _session!.latestCachedCapability('energy.usage');
+    final history = await CapabilityQueries(
+      _session!,
+      source: _source,
+    ).latestCachedCapability('energy.usage');
     if (!_current(request)) return;
     setState(() {
       _meters = _items(cached.data);
@@ -128,7 +141,10 @@ class _EnergySectionState extends State<EnergySection> {
     }
     try {
       final capability = history ? 'energy.usage' : 'energy.meters';
-      final result = await _session!.runCapability(capability, params: params);
+      final result = await CapabilityQueries(
+        _session!,
+        source: _source,
+      ).runCapability(capability, params: params);
       if (!_current(request)) return;
       if (!result.ok) {
         setState(() {
@@ -138,10 +154,10 @@ class _EnergySectionState extends State<EnergySection> {
         return;
       }
       _needsConfiguration = false;
-      final cached = await _session!.cachedCapability(
-        capability,
-        params: params,
-      );
+      final cached = await CapabilityQueries(
+        _session!,
+        source: _source,
+      ).cachedCapability(capability, params: params);
       if (!_current(request)) return;
       setState(() {
         if (history) {
@@ -356,6 +372,7 @@ class ClimateSection extends StatefulWidget {
 class _ClimateSectionState extends State<ClimateSection>
     with WidgetsBindingObserver {
   SessionController? _session;
+  CapabilitySource? _source;
   int? _generation;
   int _request = 0, _actionEpoch = 0;
   List<Map<String, dynamic>> _devices = [];
@@ -392,11 +409,14 @@ class _ClimateSectionState extends State<ClimateSection>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final session = SessionScope.of(context);
-    if (_session != session ||
+    final source = CapabilitySourceScope.maybeOf(context)?.source;
+    if (_source != source ||
+        _session != session ||
         _generation != session.trustedScriptViewGeneration) {
       _actionEpoch++;
       _request++;
       _session = session;
+      _source = source;
       _generation = session.trustedScriptViewGeneration;
       _devices = [];
       _status = null;
@@ -430,11 +450,12 @@ class _ClimateSectionState extends State<ClimateSection>
     });
     try {
       if (!statusOnly) {
-        final result = await _session!.runCapability(
-          'climate.devices',
-          params: {if (configure) 'configure': true},
-          interactive: interactive,
-        );
+        final result = await CapabilityQueries(_session!, source: _source)
+            .runCapability(
+              'climate.devices',
+              params: {if (configure) 'configure': true},
+              interactive: interactive,
+            );
         if (!_current(request)) return;
         if (!result.ok) {
           setState(() {
@@ -455,11 +476,12 @@ class _ClimateSectionState extends State<ClimateSection>
         });
       }
       if (_selected == null) return;
-      final result = await _session!.runCapability(
-        'climate.status',
-        params: {'deviceId': _selected},
-        interactive: false,
-      );
+      final result = await CapabilityQueries(_session!, source: _source)
+          .runCapability(
+            'climate.status',
+            params: {'deviceId': _selected},
+            interactive: false,
+          );
       if (!_current(request)) return;
       setState(() {
         _status = result.ok ? _map(result.data) : null;
@@ -509,15 +531,16 @@ class _ClimateSectionState extends State<ClimateSection>
     try {
       var outcome = 'unknown';
       try {
-        final result = await session.runCapability(
-          'climate.command',
-          params: {
-            'deviceId': deviceId,
-            'command': command,
-            'settings': settings,
-          },
-          interactive: false,
-        );
+        final result = await CapabilityQueries(session, source: _source)
+            .runCapability(
+              'climate.command',
+              params: {
+                'deviceId': deviceId,
+                'command': command,
+                'settings': settings,
+              },
+              interactive: false,
+            );
         outcome = climateCommandOutcome(ok: result.ok, output: result.data);
       } catch (_) {
         // A failed/uncertain send is never retried. Read the state once below.
@@ -525,11 +548,12 @@ class _ClimateSectionState extends State<ClimateSection>
       if (!current()) return;
       Map<String, dynamic>? observed;
       try {
-        final result = await session.runCapability(
-          'climate.status',
-          params: {'deviceId': deviceId},
-          interactive: false,
-        );
+        final result = await CapabilityQueries(session, source: _source)
+            .runCapability(
+              'climate.status',
+              params: {'deviceId': deviceId},
+              interactive: false,
+            );
         if (result.ok) observed = _map(result.data);
         if (observed?['deviceId'] != deviceId) observed = null;
       } catch (_) {

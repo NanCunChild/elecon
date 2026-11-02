@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'card_layout.dart';
+import 'capability_source.dart';
 import '../../l10n/gen/app_localizations.dart';
 
 /// A business surface whose preview opens its native feature page.
@@ -21,6 +22,7 @@ class SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final title = CapabilitySourceScope.maybeOf(context)?.title ?? this.title;
     final theme = Theme.of(context);
     final presentation = HomeCardPresentation.maybeOf(context);
     final preview = HomeCardPresentation.isPreview(context);

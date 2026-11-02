@@ -206,6 +206,30 @@ class _DelayedResultSession extends SessionController {
   }
 }
 
+Future<void> refreshHomeAndPump(
+  WidgetTester tester,
+  SessionController session,
+) async {
+  // A lifecycle/timer refresh may already have continuations in FakeAsync.
+  // Keep pumping those while QuickJS responds on the real event loop; awaiting
+  // that existing future inside runAsync would stop the fake clock indefinitely.
+  var completed = false;
+  Object? failure;
+  StackTrace? trace;
+  session.refreshHomeData().then<void>(
+    (_) {
+      completed = true;
+    },
+    onError: (Object error, StackTrace stack) {
+      failure = error;
+      trace = stack;
+      completed = true;
+    },
+  );
+  await until(tester, () => completed);
+  if (failure != null) Error.throwWithStackTrace(failure!, trace!);
+}
+
 void main() {
   for (final logout in [false, true]) {
     for (final grades in [false, true]) {
@@ -545,13 +569,13 @@ void main() {
       // A full foreground refresh interval must remain invisible and respect
       // fresh TTLs; pausing and disposal must cancel the periodic work.
       await tester.pump(const Duration(minutes: 1));
-      await tester.runAsync(() => session.refreshHomeData());
+      await refreshHomeAndPump(tester, session);
       await tester.pumpAndSettle();
       expect(find.text('Synthetic notice 1'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.runAsync(() => session.refreshHomeData());
+      await refreshHomeAndPump(tester, session);
       await tester.pumpAndSettle();
       expect(find.text('Synthetic notice 1'), findsOneWidget);
       expect(find.text('Synthetic notice 2'), findsNothing);

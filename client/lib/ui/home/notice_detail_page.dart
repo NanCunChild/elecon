@@ -9,13 +9,20 @@ import '../../session/session_controller.dart';
 import '../../session/session_scope.dart';
 import 'display_date.dart';
 import 'models.dart';
+import 'capability_source.dart';
 
 typedef NoticeDetailLoader = Future<NoticeDetail?> Function();
 
 class NoticeDetailPage extends StatefulWidget {
-  const NoticeDetailPage({required this.item, this.loadDetail, super.key});
+  const NoticeDetailPage({
+    required this.item,
+    this.loadDetail,
+    this.source,
+    super.key,
+  });
 
   final NoticeListItems item;
+  final CapabilitySource? source;
   final NoticeDetailLoader? loadDetail;
 
   @override
@@ -71,13 +78,41 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
       if (widget.loadDetail != null) {
         detail = await widget.loadDetail!();
       } else {
-        final run = await _session!.runCapability(
-          'notice.detail',
-          params: {
-            'id': widget.item.id,
-            if (widget.item.url != null) 'url': widget.item.url,
-          },
-        );
+        final source = widget.source;
+        if (source != null) {
+          final installation = (await _session!.scriptRegistry).find(
+            source.packageId,
+          );
+          final package = installation?.package;
+          if (installation?.enabled != true ||
+              package == null ||
+              package.requiresUpdate ||
+              package.digest != source.digest ||
+              package.manifest.schoolId != _schoolId) {
+            throw const FormatException('notice_source_unavailable');
+          }
+          if (package.manifest.capability('notice.detail') == null) {
+            // A valid list-only source may provide title/attachments without text.
+            // Missing detail capability is an empty body, never a fallback source.
+            if (mounted &&
+                requestId == _requestId &&
+                generation == _session?.trustedScriptViewGeneration) {
+              setState(() {
+                _loading = false;
+                _failed = false;
+              });
+            }
+            return;
+          }
+        }
+        final run = await CapabilityQueries(_session!, source: widget.source)
+            .runCapability(
+              'notice.detail',
+              params: {
+                'id': widget.item.id,
+                if (widget.item.url != null) 'url': widget.item.url,
+              },
+            );
         if (run.ok && run.data is Map) {
           final raw = run.data as Map;
           if (raw['id'] == widget.item.id && raw['title'] is String) {

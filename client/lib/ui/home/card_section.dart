@@ -1,0 +1,817 @@
+/// Native campus-card balance, ephemeral QR and transaction pages. Shared lifecycle lives in query_section.dart.
+library;
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:elecon_contract/card_qr.dart';
+
+import 'package:flutter/material.dart';
+
+import '../../core/card_spending.dart';
+import '../../l10n/gen/app_localizations.dart';
+import '../../session/session_controller.dart';
+import '../../session/session_scope.dart';
+import 'display_date.dart';
+import 'card_layout.dart';
+import 'card_spending_view.dart';
+import 'models.dart';
+import 'schema_decode.dart';
+import 'section_card.dart';
+
+import 'query_section.dart';
+import 'capability_source.dart';
+
+class CardSection extends StatefulWidget {
+  const CardSection({
+    super.key,
+    this.transactionsEnabled = true,
+    this.balanceEnabled = true,
+    this.qrEnabled = false,
+  });
+
+  final bool balanceEnabled;
+  final bool qrEnabled;
+
+  final bool transactionsEnabled;
+
+  @override
+  State<CardSection> createState() => _CardSectionState();
+}
+
+class _CardSectionState extends State<CardSection>
+    with CachedQuerySection<CardSection, CardBalance> {
+  @override
+  void onConfigurationRequired() => _phase = QueryPhase.needConfiguration;
+
+  @override
+  String get cacheCapability => 'card.balance';
+  @override
+  CardBalance? decodeCache(Object? value) => cardBalanceFromDynamic(value);
+  @override
+  void applyCache(CardBalance data) {
+    _data = data;
+    _phase = QueryPhase.loaded;
+  }
+
+  @override
+  void clearCache() {
+    _data = null;
+    _phase = QueryPhase.idle;
+  }
+
+  QueryPhase _phase = QueryPhase.idle;
+  CardBalance? _data;
+  String? _error;
+
+  Future<void> _load({bool configure = false}) async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    final source = CapabilitySourceScope.maybeOf(context)?.source;
+    setState(() => _phase = QueryPhase.loading);
+    final outcome = await runDecoded<CardBalance>(
+      context,
+      session,
+      'card.balance',
+      params: {if (configure) 'configure': true},
+      decode: cardBalanceFromDynamic,
+    );
+    if (!mounted || !isCurrentQuery(this, session, generation, source)) return;
+    setState(() {
+      if (outcome.needConfiguration) {
+        _phase = QueryPhase.needConfiguration;
+      } else if (outcome.needLogin) {
+        _phase = _data == null ? QueryPhase.needLogin : QueryPhase.loaded;
+      } else if (outcome.error != null) {
+        _phase = _data == null ? QueryPhase.error : QueryPhase.loaded;
+        _error = outcome.error;
+      } else {
+        _phase = QueryPhase.loaded;
+        _data = outcome.data;
+      }
+    });
+  }
+
+  Future<void> _login() async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    final source = CapabilitySourceScope.maybeOf(context)?.source;
+    final ok = await promptVisibleLogin(
+      context,
+      session,
+      targetRef: 'card-session',
+      capability: 'card.balance',
+    );
+    if (!mounted || !isCurrentQuery(this, session, generation, source)) return;
+    if (ok) await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = _data;
+    final l10n = AppLocalizations.of(context);
+    final preview = HomeCardPresentation.isPreview(context);
+    final presentation = HomeCardPresentation.maybeOf(context);
+    final home = presentation != null && !presentation.isPage;
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.balanceEnabled)
+          if (data == null)
+            QueryPhaseBody(
+              phase: _phase,
+              error: _error,
+              onLogin: _login,
+              onConfigure: () => _load(configure: true),
+            )
+          else if (data.errorStatus != null)
+            Text(_balanceErrorText(data.errorStatus!))
+          else ...[
+            Text(
+              formatQueryMoney(data.balance.amountMinor, data.balance.currency),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            if (data.status != null) Text(_cardStatusText(data.status!)),
+          ],
+        if (!home && (widget.qrEnabled || widget.transactionsEnabled)) ...[
+          if (widget.balanceEnabled) const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (widget.qrEnabled)
+                FilledButton.tonalIcon(
+                  onPressed: () =>
+                      openCapabilityPage(context, const CardQrPage()),
+                  icon: const Icon(Icons.qr_code),
+                  label: Text(l10n.cardQrShow),
+                ),
+              if (widget.transactionsEnabled)
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      openCapabilityPage(context, const CardTransactionsPage()),
+                  icon: const Icon(Icons.receipt_long_outlined),
+                  label: Text(l10n.cardTransactions),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+    final card = SectionCard(
+      title: l10n.homeCardTitle,
+      trailing: widget.balanceEnabled
+          ? SectionRefreshButton(
+              onPressed: _phase == QueryPhase.loading ? null : _load,
+            )
+          : null,
+      subtitle: data == null
+          ? null
+          : data.cardNumber == null
+          ? l10n.cardAccountLabel
+          : _maskCardNumber(data.cardNumber!),
+      summary: data != null && widget.balanceEnabled
+          ? CardSummary(
+              data.errorStatus == null
+                  ? formatQueryMoney(
+                      data.balance.amountMinor,
+                      data.balance.currency,
+                    )
+                  : _balanceErrorText(data.errorStatus!),
+            )
+          : widget.qrEnabled
+          ? Text(l10n.cardQrHint)
+          : widget.transactionsEnabled
+          ? Text(l10n.cardTransactions)
+          : querySummary(context, _phase),
+      child: content,
+    );
+    return data != null && (!preview || widget.balanceEnabled)
+        ? withCacheTime(card)
+        : card;
+  }
+}
+
+/// QR data has no persistent cache and is destroyed on expiry/background/exit.
+class CardQrPage extends StatefulWidget {
+  const CardQrPage({super.key});
+  @override
+  State<CardQrPage> createState() => _CardQrPageState();
+}
+
+class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
+  Uint8List? _image;
+  Timer? _expiry;
+  String? _purpose;
+  QueryPhase _phase = QueryPhase.idle;
+  String? _error;
+  SessionController? _session;
+  CapabilitySource? _source;
+  int? _generation;
+  int _request = 0;
+  bool _started = false;
+  bool _foreground = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final session = SessionScope.of(context);
+    if (!_started) {
+      _started = true;
+      _session = session;
+      _source = CapabilitySourceScope.maybeOf(context)?.source;
+      _generation = session.trustedScriptViewGeneration;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    } else if (_source != CapabilitySourceScope.maybeOf(context)?.source ||
+        !identical(session, _session) ||
+        session.trustedScriptViewGeneration != _generation ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      _clear();
+    }
+  }
+
+  void _clear() {
+    _request++;
+    _expiry?.cancel();
+    if (_image != null) unawaited(MemoryImage(_image!).evict());
+    _image = null;
+    _purpose = null;
+    _phase = QueryPhase.idle;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground && mounted) setState(_clear);
+  }
+
+  @override
+  void dispose() {
+    _clear();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _load({bool configure = false}) async {
+    final session = _session!;
+    if (!_foreground || !isCurrentQuery(this, session, _generation!, _source)) {
+      return;
+    }
+    _clear();
+    final request = _request;
+    setState(() {
+      _phase = QueryPhase.loading;
+      _error = null;
+    });
+    final outcome = await runDecoded<CardQr>(
+      context,
+      session,
+      'card.qr',
+      params: {if (configure) 'configure': true},
+      decode: (raw) {
+        if (raw is! Map ||
+            raw['imageBase64'] is! String ||
+            raw['issuedAt'] is! String ||
+            raw['expiresAt'] is! String) {
+          return null;
+        }
+        return CardQr(
+          imageBase64: raw['imageBase64'] as String,
+          issuedAt: raw['issuedAt'] as String,
+          expiresAt: raw['expiresAt'] as String,
+          purpose: raw['purpose'] as String?,
+        );
+      },
+    );
+    if (!mounted ||
+        request != _request ||
+        !_foreground ||
+        !isCurrentQuery(this, session, _generation!, _source)) {
+      return;
+    }
+    try {
+      if (outcome.data == null) {
+        setState(() {
+          _phase = outcome.needConfiguration
+              ? QueryPhase.needConfiguration
+              : outcome.needLogin
+              ? QueryPhase.needLogin
+              : QueryPhase.error;
+          _error = outcome.error;
+        });
+        return;
+      }
+      final data = outcome.data!;
+      final issued = DateTime.parse(data.issuedAt),
+          expires = DateTime.parse(data.expiresAt),
+          now = DateTime.now();
+      if (!expires.isAfter(issued) ||
+          !expires.isAfter(now) ||
+          issued.isAfter(now.add(const Duration(seconds: 5)))) {
+        throw const FormatException();
+      }
+      final bytes = base64Decode(data.imageBase64);
+      const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+      if (bytes.length < 24 ||
+          bytes.length > 262144 ||
+          !List.generate(8, (i) => bytes[i] == signature[i]).every((v) => v)) {
+        throw const FormatException();
+      }
+      final header = ByteData.sublistView(bytes);
+      final width = header.getUint32(16), height = header.getUint32(20);
+      if (width == 0 || height == 0 || width > 2048 || height > 2048) {
+        throw const FormatException();
+      }
+      final remaining = expires.difference(now);
+      setState(() {
+        _image = bytes;
+        _purpose = data.purpose;
+        _phase = QueryPhase.loaded;
+      });
+      _expiry = Timer(
+        remaining < const Duration(seconds: 60)
+            ? remaining
+            : const Duration(seconds: 60),
+        () {
+          if (mounted) setState(_clear);
+        },
+      );
+    } catch (_) {
+      setState(() {
+        _phase = QueryPhase.error;
+        _error = AppLocalizations.of(context).cardQrInvalid;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final session = SessionScope.of(context);
+    final current =
+        _source == CapabilitySourceScope.maybeOf(context)?.source &&
+        identical(session, _session) &&
+        session.trustedScriptViewGeneration == _generation;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(l10n.cardQrShow),
+        actions: [
+          SectionRefreshButton(
+            onPressed: current && _phase != QueryPhase.loading ? _load : null,
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!current)
+                Text(l10n.homeCardDataChanged)
+              else ...[
+                if (_image != null)
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 320),
+                      child: ColoredBox(
+                        color: Colors.white,
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Image.memory(
+                            _image!,
+                            gaplessPlayback: false,
+                            semanticLabel: l10n.cardQrShow,
+                            errorBuilder: (_, _, _) => Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Text(
+                                l10n.cardQrInvalid,
+                                style: const TextStyle(color: Colors.black),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (_purpose != null)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(_purpose!, textAlign: TextAlign.center),
+                  ),
+                if (_phase == QueryPhase.idle) Text(l10n.cardQrExpired),
+                QueryPhaseBody(
+                  phase: _phase,
+                  error: _error,
+                  onConfigure: () => _load(configure: true),
+                  onLogin: () async {
+                    _clear();
+                    final ok = await promptVisibleLogin(
+                      context,
+                      session,
+                      targetRef: 'card-session',
+                      capability: 'card.qr',
+                    );
+                    if (mounted && current && ok) await _load();
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class CardTransactionsPage extends StatefulWidget {
+  const CardTransactionsPage({super.key});
+
+  @override
+  State<CardTransactionsPage> createState() => _CardTransactionsPageState();
+}
+
+class _CardTransactionsPageState extends State<CardTransactionsPage> {
+  static const _pageSize = 100;
+  QueryPhase _phase = QueryPhase.loading;
+  CardTransactions? _data;
+  final _items = <CardTransactionsItems>[];
+  String? _error;
+  SessionController? _session;
+  CapabilitySource? _source;
+  int? _generation;
+  int _request = 0;
+  int _page = 0;
+  int _rangeDays = 30;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  bool _complete = false;
+  bool _loginRequired = false;
+  DateTime _to = DateTime.now();
+  DateTime? _fetchedAt;
+  String? _snapshotAt;
+
+  DateTime get _from => DateTime(_to.year, _to.month, _to.day - _rangeDays + 1);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final session = SessionScope.of(context);
+    if (_session == null) {
+      _session = session;
+      _source = CapabilitySourceScope.maybeOf(context)?.source;
+      _generation = session.trustedScriptViewGeneration;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    } else if (_source != CapabilitySourceScope.maybeOf(context)?.source ||
+        !identical(session, _session) ||
+        session.trustedScriptViewGeneration != _generation) {
+      _request++;
+      _data = null;
+      _items.clear();
+      _error = null;
+      _phase = QueryPhase.idle;
+    }
+  }
+
+  @override
+  void dispose() {
+    _request++;
+    super.dispose();
+  }
+
+  Future<void> _load({bool more = false, bool configure = false}) async {
+    final session = _session!;
+    if (!isCurrentQuery(this, session, _generation!, _source)) return;
+    if (more && (_loadingMore || !_hasMore)) return;
+    final request = ++_request;
+    final nextPage = more ? _page + 1 : 1;
+    setState(() {
+      _error = null;
+      _loginRequired = false;
+      _loadingMore = more;
+      if (!more) {
+        _phase = QueryPhase.loading;
+        _data = null;
+        _items.clear();
+        _fetchedAt = null;
+        _snapshotAt = null;
+        _page = 0;
+        _hasMore = false;
+        _complete = false;
+      }
+    });
+    final outcome = await runDecoded<CardTransactions>(
+      context,
+      session,
+      'card.transactions',
+      params: {
+        if (configure) 'configure': true,
+        'from': formatLocalDate(_from),
+        'to': formatLocalDate(_to),
+        'page': nextPage,
+        'size': _pageSize,
+      },
+      decode: cardTransactionsFromDynamic,
+    );
+    if (!mounted ||
+        request != _request ||
+        !isCurrentQuery(this, session, _generation!, _source)) {
+      return;
+    }
+    final l10n = AppLocalizations.of(context);
+    setState(() {
+      _loadingMore = false;
+      if (outcome.needConfiguration) {
+        _phase = QueryPhase.needConfiguration;
+      } else if (outcome.needLogin) {
+        _loginRequired = true;
+        _phase = _data == null ? QueryPhase.needLogin : QueryPhase.loaded;
+      } else if (outcome.error != null ||
+          outcome.data == null ||
+          (outcome.data!.page != null && outcome.data!.page != nextPage)) {
+        _phase = _data == null ? QueryPhase.error : QueryPhase.loaded;
+        _error = outcome.error ?? l10n.campusLoadFailed;
+      } else {
+        final data = outcome.data!;
+        _phase = QueryPhase.loaded;
+        _data = data;
+        _page = nextPage;
+        final ids = {
+          for (final item in _items)
+            if (item.transactionId != null && item.transactionId!.isNotEmpty)
+              (item.currency, item.transactionId!),
+        };
+        final previousCount = _items.length;
+        for (final item in data.items) {
+          final id = item.transactionId;
+          if (id == null || id.isEmpty || ids.add((item.currency, id))) {
+            _items.add(item);
+          }
+        }
+        _fetchedAt ??= DateTime.now();
+        if (!more) _snapshotAt = data.snapshotAt;
+        final total = data.total;
+        _complete =
+            data.hasNext != true &&
+            data.cursor == null &&
+            (total == null || _items.length >= total) &&
+            (data.hasNext == false ||
+                (total != null && _items.length >= total));
+        _hasMore =
+            !_complete &&
+            data.items.isNotEmpty &&
+            (!more || _items.length > previousCount) &&
+            data.cursor == null &&
+            (data.hasNext == true ||
+                (total != null && _items.length < total) ||
+                data.items.length >= _pageSize);
+      }
+    });
+  }
+
+  Future<void> _login() async {
+    final session = _session!;
+    if (!isCurrentQuery(this, session, _generation!, _source)) return;
+    final ok = await promptVisibleLogin(
+      context,
+      session,
+      targetRef: 'card-session',
+      capability: 'card.transactions',
+    );
+    if (!mounted || !isCurrentQuery(this, session, _generation!, _source)) {
+      return;
+    }
+    if (ok) await _load(more: _data != null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final session = SessionScope.of(context);
+    final current =
+        _source == CapabilitySourceScope.maybeOf(context)?.source &&
+        identical(session, _session) &&
+        session.trustedScriptViewGeneration == _generation;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(l10n.cardTransactions),
+        actions: [
+          SectionRefreshButton(
+            onPressed: current && _phase != QueryPhase.loading && !_loadingMore
+                ? () => _load()
+                : null,
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: !current
+            ? Center(child: Text(l10n.homeCardDataChanged))
+            : ListView(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        for (final days in [7, 30, 90])
+                          ChoiceChip(
+                            label: Text(l10n.cardSpendingLastDays(days)),
+                            selected: _rangeDays == days,
+                            onSelected: (_) {
+                              if (_rangeDays == days) return;
+                              setState(() {
+                                _rangeDays = days;
+                                _to = DateTime.now();
+                              });
+                              _load();
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      '${formatLocalDate(_from)} – ${formatLocalDate(_to)}',
+                    ),
+                  ),
+                  if (_phase == QueryPhase.loading)
+                    const Center(child: CircularProgressIndicator())
+                  else if (_phase == QueryPhase.needLogin || _loginRequired)
+                    Center(
+                      child: FilledButton.icon(
+                        onPressed: _login,
+                        icon: const Icon(Icons.login),
+                        label: Text(l10n.cardTransactionsLogin),
+                      ),
+                    ),
+                  if (_phase == QueryPhase.needConfiguration)
+                    QueryPhaseBody(
+                      phase: _phase,
+                      error: _error,
+                      onLogin: _login,
+                      onConfigure: () => _load(configure: true),
+                    ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [Text(_error!, textAlign: TextAlign.center)],
+                      ),
+                    ),
+                  if (_phase == QueryPhase.loaded) ...[
+                    if (_items.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          l10n.cardSpendingNoRecords,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    CardSpendingView(
+                      summary: CardSpendingSummary.fromTransactions(
+                        _items,
+                        from: _from,
+                        to: _to,
+                      ),
+                      partial: !_complete,
+                    ),
+                    if (_fetchedAt != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          l10n.homeDataUpdatedAt(
+                            formatUpdateTime(
+                              DateTime.tryParse(_snapshotAt ?? '') ??
+                                  _fetchedAt!,
+                              l10n,
+                            ),
+                          ),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    for (final item in _items) ...[
+                      _transactionTile(context, item),
+                      const Divider(height: 1),
+                    ],
+                    if (!_complete)
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(l10n.cardSpendingPartial),
+                      ),
+                    if (_loadingMore)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (_hasMore && !_loginRequired)
+                      Center(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _load(more: true),
+                          icon: const Icon(Icons.expand_more),
+                          label: Text(l10n.cardTransactionsLoadMore),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _transactionTile(BuildContext context, CardTransactionsItems item) {
+    final l10n = AppLocalizations.of(context);
+    final sign = _directionSign(item.direction);
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2, right: 12),
+            child: Icon(
+              sign == '+'
+                  ? Icons.south_west
+                  : sign == '-'
+                  ? Icons.north_east
+                  : Icons.swap_horiz,
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.merchant ?? item.type ?? l10n.cardTransactionsEntry,
+                  style: theme.textTheme.titleMedium,
+                ),
+                Text(
+                  '$sign${formatCardMoney(context, item.amountMinor, item.currency)}',
+                  style: theme.textTheme.titleMedium,
+                ),
+                Text(
+                  [
+                    formatQueryTimestamp(item.time),
+                    if (item.location != null) item.location!,
+                    if (item.status != null)
+                      switch (item.status) {
+                        'final' => l10n.cardTransactionFinal,
+                        'pending' => l10n.cardTransactionPending,
+                        'failed' => l10n.cardTransactionFailed,
+                        'cancelled' => l10n.cardTransactionCancelled,
+                        _ => l10n.cardTransactionUnknown,
+                      },
+                  ].join(' · '),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _directionSign(String direction) => switch (direction) {
+  'credit' || 'refund' || 'reversal' || 'subsidy' => '+',
+  'debit' => '-',
+  _ => '',
+};
+
+String _maskCardNumber(String cardNumber) {
+  if (cardNumber.length <= 4) return '••••';
+  return '•••• ${cardNumber.substring(cardNumber.length - 4)}';
+}
+
+String _cardStatusText(String status) => switch (status) {
+  'active' => '状态正常',
+  'frozen' => '已冻结',
+  'lost' => '已挂失',
+  'cancelled' => '已注销',
+  _ => '状态未知',
+};
+
+String _balanceErrorText(String status) => switch (status) {
+  'failed' => '余额查询失败，当前数值可能不是最新结果。',
+  'pending' => '余额仍在处理中，请稍后重试。',
+  _ => '余额状态未知，请重新查询。',
+};

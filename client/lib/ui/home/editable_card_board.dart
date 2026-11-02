@@ -54,6 +54,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
   String? _dragging;
   HomeCardPosition? _hovered;
   HomeCardGrid? _grid;
+  HomeCardGridGeometry? _geometry;
   Map<String, HomeCardPosition> _locations = {};
   Map<String, HomeCardSpan> _spans = {};
   Map<String, HomeCardPosition>? _dragLocations;
@@ -168,6 +169,9 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
           ),
       };
       _dragLocations = _grid!.place(spans, _layout.positions);
+      // Pin the current placements before giving the picked card priority.
+      // An unsaved/default layout otherwise repacks that card into row zero.
+      _layout = _layout.locate(_dragLocations!);
       _dragging = drag.id;
     });
     _scrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
@@ -210,6 +214,14 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
 
   void _considerMove({bool scrolling = false, bool immediate = false}) {
     if (_dragging == null || _pointer == null || _grid == null) return;
+    if (immediate && _hovered != null) {
+      // Reordering unequal full-width cards changes the physical row mapping.
+      // Release commits the last pointer/scroll target rather than hit-testing
+      // the stationary pointer against the already-moved neighbours again.
+      _hoverTimer?.cancel();
+      _moveTo(_dragging!, _hovered!);
+      return;
+    }
     final box = _gridKey.currentContext?.findRenderObject();
     if (box is! RenderBox) return;
     final local = box.globalToLocal(_pointer!);
@@ -226,9 +238,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
         0,
         grid.columns - span.columns,
       ),
-      ((local.dy - _pickupOffset.dy) / (grid.cellHeight + HomeCardGrid.gap))
-          .round()
-          .clamp(0, 1023),
+      _geometry!.rowAt(local.dy - _pickupOffset.dy).round().clamp(0, 1023),
     );
     if (immediate) {
       _hoverTimer?.cancel();
@@ -582,6 +592,19 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
               _layout.positions,
               priority: _dragging,
             );
+            final geometry = HomeCardGridGeometry(
+              grid: grid,
+              spans: _spans,
+              positions: _locations,
+              expandedHeights: {
+                for (final card in cards)
+                  if (card.supportedSize(_layout.sizes[card.id]) ==
+                          HomeCardSize.expanded &&
+                      _heights.containsKey(card.id))
+                    card.id: _heights[card.id]!,
+              },
+            );
+            _geometry = geometry;
             _slots.clear();
             var bottom = 0.0;
             for (final card in cards) {
@@ -589,9 +612,9 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
               final span = _spans[card.id]!;
               final rect = Rect.fromLTWH(
                 position.column * (grid.cellWidth + HomeCardGrid.gap),
-                position.row * (grid.cellHeight + HomeCardGrid.gap),
+                geometry.rowOffset(position.row),
                 grid.widthOf(span),
-                grid.heightOf(span),
+                geometry.heightOf(position, span),
               );
               _slots[card.id] = rect;
               bottom = math.max(bottom, rect.bottom);
@@ -620,7 +643,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                         child: IgnorePointer(
                           child: CustomPaint(
                             painter: _GridDots(
-                              grid,
+                              geometry,
                               Theme.of(context).colorScheme.outlineVariant,
                             ),
                           ),
@@ -871,17 +894,15 @@ class _MeasureRenderBox extends RenderProxyBox {
 }
 
 class _GridDots extends CustomPainter {
-  const _GridDots(this.grid, this.color);
-  final HomeCardGrid grid;
+  const _GridDots(this.geometry, this.color);
+  final HomeCardGridGeometry geometry;
   final Color color;
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = color;
-    for (
-      var y = grid.cellHeight / 2;
-      y < size.height;
-      y += grid.cellHeight + HomeCardGrid.gap
-    ) {
+    final grid = geometry.grid;
+    for (var row = 0; geometry.rowOffset(row) < size.height; row++) {
+      final y = geometry.rowOffset(row + .5) - HomeCardGrid.gap / 2;
       for (
         var x = grid.cellWidth / 2;
         x < size.width;
@@ -893,5 +914,6 @@ class _GridDots extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_GridDots old) => old.grid != grid || old.color != color;
+  bool shouldRepaint(_GridDots old) =>
+      old.geometry != geometry || old.color != color;
 }

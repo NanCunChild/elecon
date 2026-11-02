@@ -3,6 +3,42 @@ import 'package:elecon/ui/home/card_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'full-width rows use measured height and invert physical drag offsets',
+    () {
+      final grid = HomeCardGrid(width: 400, labelHeight: 16);
+      final spans = {
+        'first': grid.span(HomeCardSize.expanded, contentHeight: 73),
+        'middle': grid.span(HomeCardSize.regular),
+        'last': grid.span(HomeCardSize.expanded, contentHeight: 251),
+      };
+      final positions = grid.place(spans, {});
+      final geometry = HomeCardGridGeometry(
+        grid: grid,
+        spans: spans,
+        positions: positions,
+        expandedHeights: {'first': 73, 'last': 251},
+      );
+      expect(geometry.heightOf(positions['first']!, spans['first']!), 73);
+      expect(geometry.rowOffset(positions['middle']!.row), 85);
+      expect(
+        geometry.heightOf(positions['middle']!, spans['middle']!),
+        grid.heightOf(spans['middle']!),
+      );
+      expect(geometry.heightOf(positions['last']!, spans['last']!), 251);
+      for (var row = -.5; row < 12; row += .25) {
+        expect(geometry.rowAt(geometry.rowOffset(row)), closeTo(row, 1e-9));
+      }
+      final unmeasured = HomeCardGridGeometry(
+        grid: grid,
+        spans: spans,
+        positions: positions,
+        expandedHeights: {},
+      );
+      expect(unmeasured.rowOffset(4), 4 * (grid.cellHeight + HomeCardGrid.gap));
+    },
+  );
+
   test('four single cells and their gaps equal one two-by-two summary', () {
     for (final width in [288.0, 400.0, 900.0]) {
       for (final labelHeight in [16.0, 32.0]) {
@@ -79,17 +115,24 @@ void main() {
       'top': HomeCardPosition(0, 0),
       'bottom': HomeCardPosition(0, 5),
     };
-    expect(grid.place({
-      'top': grid.span(HomeCardSize.regular),
-      'bottom': grid.span(HomeCardSize.compact),
-    }, saved)['bottom'], const HomeCardPosition(0, 2));
-    expect(grid.place({
-      'top': grid.span(HomeCardSize.compact),
-      'bottom': grid.span(HomeCardSize.compact),
-    }, saved)['bottom'], const HomeCardPosition(0, 1));
-    expect(grid.place({
-      'bottom': grid.span(HomeCardSize.compact),
-    }, saved)['bottom'], const HomeCardPosition(0, 0));
+    expect(
+      grid.place({
+        'top': grid.span(HomeCardSize.regular),
+        'bottom': grid.span(HomeCardSize.compact),
+      }, saved)['bottom'],
+      const HomeCardPosition(0, 2),
+    );
+    expect(
+      grid.place({
+        'top': grid.span(HomeCardSize.compact),
+        'bottom': grid.span(HomeCardSize.compact),
+      }, saved)['bottom'],
+      const HomeCardPosition(0, 1),
+    );
+    expect(
+      grid.place({'bottom': grid.span(HomeCardSize.compact)}, saved)['bottom'],
+      const HomeCardPosition(0, 0),
+    );
   });
   test('mixed sizes, collisions and tall details never overlap', () {
     final grid = HomeCardGrid(width: 400, labelHeight: 16);

@@ -122,3 +122,66 @@ class HomeCardGrid {
     return result;
   }
 }
+
+/// Converts persisted integer rows to physical positions. A measured full-width
+/// card can use its natural height because no other card shares those rows.
+/// Every later column moves up by the same amount; compact and regular cells
+/// retain their dimensions. Drag targets use the inverse of this same mapping.
+class HomeCardGridGeometry {
+  HomeCardGridGeometry({
+    required this.grid,
+    required Map<String, HomeCardSpan> spans,
+    required Map<String, HomeCardPosition> positions,
+    required Map<String, double> expandedHeights,
+  }) {
+    for (final entry in expandedHeights.entries) {
+      final span = spans[entry.key];
+      final position = positions[entry.key];
+      if (span == null ||
+          position == null ||
+          span.columns != grid.columns ||
+          !entry.value.isFinite ||
+          entry.value < 0) {
+        continue;
+      }
+      final height = math.min(entry.value, grid.heightOf(span));
+      _bands.add((
+        row: position.row,
+        rows: span.rows,
+        stride: (height + HomeCardGrid.gap) / span.rows,
+      ));
+    }
+    _bands.sort((a, b) => a.row.compareTo(b.row));
+  }
+
+  final HomeCardGrid grid;
+  final _bands = <({int row, int rows, double stride})>[];
+  double get _stride => grid.cellHeight + HomeCardGrid.gap;
+
+  double rowOffset(num row) {
+    var removed = 0.0;
+    for (final band in _bands) {
+      if (row <= band.row) break;
+      final compressedRows = math.min(row - band.row, band.rows);
+      removed += compressedRows * (_stride - band.stride);
+    }
+    return row * _stride - removed;
+  }
+
+  double rowAt(double offset) {
+    var removed = 0.0;
+    for (final band in _bands) {
+      final top = band.row * _stride - removed;
+      if (offset <= top) break;
+      final bottom = top + band.rows * band.stride;
+      if (offset < bottom) return band.row + (offset - top) / band.stride;
+      removed += band.rows * (_stride - band.stride);
+    }
+    return (offset + removed) / _stride;
+  }
+
+  double heightOf(HomeCardPosition position, HomeCardSpan span) =>
+      rowOffset(position.row + span.rows) -
+      rowOffset(position.row) -
+      HomeCardGrid.gap;
+}

@@ -1,6 +1,8 @@
 /// ADR-050: public faculty search; the selected school script owns the protocol.
 library;
 
+import 'capability_source.dart';
+
 import 'package:elecon_contract/faculty_search.dart';
 import 'package:elecon_contract/output_validator_registry.dart';
 import 'package:flutter/material.dart';
@@ -133,10 +135,10 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
       if (widget.loadSearch != null) {
         result = await widget.loadSearch!(params);
       } else if (_session != null) {
-        final run = await _session!.runCapability(
-          'faculty.search',
-          params: params,
-        );
+        final run = await CapabilitySourceScope.queriesOf(
+          context,
+          _session!,
+        ).runCapability('faculty.search', params: params);
         if (run.ok) result = facultySearchFromDynamic(run.data);
       }
     } catch (_) {
