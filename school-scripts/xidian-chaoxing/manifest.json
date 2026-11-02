@@ -1,7 +1,7 @@
 {
   "sdkVersion": 9,
   "id": "enhancement-xidian-undergraduate-chaoxing",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "schoolId": "xidian_undergraduate",
   "name": "西电学习通增强（本科生）",
   "network": {
@@ -12,7 +12,9 @@
       "https://sso.chaoxing.com",
       "https://i.chaoxing.com",
       "https://learning.xidian.edu.cn",
-      "https://ids.xidian.edu.cn"
+      "https://ids.xidian.edu.cn",
+      "https://a1-vip6.easemob.com",
+      "https://useryd.chaoxing.com"
     ]
   },
   "browser": true,
@@ -29,6 +31,21 @@
     {
       "id": "messages.list",
       "schema": "elecon.messages.list",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "messages.conversations",
+      "schema": "elecon.messages.conversations",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "messages.history",
+      "schema": "elecon.messages.history",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "messages.send",
+      "schema": "elecon.messages.send",
       "schemaVersion": "1.0"
     },
     {

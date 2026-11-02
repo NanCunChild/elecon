@@ -15,8 +15,8 @@ import addFormats from "ajv-formats";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const schemaDir = join(repoRoot, "contract/schema");
 const registryPath = join(repoRoot, "contract/capability/registry.json");
-const expectedSchemaCount = 65;
-const expectedRegistryReferenceCount = 63;
+const expectedSchemaCount = 71;
+const expectedRegistryReferenceCount = 69;
 
 interface InvalidGolden {
   behavior: string;
@@ -45,7 +45,112 @@ function validatorFor(schemaId: string) {
   return ajv.compile(readJson<object>(join(schemaDir, `${schemaName}.schema.json`)));
 }
 
+const messageAccount = {
+  serviceId: "synthetic-service",
+  accountId: "synthetic-account",
+  accountLabel: "Synthetic account",
+  fetchedAt: "2026-11-02T08:00:00Z",
+};
+const messageTarget = {
+  accountId: messageAccount.accountId,
+  conversationId: "synthetic-conversation",
+  conversationKind: "group",
+};
+const textMessage = {
+  id: "9007199254740993",
+  text: "Synthetic message",
+  kind: "text",
+  direction: "incoming",
+};
+const historyPage = {
+  ...messageAccount,
+  ...messageTarget,
+  hasMore: false,
+  items: [textMessage],
+  recalledIds: ["9007199254740992"],
+};
+const sendParams = { ...messageTarget, clientId: "9007199254740993", text: "Synthetic message" };
+
 const cases: Record<string, SchemaGolden> = {
+  "elecon.messages.conversations": {
+    valid: {
+      ...messageAccount,
+      coverage: "partial",
+      items: [{ conversationId: "synthetic-conversation", conversationKind: "direct", title: "Synthetic" }],
+    },
+    invalid: [
+      {
+        behavior: "directory coverage is explicit",
+        value: { ...messageAccount, coverage: "window", items: [] },
+      },
+      {
+        behavior: "conversation kind cannot be inferred from the ID",
+        value: { ...messageAccount, coverage: "complete", items: [{ conversationId: "c", title: "C" }] },
+      },
+    ],
+  },
+  "elecon.params.messages.conversations": {
+    valid: { accountId: messageAccount.accountId },
+    invalid: [
+      { behavior: "requests require a verified account", value: {} },
+      {
+        behavior: "directory read cannot carry write operations",
+        value: { accountId: "a", operation: "send" },
+      },
+    ],
+  },
+  "elecon.messages.history": {
+    valid: historyPage,
+    invalid: [
+      {
+        behavior: "message IDs never use floating point",
+        value: { ...historyPage, items: [{ ...textMessage, id: 42 }] },
+      },
+      {
+        behavior: "cursor is a nonempty opaque string",
+        value: { ...historyPage, hasMore: true, nextCursor: 42 },
+      },
+      { behavior: "source completeness is explicit", value: { ...historyPage, hasMore: null } },
+      { behavior: "history page is bounded", value: { ...historyPage, items: Array(201).fill(textMessage) } },
+    ],
+  },
+  "elecon.params.messages.history": {
+    valid: { ...messageTarget, cursor: "9007199254740993" },
+    invalid: [
+      { behavior: "numeric cursor would lose precision", value: { ...messageTarget, cursor: 42 } },
+      {
+        behavior: "unbounded channel kinds are not supported",
+        value: { ...messageTarget, conversationKind: "channel" },
+      },
+    ],
+  },
+  "elecon.messages.send": {
+    valid: { ...messageAccount, ...messageTarget, clientId: sendParams.clientId, status: "unknown" },
+    invalid: [
+      {
+        behavior: "transport success cannot be reported as delivery confirmation",
+        value: { ...messageAccount, ...messageTarget, clientId: sendParams.clientId, status: "success" },
+      },
+      {
+        behavior: "request confirmation ID must stay a decimal string",
+        value: { ...messageAccount, ...messageTarget, clientId: 42, status: "unknown" },
+      },
+    ],
+  },
+  "elecon.params.messages.send": {
+    valid: sendParams,
+    invalid: [
+      {
+        behavior: "only explicit bounded text may be sent",
+        value: { ...sendParams, text: "x".repeat(4001) },
+      },
+      {
+        behavior: "attachment uploads are not part of text sending",
+        value: { ...sendParams, url: "https://example.invalid/a" },
+      },
+      { behavior: "client ID cannot be zero", value: { ...sendParams, clientId: "0" } },
+    ],
+  },
   "elecon.card.qr": {
     valid: {
       imageBase64: "iVBORw0KGgoAAA==",

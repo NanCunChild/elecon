@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.messages.history",
+  "title": "读取消息历史参数",
+  "description": "ADR-061：仅前台；由核心按服务账号保护本地消息，脚本不访问数据库。",
+  "type": "object",
+  "properties": {
+    "accountId": {
+      "type": "string",
+      "description": "本次核验的远端服务账号 ID；须与请求账号一致。",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "conversationId": {
+      "type": "string",
+      "description": "源站会话 ID；由 serviceId/accountId/conversationKind 共同限定。",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "conversationKind": {
+      "type": "string",
+      "description": "group 群聊，direct 私聊；相同 ID 的不同类型不合并。",
+      "enum": [
+        "group",
+        "direct"
+      ]
+    },
+    "cursor": {
+      "type": "string",
+      "description": "同账号/会话上页返回的 nextCursor；省略读取最新页。",
+      "minLength": 1,
+      "maxLength": 512
+    }
+  },
+  "required": [
+    "accountId",
+    "conversationId",
+    "conversationKind"
+  ],
+  "additionalProperties": false
+}

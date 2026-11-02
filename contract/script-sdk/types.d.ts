@@ -206,6 +206,13 @@ export interface ScriptWebsocketPermission { websocketOrigins?: string[]; }
 /** ADR-052: these capabilities are foreground-only and forbidden in home. */
 export interface ServiceSessionParams { operation?: "status" | "login" | "logout"; }
 export type MessagesList = import("../generated/ts/messages.list.js").MessagesList;
+/** ADR-061: foreground, account-bound chat; storage belongs to the host. */
+export type MessagesConversations = import("../generated/ts/messages.conversations.js").MessagesConversations;
+export type MessagesHistory = import("../generated/ts/messages.history.js").MessagesHistory;
+export type MessagesSend = import("../generated/ts/messages.send.js").MessagesSend;
+export type MessagesConversationsParams = import("../generated/ts/params.messages.conversations.js").ParamsMessagesConversations;
+export type MessagesHistoryParams = import("../generated/ts/params.messages.history.js").ParamsMessagesHistory;
+export type MessagesSendParams = import("../generated/ts/params.messages.send.js").ParamsMessagesSend;
 export type AttendanceCheckin = import("../generated/ts/attendance.checkin.js").AttendanceCheckin;
 
 /** ADR-058: explicit SDK10 manifest permissions; no implicit scanner extension. */

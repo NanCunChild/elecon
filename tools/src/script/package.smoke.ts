@@ -222,7 +222,15 @@ for (const origins of [
 ])
   assert.throws(() => packageScript({ ...socketManifest, websocketOrigins: origins }, source));
 assert.throws(() => packageScript({ ...socketManifest, sdkVersion: 8 }, source));
-for (const id of ["forum.session", "messages.session", "messages.list", "attendance.checkin"]) {
+for (const id of [
+  "forum.session",
+  "messages.session",
+  "messages.list",
+  "messages.conversations",
+  "messages.history",
+  "messages.send",
+  "attendance.checkin",
+]) {
   const caps = [{ id, schema: `elecon.${id}`, schemaVersion: "1.0" }];
   assert.doesNotThrow(() => packageScript({ ...socketManifest, capabilities: caps }, source));
   assert.throws(() =>
@@ -234,7 +242,12 @@ for (const id of ["forum.session", "messages.session", "messages.list", "attenda
 }
 
 // ADR-058: shared SDK10 device-input permission admission vectors.
-const deviceInputsFixture = JSON.parse(readFileSync(new URL("../../../contract/golden/scripts/device-input-permission.json", import.meta.url), "utf8"));
+const deviceInputsFixture = JSON.parse(
+  readFileSync(
+    new URL("../../../contract/golden/scripts/device-input-permission.json", import.meta.url),
+    "utf8",
+  ),
+);
 for (const row of deviceInputsFixture.cases) {
   const candidate = { ...deviceInputsFixture.baseManifest, ...row.manifest };
   if (row.valid) assert.doesNotThrow(() => packageScript(candidate, source), row.name);

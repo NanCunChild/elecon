@@ -16,6 +16,9 @@ const foregroundCommunityCapabilities = {
   'forum.session',
   'messages.session',
   'messages.list',
+  'messages.conversations',
+  'messages.history',
+  'messages.send',
   'attendance.checkin',
 };
 const maxScriptPackageBytes = 1024 * 1024;

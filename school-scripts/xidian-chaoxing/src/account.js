@@ -13,6 +13,7 @@ export const ORIGINS = [
   "https://i.chaoxing.com",
   "https://learning.xidian.edu.cn",
   "https://ids.xidian.edu.cn",
+  "https://useryd.chaoxing.com",
 ];
 const config = { id: "chaoxing", name: "学习通", origins: ORIGINS };
 const cookieUrls = [

@@ -84,9 +84,15 @@ export function packageScript(manifest: unknown, source: unknown): string {
         (entry) =>
           entry.capability === "climate.command" ||
           entry.capability === "card.qr" ||
-          ["forum.session", "messages.session", "messages.list", "attendance.checkin"].includes(
-            entry.capability,
-          ) ||
+          [
+            "forum.session",
+            "messages.session",
+            "messages.list",
+            "messages.conversations",
+            "messages.history",
+            "messages.send",
+            "attendance.checkin",
+          ].includes(entry.capability) ||
           !typed.capabilities.some((cap) => cap.id === entry.capability) ||
           Buffer.byteLength(JSON.stringify(entry.params ?? {}), "utf8") > 4096,
       ))

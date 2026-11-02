@@ -13,7 +13,7 @@ assert.deepEqual([...first], [...(await buildChaoxingPackages())]);
 for (const [name, content] of first) {
   const p = JSON.parse(content);
   assert.equal(p.manifest.sdkVersion, 9);
-  assert.equal(p.manifest.version, "0.2.1");
+  assert.equal(p.manifest.version, "0.3.0");
   assert.equal(
     p.manifest.capabilities.find((c: { id: string }) => c.id === "attendance.checkin").schemaVersion,
     "1.1",
@@ -21,7 +21,14 @@ for (const [name, content] of first) {
   assert.equal(p.manifest.scanner, true);
   assert.deepEqual(
     p.manifest.capabilities.map((c: { id: string }) => c.id),
-    ["messages.session", "messages.list", "attendance.checkin"],
+    [
+      "messages.session",
+      "messages.list",
+      "messages.conversations",
+      "messages.history",
+      "messages.send",
+      "attendance.checkin",
+    ],
   );
   assert.deepEqual(p.manifest.websocketOrigins, ["wss://im-api-wechat-vip6.easemob.com"]);
   assert.equal(p.manifest.home, undefined);
@@ -32,7 +39,11 @@ for (const [name, content] of first) {
 }
 execFileSync(
   process.execPath,
-  ["--test", `${root}/school-scripts/xidian-chaoxing/tests/community.test.mjs`],
+  [
+    "--test",
+    `${root}/school-scripts/xidian-chaoxing/tests/community.test.mjs`,
+    `${root}/school-scripts/xidian-chaoxing/tests/chat.test.mjs`,
+  ],
   { stdio: "pipe" },
 );
 console.log("chaoxing packages and synthetic protocol fixtures passed");

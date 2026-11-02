@@ -1,5 +1,9 @@
 # `contract/` 变更流水
 
+## 2026-11-02 · ADR-061 会话、历史与文本发送
+
+新增 `messages.conversations`、`messages.history`、`messages.send` 及参数 1.0。请求绑定已核验账号；会话类型与 ID 共同寻址；历史保留游标、来源时刻、发送方向和撤回墓碑；发送区分服务确认/拒绝/未知，禁止自动重发。全部仅前台、禁止 home/preload；核心按 Profile/学校/批准来源/服务账号管理受保护 SQLite 快照，不授予脚本 SQL 或文件接口。`messages.list` 1.0 保持原短时群窗口。旧宿主拒绝未支持能力，新增强包 0.3.0 需重新确认新增网络范围。
+
 ## 2026-11-02 · ADR-058 前台设备输入 SDK 10
 
 新增显式 `deviceInputs`（camera/image/location），安装 digest 覆盖授权；SDK 1–9 拒绝该字段。前台 `ctx.ui.capturePhoto/pickImage/getCurrentPosition` 提供去元数据的有界 PNG 或当前 WGS84 位置，取消返回 null；不是活体认证、后台追踪或任意文件接口。SDK 10 `ctx.fetch` 增加最多 1MiB 的 Uint8Array body，用于脚本自有 multipart；旧 string body 保持。模板按钮不绑定扫码，脚本自主编排已声明输入。未核实的学校照片/人脸协议仍为 unsupported。

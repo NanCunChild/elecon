@@ -189,6 +189,66 @@
                 ],
                 "properties": {
                   "id": {
+                    "const": "messages.conversations"
+                  },
+                  "schema": {
+                    "const": "elecon.messages.conversations"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "messages.history"
+                  },
+                  "schema": {
+                    "const": "elecon.messages.history"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "messages.send"
+                  },
+                  "schema": {
+                    "const": "elecon.messages.send"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
                     "const": "messages.list"
                   },
                   "schema": {

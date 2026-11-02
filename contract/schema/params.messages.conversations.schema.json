@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.messages.conversations",
+  "title": "读取会话参数",
+  "description": "ADR-061：仅前台；由核心按服务账号保护本地消息，脚本不访问数据库。",
+  "type": "object",
+  "properties": {
+    "accountId": {
+      "type": "string",
+      "description": "本次核验的远端服务账号 ID；须与请求账号一致。",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  },
+  "required": [
+    "accountId"
+  ],
+  "additionalProperties": false
+}

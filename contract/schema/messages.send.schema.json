@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.messages.send",
+  "title": "文本发送结果",
+  "description": "ADR-061：仅前台；由核心按服务账号保护本地消息，脚本不访问数据库。",
+  "type": "object",
+  "properties": {
+    "serviceId": {
+      "type": "string",
+      "description": "稳定服务标识；不按显示名合并。",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "accountId": {
+      "type": "string",
+      "description": "本次核验的远端服务账号 ID；须与请求账号一致。",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "accountLabel": {
+      "type": "string",
+      "description": "账号显示名；空表示未提供。",
+      "minLength": 0,
+      "maxLength": 160
+    },
+    "fetchedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "本次源站读取或发送核验完成的时刻，RFC3339；本地读取不更新。"
+    },
+    "conversationId": {
+      "type": "string",
+      "description": "源站会话 ID；由 serviceId/accountId/conversationKind 共同限定。",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "conversationKind": {
+      "type": "string",
+      "description": "group 群聊，direct 私聊；相同 ID 的不同类型不合并。",
+      "enum": [
+        "group",
+        "direct"
+      ]
+    },
+    "clientId": {
+      "type": "string",
+      "description": "调用方生成的十进制 uint64 请求 ID；用于确认匹配，不承诺源站幂等。",
+      "minLength": 1,
+      "maxLength": 20,
+      "pattern": "^[1-9][0-9]{0,19}$"
+    },
+    "status": {
+      "type": "string",
+      "description": "sent 已收到匹配服务器确认；rejected 明确拒绝；unknown 已尝试发送但不能确定结果。禁止自动重发。",
+      "enum": [
+        "sent",
+        "rejected",
+        "unknown"
+      ]
+    },
+    "messageId": {
+      "type": "string",
+      "description": "仅 sent 提供服务器确认的消息 ID；不能用 clientId 冒充。",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "sentAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "服务器确认提供的发送时刻，RFC3339；未知省略。"
+    }
+  },
+  "required": [
+    "serviceId",
+    "accountId",
+    "accountLabel",
+    "fetchedAt",
+    "conversationId",
+    "conversationKind",
+    "clientId",
+    "status"
+  ]
+}
