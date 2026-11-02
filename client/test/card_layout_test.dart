@@ -191,6 +191,33 @@ void main() {
       });
     }
   });
+  test(
+    'temporary read failure retries and pending save is visible to load',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('elecon-layout-retry-');
+      addTearDown(() => dir.delete(recursive: true));
+      await CardLayoutStore(
+        supportDirProvider: () => dir,
+      ).save('school', HomeCardLayout(order: ['schedule']));
+      var unavailable = true;
+      final store = CardLayoutStore(
+        supportDirProvider: () {
+          if (unavailable) {
+            throw const FileSystemException('synthetic unavailable');
+          }
+          return dir;
+        },
+      );
+      expect((await store.load('school')).order, isEmpty);
+      expect(store.cached('school'), isNull);
+      unavailable = false;
+      expect((await store.load('school')).order, ['schedule']);
+      final saving = store.save('school', HomeCardLayout(order: ['notice']));
+      expect((await store.load('school')).order, ['notice']);
+      await saving;
+      expect(store.cached('school')!.order, ['notice']);
+    },
+  );
   test('bad disk data falls back and does not poison future saves', () async {
     final dir = await Directory.systemTemp.createTemp('elecon-layout-corrupt-');
     addTearDown(() => dir.delete(recursive: true));
@@ -200,9 +227,10 @@ void main() {
         (await Directory('${dir.path}/home-layout').list().toList()).single
             as File;
     await file.writeAsString('{bad');
-    expect((await store.load('school')).order, isEmpty);
-    await store.save('school', HomeCardLayout(order: ['schedule']));
-    expect((await store.load('school')).order, ['schedule']);
+    final reopened = CardLayoutStore(supportDirProvider: () => dir);
+    expect((await reopened.load('school')).order, isEmpty);
+    await reopened.save('school', HomeCardLayout(order: ['schedule']));
+    expect((await reopened.load('school')).order, ['schedule']);
   });
   test(
     'v3 migrates to v4 without losing presentation; coordinates round trip',

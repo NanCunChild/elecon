@@ -482,11 +482,13 @@ void main() {
       );
       await session.selectTrustedScriptSchool(package.manifest.id);
       await tester.pumpWidget(_app(session, const MainShell()));
+      await _pumpUntil(tester, () => find.text('成绩').evaluate().isNotEmpty);
       await tester.pumpAndSettle();
       expect(find.text('成绩'), findsOneWidget);
       await tester.tap(find.text('成绩'));
       await tester.pumpAndSettle();
-      expect(find.text('查看成绩'), findsOneWidget);
+      expect(find.text('查看成绩'), findsNothing);
+      expect(find.byTooltip('Refresh'), findsOneWidget);
       expect(find.text('No data yet'), findsNothing);
       expect(tester.takeException(), isNull);
     },

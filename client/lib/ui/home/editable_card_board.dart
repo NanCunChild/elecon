@@ -67,6 +67,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
   @override
   void initState() {
     super.initState();
+    _layout = _store.cached(widget.scopeId) ?? HomeCardLayout();
     _load();
   }
 
@@ -78,7 +79,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
       _generation++;
       _revision = 0;
       _stopDrag();
-      _layout = HomeCardLayout();
+      _layout = _store.cached(widget.scopeId) ?? HomeCardLayout();
       _heights.clear();
       _contentKeys.clear();
       _activePages.clear();

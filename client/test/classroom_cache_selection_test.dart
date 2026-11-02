@@ -183,8 +183,8 @@ void main() {
     );
     expect(find.textContaining('Synthetic room synthetic-a'), findsNothing);
 
-    await tester.ensureVisible(find.text('查询空教室'));
-    await tester.tap(find.text('查询空教室'));
+    await tester.ensureVisible(find.byTooltip('Refresh').first);
+    await tester.tap(find.byTooltip('Refresh').first);
     await _until(
       tester,
       () => find

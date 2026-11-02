@@ -57,11 +57,13 @@ class ScheduleCard extends StatelessWidget {
     this.data, {
     super.key,
     this.now,
+    this.trailing,
     this.onWeekChanged,
     this.maxWeek = 25,
   });
   final ScheduleWeek data;
   final DateTime? now;
+  final Widget? trailing;
   final ValueChanged<int>? onWeekChanged;
   final int maxWeek;
 
@@ -91,6 +93,7 @@ class ScheduleCard extends StatelessWidget {
         : l10n.scheduleTodayEmpty;
     return SectionCard(
       title: l10n.scheduleToday,
+      trailing: trailing,
       subtitle:
           '${DateFormat.yMMMd(Localizations.localeOf(context).toString()).format(today)} · ${data.term} · ${l10n.scheduleWeekLabel(data.week)}',
       summary: CardSummary(
@@ -197,12 +200,14 @@ class ScheduleWeekPicker extends StatefulWidget {
     required this.week,
     required this.maxWeek,
     required this.onChanged,
+    this.currentWeek,
     this.previews = const [],
     this.enabled = true,
   });
 
   final int week;
   final int maxWeek;
+  final int? currentWeek;
   final ValueChanged<int> onChanged;
   final List<ScheduleWeekWeekPreviews> previews;
   final bool enabled;
@@ -214,31 +219,37 @@ class ScheduleWeekPicker extends StatefulWidget {
 class _ScheduleWeekPickerState extends State<ScheduleWeekPicker> {
   final _scroll = ScrollController();
   double _extent = 88;
+  double? _viewport;
 
   @override
   void initState() {
     super.initState();
-    _reveal();
+    _reveal(animate: false);
   }
 
   @override
   void didUpdateWidget(covariant ScheduleWeekPicker oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.week != widget.week) _reveal();
+    if (oldWidget.week != widget.week || oldWidget.maxWeek != widget.maxWeek) {
+      _reveal();
+    }
   }
 
-  void _reveal() => WidgetsBinding.instance.addPostFrameCallback((_) {
+  void _reveal({
+    bool animate = true,
+  }) => WidgetsBinding.instance.addPostFrameCallback((_) {
     if (!mounted || !_scroll.hasClients) return;
-    final left = (widget.week - 1) * _extent;
-    final right = left + _extent;
-    final viewport = _scroll.position.viewportDimension;
-    final target = left < _scroll.offset
-        ? left
-        : right > _scroll.offset + viewport
-        ? right - viewport
-        : _scroll.offset;
+    // Symmetric edge padding also allows the first/last week to be centered.
+    final target = ((widget.week - 1) * _extent).clamp(
+      0.0,
+      _scroll.position.maxScrollExtent,
+    );
+    if (!animate || MediaQuery.disableAnimationsOf(context)) {
+      _scroll.jumpTo(target);
+      return;
+    }
     _scroll.animateTo(
-      target.clamp(0.0, _scroll.position.maxScrollExtent),
+      target,
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
     );
@@ -255,90 +266,183 @@ class _ScheduleWeekPickerState extends State<ScheduleWeekPicker> {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
-    _extent = 88 * math.max(1, math.min(scale, 1.5));
+    final extent = 88.0 * math.max(1.0, math.min(scale, 1.5));
+    if (_extent != extent) _reveal(animate: false);
+    _extent = extent;
     final previews = {for (final p in widget.previews) p.week: p};
     return SizedBox(
       height: 82 + 20 * math.max(1, scale),
-      child: ListView.builder(
-        key: const ValueKey('schedule-week-strip'),
-        controller: _scroll,
-        scrollDirection: Axis.horizontal,
-        itemExtent: _extent,
-        itemCount: widget.maxWeek,
-        itemBuilder: (context, index) {
-          final week = index + 1;
-          final selected = week == widget.week;
-          final preview = previews[week];
-          final counts = <int?>[
-            for (var day = 1; day <= 7; day++)
-              preview?.days
-                  .where((d) => d.dayOfWeek == day)
-                  .firstOrNull
-                  ?.courseCount,
-          ];
-          final description = counts.any((c) => c == null)
-              ? l10n.schedulePreviewUnavailable
-              : l10n.schedulePreviewCourses(counts.fold(0, (a, b) => a + b!));
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(0, 4, 8, 4),
-            child: Semantics(
-              selected: selected,
-              button: true,
-              label: '${l10n.scheduleWeekLabel(week)}, $description',
-              child: Tooltip(
-                message: description,
-                child: Material(
-                  color: selected
-                      ? colors.primaryContainer
-                      : colors.surfaceContainerLow,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(
-                      color: selected ? colors.primary : colors.outlineVariant,
-                    ),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    key: ValueKey('schedule-week-$week'),
-                    onTap: widget.enabled && !selected
-                        ? () => widget.onChanged(week)
-                        : null,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Column(
-                        children: [
-                          Text(
-                            l10n.scheduleWeekLabel(week),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 8),
-                          Expanded(
-                            child: ExcludeSemantics(
-                              child: CustomPaint(
-                                key: ValueKey('schedule-preview-$week'),
-                                size: const Size(
-                                  double.infinity,
-                                  double.infinity,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (_viewport != constraints.maxWidth) {
+            _viewport = constraints.maxWidth;
+            _reveal(animate: false);
+          }
+          return ListView.builder(
+            key: const ValueKey('schedule-week-strip'),
+            controller: _scroll,
+            scrollDirection: Axis.horizontal,
+            itemExtent: _extent,
+            itemCount: widget.maxWeek,
+            padding: EdgeInsets.symmetric(
+              horizontal: math.max(0, (constraints.maxWidth - _extent) / 2),
+            ),
+            itemBuilder: (context, index) {
+              final week = index + 1;
+              final selected = week == widget.week;
+              final current = week == widget.currentWeek;
+              final preview = previews[week];
+              final counts = <int?>[
+                for (var day = 1; day <= 7; day++)
+                  preview?.days
+                      .where((d) => d.dayOfWeek == day)
+                      .firstOrNull
+                      ?.courseCount,
+              ];
+              final description = counts.any((c) => c == null)
+                  ? l10n.schedulePreviewUnavailable
+                  : l10n.schedulePreviewCourses(
+                      counts.fold(0, (a, b) => a + b!),
+                    );
+              return Padding(
+                padding: const EdgeInsets.all(4),
+                child: Semantics(
+                  selected: selected,
+                  button: true,
+                  label:
+                      '${l10n.scheduleWeekLabel(week)}, ${current ? '${l10n.scheduleCurrentWeek}, ' : ''}$description',
+                  child: Tooltip(
+                    message: description,
+                    child: Material(
+                      color: selected
+                          ? colors.primaryContainer
+                          : colors.surfaceContainerLow,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: selected
+                              ? colors.primary
+                              : colors.outlineVariant,
+                        ),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        key: ValueKey('schedule-week-$week'),
+                        onTap: widget.enabled && !selected
+                            ? () => widget.onChanged(week)
+                            : null,
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            children: [
+                              Text(
+                                l10n.scheduleWeekLabel(week),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (current)
+                                Text(
+                                  l10n.scheduleCurrentWeek,
+                                  key: ValueKey('schedule-current-week-$week'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.labelSmall,
                                 ),
-                                painter: _WeekPreviewPainter(
-                                  counts,
-                                  selected
-                                      ? colors.onPrimaryContainer
-                                      : colors.primary,
+                              const SizedBox(height: 8),
+                              Expanded(
+                                child: ExcludeSemantics(
+                                  child: CustomPaint(
+                                    key: ValueKey('schedule-preview-$week'),
+                                    size: const Size(
+                                      double.infinity,
+                                      double.infinity,
+                                    ),
+                                    painter: _WeekPreviewPainter(
+                                      counts,
+                                      selected
+                                          ? colors.onPrimaryContainer
+                                          : colors.primary,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           );
         },
+      ),
+    );
+  }
+}
+
+/// Animate only the arriving week; a pending query never shows the previous
+/// week's courses under the newly selected week label.
+class ScheduleWeekTransition extends StatefulWidget {
+  const ScheduleWeekTransition({
+    super.key,
+    required this.week,
+    required this.child,
+  });
+  final int? week;
+  final Widget child;
+
+  @override
+  State<ScheduleWeekTransition> createState() => _ScheduleWeekTransitionState();
+}
+
+class _ScheduleWeekTransitionState extends State<ScheduleWeekTransition>
+    with SingleTickerProviderStateMixin {
+  late final _animation = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+    value: 1,
+  );
+  int? _shownWeek;
+  double _direction = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _shownWeek = widget.week;
+  }
+
+  @override
+  void didUpdateWidget(covariant ScheduleWeekTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final week = widget.week;
+    if (week == null || week == _shownWeek) return;
+    if (_shownWeek != null && !MediaQuery.disableAnimationsOf(context)) {
+      _direction = week > _shownWeek! ? 1 : -1;
+      _animation.forward(from: 0);
+    }
+    _shownWeek = week;
+  }
+
+  @override
+  void dispose() {
+    _animation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final curve = _animation.drive(CurveTween(curve: Curves.easeOutCubic));
+    return ClipRect(
+      child: FadeTransition(
+        opacity: curve,
+        child: SlideTransition(
+          position: curve.drive(
+            Tween(begin: Offset(.12 * _direction, 0), end: Offset.zero),
+          ),
+          child: widget.child,
+        ),
       ),
     );
   }

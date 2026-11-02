@@ -11,8 +11,10 @@ import 'models.dart';
 Future<CampusSnapshot> loadCampusSnapshot(
   SessionController session, {
   bool preferCacheOnly = false,
+  bool refreshNotices = false,
 }) async {
   final school = session.selectedSchool;
+  final generation = session.trustedScriptViewGeneration;
   if (school == null) {
     throw StateError('未选校');
   }
@@ -47,7 +49,7 @@ Future<CampusSnapshot> loadCampusSnapshot(
       updatedAt = data.fetchedAt;
     }
   }
-  if (cachedNotices != null) {
+  if (cachedNotices != null && !refreshNotices) {
     return CampusSnapshot(
       schoolName: school.displayName,
       homeTitle: homeTitle,
@@ -56,25 +58,9 @@ Future<CampusSnapshot> loadCampusSnapshot(
       supportedCapabilities: capabilities,
     );
   }
-  // ADR-038: let the shared preload operation own first fetch so the homepage
-  // does not race it with a duplicate request. Older packages retain direct load.
-  var declaredPreload = false;
+  // ADR-060: reading a desktop is strictly local, including packages that
+  // deliberately omit preload. Background work starts after its first frame.
   if (preferCacheOnly) {
-    try {
-      final provider = (await session.scriptRegistry).provider(
-        school.id,
-        'notice.list',
-      );
-      declaredPreload =
-          provider?.manifest.home.any(
-            (item) => item.capability == 'notice.list' && item.preload,
-          ) ??
-          false;
-    } catch (_) {
-      // An unavailable optional registry must not break the legacy provider.
-    }
-  }
-  if (declaredPreload) {
     return CampusSnapshot(
       schoolName: school.displayName,
       homeTitle: homeTitle,
@@ -82,12 +68,17 @@ Future<CampusSnapshot> loadCampusSnapshot(
       supportedCapabilities: capabilities,
     );
   }
+  if (session.selectedSchool?.id != school.id ||
+      session.trustedScriptViewGeneration != generation) {
+    throw StateError('school_changed');
+  }
   final run = await session.runCapability('notice.list', interactive: false);
   if (!run.ok) {
     return CampusSnapshot(
       schoolName: school.displayName,
       homeTitle: homeTitle,
       updatedAt: updatedAt,
+      notices: cachedNotices,
       supportedCapabilities: {
         ...school.capabilityCredentials.keys,
         ...await session.trustedScriptCapabilities(),

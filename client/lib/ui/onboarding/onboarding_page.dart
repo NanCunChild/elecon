@@ -4,6 +4,7 @@
 /// 完成选校进入主壳；未登录状态由设置页呈现并可再次登录。
 library;
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../catalog/schools.dart';
@@ -28,6 +29,15 @@ class _OnboardingPageState extends State<OnboardingPage> {
   SchoolDescriptor? _selected;
   BundledScriptSchool? _bundled = bundledScriptSchools.first;
   bool _busy = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final session = SessionScope.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(session.loadSchoolChoices());
+    });
+  }
 
   Future<void> _continue() async {
     final session = SessionScope.of(context);

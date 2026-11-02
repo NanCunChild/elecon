@@ -31,7 +31,7 @@ class _EnergySectionState extends State<EnergySection> {
   String? _selected;
   DateTime? _fetchedAt, _historyAt;
   DateTimeRange? _range;
-  bool _busy = false, _failed = false;
+  bool _busy = false, _failed = false, _needsConfiguration = false;
 
   @override
   void didChangeDependencies() {
@@ -50,6 +50,7 @@ class _EnergySectionState extends State<EnergySection> {
       _historyAt = null;
       _busy = false;
       _failed = false;
+      _needsConfiguration = false;
       _restore();
     }
   }
@@ -61,7 +62,16 @@ class _EnergySectionState extends State<EnergySection> {
   Future<void> _restore() async {
     final request = _request;
     final cached = await _session!.cachedCapability('energy.meters');
-    if (!_current(request) || cached == null) return;
+    if (!_current(request)) return;
+    if (cached == null) {
+      final needsConfiguration = await _session!.capabilityNeedsConfiguration(
+        'energy.meters',
+      );
+      if (_current(request)) {
+        setState(() => _needsConfiguration = needsConfiguration);
+      }
+      return;
+    }
     final history = await _session!.latestCachedCapability('energy.usage');
     if (!_current(request)) return;
     setState(() {
@@ -86,7 +96,7 @@ class _EnergySectionState extends State<EnergySection> {
     });
   }
 
-  Future<void> _load({bool history = false}) async {
+  Future<void> _load({bool history = false, bool configure = false}) async {
     if (_busy) return;
     final request = ++_request;
     final selected = _selected;
@@ -95,6 +105,7 @@ class _EnergySectionState extends State<EnergySection> {
       _failed = false;
     });
     final params = <String, dynamic>{
+      if (configure) 'configure': true,
       if (history && selected != null) 'meterId': selected,
     };
     if (history && _range != null) {
@@ -120,9 +131,13 @@ class _EnergySectionState extends State<EnergySection> {
       final result = await _session!.runCapability(capability, params: params);
       if (!_current(request)) return;
       if (!result.ok) {
-        setState(() => _failed = true);
+        setState(() {
+          _needsConfiguration = result.reason == 'configuration_required';
+          _failed = !_needsConfiguration;
+        });
         return;
       }
+      _needsConfiguration = false;
       final cached = await _session!.cachedCapability(
         capability,
         params: params,
@@ -149,18 +164,33 @@ class _EnergySectionState extends State<EnergySection> {
     }
   }
 
+  Future<void> _refresh({bool configure = false}) async {
+    final session = _session, generation = _generation;
+    await _load(configure: configure);
+    if (!mounted ||
+        session != _session ||
+        generation != _generation ||
+        _needsConfiguration) {
+      return;
+    }
+    if (mounted && !_failed && _selected != null) await _load(history: true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final meter = _meters?.where((m) => m['meterId'] == _selected).firstOrNull;
     return SectionCard(
       title: l10n.energyTitle,
+      trailing: SectionRefreshButton(onPressed: _busy ? null : _refresh),
       subtitle: l10n.energyPrompt,
       summary: CardSummary(
         meter?['remaining'] != null
             ? '${meter!['remaining']} ${meter['unit']}'
             : _busy
             ? l10n.homeCardLoading
+            : _needsConfiguration
+            ? l10n.capabilityConfigurationRequired
             : _failed
             ? l10n.campusLoadFailed
             : _meters?.isEmpty == true
@@ -170,7 +200,7 @@ class _EnergySectionState extends State<EnergySection> {
           if (_failed && meter?['remaining'] != null) l10n.campusLoadFailed,
           if (meter?['label'] is String) meter!['label'] as String,
           if (_fetchedAt != null)
-            l10n.homeDataUpdatedAt(formatLocalDateTime(_fetchedAt!)),
+            l10n.homeDataUpdatedAt(formatUpdateTime(_fetchedAt!, l10n)),
         ].join(' · '),
       ),
       child: Column(
@@ -178,14 +208,17 @@ class _EnergySectionState extends State<EnergySection> {
         children: [
           if (_busy) const LinearProgressIndicator(),
           if (_failed) Text(l10n.campusLoadFailed),
+          if (_needsConfiguration) Text(l10n.capabilityConfigurationRequired),
+          if (_needsConfiguration)
+            TextButton.icon(
+              onPressed: _busy ? null : () => _refresh(configure: true),
+              icon: const Icon(Icons.edit_outlined),
+              label: Text(l10n.capabilityCompleteConfiguration),
+            ),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              FilledButton.tonal(
-                onPressed: _busy ? null : () => _load(),
-                child: Text(l10n.energyLoad),
-              ),
               OutlinedButton(
                 onPressed: _busy
                     ? null
@@ -203,6 +236,7 @@ class _EnergySectionState extends State<EnergySection> {
                             _history = null;
                             _historyAt = null;
                           });
+                          if (_selected != null) await _load(history: true);
                         }
                       },
                 child: Text(
@@ -236,11 +270,14 @@ class _EnergySectionState extends State<EnergySection> {
               ],
               onChanged: _busy
                   ? null
-                  : (value) => setState(() {
-                      _selected = value;
-                      _history = null;
-                      _historyAt = null;
-                    }),
+                  : (value) {
+                      setState(() {
+                        _selected = value;
+                        _history = null;
+                        _historyAt = null;
+                      });
+                      if (value != null) unawaited(_load(history: true));
+                    },
             ),
             if (meter?['remaining'] != null)
               _DataLine(
@@ -249,19 +286,10 @@ class _EnergySectionState extends State<EnergySection> {
               ),
             if (meter?['lastReadDate'] != null)
               _DataLine(l10n.energyReadDate, meter!['lastReadDate'] as String),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: FilledButton.tonal(
-                onPressed: _busy || meter == null
-                    ? null
-                    : () => _load(history: true),
-                child: Text(l10n.energyHistory),
-              ),
-            ),
           ],
           if (_fetchedAt != null)
             Text(
-              l10n.homeDataUpdatedAt(formatLocalDateTime(_fetchedAt!)),
+              l10n.homeDataUpdatedAt(formatUpdateTime(_fetchedAt!, l10n)),
               style: Theme.of(context).textTheme.bodySmall,
             ),
           if (_history?.isEmpty == true) Text(l10n.energyNoHistory),
@@ -310,7 +338,7 @@ class _EnergySectionState extends State<EnergySection> {
             ),
           if (_historyAt != null)
             Text(
-              l10n.homeDataUpdatedAt(formatLocalDateTime(_historyAt!)),
+              l10n.homeDataUpdatedAt(formatUpdateTime(_historyAt!, l10n)),
               style: Theme.of(context).textTheme.bodySmall,
             ),
         ],
@@ -333,7 +361,10 @@ class _ClimateSectionState extends State<ClimateSection>
   List<Map<String, dynamic>> _devices = [];
   Map<String, dynamic>? _status;
   String? _selected, _outcome;
-  bool _busy = false, _failed = false, _acting = false;
+  bool _busy = false,
+      _failed = false,
+      _acting = false,
+      _needsConfiguration = false;
   @override
   void initState() {
     super.initState();
@@ -374,6 +405,7 @@ class _ClimateSectionState extends State<ClimateSection>
       _busy = false;
       _acting = false;
       _failed = false;
+      _needsConfiguration = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_load(interactive: false));
       });
@@ -405,9 +437,13 @@ class _ClimateSectionState extends State<ClimateSection>
         );
         if (!_current(request)) return;
         if (!result.ok) {
-          if (interactive) setState(() => _failed = true);
+          setState(() {
+            _needsConfiguration = result.reason == 'configuration_required';
+            _failed = !_needsConfiguration;
+          });
           return;
         }
+        _needsConfiguration = false;
         final devices = _items(result.data);
         setState(() {
           _devices = devices;
@@ -540,10 +576,15 @@ class _ClimateSectionState extends State<ClimateSection>
         _status!['errorCode'] == null;
     return SectionCard(
       title: l10n.climateTitle,
+      trailing: SectionRefreshButton(
+        onPressed: _busy || _acting ? null : () => _load(),
+      ),
       subtitle: l10n.climatePrompt,
       summary: CardSummary(
         _busy || _acting
             ? l10n.homeCardLoading
+            : _needsConfiguration
+            ? l10n.capabilityConfigurationRequired
             : _failed
             ? l10n.campusLoadFailed
             : !known
@@ -564,27 +605,21 @@ class _ClimateSectionState extends State<ClimateSection>
         children: [
           if (_busy || _acting) const LinearProgressIndicator(),
           if (_failed) Text(l10n.campusLoadFailed),
+          if (_needsConfiguration) Text(l10n.capabilityConfigurationRequired),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              FilledButton.tonal(
-                onPressed: _busy || _acting ? null : () => _load(),
-                child: Text(l10n.climateLoad),
-              ),
-              if (_selected != null)
-                OutlinedButton(
-                  onPressed: _busy || _acting
-                      ? null
-                      : () => _load(statusOnly: true),
-                  child: Text(l10n.climateRefresh),
-                ),
-              if (_devices.isNotEmpty)
+              if (_devices.isNotEmpty || _needsConfiguration)
                 TextButton(
                   onPressed: _busy || _acting
                       ? null
                       : () => _load(configure: true),
-                  child: Text(l10n.climateConfigure),
+                  child: Text(
+                    _needsConfiguration
+                        ? l10n.capabilityCompleteConfiguration
+                        : l10n.climateConfigure,
+                  ),
                 ),
             ],
           ),

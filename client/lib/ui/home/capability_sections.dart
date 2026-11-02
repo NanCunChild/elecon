@@ -25,15 +25,17 @@ import 'display_date.dart';
 import 'card_layout.dart';
 import 'card_preview_list.dart';
 import 'card_spending_view.dart';
-import 'home_page.dart' show GradesCard, ScheduleCard;
+import 'home_page.dart' show GradesCard, ScheduleCard, NoticeCard;
 import 'models.dart';
 import 'schema_decode.dart';
-import 'schedule_view.dart' show ScheduleWeekPicker;
+import 'schedule_view.dart' show ScheduleWeekPicker, ScheduleWeekTransition;
 import 'section_card.dart';
 
 /// 一次能力取数 + 解码的归一化结果。
 class _Outcome<T> {
   const _Outcome({this.data, this.needLogin = false, this.error, this.reason});
+
+  bool get needConfiguration => reason == 'configuration_required';
 
   final T? data;
   final bool needLogin;
@@ -55,6 +57,9 @@ Future<_Outcome<T>> _runOnceDecoded<T>(
     interactive: interactive,
   );
   if (!run.ok) {
+    if (run.reason == 'configuration_required') {
+      return const _Outcome(reason: 'configuration_required');
+    }
     if (run.failureKind == CapabilityFailureKind.auth ||
         run.reason == 'authentication_required') {
       return const _Outcome(needLogin: true);
@@ -91,13 +96,14 @@ Future<_Outcome<T>> _runDecoded<T>(
   if (context.mounted) {
     final l10n = AppLocalizations.of(context);
     final message = switch (first.reason) {
+      'configuration_required' => l10n.capabilityConfigurationRequired,
       'network_denied' => l10n.scriptsNetworkDenied,
       'source_response_invalid' => l10n.scriptsSourceResponseInvalid,
       'authentication_timeout' => l10n.scriptsAuthenticationTimeout,
       'input_cancelled' => l10n.scriptsInputCancelled,
       _ => null,
     };
-    if (message != null) return _Outcome(error: message);
+    if (message != null) return _Outcome(error: message, reason: first.reason);
   }
   return first;
 }
@@ -134,7 +140,7 @@ bool _isCurrentSession(
     identical(SessionScope.of(state.context), session) &&
     session.trustedScriptViewGeneration == generation;
 
-enum _Phase { idle, loading, loaded, needLogin, error }
+enum _Phase { idle, loading, loaded, needLogin, needConfiguration, error }
 
 /// ADR-038: restore validated current-school data independently of widget life.
 /// Background writes notify SessionScope; failed refreshes never replace data.
@@ -156,6 +162,7 @@ mixin _CachedSection<W extends StatefulWidget, D> on State<W> {
   void applyCache(D data);
   void clearCache();
   void onCacheRestored() {}
+  void onConfigurationRequired() {}
 
   @override
   void didChangeDependencies() {
@@ -200,6 +207,18 @@ mixin _CachedSection<W extends StatefulWidget, D> on State<W> {
       }
       final decoded = cached == null ? null : decodeCache(cached.data);
       if (decoded == null) {
+        final needsConfiguration = await session.capabilityNeedsConfiguration(
+          cacheCapability,
+          params: cacheParams,
+        );
+        if (!_isCurrentSession(this, session, generation) ||
+            read != _cacheRead) {
+          return;
+        }
+        if (needsConfiguration) {
+          setState(onConfigurationRequired);
+          return;
+        }
         // Revoked, disabled or updated packages cannot leave old cached values
         // visible. A fresh manual result without a cache remains usable.
         if (_cacheFetchedAt != null) {
@@ -230,10 +249,16 @@ mixin _CachedSection<W extends StatefulWidget, D> on State<W> {
         ? null
         : (_cacheStale
               ? AppLocalizations.of(context).homeDataStaleAt(
-                  _formatTimestamp(_cacheFetchedAt!.toIso8601String()),
+                  formatUpdateTime(
+                    _cacheFetchedAt!,
+                    AppLocalizations.of(context),
+                  ),
                 )
               : AppLocalizations.of(context).homeDataUpdatedAt(
-                  _formatTimestamp(_cacheFetchedAt!.toIso8601String()),
+                  formatUpdateTime(
+                    _cacheFetchedAt!,
+                    AppLocalizations.of(context),
+                  ),
                 ));
     final style = Theme.of(context).textTheme.bodySmall!;
     final footerHeight = caption == null
@@ -280,6 +305,150 @@ mixin _CachedSection<W extends StatefulWidget, D> on State<W> {
 // 成绩（无参）
 // ===========================================================================
 
+class NoticeSection extends StatefulWidget {
+  const NoticeSection({super.key, this.initialData, this.generation});
+  final NoticeList? initialData;
+  final int? generation;
+  @override
+  State<NoticeSection> createState() => _NoticeSectionState();
+}
+
+class _NoticeSectionState extends State<NoticeSection>
+    with _CachedSection<NoticeSection, NoticeList> {
+  NoticeList? _data;
+  _Phase _phase = _Phase.idle;
+  String? _error;
+  bool _prepared = false;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final session = SessionScope.of(context);
+    if (_data == null &&
+        widget.initialData != null &&
+        widget.generation == session.trustedScriptViewGeneration) {
+      applyCache(widget.initialData!);
+    }
+    if (_prepared) return;
+    _prepared = true;
+    final generation = session.trustedScriptViewGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!_isCurrentSession(this, session, generation)) return;
+      await restoreCache();
+      if (!_isCurrentSession(this, session, generation) ||
+          _data != null ||
+          _phase != _Phase.idle) {
+        return;
+      }
+      final school = session.selectedSchool;
+      if (school == null) return;
+      final provider = (await session.scriptRegistry).provider(
+        school.id,
+        'notice.list',
+      );
+      if (!_isCurrentSession(this, session, generation)) return;
+      if (provider?.manifest.home.any(
+            (query) => query.capability == 'notice.list' && query.preload,
+          ) ==
+          true) {
+        return;
+      }
+      await _load(interactive: false);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant NoticeSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialData != null &&
+        widget.initialData != oldWidget.initialData &&
+        widget.generation ==
+            SessionScope.of(context).trustedScriptViewGeneration) {
+      applyCache(widget.initialData!);
+    }
+  }
+
+  @override
+  String get cacheCapability => 'notice.list';
+  @override
+  NoticeList? decodeCache(Object? value) => noticeListFromDynamic(value);
+  @override
+  void applyCache(NoticeList data) {
+    _data = data;
+    _phase = _Phase.loaded;
+  }
+
+  @override
+  void clearCache() {
+    _prepared = false;
+    _data = null;
+    _phase = _Phase.idle;
+    _error = null;
+  }
+
+  @override
+  void onConfigurationRequired() => _phase = _Phase.needConfiguration;
+
+  Future<void> _load({bool configure = false, bool interactive = true}) async {
+    if (_phase == _Phase.loading) return;
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    setState(() => _phase = _Phase.loading);
+    final result = await _runDecoded<NoticeList>(
+      context,
+      session,
+      'notice.list',
+      interactive: interactive,
+      params: {if (configure) 'configure': true},
+      decode: noticeListFromDynamic,
+    );
+    if (!_isCurrentSession(this, session, generation)) return;
+    setState(() {
+      _phase = result.needConfiguration
+          ? _Phase.needConfiguration
+          : result.needLogin
+          ? _Phase.needLogin
+          : result.data == null
+          ? _Phase.error
+          : _Phase.loaded;
+      _error = result.error;
+      if (result.data != null) _data = result.data;
+    });
+    if (result.data != null) await restoreCache();
+  }
+
+  Future<void> _login() async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    if (await _promptVisibleLogin(context, session) &&
+        _isCurrentSession(this, session, generation)) {
+      await _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final refresh = SectionRefreshButton(
+      onPressed: _phase == _Phase.loading ? null : _load,
+    );
+    if (_data != null) {
+      return withCacheTime(NoticeCard(_data!, trailing: refresh));
+    }
+    return SectionCard(
+      title: l10n.homeNoticeTitle,
+      trailing: refresh,
+      summary:
+          _querySummary(context, _phase) ?? Text(l10n.homeNoticeUnavailable),
+      child: _PhaseBody(
+        phase: _phase,
+        error: _error,
+        onLogin: _login,
+        onConfigure: () => _load(configure: true),
+      ),
+    );
+  }
+}
+
 class GradesSection extends StatefulWidget {
   const GradesSection({super.key});
 
@@ -289,6 +458,9 @@ class GradesSection extends StatefulWidget {
 
 class _GradesSectionState extends State<GradesSection>
     with _CachedSection<GradesSection, GradesList> {
+  @override
+  void onConfigurationRequired() => _phase = _Phase.needConfiguration;
+
   @override
   String get cacheCapability => 'grades.list';
   @override
@@ -311,7 +483,7 @@ class _GradesSectionState extends State<GradesSection>
   GpaSummary? _summary;
   String? _error;
 
-  Future<void> _load() async {
+  Future<void> _load({bool configure = false}) async {
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     setState(() => _phase = _Phase.loading);
@@ -319,6 +491,7 @@ class _GradesSectionState extends State<GradesSection>
       context,
       session,
       'grades.list',
+      params: {if (configure) 'configure': true},
       decode: gradesListFromDynamic,
     );
     if (!mounted || !_isCurrentSession(this, session, generation)) return;
@@ -330,7 +503,9 @@ class _GradesSectionState extends State<GradesSection>
         : await _loadGpaSummary(session);
     if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
-      if (outcome.needLogin) {
+      if (outcome.needConfiguration) {
+        _phase = _Phase.needConfiguration;
+      } else if (outcome.needLogin) {
         _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
       } else if (outcome.error != null) {
         _phase = _data == null ? _Phase.error : _Phase.loaded;
@@ -387,18 +562,28 @@ class _GradesSectionState extends State<GradesSection>
   @override
   Widget build(BuildContext context) {
     if (_data != null) {
-      return withCacheTime(GradesCard(_data!, summary: _summary));
+      return withCacheTime(
+        GradesCard(
+          _data!,
+          summary: _summary,
+          trailing: SectionRefreshButton(
+            onPressed: _phase == _Phase.loading ? null : _load,
+          ),
+        ),
+      );
     }
     return _PromptCard(
       title: '成绩',
+      trailing: SectionRefreshButton(
+        onPressed: _phase == _Phase.loading ? null : _load,
+      ),
       summary: _querySummary(context, _phase),
       subtitle: '登录后查看本学期成绩单',
       child: _PhaseBody(
         phase: _phase,
         error: _error,
-        idleLabel: '查看成绩',
-        onLoad: _load,
         onLogin: _login,
+        onConfigure: () => _load(configure: true),
       ),
     );
   }
@@ -425,6 +610,9 @@ class _ScheduleSectionState extends State<ScheduleSection>
   Timer? _staleTimer;
   DateTime? _autoRefreshAttempt;
   bool _refreshing = false;
+
+  @override
+  void onConfigurationRequired() => _phase = _Phase.needConfiguration;
 
   @override
   void dispose() {
@@ -467,6 +655,18 @@ class _ScheduleSectionState extends State<ScheduleSection>
       // default home query have independent cache addresses and timestamps.
       _cacheRead++;
       _cacheFetchedAt = null;
+      if (!home) {
+        // Every opening starts with the script's current-week query, not the
+        // most recently viewed historical week.
+        _manualWeek = false;
+        _defaultQuery = true;
+        _currentWeek = null;
+        _calendarLoaded = false;
+        _opened = false;
+        _data = null;
+        _phase = _Phase.idle;
+        _request++;
+      }
     }
     super.didChangeDependencies();
     if (changedPresentation) unawaited(restoreCache());
@@ -492,6 +692,7 @@ class _ScheduleSectionState extends State<ScheduleSection>
       _homeData = data;
       return;
     }
+    if (!_manualWeek && _defaultQuery) _currentWeek = data.week;
     _data = data;
     _phase = _Phase.loaded;
     _week = data.week;
@@ -509,19 +710,23 @@ class _ScheduleSectionState extends State<ScheduleSection>
     _data = null;
     _phase = _Phase.idle;
     _week = 1;
+    _currentWeek = null;
     _request++;
     _term = null;
     _calendarLoaded = false;
+    _defaultQuery = true;
     _manualWeek = false;
     _previews.clear();
     _previewTerm = null;
   }
 
   @override
-  bool get useLatestCache => !_home! && !_manualWeek;
+  bool get useLatestCache => false;
   @override
   Map<String, dynamic>? get cacheParams =>
-      _home! ? const {} : {'week': _week, if (_term != null) 'term': _term};
+      _home! || (!_manualWeek && _defaultQuery)
+      ? const {}
+      : {'week': _week, if (_term != null) 'term': _term};
 
   int get _maxWeek =>
       _previews.keys.fold(_week > 25 ? _week : 25, (a, b) => a > b ? a : b);
@@ -577,7 +782,9 @@ class _ScheduleSectionState extends State<ScheduleSection>
 
   _Phase _phase = _Phase.idle;
   int _week = 1;
+  int? _currentWeek;
   bool _calendarLoaded = false;
+  bool _defaultQuery = true;
   bool _manualWeek = false;
   int _request = 0;
   String? _term;
@@ -586,7 +793,36 @@ class _ScheduleSectionState extends State<ScheduleSection>
   ScheduleWeek? _data;
   String? _error;
 
-  Future<void> _load({bool background = false}) async {
+  Future<void> _loadHome({bool configure = false}) async {
+    if (_refreshing) return;
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    setState(() => _refreshing = true);
+    final result = await _runDecoded<ScheduleWeek>(
+      context,
+      session,
+      'schedule.week',
+      params: {if (configure) 'configure': true},
+      decode: scheduleWeekFromDynamic,
+    );
+    if (!_isCurrentSession(this, session, generation)) return;
+    setState(() {
+      _refreshing = false;
+      if (result.data != null) _homeData = result.data;
+      _phase = result.needConfiguration
+          ? _Phase.needConfiguration
+          : result.needLogin
+          ? _Phase.needLogin
+          : result.data == null
+          ? _Phase.error
+          : _Phase.loaded;
+      _error = result.error;
+    });
+    await restoreCache();
+  }
+
+  Future<void> _load({bool background = false, bool configure = false}) async {
+    if (_home!) return _loadHome(configure: configure);
     if (_refreshing) return;
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
@@ -596,42 +832,64 @@ class _ScheduleSectionState extends State<ScheduleSection>
       if (_data == null) _phase = _Phase.loading;
       _error = null;
     });
-    if (_queryCurrentWeek && !background) {
+    if (_queryCurrentWeek) {
       final calendar = await _runDecoded<CalendarAcademic>(
         context,
         session,
         'calendar.academic',
+        params: {if (configure) 'configure': true},
+        interactive: !background,
         decode: calendarAcademicFromDynamic,
       );
       if (!mounted ||
           request != _request ||
           !_isCurrentSession(this, session, generation)) {
+        if (mounted && _isCurrentSession(this, session, generation)) {
+          setState(() => _refreshing = false);
+          await restoreCache();
+          if (!_home! && _data == null && _phase == _Phase.loading) {
+            await _load();
+          }
+        }
         return;
       }
       if (calendar.data == null) {
         setState(() {
           _refreshing = false;
-          _phase = _data != null
+          _phase = calendar.needConfiguration
+              ? _Phase.needConfiguration
+              : _data != null
               ? _Phase.loaded
               : calendar.needLogin
               ? _Phase.needLogin
               : _Phase.error;
-          _error = calendar.error;
+          _error = calendar.needConfiguration ? null : calendar.error;
         });
         return;
       }
       setState(() {
-        _week = calendar.data!.currentWeek ?? 1;
+        _currentWeek = calendar.data!.currentWeek;
+        _week = _currentWeek ?? 1;
         _term = calendar.data!.term;
         _calendarLoaded = true;
       });
     }
+    // ADR-038 lets a trusted script resolve its current week without a
+    // separate calendar capability. V1 retains its explicit-week input.
+    _defaultQuery =
+        !_manualWeek &&
+        !widget.calendarEnabled &&
+        (session.selectedSchool?.adapterId.startsWith('script:') ?? false);
     final outcome = await _runDecoded<ScheduleWeek>(
       context,
       session,
       'schedule.week',
       interactive: !background,
-      params: {'week': _week, if (_term != null) 'term': _term},
+      params: {
+        if (configure) 'configure': true,
+        if (!_defaultQuery) 'week': _week,
+        if (!_defaultQuery && _term != null) 'term': _term,
+      },
       decode: scheduleWeekFromDynamic,
     );
     if (mounted && _isCurrentSession(this, session, generation)) {
@@ -647,7 +905,9 @@ class _ScheduleSectionState extends State<ScheduleSection>
       return;
     }
     setState(() {
-      if (outcome.needLogin) {
+      if (outcome.needConfiguration) {
+        _phase = _Phase.needConfiguration;
+      } else if (outcome.needLogin) {
         _phase = _Phase.needLogin;
       } else if (outcome.error != null) {
         _phase = _Phase.error;
@@ -656,8 +916,10 @@ class _ScheduleSectionState extends State<ScheduleSection>
         _phase = _Phase.loaded;
         _data = outcome.data;
         if (_data != null) {
+          if (_defaultQuery) _currentWeek = _data!.week;
           _week = _data!.week;
           _term = _data!.term;
+          _calendarLoaded = true;
           _rememberPreviews(_data!);
         }
       }
@@ -680,60 +942,92 @@ class _ScheduleSectionState extends State<ScheduleSection>
     final l10n = AppLocalizations.of(context);
     if (_home!) {
       return _homeData != null
-          ? withCacheTime(ScheduleCard(_homeData!))
+          ? withCacheTime(
+              ScheduleCard(
+                _homeData!,
+                trailing: SectionRefreshButton(
+                  onPressed: _refreshing ? null : _loadHome,
+                ),
+              ),
+            )
           : SectionCard(
               title: l10n.homeScheduleTitle,
-              summary: CardSummary(l10n.scheduleTodayUnavailable),
-              child: Text(l10n.scheduleTodayUnavailable),
+              trailing: SectionRefreshButton(
+                onPressed: _refreshing ? null : _loadHome,
+              ),
+              summary:
+                  _querySummary(context, _phase) ??
+                  CardSummary(l10n.scheduleTodayUnavailable),
+              child: _PhaseBody(
+                phase: _phase,
+                error: _error,
+                onLogin: _login,
+                onConfigure: () => _loadHome(configure: true),
+              ),
             );
     }
     final busy = _phase == _Phase.loading;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _PromptCard(
-          title: l10n.homeScheduleTitle,
-          summary: _querySummary(context, _phase),
-          subtitle: l10n.homeSchedulePrompt,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_needsCurrentWeek)
-                TextButton(
-                  onPressed: busy
-                      ? null
-                      : () => setState(() => _manualWeek = true),
-                  child: Text(l10n.homeScheduleSelectWeek),
-                )
-              else
-                ScheduleWeekPicker(
-                  week: _week,
-                  maxWeek: _maxWeek,
-                  enabled: !busy,
-                  previews: _previews.values.toList(),
-                  onChanged: _selectWeek,
-                ),
-              const SizedBox(height: 8),
-              _PhaseBody(
-                phase: _phase,
-                error: _error,
-                idleLabel: _queryCurrentWeek
-                    ? l10n.homeScheduleLoadCurrent
-                    : l10n.homeScheduleLoadWeek(_week),
-                loadingHidden: false,
-                onLoad: _load,
-                onLogin: _login,
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                l10n.homeScheduleTitle,
+                style: Theme.of(context).textTheme.titleLarge,
               ),
-            ],
-          ),
+            ),
+            IconButton(
+              key: const ValueKey('schedule-refresh'),
+              tooltip: l10n.homeRefresh,
+              onPressed: busy || _refreshing ? null : _load,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
         ),
-        if (_data != null)
-          withCacheTime(
-            ScheduleCard(
-              _data!,
-              onWeekChanged: busy ? null : _selectWeek,
-              maxWeek: _maxWeek,
+        if (_needsCurrentWeek)
+          TextButton(
+            onPressed: busy ? null : () => setState(() => _manualWeek = true),
+            child: Text(l10n.homeScheduleSelectWeek),
+          )
+        else
+          ScheduleWeekPicker(
+            week: _week,
+            currentWeek: _currentWeek,
+            maxWeek: _maxWeek,
+            enabled: !busy,
+            previews: _previews.values.toList(),
+            onChanged: _selectWeek,
+          ),
+        if (busy) const LinearProgressIndicator(),
+        if (_phase == _Phase.needLogin || _phase == _Phase.needConfiguration)
+          _PhaseBody(
+            phase: _phase,
+            error: _error,
+            onLogin: _login,
+            onConfigure: () => _load(configure: true),
+          ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
+        ScheduleWeekTransition(
+          week: _data?.week,
+          child: _data == null
+              ? const SizedBox.shrink()
+              : withCacheTime(
+                  ScheduleCard(
+                    _data!,
+                    onWeekChanged: busy ? null : _selectWeek,
+                    maxWeek: _maxWeek,
+                  ),
+                ),
+        ),
         if (_refreshing) const LinearProgressIndicator(),
       ],
     );
@@ -756,6 +1050,9 @@ class _ClassroomSectionState extends State<ClassroomSection>
   bool _manualSelection = false;
   bool _prepared = false;
   String _room = "";
+  @override
+  void onConfigurationRequired() => _availPhase = _Phase.needConfiguration;
+
   @override
   String get cacheCapability => 'classroom.available';
   @override
@@ -863,7 +1160,7 @@ class _ClassroomSectionState extends State<ClassroomSection>
   ClassroomAvailable? _avail;
   String? _availError;
 
-  Future<void> _loadBuildings() async {
+  Future<void> _loadBuildings({bool configure = false}) async {
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     setState(() => _buildingsPhase = _Phase.loading);
@@ -871,11 +1168,14 @@ class _ClassroomSectionState extends State<ClassroomSection>
       context,
       session,
       'classroom.buildings',
+      params: {if (configure) 'configure': true},
       decode: classroomBuildingsFromDynamic,
     );
     if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
-      if (outcome.needLogin) {
+      if (outcome.needConfiguration) {
+        _buildingsPhase = _Phase.needConfiguration;
+      } else if (outcome.needLogin) {
         _buildingsPhase = _Phase.needLogin;
       } else if (outcome.error != null) {
         _buildingsPhase = _Phase.error;
@@ -900,13 +1200,16 @@ class _ClassroomSectionState extends State<ClassroomSection>
     if (ok) await _loadBuildings();
   }
 
-  Future<void> _loadAvailable() async {
+  Future<void> _loadAvailable({bool configure = false}) async {
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     final building = _selected;
     if (building == null) return;
     setState(() => _availPhase = _Phase.loading);
-    final params = <String, dynamic>{'date': _formatDate(_date)};
+    final params = <String, dynamic>{
+      'date': _formatDate(_date),
+      if (configure) 'configure': true,
+    };
     if (building.buildingId != null && building.buildingId!.isNotEmpty) {
       params['buildingId'] = building.buildingId;
       params['building'] = building.building;
@@ -923,7 +1226,9 @@ class _ClassroomSectionState extends State<ClassroomSection>
     );
     if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
-      if (outcome.needLogin) {
+      if (outcome.needConfiguration) {
+        _availPhase = _Phase.needConfiguration;
+      } else if (outcome.needLogin) {
         _availPhase = _Phase.needLogin;
       } else if (outcome.error != null) {
         _availPhase = _Phase.error;
@@ -960,7 +1265,21 @@ class _ClassroomSectionState extends State<ClassroomSection>
   @override
   Widget build(BuildContext context) {
     if (HomeCardPresentation.isPreview(context) && _avail != null) {
-      return withCacheTime(_ClassroomResultCard(data: _avail!));
+      return withCacheTime(
+        _ClassroomResultCard(
+          data: _avail!,
+          trailing: SectionRefreshButton(
+            onPressed:
+                _availPhase == _Phase.loading ||
+                    _buildingsPhase == _Phase.loading
+                ? null
+                : () async {
+                    if (_selected == null) await _loadBuildings();
+                    if (mounted && _selected != null) await _loadAvailable();
+                  },
+          ),
+        ),
+      );
     }
     // 教学楼未就绪：先引导取列表（可能触发登录）。
     if (_buildingsPhase != _Phase.loaded) {
@@ -968,14 +1287,19 @@ class _ClassroomSectionState extends State<ClassroomSection>
         children: [
           _PromptCard(
             title: '空教室',
+            trailing: SectionRefreshButton(
+              onPressed: _buildingsPhase == _Phase.loading
+                  ? null
+                  : _loadBuildings,
+            ),
             summary: _querySummary(context, _buildingsPhase),
             subtitle: AppLocalizations.of(context).classroomPreparing,
             child: _PhaseBody(
               phase: _buildingsPhase,
               error: _buildingsError,
-              idleLabel: '加载教学楼',
-              onLoad: _loadBuildings,
+
               onLogin: _loginThenBuildings,
+              onConfigure: () => _loadBuildings(configure: true),
             ),
           ),
           if (_avail != null)
@@ -989,6 +1313,9 @@ class _ClassroomSectionState extends State<ClassroomSection>
       children: [
         _PromptCard(
           title: '空教室',
+          trailing: SectionRefreshButton(
+            onPressed: busy ? null : _loadAvailable,
+          ),
           summary: _querySummary(context, _availPhase),
           subtitle: AppLocalizations.of(context).classroomSearchHint,
           child: Column(
@@ -1034,8 +1361,8 @@ class _ClassroomSectionState extends State<ClassroomSection>
               _PhaseBody(
                 phase: _availPhase,
                 error: _availError,
-                idleLabel: '查询空教室',
-                onLoad: _loadAvailable,
+                onConfigure: () => _loadAvailable(configure: true),
+
                 onLogin: () async {
                   final session = SessionScope.of(context);
                   final generation = session.trustedScriptViewGeneration;
@@ -1064,7 +1391,12 @@ class _ClassroomSectionState extends State<ClassroomSection>
 }
 
 class _ClassroomResultCard extends StatelessWidget {
-  const _ClassroomResultCard({required this.data, this.roomFilter = ""});
+  const _ClassroomResultCard({
+    required this.data,
+    this.roomFilter = "",
+    this.trailing,
+  });
+  final Widget? trailing;
   final String roomFilter;
 
   final ClassroomAvailable data;
@@ -1083,6 +1415,7 @@ class _ClassroomResultCard extends StatelessWidget {
         .toList();
     return SectionCard(
       title: '空教室',
+      trailing: trailing,
       summary: CardSummary(
         '${free.length}/${items.length}',
         detail: [
@@ -1158,6 +1491,9 @@ class CardSection extends StatefulWidget {
 class _CardSectionState extends State<CardSection>
     with _CachedSection<CardSection, CardBalance> {
   @override
+  void onConfigurationRequired() => _phase = _Phase.needConfiguration;
+
+  @override
   String get cacheCapability => 'card.balance';
   @override
   CardBalance? decodeCache(Object? value) => cardBalanceFromDynamic(value);
@@ -1177,7 +1513,7 @@ class _CardSectionState extends State<CardSection>
   CardBalance? _data;
   String? _error;
 
-  Future<void> _load() async {
+  Future<void> _load({bool configure = false}) async {
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     setState(() => _phase = _Phase.loading);
@@ -1185,11 +1521,14 @@ class _CardSectionState extends State<CardSection>
       context,
       session,
       'card.balance',
+      params: {if (configure) 'configure': true},
       decode: cardBalanceFromDynamic,
     );
     if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
-      if (outcome.needLogin) {
+      if (outcome.needConfiguration) {
+        _phase = _Phase.needConfiguration;
+      } else if (outcome.needLogin) {
         _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
       } else if (outcome.error != null) {
         _phase = _data == null ? _Phase.error : _Phase.loaded;
@@ -1218,6 +1557,8 @@ class _CardSectionState extends State<CardSection>
     final data = _data;
     final l10n = AppLocalizations.of(context);
     final preview = HomeCardPresentation.isPreview(context);
+    final presentation = HomeCardPresentation.maybeOf(context);
+    final home = presentation != null && !presentation.isPage;
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1226,9 +1567,8 @@ class _CardSectionState extends State<CardSection>
             _PhaseBody(
               phase: _phase,
               error: _error,
-              idleLabel: '查看余额',
-              onLoad: _load,
               onLogin: _login,
+              onConfigure: () => _load(configure: true),
             )
           else if (data.errorStatus != null)
             Text(_balanceErrorText(data.errorStatus!))
@@ -1241,7 +1581,7 @@ class _CardSectionState extends State<CardSection>
             ),
             if (data.status != null) Text(_cardStatusText(data.status!)),
           ],
-        if (widget.qrEnabled || widget.transactionsEnabled) ...[
+        if (!home && (widget.qrEnabled || widget.transactionsEnabled)) ...[
           if (widget.balanceEnabled) const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -1268,19 +1608,15 @@ class _CardSectionState extends State<CardSection>
             ],
           ),
         ],
-        if (widget.balanceEnabled && data != null)
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(
-              onPressed: _phase == _Phase.loading ? null : _load,
-              icon: const Icon(Icons.refresh),
-              label: const Text('重新查询'),
-            ),
-          ),
       ],
     );
     final card = SectionCard(
       title: l10n.homeCardTitle,
+      trailing: widget.balanceEnabled
+          ? SectionRefreshButton(
+              onPressed: _phase == _Phase.loading ? null : _load,
+            )
+          : null,
       subtitle: data == null
           ? null
           : data.cardNumber == null
@@ -1370,7 +1706,7 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool configure = false}) async {
     final session = _session!;
     if (!_foreground || session.trustedScriptViewGeneration != _generation) {
       return;
@@ -1385,6 +1721,7 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
       context,
       session,
       'card.qr',
+      params: {if (configure) 'configure': true},
       decode: (raw) {
         if (raw is! Map ||
             raw['imageBase64'] is! String ||
@@ -1409,7 +1746,11 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
     try {
       if (outcome.data == null) {
         setState(() {
-          _phase = outcome.needLogin ? _Phase.needLogin : _Phase.error;
+          _phase = outcome.needConfiguration
+              ? _Phase.needConfiguration
+              : outcome.needLogin
+              ? _Phase.needLogin
+              : _Phase.error;
           _error = outcome.error;
         });
         return;
@@ -1465,7 +1806,14 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
         identical(session, _session) &&
         session.trustedScriptViewGeneration == _generation;
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.cardQrShow)),
+      appBar: AppBar(
+        title: Text(l10n.cardQrShow),
+        actions: [
+          SectionRefreshButton(
+            onPressed: current && _phase != _Phase.loading ? _load : null,
+          ),
+        ],
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -1508,8 +1856,7 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
                 _PhaseBody(
                   phase: _phase,
                   error: _error,
-                  idleLabel: l10n.cardQrRefresh,
-                  onLoad: _load,
+                  onConfigure: () => _load(configure: true),
                   onLogin: () async {
                     _clear();
                     final ok = await _promptVisibleLogin(
@@ -1520,12 +1867,6 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
                     if (mounted && current && ok) await _load();
                   },
                 ),
-                if (_phase == _Phase.loaded)
-                  TextButton.icon(
-                    onPressed: _load,
-                    icon: const Icon(Icons.refresh),
-                    label: Text(l10n.cardQrRefresh),
-                  ),
               ],
             ],
           ),
@@ -1589,7 +1930,7 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
     super.dispose();
   }
 
-  Future<void> _load({bool more = false}) async {
+  Future<void> _load({bool more = false, bool configure = false}) async {
     final session = _session!;
     if (!_isCurrentSession(this, session, _generation!)) return;
     if (more && (_loadingMore || !_hasMore)) return;
@@ -1615,6 +1956,7 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
       session,
       'card.transactions',
       params: {
+        if (configure) 'configure': true,
         'from': formatLocalDate(_from),
         'to': formatLocalDate(_to),
         'page': nextPage,
@@ -1630,7 +1972,9 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
     final l10n = AppLocalizations.of(context);
     setState(() {
       _loadingMore = false;
-      if (outcome.needLogin) {
+      if (outcome.needConfiguration) {
+        _phase = _Phase.needConfiguration;
+      } else if (outcome.needLogin) {
         _loginRequired = true;
         _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
       } else if (outcome.error != null ||
@@ -1696,7 +2040,16 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
         identical(session, _session) &&
         session.trustedScriptViewGeneration == _generation;
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.cardTransactions)),
+      appBar: AppBar(
+        title: Text(l10n.cardTransactions),
+        actions: [
+          SectionRefreshButton(
+            onPressed: current && _phase != _Phase.loading && !_loadingMore
+                ? () => _load()
+                : null,
+          ),
+        ],
+      ),
       body: SafeArea(
         child: !current
             ? Center(child: Text(l10n.homeCardDataChanged))
@@ -1741,18 +2094,18 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
                         label: Text(l10n.cardTransactionsLogin),
                       ),
                     ),
+                  if (_phase == _Phase.needConfiguration)
+                    _PhaseBody(
+                      phase: _phase,
+                      error: _error,
+                      onLogin: _login,
+                      onConfigure: () => _load(configure: true),
+                    ),
                   if (_error != null)
                     Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
-                        children: [
-                          Text(_error!, textAlign: TextAlign.center),
-                          TextButton.icon(
-                            onPressed: () => _load(more: _data != null),
-                            icon: const Icon(Icons.refresh),
-                            label: Text(l10n.commonRetry),
-                          ),
-                        ],
+                        children: [Text(_error!, textAlign: TextAlign.center)],
                       ),
                     ),
                   if (_phase == _Phase.loaded) ...[
@@ -1780,8 +2133,10 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
                         ),
                         child: Text(
                           l10n.homeDataUpdatedAt(
-                            _formatTimestamp(
-                              _snapshotAt ?? _fetchedAt!.toIso8601String(),
+                            formatUpdateTime(
+                              DateTime.tryParse(_snapshotAt ?? '') ??
+                                  _fetchedAt!,
+                              l10n,
                             ),
                           ),
                           style: Theme.of(context).textTheme.bodySmall,
@@ -1925,6 +2280,9 @@ class ExamSection extends StatefulWidget {
 class _ExamSectionState extends State<ExamSection>
     with _CachedSection<ExamSection, ExamList> {
   @override
+  void onConfigurationRequired() => _phase = _Phase.needConfiguration;
+
+  @override
   String get cacheCapability => 'exam.list';
   @override
   ExamList? decodeCache(Object? value) => examListFromDynamic(value);
@@ -1944,7 +2302,7 @@ class _ExamSectionState extends State<ExamSection>
   ExamList? _data;
   String? _error;
 
-  Future<void> _load() async {
+  Future<void> _load({bool configure = false}) async {
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     setState(() => _phase = _Phase.loading);
@@ -1952,11 +2310,14 @@ class _ExamSectionState extends State<ExamSection>
       context,
       session,
       'exam.list',
+      params: {if (configure) 'configure': true},
       decode: examListFromDynamic,
     );
     if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
-      if (outcome.needLogin) {
+      if (outcome.needConfiguration) {
+        _phase = _Phase.needConfiguration;
+      } else if (outcome.needLogin) {
         _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
       } else if (outcome.error != null) {
         _phase = _data == null ? _Phase.error : _Phase.loaded;
@@ -1979,26 +2340,36 @@ class _ExamSectionState extends State<ExamSection>
   Widget build(BuildContext context) {
     final data = _data;
     if (data != null) {
-      return withCacheTime(_ExamResultCard(data: data));
+      return withCacheTime(
+        _ExamResultCard(
+          data: data,
+          trailing: SectionRefreshButton(
+            onPressed: _phase == _Phase.loading ? null : _load,
+          ),
+        ),
+      );
     }
     final l10n = AppLocalizations.of(context);
     return _PromptCard(
       title: l10n.homeExamTitle,
+      trailing: SectionRefreshButton(
+        onPressed: _phase == _Phase.loading ? null : _load,
+      ),
       summary: _querySummary(context, _phase),
       subtitle: l10n.homeExamPrompt,
       child: _PhaseBody(
         phase: _phase,
         error: _error,
-        idleLabel: l10n.homeExamLoad,
-        onLoad: _load,
         onLogin: _login,
+        onConfigure: () => _load(configure: true),
       ),
     );
   }
 }
 
 class _ExamResultCard extends StatelessWidget {
-  const _ExamResultCard({required this.data});
+  const _ExamResultCard({required this.data, this.trailing});
+  final Widget? trailing;
 
   final ExamList data;
 
@@ -2007,6 +2378,7 @@ class _ExamResultCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final items = data.items ?? const <ExamListItems>[];
     return SectionCard(
+      trailing: trailing,
       title: l10n.homeExamTitle,
       summary: CardSummary(
         items.firstOrNull?.courseName ?? l10n.homeExamEmpty,
@@ -2069,6 +2441,9 @@ class LibraryLoansSection extends StatefulWidget {
 class _LibraryLoansSectionState extends State<LibraryLoansSection>
     with _CachedSection<LibraryLoansSection, LibraryLoans> {
   @override
+  void onConfigurationRequired() => _phase = _Phase.needConfiguration;
+
+  @override
   String get cacheCapability => 'library.loans';
   @override
   LibraryLoans? decodeCache(Object? value) => libraryLoansFromDynamic(value);
@@ -2088,7 +2463,7 @@ class _LibraryLoansSectionState extends State<LibraryLoansSection>
   LibraryLoans? _data;
   String? _error;
 
-  Future<void> _load() async {
+  Future<void> _load({bool configure = false}) async {
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     setState(() => _phase = _Phase.loading);
@@ -2096,11 +2471,14 @@ class _LibraryLoansSectionState extends State<LibraryLoansSection>
       context,
       session,
       'library.loans',
+      params: {if (configure) 'configure': true},
       decode: libraryLoansFromDynamic,
     );
     if (!mounted || !_isCurrentSession(this, session, generation)) return;
     setState(() {
-      if (outcome.needLogin) {
+      if (outcome.needConfiguration) {
+        _phase = _Phase.needConfiguration;
+      } else if (outcome.needLogin) {
         _phase = _data == null ? _Phase.needLogin : _Phase.loaded;
       } else if (outcome.error != null) {
         _phase = _data == null ? _Phase.error : _Phase.loaded;
@@ -2123,26 +2501,36 @@ class _LibraryLoansSectionState extends State<LibraryLoansSection>
   Widget build(BuildContext context) {
     final data = _data;
     if (data != null) {
-      return withCacheTime(_LibraryLoansResultCard(data: data));
+      return withCacheTime(
+        _LibraryLoansResultCard(
+          data: data,
+          trailing: SectionRefreshButton(
+            onPressed: _phase == _Phase.loading ? null : _load,
+          ),
+        ),
+      );
     }
     final l10n = AppLocalizations.of(context);
     return _PromptCard(
       title: l10n.homeLibraryLoansTitle,
+      trailing: SectionRefreshButton(
+        onPressed: _phase == _Phase.loading ? null : _load,
+      ),
       summary: _querySummary(context, _phase),
       subtitle: l10n.homeLibraryLoansPrompt,
       child: _PhaseBody(
         phase: _phase,
         error: _error,
-        idleLabel: l10n.homeLibraryLoansLoad,
-        onLoad: _load,
         onLogin: _login,
+        onConfigure: () => _load(configure: true),
       ),
     );
   }
 }
 
 class _LibraryLoansResultCard extends StatelessWidget {
-  const _LibraryLoansResultCard({required this.data});
+  const _LibraryLoansResultCard({required this.data, this.trailing});
+  final Widget? trailing;
 
   final LibraryLoans data;
 
@@ -2150,6 +2538,7 @@ class _LibraryLoansResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return SectionCard(
+      trailing: trailing,
       title: l10n.homeLibraryLoansTitle,
       subtitle: l10n.homeLibraryLoansCount(data.items.length),
       summary: CardSummary(
@@ -2239,8 +2628,10 @@ class _PromptCard extends StatelessWidget {
     required this.subtitle,
     required this.child,
     this.summary,
+    this.trailing,
   });
 
+  final Widget? trailing;
   final Widget? summary;
   final String title;
   final String subtitle;
@@ -2251,6 +2642,7 @@ class _PromptCard extends StatelessWidget {
     title: title,
     subtitle: subtitle,
     summary: summary,
+    trailing: trailing,
     child: child,
   );
 }
@@ -2260,34 +2652,21 @@ class _PhaseBody extends StatelessWidget {
   const _PhaseBody({
     required this.phase,
     required this.error,
-    required this.idleLabel,
-    required this.onLoad,
     required this.onLogin,
-    this.loadingHidden = false,
+    this.onConfigure,
   });
 
   final _Phase phase;
   final String? error;
-  final String idleLabel;
-  final VoidCallback onLoad;
   final VoidCallback onLogin;
-
-  /// 课表等已内嵌 loading 行时可隐藏内联 spinner（此处始终展示，占位保留）。
-  final bool loadingHidden;
+  final VoidCallback? onConfigure;
 
   @override
   Widget build(BuildContext context) {
     switch (phase) {
       case _Phase.idle:
-      case _Phase.loaded: // loaded 时本 body 仅用于「重新查询」入口
-        return Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton.tonalIcon(
-            onPressed: onLoad,
-            icon: const Icon(Icons.download_outlined),
-            label: Text(idleLabel),
-          ),
-        );
+      case _Phase.loaded:
+        return const SizedBox.shrink();
       case _Phase.loading:
         return const Padding(
           padding: EdgeInsets.symmetric(vertical: 8),
@@ -2302,6 +2681,21 @@ class _PhaseBody extends StatelessWidget {
               Text('正在取数…'),
             ],
           ),
+        );
+      case _Phase.needConfiguration:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(AppLocalizations.of(context).capabilityConfigurationRequired),
+            if (onConfigure != null)
+              TextButton.icon(
+                onPressed: onConfigure,
+                icon: const Icon(Icons.edit_outlined),
+                label: Text(
+                  AppLocalizations.of(context).capabilityCompleteConfiguration,
+                ),
+              ),
+          ],
         );
       case _Phase.needLogin:
         return Column(
@@ -2324,12 +2718,6 @@ class _PhaseBody extends StatelessWidget {
               error ?? '加载失败',
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: onLoad,
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
-            ),
           ],
         );
     }
@@ -2344,6 +2732,9 @@ String _formatDate(DateTime d) =>
 Widget? _querySummary(BuildContext context, _Phase phase) => switch (phase) {
   _Phase.loading => Text(AppLocalizations.of(context).homeCardLoading),
   _Phase.error => Text(AppLocalizations.of(context).campusLoadFailed),
+  _Phase.needConfiguration => Text(
+    AppLocalizations.of(context).capabilityConfigurationRequired,
+  ),
   _Phase.needLogin => Text(AppLocalizations.of(context).homeCardNeedsLogin),
   _ => null,
 };

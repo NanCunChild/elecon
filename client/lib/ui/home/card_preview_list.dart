@@ -24,16 +24,19 @@ class CardPreviewList extends StatelessWidget {
         .dependOnInheritedWidgetOfExactType<SessionScope>()
         ?.notifier;
     final generation = session?.trustedScriptViewGeneration;
-    final limit = switch (HomeCardPresentation.of(context)) {
-      HomeCardSize.compact => 1,
-      HomeCardSize.regular => 3,
-      HomeCardSize.expanded => 10,
-    };
+    final presentation = HomeCardPresentation.maybeOf(context);
+    final limit = presentation?.isPage == true
+        ? children.length
+        : switch (HomeCardPresentation.of(context)) {
+            HomeCardSize.compact => 1,
+            HomeCardSize.regular => 3,
+            HomeCardSize.expanded => 10,
+          };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ...children.take(limit),
-        if (children.length > limit)
+        if (children.length > limit && presentation?.onOpen == null)
           TextButton.icon(
             onPressed: () => Navigator.of(context).push<void>(
               MaterialPageRoute(

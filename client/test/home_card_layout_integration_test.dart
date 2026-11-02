@@ -147,10 +147,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('home-card:notice')));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('查看全部（12）'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('查看全部（12）'));
-    await tester.pumpAndSettle();
+    expect(find.text('查看全部（12）'), findsNothing);
     expect(find.text('Notice 1'), findsOneWidget);
     session.changeSource();
     await tester.pumpAndSettle();
@@ -193,9 +190,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('home-card-open:notice')));
       await tester.pumpAndSettle();
       expect(find.text('Notice 2'), findsOneWidget);
-      await tester.ensureVisible(find.text('查看全部（12）'));
-      await tester.tap(find.text('查看全部（12）'));
-      await tester.pumpAndSettle();
+      expect(find.text('查看全部（12）'), findsNothing);
       await tester.ensureVisible(find.text('Notice 12'));
       await tester.tap(find.text('Notice 12'));
       await tester.pumpAndSettle();

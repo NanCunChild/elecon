@@ -32,4 +32,11 @@ ADR-000–033 已废弃为新开发总纲，正文移至 [archived](../archived/
 
 | [055](adr_055_checkin_locations_and_diagnostics.md) | Accepted（签到排查与指定位置） | attendance.checkin 1.1、可编辑地点矩阵、单次提交与固定诊断 | 待真实活动验收与人工核心/网络审阅 | 用户选择服务坐标；旧参数/输出版本保留，不自动重发 |
 
+| [056](adr_056_foreground_request_cards.md) | Accepted（首页签到与通用卡片） | 通用前台请求组件、同来源登录/扫码入口、临时状态取消 | 待真实活动/真机与人工审阅 | 沿用已有 schema/扫码权限，无签到预加载与重发 |
+| [057](adr_057_bounded_script_probes.md) | Accepted（失败签到探针） | 通用有界阶段日志、正式版筛选/复制、社区包 0.2.1 | 待真实活动复现与人工日志/网络审阅 | 无响应原文、凭据、QR 或地点，不以探针推断成功 |
+
 ADR 编号不回收：021 仍是历史预留。更新决策、实现与签收时分别修改对应列，不用自动测试替代人工复核。
+
+| [058](adr_058_foreground_device_inputs.md) | Accepted（通用签到与前台输入补全） | SDK 10 原生拍照/选图/位置、二进制上传与标准模板 | 待原生真机与人工核心/权限审阅 | 学校协议留在脚本，不把人脸图片当作活体认证 |
+| [059](adr_059_capability_configuration_state.md) | Accepted（区分缺配与请求失败） | 通用缺配状态、受保护标记、自动刷新跳过与显式完善 | 待人工核心审阅 | 失败不刷新成功缓存、不解除缺配标记 |
+| [060](adr_060_cache_first_startup.md) | Accepted（缓存桌面先显示） | 当前 Profile 本地恢复、布局缓存、首帧后查询 | 待真机与人工核心审阅 | 不将布局当执行授权，不复制私密数据到明文缓存 |

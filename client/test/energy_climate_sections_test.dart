@@ -114,6 +114,39 @@ class ClimateSession extends SessionController {
   }
 }
 
+class UnconfiguredClimateSession extends ClimateSession {
+  bool configured = false;
+  final setupRequests = <Map<String, dynamic>?>[];
+
+  @override
+  Future<CapabilityRun> runCapability(
+    String capability, {
+    Map<String, dynamic>? params,
+    bool interactive = true,
+    String? htmlStdlib,
+    void Function(String, String)? onLog,
+    void Function(AdapterDiagnostic)? onDiagnostic,
+  }) {
+    if (capability == 'climate.devices') {
+      setupRequests.add(params);
+      if (params?['configure'] == true) configured = true;
+      if (!configured) {
+        return Future.value(
+          const CapabilityRun.failed(
+            CapabilityFailureKind.configuration,
+            'configuration_required',
+          ),
+        );
+      }
+    }
+    return super.runCapability(
+      capability,
+      params: params,
+      interactive: interactive,
+    );
+  }
+}
+
 Widget app(SessionController session, Widget child, {double scale = 1}) =>
     SessionScope(
       controller: session,
@@ -189,6 +222,31 @@ class _LayoutMemory extends CardLayoutStore {
 
 void main() {
   androidTest(
+    'climate shows incomplete setup and only the setup button opens configuration',
+    (tester) async {
+      final session = UnconfiguredClimateSession();
+      addTearDown(session.dispose);
+      await tester.pumpWidget(app(session, const ClimateSection()));
+      await tester.pumpAndSettle();
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(ClimateSection)),
+      );
+      expect(find.text(l10n.capabilityConfigurationRequired), findsOneWidget);
+      expect(find.text(l10n.campusLoadFailed), findsNothing);
+      expect(session.setupRequests, [<String, dynamic>{}]);
+      await tester.tap(find.byTooltip('Refresh'));
+      await tester.pumpAndSettle();
+      expect(session.configured, isFalse);
+      await tester.tap(find.text(l10n.capabilityCompleteConfiguration));
+      await tester.pumpAndSettle();
+      expect(session.setupRequests.last, {'configure': true});
+      expect(find.text(l10n.capabilityConfigurationRequired), findsNothing);
+      expect(powerSwitch(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  androidTest(
     'launcher opens feature page without querying and retain meter selection and history',
     (tester) async {
       tester.view.physicalSize = const Size(400, 1600);
@@ -220,15 +278,13 @@ void main() {
       expect(find.text('View meters'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('home-card:energy')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('View meters'));
+      await tester.tap(find.byTooltip('Refresh').first);
       await tester.pumpAndSettle();
       await tester.tap(find.byType(DropdownButtonFormField<String>));
       await tester.pumpAndSettle();
       await tester.tap(
         find.text('Synthetic water meter · SYNTHETIC-WATER').last,
       );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('View usage history'));
       await tester.pumpAndSettle();
       expect(find.byType(DataTable), findsOneWidget);
       await tester.pageBack();
@@ -317,7 +373,7 @@ void main() {
       addTearDown(session.dispose);
       await tester.pumpWidget(app(session, const EnergySection(), scale: 1.5));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('View meters'));
+      await tester.tap(find.byTooltip('Refresh').first);
       await tester.pumpAndSettle();
       expect(find.text('Remaining'), findsNothing);
       await tester.tap(find.byType(DropdownButtonFormField<String>));
@@ -326,13 +382,11 @@ void main() {
         find.text('Synthetic water meter · SYNTHETIC-WATER').last,
       );
       await tester.pumpAndSettle();
-      expect(find.text('12.5 m³'), findsOneWidget);
-      await tester.tap(find.text('View usage history'));
-      await tester.pumpAndSettle();
+      expect(find.text('12.5 m³'), findsNWidgets(2));
       expect(session.lastParams, {'meterId': 'SYNTHETIC-WATER'});
       expect(find.byType(DataTable), findsOneWidget);
       session.fail = true;
-      await tester.tap(find.text('View meters'));
+      await tester.tap(find.byTooltip('Refresh').first);
       await tester.pumpAndSettle();
       expect(
         find.text(

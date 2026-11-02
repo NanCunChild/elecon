@@ -22,6 +22,7 @@ import 'editable_card_board.dart';
 import 'capability_sections.dart';
 import 'demo_data.dart';
 import 'display_date.dart';
+import 'desktop_placeholder.dart';
 import 'models.dart';
 import 'notice_detail_page.dart';
 import 'section_card.dart';
@@ -29,6 +30,7 @@ import 'schedule_view.dart';
 export 'schedule_view.dart' show ScheduleCard;
 import 'energy_climate_sections.dart';
 import 'faculty_search_section.dart';
+import 'checkin_section.dart';
 
 export 'demo_data.dart';
 export 'models.dart';
@@ -53,6 +55,7 @@ class _EleconHomePageState extends State<EleconHomePage>
     with WidgetsBindingObserver {
   late Future<CampusSnapshot> _snapshot;
   var _bound = false;
+  var _refreshAfterDesktop = false;
   SessionController? _session;
   String? _school;
   int? _revision;
@@ -78,6 +81,7 @@ class _EleconHomePageState extends State<EleconHomePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _homeRefreshTimer?.cancel();
     if (state == AppLifecycleState.resumed) {
+      setState(() {});
       _scheduleHomeRefresh();
       unawaited(_refreshSilently());
     }
@@ -91,7 +95,11 @@ class _EleconHomePageState extends State<EleconHomePage>
     // ADR-038: while the app remains visible, TTL checks can refresh values
     // without adding foreground animation or opening interactive presenters.
     _homeRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) unawaited(_refreshSilently());
+      if (mounted) {
+        // Refresh relative timestamps even when data stays cached.
+        setState(() {});
+        unawaited(_refreshSilently());
+      }
     });
   }
 
@@ -117,6 +125,7 @@ class _EleconHomePageState extends State<EleconHomePage>
         _school = session.selectedSchool?.id;
         _generation = session.trustedScriptViewGeneration;
         _lastSnapshot = null;
+        _refreshAfterDesktop = true;
         _cardDefaults = {};
         unawaited(_loadCardDefaults(session));
       }
@@ -127,9 +136,6 @@ class _EleconHomePageState extends State<EleconHomePage>
       }
       if (changed) {
         _scheduleHomeRefresh();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) unawaited(_refreshSilently());
-        });
       }
     } else if (!_bound) {
       _bound = true;
@@ -189,6 +195,7 @@ class _EleconHomePageState extends State<EleconHomePage>
         'faculty' => Icons.person_search_outlined,
         'energy' => Icons.bolt_outlined,
         'climate' => Icons.ac_unit,
+        'checkin' => Icons.qr_code_scanner,
         _ => Icons.widgets_outlined,
       },
       defaultSize: _cardDefaults[type ?? id] ?? HomeCardSize.regular,
@@ -198,7 +205,10 @@ class _EleconHomePageState extends State<EleconHomePage>
         entry(
           'schedule',
           l10n.homeScheduleTitle,
-          (_) => ScheduleCard(data.schedule!),
+          (_) => ScheduleCard(
+            data.schedule!,
+            trailing: SectionRefreshButton(onPressed: _reload),
+          ),
         )
       else if (_liveSections && data.supportsAll(const ['schedule.week']))
         entry(
@@ -212,26 +222,38 @@ class _EleconHomePageState extends State<EleconHomePage>
         entry(
           'grades',
           l10n.homeGradesTitle,
-          (_) => GradesCard(data.grades!, summary: data.gpaSummary),
+          (_) => GradesCard(
+            data.grades!,
+            summary: data.gpaSummary,
+            trailing: SectionRefreshButton(onPressed: _reload),
+          ),
         )
       else if (_liveSections && data.supportsAll(const ['grades.list']))
         entry('grades', l10n.homeGradesTitle, (_) => const GradesSection()),
-      if (data.notices != null)
-        entry('notice', l10n.homeNoticeTitle, (_) => NoticeCard(data.notices!))
-      else if (_liveSections && data.supportsAll(const ['notice.list']))
+      if (_liveSections && data.supportsAll(const ['notice.list']))
         entry(
           'notice',
           l10n.homeNoticeTitle,
-          (_) => SectionCard(
-            title: l10n.homeNoticeTitle,
-            child: Text(l10n.homeNoticeUnavailable),
+          (_) =>
+              NoticeSection(initialData: data.notices, generation: _generation),
+        )
+      else if (data.notices != null)
+        entry(
+          'notice',
+          l10n.homeNoticeTitle,
+          (_) => NoticeCard(
+            data.notices!,
+            trailing: SectionRefreshButton(onPressed: _reload),
           ),
         ),
       for (final section in data.genericSections)
         entry(
           'generic:${section.sectionId}',
           section.title,
-          (_) => GenericSectionCard(section),
+          (_) => GenericSectionCard(
+            section,
+            trailing: SectionRefreshButton(onPressed: _reload),
+          ),
           type: 'generic',
         ),
       if (_liveSections &&
@@ -249,6 +271,8 @@ class _EleconHomePageState extends State<EleconHomePage>
             transactionsEnabled: data.supportsAll(const ['card.transactions']),
           ),
         ),
+      if (_liveSections && data.supportsAll(const ['attendance.checkin']))
+        entry('checkin', l10n.homeCheckinTitle, (_) => const CheckinSection()),
       if (_liveSections && data.supportsAll(const ['exam.list']))
         entry('exam', l10n.homeExamTitle, (_) => const ExamSection()),
       if (_liveSections && data.supportsAll(const ['faculty.search']))
@@ -286,20 +310,53 @@ class _EleconHomePageState extends State<EleconHomePage>
   bool get _liveSections =>
       widget.loadSnapshot == null && !(kDebugMode && kForceDemoHomeSnapshot);
 
-  Future<CampusSnapshot> _load() {
+  Future<CampusSnapshot> _load({bool refreshNotices = false}) async {
     if (widget.loadSnapshot != null) return widget.loadSnapshot!();
     if (kDebugMode && kForceDemoHomeSnapshot) {
       return loadDemoCampusSnapshot();
     }
-    return loadCampusSnapshot(SessionScope.of(context), preferCacheOnly: true);
+    final session = SessionScope.of(context);
+    final snapshot = await loadCampusSnapshot(
+      session,
+      preferCacheOnly: !refreshNotices,
+      refreshNotices: refreshNotices,
+    );
+    await (widget.layoutStore ?? CardLayoutStore.shared).load(
+      session.selectedSchool?.id ?? 'preview',
+    );
+    return snapshot;
   }
 
   Future<void> _reload() async {
+    var refreshNotices = false;
     if (_liveSections) {
+      final session = _session;
+      final generation = _generation;
+      final school = _school;
+      bool current() =>
+          mounted &&
+          identical(session, _session) &&
+          session?.trustedScriptViewGeneration == generation &&
+          session?.selectedSchool?.id == school;
       await _refreshSilently(force: true);
-      if (!mounted) return;
+      if (!current()) return;
+      if (_lastSnapshot?.supportedCapabilities.contains('notice.list') ??
+          false) {
+        final provider = (await session!.scriptRegistry).provider(
+          school!,
+          'notice.list',
+        );
+        refreshNotices =
+            !(provider?.manifest.home.any(
+                  (entry) => entry.capability == 'notice.list' && entry.preload,
+                ) ??
+                false);
+        if (!current()) return;
+      }
     }
-    final next = Future<CampusSnapshot>.sync(_load);
+    final next = Future<CampusSnapshot>.sync(
+      () => _load(refreshNotices: refreshNotices),
+    );
     setState(() {
       _snapshot = next;
     });
@@ -339,6 +396,18 @@ class _EleconHomePageState extends State<EleconHomePage>
             }
             if (data == null) {
               return _EmptyState(onRetry: _reload);
+            }
+            if (_liveSections && _refreshAfterDesktop) {
+              _refreshAfterDesktop = false;
+              final session = _session;
+              final generation = _generation;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted &&
+                    identical(session, _session) &&
+                    generation == _generation) {
+                  unawaited(_refreshSilently());
+                }
+              });
             }
             return RefreshIndicator(
               onRefresh: _reload,
@@ -413,7 +482,7 @@ class _SnapshotHeader extends StatelessWidget {
           snapshot.updatedAt == null
               ? l10n.homeDataNotUpdated
               : l10n.homeDataUpdatedAt(
-                  formatLocalDateTime(snapshot.updatedAt!),
+                  formatUpdateTime(snapshot.updatedAt!, l10n),
                 ),
           key: const ValueKey('home-updated-at'),
           style: theme.textTheme.bodySmall?.copyWith(
@@ -426,7 +495,8 @@ class _SnapshotHeader extends StatelessWidget {
 }
 
 class GradesCard extends StatelessWidget {
-  const GradesCard(this.data, {this.summary, super.key});
+  const GradesCard(this.data, {this.summary, this.trailing, super.key});
+  final Widget? trailing;
 
   final GradesList data;
 
@@ -486,6 +556,7 @@ class GradesCard extends StatelessWidget {
     final gradePointText = _gradePointText();
     return SectionCard(
       title: '成绩',
+      trailing: trailing,
       subtitle:
           '${data.term}${gradePointText == null ? '' : ' · $gradePointText'}',
       summary: CardSummary(
@@ -531,7 +602,8 @@ class GradesCard extends StatelessWidget {
 }
 
 class NoticeCard extends StatelessWidget {
-  const NoticeCard(this.data, {super.key});
+  const NoticeCard(this.data, {super.key, this.trailing});
+  final Widget? trailing;
 
   final NoticeList data;
 
@@ -540,6 +612,7 @@ class NoticeCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return SectionCard(
       title: l10n.homeNoticeTitle,
+      trailing: trailing,
       subtitle: l10n.homeNoticeCount(data.items.length),
       summary: CardSummary(
         data.items.firstOrNull?.title ?? l10n.homeNoticeCount(0),
@@ -670,7 +743,8 @@ class _DetailRow extends StatelessWidget {
 }
 
 class GenericSectionCard extends StatelessWidget {
-  const GenericSectionCard(this.section, {super.key});
+  const GenericSectionCard(this.section, {super.key, this.trailing});
+  final Widget? trailing;
 
   final GenericSection section;
 
@@ -678,6 +752,7 @@ class GenericSectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return SectionCard(
       title: section.title,
+      trailing: trailing,
       summary: section.fields.isEmpty
           ? (section.table == null
                 ? null
@@ -769,20 +844,8 @@ class _GenericTableView extends StatelessWidget {
 
 class _LoadingState extends StatelessWidget {
   const _LoadingState();
-
   @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 16),
-          Text('正在加载校园信息...'),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const DesktopPlaceholder();
 }
 
 class _ErrorState extends StatelessWidget {

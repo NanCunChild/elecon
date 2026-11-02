@@ -11,11 +11,13 @@ class SectionCard extends StatelessWidget {
     required this.child,
     this.subtitle,
     this.summary,
+    this.trailing,
   });
   final String title;
   final String? subtitle;
   final Widget? summary;
   final Widget child;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +55,7 @@ class SectionCard extends StatelessWidget {
                           style: theme.textTheme.titleSmall,
                         ),
                       ),
+                      ?trailing,
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -84,7 +87,7 @@ class SectionCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(24),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: preview ? presentation?.onOpen : null,
+        onTap: presentation?.isPage == true ? null : presentation?.onOpen,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -111,12 +114,7 @@ class SectionCard extends StatelessWidget {
                           : theme.textTheme.titleLarge,
                     ),
                   ),
-                  if (!preview && presentation?.onOpen != null)
-                    TextButton.icon(
-                      onPressed: presentation!.onOpen,
-                      icon: const Icon(Icons.arrow_forward, size: 18),
-                      label: Text(AppLocalizations.of(context).homeFeatureView),
-                    ),
+                  ?trailing,
                 ],
               ),
               if (!preview && subtitle != null && subtitle.isNotEmpty) ...[
@@ -148,6 +146,19 @@ class SectionCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The same compact refresh action is used by query cards and feature pages.
+class SectionRefreshButton extends StatelessWidget {
+  const SectionRefreshButton({super.key, required this.onPressed});
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: AppLocalizations.of(context).homeRefresh,
+    onPressed: onPressed,
+    icon: const Icon(Icons.refresh),
+  );
 }
 
 /// Key value plus context for a finite summary; no controls are hidden in it.

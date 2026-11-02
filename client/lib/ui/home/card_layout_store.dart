@@ -17,6 +17,12 @@ class CardLayoutStore {
   static final shared = CardLayoutStore();
   final Directory? Function()? _supportDirProvider;
   Future<void> _writes = Future.value();
+  final Map<String, HomeCardLayout> _cache = {};
+  final Map<String, int> _pendingWrites = {};
+  final Map<String, Future<HomeCardLayout>> _loads = {};
+
+  HomeCardLayout? cached(String scopeId) =>
+      (_pendingWrites[scopeId] ?? 0) > 0 ? null : _cache[scopeId];
 
   Future<File> _file(String scopeId) async {
     final dir =
@@ -26,21 +32,41 @@ class CardLayoutStore {
     return File('${dir.path}/home-layout/$key.json');
   }
 
-  Future<HomeCardLayout> load(String scopeId) async {
+  Future<HomeCardLayout> load(String scopeId) {
+    if ((_pendingWrites[scopeId] ?? 0) > 0) {
+      return _writes.then((_) => load(scopeId));
+    }
+    final cached = _cache[scopeId];
+    if (cached != null) return Future.value(cached);
+    return _loads.putIfAbsent(scopeId, () async {
+      try {
+        final loaded = await _read(scopeId);
+        if (loaded == null) return HomeCardLayout();
+        return _cache.putIfAbsent(scopeId, () => loaded);
+      } finally {
+        _loads.remove(scopeId);
+      }
+    });
+  }
+
+  Future<HomeCardLayout?> _read(String scopeId) async {
     try {
-      await _writes;
       final file = await _file(scopeId);
       if (!await file.exists() || await file.length() > 64 * 1024) {
         return HomeCardLayout();
       }
       return HomeCardLayout.fromJson(jsonDecode(await file.readAsString()));
-    } catch (_) {
+    } on FormatException {
       return HomeCardLayout();
+    } catch (_) {
+      // A temporary storage/plugin failure is not a saved empty layout.
+      return null;
     }
   }
 
   Future<void> save(String scopeId, HomeCardLayout layout) {
     final done = Completer<void>();
+    _pendingWrites.update(scopeId, (count) => count + 1, ifAbsent: () => 1);
     // Serialize the entire read/replace lifecycle, including different schools.
     _writes = _writes.then((_) async {
       File? temporary;
@@ -50,6 +76,7 @@ class CardLayoutStore {
         temporary = File('${file.path}.tmp');
         await temporary.writeAsString(jsonEncode(layout.toJson()), flush: true);
         await temporary.rename(file.path);
+        _cache[scopeId] = layout;
         done.complete();
       } catch (error, stack) {
         try {
@@ -60,6 +87,8 @@ class CardLayoutStore {
           // Preserve the original persistence error for the caller.
         }
         done.completeError(error, stack);
+      } finally {
+        _pendingWrites.update(scopeId, (count) => count - 1);
       }
     });
     return done.future;

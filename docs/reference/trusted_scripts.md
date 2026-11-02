@@ -80,7 +80,7 @@ npm run scripts:package -w tools -- \
 
 打包器不执行源码、不签名、不猜测版本，验证失败不覆盖已有输出。`version` 是严格的 `主.次.修订` 三个非负整数，禁止前导零；当前不接受 prerelease/build metadata。按整数段比较，`1.10.0 > 1.9.0`，不按字符串排序。
 
-三类版本各司其职：`format:elecon-script/1` 是包容器；`sdkVersion` 是宿主 API/凭据语义（2 为完整凭据地址，3 在此基础上增加原生输入）；`manifest.version` 是作者发布的脚本版本。输出的 `schemaVersion` 另属于标准数据契约，不是脚本版本。宿主识别 SDK 1/2/3，未知格式/SDK 在执行前拒绝。SDK 1 保留首版预览的同校共享键/旧 ref 隐式查找；需要输入接口的新包使用 SDK 3；纯 HTTP/浏览器 SDK 2 包仍可继续使用。迁移时同时修改 SDK、源码，并提升脚本版本后重新确认，不能只改 SDK 或同版本替换字节。脚本更新/修复/权限变化都需提升版本；卸载后重装不保留版本防回退历史，不把本地更新规则描述为全局反回滚系统。
+三类版本各司其职：`format:elecon-script/1` 是包容器；`sdkVersion` 是宿主 API/凭据语义（2 为完整凭据地址，3 在此基础上增加原生输入）；`manifest.version` 是作者发布的脚本版本。输出的 `schemaVersion` 另属于标准数据契约，不是脚本版本。宿主识别 SDK 1–10，未知格式/SDK 在执行前拒绝（各版本增量见下文）。SDK 1 保留首版预览的同校共享键/旧 ref 隐式查找；需要输入接口的新包使用 SDK 3；纯 HTTP/浏览器 SDK 2 包仍可继续使用。迁移时同时修改 SDK、源码，并提升脚本版本后重新确认，不能只改 SDK 或同版本替换字节。脚本更新/修复/权限变化都需提升版本；卸载后重装不保留版本防回退历史，不把本地更新规则描述为全局反回滚系统。
 
 身份、权限、源码都进入 canonical SHA-256 内容身份；安装恢复时重新解析并核对 digest。文件排版变化不改变内容身份，源码文本变化会改变。规范中的三段数值版本是当前接受的 SemVer 子集，不宣称支持完整 SemVer 2.0。
 
@@ -209,3 +209,28 @@ if (qr === null) return { items: [] }; // 用户取消，由脚本决定结束�
 `forum.session` / `messages.session` 的 `operation=status|login|logout` 表示核验、显式登录、本地退出，不等于远端注销。`messages.list` 只返回明确账号下的前台消息窗口（不是完整历史或未读数）；`attendance.checkin` 在当前调用中取得 QR 输入并返回 confirmed/already/ended/unsupported/cancelled/rejected/unknown。四能力禁止 home/cache/preload 及后台调用。
 
 基本包 0.18.1 提供睿思账号；SDK 9 学习通包作为第三方社区包，由用户自行获取后通过通用文件入口导入，客户端不内置产物或推荐提示。论坛 Tab 要求当前可执行 `forum.session`，消息 Tab 要求 `messages.list`；无支持则隐藏。登录/消息/签到绑定同一选中包，不自动借用其他包的账号 handler。每平台一个当前会话，先本地退出再换号；当前 Profile/学校仍是授权边界，namespace 不是权限沙箱。
+
+## 待完善信息与缓存优先桌面（ADR-059/060）
+
+能力缺少尚未填写的业务资料时可以抛出带 `code: "configuration_required"` 的 Error。不要把网络、认证、解析失败编码为缺配。宿主把状态绑定当前身份、来源 digest、能力与查询参数，自动及整体刷新跳过已知缺配项；显式的配置请求成功后恢复。空调使用明确 `configure:true` 才请求设备信息，不会因打开桌面要求填写设备号。
+
+学校脚本更新必须重新确认 digest。新的错误码在不支持的旧客户端会回退为普通失败，不改变原输出 schema。SDK 10 的设备输入见对应 ADR 和 `contract/script-sdk/` 声明；仅声明已实现且需要的权限。
+
+启动先读取当前身份下的缓存和学校布局，随后后台刷新。已有缓存的过期标记和取得时间不被刷新失败或读取动作改写；未预加载的通知仍可在首屏后及手动刷新时查询。其他 Profile 在切换前显示「切换后查看」，不推断未登录。
+
+
+## SDK 10 前台照片与当前位置
+
+[ADR-058](../adr/adr_058_foreground_device_inputs.md) 增加 `manifest.deviceInputs: ["camera", "image", "location"]`，按实际需求声明；安装/更新页显示，旧 SDK 1–9 不接受。扫码仍由独立 `scanner:true` 授权。学校脚本升 SDK/包版本并重新确认后，可主动调用：
+
+```js
+const photo = await ctx.ui.capturePhoto(); // 拍照；取消 null
+const selected = await ctx.ui.pickImage(); // 用户选一张图片；取消 null
+const position = await ctx.ui.getCurrentPosition(); // 当前 WGS84；取消 null
+```
+
+图片返回 `{bytes:Uint8Array,mimeType:"image/png",width,height}`，去原文件名/路径/EXIF、最长边1280px、最多512KiB。图片是普通输入，不是人脸活体或身份已验证的结果。当前位置包含 latitude/longitude（十进制度）、accuracyMeters（米）、capturedAt（UTC RFC3339）、coordinateSystem=`wgs84`，不使用历史或手填坐标冒充设备实测。
+
+三种输入都只在前台允许，与扫码/表单互斥，每次运行最多四次。SDK10 `ctx.fetch` 可接受最多1MiB的 Uint8Array body，用于脚本组装 multipart；无自动上传或重试，旧 string body不变。使用固定 `device_input_*` 和 `invocation_cancelled` 错误码；未满足服务配置使用 [ADR-059](../adr/adr_059_capability_configuration_state.md) 的 `configuration_required`，不伪造空结果。
+
+完整 [签到模板](../../adapters/_template/trusted/attendance/README.md) 演示按钮、QR、拍照、选取本人图片、定位和一次二进制提交后独立核验。模板默认未配置，不访问 `.invalid` 示例域名。真实服务的活动要求、认证、坐标转换和人脸验证仍由学校适配决定；不能仅因SDK有输入API就宣称学习通照片/人脸签到已实现。

@@ -189,7 +189,7 @@ void main() {
       await tester.pump(const Duration(seconds: 31));
       expect(find.byType(Image), findsNothing);
       expect(session.calls, ['card.qr']);
-      await tester.tap(find.text('Refresh QR code'));
+      await tester.tap(find.byTooltip('Refresh').first);
       await tester.pumpAndSettle();
       expect(find.byType(Image), findsOneWidget);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
@@ -252,7 +252,7 @@ void main() {
       expect(session.calls, ['classroom.buildings']);
       expect(find.text('Synthetic hall'), findsOneWidget);
       expect(find.text('加载教学楼'), findsNothing);
-      await tester.tap(find.text('查询空教室'));
+      await tester.tap(find.byTooltip('Refresh').first);
       await tester.pumpAndSettle();
       expect(session.calls, ['classroom.buildings', 'classroom.available']);
       expect(find.textContaining('Room 1'), findsOneWidget);

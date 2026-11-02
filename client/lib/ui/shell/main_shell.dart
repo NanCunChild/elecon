@@ -3,6 +3,8 @@
 /// Apple 构建开启液态玻璃时使用玻璃底栏；其余情况为 Material 底栏。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/scripts/manifest.dart';
@@ -12,6 +14,7 @@ import '../../session/session_controller.dart';
 import '../scripts/script_presenter.dart';
 import '../scripts/script_input_presenter.dart';
 import '../scripts/script_scanner_page.dart';
+import '../scripts/script_device_input_page.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import '../home/home_page.dart';
 import '../community/community_pages.dart';
@@ -38,17 +41,30 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   ScriptBrowserPresenter? _presenter;
   ScriptInputPresenter? _inputPresenter;
   ScriptScannerPresenter? _scannerPresenter;
+  ScriptDeviceInputPresenter? _deviceInputPresenter;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(discardAbandonedScriptImages());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
+    if (state == AppLifecycleState.resumed) {
+      _scriptSession?.scriptAppForeground = true;
+    }
+    if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _scriptSession?.scriptAppForeground = false;
+    }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      // An OS picker is an authorized transient input, not background script work.
+      if (_scriptSession?.scriptSystemInputPending == true) return;
       _scriptSession?.cancelTrustedScriptRuns();
       if (mounted) setState(() => _suspended = true);
     } else if (state == AppLifecycleState.resumed && mounted) {
@@ -79,6 +95,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       )) {
         _scriptSession?.scriptScannerPresenter = null;
       }
+      if (identical(
+        _scriptSession?.scriptDeviceInputPresenter,
+        _deviceInputPresenter,
+      )) {
+        _scriptSession?.scriptDeviceInputPresenter = null;
+      }
       _scriptSession = session;
       _presenter = (package, execute) => presentScriptBrowser(
         context,
@@ -97,6 +119,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       _scannerPresenter = (package, valid) =>
           presentScriptScanner(context, package, valid);
       session?.scriptScannerPresenter = _scannerPresenter;
+      _deviceInputPresenter = (package, kind, valid, lease) =>
+          presentScriptDeviceInput(context, package, kind, valid, lease);
+      session?.scriptDeviceInputPresenter = _deviceInputPresenter;
       session?.scriptStorageConsent = () async {
         if (!mounted) return false;
         return await showNoHardwareWarningDialog(context) ==
@@ -118,6 +143,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     }
     if (identical(_scriptSession?.scriptScannerPresenter, _scannerPresenter)) {
       _scriptSession?.scriptScannerPresenter = null;
+    }
+    if (identical(
+      _scriptSession?.scriptDeviceInputPresenter,
+      _deviceInputPresenter,
+    )) {
+      _scriptSession?.scriptDeviceInputPresenter = null;
     }
     super.dispose();
   }

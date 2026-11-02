@@ -7,7 +7,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import '../scripts/script_input_presenter.dart';
 import '../scripts/script_presenter.dart';
-import 'checkin_locations.dart';
+import '../home/section_card.dart';
 
 class ForumPage extends StatelessWidget {
   const ForumPage({super.key, required this.session, required this.package});
@@ -46,10 +46,6 @@ class _ServicePageState extends State<_ServicePage>
   MessagesList? _messages;
   bool _busy = false;
   String? _error;
-  String? _lastCapability;
-  String? _checkin;
-  String? _checkinReason;
-  AttendancePlace? _place;
   int _request = 0;
   ScriptRunCancellation? _cancellation;
   String get _accountCapability =>
@@ -93,10 +89,6 @@ class _ServicePageState extends State<_ServicePage>
       _account = null;
       _messages = null;
       _error = null;
-      _lastCapability = null;
-      _checkin = null;
-      _checkinReason = null;
-      _place = null;
       _busy = false;
     });
   }
@@ -110,9 +102,6 @@ class _ServicePageState extends State<_ServicePage>
     setState(() {
       _busy = true;
       _error = null;
-      _lastCapability = capability;
-      _checkin = null;
-      _checkinReason = null;
       // Never retain old-account messages across login, logout or failed refresh.
       _messages = null;
       if (operation != null) _account = null;
@@ -130,8 +119,6 @@ class _ServicePageState extends State<_ServicePage>
                     capability,
                     params: operation != null
                         ? {'operation': operation}
-                        : capability == 'attendance.checkin' && _place != null
-                        ? {'location': _place!.location}
                         : const {},
                     inputCall: input,
                     browserCall: browser,
@@ -174,15 +161,6 @@ class _ServicePageState extends State<_ServicePage>
                 ),
             ],
           );
-        } else if (capability == 'attendance.checkin') {
-          _checkin = data['status'] as String;
-          _checkinReason =
-              widget.package.manifest
-                      .capability('attendance.checkin')
-                      ?.schemaVersion ==
-                  '1.1'
-              ? data['reason'] as String?
-              : null;
         } else {
           _account = data;
         }
@@ -202,32 +180,17 @@ class _ServicePageState extends State<_ServicePage>
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final checkinText = switch (_checkin) {
-      'confirmed' => l10n.checkinConfirmed,
-      'already' => l10n.checkinAlready,
-      'ended' => l10n.checkinEnded,
-      'unsupported' => l10n.checkinUnsupported,
-      'cancelled' => l10n.checkinCancelled,
-      'rejected' => l10n.checkinRejected,
-      'unknown' => l10n.checkinUnknown,
-      _ => null,
-    };
-    final reasonText = switch (_checkinReason) {
-      'location_required' => l10n.checkinLocationRequired,
-      'location_rejected' => l10n.checkinLocationRejected,
-      'face_required' => l10n.checkinFaceRequired,
-      'photo_required' => l10n.checkinPhotoRequired,
-      'verification_required' => l10n.checkinVerificationRequired,
-      'requirements_unknown' => l10n.checkinRequirementsUnknown,
-      'activity_unsupported' => l10n.checkinActivityUnsupported,
-      'qr_expired' => l10n.checkinQrExpired,
-      'request_failed' => l10n.checkinPreflightFailed,
-      'submission_rejected' => l10n.checkinRejected,
-      _ => null,
-    };
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.messages ? l10n.navMessages : l10n.navForum),
+        actions: [
+          if (widget.messages)
+            SectionRefreshButton(
+              onPressed: _busy || (_hasAccount && !_loggedIn)
+                  ? null
+                  : () => _run('messages.list'),
+            ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -284,42 +247,6 @@ class _ServicePageState extends State<_ServicePage>
                           ),
                       ],
                     ),
-                  if (widget.messages &&
-                      widget.package.manifest
-                              .capability('attendance.checkin')
-                              ?.schemaVersion ==
-                          '1.1')
-                    CheckinLocations(
-                      session: widget.session,
-                      package: widget.package,
-                      enabled: !_busy,
-                      onSelected: (place) => _place = place,
-                    ),
-                  if (widget.messages)
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: _busy || (_hasAccount && !_loggedIn)
-                              ? null
-                              : () => _run('messages.list'),
-                          icon: const Icon(Icons.refresh),
-                          label: Text(l10n.messagesFetch),
-                        ),
-                        if (widget.package.manifest.capability(
-                              'attendance.checkin',
-                            ) !=
-                            null)
-                          OutlinedButton.icon(
-                            onPressed: _busy || !_loggedIn
-                                ? null
-                                : () => _run('attendance.checkin'),
-                            icon: const Icon(Icons.qr_code_scanner),
-                            label: Text(l10n.checkinScan),
-                          ),
-                      ],
-                    ),
                   if (_busy)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 16),
@@ -332,18 +259,10 @@ class _ServicePageState extends State<_ServicePage>
                         _error == 'authentication_required'
                             ? l10n.communityLoginRequired
                             : _error == 'input_cancelled'
-                            ? l10n.checkinCancelled
-                            : _error == 'input_invalid_request' &&
-                                  _lastCapability == 'attendance.checkin'
-                            ? l10n.checkinQrInvalid
+                            ? l10n.scriptsInputCancelled
                             : l10n.communityRequestFailed,
                         style: TextStyle(color: theme.colorScheme.error),
                       ),
-                    ),
-                  if (checkinText != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(reasonText ?? checkinText),
                     ),
                   if (_messages case final messages?) ...[
                     const SizedBox(height: 16),

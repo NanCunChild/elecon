@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:elecon/core/trust/trust_profile.dart' show kSideloadEnabled;
 import 'package:elecon/main.dart';
+import 'package:elecon/ui/home/desktop_placeholder.dart';
 import 'package:elecon/l10n/gen/app_localizations.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:elecon/ui/login/webview_login_page.dart';
@@ -29,13 +30,14 @@ void main() {
 
       await tester.pumpWidget(EleconApp(sessionController: session));
 
-      // ADR-024 §5.4：DEV 侧载产物的启动页就是不可关闭的水印页；DEPLOY 是普通 spinner。
+      // ADR-024 §5.4：DEV 侧载产物的启动页就是不可关闭的水印页；DEPLOY 是无旋转的桌面占位。
       // 两档都断言，避免「水印只在某一档被验过」。
       if (kSideloadEnabled) {
         expect(find.byType(DevSideloadStartupWarning), findsOneWidget);
         expect(find.text(kDevSideloadWatermarkText), findsOneWidget);
       } else {
-        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.byType(DesktopPlaceholder), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(
           find.byType(DevSideloadStartupWarning),
           findsNothing,

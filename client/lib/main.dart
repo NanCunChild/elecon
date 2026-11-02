@@ -16,6 +16,7 @@ import 'session/profile_controller.dart';
 import 'session/profile_scope.dart';
 import 'ui/i18n/locale_options.dart';
 import 'ui/home/home_page.dart';
+import 'ui/home/desktop_placeholder.dart';
 import 'ui/login/login_flow.dart';
 import 'ui/onboarding/onboarding_page.dart';
 import 'ui/security/dev_sideload_banner.dart'
@@ -132,14 +133,13 @@ class _EleconAppState extends State<EleconApp> {
         child: FutureBuilder<void>(
           future: _profilesLoad,
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
+            if (snapshot.connectionState != ConnectionState.done &&
+                !_profiles.isRestored) {
               if (kSideloadEnabled) {
                 return const MaterialApp(home: DevSideloadStartupWarning());
               }
               return const MaterialApp(
-                home: Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                ),
+                home: Scaffold(body: DesktopPlaceholder()),
               );
             }
             if (snapshot.hasError) {
@@ -233,12 +233,11 @@ class _BootGateState extends State<_BootGate> {
     return FutureBuilder<void>(
       future: _boot,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
+        if (snapshot.connectionState != ConnectionState.done &&
+            (kSideloadEnabled || !widget.session.isRestored)) {
           // DEV 侧载产物的启动页即水印页（不可关闭，见 dev_sideload_banner.dart）。
           if (kSideloadEnabled) return const DevSideloadStartupWarning();
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: DesktopPlaceholder());
         }
         widget.startupTrace?.mark('session_bootstrap_complete');
         if (widget.session.hardwareUnlockFailed && !_unlockDialogShown) {

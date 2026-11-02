@@ -44,8 +44,11 @@ Future<void> showProfiles(BuildContext context) async {
                 ),
                 title: Text(profile.name),
                 subtitle: Text(
-                  profile.session.selectedSchool?.displayName ??
-                      AppLocalizations.of(context).settingsNoSchool,
+                  !profile.session.isRestored &&
+                          profile.id != profiles.active.id
+                      ? AppLocalizations.of(context).profilesNotLoaded
+                      : profile.session.selectedSchool?.displayName ??
+                            AppLocalizations.of(context).settingsNoSchool,
                 ),
                 enabled: !profiles.busy,
                 onTap: () {
@@ -93,7 +96,10 @@ class ProfileAccounts extends StatelessWidget {
             ListTile(
               title: Text(profile?.name ?? 'Profile 1'),
               subtitle: Text(
-                session.selectedSchool?.displayName ?? l10n.settingsNoSchool,
+                !current && !session.isRestored
+                    ? l10n.profilesNotLoaded
+                    : session.selectedSchool?.displayName ??
+                          l10n.settingsNoSchool,
               ),
             ),
             if (!current)
@@ -196,6 +202,15 @@ class _ProfileRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    if (!active && !session.isRestored) {
+      return ListTile(
+        leading: const Icon(Icons.account_circle_outlined),
+        title: Text(name),
+        subtitle: Text(l10n.profilesNotLoaded),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
+      );
+    }
     final protection = session.credentialProtection;
     final (icon, label) = switch (protection) {
       SessionCredentialProtection.hardware => (

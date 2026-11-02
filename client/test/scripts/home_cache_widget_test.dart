@@ -225,7 +225,11 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          await tester.tap(find.text(grades ? '查看成绩' : 'View this week'));
+          await tester.tap(
+            grades
+                ? find.byTooltip('Refresh')
+                : find.byKey(const ValueKey('schedule-refresh')),
+          );
           await until(tester, () => session.stageReached.isCompleted);
           if (logout) {
             session.logout();
@@ -355,7 +359,7 @@ void main() {
   );
 
   testWidgets(
-    'home timetable uses the default current week while the page retains selected weeks',
+    'home and reopened timetable use current week while an open page can select history',
     (tester) async {
       final session = await prepare(tester);
       await tester.runAsync(() async {
@@ -401,7 +405,26 @@ void main() {
         () =>
             find.byType(ScheduleCard).evaluate().isNotEmpty &&
             tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week ==
+                8,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('schedule-week-6')));
+      await until(
+        tester,
+        () =>
+            find.byType(ScheduleCard).evaluate().isNotEmpty &&
+            tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week ==
                 6,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('schedule-refresh')));
+      await until(
+        tester,
+        () => find.byType(LinearProgressIndicator).evaluate().isEmpty,
+      );
+      expect(
+        tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week,
+        6,
       );
       page.value = false;
       await tester.pumpAndSettle();
@@ -413,6 +436,16 @@ void main() {
                 8,
       );
       expect(find.text('Current home course'), findsOneWidget);
+      page.value = true;
+      await tester.pumpAndSettle();
+      await until(
+        tester,
+        () =>
+            find.byType(ScheduleCard).evaluate().isNotEmpty &&
+            tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week ==
+                8,
+      );
+      expect(find.textContaining('Current home course'), findsOneWidget);
       session.logout();
       await tester.pumpAndSettle();
       expect(find.text('Current home course'), findsNothing);
@@ -421,30 +454,73 @@ void main() {
     },
   );
 
-  testWidgets('timetable restores the last parameterized week on recreation', (
-    tester,
-  ) async {
-    final session = await prepare(tester);
-    final result = await tester.runAsync(
-      () => session.runCapability('schedule.week', params: {'week': 6}),
-    );
-    expect(result!.ok, isTrue);
-    await tester.pumpWidget(
-      app(
-        session,
-        const HomeCardPresentation(
-          size: HomeCardSize.expanded,
-          isPage: true,
-          child: ScheduleSection(),
+  testWidgets(
+    'timetable recreates current week instead of latest historical query',
+    (tester) async {
+      final session = await prepare(tester);
+      final result = await tester.runAsync(
+        () => session.runCapability('schedule.week', params: {'week': 6}),
+      );
+      expect(result!.ok, isTrue);
+      await tester.pumpWidget(
+        app(
+          session,
+          const HomeCardPresentation(
+            size: HomeCardSize.expanded,
+            isPage: true,
+            child: ScheduleSection(),
+          ),
         ),
-      ),
-    );
-    await until(tester, () => find.byType(ScheduleCard).evaluate().isNotEmpty);
-    expect(tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week, 6);
-    expect(find.text('View week 6'), findsOneWidget);
-    expect(find.textContaining('Updated '), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await until(
+        tester,
+        () => find.byType(ScheduleCard).evaluate().isNotEmpty,
+      );
+      await tester.pumpAndSettle();
+      final before = await tester.runAsync(
+        () => session.cachedCapability('schedule.week'),
+      );
+      await until(
+        tester,
+        () => find.textContaining('Updated ').evaluate().isNotEmpty,
+      );
+      expect(
+        tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week,
+        8,
+      );
+      expect(
+        find.byKey(const ValueKey('schedule-current-week-8')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('schedule-refresh')), findsOneWidget);
+      expect(find.textContaining('Updated '), findsOneWidget);
+      await tester.pumpWidget(app(session, const SizedBox.shrink()));
+      await tester.pumpWidget(
+        app(
+          session,
+          const HomeCardPresentation(
+            size: HomeCardSize.expanded,
+            isPage: true,
+            child: ScheduleSection(),
+          ),
+        ),
+      );
+      await until(
+        tester,
+        () => find.byType(ScheduleCard).evaluate().isNotEmpty,
+      );
+      expect(
+        tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week,
+        8,
+      );
+      final after = await tester.runAsync(
+        () => session.cachedCapability('schedule.week'),
+      );
+      expect(after!.fetchedAt, before!.fetchedAt);
+      expect(find.textContaining('Updated '), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'home preloads notices once and foreground resume reuses fresh cache',

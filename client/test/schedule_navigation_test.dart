@@ -120,7 +120,162 @@ class CachedScheduleSession extends SessionController {
   }
 }
 
+class CalendarScheduleSession extends ScheduleSession {
+  int calendarRequests = 0;
+
+  @override
+  Future<CapabilityRun> runCapability(
+    String capability, {
+    Map<String, dynamic>? params,
+    bool interactive = true,
+    String? htmlStdlib,
+    void Function(String, String)? onLog,
+    void Function(AdapterDiagnostic)? onDiagnostic,
+  }) {
+    if (capability == 'calendar.academic') {
+      calendarRequests++;
+      return Future.value(
+        CapabilityRun.ok({'term': 'synthetic', 'currentWeek': 12}),
+      );
+    }
+    return super.runCapability(capability, params: params);
+  }
+}
+
 void main() {
+  testWidgets('script current week opens centered and refreshes from an icon', (
+    tester,
+  ) async {
+    final session = CalendarScheduleSession();
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      app(
+        const HomeCardPresentation(
+          size: HomeCardSize.expanded,
+          isPage: true,
+          child: ScheduleSection(calendarEnabled: true),
+        ),
+        session: session,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(session.requestedWeeks, [12]);
+    expect(
+      find.byKey(const ValueKey('schedule-current-week-12')),
+      findsOneWidget,
+    );
+    final strip = tester.getRect(
+      find.byKey(const ValueKey('schedule-week-strip')),
+    );
+    final selected = tester.getRect(
+      find.byKey(const ValueKey('schedule-week-12')),
+    );
+    expect(selected.center.dx, closeTo(strip.center.dx, 1));
+    expect(
+      find.widgetWithIcon(FilledButton, Icons.download_outlined),
+      findsNothing,
+    );
+    final refresh = find.byKey(const ValueKey('schedule-refresh'));
+    expect(tester.widget<IconButton>(refresh).tooltip, 'Refresh');
+    await tester.tap(refresh);
+    await tester.pumpAndSettle();
+    expect(session.requestedWeeks, [12, 12]);
+    await tester.tap(find.byKey(const ValueKey('schedule-week-13')));
+    await tester.pumpAndSettle();
+    expect(session.requestedWeeks, [12, 12, 13]);
+    expect(
+      find.byKey(const ValueKey('schedule-current-week-12')),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<WeekScheduleView>(find.byType(WeekScheduleView)).data.week,
+      13,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('first and last weeks can both be centered', (tester) async {
+    for (final week in [1, 25]) {
+      await tester.pumpWidget(
+        app(ScheduleWeekPicker(week: week, maxWeek: 25, onChanged: (_) {})),
+      );
+      await tester.pumpAndSettle();
+      final strip = tester.getRect(
+        find.byKey(const ValueKey('schedule-week-strip')),
+      );
+      final selected = tester.getRect(
+        find.byKey(ValueKey('schedule-week-$week')),
+      );
+      expect(selected.center.dx, closeTo(strip.center.dx, 1));
+    }
+  });
+
+  testWidgets(
+    'reopening the borrowed card returns to the script current week',
+    (tester) async {
+      final session = CalendarScheduleSession();
+      addTearDown(session.dispose);
+      Widget page(bool opened) => app(
+        HomeCardPresentation(
+          size: HomeCardSize.expanded,
+          isPage: opened,
+          child: const ScheduleSection(calendarEnabled: true),
+        ),
+        session: session,
+      );
+      await tester.pumpWidget(page(true));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('schedule-week-13')));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(page(false));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(page(true));
+      await tester.pumpAndSettle();
+      expect(session.requestedWeeks, [12, 13, 12]);
+      expect(
+        tester
+            .widget<WeekScheduleView>(find.byType(WeekScheduleView))
+            .data
+            .week,
+        12,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'arriving weeks animate in the navigation direction after loading',
+    (tester) async {
+      Widget transition(int? week) => app(
+        ScheduleWeekTransition(
+          week: week,
+          child: Text(week == null ? 'Loading' : 'Week $week'),
+        ),
+      );
+      final slide = find.descendant(
+        of: find.byType(ScheduleWeekTransition),
+        matching: find.byType(SlideTransition),
+      );
+      await tester.pumpWidget(transition(2));
+      await tester.pumpWidget(transition(null));
+      expect(find.text('Week 2'), findsNothing);
+      await tester.pumpWidget(transition(3));
+      expect(
+        tester.widget<SlideTransition>(slide).position.value.dx,
+        greaterThan(0),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.widget<SlideTransition>(slide).position.value, Offset.zero);
+      await tester.pumpWidget(transition(2));
+      expect(
+        tester.widget<SlideTransition>(slide).position.value.dx,
+        lessThan(0),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'term cache switches weeks offline while one expired refresh runs',
     (tester) async {
@@ -156,7 +311,9 @@ void main() {
             ],
           },
           'source':
-              'export const capabilities={"schedule.week":async()=>(${jsonEncode(data)})};',
+              'export const capabilities={"schedule.week":async(_,params={})=>{'
+              'const data=${jsonEncode(data)};'
+              'return params.week ? {...data,...data.termWeeks.find(w=>w.week===params.week)} : data;}};',
         }),
       );
       await tester.runAsync(() async {
@@ -180,6 +337,13 @@ void main() {
           ),
           isNotNull,
         );
+        // A newer historical query must not determine the initial page week.
+        await session.runTrustedScript(
+          package.manifest.id,
+          'schedule.week',
+          params: {'week': 3, 'term': 'synthetic'},
+          interactive: false,
+        );
       });
       await tester.pumpWidget(
         app(
@@ -191,8 +355,16 @@ void main() {
           session: session,
         ),
       );
+      await tester.runAsync(() async {});
       await tester.pumpAndSettle();
       expect(session.requests, isEmpty);
+      expect(
+        tester
+            .widget<WeekScheduleView>(find.byType(WeekScheduleView))
+            .data
+            .week,
+        1,
+      );
       await tester.tap(find.byKey(const ValueKey('schedule-week-2')));
       await tester.runAsync(() async {});
       await tester.pumpAndSettle();

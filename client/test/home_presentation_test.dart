@@ -31,6 +31,31 @@ void main() {
     }
   });
 
+  test(
+    'freshness labels respect minute, hour and strict three-day boundary',
+    () async {
+      final now = DateTime.utc(2026, 11, 2, 12);
+      for (final language in ['zh', 'en']) {
+        final l10n = await AppLocalizations.delegate.load(Locale(language));
+        String ago(Duration age) =>
+            formatUpdateTime(now.subtract(age), l10n, now: now);
+        expect(ago(Duration.zero), l10n.homeTimeJustNow);
+        expect(ago(const Duration(seconds: 59)), l10n.homeTimeJustNow);
+        expect(ago(const Duration(minutes: 1)), l10n.homeTimeMinutesAgo(1));
+        expect(ago(const Duration(minutes: 59)), l10n.homeTimeMinutesAgo(59));
+        expect(ago(const Duration(hours: 1)), l10n.homeTimeHoursAgo(1));
+        expect(ago(const Duration(days: 3)), l10n.homeTimeHoursAgo(72));
+        final old = now.subtract(const Duration(days: 3, seconds: 1));
+        expect(formatUpdateTime(old, l10n, now: now), formatLocalDate(old));
+        final future = now.add(const Duration(minutes: 1));
+        expect(
+          formatUpdateTime(future, l10n, now: now),
+          formatLocalDate(future),
+        );
+      }
+    },
+  );
+
   testWidgets(
     'home update and notice publication use the same local timezone',
     (tester) async {
@@ -60,7 +85,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('测试大学'), findsOneWidget);
-      expect(find.text('更新于 2026-07-07 00:05'), findsOneWidget);
+      expect(find.text('更新于 2026-07-07'), findsOneWidget);
       expect(find.text('elecon'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('home-card:notice')));
       await tester.pumpAndSettle();
