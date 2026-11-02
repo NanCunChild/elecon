@@ -15,6 +15,7 @@ export async function buildChaoxingPackages(): Promise<Map<string, string>> {
     format: "esm",
     platform: "neutral",
     target: "es2020",
+    external: ["elecon:html"],
     legalComments: "inline",
     charset: "utf8",
     logLevel: "silent",

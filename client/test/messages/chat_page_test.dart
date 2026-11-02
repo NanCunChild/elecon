@@ -248,8 +248,64 @@ void main() {
         findsOneWidget,
       );
       expect(find.text(l10n.messagesRefreshFailed), findsOneWidget);
+      expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
+      expect(find.text(l10n.messagesPermissionUnknown), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+  for (final permission in ['muted', 'unknown']) {
+    testWidgets(
+      'native composer blocks $permission and labels inert commands',
+      (tester) async {
+        final session = SessionController();
+        addTearDown(session.dispose);
+        final package = chatPackage(
+          sendPermission: permission,
+          messageKind: 'command',
+        );
+        await tester.runAsync(() => prepareChat(session, package));
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ChatPage(session: session, package: package),
+          ),
+        );
+        await finishRequests(tester);
+        await tester.tap(find.text('Synthetic group'));
+        await tester.pump();
+        await finishRequests(tester);
+        final l10n = AppLocalizations.of(tester.element(find.byType(ChatPage)));
+        expect(find.text(l10n.messagesKindCommand), findsOneWidget);
+        expect(
+          find.text(
+            permission == 'muted'
+                ? l10n.messagesCannotSendMuted
+                : l10n.messagesPermissionUnknown,
+          ),
+          findsOneWidget,
+        );
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).enabled,
+          isFalse,
+        );
+        expect(
+          tester
+              .widget<IconButton>(
+                find.byWidgetPredicate(
+                  (widget) =>
+                      widget is IconButton &&
+                      widget.tooltip == l10n.messagesSend,
+                ),
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 }

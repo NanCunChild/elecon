@@ -4,6 +4,7 @@
 import { requireParams, serviceError } from "../../xidian/src/service_session.js";
 import { chaoxingClient } from "./account.js";
 import { clientIdentity } from "./client_identity.js";
+import { messageContent } from "./message_content.js";
 import { decode, encode, one, str, sub } from "./protobuf.js";
 
 const SOCKET = "wss://im-api-wechat-vip6.easemob.com/websocket";
@@ -83,10 +84,7 @@ export function incoming(bytes) {
     if (typeof id !== "bigint" || id <= 0n || !(queue instanceof Uint8Array)) throw serviceError();
     const conversationId = str(decode(queue), 2);
     if (!conversationId) throw serviceError();
-    let summary = (body.get(4) ?? [])
-      .map((c) => str(decode(c), 2))
-      .filter(Boolean)
-      .join("\n");
+    const content = messageContent(body);
     let activityId;
     for (const ext of body.get(5) ?? []) {
       const kv = decode(ext);
@@ -102,13 +100,11 @@ export function incoming(bytes) {
           [2, 74].includes(attachment.atype)
         ) {
           activityId = String(attachment.aid);
-          summary ||= String(attachment.title || "签到活动");
         }
       } catch {
         /* Optional malformed attachment cannot expose raw content. */
       }
     }
-    if (!summary) summary = "[非文本消息]";
     const timestamp = one(meta, 4);
     const date =
       typeof timestamp === "bigint" && timestamp > 0n && timestamp <= 8640000000000000n
@@ -117,7 +113,7 @@ export function incoming(bytes) {
     items.push({
       id: id.toString(),
       conversationId,
-      text: summary.slice(0, 8000),
+      ...content,
       ...(str(sub(body, 2), 2) ? { senderId: str(sub(body, 2), 2) } : {}),
       ...(date ? { sentAt: date.toISOString() } : {}),
       ...(activityId ? { activityId } : {}),

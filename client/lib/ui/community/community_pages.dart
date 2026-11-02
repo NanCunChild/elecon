@@ -158,6 +158,13 @@ class _ServicePageState extends State<_ServicePage>
                   id: raw['id'] as String,
                   conversationId: raw['conversationId'] as String,
                   text: raw['text'] as String,
+                  kind:
+                      widget.package.manifest
+                              .capability('messages.list')
+                              ?.schemaVersion ==
+                          '1.1'
+                      ? raw['kind'] as String
+                      : 'unknown',
                   senderId: raw['senderId'] as String?,
                   sentAt: raw['sentAt'] as String?,
                   activityId: raw['activityId'] as String?,
@@ -290,6 +297,14 @@ class _ServicePageState extends State<_ServicePage>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              if (item.kind == 'activity' ||
+                                  item.kind == 'command')
+                                Text(
+                                  item.kind == 'activity'
+                                      ? l10n.messagesKindActivity
+                                      : l10n.messagesKindCommand,
+                                  style: theme.textTheme.labelMedium,
+                                ),
                               Text(item.text),
                               const SizedBox(height: 8),
                               Text(

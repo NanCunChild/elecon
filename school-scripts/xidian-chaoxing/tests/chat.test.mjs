@@ -15,7 +15,11 @@ function valid(cap, data) {
   );
   assert.equal(validator(data), true, JSON.stringify(validator.errors));
 }
-const target = { accountId: "123456", conversationId: "789012", conversationKind: "group" };
+const target = {
+  accountId: "123456",
+  conversationId: "789012",
+  conversationKind: "group",
+};
 const jid = (id) => encode([[2, id]]);
 function message({
   id = 9007199254740993n,
@@ -86,7 +90,10 @@ function harness({
   history,
   groups = [{ groupid: "789012", groupname: "Synthetic group" }],
   contacts = ["456780"],
-  groupDetails = [],
+  groupDetails = [{ id: "789012", mute: false, disabled: false }],
+  memberMuted = false,
+  permissionDelay = 0,
+  allowlisted = { member: "456789", white: false },
   channels = { channel_infos: [] },
   fail,
   events = [],
@@ -100,7 +107,13 @@ function harness({
         accountId: "123456",
         accountLabel: "Synthetic",
         cookies: [
-          { name: "SESSION", value: "SYNTHETIC_COOKIE", domain: "chaoxing.com", path: "/", isSecure: true },
+          {
+            name: "SESSION",
+            value: "SYNTHETIC_COOKIE",
+            domain: "chaoxing.com",
+            path: "/",
+            isSecure: true,
+          },
         ],
       }),
     ],
@@ -126,10 +139,20 @@ function harness({
       let body;
       if (url === ACCOUNT_URL)
         body = {
-          msg: { puid: 123456, uid: 456789, fid: 789012, name: "Synthetic", hxToken: "SYNTHETIC_TOKEN" },
+          msg: {
+            puid: 123456,
+            uid: 456789,
+            fid: 789012,
+            name: "Synthetic",
+            hxToken: "SYNTHETIC_TOKEN",
+          },
         };
       else if (path.endsWith("joined_chatgroups")) body = { data: groups };
       else if (path.endsWith("contacts/users")) body = { data: contacts };
+      else if (path.includes("/mute/")) {
+        now += permissionDelay;
+        body = { data: memberMuted };
+      } else if (path.includes("/white/users/")) body = { data: allowlisted };
       else if (path.includes("/chatgroups/"))
         body =
           typeof groupDetails === "string"
@@ -138,7 +161,9 @@ function harness({
                 data: typeof groupDetails === "function" ? groupDetails(url) : groupDetails,
               };
       else if (path.endsWith("user_channels/list"))
-        body = { data: typeof channels === "function" ? channels(url) : channels };
+        body = {
+          data: typeof channels === "function" ? channels(url) : channels,
+        };
       else if (path.endsWith("messageroaming")) body = history;
       else if (path.endsWith("getUsers4C"))
         body = {
@@ -168,7 +193,9 @@ function harness({
   return { ctx, records, calls, sent, closed: () => closed };
 }
 test("conversation discovery separates groups/contacts, names and IM credentials", async () => {
-  const h = harness({ groups: [{ id: "9007199254740999", name: "Big group" }] });
+  const h = harness({
+    groups: [{ id: "9007199254740999", name: "Big group" }],
+  });
   const result = await messagesConversations(h.ctx, { accountId: "123456" });
   valid("messages.conversations", result);
   assert.equal(result.coverage, "complete");
@@ -191,7 +218,9 @@ test("partial discovery is explicit; total failure is not an empty list", async 
   const h = harness({ fail: (u) => u.endsWith("contacts/users") });
   assert.equal((await messagesConversations(h.ctx, { accountId: "123456" })).coverage, "partial");
   await assert.rejects(
-    messagesConversations(harness({ fail: (u) => u.includes("easemob") }).ctx, { accountId: "123456" }),
+    messagesConversations(harness({ fail: (u) => u.includes("easemob") }).ctx, {
+      accountId: "123456",
+    }),
   );
 });
 test("batched group details fill missing names by exact admitted ID only", async () => {
@@ -215,7 +244,13 @@ test("recent conversation evidence orders content first without treating unknown
     session_to: id,
     session_type: "groupchat",
     unread_num: 123,
-    meta: { timestamp: time, payload: JSON.stringify({ to, bodies: [{ type, msg: "SECRET_PREVIEW" }] }) },
+    meta: {
+      timestamp: time,
+      payload: JSON.stringify({
+        to,
+        bodies: [{ type, msg: "SECRET_PREVIEW" }],
+      }),
+    },
   });
   const h = harness({
     groups: [
@@ -270,7 +305,9 @@ test("optional enrichment failures preserve the directory but authentication exp
 });
 test("optional detail/recent 403 preserves the joined directory and account; 401 still expires it", async () => {
   for (const endpoint of ["/chatgroups/", "user_channels/list"]) {
-    const h = harness({ fail: (url) => (url.includes(endpoint) ? 403 : false) });
+    const h = harness({
+      fail: (url) => (url.includes(endpoint) ? 403 : false),
+    });
     const result = await messagesConversations(h.ctx, { accountId: "123456" });
     valid("messages.conversations", result);
     assert.equal(result.coverage, "complete");
@@ -300,7 +337,9 @@ test("optional detail/recent 403 preserves the joined directory and account; 401
   );
 });
 test("name batches and recent pagination stay bounded; repeated cursors stop without history scans", async () => {
-  const groups = Array.from({ length: 121 }, (_, i) => ({ groupid: `${1000 + i}` }));
+  const groups = Array.from({ length: 121 }, (_, i) => ({
+    groupid: `${1000 + i}`,
+  }));
   const h = harness({
     groups,
     contacts: [],
@@ -335,13 +374,21 @@ test("history keeps uint64 cursor exact, deduplicates messages and filters recei
     message({
       id: 9007199254740994n,
       from: "456780",
-      attachment: { att_homework: { title: "Synthetic homework", url: "https://secret.invalid/" } },
+      attachment: {
+        att_homework: {
+          title: "Synthetic homework",
+          url: "https://secret.invalid/",
+        },
+      },
     }),
   ];
   const h = harness({
     history: `{"data":{"msgs":${JSON.stringify(rows.map(encoded))},"is_last":false,"next_key":9007199254740993}}`,
   });
-  const result = await messagesHistory(h.ctx, { ...target, cursor: "9007199254740995" });
+  const result = await messagesHistory(h.ctx, {
+    ...target,
+    cursor: "9007199254740995",
+  });
   valid("messages.history", result);
   assert.equal(result.nextCursor, "9007199254740993");
   assert.equal(result.items.length, 2);
@@ -364,7 +411,15 @@ test("private history binds both participants and preserves recall tombstones", 
         next_key: "undefined",
         msgs: [
           encoded(message({ from: "456780", to: "456789", type: 1, ns: 1 })),
-          encoded(message({ id: 9007199254740994n, from: "456789", to: "456780", type: 1, ns: 1 })),
+          encoded(
+            message({
+              id: 9007199254740994n,
+              from: "456789",
+              to: "456780",
+              type: 1,
+              ns: 1,
+            }),
+          ),
           encoded(
             message({
               id: 9007199254740995n,
@@ -420,8 +475,14 @@ test("wrong account/invalid target fails before history or send", async () => {
   assert.ok(!h.calls.some(({ url }) => url.includes("easemob")));
 });
 test("send transmits exactly one text upload and requires matching server confirmation", async () => {
-  const params = { ...target, clientId: "9007199254740993", text: "Synthetic outgoing" };
-  const h = harness({ events: [provision(), ack("777"), ack(params.clientId)] });
+  const params = {
+    ...target,
+    clientId: "9007199254740993",
+    text: "Synthetic outgoing",
+  };
+  const h = harness({
+    events: [provision(), ack("777"), ack(params.clientId)],
+  });
   const result = await messagesSend(h.ctx, params);
   valid("messages.send", result);
   assert.equal(result.status, "sent");
@@ -457,6 +518,116 @@ test("send rejection, lost ACK, write failure and close failure never retry or i
   };
   assert.equal((await messagesSend(closed.ctx, params)).status, "sent");
   const auth = harness({ events: [provision(401)] });
-  await assert.rejects(messagesSend(auth.ctx, params), { code: "authentication_required" });
+  await assert.rejects(messagesSend(auth.ctx, params), {
+    code: "authentication_required",
+  });
   assert.equal(auth.sent.length, 1);
+});
+
+test("fresh permission distinguishes group mute, member mute, exemption, disabled and unknown", async () => {
+  const history = { data: { msgs: [], is_last: true } };
+  for (const [options, permission, reason] of [
+    [{}, "allowed", undefined],
+    [{ groupDetails: [{ id: "789012", mute: true, disabled: false }] }, "muted", "group_muted"],
+    [{ memberMuted: true }, "muted", "member_muted"],
+    [
+      {
+        groupDetails: [{ id: "789012", mute: true, disabled: false }],
+        allowlisted: { member: "456789", white: true },
+      },
+      "allowed",
+      undefined,
+    ],
+    [
+      {
+        groupDetails: [{ id: "789012", mute: true, disabled: false }],
+        memberMuted: true,
+        allowlisted: { member: "456789", white: true },
+      },
+      "muted",
+      "member_muted",
+    ],
+    [{ groupDetails: [{ id: "789012", mute: false, disabled: true }] }, "muted", "group_disabled"],
+    [{ groupDetails: [{ id: "789012", mute: false }] }, "unknown", "verification_failed"],
+    [
+      {
+        groupDetails: [{ id: "789012", mute: true, disabled: false }],
+        allowlisted: { member: "999", white: true },
+      },
+      "unknown",
+      "verification_failed",
+    ],
+    [{ memberMuted: "false" }, "unknown", "verification_failed"],
+    [{ fail: (url) => (url.includes("/mute/") ? 403 : false) }, "unknown", "verification_failed"],
+  ]) {
+    const h = harness({ history, ...options });
+    const result = await messagesHistory(h.ctx, target);
+    valid("messages.history", result);
+    assert.equal(result.sendPermission, permission);
+    assert.equal(result.sendPermissionReason, reason);
+    if (permission !== "allowed") {
+      const out = await messagesSend(h.ctx, {
+        ...target,
+        clientId: "1234",
+        text: "Synthetic",
+      });
+      assert.equal(out.status, "rejected");
+      assert.equal(h.sent.length, 0, "denied/unknown permissions cannot open a sending session");
+    }
+  }
+});
+
+test("permission is checked again at send time and cannot use a previously allowed history", async () => {
+  let muted = false;
+  const h = harness({
+    history: { data: { msgs: [], is_last: true } },
+    groupDetails: () => [{ id: "789012", mute: false, disabled: muted }],
+  });
+  assert.equal((await messagesHistory(h.ctx, target)).sendPermission, "allowed");
+  muted = true;
+  assert.equal(
+    (
+      await messagesSend(h.ctx, {
+        ...target,
+        clientId: "1234",
+        text: "Synthetic",
+      })
+    ).status,
+    "rejected",
+  );
+  assert.equal(h.sent.length, 0);
+});
+
+test("activity and command are explicit inert types; commands never expose wire actions", async () => {
+  const h = harness({
+    history: {
+      data: {
+        msgs: [
+          encoded(
+            message({
+              id: 100n,
+              attachment: { att_chat_course: { title: "合成活动" } },
+            }),
+          ),
+          encoded(message({ id: 101n, content: 6, text: "SYNTHETIC_EXECUTE_ACTION" })),
+        ],
+        is_last: true,
+      },
+    },
+  });
+  const result = await messagesHistory(h.ctx, target);
+  valid("messages.history", result);
+  assert.deepEqual(
+    result.items.map((i) => i.kind),
+    ["activity", "command"],
+  );
+  assert.equal(result.items[1].text, "[指令消息]");
+  assert.equal(JSON.stringify(result).includes("SYNTHETIC_EXECUTE_ACTION"), false);
+});
+
+test("slow permission verification does not consume the socket confirmation window", async () => {
+  const h = harness({ permissionDelay: 20000, events: [provision(), ack("1234")] });
+  const result = await messagesSend(h.ctx, { ...target, clientId: "1234", text: "Synthetic" });
+  assert.equal(result.status, "sent");
+  assert.equal(h.sent.length, 2);
 });

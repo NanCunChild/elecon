@@ -12,8 +12,8 @@ assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildChaoxingPackages())]);
 for (const [name, content] of first) {
   const p = JSON.parse(content);
-  assert.equal(p.manifest.sdkVersion, 9);
-  assert.equal(p.manifest.version, "0.3.1");
+  assert.equal(p.manifest.sdkVersion, 12);
+  assert.equal(p.manifest.version, "0.5.0");
   assert.equal(
     p.manifest.capabilities.find((c: { id: string }) => c.id === "attendance.checkin").schemaVersion,
     "1.1",
@@ -28,10 +28,20 @@ for (const [name, content] of first) {
       "messages.history",
       "messages.send",
       "attendance.checkin",
+      "notice.list",
+      "account.session",
     ],
   );
   assert.deepEqual(p.manifest.websocketOrigins, ["wss://im-api-wechat-vip6.easemob.com"]);
-  assert.equal(p.manifest.home, undefined);
+  assert.deepEqual(p.manifest.home, [{ capability: "notice.list", ttlSeconds: 300, preload: true }]);
+  assert.deepEqual(p.manifest.cards, [
+    {
+      id: "learning-notices",
+      type: "notice",
+      title: "学习通知",
+      defaultVariant: "regular",
+    },
+  ]);
   assert.equal(p.manifest.id, `enhancement-${p.manifest.schoolId.replaceAll("_", "-")}-chaoxing`);
   if (p.manifest.schoolId === "xidian_undergraduate") {
     assert.equal(readFileSync(`${root}/client/test/fixtures/community/${name}`, "utf8"), content);
@@ -43,6 +53,7 @@ execFileSync(
     "--test",
     `${root}/school-scripts/xidian-chaoxing/tests/community.test.mjs`,
     `${root}/school-scripts/xidian-chaoxing/tests/chat.test.mjs`,
+    `${root}/school-scripts/xidian-chaoxing/tests/notices.test.mjs`,
   ],
   { stdio: "pipe" },
 );

@@ -6,6 +6,8 @@ import 'package:elecon/session/session_controller.dart';
 ScriptPackage chatPackage({
   String version = '1.0.0',
   String sendStatus = 'sent',
+  String sendPermission = 'allowed',
+  String messageKind = 'homework',
   bool offlineAfterSend = false,
   List<Map<String, dynamic>>? conversationRows,
 }) => ScriptPackage.parse(
@@ -29,7 +31,11 @@ ScriptPackage chatPackage({
           {
             'id': cap,
             'schema': 'elecon.$cap',
-            'schemaVersion': cap == 'messages.conversations' ? '1.1' : '1.0',
+            'schemaVersion': cap == 'messages.conversations'
+                ? '1.2'
+                : cap == 'messages.history'
+                ? '1.1'
+                : '1.0',
           },
       ],
     },
@@ -54,8 +60,8 @@ ScriptPackage chatPackage({
         if(p.cursor === 'wait') {ctx.log('info','synthetic_waiting');await new Promise(resolve=>setTimeout(resolve,10000));}
         if(p.cursor === 'expired') {const e=new Error('authentication_required');e.code='authentication_required';throw e;}
         return {...who(ctx),conversationId:p.conversationId,conversationKind:p.conversationKind,
-          hasMore:!p.cursor,...(!p.cursor?{nextCursor:'older'}:{}),recalledIds:[],items:[
-          {id:p.cursor?'100':'200',kind:'homework',text:p.cursor?'Synthetic older message':'Synthetic homework summary',
+          sendPermission:'$sendPermission',hasMore:!p.cursor,...(!p.cursor?{nextCursor:'older'}:{}),recalledIds:[],items:[
+          {id:p.cursor?'100':'200',kind:'$messageKind',text:p.cursor?'Synthetic older message':'Synthetic homework summary',
             direction:'incoming',senderLabel:'Synthetic sender',sentAt:p.cursor?'2026-10-31T08:00:00Z':'2026-11-01T08:00:00Z'}
         ]};
       },

@@ -63,6 +63,9 @@ class MessageArchiveView {
       'title': row.title,
       if (row.hasContent != null) 'hasContent': row.hasContent,
       if (row.lastMessageAt != null) 'lastMessageAt': row.lastMessageAt,
+      if (row.sendPermission != null) 'sendPermission': row.sendPermission,
+      if (row.sendPermissionReason != null)
+        'sendPermissionReason': row.sendPermissionReason,
     };
     final old = {
       for (final row in previous)
@@ -210,7 +213,7 @@ class MessageArchiveStore {
       return false;
     }
     if (capability == 'messages.conversations' &&
-        package.manifest.capability(capability)?.schemaVersion == '1.1' &&
+        package.manifest.capability(capability)?.schemaVersion != '1.0' &&
         (data['items'] as List).any(
           (row) => row['lastMessageAt'] != null && row['hasContent'] != true,
         )) {
@@ -259,19 +262,28 @@ class MessageArchiveStore {
     final bytes = _bytes(package, current);
     final scope = _scope(package, current);
     final time = now();
-    final normalizedData =
-        capability == 'messages.conversations' &&
-            package.manifest.capability(capability)?.schemaVersion == '1.0'
-        ? {
-            ...data,
-            'items': [
-              for (final row in data['items'] as List)
-                Map<String, dynamic>.from(row as Map)
-                  ..remove('hasContent')
-                  ..remove('lastMessageAt'),
-            ],
-          }
-        : data;
+    final normalizedData = Map<String, dynamic>.from(data);
+    if (capability == 'messages.conversations') {
+      final version = package.manifest.capability(capability)?.schemaVersion;
+      normalizedData['items'] = [
+        for (final row in data['items'] as List)
+          Map<String, dynamic>.from(row as Map)..removeWhere(
+            (key, _) =>
+                (version == '1.0' &&
+                    const {'hasContent', 'lastMessageAt'}.contains(key)) ||
+                (version != '1.2' &&
+                    const {
+                      'sendPermission',
+                      'sendPermissionReason',
+                    }.contains(key)),
+          ),
+      ];
+    }
+    if (capability == 'messages.history' &&
+        package.manifest.capability(capability)?.schemaVersion != '1.1') {
+      normalizedData.remove('sendPermission');
+      normalizedData.remove('sendPermissionReason');
+    }
     final result = await Isolate.run(
       () => _databaseWork(
         bytes,
@@ -358,6 +370,8 @@ MessagesConversationsItems _conversation(Map<String, dynamic> row) =>
       title: row['title'] as String,
       hasContent: row['hasContent'] as bool?,
       lastMessageAt: row['lastMessageAt'] as String?,
+      sendPermission: row['sendPermission'] as String?,
+      sendPermissionReason: row['sendPermissionReason'] as String?,
     );
 
 Map<String, dynamic> _mergeConversationData(

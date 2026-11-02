@@ -1,7 +1,7 @@
 {
-  "sdkVersion": 9,
+  "sdkVersion": 12,
   "id": "enhancement-xidian-undergraduate-chaoxing",
-  "version": "0.3.1",
+  "version": "0.5.0",
   "schoolId": "xidian_undergraduate",
   "name": "西电学习通增强（本科生）",
   "network": {
@@ -14,7 +14,8 @@
       "https://learning.xidian.edu.cn",
       "https://ids.xidian.edu.cn",
       "https://a1-vip6.easemob.com",
-      "https://useryd.chaoxing.com"
+      "https://useryd.chaoxing.com",
+      "https://notice.chaoxing.com"
     ]
   },
   "browser": true,
@@ -31,17 +32,17 @@
     {
       "id": "messages.list",
       "schema": "elecon.messages.list",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.1"
     },
     {
       "id": "messages.conversations",
       "schema": "elecon.messages.conversations",
-      "schemaVersion": "1.1"
+      "schemaVersion": "1.2"
     },
     {
       "id": "messages.history",
       "schema": "elecon.messages.history",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.1"
     },
     {
       "id": "messages.send",
@@ -52,6 +53,62 @@
       "id": "attendance.checkin",
       "schema": "elecon.attendance.checkin",
       "schemaVersion": "1.1"
+    },
+    {
+      "id": "notice.list",
+      "schema": "elecon.notice.list",
+      "schemaVersion": "1.1"
+    },
+    {
+      "id": "account.session",
+      "schema": "elecon.account.session",
+      "schemaVersion": "1.0"
+    }
+  ],
+  "accounts": [
+    {
+      "id": "chaoxing",
+      "name": "学习通账号",
+      "instructions": "使用学习通账号或学校入口完成登录。学习通知、消息与签到使用此账号，与基本包的教务登录分别保存。",
+      "capabilities": [
+        "messages.session",
+        "messages.list",
+        "messages.conversations",
+        "messages.history",
+        "messages.send",
+        "attendance.checkin",
+        "notice.list",
+        "account.session"
+      ],
+      "login": {
+        "capability": "account.session",
+        "params": {
+          "account": "chaoxing",
+          "operation": "login"
+        }
+      },
+      "status": {
+        "capability": "account.session",
+        "params": {
+          "account": "chaoxing",
+          "operation": "status"
+        }
+      }
+    }
+  ],
+  "cards": [
+    {
+      "id": "learning-notices",
+      "type": "notice",
+      "title": "学习通知",
+      "defaultVariant": "regular"
+    }
+  ],
+  "home": [
+    {
+      "capability": "notice.list",
+      "ttlSeconds": 300,
+      "preload": true
     }
   ]
 }

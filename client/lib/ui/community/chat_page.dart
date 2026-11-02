@@ -37,6 +37,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String? _coverage;
   String? _fetchedAt;
   String? _error;
+  String _sendPermission = 'unknown';
+  String? _sendPermissionReason;
   final _attempts = <String, ({String text, String status})>{};
   String _query = '';
   int _localLimit = 100;
@@ -73,6 +75,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _clearChat() {
+    _sendPermission = 'unknown';
+    _sendPermissionReason = null;
     _messages.clear();
     _observed.clear();
     _cursors.clear();
@@ -201,6 +205,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _busy = true;
       _error = null;
       _storageFailed = false;
+      if (capability == 'messages.history') {
+        _sendPermission = 'unknown';
+        _sendPermissionReason = null;
+      }
       if (capability == 'messages.session' && params['operation'] != 'status') {
         _clearAccount();
       }
@@ -261,18 +269,32 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 conversationId: row['conversationId'] as String,
                 conversationKind: row['conversationKind'] as String,
                 title: row['title'] as String,
-                hasContent:
+                sendPermission:
                     widget.package.manifest
                             .capability(capability)
                             ?.schemaVersion ==
-                        '1.1'
+                        '1.2'
+                    ? row['sendPermission'] as String?
+                    : null,
+                sendPermissionReason:
+                    widget.package.manifest
+                            .capability(capability)
+                            ?.schemaVersion ==
+                        '1.2'
+                    ? row['sendPermissionReason'] as String?
+                    : null,
+                hasContent:
+                    widget.package.manifest
+                            .capability(capability)
+                            ?.schemaVersion !=
+                        '1.0'
                     ? row['hasContent'] as bool?
                     : null,
                 lastMessageAt:
                     widget.package.manifest
                             .capability(capability)
-                            ?.schemaVersion ==
-                        '1.1'
+                            ?.schemaVersion !=
+                        '1.0'
                     ? row['lastMessageAt'] as String?
                     : null,
               ),
@@ -284,6 +306,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           );
           _coverage = data['coverage'] as String;
         } else if (capability == 'messages.history') {
+          if (widget.package.manifest.capability(capability)?.schemaVersion ==
+              '1.1') {
+            _sendPermission = data['sendPermission'] as String? ?? 'unknown';
+            _sendPermissionReason = data['sendPermissionReason'] as String?;
+          }
           for (final row in data['items'] as List) {
             final item = ArchivedMessage.fromData(
               Map<String, dynamic>.from(row as Map),
@@ -306,6 +333,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           if (params['cursor'] case final String cursor) _cursors.add(cursor);
         } else if (capability == 'messages.send') {
           _sendState(params, data['status'] as String);
+          if (data['status'] == 'rejected') _sendPermission = 'unknown';
           if (data['status'] == 'sent') {
             final item = ArchivedMessage.fromData({
               'id': data['messageId'],
@@ -383,7 +411,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _send() async {
     final text = _composer.text;
-    if (_busy || text.trim().isEmpty || text.length > 4000) return;
+    if (_busy ||
+        _sendPermission != 'allowed' ||
+        text.trim().isEmpty ||
+        text.length > 4000) {
+      return;
+    }
     // 61-bit decimal request ID, kept exact throughout protobuf and confirmation.
     final clientId =
         ((BigInt.from(DateTime.now().millisecondsSinceEpoch) << 20) |
@@ -657,6 +690,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                                       if (row.sentAt != null)
                                         _time(row.sentAt!),
                                     ].join(' · '),
+                                    kind: row.content?.kind,
                                   ),
                                 if (_localMore || _remoteMore == true)
                                   Center(
@@ -689,11 +723,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                             Expanded(
                               child: TextField(
                                 controller: _composer,
+                                enabled: !_busy && _sendPermission == 'allowed',
                                 minLines: 1,
                                 maxLines: 4,
                                 maxLength: 4000,
                                 decoration: InputDecoration(
                                   hintText: l10n.messagesCompose,
+                                  helperMaxLines: 3,
+                                  helperText:
+                                      _busy || _sendPermission == 'allowed'
+                                      ? null
+                                      : _sendPermission == 'muted'
+                                      ? (_sendPermissionReason ==
+                                                'group_disabled'
+                                            ? l10n.messagesGroupDisabled
+                                            : l10n.messagesCannotSendMuted)
+                                      : l10n.messagesPermissionUnknown,
                                   border: const OutlineInputBorder(),
                                 ),
                                 onChanged: (_) => setState(() {}),
@@ -705,7 +750,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                               child: IconButton.filled(
                                 tooltip: l10n.messagesSend,
                                 onPressed:
-                                    _busy || _composer.text.trim().isEmpty
+                                    _busy ||
+                                        _sendPermission != 'allowed' ||
+                                        _composer.text.trim().isEmpty
                                     ? null
                                     : _send,
                                 icon: const Icon(Icons.send_outlined),
@@ -728,8 +775,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     BuildContext context,
     String text,
     bool outgoing,
-    String caption,
-  ) {
+    String caption, {
+    String? kind,
+  }) {
     final theme = Theme.of(context);
     return Align(
       alignment: outgoing ? Alignment.centerRight : Alignment.centerLeft,
@@ -747,6 +795,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (kind == 'activity' || kind == 'command') ...[
+              Text(
+                kind == 'activity'
+                    ? AppLocalizations.of(context).messagesKindActivity
+                    : AppLocalizations.of(context).messagesKindCommand,
+                style: theme.textTheme.labelMedium,
+              ),
+              const SizedBox(height: 4),
+            ],
             SelectableText(
               text,
               style: TextStyle(

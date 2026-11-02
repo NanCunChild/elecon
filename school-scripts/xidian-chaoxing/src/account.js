@@ -14,10 +14,12 @@ export const ORIGINS = [
   "https://learning.xidian.edu.cn",
   "https://ids.xidian.edu.cn",
   "https://useryd.chaoxing.com",
+  "https://notice.chaoxing.com",
 ];
 const config = { id: "chaoxing", name: "学习通", origins: ORIGINS };
 const cookieUrls = [
   ACCOUNT_URL,
+  "https://notice.chaoxing.com/apis/notice/myNotices_v2",
   ...[
     "/v2/apis/sign/getAttendInfo",
     "/v2/apis/active/getPPTActiveInfo",
@@ -113,4 +115,37 @@ export async function messagesSession(ctx, params = {}) {
   if (!account || account.id !== client.accountId) return client.logout();
   await client.save(account);
   return client.state();
+}
+
+// Explicit account state uses the same HTTP proof as messaging, never socket
+// presence or the existence of a credential record. Failed probes stay unknown.
+export async function accountSession(ctx, params = {}) {
+  requireParams(params, ["account", "operation"]);
+  if (params.account !== "chaoxing" || !["status", "login"].includes(params.operation))
+    throw serviceError("input_invalid_request");
+  const address = { namespace: "xidian.services" };
+  const marker = "chaoxing-expired";
+  const previous = await serviceClient(ctx, config);
+  const hadAccount = !!previous.accountId;
+  let state;
+  try {
+    state = await messagesSession(ctx, { operation: params.operation });
+  } catch (error) {
+    if (params.operation === "login") throw error;
+    return { status: "unknown" };
+  }
+  if (state.status === "authenticated") {
+    await ctx.credentials.delete(marker, address);
+    return {
+      status: "authenticated",
+      accountId: state.accountId,
+      ...(state.accountLabel ? { accountLabel: state.accountLabel } : {}),
+      checkedAt: new Date(ctx.now()).toISOString(),
+    };
+  }
+  if (hadAccount) await ctx.credentials.set(marker, "true", address);
+  return {
+    status: hadAccount || (await ctx.credentials.get(marker, address)) ? "expired" : "signedOut",
+    ...(hadAccount ? { checkedAt: new Date(ctx.now()).toISOString() } : {}),
+  };
 }

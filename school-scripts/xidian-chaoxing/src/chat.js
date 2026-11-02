@@ -4,6 +4,7 @@
 // No Go implementation, generated protobuf code or dependency is included.
 import { remoteId, requireParams, serviceError } from "../../xidian/src/service_session.js";
 import { chaoxingClient } from "./account.js";
+import { messageContent } from "./message_content.js";
 import { incoming, loginPacket } from "./messages.js";
 import { decode, encode, one, str, sub } from "./protobuf.js";
 
@@ -25,7 +26,10 @@ const identity = (ctx, account) => ({
 function target(params) {
   if (!decimal(params.conversationId) || !["group", "direct"].includes(params.conversationKind))
     throw serviceError("input_invalid_request");
-  return { conversationId: params.conversationId, conversationKind: params.conversationKind };
+  return {
+    conversationId: params.conversationId,
+    conversationKind: params.conversationKind,
+  };
 }
 async function authenticated(ctx, params) {
   if (!decimal(params.accountId)) throw serviceError("input_invalid_request");
@@ -49,7 +53,10 @@ async function apiRest(ctx, account, path, body, { optional = false } = {}) {
   const response = await ctx.fetch(`${REST}${path}`, {
     method: body === undefined ? "GET" : "POST",
     redirect: "manual",
-    headers: { Authorization: `Bearer ${account.token}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${account.token}`,
+      "Content-Type": "application/json",
+    },
     ...(body === undefined ? {} : { body }),
   });
   // Optional enrichment may be disabled by a feature/ACL policy. A 403 there
@@ -90,13 +97,55 @@ async function groupNames(ctx, account, items) {
   }
 }
 
+// Official Easemob Web SDK 4.12 endpoint/response facts, independently authored.
+// A current member mute outranks a group-wide exemption; ACL/network failures
+// remain unknown. No group title, affiliation count or cached value authorizes send.
+export async function sendPermission(ctx, account, conversation) {
+  if (conversation.conversationKind === "direct") return { sendPermission: "allowed" };
+  const unknown = {
+    sendPermission: "unknown",
+    sendPermissionReason: "verification_failed",
+  };
+  const id = conversation.conversationId;
+  try {
+    const details = await apiRest(ctx, account, `chatgroups/${id}?joined_time=true`, undefined, {
+      optional: true,
+    });
+    const group = Array.isArray(details) && details.find((row) => (row?.id ?? row?.groupid) === id);
+    if (!group) return unknown;
+    if (group.disabled === true)
+      return {
+        sendPermission: "muted",
+        sendPermissionReason: "group_disabled",
+      };
+    const personal = await apiRest(ctx, account, `sdk/chatgroups/${id}/mute/${account.tid}`, undefined, {
+      optional: true,
+    });
+    if (personal === true) return { sendPermission: "muted", sendPermissionReason: "member_muted" };
+    if (personal !== false || group.disabled !== false || typeof group.mute !== "boolean") return unknown;
+    if (group.mute === false) return { sendPermission: "allowed" };
+    const exemption = await apiRest(ctx, account, `chatgroups/${id}/white/users/${account.tid}`, undefined, {
+      optional: true,
+    });
+    if (exemption?.member !== account.tid || typeof exemption.white !== "boolean") return unknown;
+    return exemption.white
+      ? { sendPermission: "allowed" }
+      : { sendPermission: "muted", sendPermissionReason: "group_muted" };
+  } catch (error) {
+    if (error.code === "authentication_required") throw error;
+    return unknown;
+  }
+}
+
 async function recentConversations(ctx, account, items) {
   const seen = new Set();
   let cursor = "";
   for (let page = 0; page < 5; page++) {
     try {
       const path = `sdk/user/${encodeURIComponent(account.tid)}/user_channels/list?limit=100&cursor=${encodeURIComponent(cursor)}`;
-      const data = await apiRest(ctx, account, path, undefined, { optional: true });
+      const data = await apiRest(ctx, account, path, undefined, {
+        optional: true,
+      });
       if (!Array.isArray(data.channel_infos) || data.channel_infos.length > 100) return;
       for (const channel of data.channel_infos) {
         const kind =
@@ -187,6 +236,7 @@ export async function messagesConversations(ctx, params = {}) {
         items.set(`${kind}:${id}`, {
           conversationId: id,
           conversationKind: kind,
+          sendPermission: kind === "direct" ? "allowed" : "unknown",
           title: kind === "group" ? bounded(row.groupname || row.name, 160).trim() || id : id,
         });
       }
@@ -241,57 +291,6 @@ function fromBase64(value) {
   }
   return Uint8Array.from(bytes);
 }
-function extensions(body) {
-  const result = new Map();
-  for (const raw of body.get(5) ?? []) {
-    const kv = decode(raw);
-    result.set(str(kv, 1), str(kv, 6));
-  }
-  return result;
-}
-function summary(body) {
-  const content = (body.get(4) ?? []).map(decode);
-  // Commands/read receipts are transport state, never ordinary chat text.
-  if (content.some((c) => one(c, 1, 0n) === 6n)) return null;
-  const kinds = ["text", "image", "video", "location", "voice", "file"];
-  let kind = kinds[Number(one(content[0] ?? new Map(), 1, 0n))] || "unknown";
-  const chunks = content.map((c) => str(c, 2) || str(c, 23) || str(c, 6)).filter(Boolean);
-  const ext = extensions(body);
-  try {
-    const attachment = JSON.parse(ext.get("attachment") || "null");
-    if (attachment && typeof attachment === "object") {
-      for (const [key, category] of [
-        ["att_chat_course", "activity"],
-        ["att_course", "course"],
-        ["att_homework", "homework"],
-        ["att_task", "task"],
-        ["att_cloudDisk", "file"],
-      ]) {
-        const value = attachment[key];
-        if (!value || typeof value !== "object") continue;
-        kind = category;
-        const title = bounded(value.title || value.name || value.courseName, 1000);
-        if (title && !chunks.includes(title)) chunks.push(title);
-      }
-    }
-  } catch {
-    /* No raw attachment JSON/URLs/keys in output. */
-  }
-  const fallback = {
-    text: "[非文本消息]",
-    image: "[图片]",
-    video: "[视频]",
-    voice: "[语音]",
-    location: "[位置]",
-    file: "[文件]",
-    activity: "[活动]",
-    course: "[课程]",
-    homework: "[作业]",
-    task: "[任务]",
-    unknown: "[非文本消息]",
-  };
-  return { text: chunks.join("\n").slice(0, 8000) || fallback[kind], kind };
-}
 export function historyMessage(raw, selfId, conversation) {
   const meta = decode(raw);
   if (![1n, 2n].includes(one(meta, 5))) return null;
@@ -313,7 +312,7 @@ export function historyMessage(raw, selfId, conversation) {
     return typeof recalled === "bigint" && recalled > 0n ? { recalled: recalled.toString() } : null;
   }
   if (type !== (conversation.conversationKind === "group" ? 2n : 1n)) return null;
-  const content = summary(body);
+  const content = messageContent(body);
   if (!content) return null;
   const id = one(meta, 1);
   if (typeof id !== "bigint" || id <= 0n) throw serviceError();
@@ -335,6 +334,7 @@ export async function messagesHistory(ctx, params = {}) {
   )
     throw serviceError("input_invalid_request");
   const { client, account } = await authenticated(ctx, params);
+  const permission = await sendPermission(ctx, account, conversation);
   const queue = `${conversation.conversationId}@${conversation.conversationKind === "group" ? "conference.easemob.com" : "easemob.com"}`;
   const page = await rest(
     ctx,
@@ -373,6 +373,7 @@ export async function messagesHistory(ctx, params = {}) {
   return {
     ...identity(ctx, account),
     ...conversation,
+    ...permission,
     hasMore: !!nextCursor,
     ...(nextCursor ? { nextCursor } : {}),
     items: [...items.values()].sort(
@@ -442,7 +443,6 @@ export async function messagesSend(ctx, params = {}) {
   const { account } = await authenticated(ctx, params);
   if (!ctx.websocket) throw serviceError("input_unavailable");
   const bytes = textPacket(account, params);
-  const started = ctx.now();
   let attempted = false;
   const result = (status, extra = {}) => ({
     ...identity(ctx, account),
@@ -451,6 +451,9 @@ export async function messagesSend(ctx, params = {}) {
     status,
     ...extra,
   });
+  const permission = await sendPermission(ctx, account, conversation);
+  if (permission.sendPermission !== "allowed") return result("rejected");
+  const started = ctx.now();
   await ctx.websocket.open(SOCKET);
   try {
     await ctx.websocket.send(loginPacket(account, started));
@@ -473,7 +476,10 @@ export async function messagesSend(ctx, params = {}) {
       const id = one(ack, 3);
       if (typeof id !== "bigint" || id <= 0n) continue;
       const sentAt = stamp(one(ack, 8));
-      return result("sent", { messageId: id.toString(), ...(sentAt ? { sentAt } : {}) });
+      return result("sent", {
+        messageId: id.toString(),
+        ...(sentAt ? { sentAt } : {}),
+      });
     }
     if (!attempted) throw serviceError("authentication_required");
     return result("unknown");

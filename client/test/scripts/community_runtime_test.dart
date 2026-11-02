@@ -28,7 +28,7 @@ void main() {
     sdkVersion: p.manifest.sdkVersion,
   );
   test(
-    'built SDK9 enhancement executes account, QR cancel and binary socket in real QuickJS',
+    'built SDK12 enhancement executes account, QR cancel and binary socket in real QuickJS',
     () async {
       final c = credentials(enhancement);
       c.set(
@@ -61,13 +61,43 @@ void main() {
       };
       final status = await const TrustedScriptRuntime().run(
         package: enhancement,
+        htmlStdlib: File('assets/stdlib/html.bundle.js').readAsStringSync(),
         capability: 'messages.session',
         credentials: c,
         fetch: fetch,
       );
       expect((status as Map)['status'], 'authenticated');
+      final notices =
+          await const TrustedScriptRuntime().run(
+                package: enhancement,
+                htmlStdlib: File(
+                  'assets/stdlib/html.bundle.js',
+                ).readAsStringSync(),
+                capability: 'notice.list',
+                credentials: c,
+                fetch: (url, init) async {
+                  if (url.contains('getUserImToken')) return fetch(url, init);
+                  expect(Uri.parse(url).host, 'notice.chaoxing.com');
+                  expect(init['method'], 'GET');
+                  return {
+                    'status': 200,
+                    'url': url,
+                    'headers': <String, List<String>>{},
+                    'body':
+                        '{"result":1,"data":{"topNotices":[{"id":9007199254740993,"title":"Synthetic notice","content":"<p>Plain &amp; text</p><script>SECRET_ACTION()</script>"}],"notices":{"list":[]}}}',
+                  };
+                },
+              )
+              as Map;
+      final notice = (notices['items'] as List).single as Map;
+      expect(notice['id'], '9007199254740993');
+      expect(notice['content'], 'Plain & text');
+      expect(notice['pinned'], isTrue);
+      expect(notices.containsKey('hasNext'), isFalse);
+
       final cancelled = await const TrustedScriptRuntime().run(
         package: enhancement,
+        htmlStdlib: File('assets/stdlib/html.bundle.js').readAsStringSync(),
         capability: 'attendance.checkin',
         credentials: c,
         fetch: fetch,
@@ -77,6 +107,7 @@ void main() {
       var activityReads = 0;
       final ended = await const TrustedScriptRuntime().run(
         package: enhancement,
+        htmlStdlib: File('assets/stdlib/html.bundle.js').readAsStringSync(),
         capability: 'attendance.checkin',
         credentials: c,
         scanCall: (_) async => {
@@ -108,6 +139,7 @@ void main() {
       final calls = <String>[];
       final result = await const TrustedScriptRuntime().run(
         package: enhancement,
+        htmlStdlib: File('assets/stdlib/html.bundle.js').readAsStringSync(),
         capability: 'messages.list',
         credentials: c,
         fetch: fetch,
@@ -156,6 +188,7 @@ void main() {
       String? preSign;
       final result = await const TrustedScriptRuntime().run(
         package: enhancement,
+        htmlStdlib: File('assets/stdlib/html.bundle.js').readAsStringSync(),
         capability: 'attendance.checkin',
         credentials: c,
         params: {

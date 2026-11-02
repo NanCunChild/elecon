@@ -1,6 +1,16 @@
 # 西电学习通增强包
 
-`0.3.1 / SDK 9`，分别绑定 `xidian_undergraduate` 和 `xidian_postgraduate`。提供学习通账号登录/本地退出、群聊与私聊会话、历史分页、纯文本发送及扫码签到。安装授权、凭据、网络和取消边界见 [ADR-052](../../docs/adr/adr_052_community_accounts_and_chaoxing.md) 与 [ADR-061](../../docs/adr/adr_061_message_history_and_storage.md)。不覆盖基本包的教务登录和能力。
+`0.5.0 / SDK 12`，分别绑定 `xidian_undergraduate` 和 `xidian_postgraduate`。提供学习通账号登录/本地退出、群聊与私聊会话、历史分页、纯文本发送及扫码签到。安装授权、凭据、网络和取消边界见 [ADR-052](../../docs/adr/adr_052_community_accounts_and_chaoxing.md) 与 [ADR-061](../../docs/adr/adr_061_message_history_and_storage.md)。不覆盖基本包的教务登录和能力。manifest accounts 声明学习通账号、用途、登录说明及本包 account.session 状态与登录入口，导入后在设置查看；旧安装需用户重新批准更新。
+
+## 0.5.0 学习通知与消息权限
+
+新增独立“学习通知”首页卡片，使用 `notice.list` 1.1。只读 HTTP GET `notice.chaoxing.com/apis/notice/myNotices_v2`，携带当前学习通 Cookie/puid；首页一基页码转源站零基，合并置顶/普通通知并按精确 ID 去重。正文转纯文本，列表内正文直接用于本地详情；不标记已读，不调用通知发送、回复或环信消息获取通知。首页保护缓存 300 秒；缺少服务证据时不推测总数、下一页或未读。来源变更须重新批准新增网络范围。
+
+`messages.history` / `messages.list` 1.1 将活动与指令区分为 `activity` / `command`；指令只显示固定标识，不暴露或执行远端 action。历史返回当前发言权限，核心未知/禁言时禁用发送并提示。每次真正发送之前脚本再次只读核验，避免沿用旧历史或本地缓存许可；权限不能确认时不会打开发送连接。
+
+群权限依据 [Easemob 群详情](https://doc.easemob.com/document/server-side/group_obtain_detail.html) 的 `mute` / `disabled`，以及 Web SDK 4.12 的 `isInGroupMutelist`、`isInGroupAllowlist` 接口事实。个人查询返回明确 boolean；白名单响应必须匹配当前 `member` 及 boolean `white`。群主/管理员由服务自动加入白名单，个人禁言仍优先于豁免，见[官方成员管理说明](https://doc.easemob.com/document/ios/group_members.html)。缺失字段、权限限制、网络故障均保持 unknown；只有源站确认允许才可发送。列表不逐群扇出权限请求，核验发生在打开历史和点击发送时。
+
+通知协议依据本地 Quasar-core `notice.go` 的端点/字段事实独立实现，参考版本与 GPL 边界见下方来源说明；未复制 Go 代码或引入参考项目依赖。HTML 规范化复用已有 `elecon:html`，没有新增外部依赖。
 
 ## 使用与支持范围
 
@@ -16,13 +26,13 @@ npm run scripts:chaoxing -w tools
 
 0.3.1 的消息页先显示本机已加载会话，再在前台核验账号并读取群与联系人目录；点击会话读取最新历史，可继续向前分页、刷新及搜索已加载会话。保留发送者名称/ID、精确消息 ID、源站时间和撤回状态；回执不混入正文，不发送用户已读操作。作业、课程、任务、活动和附件只展示摘要，不可点击。未读数、附件下载/发送、自动轮询和后台监听尚未实现。
 
-群名称先使用加入目录，再按固定 Easemob 群详情接口每批最多 50 个补全；补全失败保留有效名称，不让 ID 回退覆盖本机已有群名。补全端点的 403 按功能/权限不可用降级，保留已经成功取得的目录与账号；401 仍作为认证失效停止。通过有界服务端最近会话及本机未撤回消息确认有内容的群/会话优先，按已知最新消息时间排列；未读取的群保持未知，不推断为空或未读。最多读取 5 页最近会话，不逐群拉取历史。`messages.conversations` 使用 1.1，旧 1.0 包继续兼容。
+群名称先使用加入目录，再按固定 Easemob 群详情接口每批最多 50 个补全；补全失败保留有效名称，不让 ID 回退覆盖本机已有群名。补全端点的 403 按功能/权限不可用降级，保留已经成功取得的目录与账号；401 仍作为认证失效停止。通过有界服务端最近会话及本机未撤回消息确认有内容的群/会话优先，按已知最新消息时间排列；未读取的群保持未知，不推断为空或未读。最多读取 5 页最近会话，不逐群拉取历史。`messages.conversations` 使用 1.2；群目录权限默认未知，打开会话时核验个人禁言、群禁言与白名单。旧版本保留原数据读取语义，缺少权限不默认允许发送。
 
 纯文本点击发送后只发一次；只有匹配服务器确认才显示已发送，确认丢失保留“结果未知”，手动刷新历史核对，不自动重发。发送成功后只读刷新一次。离页/后台/切身份取消在途请求并清除草稿；没有持久发件箱。
 
 已加载记录由核心 SQLite 管理，按 Profile、学校、包 digest、服务账号和会话类型隔离；不是脚本凭据键或首页缓存。H/S 档沿用当前保护方式持久化，M 档只存内存。每来源/账号最多 4 MiB、2000 条消息和 500 个会话，保留最近 30 天内加载的记录；本机不代表完整历史。退出/失效账号或撤销/更新来源清除对应记录。离线时可看已加载记录；写入失败会提示，发送确认不因保存失败变成可自动重试的失败。
 
-更新需要支持 ADR-061 的客户端，并重新检查新增 `https://a1-vip6.easemob.com`、`https://useryd.chaoxing.com` 网络范围。IM token 只发固定 Easemob 端点，不发送超星 Cookie；资料查询只用于显示名，不输出手机号、邮箱、头像鉴权地址。旧 `messages.list` 1.0 仍保留最长 15 秒、最多 50 条的群消息窗口语义，不将其结果写入新历史库。
+更新需要支持 ADR-061 的客户端，并重新检查新增 `https://a1-vip6.easemob.com`、`https://useryd.chaoxing.com` 网络范围。IM token 只发固定 Easemob 端点，不发送超星 Cookie；资料查询只用于显示名，不输出手机号、邮箱、头像鉴权地址。`messages.list` 1.1 仍保留最长 15 秒、最多 50 条的群消息窗口语义，不将其结果写入新历史库。
 
 “扫码签到”登录后触发相机，严格接受固定超星扫码路径及活动 ID/enc。支持无额外挑战的 QR 活动，以及用户已选择地点的定位 QR 活动。两次查询都检查人脸、照片和验证码要求，未知要求保留为不支持。执行 analysis/preSign 后至多一次提交，再查状态；传输丢失不自动重发，无法核实时显示未知。协议客户端标识是脚本计算的字符串，不读取硬件标识或伪造当前位置。签到二维码不进入 params、日志或缓存；签退、纯定位活动、人脸和验证码续提不在本片范围。
 
@@ -59,6 +69,6 @@ npm run scripts:chaoxing -w tools
 
 ## 来源、许可与验证
 
-本地参考 `Quasar-core@96f36b38a2b01b810a2b45d66f0364183a4b7b87` 的端点、字段及 wire 编号（`chaoxing.go`、`im.go`、`im_history.go`、`im_user.go`、`types/im/proto/`、`util/deviceid.go`）。参考仓根许可证为 GPL-3.0。本包不复制或翻译 Go 实现，不链接其模块、不携带生成 protobuf 或地理坐标；以独立有界 JS 状态机与 wire codec 实现协议事实，复用本仓 MPL-2.0 Cookie/AES/MD5 模块。发送的 CHAT namespace、群路由和服务确认字段另以 [Easemob Web SDK 4.12.0](https://www.npmjs.com/package/easemob-websdk/v/4.12.0)（ISC）的发布包核对；不集成该 SDK。源码按 MPL-2.0 分发，保留 [LICENSE](LICENSE) 及本说明；学校脚本没有新增外部依赖，核心 SQLite 依赖见[依赖记录](../../docs/reference/trusted_scripts_dependencies.md)。
+本地参考 `Quasar-core@96f36b38a2b01b810a2b45d66f0364183a4b7b87` 的端点、字段及 wire 编号（`chaoxing.go`、`im.go`、`im_history.go`、`im_user.go`、`types/im/proto/`、`util/deviceid.go`、`notice.go`）。参考仓根许可证为 GPL-3.0。本包不复制或翻译 Go 实现，不链接其模块、不携带生成 protobuf 或地理坐标；以独立有界 JS 状态机与 wire codec 实现协议事实，复用本仓 MPL-2.0 Cookie/AES/MD5 模块。发送的 CHAT namespace、群路由和服务确认字段另以 [Easemob Web SDK 4.12.0](https://www.npmjs.com/package/easemob-websdk/v/4.12.0)（ISC）的发布包核对；不集成该 SDK。源码按 MPL-2.0 分发，保留 [LICENSE](LICENSE) 及本说明；学校脚本没有新增外部依赖，核心 SQLite 依赖见[依赖记录](../../docs/reference/trusted_scripts_dependencies.md)。
 
 `npm test --prefix school-scripts/xidian-chaoxing` 仅运行合成夹具；tools smoke 检查确定性、测试夹具同步及应用资产不含本包，Flutter 测试运行实际编译包与真实 QuickJS。自动测试不使用真实账号、不提交真实签到或访问学校服务。参考源码及自动测试不能证明当前学校在线协议可用；仍需人工代码审阅、原生扫码/WebView/TLS 真机与受授权的实际账号验收。

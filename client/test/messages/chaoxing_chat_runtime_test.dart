@@ -60,11 +60,18 @@ void main() {
           body = {
             'data': ['456780'],
           };
+        } else if (url.contains('/mute/')) {
+          body = {'data': false};
         } else if (url.contains('/chatgroups/')) {
           expect((init['headers'] as Map)['Cookie'], isNull);
           body = {
             'data': [
-              {'id': '789012', 'name': 'Resolved group name'},
+              {
+                'id': '789012',
+                'name': 'Resolved group name',
+                'mute': false,
+                'disabled': false,
+              },
               {'id': '999999', 'name': 'Unrelated group'},
             ],
           };
@@ -113,6 +120,9 @@ void main() {
       final conversations =
           await const TrustedScriptRuntime().run(
                 package: package,
+                htmlStdlib: File(
+                  'assets/stdlib/html.bundle.js',
+                ).readAsStringSync(),
                 capability: 'messages.conversations',
                 credentials: credentials,
                 params: {'accountId': '123456'},
@@ -127,6 +137,9 @@ void main() {
       final unavailableEnrichment =
           await const TrustedScriptRuntime().run(
                 package: package,
+                htmlStdlib: File(
+                  'assets/stdlib/html.bundle.js',
+                ).readAsStringSync(),
                 capability: 'messages.conversations',
                 credentials: credentials,
                 params: {'accountId': '123456'},
@@ -158,12 +171,16 @@ void main() {
       final history =
           await const TrustedScriptRuntime().run(
                 package: package,
+                htmlStdlib: File(
+                  'assets/stdlib/html.bundle.js',
+                ).readAsStringSync(),
                 capability: 'messages.history',
                 credentials: credentials,
                 params: {...params, 'cursor': '9007199254740995'},
                 fetch: fetch,
               )
               as Map;
+      expect(history['sendPermission'], 'allowed');
       expect(history['nextCursor'], '9007199254740993');
       final item = (history['items'] as List).single as Map;
       expect(item['id'], '9007199254740993');
@@ -173,6 +190,9 @@ void main() {
       final sent =
           await const TrustedScriptRuntime().run(
                 package: package,
+                htmlStdlib: File(
+                  'assets/stdlib/html.bundle.js',
+                ).readAsStringSync(),
                 capability: 'messages.send',
                 credentials: credentials,
                 params: {
