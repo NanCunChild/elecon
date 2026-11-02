@@ -26,6 +26,8 @@ dependencies:
   image_picker: 1.2.4
   # ADR-058: foreground location (Baseflow, MIT).
   geolocator: 14.0.2
+  # ADR-061: host-only SQLite in a memory VFS; protected snapshots. pub.dev, MIT.
+  sqlite3: 3.3.4
   elecon_contract:
     path: ../contract/generated/dart
   # Apple-only UI chrome. MIT; does not participate in credential/adapter paths.

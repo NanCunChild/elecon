@@ -8,6 +8,7 @@ import '../../session/session_controller.dart';
 import '../scripts/script_input_presenter.dart';
 import '../scripts/script_presenter.dart';
 import '../home/section_card.dart';
+import 'chat_page.dart';
 
 class ForumPage extends StatelessWidget {
   const ForumPage({super.key, required this.session, required this.package});
@@ -24,7 +25,9 @@ class MessagesPage extends StatelessWidget {
   final ScriptPackage package;
   @override
   Widget build(BuildContext context) =>
-      _ServicePage(session: session, package: package, messages: true);
+      package.manifest.capability('messages.conversations') != null
+      ? ChatPage(session: session, package: package)
+      : _ServicePage(session: session, package: package, messages: true);
 }
 
 class _ServicePage extends StatefulWidget {

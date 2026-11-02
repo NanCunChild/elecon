@@ -27,6 +27,7 @@ import 'package:flutter/foundation.dart';
 import '../catalog/schools.dart';
 import '../core/adapter_service.dart';
 import '../core/attendance_places.dart';
+import '../core/messages/archive.dart';
 import '../core/debug/dev_log.dart';
 import '../core/html_stdlib.dart';
 import '../core/loader/diagnostics.dart';
@@ -60,9 +61,11 @@ import '../core/scripts/data_cache.dart';
 import '../core/scripts/readiness.dart';
 export '../core/scripts/data_cache.dart' show ScriptCachedData;
 export '../core/attendance_places.dart' show AttendancePlace;
+export '../core/messages/archive.dart' show MessageArchiveView, ArchivedMessage;
 
 part 'script_session.dart';
 part 'attendance_session.dart';
+part 'message_session.dart';
 
 const String _sessionMetaBlob = 'session.json';
 
@@ -178,6 +181,7 @@ class SessionController extends ChangeNotifier {
             entry.type != ScriptDataCache.type &&
             entry.type != ScriptReadinessStore.type &&
             entry.type != AttendancePlacesStore.type &&
+            entry.type != MessageArchiveStore.type &&
             (_school == null || entry.schoolId == _school!.id),
       );
 

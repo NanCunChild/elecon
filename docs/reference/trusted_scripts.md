@@ -8,7 +8,7 @@
 
 这是开发阶段的显式迁移：当前解析器/打包器拒绝任何 `actions` 字段，包括空数组；旧已安装包只保留来源、版本及原 digest，标为需要更新且不能执行，不自动修改已授权源码或清空其它安装。西电本科升级至 0.15.0 后需重新检查并授权。各已支持 SDK 的其它接口与领域数据版本不变。
 
-签到可以在受信脚本内使用通用请求，无 action 前置；SDK 8 只提供扫码输入。[学习通增强包](../../school-scripts/xidian-chaoxing/README.md)已提供前台登录、群消息窗口和无额外挑战的 QR 签到。具体协议考察见[研究](../research/chaoxing_checkin_feasibility.md)。
+签到可以在受信脚本内使用通用请求，无 action 前置；SDK 8 只提供扫码输入。[学习通增强包](../../school-scripts/xidian-chaoxing/README.md)已提供前台登录、群/私聊历史、文本发送和受限 QR 签到。具体协议考察见[研究](../research/chaoxing_checkin_feasibility.md)。
 
 ## SDK 4 首页数据接口
 
@@ -208,7 +208,7 @@ if (qr === null) return { items: [] }; // 用户取消，由脚本决定结束�
 
 `forum.session` / `messages.session` 的 `operation=status|login|logout` 表示核验、显式登录、本地退出，不等于远端注销。`messages.list` 只返回明确账号下的前台消息窗口（不是完整历史或未读数）；`attendance.checkin` 在当前调用中取得 QR 输入并返回 confirmed/already/ended/unsupported/cancelled/rejected/unknown。四能力禁止 home/cache/preload 及后台调用。
 
-基本包 0.18.1 提供睿思账号；SDK 9 学习通包作为第三方社区包，由用户自行获取后通过通用文件入口导入，客户端不内置产物或推荐提示。论坛 Tab 要求当前可执行 `forum.session`，消息 Tab 要求 `messages.list`；无支持则隐藏。登录/消息/签到绑定同一选中包，不自动借用其他包的账号 handler。每平台一个当前会话，先本地退出再换号；当前 Profile/学校仍是授权边界，namespace 不是权限沙箱。
+基本包 0.18.1 提供睿思账号；SDK 9 学习通包作为第三方社区包，由用户自行获取后通过通用文件入口导入，客户端不内置产物或推荐提示。论坛 Tab 要求当前可执行 `forum.session`，消息 Tab 优先使用 `messages.conversations`，旧包回退 `messages.list`；无支持则隐藏。登录/消息/签到绑定同一选中包，不自动借用其他包的账号 handler。每平台一个当前会话，先本地退出再换号；当前 Profile/学校仍是授权边界，namespace 不是权限沙箱。
 
 ## 待完善信息与缓存优先桌面（ADR-059/060）
 
@@ -218,6 +218,12 @@ if (qr === null) return { items: [] }; // 用户取消，由脚本决定结束�
 
 启动先读取当前身份下的缓存和学校布局，随后后台刷新。已有缓存的过期标记和取得时间不被刷新失败或读取动作改写；未预加载的通知仍可在首屏后及手动刷新时查询。其他 Profile 在切换前显示「切换后查看」，不推断未登录。
 
+
+## 会话历史与本机存储
+
+[ADR-061](../adr/adr_061_message_history_and_storage.md) 的 `messages.conversations/history/send` 1.0 同样仅前台、禁止 home/preload，不新增 SDK 权限。先调用同包 `messages.session` 核验账号，后续请求显式传入 accountId；历史和发送还需 conversationId/conversationKind（group/direct）。历史返回稳定消息 ID、纯文本摘要、时间/方向、hasMore/nextCursor 和 recalledIds；游标不跨会话或账号复用。发送必须由按钮触发，提供 clientId 和 text；sent 必须有匹配服务器 messageId，unknown 不得自动重发。
+
+本机 SQLite 由核心管理，脚本不读取或写入数据库。已加载数据按当前 Profile、学校、包 digest、服务账号及会话类型隔离，使用原 H/S/M 保护；退出/认证失效/撤销来源清除，迟到结果不能恢复。最多 4 MiB/2000 条消息/500 会话，最近取得时间保留 30 天；M 档不跨重启保留。作业、课程、任务、活动与附件只显示摘要，没有跳转/操作契约。`messages.list` 的旧窗口行为保持不变。
 
 ## SDK 10 前台照片与当前位置
 

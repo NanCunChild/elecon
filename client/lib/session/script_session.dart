@@ -183,27 +183,46 @@ extension TrustedScriptSession on SessionController {
     required String approvedDigest,
   }) async {
     final registry = await scriptRegistry;
+    final previous = registry.find(package.manifest.id)?.package;
     await registry.install(package, approvedDigest: approvedDigest);
+    final cleared =
+        previous?.digest != package.digest &&
+        MessageArchiveStore(
+          _store,
+        ).clearSource(package.manifest.schoolId, package.manifest.id);
     _scripts.recoveredRegistry = false;
     _cancelTrustedScripts();
     await _restoreScriptSchools();
     if (!_scripts.disposed) onCredentialsChanged();
+    if (cleared) await _flushCredentialBackend(_secure);
   }
 
   Future<void> enableTrustedScript(String id, bool enabled) async {
-    await (await scriptRegistry).setEnabled(id, enabled);
+    final registry = await scriptRegistry;
+    await registry.setEnabled(id, enabled);
+    final package = registry.find(id)?.package;
+    final cleared =
+        package != null &&
+        MessageArchiveStore(_store).clearSource(package.manifest.schoolId, id);
     _cancelTrustedScripts();
     await _restoreScriptSchools();
     _scheduleSessionPersist();
     if (!_scripts.disposed) onCredentialsChanged();
+    if (cleared) await _flushCredentialBackend(_secure);
   }
 
   Future<void> removeTrustedScript(String id) async {
-    await (await scriptRegistry).remove(id);
+    final registry = await scriptRegistry;
+    final package = registry.find(id)?.package;
+    await registry.remove(id);
+    final cleared =
+        package != null &&
+        MessageArchiveStore(_store).clearSource(package.manifest.schoolId, id);
     _cancelTrustedScripts();
     await _restoreScriptSchools();
     _scheduleSessionPersist();
     if (!_scripts.disposed) onCredentialsChanged();
+    if (cleared) await _flushCredentialBackend(_secure);
   }
 
   /// 🔒 ADR-043 §1: explicit source selection revokes all in-flight UI results.
@@ -542,6 +561,20 @@ extension TrustedScriptSession on SessionController {
     CapabilityRun result;
     List<CredentialEntry>? previousCachedData;
     try {
+      if (MessageArchiveStore.capabilities.contains(capability) &&
+          (params?['accountId'] == null ||
+              MessageArchiveStore(store).account(package)?['accountId'] !=
+                  params?['accountId'])) {
+        throw const ScriptRunException('input_invalid_request');
+      }
+      // Explicit account transitions revoke old archives before any network or
+      // browser work, even when login/logout is later cancelled.
+      if (capability == 'messages.session' &&
+          const ['login', 'logout'].contains(params?['operation'])) {
+        MessageArchiveStore(store).clearSource(school.id, id);
+        await _flushCredentialBackend(backend);
+        if (!active()) throw const ScriptRunException('script_cancelled');
+      }
       final credentials = ScriptCredentials(
         store: store,
         schoolId: school.id,
@@ -632,6 +665,28 @@ extension TrustedScriptSession on SessionController {
       if (!active()) {
         throw const ScriptRunException('script_cancelled');
       }
+      var archiveFailed = false;
+      final archive = MessageArchiveStore(store);
+      if (capability == 'messages.session') {
+        archive.saveAccount(package, Map<String, dynamic>.from(data as Map));
+      } else if (MessageArchiveStore.capabilities.contains(capability)) {
+        final value = Map<String, dynamic>.from(data as Map);
+        if (!archive.accepts(package, capability, params ?? const {}, value)) {
+          throw const ScriptRunException('source_response_invalid');
+        }
+        try {
+          await archive.merge(
+            package,
+            capability,
+            params ?? const {},
+            value,
+            isActive: active,
+          );
+        } catch (_) {
+          archiveFailed = true;
+        }
+        if (!active()) throw const ScriptRunException('script_cancelled');
+      }
       final cachedBeforeWrite = store
           .list()
           .where(
@@ -648,6 +703,7 @@ extension TrustedScriptSession on SessionController {
       }
       result = CapabilityRun.ok(
         data,
+        localStorageFailed: archiveFailed,
         supportedCapabilities: {
           for (final cap in package.manifest.capabilities) cap.id,
         },
@@ -659,6 +715,11 @@ extension TrustedScriptSession on SessionController {
         ScriptBrowserException() => error.code,
         _ => 'script_failed',
       };
+      if (code == 'authentication_required' &&
+          active() &&
+          package.manifest.capability('messages.session') != null) {
+        MessageArchiveStore(store).clearSource(school.id, id);
+      }
       result = CapabilityRun.failed(
         code == 'configuration_required'
             ? CapabilityFailureKind.configuration
@@ -719,10 +780,17 @@ extension TrustedScriptSession on SessionController {
           await _flushCredentialBackend(backend);
         } catch (_) {}
       }
-      result = const CapabilityRun.failed(
-        CapabilityFailureKind.run,
-        'credential_persist_failed',
-      );
+      result =
+          result.ok && MessageArchiveStore.capabilities.contains(capability)
+          ? CapabilityRun.ok(
+              result.data,
+              supportedCapabilities: result.supportedCapabilities,
+              localStorageFailed: true,
+            )
+          : const CapabilityRun.failed(
+              CapabilityFailureKind.run,
+              'credential_persist_failed',
+            );
     }
     if (result.ok && !active()) {
       result = const CapabilityRun.failed(

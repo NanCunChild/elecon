@@ -1,5 +1,7 @@
 # Trusted script dependency additions
 
+2026-11-02 ([ADR-061](../adr/adr_061_message_history_and_storage.md)): host-only [sqlite3 3.3.4](https://pub.dev/packages/sqlite3/versions/3.3.4) / [upstream](https://github.com/simolus3/sqlite3.dart), MIT; resolved LICENSE inspected. SQLite itself is public domain. The default native asset hook bundles the pinned release's SQLite binary with upstream hash verification; no SQLCipher/GPL dependency is selected. The core uses a memory VFS in background isolates and stores bounded snapshots in the existing H/S/M backend, never a plaintext database/WAL or script-accessible SQL interface. Newly resolved transitive packages `native_toolchain_c` 0.19.2, `file` 7.0.1 and `glob` 2.2.0 are BSD-3-Clause (resolved licenses inspected). Both platform manifests/lockfiles pin sqlite3; existing platform pins are preserved. Flutter includes package licenses in generated NOTICES. This adds no school-script dependency or native-side-loading permission; Android ARM64 Debug packaging was verified, including the SQLite native asset. iOS native packaging and real-device behavior remain separate acceptance work.
+
 ADR-034 file import uses file_picker 13.1.0 (MIT, copyright Miguel Ruivo). License verified from the resolved package LICENSE. It provides the native file chooser, not script execution or credential storage. Existing flutter_qjs_next, flutter_inappwebview, crypto and cryptography are reused. No code was copied from elecon-r.
 
 Resolved new transitive packages (licenses read from each resolved LICENSE):

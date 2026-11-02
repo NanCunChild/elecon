@@ -204,7 +204,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           final registry = await session.scriptRegistry;
           return (
             forum: registry.provider(school, 'forum.session'),
-            messages: registry.provider(school, 'messages.list'),
+            messages:
+                registry.provider(school, 'messages.conversations') ??
+                registry.provider(school, 'messages.list'),
           );
         } catch (_) {
           return (forum: null, messages: null);

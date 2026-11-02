@@ -570,5 +570,34 @@
   "deviceInputLocationPermission": "Can request your current foreground location",
   "deviceInputFailed": "Could not obtain the input. Check the permission and try again.",
   "checkinStart": "Start check-in",
-  "checkinInputHelp": "The script may request confirmation, a QR scan, a photo or current location for this activity."
+  "checkinInputHelp": "The script may request confirmation, a QR scan, a photo or current location for this activity.",
+  "messagesRefresh": "Refresh messages",
+  "messagesSavedAt": "Loaded · {time}",
+  "messagesStorageFailed": "Messages loaded, but could not be saved on this device.",
+  "messagesRefreshFailed": "The request did not complete. Loaded messages remain available.",
+  "messagesSearch": "Search conversations",
+  "messagesPartial": "Some conversations could not be loaded. Refresh to try again.",
+  "messagesLoading": "Loading messages…",
+  "messagesNoMatches": "No matching conversations",
+  "messagesConversationsEmpty": "No conversations loaded",
+  "messagesGroup": "Group",
+  "messagesDirect": "Direct",
+  "messagesHistoryEmpty": "No messages loaded. Refresh to read history.",
+  "messagesSending": "Sending…",
+  "messagesRejected": "The service rejected this message",
+  "messagesSendUnknown": "Delivery is unconfirmed. Refresh history to check. This message will not be resent automatically.",
+  "messagesRecalled": "Message recalled",
+  "messagesUnknownSender": "Unknown sender",
+  "messagesMoreLocal": "Show earlier saved messages",
+  "messagesMoreHistory": "Load earlier history",
+  "messagesHistoryEnd": "End of the history returned by the service",
+  "messagesCompose": "Write a message",
+  "messagesSend": "Send",
+  "@messagesSavedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }

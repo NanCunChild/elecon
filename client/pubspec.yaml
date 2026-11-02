@@ -50,6 +50,8 @@ dependencies:
   image_picker: 1.2.4
   # ADR-058: Baseflow foreground location, pub.dev, MIT.
   geolocator: 14.0.2
+  # ADR-061: host-only SQLite in a memory VFS; protected snapshots. pub.dev, MIT.
+  sqlite3: 3.3.4
   # contract/schema 生成的 Dart 类型（tools codegen 产物包；审阅 P0-1 接线）。
   # UI 模型消费此包，消除手写模型与 schema 的漂移（红线 #6 契约单源）。
   elecon_contract:

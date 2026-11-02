@@ -91,6 +91,7 @@ class CapabilityRun {
   const CapabilityRun.ok(
     this.data, {
     this.supportedCapabilities = const <String>{},
+    this.localStorageFailed = false,
   }) : failureKind = null,
        reason = null,
        runReason = null;
@@ -99,7 +100,11 @@ class CapabilityRun {
     this.reason, {
     this.runReason,
   }) : data = null,
+       localStorageFailed = false,
        supportedCapabilities = const <String>{};
+
+  /// A remote result remains valid even when its optional local archive fails.
+  final bool localStorageFailed;
 
   /// 归一化产出（JSON 往返的 Dart 结构）；仅 [ok] 时非 null。
   final Object? data;

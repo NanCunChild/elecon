@@ -26,4 +26,8 @@
 
 Quasar-core 仅核对端点、protobuf 字段及历史/撤回/回执协议事实；遵循 ADR-052 的许可边界，不引入或翻译 GPL Go 实现/生成物。合成夹具覆盖大整数 ID/游标、群与私聊、重叠页、非法/循环游标、撤回乱序、非文本摘要、错误身份、一次发送和未知结果。实际打包脚本通过 QuickJS 桥接验证；SQLite 验证恢复、隔离、去重、分页、撤回、过期/容量和写入失败；页面验证离页取消、离线阅读和不可点击业务消息。
 
+发送的 CHAT namespace（群/私聊均为 1）、群路由域及 metaId/serverId/status 确认字段另外核对 [Easemob Web SDK 4.12.0](https://www.npmjs.com/package/easemob-websdk/v/4.12.0)（ISC）的发布内容；没有集成 SDK。自动验证记录见社区包说明及专项计划；`codegen --check` 通过，额外尝试的全库 `--require-descriptions` 仍因原有 27 处字段缺描述失败，本次六份新 schema 全部字段有描述，不扩大任务补写旧领域语义。
+
+2026-11-02 自动验证：社区 41 项合成协议测试、确定性打包、实际包 QuickJS、SQLite 10 项（含并发 isolate 的独立 VFS、受保护重启和多字节容量）、会话撤销/持久化失败及中英文深浅色 320px/2× 页面回归通过；71 份 schema / 69 个 registry 引用 golden、tools typecheck、受影响 Dart analyze、主/Apple 锁文件解析通过。Android ARM64 Debug APK 构建成功，产物含 SQLite 原生库；未安装到设备或操作真实账号，iOS 构建与各平台真机仍待验收。
+
 回滚可卸载新版增强包并恢复旧窗口；新增存储可清除，不迁移旧凭据地址。自动回归、真实账号/真机和人工审阅分别记录，不将协议合成测试作为学校验收。

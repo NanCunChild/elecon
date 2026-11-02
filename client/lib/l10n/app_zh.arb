@@ -638,5 +638,34 @@
   "deviceInputLocationPermission": "可在前台请求当前位置",
   "deviceInputFailed": "输入未能获取，请检查权限后重试。",
   "checkinStart": "开始签到",
-  "checkinInputHelp": "根据活动要求，脚本可能请你点击确认、扫描二维码、提供照片或当前位置。"
+  "checkinInputHelp": "根据活动要求，脚本可能请你点击确认、扫描二维码、提供照片或当前位置。",
+  "messagesRefresh": "刷新消息",
+  "messagesSavedAt": "已加载 · {time}",
+  "messagesStorageFailed": "消息已获取，但未能保存到本机。",
+  "messagesRefreshFailed": "未能完成请求，已加载的记录仍可查看。",
+  "messagesSearch": "搜索会话",
+  "messagesPartial": "部分会话暂未获取，可手动刷新。",
+  "messagesLoading": "正在读取消息…",
+  "messagesNoMatches": "没有匹配的会话",
+  "messagesConversationsEmpty": "尚未加载到会话",
+  "messagesGroup": "群聊",
+  "messagesDirect": "私聊",
+  "messagesHistoryEmpty": "尚无已加载的消息，可刷新读取历史。",
+  "messagesSending": "发送中…",
+  "messagesRejected": "服务未接受此消息",
+  "messagesSendUnknown": "发送结果未知，请刷新历史核对。不会自动重发。",
+  "messagesRecalled": "消息已撤回",
+  "messagesUnknownSender": "未知发送人",
+  "messagesMoreLocal": "查看更早的本机记录",
+  "messagesMoreHistory": "加载更早的历史消息",
+  "messagesHistoryEnd": "已到源站本次返回的历史末尾",
+  "messagesCompose": "输入消息",
+  "messagesSend": "发送",
+  "@messagesSavedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }
