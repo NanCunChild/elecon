@@ -49,6 +49,11 @@ class HermesConfiguration {
     gatewayUrl: gateway.origin,
     nodeCertificateSha256: nodeCertificateSha256,
   );
+  Map<String, Object?> nativeCheck() => {
+    'op': 'checkSession',
+    'gatewayUrl': gateway.origin,
+    'session': _session,
+  };
   Map<String, Object?> nativeStart(String directory) => {
     'op': 'start',
     'gatewayUrl': gateway.origin,

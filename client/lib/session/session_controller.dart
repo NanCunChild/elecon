@@ -103,6 +103,7 @@ class SessionController extends ChangeNotifier {
     SsoMinter? ssoMinter,
     Future<bool> Function(VisibleLoginRequest request)? onVisibleLogin,
     List<AppTunnelProvider>? appTunnelProviders,
+    HermesNativeBinding? hermesBinding,
   }) : _store = CredentialStore(store: InMemorySecureStore(releaseMode: false)),
        _hardware = hardware,
        _blobStoreProvider = blobStoreProvider,
@@ -112,11 +113,13 @@ class SessionController extends ChangeNotifier {
        _ssoMinter = ssoMinter,
        _ssoMinterInjected = ssoMinter != null,
        _onVisibleLogin = onVisibleLogin,
+       _hermesBinding = hermesBinding ?? HermesNativeBinding(),
        _injectedAppTunnelProviders = appTunnelProviders == null
            ? null
            : List.unmodifiable(appTunnelProviders);
 
   final List<AppTunnelProvider>? _injectedAppTunnelProviders;
+  final HermesNativeBinding _hermesBinding;
   late final AppTunnelRouting _networkRoutes = AppTunnelRouting(
     blobs: _resolveBlobs,
     providers: _injectedAppTunnelProviders ?? _defaultAppTunnelProviders(),
@@ -225,6 +228,7 @@ class SessionController extends ChangeNotifier {
             entry.type != AttendancePlacesStore.type &&
             entry.type != MessageArchiveStore.type &&
             entry.type != HermesConfigStore.type &&
+            entry.type != HermesAccountStore.type &&
             (_school == null || entry.schoolId == _school!.id),
       );
 

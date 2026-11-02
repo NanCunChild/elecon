@@ -38,6 +38,7 @@ class TrustedScriptRuntime {
     fetch,
     Future<Object?> Function(String, Map<String, Object?>)? browserCall,
     Future<Object?> Function(String, Map<String, dynamic>)? websocketCall,
+    Future<Object?> Function(String method, String provider)? appTunnelCall,
     ScriptInputCall? inputCall,
     ScriptScanCall? scanCall,
     ScriptDeviceInputCall? deviceInputCall,
@@ -82,6 +83,8 @@ class TrustedScriptRuntime {
     if (utf8.encode(paramsJson).length > 1024 * 1024) {
       throw const ScriptRunException('params_limit');
     }
+    final statusOnly =
+        capability == 'account.session' && params['operation'] == 'status';
     var running = true;
     var hostCalls = 0;
     var requests = 0;
@@ -97,11 +100,16 @@ class TrustedScriptRuntime {
     var scanPending = false;
     var devicePending = false;
     var deviceRequests = 0;
+    var appTunnelPending = false;
+    var appTunnelLogins = 0;
     ScriptRunException? fatal;
     void check({bool count = true}) {
       if (fatal != null) throw fatal!;
       if (!running || !(isActive?.call() ?? true)) {
         throw const ScriptRunException('invocation_cancelled');
+      }
+      if (count && appTunnelPending) {
+        throw const ScriptRunException('input_busy');
       }
       if (count && devicePending) {
         throw const ScriptRunException('device_input_busy');
@@ -126,6 +134,40 @@ class TrustedScriptRuntime {
       hostPromiseRejectionHandler: (_) {},
     );
     qjs.setHostFunctions({
+      '__script_app_tunnel': (dynamic method, dynamic provider) async {
+        check();
+        if (package.manifest.sdkVersion < 12 ||
+            !package.manifest.appTunnels.contains(provider) ||
+            appTunnelCall == null) {
+          throw const ScriptRunException('app_tunnel_unavailable');
+        }
+        if (!const ['status', 'login'].contains(method) ||
+            (statusOnly && method != 'status')) {
+          throw const ScriptRunException('input_unavailable');
+        }
+        if (appTunnelPending ||
+            inputPending ||
+            devicePending ||
+            scanPending ||
+            (method == 'login' && ++appTunnelLogins > 1)) {
+          throw const ScriptRunException('input_unavailable');
+        }
+        if (++requests > maxRequests) {
+          fatal = const ScriptRunException('request_limit');
+          throw fatal!;
+        }
+        appTunnelPending = true;
+        try {
+          final value = await appTunnelCall(
+            method as String,
+            provider as String,
+          );
+          check(count: false);
+          return jsonEncode(value);
+        } finally {
+          appTunnelPending = false;
+        }
+      },
       '__script_websocket': (dynamic method, dynamic encoded) async {
         check();
         if (package.manifest.sdkVersion < 9 ||
@@ -167,6 +209,7 @@ class TrustedScriptRuntime {
       },
       '__script_device_input': (dynamic kind, dynamic argumentCount) async {
         check();
+        if (statusOnly) throw const ScriptRunException('input_unavailable');
         if (package.manifest.sdkVersion < 10 ||
             deviceInputCall == null ||
             !package.manifest.deviceInputs.contains(kind)) {
@@ -214,6 +257,7 @@ class TrustedScriptRuntime {
       },
       '__script_scan': (dynamic argumentCount) async {
         check();
+        if (statusOnly) throw const ScriptRunException('input_unavailable');
         if (package.manifest.sdkVersion < 8 ||
             !package.manifest.scanner ||
             scanCall == null) {
@@ -250,6 +294,7 @@ class TrustedScriptRuntime {
       },
       '__script_input': (dynamic encoded) async {
         check();
+        if (statusOnly) throw const ScriptRunException('input_unavailable');
         if (package.manifest.sdkVersion < 3) {
           throw const ScriptRunException('input_unavailable');
         }
@@ -408,6 +453,7 @@ class TrustedScriptRuntime {
           },
       '__script_browser': (dynamic method, dynamic args) async {
         check();
+        if (statusOnly) throw const ScriptRunException('input_unavailable');
         if (!package.manifest.browser || browserCall == null) {
           throw const ScriptRunException('browser_unavailable');
         }
@@ -525,6 +571,9 @@ class TrustedScriptRuntime {
                 package.manifest.sdkVersion >= 9 &&
                 package.manifest.websocketNetwork.origins.isNotEmpty,
             deviceInputs: package.manifest.sdkVersion >= 10,
+            appTunnel:
+                package.manifest.sdkVersion >= 12 &&
+                package.manifest.appTunnels.isNotEmpty,
             scanner:
                 package.manifest.sdkVersion >= 8 && package.manifest.scanner,
             maxOutputBytes: maxOutputBytes,
@@ -579,6 +628,7 @@ String _bootstrap({
   required bool websocket,
   required bool scanner,
   required bool deviceInputs,
+  required bool appTunnel,
   required int maxOutputBytes,
 }) =>
     '''
@@ -640,6 +690,17 @@ String _bootstrap({
         arrayBuffer:async()=>(new Uint8Array(r.bodyBytes || [])).buffer});
     },
   };
+  if ($appTunnel) {
+    const call = async (method,provider) => {
+      try { return JSON.parse(await globalThis.__script_app_tunnel(method,flat(provider))); }
+      catch (error) {
+        const code = ['app_tunnel_unavailable','input_unavailable','invocation_cancelled'].find(
+          value => String(error).includes('ScriptRunException(' + value + ')')) || 'app_tunnel_unavailable';
+        const failure = new Error(code); failure.code = code; throw failure;
+      }
+    };
+    ctx.appTunnel = Object.freeze({status: provider => call('status',provider), login: provider => call('login',provider)});
+  }
   if ($websocket) {
     const call = async (method,args) => JSON.parse(await globalThis.__script_websocket(method,String(JSON.stringify(args))));
     ctx.websocket = Object.freeze({
@@ -764,7 +825,7 @@ String _bootstrap({
     // A script can classify a failure without exposing its message or data.
     const safeCodes = new Set(['input_required_card_number','input_required_student_id',
       'authentication_required','authentication_timeout','source_response_invalid','network_denied',
-      'configuration_required',
+      'configuration_required','app_tunnel_unavailable',
       'input_invalid_request','input_invalid_result','input_unavailable','input_busy','input_limit','input_cancelled',
       'device_input_unavailable','device_input_permission_denied','device_input_invalid_request',
       'device_input_invalid_result','device_input_busy','device_input_limit','device_input_timeout','invocation_cancelled']);

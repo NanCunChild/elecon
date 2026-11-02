@@ -21,6 +21,7 @@ const _nativeErrors = {
   'hermes_invalid_request',
   'hermes_invalid_configuration',
   'hermes_authentication_required',
+  'hermes_interaction_required',
   'hermes_connection_failed',
   'hermes_dns_failed',
   'hermes_not_authorized',
@@ -70,7 +71,7 @@ class HermesNativeBinding {
     }
     final result = Isolate.run(() => _execute(path, encoded));
     result.then<void>((_) {}, onError: (Object _) {});
-    return HermesNativeRequest._(
+    return HermesNativeRequest(
       result,
       () =>
           Isolate.run(() => _execute(path, {'op': 'cancel', 'requestId': id})),
@@ -79,7 +80,8 @@ class HermesNativeBinding {
 }
 
 class HermesNativeRequest {
-  HermesNativeRequest._(this.result, this._cancel);
+  /// A cancellable host operation; injectable bindings use the same lifecycle.
+  HermesNativeRequest(this.result, this._cancel);
   final Future<Map<String, dynamic>> result;
   final Future<Map<String, dynamic>> Function() _cancel;
   bool _cancelled = false;

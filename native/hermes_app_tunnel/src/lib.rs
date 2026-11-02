@@ -1,7 +1,7 @@
 //! Host-only Hermes adapter. No TUN, global routes, public proxy, session files,
 //! school HTTP headers or HTTP response bodies cross this interface.
 use std::collections::{HashMap, HashSet};
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{c_char, CStr, CString};
 use std::net::IpAddr;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::PathBuf;
@@ -10,19 +10,20 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use atrust_auth::{
-    AuthClient, AuthConfigOptions, FlowProtocol, SessionMaterial, extract_sid_from_cookies,
+    extract_sid_from_cookies, AuthClient, AuthConfigOptions, AuthConfiguration, CasExchange,
+    FlowProtocol, PasswordCredentials, SessionMaterial, SessionProgress,
 };
 use atrust_client::{AtrustClient, AtrustClientConfig};
-use hermes_model::{ConnectionId, DeviceId, GatewayEndpoint, SessionId, SignKey};
+use hermes_model::{ConnectionId, DeviceId, GatewayEndpoint, SecretString, SessionId, SignKey};
 use hermes_transport::{
     GatewayCookie, HttpTransport, ReqwestTransport, ReqwestTransportConfig, TlsPolicy,
 };
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::net::UnixListener;
 use tokio::runtime::{Builder, Runtime};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, watch};
+use tokio::sync::{watch, OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinHandle;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -31,6 +32,7 @@ type Result<T> = std::result::Result<T, &'static str>;
 const INVALID: &str = "hermes_invalid_request";
 const CONFIG: &str = "hermes_invalid_configuration";
 const AUTH: &str = "hermes_authentication_required";
+const INTERACTION: &str = "hermes_interaction_required";
 const CONNECT: &str = "hermes_connection_failed";
 const CANCELLED: &str = "hermes_cancelled";
 const CLOSED: &str = "hermes_closed";
@@ -88,8 +90,10 @@ impl Session {
     }
 }
 
-/// C ABI. Input must be a valid NUL-terminated UTF-8 allocation owned by caller.
-/// Invoke blocking operations from a Dart worker isolate. Never log input/output.
+/// C ABI. Invoke blocking operations from a Dart worker isolate. Never log input/output.
+///
+/// # Safety
+/// `input` must point to a live NUL-terminated UTF-8 allocation owned by the caller.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn elecon_hermes_call(input: *const c_char) -> *mut c_char {
     let response = std::panic::catch_unwind(|| {
@@ -122,6 +126,9 @@ pub unsafe extern "C" fn elecon_hermes_call(input: *const c_char) -> *mut c_char
 }
 
 /// Free exactly one returned allocation; this also erases response secrets.
+///
+/// # Safety
+/// `value` must be null or an unfreed pointer returned by `elecon_hermes_call`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn elecon_hermes_free(value: *mut c_char) {
     if !value.is_null() {
@@ -202,7 +209,9 @@ fn call(request: Value) -> Result<Value> {
         let work = async {
             match op.as_str() {
                 "authenticateCookies" => authenticate(&mut request).await,
+                "authenticatePassword" => authenticate_password(&mut request).await,
                 "start" => start(&mut request).await,
+                "checkSession" => check_session(&mut request).await,
                 "resolve" | "dial" => {
                     let session = session(&request)?;
                     let mut stopped = session.stopped.subscribe();
@@ -441,18 +450,150 @@ async fn authenticate(value: &mut Value) -> Result<Value> {
         })
         .await
         .map_err(|_| AUTH)?;
-    let username = auth.online_info(&configuration).await.map_err(|_| AUTH)?;
-    let cookies = transport.session_cookies(&origin);
+    capture_session(
+        &gateway,
+        &origin,
+        transport.as_ref(),
+        &auth,
+        &configuration,
+        DeviceId::new(random_id()).map_err(|_| CONFIG)?,
+        LoginMethod::Browser,
+    )
+    .await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PasswordInput {
+    username: String,
+    password: String,
+    #[serde(default)]
+    login_domain: String,
+}
+impl Drop for PasswordInput {
+    fn drop(&mut self) {
+        self.username.zeroize();
+        self.password.zeroize();
+        self.login_domain.zeroize();
+    }
+}
+async fn authenticate_password(value: &mut Value) -> Result<Value> {
+    let (gateway, origin) = gateway(value)?;
+    let input: PasswordInput = serde_json::from_value(value.take()).map_err(|_| INVALID)?;
+    if input.username.is_empty()
+        || input.username.len() > 1024
+        || input.username.chars().any(char::is_control)
+        || input.login_domain.len() > 1024
+        || input.login_domain.chars().any(char::is_control)
+        || input.password.is_empty()
+        || input.password.len() > 16384
+        || input.password.contains('\0')
+    {
+        return Err(CONFIG);
+    }
+    let transport = transport(&gateway, &[])?;
+    let auth = AuthClient::new(gateway.clone(), transport.clone());
+    let configuration = auth
+        .auth_config(AuthConfigOptions {
+            modified: true,
+            need_ticket: false,
+        })
+        .await
+        .map_err(|_| AUTH)?;
+    let device = DeviceId::new(random_id()).map_err(|_| CONFIG)?;
+    let domain = password_step(&auth, &configuration, &input, &device).await?;
+    capture_session(
+        &gateway,
+        &origin,
+        transport.as_ref(),
+        &auth,
+        &configuration,
+        device,
+        LoginMethod::Password(domain),
+    )
+    .await
+}
+
+/// One primary attempt. No credential retry or automatic interactive fallback.
+async fn password_step(
+    auth: &AuthClient,
+    configuration: &AuthConfiguration,
+    input: &PasswordInput,
+    device: &DeviceId,
+) -> Result<String> {
+    let domains: HashSet<_> = configuration
+        .methods
+        .iter()
+        .filter(|m| m.auth_type == "auth/psw")
+        .map(|m| m.login_domain.as_str())
+        .collect();
+    let domain = if input.login_domain.is_empty() {
+        if domains.len() != 1 {
+            return Err(INTERACTION);
+        }
+        *domains.iter().next().ok_or(INTERACTION)?
+    } else {
+        if !domains.contains(input.login_domain.as_str()) {
+            return Err(INTERACTION);
+        }
+        input.login_domain.as_str()
+    };
+    let credentials = PasswordCredentials::new(
+        &input.username,
+        SecretString::new(input.password.clone()).map_err(|_| CONFIG)?,
+        domain,
+    )
+    .map_err(|_| CONFIG)?;
+    let outcome = auth
+        .authenticate_password(configuration, &credentials, device, None)
+        .await
+        .map_err(|_| AUTH)?;
+    if outcome.captcha_required {
+        return Err(INTERACTION);
+    }
+    let exchange = CasExchange {
+        portal_ticket: outcome.ticket.ok_or(AUTH)?,
+    };
+    match auth
+        .establish_session_from_portal(configuration, &exchange, device)
+        .await
+        .map_err(|_| AUTH)?
+    {
+        SessionProgress::Established { .. } => Ok(domain.to_owned()),
+        SessionProgress::InteractionRequired { .. } => Err(INTERACTION),
+    }
+}
+
+enum LoginMethod {
+    Browser,
+    Password(String),
+}
+
+async fn capture_session(
+    gateway: &GatewayEndpoint,
+    origin: &url::Url,
+    transport: &dyn HttpTransport,
+    auth: &AuthClient,
+    configuration: &AuthConfiguration,
+    device: DeviceId,
+    login: LoginMethod,
+) -> Result<Value> {
+    let username = auth.online_info(configuration).await.map_err(|_| AUTH)?;
+    let cookies = transport.session_cookies(origin);
     let source = extract_sid_from_cookies(&cookies).map_err(|_| AUTH)?;
     let material = SessionMaterial::from_cookie_sid(
         &source.value,
         source.cookie_name,
         source.sid_sig_present,
-        DeviceId::new(random_id()).map_err(|_| CONFIG)?,
+        device,
         Some(username),
         None,
     )
     .map_err(|_| AUTH)?;
+    let (method, domain) = match login {
+        LoginMethod::Browser => ("cas", None),
+        LoginMethod::Password(domain) => ("password", Some(domain)),
+    };
     let stored = Stored {
         version: 1,
         saved_unix_ms: SystemTime::now()
@@ -461,8 +602,8 @@ async fn authenticate(value: &mut Value) -> Result<Value> {
             .as_millis(),
         gateway_host: gateway.host().to_owned(),
         gateway_port: gateway.port(),
-        login_method: "cas".into(),
-        login_domain: None,
+        login_method: method.into(),
+        login_domain: domain,
         cookies: cookies
             .iter()
             .map(|c| Cookie {
@@ -484,6 +625,41 @@ async fn authenticate(value: &mut Value) -> Result<Value> {
         username: material.username.clone(),
     };
     Ok(json!({"session":stored}))
+}
+// Read-only online proof. Transport/protocol errors remain unknown; only an
+// explicit invalid-session response or different identity proves expiration.
+async fn check_session(value: &mut Value) -> Result<Value> {
+    let (gateway, _) = gateway(value)?;
+    let stored: Stored = serde_json::from_value(value.get_mut("session").ok_or(INVALID)?.take())
+        .map_err(|_| CONFIG)?;
+    stored.validate(&gateway)?;
+    let auth = AuthClient::new(gateway.clone(), transport(&gateway, &stored.cookies)?);
+    let configuration = match auth
+        .auth_config(AuthConfigOptions {
+            modified: true,
+            need_ticket: false,
+        })
+        .await
+    {
+        Ok(config) => config,
+        Err(error) if error.is_session_invalid() => return Ok(json!({"status":"expired"})),
+        Err(_) => return Ok(json!({"status":"unknown"})),
+    };
+    Ok(online_account_state(&auth, &configuration, stored.username.as_deref()).await)
+}
+async fn online_account_state(
+    auth: &AuthClient,
+    configuration: &AuthConfiguration,
+    expected: Option<&str>,
+) -> Value {
+    match auth.online_info(configuration).await {
+        Ok(username) if expected == Some(username.as_str()) => {
+            json!({"status":"authenticated", "accountLabel":username})
+        }
+        Ok(_) => json!({"status":"expired"}),
+        Err(error) if error.is_session_invalid() => json!({"status":"expired"}),
+        Err(_) => json!({"status":"unknown"}),
+    }
 }
 async fn start(value: &mut Value) -> Result<Value> {
     let (gateway, _) = gateway(value)?;
@@ -663,12 +839,13 @@ async fn dial(session: &Arc<Session>, value: &Value, signal: Arc<Control>) -> Re
     {
         return Err("hermes_not_authorized");
     }
-    let mut bridges = session.bridges.lock().map_err(|_| INTERNAL)?;
-    bridges.retain(|task| !task.is_finished());
-    if bridges.len() >= 32 {
-        return Err(CONNECT);
+    {
+        let mut bridges = session.bridges.lock().map_err(|_| INTERNAL)?;
+        bridges.retain(|task| !task.is_finished());
+        if bridges.len() >= 32 {
+            return Err(CONNECT);
+        }
     }
-    drop(bridges);
     let mut tunnel = session
         .client
         .dial_tcp_pinned(host, &address.to_string(), port)

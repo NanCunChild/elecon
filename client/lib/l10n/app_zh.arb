@@ -421,6 +421,7 @@
   "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}},
   "profilesLoadFailed": "无法读取 Profiles，请保留应用数据后重试。",
   "profilesChangeFailed": "无法保存 Profile，更改未生效，请重试。",
+  "profilesCurrent": "当前",
   "profilesAdd": "添加 Profile",
   "profilesActivate": "切换到此 Profile",
   "profilesSelectScript": "重新选择学校与脚本",
@@ -668,7 +669,7 @@
       }
     }
   },
-  "appTunnelTitle": "应用内 VPN",
+  "appTunnelTitle": "APPTunnel",
   "appTunnelDescription": "仅为当前身份、当前学校的 elecon 请求选择 APPTunnel。选择的基座不可用时会停止请求。",
   "appTunnelSelectSchool": "请先选择学校。",
   "appTunnelChoice": "连接方式",
@@ -677,14 +678,63 @@
   "appTunnelGateway": "aTrust 网关 HTTPS 地址",
   "appTunnelCertificate": "节点证书 SHA-256（可选）",
   "appTunnelCertificateHelp": "填写可信渠道提供的 64 位十六进制证书指纹。留空使用正常证书校验；指纹不匹配时连接会停止。",
-  "appTunnelSignedOut": "尚未保存此学校的 VPN 会话。",
-  "appTunnelSessionSaved": "已保存此学校的受保护 VPN 会话。",
-  "appTunnelLogin": "登录 Hermes / aTrust",
-  "appTunnelClear": "清除 VPN 会话",
-  "appTunnelFailed": "未能保存或读取 VPN 设置，请检查地址和证书指纹后重试。",
+  "appTunnelSignedOut": "尚未保存此学校的 APPTunnel 会话。",
+  "appTunnelSessionSaved": "已保存此学校的受保护 APPTunnel 会话。",
+  "appTunnelLogin": "通过官方网页登录",
+  "appTunnelClear": "清除隧道账号与会话",
+  "appTunnelFailed": "未能完成隧道设置或登录，请检查网关、账号、密码及证书指纹。",
   "appTunnelLoginHelp": "请在官方网关页面完成登录及多因素验证，然后点击下方按钮核验。",
   "appTunnelLoginComplete": "已完成登录，检查会话",
   "appTunnelLoginFailed": "会话未通过核验，或登录跳转超出当前学校允许的范围。请完成官方网关登录后重试。",
   "appTunnelLoginCancelled": "登录已取消，请返回后重新打开。",
-  "appTunnelBrowserUnavailable": "当前选择的应用内 VPN 尚不支持此浏览器流程，请使用支持的请求或明确切换为直连。"
+  "appTunnelBrowserUnavailable": "当前选择的APPTunnel 尚不支持此浏览器流程，请使用支持的请求或明确切换为直连。",
+  "scriptAccountsTitle": "脚本所需账号",
+  "scriptAccountsDescription": "查看当前学校各脚本需要的账号及登录方法。账号按当前本地身份分别保存。",
+  "scriptAccountsLoadFailed": "无法读取脚本账号声明",
+  "scriptAccountsEmpty": "当前学校尚未安装脚本",
+  "scriptAccountsNone": "此脚本声明无需账号",
+  "scriptAccountsUndeclared": "此旧版脚本尚未声明账号需求，请查看脚本说明或更新脚本。",
+  "scriptAccountsDisabled": "脚本已停用",
+  "scriptAccountsUpdateRequired": "需更新脚本后登录",
+  "scriptAccountsUsedBy": "用于：{capabilities}",
+  "appTunnelUsername": "隧道账号",
+  "appTunnelPassword": "隧道密码",
+  "appTunnelPasswordHelp": "已保存密码不会回显；留空仅保留同一账号的原密码。",
+  "appTunnelDomain": "认证域（可选）",
+  "appTunnelDomainHelp": "留空时使用网关唯一的密码认证域；多个域时请填写管理员提供的值。",
+  "appTunnelSaveAccount": "保存账号凭证",
+  "appTunnelAccountLogin": "使用已保存账号登录",
+  "appTunnelAccountSaved": "账号凭证已保存，登录后才能建立隧道。",
+  "appTunnelAccountMissing": "尚未保存隧道账号凭证",
+  "appTunnelInteractionRequired": "网关需要验证码、额外验证或指定认证域。请核对认证域，或使用网页登录。",
+  "@scriptAccountsUsedBy": {
+    "placeholders": {
+      "capabilities": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptAccountsSigningIn": "正在登录{account}…",
+  "@scriptAccountsSigningIn": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptAccountsLoginSucceeded": "账号登录已完成",
+  "scriptAccountsLoginCancelled": "账号登录已取消",
+  "messagesKindActivity": "活动",
+  "messagesKindCommand": "指令消息",
+  "messagesCannotSendMuted": "当前账号已被禁言，无法在此群发送消息。",
+  "messagesPermissionUnknown": "尚未确认发言权限，请刷新后重试。",
+  "messagesGroupDisabled": "此群已停用，无法发送消息。",
+  "scriptAccountChecking": "正在检查登录状态…",
+  "scriptAccountAuthenticated": "已登录",
+  "scriptAccountSignedOut": "未登录",
+  "scriptAccountExpired": "登录凭据已失效，请重新登录。",
+  "scriptAccountUnknown": "暂时无法确认登录状态，可重试检查或登录。",
+  "scriptAccountRelogin": "重新登录",
+  "scriptAccountCheck": "检查状态",
+  "scriptsAppTunnelPermission": "允许通过宿主固定入口检查或登录内置 APPTunnel · Hermes；脚本不会取得隧道密码或会话材料。"
 }

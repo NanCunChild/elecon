@@ -11,6 +11,7 @@ import 'package:elecon/session/session_controller.dart';
 import 'package:elecon/session/session_scope.dart';
 import 'package:elecon/ui/home/capability_sections.dart';
 import 'package:elecon/ui/home/home_page.dart' show ScheduleCard;
+import 'package:elecon/ui/home/section_card.dart';
 import 'package:elecon/ui/scripts/script_workbench_page.dart';
 import 'package:elecon/ui/scripts/script_input_presenter.dart';
 import 'package:elecon/ui/settings/settings_page.dart';
@@ -82,7 +83,7 @@ ScriptPackage package(
       const input=p.studentId ? {studentId:p.studentId} : await ctx.ui.requestInput({title:'Study query',fields:[{id:'studentId',label:'Student ID'}]});
       if(input===null){const e=new Error('cancelled');e.code='input_cancelled';throw e;}
       await ctx.credentials.set('studentId',input.studentId);
-      return {term:'2026-2027-1',week:p.week,days:[]};
+      return {term:'2026-2027-1',week:p.week ?? ${currentWeek ?? 1},days:[]};
     }
   };''',
   }),
@@ -276,7 +277,7 @@ void main() {
         app(session, const Scaffold(body: CardSection())),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查看余额'));
+      await tester.tap(find.byType(SectionRefreshButton));
       await until(
         tester,
         () => find.text('Campus card account').evaluate().isNotEmpty,
@@ -296,7 +297,7 @@ void main() {
         app(session, const Scaffold(body: CardSection())),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查看余额'));
+      await tester.tap(find.byType(SectionRefreshButton));
       await until(
         tester,
         () => find
@@ -325,7 +326,7 @@ void main() {
         app(session, const Scaffold(body: ScheduleSection())),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('View week 1'));
+      await tester.tap(find.byKey(const ValueKey('schedule-refresh')));
       await until(
         tester,
         () => find
@@ -357,10 +358,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('View this week'), findsOneWidget);
+      expect(find.byKey(const ValueKey('schedule-refresh')), findsOneWidget);
       expect(find.byType(ScheduleCard), findsNothing);
       expect(session.credentialCount, 0);
-      await tester.tap(find.text('View this week'));
+      await tester.tap(find.byKey(const ValueKey('schedule-refresh')));
       await until(
         tester,
         () => find
@@ -379,7 +380,10 @@ void main() {
         tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week,
         8,
       );
-      expect(find.text('View this week'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('schedule-current-week-8')),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -397,7 +401,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Choose a week'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('View week 1'));
+      await tester.tap(find.byKey(const ValueKey('schedule-refresh')));
       await until(
         tester,
         () => find
@@ -412,8 +416,14 @@ void main() {
         tester,
         () => find.byType(ScheduleCard).evaluate().isNotEmpty,
       );
-      expect(find.text('View week 1'), findsOneWidget);
-      expect(find.text('View week 8'), findsNothing);
+      expect(
+        tester.widget<ScheduleCard>(find.byType(ScheduleCard)).data.week,
+        1,
+      );
+      expect(
+        find.byKey(const ValueKey('schedule-current-week-8')),
+        findsNothing,
+      );
     },
   );
 
@@ -441,7 +451,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查看余额'));
+      await tester.tap(find.byType(SectionRefreshButton));
       await until(
         tester,
         () => find

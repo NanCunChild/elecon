@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/profile_fixture.dart';
+import 'hermes_account_test.dart' show FakeHermes;
 
 class UnavailableHermes implements AppTunnelProvider {
   @override
@@ -21,6 +22,75 @@ class UnavailableHermes implements AppTunnelProvider {
 }
 
 void main() {
+  testWidgets(
+    'settings saves credentials without echoing the password or claiming login',
+    (tester) async {
+      final native = FakeHermes();
+      final session = SessionController(hermesBinding: native);
+      addTearDown(session.dispose);
+      final package = school();
+      await session.installTrustedScript(
+        package,
+        approvedDigest: package.digest,
+      );
+      await session.selectTrustedScriptSchool(package.manifest.id);
+      await tester.pumpWidget(
+        SessionScope(
+          controller: session,
+          child: MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const AppTunnelPage(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField).first,
+        'https://gateway.example.invalid',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('tunnel-username')),
+        'synthetic-user',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('tunnel-password')),
+        'SYNTHETIC_PASSWORD',
+      );
+      final save = find.widgetWithText(
+        FilledButton,
+        'Save account credentials',
+      );
+      await tester.scrollUntilVisible(
+        save,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+      expect(session.hermesAccountInfo()!.username, 'synthetic-user');
+      expect(session.hermesConfigurationInfo(), isNull);
+      expect(native.calls, isEmpty);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('tunnel-password')))
+            .controller!
+            .text,
+        isEmpty,
+      );
+      final login = find.widgetWithText(
+        FilledButton,
+        'Sign in with saved account',
+      );
+      await tester.ensureVisible(login);
+      await tester.tap(login);
+      await tester.pumpAndSettle();
+      expect(native.calls, hasLength(1));
+      expect(session.hermesConfigurationInfo(), isNotNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final language in ['zh', 'en']) {
     for (final brightness in Brightness.values) {
       testWidgets(

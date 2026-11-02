@@ -13,6 +13,24 @@ void main() {
     'actual Hermes C ABI in worker isolates',
     () {
       final binding = HermesNativeBinding(libraryPath: path);
+      test('password operation validates credentials before network', () async {
+        await expectLater(
+          binding.request({
+            'op': 'authenticatePassword',
+            'gatewayUrl': 'https://synthetic-gateway.invalid',
+            'username': '',
+            'password': 'SYNTHETIC_PASSWORD',
+            'loginDomain': '',
+          }).result,
+          throwsA(
+            isA<AppTunnelException>().having(
+              (e) => e.code,
+              'code',
+              'hermes_invalid_configuration',
+            ),
+          ),
+        );
+      });
       test(
         'loads bundled symbols; rejects invalid gateway before network',
         () async {

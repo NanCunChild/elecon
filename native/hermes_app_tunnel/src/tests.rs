@@ -82,20 +82,20 @@ async fn certificate_pin_requires_exact_certificate_and_real_tls_signatures() {
         }
     });
     let pin: [u8; 32] = Sha256::digest(CERT).into();
-    assert!(
-        hermes_transport::connect_tls("127.0.0.1", port, TlsPolicy::PinnedCertificateSha256(pin))
-            .await
-            .is_ok()
-    );
-    assert!(
-        hermes_transport::connect_tls(
-            "127.0.0.1",
-            port,
-            TlsPolicy::PinnedCertificateSha256([0; 32])
-        )
-        .await
-        .is_err()
-    );
+    assert!(hermes_transport::connect_tls(
+        "127.0.0.1",
+        port,
+        TlsPolicy::PinnedCertificateSha256(pin)
+    )
+    .await
+    .is_ok());
+    assert!(hermes_transport::connect_tls(
+        "127.0.0.1",
+        port,
+        TlsPolicy::PinnedCertificateSha256([0; 32])
+    )
+    .await
+    .is_err());
     assert!(
         hermes_transport::connect_tls("127.0.0.1", port, TlsPolicy::Verify)
             .await
@@ -105,6 +105,195 @@ async fn certificate_pin_requires_exact_certificate_and_real_tls_signatures() {
 }
 struct ResourceTransport {
     port: u16,
+}
+
+struct PasswordTransport {
+    responses: Mutex<std::collections::VecDeque<Value>>,
+    requests: Mutex<Vec<HttpRequest>>,
+}
+#[async_trait]
+impl HttpTransport for PasswordTransport {
+    async fn execute(
+        &self,
+        request: HttpRequest,
+    ) -> std::result::Result<HttpResponse, HttpTransportError> {
+        self.requests.lock().unwrap().push(request);
+        let response = self
+            .responses
+            .lock()
+            .unwrap()
+            .pop_front()
+            .expect("a credential attempt must never retry");
+        Ok(HttpResponse {
+            status: 200,
+            location: None,
+            body: response.to_string().into_bytes(),
+        })
+    }
+    fn session_cookies(&self, origin: &url::Url) -> Vec<GatewayCookie> {
+        vec![GatewayCookie {
+            name: "sid".into(),
+            value: "synthetic-sid".into(),
+            domain: origin.host_str().map(str::to_owned),
+            path: Some("/".into()),
+            secure: true,
+            http_only: true,
+        }]
+    }
+}
+
+fn password_fixture(
+    domains: &[&str],
+) -> (
+    Arc<PasswordTransport>,
+    AuthClient,
+    AuthConfiguration,
+    PasswordInput,
+    DeviceId,
+) {
+    let transport = Arc::new(PasswordTransport {
+        responses: Mutex::new(std::collections::VecDeque::new()),
+        requests: Mutex::new(Vec::new()),
+    });
+    let auth = AuthClient::new(
+        GatewayEndpoint::new("synthetic.invalid", 443).unwrap(),
+        transport.clone(),
+    );
+    let configuration = AuthConfiguration {
+        login_state: atrust_auth::LoginState::LoggedOut,
+        methods: domains
+            .iter()
+            .map(|domain| atrust_auth::AuthInfo {
+                login_domain: domain.to_string(),
+                auth_type: "auth/psw".into(),
+                auth_name: "Synthetic".into(),
+                login_url: "".into(),
+            })
+            .collect(),
+        csrf_token: "synthetic-csrf".into(),
+        public_key: "bf".repeat(256),
+        public_key_exponent: "65537".into(),
+        anti_replay_random: "synthetic-anti-replay".into(),
+    };
+    let input = PasswordInput {
+        username: "synthetic-user".into(),
+        password: "SYNTHETIC_PASSWORD".into(),
+        login_domain: "".into(),
+    };
+    (
+        transport,
+        auth,
+        configuration,
+        input,
+        DeviceId::new("synthetic-device").unwrap(),
+    )
+}
+
+#[tokio::test]
+async fn password_domain_is_unambiguous_and_never_guessed() {
+    for domains in [vec![], vec!["one", "two"]] {
+        let (transport, auth, configuration, input, device) = password_fixture(&domains);
+        assert_eq!(
+            password_step(&auth, &configuration, &input, &device).await,
+            Err(INTERACTION)
+        );
+        assert!(transport.requests.lock().unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn captcha_stops_after_one_encrypted_password_attempt() {
+    let (transport, auth, configuration, input, device) = password_fixture(&["local"]);
+    transport
+        .responses
+        .lock()
+        .unwrap()
+        .push_back(json!({"code":1,"data":{"graphCheckCodeEnable":1}}));
+    assert_eq!(
+        password_step(&auth, &configuration, &input, &device).await,
+        Err(INTERACTION)
+    );
+    let requests = transport.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].url.path(), "/passport/v1/auth/psw");
+    let body: Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(body["username"], "synthetic-user@local");
+    assert_ne!(body["password"], "SYNTHETIC_PASSWORD");
+    assert!(!String::from_utf8_lossy(&requests[0].body).contains("SYNTHETIC_PASSWORD"));
+}
+
+#[tokio::test]
+async fn password_session_requires_mfa_completion_and_online_identity() {
+    for mfa in [true, false] {
+        let (transport, auth, configuration, mut input, device) = password_fixture(&["one", "two"]);
+        input.login_domain = "two".into();
+        transport.responses.lock().unwrap().extend([
+            json!({"code":0,"data":{"ticket":"synthetic-ticket"}}),
+            json!({"code":0,"data":{}}),
+            if mfa { json!({"code":0,"data":{"nextService":"auth/sms","nextServiceList":[{"authId":"synthetic","authType":"auth/sms"}]}}) }
+            else { json!({"code":0,"data":{}}) },
+            json!({"code":0,"data":{"username":"synthetic-user"}}),
+        ]);
+        let result = password_step(&auth, &configuration, &input, &device).await;
+        assert_eq!(
+            result,
+            if mfa {
+                Err(INTERACTION)
+            } else {
+                Ok("two".into())
+            }
+        );
+        let requests = transport.requests.lock().unwrap();
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|r| r.url.path() == "/passport/v1/auth/psw")
+                .count(),
+            1
+        );
+        assert_eq!(requests.len(), if mfa { 3 } else { 4 });
+    }
+}
+
+#[tokio::test]
+async fn session_publication_requires_online_info_and_omits_password() {
+    let (transport, auth, configuration, _input, device) = password_fixture(&["local"]);
+    transport.responses.lock().unwrap().extend([
+        json!({"code":0,"data":{}}),
+        json!({"code":0,"data":{"username":"synthetic-user"}}),
+    ]);
+    let gateway = GatewayEndpoint::new("synthetic.invalid", 443).unwrap();
+    let origin = url::Url::parse("https://synthetic.invalid/").unwrap();
+    assert_eq!(
+        capture_session(
+            &gateway,
+            &origin,
+            transport.as_ref(),
+            &auth,
+            &configuration,
+            device.clone(),
+            LoginMethod::Password("local".into())
+        )
+        .await,
+        Err(AUTH)
+    );
+    let result = capture_session(
+        &gateway,
+        &origin,
+        transport.as_ref(),
+        &auth,
+        &configuration,
+        device,
+        LoginMethod::Password("local".into()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result["session"]["username"], "synthetic-user");
+    assert_eq!(result["session"]["login_method"], "password");
+    assert_eq!(result["session"]["login_domain"], "local");
+    assert_eq!(result["session"]["sid"], "synthetic-sid");
+    assert!(result["session"].get("password").is_none());
+    assert!(!result.to_string().contains("SYNTHETIC_PASSWORD"));
 }
 #[async_trait]
 impl HttpTransport for ResourceTransport {
@@ -283,9 +472,37 @@ fn gateway_cookie_import_tightens_parent_domain_and_secure_attribute() {
     assert_eq!(exported.len(), 1);
     assert_eq!(exported[0].domain.as_deref(), Some("vpn.synthetic.invalid"));
     assert!(exported[0].secure);
-    assert!(
-        transport
-            .session_cookies(&url::Url::parse("https://other.synthetic.invalid/").unwrap())
-            .is_empty()
-    );
+    assert!(transport
+        .session_cookies(&url::Url::parse("https://other.synthetic.invalid/").unwrap())
+        .is_empty());
+}
+
+#[tokio::test]
+async fn account_state_requires_online_identity_and_only_explicit_expiry_is_expired() {
+    for (response, expected) in [
+        (
+            json!({"code":0,"data":{"username":"synthetic-user"}}),
+            "authenticated",
+        ),
+        (
+            json!({"code":0,"data":{"username":"different-user"}}),
+            "expired",
+        ),
+        (
+            json!({"code":75500002,"data":{},"message":"synthetic private detail"}),
+            "expired",
+        ),
+        (json!({"code":500,"data":{}}), "unknown"),
+        (json!({"unexpected":"format"}), "unknown"),
+    ] {
+        let (transport, auth, config, _, _) = password_fixture(&["default"]);
+        transport.responses.lock().unwrap().push_back(response);
+        let state = online_account_state(&auth, &config, Some("synthetic-user")).await;
+        assert_eq!(state["status"], expected);
+        assert_eq!(transport.requests.lock().unwrap().len(), 1);
+        assert!(!state.to_string().contains("synthetic private detail"));
+        if expected != "authenticated" {
+            assert!(state.get("accountLabel").is_none());
+        }
+    }
 }

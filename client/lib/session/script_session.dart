@@ -107,6 +107,7 @@ extension TrustedScriptSession on SessionController {
   bool get scriptRegistryRecovered => _scripts.recoveredRegistry;
 
   void _cancelTrustedScripts({bool dispose = false}) {
+    _cancelHermesAuthentication();
     for (final bridge in _legacyAuthBridges.toList()) {
       bridge.stop().then<void>((_) {}, onError: (Object _) {});
     }
@@ -277,15 +278,49 @@ extension TrustedScriptSession on SessionController {
   /// ADR-038: these APIs expose validated business outputs, never a store.
   int get homeDataRevision => _scripts.homeRevision;
 
+  // Explicit feature sources never fall back to the global override or another package.
+  Future<ScriptPackage?> _querySource(
+    String schoolId,
+    String capability,
+    String? packageId,
+    String? expectedDigest,
+  ) async {
+    final registry = await scriptRegistry;
+    if (packageId == null) {
+      return expectedDigest == null
+          ? registry.provider(schoolId, capability)
+          : null;
+    }
+    final installation = registry.find(packageId);
+    final package = installation?.package;
+    if (installation?.enabled != true ||
+        package == null ||
+        package.requiresUpdate ||
+        expectedDigest == null ||
+        package.digest != expectedDigest ||
+        package.manifest.schoolId != schoolId ||
+        package.manifest.capability(capability) == null) {
+      return null;
+    }
+    return package;
+  }
+
   Future<ScriptCachedData?> cachedCapability(
     String capability, {
     Map<String, dynamic>? params,
+    String? packageId,
+    String? expectedDigest,
   }) async {
     final school = _school;
     final generation = _scripts.generation;
     if (school == null || _scripts.disposed) return null;
     try {
-      final package = (await scriptRegistry).provider(school.id, capability);
+      final package = await _querySource(
+        school.id,
+        capability,
+        packageId,
+        expectedDigest,
+      );
       if (package == null ||
           generation != _scripts.generation ||
           _school?.id != school.id) {
@@ -299,12 +334,21 @@ extension TrustedScriptSession on SessionController {
     }
   }
 
-  Future<ScriptCachedData?> latestCachedCapability(String capability) async {
+  Future<ScriptCachedData?> latestCachedCapability(
+    String capability, {
+    String? packageId,
+    String? expectedDigest,
+  }) async {
     final school = _school;
     final generation = _scripts.generation;
     if (school == null || _scripts.disposed) return null;
     try {
-      final package = (await scriptRegistry).provider(school.id, capability);
+      final package = await _querySource(
+        school.id,
+        capability,
+        packageId,
+        expectedDigest,
+      );
       if (package == null ||
           generation != _scripts.generation ||
           _school?.id != school.id) {
@@ -320,11 +364,18 @@ extension TrustedScriptSession on SessionController {
   Future<bool> capabilityNeedsConfiguration(
     String capability, {
     Map<String, dynamic>? params,
+    String? packageId,
+    String? expectedDigest,
   }) async {
     final school = _school;
     final generation = _scripts.generation;
     if (school == null || _scripts.disposed) return false;
-    final package = (await scriptRegistry).provider(school.id, capability);
+    final package = await _querySource(
+      school.id,
+      capability,
+      packageId,
+      expectedDigest,
+    );
     if (package == null ||
         generation != _scripts.generation ||
         _school?.id != school.id ||
@@ -335,6 +386,10 @@ extension TrustedScriptSession on SessionController {
       _store,
     ).needsConfiguration(package, capability, params ?? const {});
   }
+
+  /// Await only a preload already in flight; inspecting its outcome never schedules work.
+  Future<void> waitForHomeRefresh() =>
+      _scripts.refreshingHome ?? Future.value();
 
   Future<void> refreshHomeData({bool force = false}) {
     final state = _scripts;
@@ -352,8 +407,14 @@ extension TrustedScriptSession on SessionController {
           }
           for (final query in package.manifest.home.where((e) => e.preload)) {
             // Only the selected handler owns this capability's background work.
-            if (registry.provider(school.id, query.capability)?.digest !=
-                package.digest) {
+            final ownsCard = package.manifest.cards.any(
+              (card) =>
+                  card.hasExplicitId &&
+                  card.requiredCapabilities.contains(query.capability),
+            );
+            if (!ownsCard &&
+                registry.provider(school.id, query.capability)?.digest !=
+                    package.digest) {
               continue;
             }
             if (state.disposed ||
@@ -392,9 +453,11 @@ extension TrustedScriptSession on SessionController {
     String id,
     String capability, {
     Map<String, dynamic>? params,
+    String? expectedDigest,
     bool interactive = true,
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
+    Future<void> Function()? appTunnelLogin,
     ScriptInputCall? inputCall,
     ScriptRunCancellation? cancellation,
     void Function(String, String)? onLog,
@@ -402,10 +465,12 @@ extension TrustedScriptSession on SessionController {
     id,
     capability,
     params: params,
+    expectedDigest: expectedDigest,
     interactive: interactive,
     htmlStdlib: htmlStdlib,
     browserCall: browserCall,
     inputCall: inputCall,
+    appTunnelLogin: appTunnelLogin,
     cancellation: cancellation,
     onLog: onLog,
   );
@@ -414,9 +479,11 @@ extension TrustedScriptSession on SessionController {
     String id,
     String capability, {
     Map<String, dynamic>? params,
+    String? expectedDigest,
     bool interactive = true,
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
+    Future<void> Function()? appTunnelLogin,
     ScriptInputCall? inputCall,
     ScriptRunCancellation? cancellation,
     void Function(String, String)? onLog,
@@ -437,10 +504,12 @@ extension TrustedScriptSession on SessionController {
         capability,
         expectedGeneration: generation,
         params: params,
+        expectedDigest: expectedDigest,
         interactive: interactive,
         htmlStdlib: htmlStdlib,
         browserCall: browserCall,
         inputCall: inputCall,
+        appTunnelLogin: appTunnelLogin,
         cancellation: cancellation,
         onLog: onLog,
       );
@@ -454,14 +523,18 @@ extension TrustedScriptSession on SessionController {
     String capability, {
     required int expectedGeneration,
     Map<String, dynamic>? params,
+    String? expectedDigest,
     bool interactive = true,
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
+    Future<void> Function()? appTunnelLogin,
     ScriptInputCall? inputCall,
     ScriptRunCancellation? cancellation,
     void Function(String, String)? onLog,
   }) async {
     final state = _scripts;
+    final statusOnly =
+        capability == 'account.session' && params?['operation'] == 'status';
     if (_changingNetwork) {
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
@@ -496,6 +569,8 @@ extension TrustedScriptSession on SessionController {
     if (state.disposed ||
         installation == null ||
         !installation.enabled ||
+        (expectedDigest != null &&
+            installation.package.digest != expectedDigest) ||
         school == null ||
         installation.package.manifest.schoolId != school.id) {
       return const CapabilityRun.failed(
@@ -516,7 +591,7 @@ extension TrustedScriptSession on SessionController {
     }
     final admissionEpoch = registry.epoch;
     try {
-      if (interactive) {
+      if (interactive && !statusOnly) {
         await ensurePersistentStore(
           confirmSoftwareFallback: state.storageConsent ?? () async => false,
         );
@@ -634,6 +709,26 @@ extension TrustedScriptSession on SessionController {
                 );
               },
         inputCall: input,
+        appTunnelCall: interactive
+            ? (method, provider) async {
+                if (!active()) {
+                  throw const ScriptRunException('invocation_cancelled');
+                }
+                if (method == 'login') {
+                  if (statusOnly || appTunnelLogin == null) {
+                    throw const ScriptRunException('input_unavailable');
+                  }
+                  await appTunnelLogin();
+                  if (!active()) {
+                    throw const ScriptRunException('invocation_cancelled');
+                  }
+                }
+                return checkHermesAccount(
+                  isActive: active,
+                  cancellation: cancellation,
+                );
+              }
+            : null,
         deviceInputCall: interactive && state.deviceInputPresenter != null
             ? (kind, valid) => state.deviceInputPresenter!(
                 package,
@@ -650,6 +745,7 @@ extension TrustedScriptSession on SessionController {
         wallTimeout: Duration(
           seconds:
               interactive &&
+                  !statusOnly &&
                   (package.manifest.browser || package.manifest.sdkVersion >= 3)
               ? 120
               : 35,
@@ -668,7 +764,7 @@ extension TrustedScriptSession on SessionController {
       );
       Future<Object?> withBrowser(ScriptInputCall? input) async {
         // ADR-038 §3: background work cannot open a login page or native form.
-        if (!interactive) {
+        if (!interactive || statusOnly) {
           return execute(
             (_, _) async {
               throw const ScriptRunException('script_browser_unavailable');
@@ -697,6 +793,7 @@ extension TrustedScriptSession on SessionController {
       final inputPresenter = state.inputPresenter;
       final data =
           interactive &&
+              !statusOnly &&
               package.manifest.sdkVersion >= 3 &&
               inputCall == null &&
               inputPresenter != null

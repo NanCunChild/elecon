@@ -9,9 +9,12 @@ import 'package:flutter/material.dart';
 import '../../catalog/schools.dart';
 import '../../core/adapter_service.dart';
 import '../../core/scripts/runtime.dart';
+import '../../core/scripts/manifest.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import '../scripts/script_presenter.dart';
+import '../settings/app_tunnel_page.dart';
+import '../../session/session_scope.dart';
 import '../scripts/script_input_presenter.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import 'webview_login_page.dart';
@@ -22,10 +25,14 @@ class ScriptLoginPage extends StatefulWidget {
     required this.session,
     required this.school,
     this.requiredRef,
+    this.package,
+    this.accountId,
   });
   final SessionController session;
   final SchoolDescriptor school;
   final String? requiredRef;
+  final ScriptPackage? package;
+  final String? accountId;
 
   @override
   State<ScriptLoginPage> createState() => _ScriptLoginPageState();
@@ -33,10 +40,15 @@ class ScriptLoginPage extends StatefulWidget {
 
 class _ScriptLoginPageState extends State<ScriptLoginPage> {
   bool _finished = false;
+  final _cancellation = ScriptRunCancellation();
+  late final int _generation;
+  Future<void>? _tunnelPage;
+  bool _tunnelAuthenticated = false;
 
   @override
   void initState() {
     super.initState();
+    _generation = widget.session.trustedScriptViewGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) => _login());
   }
 
@@ -50,28 +62,44 @@ class _ScriptLoginPageState extends State<ScriptLoginPage> {
   }
 
   void _cancel() {
-    widget.session.cancelTrustedScriptRuns();
+    _cancellation.cancel();
     _finish(const WebViewLoginResult(status: WebViewLoginStatus.cancelled));
   }
 
   Future<void> _login() async {
     final session = widget.session;
+    final generation = _generation;
     final l10n = AppLocalizations.of(context);
     try {
       final registry = await session.scriptRegistry;
       if (!mounted || _finished) return;
+      if (generation != session.trustedScriptViewGeneration) {
+        _cancel();
+        return;
+      }
       // The unified source packages expose manual authentication through their
       // existing generic.section entry (ADR-034). Never run an unrelated
       // provider or infer a login URL from the first allowed network origin.
-      final id = widget.school.adapterId.substring('script:'.length);
+      final id =
+          widget.package?.manifest.id ??
+          widget.school.adapterId.substring('script:'.length);
       final installation = registry.find(id);
       final package = installation?.package;
+      final account = package?.manifest.accounts
+          .where((a) => a.id == widget.accountId)
+          .firstOrNull;
+      final capability = widget.accountId == null
+          ? 'generic.section'
+          : account?.loginCapability;
       if (session.selectedSchool?.id != widget.school.id ||
           installation?.enabled != true ||
           package == null ||
+          (widget.package != null &&
+              widget.package!.digest != package.digest) ||
+          capability == null ||
           (!package.manifest.browser && package.manifest.sdkVersion < 3) ||
           package.manifest.schoolId != widget.school.id ||
-          package.manifest.capability('generic.section') == null) {
+          package.manifest.capability(capability) == null) {
         _finish(
           WebViewLoginResult(
             status: WebViewLoginStatus.error,
@@ -88,6 +116,10 @@ class _ScriptLoginPageState extends State<ScriptLoginPage> {
                 SoftwareStorageChoice.continueWithSoftware,
       );
       if (!mounted || _finished) return;
+      if (generation != session.trustedScriptViewGeneration) {
+        _cancel();
+        return;
+      }
       final result = await presentScriptInput(
         context,
         package,
@@ -96,23 +128,74 @@ class _ScriptLoginPageState extends State<ScriptLoginPage> {
           package,
           (call) => session.runTrustedScript(
             id,
-            'generic.section',
+            capability,
+            expectedDigest: package.digest,
+            cancellation: _cancellation,
             browserCall: call,
             inputCall: input,
-            params: {
-              if (widget.requiredRef != null) 'requiredRef': widget.requiredRef,
+            appTunnelLogin: () async {
+              if (!mounted || _finished || _cancellation.isCancelled) {
+                throw const ScriptRunException('invocation_cancelled');
+              }
+              final page = Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => SessionScope(
+                    controller: session,
+                    child: AppTunnelPage(
+                      onAuthenticated: () => _tunnelAuthenticated = true,
+                    ),
+                  ),
+                ),
+              );
+              _tunnelPage = page;
+              await page;
+              if (!_tunnelAuthenticated) {
+                throw const ScriptRunException('invocation_cancelled');
+              }
             },
+            params:
+                account?.loginParams ??
+                {
+                  if (widget.requiredRef != null)
+                    'requiredRef': widget.requiredRef,
+                },
           ),
-          onCancel: session.cancelTrustedScriptRuns,
+          onCancel: _cancellation.cancel,
         ),
-        onCancel: session.cancelTrustedScriptRuns,
+        onCancel: _cancellation.cancel,
       );
       if (!mounted || _finished) return;
-      final run = result as CapabilityRun;
-      if (run.ok) unawaited(session.refreshHomeData());
+      await _tunnelPage;
+      if (!mounted || _finished) return;
+      if (_tunnelPage != null && !_tunnelAuthenticated) {
+        _finish(const WebViewLoginResult(status: WebViewLoginStatus.cancelled));
+        return;
+      }
+      var run = result as CapabilityRun;
+      if (_tunnelPage != null &&
+          account?.statusCapability != null &&
+          !_cancellation.isCancelled &&
+          session.selectedSchool?.id == widget.school.id) {
+        run = await session.runTrustedScript(
+          id,
+          account!.statusCapability!,
+          expectedDigest: package.digest,
+          params: account.statusParams,
+          cancellation: _cancellation,
+        );
+      }
+      if (!mounted || _finished) return;
+      final verified =
+          run.ok &&
+          (capability != 'account.session' ||
+              run.data is Map &&
+                  (run.data as Map)['status'] == 'authenticated');
+      if (run.ok && widget.accountId == null) {
+        unawaited(session.refreshHomeData());
+      }
       _finish(
         WebViewLoginResult(
-          status: run.ok
+          status: verified
               ? WebViewLoginStatus.success
               : const {
                   'invocation_cancelled',
@@ -121,8 +204,10 @@ class _ScriptLoginPageState extends State<ScriptLoginPage> {
                 }.contains(run.reason)
               ? WebViewLoginStatus.cancelled
               : WebViewLoginStatus.error,
-          error: run.ok
+          error: verified
               ? null
+              : run.ok
+              ? l10n.scriptAccountUnknown
               : l10n.scriptsFailed(run.reason ?? 'script_failed'),
         ),
       );
@@ -152,7 +237,7 @@ class _ScriptLoginPageState extends State<ScriptLoginPage> {
 
   @override
   void dispose() {
-    if (!_finished) widget.session.cancelTrustedScriptRuns();
+    _cancellation.cancel();
     super.dispose();
   }
 
@@ -172,7 +257,15 @@ class _ScriptLoginPageState extends State<ScriptLoginPage> {
             children: [
               const CircularProgressIndicator(),
               const SizedBox(height: 24),
-              Text(l10n.scriptsLoginRunning),
+              Text(
+                widget.accountId == null
+                    ? l10n.scriptsLoginRunning
+                    : l10n.scriptAccountsSigningIn(
+                        widget.package!.manifest.accounts
+                            .firstWhere((a) => a.id == widget.accountId)
+                            .name,
+                      ),
+              ),
               const SizedBox(height: 16),
               TextButton(onPressed: _cancel, child: Text(l10n.commonCancel)),
             ],

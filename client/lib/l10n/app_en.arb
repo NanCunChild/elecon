@@ -353,6 +353,7 @@
   "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}},
   "profilesLoadFailed": "Unable to load Profiles. Keep your app data and try again.",
   "profilesChangeFailed": "Unable to save Profile. Please try again.",
+  "profilesCurrent": "Current",
   "profilesAdd": "Add Profile",
   "profilesActivate": "Switch to this Profile",
   "profilesSelectScript": "Choose school and script again",
@@ -600,7 +601,7 @@
       }
     }
   },
-  "appTunnelTitle": "App VPN",
+  "appTunnelTitle": "App APPTunnel",
   "appTunnelDescription": "Choose an APPTunnel for elecon requests in this profile and school. Requests stop if the selected provider is unavailable.",
   "appTunnelSelectSchool": "Select a school first.",
   "appTunnelChoice": "Connection",
@@ -609,14 +610,63 @@
   "appTunnelGateway": "aTrust gateway HTTPS address",
   "appTunnelCertificate": "Node certificate SHA-256 (optional)",
   "appTunnelCertificateHelp": "Enter a 64-digit hexadecimal certificate fingerprint from a trusted source. Leave blank for normal certificate validation. A mismatch stops the connection.",
-  "appTunnelSignedOut": "No VPN session is saved for this school.",
-  "appTunnelSessionSaved": "A protected VPN session is saved for this school.",
-  "appTunnelLogin": "Sign in to Hermes / aTrust",
-  "appTunnelClear": "Clear VPN session",
-  "appTunnelFailed": "Could not save or read VPN settings. Check the gateway address and certificate fingerprint, then try again.",
+  "appTunnelSignedOut": "No APPTunnel session is saved for this school.",
+  "appTunnelSessionSaved": "A protected APPTunnel session is saved for this school.",
+  "appTunnelLogin": "Sign in on the official website",
+  "appTunnelClear": "Clear tunnel account and session",
+  "appTunnelFailed": "Could not complete tunnel setup or sign-in. Check the gateway, account, password and certificate fingerprint.",
   "appTunnelLoginHelp": "Complete sign-in and multifactor authentication on the official gateway page, then check the session below.",
   "appTunnelLoginComplete": "Check completed sign-in",
   "appTunnelLoginFailed": "The session could not be verified, or sign-in navigation exceeded this school’s allowed sites. Complete the official gateway sign-in and try again.",
   "appTunnelLoginCancelled": "Sign-in was cancelled. Go back and open it again.",
-  "appTunnelBrowserUnavailable": "The selected app VPN does not support this browser flow. Use a supported request or explicitly select Direct."
+  "appTunnelBrowserUnavailable": "The selected app APPTunnel does not support this browser flow. Use a supported request or explicitly select Direct.",
+  "scriptAccountsTitle": "Script accounts",
+  "scriptAccountsDescription": "See the accounts each school script needs and how to sign in. Accounts are stored separately for each local profile.",
+  "scriptAccountsLoadFailed": "Could not load script account requirements",
+  "scriptAccountsEmpty": "No scripts installed for this school",
+  "scriptAccountsNone": "This script declares no account requirements",
+  "scriptAccountsUndeclared": "This older script has not declared account requirements. Check its documentation or update it.",
+  "scriptAccountsDisabled": "Script disabled",
+  "scriptAccountsUpdateRequired": "Update the script before signing in",
+  "scriptAccountsUsedBy": "Used by: {capabilities}",
+  "appTunnelUsername": "Tunnel username",
+  "appTunnelPassword": "Tunnel password",
+  "appTunnelPasswordHelp": "Saved passwords are never shown. Leave blank to keep the password for the same account.",
+  "appTunnelDomain": "Login domain (optional)",
+  "appTunnelDomainHelp": "Leave blank to use the gateway’s only password domain. If there are several, enter the value supplied by your administrator.",
+  "appTunnelSaveAccount": "Save account credentials",
+  "appTunnelAccountLogin": "Sign in with saved account",
+  "appTunnelAccountSaved": "Account credentials saved. Sign in to establish a tunnel.",
+  "appTunnelAccountMissing": "No tunnel account credentials saved",
+  "appTunnelInteractionRequired": "The gateway requires a captcha, further verification, or a specific login domain. Check the domain or use web sign-in.",
+  "@scriptAccountsUsedBy": {
+    "placeholders": {
+      "capabilities": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptAccountsSigningIn": "Signing in to {account}…",
+  "@scriptAccountsSigningIn": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptAccountsLoginSucceeded": "Account sign-in completed",
+  "scriptAccountsLoginCancelled": "Account sign-in cancelled",
+  "messagesKindActivity": "Activity",
+  "messagesKindCommand": "Command message",
+  "messagesCannotSendMuted": "This account is muted and cannot send messages to this group.",
+  "messagesPermissionUnknown": "Sending permission is unverified. Refresh to check again.",
+  "messagesGroupDisabled": "This group is disabled. Messages cannot be sent.",
+  "scriptAccountChecking": "Checking sign-in status…",
+  "scriptAccountAuthenticated": "Signed in",
+  "scriptAccountSignedOut": "Signed out",
+  "scriptAccountExpired": "Your session has expired. Please sign in again.",
+  "scriptAccountUnknown": "Sign-in status is unknown. Check again or sign in.",
+  "scriptAccountRelogin": "Sign in again",
+  "scriptAccountCheck": "Check status",
+  "scriptsAppTunnelPermission": "May check or sign in to built-in APPTunnel · Hermes through the host interface. Scripts do not receive tunnel passwords or session material."
 }

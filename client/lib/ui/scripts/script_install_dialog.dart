@@ -30,6 +30,16 @@ Future<bool> confirmScriptInstall(
                   ),
                   const SizedBox(height: 16),
                   Text(l10n.scriptsTrustBody),
+                  if (package.manifest.declaresAccounts) ...[
+                    const SizedBox(height: 12),
+                    Text(l10n.scriptAccountsTitle),
+                    if (package.manifest.accounts.isEmpty)
+                      Text(l10n.scriptAccountsNone),
+                    for (final account in package.manifest.accounts) ...[
+                      Text(account.name),
+                      Text(account.instructions),
+                    ],
+                  ],
                   const SizedBox(height: 16),
                   Text(l10n.scriptsNetwork),
                   for (final origin in package.manifest.network.origins)
@@ -58,6 +68,10 @@ Future<bool> confirmScriptInstall(
                       'image' => l10n.deviceInputImagePermission,
                       _ => l10n.deviceInputLocationPermission,
                     }),
+                  ],
+                  if (package.manifest.appTunnels.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(l10n.scriptsAppTunnelPermission),
                   ],
                   if (package.manifest.browser) ...[
                     const SizedBox(height: 12),
