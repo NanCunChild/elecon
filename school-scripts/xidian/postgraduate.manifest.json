@@ -1,7 +1,7 @@
 {
   "sdkVersion": 4,
   "id": "school-xidian-postgraduate",
-  "version": "0.20.0",
+  "version": "0.20.1",
   "schoolId": "xidian_postgraduate",
   "name": "西安电子科技大学（研究生）",
   "network": {

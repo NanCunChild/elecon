@@ -386,7 +386,7 @@ process.stdout.write(result.outputFiles[0].text);''',
     'source packages bind SDK 5 and combine browser login with authenticated data',
     () {
       expect(school.manifest.sdkVersion, 5);
-      expect(school.manifest.version, '0.20.0');
+      expect(school.manifest.version, '0.20.1');
       expect(school.manifest.browser, isTrue);
       expect(school.manifest.capabilities, hasLength(21));
       expect(school.manifest.capability('notice.detail'), isNotNull);
@@ -877,6 +877,34 @@ process.stdout.write(result.outputFiles[0].text);''',
       );
       expect((out as Map)['currentWeek'], 3);
       expect(out['startDate'], start);
+    },
+  );
+
+  test(
+    'library opens the official CAS initializer and cancellation cannot save a session',
+    () async {
+      final opened = <String>[];
+      await expectLater(
+        runtime.run(
+          package: school,
+          capability: 'library.loans',
+          credentials: credentials,
+          htmlStdlib: htmlStdlib,
+          fetch: (_, _) async =>
+              throw StateError('cancelled library login must not read loans'),
+          browserCall: (method, args) async {
+            expect(method, 'open');
+            opened.add(args['url'] as String);
+            throw const ScriptRunException('invocation_cancelled');
+          },
+        ),
+        throwsA(isA<ScriptRunException>()),
+      );
+      expect(opened, [
+        'https://tyrzfw.chaoxing.com/auth/xidian/cas/init?isLogout=0&refer='
+            'https%3A%2F%2Fmfindxidian.libsp.cn%2Ffind%2Fsso%2Flogin%2Fxidian%2F1',
+      ]);
+      expect(store.list(), isEmpty);
     },
   );
 

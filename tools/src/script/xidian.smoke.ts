@@ -14,7 +14,7 @@ assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildXidianPackages())]);
 for (const role of ["undergraduate", "postgraduate"]) {
   const data = JSON.parse(first.get(`school-xidian-${role}.elecon.json`)!);
-  assert.equal(data.manifest.version, "0.20.0");
+  assert.equal(data.manifest.version, "0.20.1");
   assert.equal(data.manifest.sdkVersion, role === "undergraduate" ? 5 : 4);
   assert.equal(data.manifest.browser, true);
   assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 21 : 16);

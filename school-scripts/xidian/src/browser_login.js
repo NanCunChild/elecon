@@ -75,7 +75,11 @@ export const LOGIN_TARGETS = {
     ],
   },
   library: {
-    service: LIBRARY_SERVICE,
+    // The official entry first sets firstReferer, then starts IDS with its
+    // /cas/index callback (unauthenticated page inspection, 2026-11-02).
+    // Enter it directly so the page owns this initialization and callback;
+    // treating /cas/init as an IDS service skips the normal initial step.
+    openUrl: LIBRARY_SERVICE,
     cookieUrls: [
       `${CHAOXING}/auth/xidian/cas/init`,
       `${CHAOXING}/auth/xidian/cas/login`,

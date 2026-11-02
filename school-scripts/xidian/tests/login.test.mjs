@@ -378,6 +378,55 @@ test("card session receives only the actual page openid, never the student id as
   assert.doesNotMatch(JSON.stringify(result), /example-synthetic-actual-openid/);
 });
 
+test("library enters the official initialization page and only saves after the OPAC return", async () => {
+  const opac = "https://mfindxidian.libsp.cn/find/sso/login/xidian/1";
+  const entry = `https://tyrzfw.chaoxing.com/auth/xidian/cas/init?isLogout=0&refer=${encodeURIComponent(opac)}`;
+  const states = await Promise.all([
+    inspect(entry),
+    inspect(`${IDS}?service=${encodeURIComponent("https://tyrzfw.chaoxing.com/auth/xidian/cas/index")}`),
+    inspect("https://tyrzfw.chaoxing.com/auth/xidian/cas/index"),
+    inspect(`${opac}?jwt=example-synthetic-library-jwt`),
+  ]);
+  const h = harness({
+    states,
+    onEvaluate: ({ calls, records, events }) => {
+      if (calls <= 3) {
+        assert.equal(records.size, 0, "CAS/IDS pages cannot establish an OPAC session");
+        assert.equal(
+          events.some(([event]) => event === "cookies"),
+          false,
+        );
+      }
+    },
+  });
+  await login(h.ctx, { system: "library" });
+  assert.deepEqual(
+    h.events.filter(([event]) => event === "open"),
+    [["open", entry]],
+  );
+  assert.equal(JSON.parse(h.records.get("library")).data.token, "example-synthetic-library-jwt");
+  assert.ok(h.callCount() >= 7, "the OPAC result must remain stable before it is saved");
+});
+
+test("a denied library redirect preserves the old session without retrying or saving IDS", async () => {
+  const old = savedSession("library", "https://mfindxidian.libsp.cn/", [], {
+    token: "example-synthetic-old-jwt",
+  });
+  const h = harness({ saved: { library: old } });
+  h.ctx.browser.open = async (url) => {
+    h.events.push(["open", url]);
+    throw new Error("browser_navigation_blocked");
+  };
+  await assert.rejects(login(h.ctx, { system: "library" }), /browser_navigation_blocked/);
+  assert.deepEqual(JSON.parse(h.records.get("library")), old);
+  assert.equal(h.records.has("ids"), false);
+  assert.equal(h.events.filter(([event]) => event === "open").length, 1);
+  assert.equal(
+    h.events.some(([event]) => event === "save"),
+    false,
+  );
+});
+
 test("library can collect an HttpOnly JWT through native cookies and stores its group separately", async () => {
   const h = harness({
     states: [{ libraryOrigin: true, ready: false, data: {} }],
