@@ -3,6 +3,8 @@
 # restores the platform-neutral pubspec and lockfile. Apple dependencies have
 # their own committed lockfile so platform builds are reproducible.
 set -euo pipefail
+# ADR-058: foreground location only; exclude Always authorization from SPM.
+export BYPASS_PERMISSION_LOCATION_ALWAYS=1
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MAIN_PUBSPEC="$ROOT/pubspec.yaml"

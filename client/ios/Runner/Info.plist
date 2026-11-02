@@ -3,7 +3,11 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Scan QR codes when you request it in a school script.</string>
+	<string>Scan QR codes or capture a photo when you request it in a school script.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Select an image to share with your authorized school script.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Share your current location with a school script when you request it.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

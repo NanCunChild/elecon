@@ -16,7 +16,7 @@ const String kOfficialSiteBase = 'https://elecon.xidian.one';
 /// ⚠️ 占位：正式条款尚未发布，链接先指向该路径，页面上线后此常量不必改动。
 const String kPrivacyPolicyUrl = '$kOfficialSiteBase/privacy';
 
-const String _fallbackVersion = '0.5.0';
+const String _fallbackVersion = '0.7.0';
 
 /// 展示用版本号，如 `0.1.0-dev` / `0.2.1`。
 const String kAppVersion = String.fromEnvironment(

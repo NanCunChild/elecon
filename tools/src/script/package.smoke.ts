@@ -19,7 +19,7 @@ const manifest = {
 };
 const source = "throw new Error('SYNTHETIC_SOURCE_MUST_NEVER_EXECUTE');\n";
 const packaged = packageScript(manifest, source);
-for (const sdkVersion of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+for (const sdkVersion of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
   assert.equal(
     JSON.parse(packageScript({ ...manifest, sdkVersion }, source)).manifest.sdkVersion,
     sdkVersion,
@@ -36,7 +36,7 @@ for (const invalid of ["", "   \n", null, 42, "abc\0def"]) {
 for (const invalid of [
   { ...manifest, capabilities: [...manifest.capabilities, { ...manifest.capabilities[0]! }] },
   { ...manifest, version: "01.2.3" },
-  { ...manifest, sdkVersion: 10 },
+  { ...manifest, sdkVersion: 11 },
   { ...manifest, browser: "true" },
   { ...manifest, unknown: true },
   { ...manifest, capabilities: [{ id: "notice.list", schema: "elecon.notice.list", schemaVersion: "99.0" }] },
@@ -231,4 +231,12 @@ for (const id of ["forum.session", "messages.session", "messages.list", "attenda
       source,
     ),
   );
+}
+
+// ADR-058: shared SDK10 device-input permission admission vectors.
+const deviceInputsFixture = JSON.parse(readFileSync(new URL("../../../contract/golden/scripts/device-input-permission.json", import.meta.url), "utf8"));
+for (const row of deviceInputsFixture.cases) {
+  const candidate = { ...deviceInputsFixture.baseManifest, ...row.manifest };
+  if (row.valid) assert.doesNotThrow(() => packageScript(candidate, source), row.name);
+  else assert.throws(() => packageScript(candidate, source), row.name);
 }

@@ -60,6 +60,50 @@ void main() {
     return client;
   }
 
+  test('bounded binary/multipart bytes reach origin unchanged', () async {
+    final bytes = [
+      ...utf8.encode(
+        '--synthetic\r\nContent-Disposition: form-data; name="image"; filename="image.png"\r\nContent-Type: image/png\r\n\r\n',
+      ),
+      0,
+      128,
+      255,
+      ...utf8.encode('\r\n--synthetic--\r\n'),
+    ];
+    handler = (request) async {
+      expect(request.headers.contentType?.mimeType, 'multipart/form-data');
+      expect(
+        await request.fold<List<int>>([], (all, chunk) => all..addAll(chunk)),
+        bytes,
+      );
+      request.response.write('accepted');
+      await request.response.close();
+    };
+    expect(
+      (await transport().fetch('$origin/upload', {
+        'method': 'POST',
+        'redirect': 'error',
+        'headers': {'Content-Type': 'multipart/form-data; boundary=synthetic'},
+        'body': bytes,
+      }))['body'],
+      'accepted',
+    );
+    await expectLater(
+      transport().fetch('$origin/upload', {
+        'method': 'POST',
+        'body': [256],
+      }),
+      failure('invalid_body'),
+    );
+    await expectLater(
+      transport().fetch('$origin/upload', {
+        'method': 'POST',
+        'body': List.filled(1024 * 1024 + 1, 0),
+      }),
+      failure('request_body_limit'),
+    );
+  });
+
   test(
     'script auth/body reaches origin and raw Set-Cookie remains readable',
     () async {

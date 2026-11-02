@@ -1,1 +1,4 @@
-"NSCameraUsageDescription" = "在你操作学校脚本时使用相机扫描二维码。";
+"NSCameraUsageDescription" = "在你操作学校脚本时使用相机扫描二维码或拍摄照片。";
+
+NSPhotoLibraryUsageDescription = "选择一张图片交给当前授权的学校脚本。";
+NSLocationWhenInUseUsageDescription = "在你请求时，将当前位置交给当前授权的学校脚本。";

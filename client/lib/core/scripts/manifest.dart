@@ -88,6 +88,7 @@ class ScriptManifest {
     required this.websocketNetwork,
     required this.browser,
     required this.scanner,
+    required this.deviceInputs,
     required this.capabilities,
     required this.home,
     required this.cards,
@@ -105,11 +106,12 @@ class ScriptManifest {
       if (json.containsKey('websocketOrigins')) 'websocketOrigins',
       'browser',
       if (json.containsKey('scanner')) 'scanner',
+      if (json.containsKey('deviceInputs')) 'deviceInputs',
       'capabilities',
       if (json.containsKey('home')) 'home',
       if (json.containsKey('cards')) 'cards',
     }, 'manifest');
-    if (!const {1, 2, 3, 4, 5, 6, 7, 8, 9}.contains(json['sdkVersion']) ||
+    if (!const {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}.contains(json['sdkVersion']) ||
         json['sdkVersion'] is! int) {
       throw const FormatException('unsupported script SDK version');
     }
@@ -152,6 +154,21 @@ class ScriptManifest {
     if (json.containsKey('scanner') &&
         ((json['sdkVersion'] as int) < 8 || json['scanner'] is! bool)) {
       throw const FormatException('scanner requires SDK 8 and a boolean');
+    }
+    final deviceInputs = json.containsKey('deviceInputs')
+        ? json['deviceInputs']
+        : const [];
+    if (json.containsKey('deviceInputs') &&
+        ((json['sdkVersion'] as int) < 10 ||
+            deviceInputs is! List ||
+            deviceInputs.length > 3 ||
+            deviceInputs.toSet().length != deviceInputs.length ||
+            deviceInputs.any(
+              (value) => !const {'camera', 'image', 'location'}.contains(value),
+            ))) {
+      throw const FormatException(
+        'deviceInputs requires SDK 10 and unique input kinds',
+      );
     }
     final id = _text(json, 'id', 128);
     final schoolId = _text(json, 'schoolId', 128);
@@ -234,6 +251,7 @@ class ScriptManifest {
       websocketNetwork: websocketNetwork,
       browser: json['browser'] as bool,
       scanner: json['scanner'] == true,
+      deviceInputs: Set.unmodifiable((deviceInputs as List).cast<String>()),
       capabilities: List.unmodifiable(caps),
       home: List.unmodifiable(home),
       cards: List.unmodifiable(cards),
@@ -250,6 +268,7 @@ class ScriptManifest {
   final ScriptNetworkPolicy websocketNetwork;
   final bool browser;
   final bool scanner;
+  final Set<String> deviceInputs;
   final List<ScriptCapability> capabilities;
   final List<ScriptHomeEntry> home;
   final List<ScriptCardEntry> cards;

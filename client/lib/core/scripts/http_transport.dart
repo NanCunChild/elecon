@@ -95,14 +95,26 @@ class ScriptHttpTransport {
       throw const ScriptNetworkException('invalid_redirect_mode');
     }
     final rawBody = init['body'];
-    if (rawBody != null && rawBody is! String) {
-      throw const ScriptNetworkException('body_must_be_text');
+    if (rawBody is List && rawBody.length > maxRequestBytes) {
+      throw const ScriptNetworkException('request_body_limit');
     }
-    String? body = rawBody as String?;
+    if (rawBody != null &&
+        rawBody is! String &&
+        (rawBody is! List ||
+            rawBody.any(
+              (value) => value is! int || value < 0 || value > 255,
+            ))) {
+      throw const ScriptNetworkException('invalid_body');
+    }
+    List<int>? body = rawBody == null
+        ? null
+        : rawBody is String
+        ? utf8.encode(rawBody)
+        : List<int>.from(rawBody as List);
     if (body != null && (method == 'GET' || method == 'HEAD')) {
       throw const ScriptNetworkException('body_not_allowed_for_method');
     }
-    if (body != null && utf8.encode(body).length > maxRequestBytes) {
+    if (body != null && body.length > maxRequestBytes) {
       throw const ScriptNetworkException('request_body_limit');
     }
     var headers = _headers(init['headers']);
@@ -143,7 +155,7 @@ class ScriptHttpTransport {
         _assertActive(context);
         request.followRedirects = false;
         headers.forEach(request.headers.set);
-        if (body != null) request.add(utf8.encode(body));
+        if (body != null) request.add(body);
         final response = await request.close();
         _assertActive(context);
         if (response.contentLength > maxResponseBytes ||

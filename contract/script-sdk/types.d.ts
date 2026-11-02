@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1/2/3/4/5/6/7/8/9 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
+/** Trusted school script SDK 1/2/3/4/5/6/7/8/9/10 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -69,6 +69,12 @@ export interface ScriptContext {
      * persistence or check-in submission.
      */
     scanQRCode?(): Promise<{ text: string; format: "qrCode" } | null>;
+    /** SDK10 + camera permission: explicit native photo capture, not liveness verification. */
+    capturePhoto?(): Promise<ScriptImage | null>;
+    /** SDK10 + image permission: one explicitly selected image, no directory/file access. */
+    pickImage?(): Promise<ScriptImage | null>;
+    /** SDK10 + location permission: one current foreground WGS84 observation. */
+    getCurrentPosition?(): Promise<ScriptPosition | null>;
   };
   /** ADR-052: SDK9, separately declared websocketOrigins, foreground only.
    * One TLS connection/run, 30s lifetime, 64KiB/message, 1MiB and 128 frames
@@ -93,7 +99,8 @@ export interface ScriptContext {
   fetch(url: string, init?: {
     method?: string;
     headers?: Record<string, string>;
-    body?: string;
+    /** Uint8Array requires SDK10; total request body is bounded to 1MiB. */
+    body?: string | Uint8Array;
     redirect?: "manual" | "follow" | "error";
   }): Promise<ScriptResponse>;
   /** Present only when browser=true; host platform limitations still apply. */
@@ -200,3 +207,16 @@ export interface ScriptWebsocketPermission { websocketOrigins?: string[]; }
 export interface ServiceSessionParams { operation?: "status" | "login" | "logout"; }
 export type MessagesList = import("../generated/ts/messages.list.js").MessagesList;
 export type AttendanceCheckin = import("../generated/ts/attendance.checkin.js").AttendanceCheckin;
+
+/** ADR-058: explicit SDK10 manifest permissions; no implicit scanner extension. */
+export interface ScriptDeviceInputPermissions { deviceInputs?: Array<"camera" | "image" | "location">; }
+/** Re-encoded pixels without original filename/path/EXIF. At most 512KiB and 1280px per side.
+ * Bytes are transient, never an authentication or liveness result. */
+export interface ScriptImage { bytes: Uint8Array; mimeType: "image/png"; width: number; height: number; }
+/** Current platform position; decimal degrees, accuracy in meters, UTC RFC3339.
+ * Never substitute manual service coordinates for this observation. */
+export interface ScriptPosition { latitude: number; longitude: number; accuracyMeters: number; capturedAt: string; coordinateSystem: "wgs84"; }
+/** SDK device errors: device_input_unavailable / permission_denied / invalid_request /
+ * invalid_result / busy / limit / timeout (all prefixed device_input_), invocation_cancelled.
+ * ADR-059 configuration_required denotes missing explicit service configuration,
+ * independent of authentication; not a fabricated empty business result. */

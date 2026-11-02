@@ -162,9 +162,9 @@
   "devLogFilterNetworkRelease": "网络请求",
   "devLogRedactOn": "已脱敏",
   "devLogRedactOff": "未脱敏",
-  "devLogHintRedacted": "默认脱敏：URL 无参、cookie 仅长度。关闭「已脱敏」后新条目可保留 query（仍无 body）。",
+  "devLogHintRedacted": "日志仅存本机；URL 移除参数，凭据始终脱敏，探针只含阶段、状态、耗时与条件位。",
   "devLogHintUnredacted": "脱敏已关：新条目可含 query / cookie 原文；仅存本机环缓冲，勿外传。",
-  "devLogHintRelease": "正式版仅显示无参数 URL 与成功状态，不含请求/响应内容。",
+  "devLogHintRelease": "正式版显示无参数的网络记录与脚本阶段探针，不含请求/响应正文或凭据。",
   "devLogEmpty": "暂无日志",
 
   "homeExamTitle": "考试安排",
@@ -604,5 +604,39 @@
   "checkinActivityUnsupported": "此活动不是当前支持的二维码签到，请在学习通查看。",
   "checkinQrExpired": "二维码已过期，请扫描当前显示的二维码。",
   "checkinPreflightFailed": "签到准备请求未完成，尚未提交签到，请检查网络后重新扫码。",
-  "checkinQrInvalid": "未识别为有效的学习通签到二维码。"
+  "checkinQrInvalid": "未识别为有效的学习通签到二维码。",
+  "profilesNotLoaded": "切换后查看",
+  "capabilityConfigurationRequired": "未完善信息",
+  "capabilityCompleteConfiguration": "完善信息",
+  "scheduleCurrentWeek": "本周",
+  "homeCheckinTitle": "签到",
+  "homeTimeJustNow": "刚刚",
+  "homeTimeMinutesAgo": "{count}分钟前",
+  "homeTimeHoursAgo": "{count}小时前",
+  "devLogFilterProbes": "脚本探针",
+  "@homeTimeMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@homeTimeHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deviceInputCamera": "拍摄照片",
+  "deviceInputImage": "选择图片",
+  "deviceInputLocation": "获取当前位置",
+  "deviceInputImageHelp": "仅将本次拍摄或选择的图片交给此脚本。图片不会被视为活体认证；是否接受由服务决定。",
+  "deviceInputLocationHelp": "将本次设备定位及精度交给此脚本。不会使用手填地点代替，也不会在后台持续定位。",
+  "deviceInputCameraPermission": "可在前台请求拍摄照片",
+  "deviceInputImagePermission": "可在前台请求你选择一张图片",
+  "deviceInputLocationPermission": "可在前台请求当前位置",
+  "deviceInputFailed": "输入未能获取，请检查权限后重试。",
+  "checkinStart": "开始签到",
+  "checkinInputHelp": "根据活动要求，脚本可能请你点击确认、扫描二维码、提供照片或当前位置。"
 }

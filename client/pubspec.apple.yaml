@@ -1,7 +1,7 @@
 name: elecon
 description: "校园信息聚合平台（iOS/macOS 液态玻璃构建）"
 publish_to: none
-version: 0.6.0+9
+version: 0.7.0+10
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -22,6 +22,10 @@ dependencies:
   file_picker: 13.1.0
   # ADR-045: foreground QR camera; pub.dev / juliansteenbakker/mobile_scanner, BSD-3-Clause.
   mobile_scanner: 7.4.3
+  # ADR-058: foreground photo selection/capture (Flutter, BSD-3-Clause).
+  image_picker: 1.2.4
+  # ADR-058: foreground location (Baseflow, MIT).
+  geolocator: 14.0.2
   elecon_contract:
     path: ../contract/generated/dart
   # Apple-only UI chrome. MIT; does not participate in credential/adapter paths.

@@ -17,6 +17,7 @@ import 'browser.dart';
 import 'manifest.dart';
 import 'input.dart';
 import 'scanner.dart';
+import 'device_input.dart';
 
 class ScriptRunException implements Exception {
   const ScriptRunException(this.code);
@@ -39,6 +40,7 @@ class TrustedScriptRuntime {
     Future<Object?> Function(String, Map<String, dynamic>)? websocketCall,
     ScriptInputCall? inputCall,
     ScriptScanCall? scanCall,
+    ScriptDeviceInputCall? deviceInputCall,
     bool Function()? isActive,
     String? htmlStdlib,
     void Function(String level, String message)? onLog,
@@ -93,11 +95,16 @@ class TrustedScriptRuntime {
     var inputPending = false;
     var scans = 0;
     var scanPending = false;
+    var devicePending = false;
+    var deviceRequests = 0;
     ScriptRunException? fatal;
     void check({bool count = true}) {
       if (fatal != null) throw fatal!;
       if (!running || !(isActive?.call() ?? true)) {
         throw const ScriptRunException('invocation_cancelled');
+      }
+      if (count && devicePending) {
+        throw const ScriptRunException('device_input_busy');
       }
       if (count && ++hostCalls > maxHostCalls) {
         fatal = const ScriptRunException('host_call_limit');
@@ -156,6 +163,53 @@ class TrustedScriptRuntime {
           rethrow;
         } catch (_) {
           throw const ScriptRunException('websocket_failed');
+        }
+      },
+      '__script_device_input': (dynamic kind, dynamic argumentCount) async {
+        check();
+        if (package.manifest.sdkVersion < 10 ||
+            deviceInputCall == null ||
+            !package.manifest.deviceInputs.contains(kind)) {
+          throw const ScriptRunException('device_input_unavailable');
+        }
+        if (argumentCount != 0 || !scriptDeviceInputKinds.contains(kind)) {
+          throw const ScriptRunException('device_input_invalid_request');
+        }
+        if (inputPending || scanPending || devicePending) {
+          throw const ScriptRunException('device_input_busy');
+        }
+        if (++deviceRequests > 4) {
+          throw const ScriptRunException('device_input_limit');
+        }
+        devicePending = true;
+        try {
+          final raw = await deviceInputCall(
+            kind as String,
+            () => running && (isActive?.call() ?? true),
+          );
+          check(count: false);
+          final result = validateDeviceInput(kind, raw);
+          if (result != null) {
+            if (kind == 'location') {
+              for (final value in result.values) {
+                knownSecrets.add(value.toString());
+              }
+            } else {
+              knownSecrets.add(
+                base64Encode((result['bytes'] as List).cast<int>()),
+              );
+              knownSecrets.add(jsonEncode(result['bytes']));
+            }
+          }
+          return jsonEncode(result);
+        } on ScriptDeviceInputException catch (error) {
+          throw ScriptRunException(error.code);
+        } on ScriptRunException {
+          rethrow;
+        } catch (_) {
+          throw const ScriptRunException('device_input_unavailable');
+        } finally {
+          devicePending = false;
         }
       },
       '__script_scan': (dynamic argumentCount) async {
@@ -243,6 +297,11 @@ class TrustedScriptRuntime {
           throw fatal!;
         }
         if (url is! String || init is! Map) {
+          throw const ScriptRunException('invalid_fetch');
+        }
+        if (init['body'] != null &&
+            init['body'] is! String &&
+            package.manifest.sdkVersion < 10) {
           throw const ScriptRunException('invalid_fetch');
         }
         final uri = Uri.tryParse(url);
@@ -465,6 +524,7 @@ class TrustedScriptRuntime {
             websocket:
                 package.manifest.sdkVersion >= 9 &&
                 package.manifest.websocketNetwork.origins.isNotEmpty,
+            deviceInputs: package.manifest.sdkVersion >= 10,
             scanner:
                 package.manifest.sdkVersion >= 8 && package.manifest.scanner,
             maxOutputBytes: maxOutputBytes,
@@ -518,6 +578,7 @@ String _bootstrap({
   required bool input,
   required bool websocket,
   required bool scanner,
+  required bool deviceInputs,
   required int maxOutputBytes,
 }) =>
     '''
@@ -553,6 +614,11 @@ String _bootstrap({
     fetch: async (url,init) => {
       init = flatFields(init || {});
       if (init && init.headers) init.headers = flatFields(init.headers);
+      if ($deviceInputs && init && init.body != null && typeof init.body !== 'string' && !(init.body instanceof Uint8Array)) throw new Error('invalid_fetch');
+      if ($deviceInputs && init && init.body instanceof Uint8Array) {
+        if (init.body.byteLength > 1048576) throw new Error('request_body_limit');
+        init.body = Array.from(init.body);
+      }
       const r = await globalThis.__script_fetch(String(url),init);
       const raw = r.headers || {};
       const find = name => {
@@ -607,6 +673,24 @@ String _bootstrap({
         const failure = new Error(code); failure.code = code; throw failure;
       }
     };
+    if ($deviceInputs) {
+      const deviceInput = async (kind,args) => {
+        try {
+          const result = JSON.parse(await globalThis.__script_device_input(kind,args.length));
+          if (result && result.bytes) result.bytes = new Uint8Array(result.bytes);
+          return result;
+        } catch (error) {
+          const codes = ['device_input_unavailable','device_input_invalid_request','device_input_invalid_result',
+            'device_input_busy','device_input_limit','device_input_permission_denied','device_input_timeout','invocation_cancelled'];
+          const code = codes.find(value => String(error).includes('ScriptRunException(' + value + ')'));
+          if (!code) throw error;
+          const failure = new Error(code); failure.code = code; throw failure;
+        }
+      };
+      ctx.ui.capturePhoto = (...args) => deviceInput('camera',args);
+      ctx.ui.pickImage = (...args) => deviceInput('image',args);
+      ctx.ui.getCurrentPosition = (...args) => deviceInput('location',args);
+    }
     Object.freeze(ctx.ui);
   }
   if ($browser) {
@@ -680,7 +764,10 @@ String _bootstrap({
     // A script can classify a failure without exposing its message or data.
     const safeCodes = new Set(['input_required_card_number','input_required_student_id',
       'authentication_required','authentication_timeout','source_response_invalid','network_denied',
-      'input_invalid_request','input_invalid_result','input_unavailable','input_busy','input_limit','input_cancelled']);
+      'configuration_required',
+      'input_invalid_request','input_invalid_result','input_unavailable','input_busy','input_limit','input_cancelled',
+      'device_input_unavailable','device_input_permission_denied','device_input_invalid_request',
+      'device_input_invalid_result','device_input_busy','device_input_limit','device_input_timeout','invocation_cancelled']);
     const code = e && (e.message === 'non_json_output' || e.message === 'output_limit' || e.message === 'unsupported_encoding')
       ? e.message : e && safeCodes.has(e.code) ? e.code : 'adapter_failed';
     return JSON.stringify({ok:false,code});

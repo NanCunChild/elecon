@@ -1,0 +1,14 @@
+{
+  "sdkVersion": 10,
+  "id": "school-attendance-example",
+  "version": "0.1.0",
+  "schoolId": "example",
+  "name": "通用签到模板（未配置）",
+  "network": {"origins": ["https://attendance.example.invalid"]},
+  "browser": false,
+  "scanner": true,
+  "deviceInputs": ["camera", "image", "location"],
+  "capabilities": [
+    {"id": "attendance.checkin", "schema": "elecon.attendance.checkin", "schemaVersion": "1.1"}
+  ]
+}

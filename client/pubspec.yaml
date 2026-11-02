@@ -3,7 +3,7 @@ description: "校园信息聚合平台"
 publish_to: none
 # 本地构建的默认版本基线。CI 发版以 git tag 为准（release.yml 用 `--build-name`
 # 覆盖为 tag 去掉 v 前缀、`--build-number` 用 run number），tag 与此处不必逐位同步。
-version: 0.6.0+9
+version: 0.7.0+10
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -46,6 +46,10 @@ dependencies:
   file_picker: 13.1.0
   # ADR-045: foreground QR camera; pub.dev / juliansteenbakker/mobile_scanner, BSD-3-Clause.
   mobile_scanner: 7.4.3
+  # ADR-058: Flutter official image capture/picker, BSD-3-Clause (+ Apache-2.0 notices).
+  image_picker: 1.2.4
+  # ADR-058: Baseflow foreground location, pub.dev, MIT.
+  geolocator: 14.0.2
   # contract/schema 生成的 Dart 类型（tools codegen 产物包；审阅 P0-1 接线）。
   # UI 模型消费此包，消除手写模型与 schema 的漂移（红线 #6 契约单源）。
   elecon_contract:

@@ -1,0 +1,156 @@
+{
+  "baseManifest": {
+    "sdkVersion": 10,
+    "id": "synthetic-input",
+    "schoolId": "synthetic",
+    "version": "1.0.0",
+    "name": "Synthetic inputs",
+    "browser": false,
+    "network": {
+      "origins": [
+        "https://synthetic.example"
+      ]
+    },
+    "capabilities": [
+      {
+        "id": "attendance.checkin",
+        "schema": "elecon.attendance.checkin",
+        "schemaVersion": "1.1"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "omitted",
+      "manifest": {},
+      "valid": true
+    },
+    {
+      "name": "empty",
+      "manifest": {
+        "deviceInputs": []
+      },
+      "valid": true
+    },
+    {
+      "name": "all",
+      "manifest": {
+        "deviceInputs": [
+          "camera",
+          "image",
+          "location"
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "camera",
+      "manifest": {
+        "deviceInputs": [
+          "camera"
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "image",
+      "manifest": {
+        "deviceInputs": [
+          "image"
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "location",
+      "manifest": {
+        "deviceInputs": [
+          "location"
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "legacy-sdk",
+      "manifest": {
+        "sdkVersion": 9,
+        "deviceInputs": []
+      },
+      "valid": false
+    },
+    {
+      "name": "unknown-sdk",
+      "manifest": {
+        "sdkVersion": 11
+      },
+      "valid": false
+    },
+    {
+      "name": "null",
+      "manifest": {
+        "deviceInputs": null
+      },
+      "valid": false
+    },
+    {
+      "name": "not-array",
+      "manifest": {
+        "deviceInputs": "camera"
+      },
+      "valid": false
+    },
+    {
+      "name": "duplicate",
+      "manifest": {
+        "deviceInputs": [
+          "camera",
+          "camera"
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "unknown",
+      "manifest": {
+        "deviceInputs": [
+          "microphone"
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "not-string",
+      "manifest": {
+        "deviceInputs": [
+          true
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "too-many",
+      "manifest": {
+        "deviceInputs": [
+          "camera",
+          "image",
+          "location",
+          "camera"
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "inherits-presentation-and-home",
+      "manifest": {
+        "deviceInputs": [
+          "image"
+        ],
+        "scanner": true,
+        "homeTitle": "Synthetic",
+        "cards": [],
+        "home": []
+      },
+      "valid": true
+    }
+  ]
+}

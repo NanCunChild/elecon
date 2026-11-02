@@ -51,6 +51,14 @@ Future<bool> confirmScriptInstall(
                     const SizedBox(height: 12),
                     Text(l10n.scannerPermission),
                   ],
+                  for (final input in package.manifest.deviceInputs) ...[
+                    const SizedBox(height: 12),
+                    Text(switch (input) {
+                      'camera' => l10n.deviceInputCameraPermission,
+                      'image' => l10n.deviceInputImagePermission,
+                      _ => l10n.deviceInputLocationPermission,
+                    }),
+                  ],
                   if (package.manifest.browser) ...[
                     const SizedBox(height: 12),
                     Text(l10n.scriptsBrowserPermission),

@@ -3,6 +3,8 @@
          导致 release 构建的 APK 无法登录）。 -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <!-- ADR-034 §4: explicitly declared HTTP school origins are admitted by host policy. -->
     <application

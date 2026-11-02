@@ -1,1 +1,4 @@
-"NSCameraUsageDescription" = "Scan QR codes when you request it in a school script.";
+"NSCameraUsageDescription" = "Scan QR codes or capture a photo when you request it in a school script.";
+
+NSPhotoLibraryUsageDescription = "Select an image to share with your authorized school script.";
+NSLocationWhenInUseUsageDescription = "Share your current location with a school script when you request it.";

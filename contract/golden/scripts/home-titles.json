@@ -194,7 +194,7 @@
       "name": "future_sdk_rejected",
       "valid": false,
       "manifest": {
-        "sdkVersion": 10
+        "sdkVersion": 11
       }
     },
     {

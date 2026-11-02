@@ -1,5 +1,10 @@
 # `contract/` 变更流水
 
+## 2026-11-02 · ADR-058 前台设备输入 SDK 10
+
+新增显式 `deviceInputs`（camera/image/location），安装 digest 覆盖授权；SDK 1–9 拒绝该字段。前台 `ctx.ui.capturePhoto/pickImage/getCurrentPosition` 提供去元数据的有界 PNG 或当前 WGS84 位置，取消返回 null；不是活体认证、后台追踪或任意文件接口。SDK 10 `ctx.fetch` 增加最多 1MiB 的 Uint8Array body，用于脚本自有 multipart；旧 string body 保持。模板按钮不绑定扫码，脚本自主编排已声明输入。未核实的学校照片/人脸协议仍为 unsupported。
+
+
 ## 2026-11-02 · ADR-055 签到地点与诊断
 
 `attendance.checkin` 输出及参数 1.1：可选用户选定的服务坐标与固定失败 reason；保留 1.0 精确快照。地点仅在前台主动请求传入，旧包不显示矩阵，宿主不猜测坐标系；一次提交和独立状态核验不变。

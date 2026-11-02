@@ -115,9 +115,9 @@
   "devLogFilterNetworkRelease": "Network requests",
   "devLogRedactOn": "Redacted",
   "devLogRedactOff": "Not redacted",
-  "devLogHintRedacted": "Redacted by default: URLs without query, cookies as length only. Turning off redaction keeps query strings on new entries (still no body).",
+  "devLogHintRedacted": "Logs stay on this device. URL parameters are removed and credentials are always redacted. Probes contain only stages, status, timing and flags.",
   "devLogHintUnredacted": "Redaction off: new entries may contain raw query strings and cookies. Kept in an on-device ring buffer only — do not share.",
-  "devLogHintRelease": "Release builds show query-less URLs and success status only, never request/response content.",
+  "devLogHintRelease": "Release builds show network records without URL parameters and bounded script probes, with no request/response bodies or credentials.",
   "devLogEmpty": "No log entries yet",
 
   "homeExamTitle": "Exams",
@@ -536,5 +536,39 @@
   "checkinActivityUnsupported": "This activity is not a supported QR check-in. Check it in Chaoxing.",
   "checkinQrExpired": "The QR code has expired. Scan the currently displayed code.",
   "checkinPreflightFailed": "The check-in preparation failed before submission. Check your connection and scan again.",
-  "checkinQrInvalid": "This is not a valid Chaoxing check-in QR code."
+  "checkinQrInvalid": "This is not a valid Chaoxing check-in QR code.",
+  "profilesNotLoaded": "Switch to view",
+  "capabilityConfigurationRequired": "Setup incomplete",
+  "capabilityCompleteConfiguration": "Complete setup",
+  "scheduleCurrentWeek": "Current",
+  "homeCheckinTitle": "Check-in",
+  "homeTimeJustNow": "just now",
+  "homeTimeMinutesAgo": "{count, plural, =1{1 minute ago} other{{count} minutes ago}}",
+  "homeTimeHoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
+  "devLogFilterProbes": "Script probes",
+  "@homeTimeMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@homeTimeHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deviceInputCamera": "Take a photo",
+  "deviceInputImage": "Choose an image",
+  "deviceInputLocation": "Use current location",
+  "deviceInputImageHelp": "Only the image you capture or choose is shared with this script. It is not proof of liveness; the service decides whether it is accepted.",
+  "deviceInputLocationHelp": "Share the current device location and its accuracy with this script. Saved places are not substituted, and location is not tracked in the background.",
+  "deviceInputCameraPermission": "Can request foreground photo capture",
+  "deviceInputImagePermission": "Can request one image you choose in the foreground",
+  "deviceInputLocationPermission": "Can request your current foreground location",
+  "deviceInputFailed": "Could not obtain the input. Check the permission and try again.",
+  "checkinStart": "Start check-in",
+  "checkinInputHelp": "The script may request confirmation, a QR scan, a photo or current location for this activity."
 }
