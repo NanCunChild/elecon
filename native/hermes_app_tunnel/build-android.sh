@@ -2,35 +2,43 @@
 # Host-owned Hermes native asset. No SDK downloads or global configuration writes.
 set -euo pipefail
 crate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-repo_dir="$(cd -- "$crate_dir/../.." && pwd)"
 out_dir=""
 abis="arm64-v8a"
+hermes_ndk="${ANDROID_NDK_HOME:-}"
+usage() {
+  echo 'usage: build-android.sh --out-dir DIRECTORY --ndk-dir DIRECTORY [--abis arm64-v8a,x86_64,armeabi-v7a]' >&2
+}
 while (($#)); do
   case "$1" in
-    --out-dir) out_dir="$2"; shift 2 ;;
-    --abis) abis="$2"; shift 2 ;;
-    *) echo 'usage: build-android.sh --out-dir DIRECTORY [--abis arm64-v8a,x86_64,armeabi-v7a]' >&2; exit 2 ;;
+    --out-dir|--abis|--ndk-dir)
+      [[ $# -ge 2 && -n "$2" && "$2" != --* ]] || { usage; exit 2; }
+      case "$1" in
+        --out-dir) out_dir="$2" ;;
+        --abis) abis="$2" ;;
+        --ndk-dir) hermes_ndk="$2" ;;
+      esac
+      shift 2 ;;
+    *) usage; exit 2 ;;
   esac
 done
 [[ -n "$out_dir" ]] || { echo '--out-dir is required' >&2; exit 2; }
-android_sdk_dir="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-if [[ -z "$android_sdk_dir" && -f "$repo_dir/client/android/local.properties" ]]; then
-  android_sdk_dir="$(sed -n 's/^sdk\.dir=//p' "$repo_dir/client/android/local.properties" | head -n 1)"
-fi
-[[ -d "$android_sdk_dir/ndk" ]] || { echo 'Android SDK with an installed NDK is required' >&2; exit 1; }
-if [[ -n "${ANDROID_NDK_HOME:-}" ]]; then
-  hermes_ndk="$ANDROID_NDK_HOME"
-else
-  hermes_ndk="$android_sdk_dir/ndk/$(find "$android_sdk_dir/ndk" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)"
-fi
+[[ -n "$hermes_ndk" ]] || { echo 'Pass --ndk-dir (Gradle uses its selected NDK), or set ANDROID_NDK_HOME' >&2; exit 2; }
 case "$(uname -s)" in
   Linux) ndk_host=linux-x86_64 ;;
   Darwin) ndk_host=darwin-x86_64 ;;
   *) echo 'Hermes Android builds require a Linux/macOS NDK host' >&2; exit 1 ;;
 esac
 ndk_bin="$hermes_ndk/toolchains/llvm/prebuilt/$ndk_host/bin"
-[[ -d "$ndk_bin" ]] || { echo 'NDK toolchain is missing' >&2; exit 1; }
+[[ -d "$ndk_bin" ]] || { echo "NDK toolchain is missing: $ndk_bin" >&2; exit 1; }
+command -v rustup >/dev/null || { echo 'Install Rust with rustup before building Hermes' >&2; exit 1; }
+command -v cargo >/dev/null || { echo 'Install Cargo before building Hermes' >&2; exit 1; }
+installed_targets="$(rustup target list --installed)"
 IFS=',' read -ra requested_abis <<< "$abis"
+[[ "$abis" != ,* && "$abis" != *, && "$abis" != *,,* ]] || { echo 'Empty Hermes Android ABI' >&2; exit 2; }
+targets=()
+compilers=()
+missing_targets=()
+# Validate every requested ABI before compiling any of them.
 for abi in "${requested_abis[@]}"; do
   case "$abi" in
     arm64-v8a) target=aarch64-linux-android; compiler=aarch64-linux-android21-clang ;;
@@ -38,8 +46,23 @@ for abi in "${requested_abis[@]}"; do
     armeabi-v7a) target=armv7-linux-androideabi; compiler=armv7a-linux-androideabi21-clang ;;
     *) echo "Unsupported Hermes Android ABI: $abi" >&2; exit 1 ;;
   esac
-  rustup target list --installed | rg -qx "$target" || { echo "Install Rust target $target before building" >&2; exit 1; }
-  [[ -x "$ndk_bin/$compiler" ]] || { echo 'NDK clang executable is missing' >&2; exit 1; }
+  targets+=("$target")
+  compilers+=("$compiler")
+  if ! grep -qxF "$target" <<< "$installed_targets"; then
+    missing_targets+=("$target")
+  fi
+  [[ -x "$ndk_bin/$compiler" && -x "$ndk_bin/llvm-ar" ]] || { echo "NDK compiler/archive tools are missing for $abi" >&2; exit 1; }
+done
+if ((${#missing_targets[@]})); then
+  printf 'Missing Hermes Rust targets. Run: rustup target add' >&2
+  printf ' %s' "${missing_targets[@]}" >&2
+  printf '\n' >&2
+  exit 1
+fi
+for i in "${!requested_abis[@]}"; do
+  abi="${requested_abis[$i]}"
+  target="${targets[$i]}"
+  compiler="${compilers[$i]}"
   linker_key="CARGO_TARGET_$(printf '%s' "$target" | tr '[:lower:]-' '[:upper:]_')_LINKER"
   cc_key="CC_${target//-/_}"
   ar_key="AR_${target//-/_}"

@@ -76,6 +76,7 @@ val writeBuildProfileMarker = tasks.register("writeEleconBuildProfileMarker") {
 
 // ADR-062: Hermes is bundled by this build; scripts cannot supply native code.
 val hermesLibraries = layout.buildDirectory.dir("generated/elecon-hermes-libs")
+val hermesNdk = androidComponents.sdkComponents.ndkDirectory
 val buildHermes = tasks.register<Exec>("buildEleconHermes") {
     val nativeRoot = rootProject.file("../../native/hermes_app_tunnel")
     val targets = (project.findProperty("target-platform") as? String)
@@ -92,9 +93,13 @@ val buildHermes = tasks.register<Exec>("buildEleconHermes") {
         exclude("target/**", ".git/**")
     })
     inputs.property("hermesAbis", abis)
+    inputs.property("hermesNdk", hermesNdk.map { it.asFile.absolutePath })
     outputs.dir(hermesLibraries)
-    commandLine("bash", File(nativeRoot, "build-android.sh").absolutePath,
-        "--out-dir", hermesLibraries.get().asFile.absolutePath, "--abis", abis)
+    doFirst {
+        commandLine("bash", File(nativeRoot, "build-android.sh").absolutePath,
+            "--out-dir", hermesLibraries.get().asFile.absolutePath, "--abis", abis,
+            "--ndk-dir", hermesNdk.get().asFile.absolutePath)
+    }
 }
 
 android {

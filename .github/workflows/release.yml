@@ -128,6 +128,10 @@ jobs:
             flutter create --no-pub --platforms=${{ matrix.platform }} --project-name elecon .
           fi
 
+      - name: Install Hermes Android Rust targets
+        if: matrix.platform == 'android'
+        run: rustup target add armv7-linux-androideabi aarch64-linux-android
+
       - name: Create Android signing files
         if: matrix.platform == 'android'
         working-directory: .

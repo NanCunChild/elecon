@@ -67,6 +67,7 @@ jobs:
         env:
           ELECON_REQUIRE_ADAPTERS: "1"
       - run: bash deploy/public-endpoint/validate-dist.test.sh
+      - run: bash native/hermes_app_tunnel/build-android.test.sh
 
   # 工具链：全量 smoke（目录发现，含 validator/urlmatch/scanner/codegen/signer——此前手工
   # 列举漏跑了后三个）+ 对 adapters/ 全量静态校验 + codegen 漂移闸门。
@@ -213,6 +214,8 @@ jobs:
           flutter-version: 3.44.1
           channel: stable
           cache: true
+      - name: Install Hermes Android Rust targets
+        run: rustup target add armv7-linux-androideabi aarch64-linux-android x86_64-linux-android
       - run: flutter pub get
       - name: Release build gate (apk + INTERNET)
         run: bash tool/check_release_gate.sh
@@ -237,6 +240,8 @@ jobs:
           flutter-version: 3.44.1
           channel: stable
           cache: true
+      - name: Install Hermes Android Rust targets
+        run: rustup target add armv7-linux-androideabi aarch64-linux-android x86_64-linux-android
       - run: flutter pub get
       - name: Build the real app flow harness
         run: flutter build apk --debug --target tool/android_emulator_flow_app.dart
