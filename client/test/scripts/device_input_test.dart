@@ -15,6 +15,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../utils/test_utils.dart' show repoPath;
 
+// Flutter's widget binding otherwise replaces HttpClient with a stub, making
+// zero-request checks vacuous. Restore its override after each loopback test.
+class _RealHttpOverrides extends HttpOverrides {}
+
 final fixture =
     jsonDecode(
           File(
@@ -81,8 +85,10 @@ void main() {
     });
   }
   test(
-    'photo bytes cross QuickJS as Uint8Array and can form a binary upload',
+    '512KiB photo bytes cross QuickJS as Uint8Array and form a binary upload',
     () async {
+      final photoBytes = List<int>.generate(maxScriptImageBytes, (i) => i % 256)
+        ..setRange(0, 8, png);
       final p = package(
         "const photo=await ctx.ui.capturePhoto();if(!(photo.bytes instanceof Uint8Array))throw Error();await ctx.fetch('https://synthetic.example/upload',{method:'POST',headers:{'Content-Type':'image/png'},body:photo.bytes});return {status:'confirmed'};",
         permissions: ['camera'],
@@ -94,11 +100,16 @@ void main() {
           input: (kind, valid) async {
             expect(kind, 'camera');
             expect(valid(), isTrue);
-            return image;
+            return {
+              ...image,
+              'bytes': photoBytes,
+              'width': 1280,
+              'height': 960,
+            };
           },
           fetch: (url, init) async {
             uploads++;
-            expect(init['body'], png);
+            expect(init['body'], photoBytes);
             return {'status': 200, 'body': 'ok'};
           },
         ),
@@ -308,55 +319,80 @@ void main() {
     pending.complete(image);
     await expectLater(result, throwsA(isA<ScriptRunException>()));
   });
-  for (final outcome in ['null', 'error']) {
-    test(
-      'background picker $outcome cannot resume a script network request',
-      () async {
-        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-        var requests = 0;
-        server.listen((request) async {
-          requests++;
-          await request.response.close();
-        });
-        final session = SessionController();
-        addTearDown(() async {
-          session.dispose();
-          await server.close(force: true);
-        });
-        final origin = 'http://127.0.0.1:${server.port}';
-        final raw =
-            jsonDecode(
-                  package(
-                    "try{await ctx.ui.pickImage();}catch(e){} await ctx.fetch('$origin/submit',{method:'POST',body:'synthetic'});return {status:'confirmed'};",
-                    permissions: ['image'],
-                  ).encode(),
-                )
-                as Map;
-        raw['manifest']['network'] = {
-          'origins': [origin],
-          'ipAllow': ['127.0.0.1'],
-        };
-        final p = ScriptPackage.parse(jsonEncode(raw));
-        await session.installTrustedScript(p, approvedDigest: p.digest);
-        await session.selectTrustedScriptSchool(p.manifest.id);
-        session.scriptDeviceInputPresenter = (_, _, valid, lease) =>
-            lease.run(() async {
-              session.scriptAppForeground = false;
-              expect(valid(), isTrue); // Only the native input remains allowed.
-              if (outcome == 'error') {
-                throw const ScriptDeviceInputException('device_input_timeout');
-              }
-              return null;
-            });
-        final result = await session.runTrustedScript(
-          p.manifest.id,
-          'attendance.checkin',
-        );
-        expect(result.ok, isFalse);
-        expect(requests, 0);
-        session.scriptAppForeground = true;
-      },
-    );
+  for (final foreground in [true, false]) {
+    for (final outcome in ['null', 'error']) {
+      test(
+        '${foreground ? 'foreground' : 'background'} picker $outcome '
+        '${foreground ? 'can continue' : 'cannot resume'} a script network request',
+        () async {
+          // QuickJS's shared host bridge dispatches in a previously created
+          // zone, so a per-test runWithHttpOverrides would not cover its fetch.
+          final previousOverrides = HttpOverrides.current;
+          HttpOverrides.global = _RealHttpOverrides();
+          addTearDown(() => HttpOverrides.global = previousOverrides);
+          final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+          final requests = <({String method, String path, String body})>[];
+          server.listen((request) async {
+            requests.add((
+              method: request.method,
+              path: request.uri.path,
+              body: await utf8.decoder.bind(request).join(),
+            ));
+            request.response.write('ok');
+            await request.response.close();
+          });
+          final session = SessionController();
+          addTearDown(() async {
+            session.dispose();
+            await server.close(force: true);
+          });
+          final origin = 'http://127.0.0.1:${server.port}';
+          final raw =
+              jsonDecode(
+                    package(
+                      "try{await ctx.ui.pickImage();}catch(e){} const reply=await ctx.fetch('$origin/submit',{method:'POST',body:'synthetic'});if(reply.status!==200)throw Error();return {status:'confirmed'};",
+                      permissions: ['image'],
+                    ).encode(),
+                  )
+                  as Map;
+          raw['manifest']['network'] = {
+            'origins': [origin],
+            'ipAllow': ['127.0.0.1'],
+          };
+          final p = ScriptPackage.parse(jsonEncode(raw));
+          await session.installTrustedScript(p, approvedDigest: p.digest);
+          await session.selectTrustedScriptSchool(p.manifest.id);
+          session.scriptDeviceInputPresenter = (_, _, valid, lease) =>
+              lease.run(() async {
+                session.scriptAppForeground = foreground;
+                // The native input still owns its lease.
+                expect(valid(), isTrue);
+                if (outcome == 'error') {
+                  throw const ScriptDeviceInputException(
+                    'device_input_timeout',
+                  );
+                }
+                return null;
+              });
+          final result = await session.runTrustedScript(
+            p.manifest.id,
+            'attendance.checkin',
+          );
+          expect(result.ok, foreground);
+          if (foreground) {
+            // Positive control: the very same script and transport must reach
+            // the real server when its input completes while still foreground.
+            expect(requests, [
+              (method: 'POST', path: '/submit', body: 'synthetic'),
+            ]);
+            expect(result.data, {'status': 'confirmed'});
+          } else {
+            expect(result.reason, 'invocation_cancelled');
+            expect(requests, isEmpty);
+          }
+        },
+      );
+    }
   }
 
   test('system picker lease cannot survive revoke', () async {
