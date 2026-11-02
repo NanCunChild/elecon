@@ -20,6 +20,7 @@ import 'app_tunnel_page.dart';
 import 'dev_log_page.dart';
 import 'privacy_policy_page.dart';
 import 'profile_accounts.dart';
+import 'script_accounts_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -113,7 +114,7 @@ class SettingsPage extends StatelessWidget {
             subtitle: Text(l10n.scriptsDescription),
             onTap: () => _open(context, const ScriptWorkbenchPage()),
           ),
-          _SectionTitle(title: l10n.settingsSectionAccount),
+          const ProfileAccountsHeader(),
           LiquidGlassSurface(
             child: ProfileAccounts(
               onLogin: () => _login(context),
@@ -122,6 +123,13 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          ListTile(
+            leading: const Icon(Icons.manage_accounts_outlined),
+            title: Text(l10n.scriptAccountsTitle),
+            subtitle: Text(l10n.scriptAccountsDescription),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _open(context, const ScriptAccountsPage()),
+          ),
           const AppearanceSection(),
           ListTile(
             leading: const Icon(Icons.vpn_key_outlined),

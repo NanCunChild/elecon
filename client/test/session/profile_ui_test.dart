@@ -48,12 +48,17 @@ void main() {
       await tester.tap(find.text('Settings'));
       await tester.pumpAndSettle();
       expect(find.text('Profile 1'), findsOneWidget);
+      expect(find.text('Current'), findsOneWidget);
+      expect(find.byTooltip('Add Profile'), findsOneWidget);
       expect(find.byIcon(Icons.lock_open_outlined), findsOneWidget);
       expect(find.textContaining('SYNTHETIC_USER'), findsNothing);
       await tester.tap(find.text('Profile 1'));
       await tester.pumpAndSettle();
+      expect(find.text('Add Profile'), findsNothing);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
       await tester.runAsync(() async {
-        await tester.tap(find.text('Add Profile'));
+        await tester.tap(find.byKey(const ValueKey('profile-add')));
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });
       await tester.pumpAndSettle();
@@ -62,6 +67,7 @@ void main() {
       expect(find.text('Profile 2'), findsOneWidget);
       await tester.tap(find.text('Profile 2'));
       await tester.pumpAndSettle();
+      expect(find.text('Add Profile'), findsNothing);
       await tester.runAsync(() async {
         await tester.tap(find.text('Profile 1'));
         await Future<void>.delayed(const Duration(milliseconds: 100));

@@ -31,89 +31,80 @@ class AppearanceSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ListTile(
-                leading: const Icon(Icons.palette_outlined),
-                title: Text(l10n.appearanceSeedTitle),
-                subtitle: Text(l10n.appearanceSeedSubtitle),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final p in SeedPalette.presets)
-                      _SeedSwatch(
-                        palette: p,
-                        label: seedPaletteLabel(l10n, p.id),
-                        selected: prefs.seedId == p.id,
-                        onTap: () => themeCtrl.setSeedId(p.id),
+              _PreferenceMenu<String>(
+                menuKey: const ValueKey('appearance-seed-menu'),
+                icon: Icons.palette_outlined,
+                title: l10n.appearanceSeedTitle,
+                value: prefs.seedId,
+                label: seedPaletteLabel(l10n, prefs.seedId),
+                valueIcon: _ColorDot(color: prefs.seedColor),
+                items: [
+                  for (final palette in SeedPalette.presets)
+                    PopupMenuItem(
+                      value: palette.id,
+                      child: Row(
+                        children: [
+                          _ColorDot(color: palette.seed),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(seedPaletteLabel(l10n, palette.id)),
+                          ),
+                          if (prefs.seedId == palette.id)
+                            const Icon(Icons.check, size: 20),
+                        ],
                       ),
-                  ],
-                ),
+                    ),
+                ],
+                onSelected: themeCtrl.setSeedId,
               ),
               const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.brightness_6_outlined),
-                title: Text(l10n.appearanceThemeModeTitle),
-                subtitle: Text(_themeModeLabel(l10n, prefs.themeMode)),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: SegmentedButton<ThemeMode>(
-                  segments: [
-                    ButtonSegment(
-                      value: ThemeMode.system,
-                      label: Text(l10n.appearanceThemeModeSystem),
-                      icon: const Icon(Icons.brightness_auto, size: 18),
+              _PreferenceMenu<ThemeMode>(
+                menuKey: const ValueKey('appearance-mode-menu'),
+                icon: Icons.brightness_6_outlined,
+                title: l10n.appearanceThemeModeTitle,
+                value: prefs.themeMode,
+                label: switch (prefs.themeMode) {
+                  ThemeMode.system => l10n.appearanceThemeModeSystem,
+                  ThemeMode.light => l10n.appearanceThemeModeLight,
+                  ThemeMode.dark => l10n.appearanceThemeModeDark,
+                },
+                items: [
+                  for (final mode in ThemeMode.values)
+                    CheckedPopupMenuItem(
+                      value: mode,
+                      checked: prefs.themeMode == mode,
+                      child: Text(_themeModeLabel(l10n, mode)),
                     ),
-                    ButtonSegment(
-                      value: ThemeMode.light,
-                      label: Text(l10n.appearanceThemeModeLight),
-                      icon: const Icon(Icons.light_mode_outlined, size: 18),
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.dark,
-                      label: Text(l10n.appearanceThemeModeDark),
-                      icon: const Icon(Icons.dark_mode_outlined, size: 18),
-                    ),
-                  ],
-                  selected: {prefs.themeMode},
-                  onSelectionChanged: (set) {
-                    if (set.isEmpty) return;
-                    themeCtrl.setThemeMode(set.first);
-                  },
-                ),
+                ],
+                onSelected: themeCtrl.setThemeMode,
               ),
               const Divider(height: 1),
-              // 语言：选项 = arb 文件集 + 跟随系统（见 locale_options.dart）。
-              ListTile(
-                leading: const Icon(Icons.translate_outlined),
-                title: Text(l10n.appearanceLanguageTitle),
-                subtitle: Text(appLocaleLabel(l10n, prefs.localeTag)),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: DropdownButton<String?>(
-                  isExpanded: true,
-                  value: resolveAppLocale(prefs.localeTag) == null
-                      // 未知/已失效的标签在 UI 上回落到「跟随系统」。
-                      ? kSystemLocaleTag
+              // A non-null menu value distinguishes system selection from dismissal.
+              _PreferenceMenu<String>(
+                menuKey: const ValueKey('appearance-language-menu'),
+                icon: Icons.translate_outlined,
+                title: l10n.appearanceLanguageTitle,
+                value: resolveAppLocale(prefs.localeTag) == null
+                    ? 'system'
+                    : prefs.localeTag!,
+                label: appLocaleLabel(
+                  l10n,
+                  resolveAppLocale(prefs.localeTag) == null
+                      ? null
                       : prefs.localeTag,
-                  underline: const SizedBox.shrink(),
-                  items: [
-                    for (final tag in appLocaleTags())
-                      DropdownMenuItem<String?>(
-                        value: tag,
-                        child: Text(
-                          appLocaleLabel(l10n, tag),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                  onChanged: themeCtrl.setLocaleTag,
                 ),
+                items: [
+                  for (final tag in appLocaleTags())
+                    CheckedPopupMenuItem(
+                      value: tag ?? 'system',
+                      checked:
+                          resolveAppLocale(prefs.localeTag)?.languageCode ==
+                          tag,
+                      child: Text(appLocaleLabel(l10n, tag)),
+                    ),
+                ],
+                onSelected: (tag) =>
+                    themeCtrl.setLocaleTag(tag == 'system' ? null : tag),
               ),
             ],
           ),
@@ -163,68 +154,84 @@ String seedPaletteLabel(AppLocalizations l10n, String id) => switch (id) {
   _ => id,
 };
 
-class _SeedSwatch extends StatelessWidget {
-  const _SeedSwatch({
-    required this.palette,
+class _PreferenceMenu<T> extends StatelessWidget {
+  const _PreferenceMenu({
+    required this.menuKey,
+    required this.icon,
+    required this.title,
+    required this.value,
     required this.label,
-    required this.selected,
-    required this.onTap,
+    required this.items,
+    required this.onSelected,
+    this.valueIcon,
   });
 
-  final SeedPalette palette;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+  final Key menuKey;
+  final IconData icon;
+  final String title, label;
+  final T value;
+  final List<PopupMenuEntry<T>> items;
+  final ValueChanged<T> onSelected;
+  final Widget? valueIcon;
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: label,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Semantics(
-          label: label,
-          selected: selected,
-          button: true,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: palette.seed,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: selected ? scheme.onSurface : scheme.outlineVariant,
-                width: selected ? 3 : 1.5,
-              ),
-              boxShadow: selected
-                  ? [
-                      BoxShadow(
-                        color: palette.seed.withValues(alpha: 0.45),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+    child: Row(
+      children: [
+        Icon(icon),
+        const SizedBox(width: 12),
+        Expanded(child: Text(title)),
+        const SizedBox(width: 8),
+        Flexible(
+          fit: FlexFit.tight,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: PopupMenuButton<T>(
+              key: menuKey,
+              tooltip: '$title: $label',
+              initialValue: value,
+              itemBuilder: (_) => items,
+              onSelected: onSelected,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (valueIcon != null) ...[
+                      valueIcon!,
+                      const SizedBox(width: 8),
+                    ],
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ]
-                  : null,
+                    ),
+                    const Icon(Icons.arrow_drop_down),
+                  ],
+                ),
+              ),
             ),
-            child: selected
-                ? Icon(
-                    Icons.check,
-                    size: 20,
-                    color:
-                        ThemeData.estimateBrightnessForColor(palette.seed) ==
-                            Brightness.dark
-                        ? Colors.white
-                        : Colors.black,
-                  )
-                : null,
           ),
         ),
-      ),
-    );
-  }
+      ],
+    ),
+  );
+}
+
+class _ColorDot extends StatelessWidget {
+  const _ColorDot({required this.color});
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 20,
+    height: 20,
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+  );
 }
 
 class _SectionTitle extends StatelessWidget {

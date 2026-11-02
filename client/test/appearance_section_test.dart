@@ -69,7 +69,11 @@ void main() {
     expect(find.text(zh.experimentalLiquidGlassTitle), findsNothing);
     expect(find.text(zh.appearanceLanguageTitle), findsOneWidget);
     // 主题色名走 tooltip / semantics，不把内部 id 露出来。
-    expect(find.byTooltip(zh.appearanceSeedBlue), findsOneWidget);
+    expect(
+      find.byTooltip('${zh.appearanceSeedTitle}: ${zh.appearanceSeedBlue}'),
+      findsOneWidget,
+    );
+    expect(find.text(zh.appearanceSeedGreen), findsNothing);
     expect(find.byTooltip('blue'), findsNothing);
   });
 
@@ -78,14 +82,30 @@ void main() {
     final zh = await AppLocalizations.delegate.load(const Locale('zh'));
     expect(ctrl.localeTag, isNull, reason: '默认跟随系统');
 
-    await tester.tap(find.byType(DropdownButton<String?>));
+    await tester.tap(find.byKey(const ValueKey('appearance-language-menu')));
     await tester.pumpAndSettle();
     // 收起的选中项与展开的菜单项同文案，菜单项在后。
-    await tester.tap(find.text(zh.appearanceLanguageEn).last);
+    await tester.tap(
+      find.ancestor(
+        of: find.text(zh.appearanceLanguageEn).last,
+        matching: find.byWidgetPredicate((widget) => widget is PopupMenuEntry),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(ctrl.localeTag, 'en');
     expect(store.saved?.localeTag, 'en', reason: '偏好已提交落盘');
+    await tester.tap(find.byKey(const ValueKey('appearance-language-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.ancestor(
+        of: find.text(zh.appearanceLanguageSystem).last,
+        matching: find.byWidgetPredicate((widget) => widget is PopupMenuEntry),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(ctrl.localeTag, isNull);
+    expect(store.saved?.localeTag, isNull);
   });
 
   testWidgets('窄屏两倍字号的语言选择器不挤占整行', (tester) async {
@@ -94,7 +114,45 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await pumpSection(tester, textScale: 2);
-    expect(find.byType(DropdownButton<String?>), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('appearance-language-menu')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('主题色与模式在右侧菜单选择并保存', (tester) async {
+    final (ctrl, store) = await pumpSection(tester);
+    final zh = await AppLocalizations.delegate.load(const Locale('zh'));
+    for (final (title, key) in [
+      (zh.appearanceSeedTitle, 'appearance-seed-menu'),
+      (zh.appearanceThemeModeTitle, 'appearance-mode-menu'),
+      (zh.appearanceLanguageTitle, 'appearance-language-menu'),
+    ]) {
+      final label = tester.getCenter(find.text(title));
+      final action = tester.getCenter(find.byKey(ValueKey(key)));
+      expect(action.dx, greaterThan(label.dx));
+      expect(action.dy, closeTo(label.dy, 1));
+      expect(tester.getRect(find.byKey(ValueKey(key))).right, 784);
+    }
+    await tester.tap(find.byKey(const ValueKey('appearance-seed-menu')));
+    await tester.pumpAndSettle();
+    expect(find.text(zh.appearanceSeedGreen), findsOneWidget);
+    await tester.tap(find.text(zh.appearanceSeedGreen));
+    await tester.pumpAndSettle();
+    expect(ctrl.prefs.seedId, 'green');
+    expect(store.saved?.seedId, 'green');
+    await tester.tap(find.byKey(const ValueKey('appearance-mode-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.ancestor(
+        of: find.text(zh.appearanceThemeModeDarkDetail),
+        matching: find.byWidgetPredicate((widget) => widget is PopupMenuEntry),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(ctrl.prefs.themeMode, ThemeMode.dark);
+    expect(store.saved?.themeMode, ThemeMode.dark);
     expect(tester.takeException(), isNull);
   });
 
@@ -105,6 +163,9 @@ void main() {
 
     expect(find.text(en.appearanceSection), findsOneWidget);
     expect(find.text(zh.appearanceSection), findsNothing);
-    expect(find.byTooltip(en.appearanceSeedBlue), findsOneWidget);
+    expect(
+      find.byTooltip('${en.appearanceSeedTitle}: ${en.appearanceSeedBlue}'),
+      findsOneWidget,
+    );
   });
 }

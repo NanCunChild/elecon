@@ -42,7 +42,10 @@ Future<void> showProfiles(BuildContext context) async {
                       ? Icons.account_circle
                       : Icons.account_circle_outlined,
                 ),
-                title: Text(profile.name),
+                title: _ProfileName(
+                  name: profile.name,
+                  active: profile.id == profiles.active.id,
+                ),
                 subtitle: Text(
                   !profile.session.isRestored &&
                           profile.id != profiles.active.id
@@ -56,19 +59,66 @@ Future<void> showProfiles(BuildContext context) async {
                   changeProfile(context, () => profiles.activate(profile.id));
                 },
               ),
-            ListTile(
-              leading: const Icon(Icons.person_add_alt),
-              title: Text(AppLocalizations.of(context).profilesAdd),
-              enabled: !profiles.busy,
-              onTap: () {
-                Navigator.pop(sheetContext);
-                changeProfile(context, profiles.add);
-              },
-            ),
           ],
         ),
       ),
     ),
+  );
+}
+
+class ProfileAccountsHeader extends StatelessWidget {
+  const ProfileAccountsHeader({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final profiles = ProfileScope.maybeOf(context);
+    final l10n = AppLocalizations.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(
+              l10n.settingsSectionAccount,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+        ),
+        if (profiles != null)
+          IconButton(
+            key: const ValueKey('profile-add'),
+            tooltip: l10n.profilesAdd,
+            icon: const Icon(Icons.add),
+            onPressed: profiles.busy
+                ? null
+                : () => changeProfile(context, profiles.add),
+          ),
+      ],
+    );
+  }
+}
+
+class _ProfileName extends StatelessWidget {
+  const _ProfileName({required this.name, required this.active});
+  final String name;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(child: Text(name)),
+      if (active) ...[
+        const SizedBox(width: 8),
+        Text(
+          AppLocalizations.of(context).profilesCurrent,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+      ],
+    ],
   );
 }
 
@@ -94,7 +144,10 @@ class ProfileAccounts extends StatelessWidget {
           shrinkWrap: true,
           children: [
             ListTile(
-              title: Text(profile?.name ?? 'Profile 1'),
+              title: _ProfileName(
+                name: profile?.name ?? 'Profile 1',
+                active: current,
+              ),
               subtitle: Text(
                 !current && !session.isRestored
                     ? l10n.profilesNotLoaded
@@ -142,17 +195,6 @@ class ProfileAccounts extends StatelessWidget {
                 },
               ),
             ],
-            if (profiles != null)
-              ListTile(
-                leading: const Icon(Icons.person_add_alt),
-                title: Text(l10n.profilesAdd),
-                onTap: profiles.busy
-                    ? null
-                    : () {
-                        Navigator.pop(sheetContext);
-                        changeProfile(context, profiles.add);
-                      },
-              ),
           ],
         ),
       ),
@@ -205,7 +247,7 @@ class _ProfileRow extends StatelessWidget {
     if (!active && !session.isRestored) {
       return ListTile(
         leading: const Icon(Icons.account_circle_outlined),
-        title: Text(name),
+        title: _ProfileName(name: name, active: active),
         subtitle: Text(l10n.profilesNotLoaded),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
@@ -240,7 +282,7 @@ class _ProfileRow extends StatelessWidget {
           leading: Icon(
             active ? Icons.account_circle : Icons.account_circle_outlined,
           ),
-          title: Text(name),
+          title: _ProfileName(name: name, active: active),
           subtitle: Text(
             '$script · ${session.isLoggedIn ? l10n.settingsLoggedIn : l10n.settingsLoggedOut}',
           ),
