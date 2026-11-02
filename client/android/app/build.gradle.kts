@@ -74,6 +74,29 @@ val writeBuildProfileMarker = tasks.register("writeEleconBuildProfileMarker") {
     }
 }
 
+// ADR-062: Hermes is bundled by this build; scripts cannot supply native code.
+val hermesLibraries = layout.buildDirectory.dir("generated/elecon-hermes-libs")
+val buildHermes = tasks.register<Exec>("buildEleconHermes") {
+    val nativeRoot = rootProject.file("../../native/hermes_app_tunnel")
+    val targets = (project.findProperty("target-platform") as? String)
+        ?.split(",") ?: listOf("android-arm", "android-arm64", "android-x64")
+    val abis = targets.map {
+        when (it) {
+            "android-arm" -> "armeabi-v7a"
+            "android-arm64" -> "arm64-v8a"
+            "android-x64" -> "x86_64"
+            else -> throw GradleException("Unsupported Hermes target: $it")
+        }
+    }.joinToString(",")
+    inputs.files(fileTree(nativeRoot) {
+        exclude("target/**", ".git/**")
+    })
+    inputs.property("hermesAbis", abis)
+    outputs.dir(hermesLibraries)
+    commandLine("bash", File(nativeRoot, "build-android.sh").absolutePath,
+        "--out-dir", hermesLibraries.get().asFile.absolutePath, "--abis", abis)
+}
+
 android {
     namespace = "dev.nancunchild.elecon"
     compileSdk = flutter.compileSdkVersion
@@ -106,6 +129,7 @@ android {
         getByName("main") {
             // 护栏 4b：profile 标记随 APK 打包（assets/elecon_build_profile.txt）。
             assets.srcDir(buildProfileAssetsDir)
+            jniLibs.srcDir(hermesLibraries)
         }
     }
 
@@ -139,6 +163,8 @@ android {
         }
     }
 }
+
+tasks.named("preBuild") { dependsOn(buildHermes) }
 
 // 标记文件必须先于合并资产生成，否则打进 APK 的会是上一次构建的陈旧标记
 // （护栏 4b 的断言就会验错对象）。

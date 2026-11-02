@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'core/adapter_service.dart';
@@ -40,6 +42,16 @@ Future<void> runEleconApp({
   Widget Function(Widget child)? wrapApp,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
+  LicenseRegistry.addLicense(() async* {
+    for (final path in [
+      'assets/native/hermes/LICENSE',
+      'assets/native/hermes/THIRD_PARTY_NOTICES.txt',
+    ]) {
+      yield LicenseEntryWithLineBreaks([
+        'Hermes APPTunnel and Rust dependencies',
+      ], await rootBundle.loadString(path));
+    }
+  });
   final startupTrace = PerfTrace.start('app_start');
   startupTrace.mark('flutter_binding_ready');
   startupTrace.observeFrames();

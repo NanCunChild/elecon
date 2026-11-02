@@ -13,17 +13,20 @@ import 'package:crypto/crypto.dart';
 
 import 'http_transport.dart' show ScriptAddressResolver;
 import 'network_policy.dart';
+import '../transport/app_tunnel.dart';
 
 class ScriptWebSocketTransport {
   ScriptWebSocketTransport({
     required this.policy,
     ScriptAddressResolver? resolver,
+    this.appTunnel,
     this.securityContext,
   }) : _resolver = resolver ?? InternetAddress.lookup;
 
   /// Only the separately declared wss origins, represented as https for the
   /// shared canonical-origin/IP policy. It does not include HTTP permissions.
   final ScriptNetworkPolicy policy;
+  final AppTunnelRoute? appTunnel;
   final SecurityContext? securityContext;
   final ScriptAddressResolver _resolver;
   static const maxMessageBytes = 65536;
@@ -85,6 +88,9 @@ class ScriptWebSocketTransport {
         default:
           throw const ScriptNetworkException('websocket_invalid_request');
       }
+    } on AppTunnelException catch (error) {
+      _fail(error.code);
+      throw ScriptNetworkException(error.code);
     } on ScriptNetworkException {
       rethrow;
     } catch (_) {
@@ -121,9 +127,12 @@ class ScriptWebSocketTransport {
 
   Future<void> _handshake(Uri uri) async {
     final literal = InternetAddress.tryParse(uri.host);
-    final addresses = (literal == null ? await _resolver(uri.host) : [literal])
-        .where(policy.allowsAddress)
-        .toList();
+    final addresses =
+        (literal == null
+                ? await (appTunnel?.resolve(uri.host) ?? _resolver(uri.host))
+                : [literal])
+            .where(policy.allowsAddress)
+            .toList();
     _check();
     if (addresses.isEmpty) throw const ScriptNetworkException('ip_not_allowed');
     final client = HttpClient()..findProxy = (_) => 'DIRECT';
@@ -135,7 +144,9 @@ class ScriptWebSocketTransport {
       Future<Socket> connect() async {
         // One pinned address and no automatic application-level retry.
         _check();
-        final pending = await Socket.startConnect(addresses.first, uri.port);
+        final pending = appTunnel == null
+            ? await Socket.startConnect(addresses.first, uri.port)
+            : await appTunnel!.connect(uri.host, addresses.first, uri.port);
         _connection = pending;
         if (_closed) {
           pending.cancel();
@@ -162,7 +173,9 @@ class ScriptWebSocketTransport {
         return socket;
       }
 
-      return ConnectionTask.fromSocket(connect(), () {
+      final connecting = connect();
+      unawaited(connecting.then<void>((_) {}, onError: (Object _) {}));
+      return ConnectionTask.fromSocket(connecting, () {
         _connection?.cancel();
         _connectingSocket?.destroy();
       });

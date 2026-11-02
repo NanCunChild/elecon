@@ -16,6 +16,7 @@ import '../theme/liquid_glass.dart';
 import '../scripts/script_workbench_page.dart';
 import 'about_page.dart';
 import 'appearance_section.dart';
+import 'app_tunnel_page.dart';
 import 'dev_log_page.dart';
 import 'privacy_policy_page.dart';
 import 'profile_accounts.dart';
@@ -122,6 +123,12 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           const AppearanceSection(),
+          ListTile(
+            leading: const Icon(Icons.vpn_key_outlined),
+            title: Text(l10n.appTunnelTitle),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _open(context, const AppTunnelPage()),
+          ),
           const SizedBox(height: 16),
           _SectionTitle(title: l10n.settingsSectionDebug),
           LiquidGlassSurface(

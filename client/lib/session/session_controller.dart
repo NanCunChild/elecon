@@ -47,6 +47,8 @@ import '../core/login/sso_mint_hidden_webview.dart';
 import '../core/login/webview_login.dart';
 import '../core/login/webview_auth_ui_bridge.dart';
 import '../core/transport/direct.dart';
+import '../core/transport/app_tunnel.dart';
+import '../core/transport/hermes/hermes.dart';
 import '../core/broker/inject_policy.dart' show BrokerManifestView;
 import '../core/scripts/manifest.dart';
 import '../core/scripts/registry.dart';
@@ -66,6 +68,8 @@ export '../core/messages/archive.dart' show MessageArchiveView, ArchivedMessage;
 part 'script_session.dart';
 part 'attendance_session.dart';
 part 'message_session.dart';
+part 'network_session.dart';
+part 'app_tunnel_session.dart';
 
 const String _sessionMetaBlob = 'session.json';
 
@@ -98,6 +102,7 @@ class SessionController extends ChangeNotifier {
     List<SchoolDescriptor> initialSchools = const [],
     SsoMinter? ssoMinter,
     Future<bool> Function(VisibleLoginRequest request)? onVisibleLogin,
+    List<AppTunnelProvider>? appTunnelProviders,
   }) : _store = CredentialStore(store: InMemorySecureStore(releaseMode: false)),
        _hardware = hardware,
        _blobStoreProvider = blobStoreProvider,
@@ -106,7 +111,19 @@ class SessionController extends ChangeNotifier {
        _legacySchoolsLoaded = initialSchools.isNotEmpty,
        _ssoMinter = ssoMinter,
        _ssoMinterInjected = ssoMinter != null,
-       _onVisibleLogin = onVisibleLogin;
+       _onVisibleLogin = onVisibleLogin,
+       _injectedAppTunnelProviders = appTunnelProviders == null
+           ? null
+           : List.unmodifiable(appTunnelProviders);
+
+  final List<AppTunnelProvider>? _injectedAppTunnelProviders;
+  late final AppTunnelRouting _networkRoutes = AppTunnelRouting(
+    blobs: _resolveBlobs,
+    providers: _injectedAppTunnelProviders ?? _defaultAppTunnelProviders(),
+  );
+  bool _changingNetwork = false;
+  int _legacyNetworkRuns = 0;
+  final _legacyAuthBridges = <WebViewAuthUiBridge>{};
 
   final HardwareKeyStore _hardware;
   final Future<BlobStore?> Function()? _blobStoreProvider;
@@ -132,18 +149,43 @@ class SessionController extends ChangeNotifier {
   SsoMinter? get ssoMinter => _ssoMinter;
 
   /// 创建可信 WebView 认证桥。UI 只持有桥及无秘密状态，不获得 store/cookie 能力（红线 #1）。
-  WebViewAuthUiBridge createWebViewAuthBridge({
+  Future<WebViewAuthUiBridge> createWebViewAuthBridge({
     required LoginManifestView login,
     String? initialUrl,
     String? requiredRef,
     Set<String> tlsProceedHosts = const {},
-  }) => InAppWebViewAuthBridge(
-    login: login,
-    putCredential: _store.put,
-    initialUrl: initialUrl,
-    requiredRef: requiredRef,
-    tlsProceedHosts: tlsProceedHosts,
-  );
+  }) async {
+    final school = _school;
+    final generation = _scripts.generation;
+    final store = _store;
+    if (school == null ||
+        _changingNetwork ||
+        await _networkRoutes.choice(school.id) != null) {
+      throw const AppTunnelException('app_tunnel_legacy_unsupported');
+    }
+    bool active() =>
+        !_scripts.disposed &&
+        !_changingNetwork &&
+        generation == _scripts.generation &&
+        _school?.id == school.id &&
+        identical(store, _store);
+    if (!active()) throw const AppTunnelException('app_tunnel_cancelled');
+    final bridge = InAppWebViewAuthBridge(
+      login: login,
+      putCredential: (entry) {
+        if (active()) store.put(entry);
+      },
+      initialUrl: initialUrl,
+      requiredRef: requiredRef,
+      tlsProceedHosts: tlsProceedHosts,
+    );
+    _legacyAuthBridges.add(bridge);
+    bridge.completion.then<void>(
+      (_) => _legacyAuthBridges.remove(bridge),
+      onError: (Object _) => _legacyAuthBridges.remove(bridge),
+    );
+    return bridge;
+  }
 
   /// 测试注入或覆盖 minter；此后不再自动装配 headless。
   set ssoMinter(SsoMinter? minter) {
@@ -182,6 +224,7 @@ class SessionController extends ChangeNotifier {
             entry.type != ScriptReadinessStore.type &&
             entry.type != AttendancePlacesStore.type &&
             entry.type != MessageArchiveStore.type &&
+            entry.type != HermesConfigStore.type &&
             (_school == null || entry.schoolId == _school!.id),
       );
 
@@ -526,8 +569,12 @@ class SessionController extends ChangeNotifier {
       // Optional local registry I/O must not stop the legacy official path.
     }
     if (_school?.id != school.id ||
-        generation != trustedScriptViewGeneration || _scripts.disposed) {
-      return const CapabilityRun.failed(CapabilityFailureKind.run, 'script_cancelled');
+        generation != trustedScriptViewGeneration ||
+        _scripts.disposed) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'script_cancelled',
+      );
     }
     if (local != null) {
       return runTrustedScript(
@@ -554,75 +601,103 @@ class SessionController extends ChangeNotifier {
         'script_capability_unavailable',
       );
     }
-    final adapterId = school.adapterId;
-    final required =
-        school.capabilityCredentials[capability] ?? const <String>[];
-    if (required.isNotEmpty) {
-      // 闸门用的 active 判定（store.hasActive + 类型匹配）。抽成具名闭包，让诊断日志
-      // 与 ensure 用**同一**判据，避免日志与实际闸门口径不一致。
-      bool gateHasActive(String sid, String ref) {
-        if (!_store.hasActive(schoolId: sid, ref: ref)) return false;
-        final expected = school.login.brokerView.credentials[ref];
-        if (expected == null) return false;
-        return _store.list().any(
-          (entry) =>
-              entry.schoolId == sid &&
-              entry.ref == ref &&
-              entry.status == CredentialStatus.active &&
-              entry.type == expected.type,
+    try {
+      if (_changingNetwork || await _networkRoutes.choice(school.id) != null) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'app_tunnel_legacy_unsupported',
         );
       }
-
-      // 🔒 诊断打点（runtime 类，release 丢弃，红线 #1）：只记 ref 名 / 布尔态 / 装配位，
-      // 绝不记凭证值。用于回答「已登录仍提示需要登录」到底缺哪一环。
-      final preState = required
-          .map(
-            (ref) =>
-                '$ref=${gateHasActive(school.id, ref) ? "active" : "missing"}',
-          )
-          .join(", ");
-      DevLog.instance.runtime(
-        'ensure[$capability] 入场：需 [$preState] | '
-        '母票(sso-master)=${_store.hasActiveSsoMaster(school.id) ? "有" : "无"} | '
-        'minter=${_ssoMinter != null ? "已装配" : "未装配"}',
-      );
-
-      final ensured = await ensureCredentials(
-        schoolId: school.id,
-        refs: required,
-        hasActive: gateHasActive,
-        hasSsoMaster: _store.hasActiveSsoMaster,
-        login: school.login,
-        minter: _ssoMinter,
-        onVisibleLogin: _onVisibleLogin,
-      );
-
-      final postState = required
-          .map(
-            (ref) =>
-                '$ref=${gateHasActive(school.id, ref) ? "active" : "missing"}',
-          )
-          .join(", ");
-      DevLog.instance.runtime(
-        'ensure[$capability] 结果：${ensured.status.name}'
-        '${ensured.reason != null ? "（${ensured.reason}）" : ""} | 收场态 [$postState]',
-      );
-
-      if (!ensured.isReady) {
-        return CapabilityRun.failed(
-          CapabilityFailureKind.auth,
-          ensured.reason ?? '需要登录',
-        );
-      }
+    } on AppTunnelException catch (error) {
+      return CapabilityRun.failed(CapabilityFailureKind.run, error.code);
     }
-    return _runOn(
-      adapterId,
-      capability,
-      params: params,
-      htmlStdlib: htmlStdlib,
-      onLog: onLog,
-      onDiagnostic: onDiagnostic,
-    );
+    if (generation != trustedScriptViewGeneration || _school?.id != school.id) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'script_cancelled',
+      );
+    }
+    _legacyNetworkRuns++;
+    try {
+      final adapterId = school.adapterId;
+      final required =
+          school.capabilityCredentials[capability] ?? const <String>[];
+      if (required.isNotEmpty) {
+        // 闸门用的 active 判定（store.hasActive + 类型匹配）。抽成具名闭包，让诊断日志
+        // 与 ensure 用**同一**判据，避免日志与实际闸门口径不一致。
+        bool gateHasActive(String sid, String ref) {
+          if (!_store.hasActive(schoolId: sid, ref: ref)) return false;
+          final expected = school.login.brokerView.credentials[ref];
+          if (expected == null) return false;
+          return _store.list().any(
+            (entry) =>
+                entry.schoolId == sid &&
+                entry.ref == ref &&
+                entry.status == CredentialStatus.active &&
+                entry.type == expected.type,
+          );
+        }
+
+        // 🔒 诊断打点（runtime 类，release 丢弃，红线 #1）：只记 ref 名 / 布尔态 / 装配位，
+        // 绝不记凭证值。用于回答「已登录仍提示需要登录」到底缺哪一环。
+        final preState = required
+            .map(
+              (ref) =>
+                  '$ref=${gateHasActive(school.id, ref) ? "active" : "missing"}',
+            )
+            .join(", ");
+        DevLog.instance.runtime(
+          'ensure[$capability] 入场：需 [$preState] | '
+          '母票(sso-master)=${_store.hasActiveSsoMaster(school.id) ? "有" : "无"} | '
+          'minter=${_ssoMinter != null ? "已装配" : "未装配"}',
+        );
+
+        final ensured = await ensureCredentials(
+          schoolId: school.id,
+          refs: required,
+          hasActive: gateHasActive,
+          hasSsoMaster: _store.hasActiveSsoMaster,
+          login: school.login,
+          minter: _ssoMinter,
+          onVisibleLogin: _onVisibleLogin,
+        );
+
+        final postState = required
+            .map(
+              (ref) =>
+                  '$ref=${gateHasActive(school.id, ref) ? "active" : "missing"}',
+            )
+            .join(", ");
+        DevLog.instance.runtime(
+          'ensure[$capability] 结果：${ensured.status.name}'
+          '${ensured.reason != null ? "（${ensured.reason}）" : ""} | 收场态 [$postState]',
+        );
+
+        if (!ensured.isReady) {
+          return CapabilityRun.failed(
+            CapabilityFailureKind.auth,
+            ensured.reason ?? '需要登录',
+          );
+        }
+      }
+      if (generation != trustedScriptViewGeneration ||
+          _school?.id != school.id) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'script_cancelled',
+        );
+      }
+      return await _runOn(
+        adapterId,
+        capability,
+        params: params,
+        htmlStdlib: htmlStdlib,
+        onLog: onLog,
+        onDiagnostic: onDiagnostic,
+      );
+    } finally {
+      _legacyNetworkRuns--;
+    }
   }
 
   /// Debug-only direct adapter entry for distribution and runtime smoke tests.
@@ -672,33 +747,75 @@ class SessionController extends ChangeNotifier {
         'legacy_command_unavailable',
       );
     }
-    final service = await _resolveAdapterService();
-    if (service == null) {
-      return const CapabilityRun.failed(
-        CapabilityFailureKind.load,
-        'adapter 运行时未装配',
+    final generation = trustedScriptViewGeneration;
+    final school = _school;
+    final store = _store;
+    bool active() =>
+        !_scripts.disposed &&
+        !_changingNetwork &&
+        generation == trustedScriptViewGeneration &&
+        identical(store, _store) &&
+        _school?.id == school?.id;
+    _legacyNetworkRuns++;
+    try {
+      final service = await _resolveAdapterService();
+      if (service == null) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.load,
+          'adapter 运行时未装配',
+        );
+      }
+      // adapter 普遍 import "elecon:html"；调用方未注入时从 app 资产加载（ADR-011）。
+      final stdlib = htmlStdlib ?? await loadHtmlStdlib();
+      if (!active()) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'script_cancelled',
+        );
+      }
+      if (school != null && await _networkRoutes.choice(school.id) != null) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'app_tunnel_legacy_unsupported',
+        );
+      }
+      if (!active()) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'script_cancelled',
+        );
+      }
+      final result = await service.run(
+        adapterId: adapterId,
+        capability: capability,
+        resolver: store,
+        // 🔒 Response Masker 落库端（ADR-026 §2.7）：与 [resolver] 同一个会话私有 store。
+        // 收割到的原值只经此进核心存储，adapter 侧只见投影后的 sentinel（红线 #1）。
+        maskerSink: (entry) {
+          if (active()) store.put(entry);
+        },
+        params: params,
+        htmlStdlib: stdlib,
+        onLog: (level, message) {
+          DevLog.instance.adapter(level, message);
+          onLog?.call(level, message);
+        },
+        onDiagnostic: (diagnostic) {
+          DevLog.instance.runtime(diagnostic.summary);
+          onDiagnostic?.call(diagnostic);
+        },
       );
+      return active()
+          ? result
+          : const CapabilityRun.failed(
+              CapabilityFailureKind.run,
+              'script_cancelled',
+            );
+    } on AppTunnelException catch (error) {
+      return CapabilityRun.failed(CapabilityFailureKind.run, error.code);
+    } finally {
+      _legacyNetworkRuns--;
     }
-    // adapter 普遍 import "elecon:html"；调用方未注入时从 app 资产加载（ADR-011）。
-    final stdlib = htmlStdlib ?? await loadHtmlStdlib();
-    return service.run(
-      adapterId: adapterId,
-      capability: capability,
-      resolver: _store,
-      // 🔒 Response Masker 落库端（ADR-026 §2.7）：与 [resolver] 同一个会话私有 store。
-      // 收割到的原值只经此进核心存储，adapter 侧只见投影后的 sentinel（红线 #1）。
-      maskerSink: _store.put,
-      params: params,
-      htmlStdlib: stdlib,
-      onLog: (level, message) {
-        DevLog.instance.adapter(level, message);
-        onLog?.call(level, message);
-      },
-      onDiagnostic: (diagnostic) {
-        DevLog.instance.runtime(diagnostic.summary);
-        onDiagnostic?.call(diagnostic);
-      },
-    );
   }
 
   void setDebugLog(bool value) {

@@ -396,3 +396,11 @@ CPH2653 在本轮 14:23–14:24 UTC 的脱敏日志确认：新版官方 WebView
 社区包 0.3.0 新增会话列表、群/私聊历史页与单次纯文本发送；精确 uint64 ID/游标、撤回墓碑、发送未知态和固定网络端点由脚本处理。核心提供聊天页面、离线已加载记录和 H/S/M 保护的 SQLite 快照；学校脚本没有 SQL/文件接口。作业/课程/任务及附件只展示摘要，不实现点击。旧窗口保持兼容，新增网络范围需重新授权；新包已生成于社区目录 dist，不放入客户端资产。自动回归与真实学校/真机/人工审阅分别记录，后者仍待验收；状态入口见 [论坛与消息专项](forum_and_messages.md)。
 
 验证：41 项社区模块测试、实际增强包 QuickJS、10 项 SQLite 回归（并发 VFS、受保护重启、隔离、撤回、容量）、会话与离线/窄屏页面回归通过；71 schema / 69 registry 引用 golden、codegen 同步、tools typecheck 和受影响 Dart analyze 通过。Android ARM64 Debug 构建完成，含 SQLite 原生库；没有更新设备、发送真实聊天或完成真实账号验收。全库额外严格 description 检查的 27 处既有缺项保持原样，本次六份 schema 没有新增缺项。
+
+## APPTunnel 与群组补全（2026-11-02，ADR-062/063）
+
+核心增加按 Profile/学校的应用内 VPN 选择，首版 Hermes/aTrust。Android 编译随包原生桥，网关原站 CAS/MFA 完成后由核心核验 Cookie 并保存 H/S/M 会话；普通脚本 HTTP/WSS 通过受控 DNS/TCP/UDS 接线，原 origin/IP 与目标 TLS 保持。基座缺失、会话或证书失败不自动改直连。普通 WebView 尚不可经隧道，选择后拒绝该路径；V1 已有不可取消操作结束前拒绝切换，已选隧道时拒绝V1业务和登录。无系统 VPN、全局路由或脚本原生模块侧载。
+
+超星增强包 0.3.1 补群详情名称与最近会话证据，群名保留有效值；有内容优先、已知最新消息时间降序，未知不当作空或未读，离线采用同序。会话契约1.1保留1.0，作业/课程/任务仍仅摘要。
+
+验证记录：群组 46 项 Node、实际编译包 QuickJS/SQLite/消息页面回归、71 schema/69 registry 引用 golden、codegen同步和tools typecheck通过。Hermes 原生本机 TLS/pin、真实协议帧/UDS、取消/DNS负例及实际 Linux C ABI 已验证；主/Apple锁文件解析通过。最终客户端编译及回归结果见 ADR-062。未访问真实网关或学校账号，未安装到设备或签署人工网络/FFI验收。

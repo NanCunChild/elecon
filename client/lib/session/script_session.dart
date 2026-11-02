@@ -52,6 +52,7 @@ class _ScriptSessionState {
   Future<void>? refreshingHome;
   final Set<ScriptHttpTransport> transports = {};
   final Set<ScriptWebSocketTransport> sockets = {};
+  final Set<AppTunnelRoute> routes = {};
 }
 
 final _scriptStates = Expando<_ScriptSessionState>();
@@ -106,6 +107,10 @@ extension TrustedScriptSession on SessionController {
   bool get scriptRegistryRecovered => _scripts.recoveredRegistry;
 
   void _cancelTrustedScripts({bool dispose = false}) {
+    for (final bridge in _legacyAuthBridges.toList()) {
+      bridge.stop().then<void>((_) {}, onError: (Object _) {});
+    }
+    _legacyAuthBridges.clear();
     final state = _scriptStates[this];
     if (state == null) return;
     state.deviceInputLease.revoke();
@@ -127,6 +132,10 @@ extension TrustedScriptSession on SessionController {
       socket.close();
     }
     state.sockets.clear();
+    for (final route in state.routes.toList()) {
+      route.close();
+    }
+    state.routes.clear();
   }
 
   /// Reconstruct local schools without requiring a catalog release or App update.
@@ -453,6 +462,12 @@ extension TrustedScriptSession on SessionController {
     void Function(String, String)? onLog,
   }) async {
     final state = _scripts;
+    if (_changingNetwork) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'app_tunnel_busy',
+      );
+    }
     if (!interactive && foregroundCommunityCapabilities.contains(capability)) {
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
@@ -545,15 +560,34 @@ extension TrustedScriptSession on SessionController {
           registry.find(id)?.package.digest == package.digest;
     }
 
-    final transport = ScriptHttpTransport(policy: package.manifest.network);
+    final AppTunnelRoute? route;
+    try {
+      route = await _networkRoutes.route(school.id);
+    } on AppTunnelException catch (error) {
+      return CapabilityRun.failed(CapabilityFailureKind.run, error.code);
+    }
+    if (!active() || _changingNetwork) {
+      route?.close();
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'script_cancelled',
+      );
+    }
+    if (route != null) state.routes.add(route);
+    final transport = ScriptHttpTransport(
+      policy: package.manifest.network,
+      appTunnel: route,
+    );
     state.transports.add(transport);
     final socket = ScriptWebSocketTransport(
       policy: package.manifest.websocketNetwork,
+      appTunnel: route,
     );
     state.sockets.add(socket);
     void closeTransports() {
       transport.close();
       socket.close();
+      route?.close();
     }
 
     cancellation?.addListener(closeTransports);
@@ -592,7 +626,13 @@ extension TrustedScriptSession on SessionController {
         credentials: credentials,
         fetch: transport.fetch,
         websocketCall: interactive ? socket.call : null,
-        browserCall: browser,
+        browserCall: route == null
+            ? browser
+            : (_, _) async {
+                throw const ScriptRunException(
+                  'app_tunnel_browser_unavailable',
+                );
+              },
         inputCall: input,
         deviceInputCall: interactive && state.deviceInputPresenter != null
             ? (kind, valid) => state.deviceInputPresenter!(
@@ -732,6 +772,8 @@ extension TrustedScriptSession on SessionController {
       state.transports.remove(transport);
       socket.close();
       state.sockets.remove(socket);
+      route?.close();
+      if (route != null) state.routes.remove(route);
     }
     List<CredentialEntry> clearedReadiness = const [];
     if (active()) {

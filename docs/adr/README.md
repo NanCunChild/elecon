@@ -41,3 +41,5 @@ ADR 编号不回收：021 仍是历史预留。更新决策、实现与签收时
 | [059](adr_059_capability_configuration_state.md) | Accepted（区分缺配与请求失败） | 通用缺配状态、受保护标记、自动刷新跳过与显式完善 | 待人工核心审阅 | 失败不刷新成功缓存、不解除缺配标记 |
 | [060](adr_060_cache_first_startup.md) | Accepted（缓存桌面先显示） | 当前 Profile 本地恢复、布局缓存、首帧后查询 | 待真机与人工核心审阅 | 不将布局当执行授权，不复制私密数据到明文缓存 |
 | [061](adr_061_message_history_and_storage.md) | Accepted（聊天历史与 SQLite 适配） | 会话/群私聊历史、文本单次发送、核心受保护 SQLite 与原生页面 | 待真实账号/真机及人工核心/网络审阅 | 作业/课程/任务仅摘要；无未读推断、后台监听或自动重发 |
+| [062](adr_062_app_tunnel_selection.md) | Accepted（应用内 VPN 选择，首版 Hermes） | Profile/学校选择、HTTP/WSS 连接、Hermes 原生桥和受保护网关登录 | 自动协议/平台验证与真实网关验收分别记录；待人工网络/FFI审阅 | 无系统 VPN；目标 TLS 保留，失败不改直连；普通 WebView 尚不可经隧道 |
+| [063](adr_063_conversation_names_and_order.md) | Accepted（群名称与有内容会话排序） | conversations 1.1、批量群详情/最近会话、本地证据合并与离线排序 | 待真实账号与人工契约/网络审阅 | 保留1.0，未知不推断为空，补全403降级，不遍历每群历史 |

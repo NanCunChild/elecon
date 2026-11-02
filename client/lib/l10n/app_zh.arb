@@ -667,5 +667,24 @@
         "type": "String"
       }
     }
-  }
+  },
+  "appTunnelTitle": "应用内 VPN",
+  "appTunnelDescription": "仅为当前身份、当前学校的 elecon 请求选择 APPTunnel。选择的基座不可用时会停止请求。",
+  "appTunnelSelectSchool": "请先选择学校。",
+  "appTunnelChoice": "连接方式",
+  "appTunnelDirect": "直连",
+  "appTunnelUnavailable": "所选基座在此构建中不可用，无法连接。",
+  "appTunnelGateway": "aTrust 网关 HTTPS 地址",
+  "appTunnelCertificate": "节点证书 SHA-256（可选）",
+  "appTunnelCertificateHelp": "填写可信渠道提供的 64 位十六进制证书指纹。留空使用正常证书校验；指纹不匹配时连接会停止。",
+  "appTunnelSignedOut": "尚未保存此学校的 VPN 会话。",
+  "appTunnelSessionSaved": "已保存此学校的受保护 VPN 会话。",
+  "appTunnelLogin": "登录 Hermes / aTrust",
+  "appTunnelClear": "清除 VPN 会话",
+  "appTunnelFailed": "未能保存或读取 VPN 设置，请检查地址和证书指纹后重试。",
+  "appTunnelLoginHelp": "请在官方网关页面完成登录及多因素验证，然后点击下方按钮核验。",
+  "appTunnelLoginComplete": "已完成登录，检查会话",
+  "appTunnelLoginFailed": "会话未通过核验，或登录跳转超出当前学校允许的范围。请完成官方网关登录后重试。",
+  "appTunnelLoginCancelled": "登录已取消，请返回后重新打开。",
+  "appTunnelBrowserUnavailable": "当前选择的应用内 VPN 尚不支持此浏览器流程，请使用支持的请求或明确切换为直连。"
 }

@@ -599,5 +599,24 @@
         "type": "String"
       }
     }
-  }
+  },
+  "appTunnelTitle": "App VPN",
+  "appTunnelDescription": "Choose an APPTunnel for elecon requests in this profile and school. Requests stop if the selected provider is unavailable.",
+  "appTunnelSelectSchool": "Select a school first.",
+  "appTunnelChoice": "Connection",
+  "appTunnelDirect": "Direct",
+  "appTunnelUnavailable": "This provider is unavailable in this build. Requests cannot connect.",
+  "appTunnelGateway": "aTrust gateway HTTPS address",
+  "appTunnelCertificate": "Node certificate SHA-256 (optional)",
+  "appTunnelCertificateHelp": "Enter a 64-digit hexadecimal certificate fingerprint from a trusted source. Leave blank for normal certificate validation. A mismatch stops the connection.",
+  "appTunnelSignedOut": "No VPN session is saved for this school.",
+  "appTunnelSessionSaved": "A protected VPN session is saved for this school.",
+  "appTunnelLogin": "Sign in to Hermes / aTrust",
+  "appTunnelClear": "Clear VPN session",
+  "appTunnelFailed": "Could not save or read VPN settings. Check the gateway address and certificate fingerprint, then try again.",
+  "appTunnelLoginHelp": "Complete sign-in and multifactor authentication on the official gateway page, then check the session below.",
+  "appTunnelLoginComplete": "Check completed sign-in",
+  "appTunnelLoginFailed": "The session could not be verified, or sign-in navigation exceeded this school’s allowed sites. Complete the official gateway sign-in and try again.",
+  "appTunnelLoginCancelled": "Sign-in was cancelled. Go back and open it again.",
+  "appTunnelBrowserUnavailable": "The selected app VPN does not support this browser flow. Use a supported request or explicitly select Direct."
 }

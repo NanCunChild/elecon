@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import '../../catalog/schools.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../core/debug/perf_trace.dart';
+import '../../core/transport/app_tunnel.dart';
 import '../../core/login/webview_login.dart' show isLoginNavigationAllowed;
 import '../../session/session_controller.dart';
 import '../security/no_hardware_warning_dialog.dart';
@@ -44,6 +45,25 @@ Future<WebViewLoginResult?> runSchoolLogin(
       ),
     );
   }
+  // ADR-062: the legacy WebView has no application-tunnel connection factory.
+  // Refuse before opening it rather than using another network route.
+  try {
+    if (await session.appTunnelChoice() != null ||
+        session.appTunnelSelectionBusy) {
+      return WebViewLoginResult(
+        status: WebViewLoginStatus.error,
+        error: context.mounted
+            ? AppLocalizations.of(context).appTunnelBrowserUnavailable
+            : 'app_tunnel_legacy_unsupported',
+      );
+    }
+  } catch (_) {
+    return const WebViewLoginResult(
+      status: WebViewLoginStatus.error,
+      error: 'app_tunnel_selection_invalid',
+    );
+  }
+  if (!context.mounted || session.selectedSchool?.id != school.id) return null;
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
     return const WebViewLoginResult(
       status: WebViewLoginStatus.error,
@@ -80,12 +100,17 @@ Future<WebViewLoginResult?> runSchoolLogin(
     if (!context.mounted) return null;
 
     trace.mark('route_push_start');
-    final bridge = session.createWebViewAuthBridge(
+    final bridge = await session.createWebViewAuthBridge(
       login: school.login,
       initialUrl: initialUrl,
       requiredRef: requiredRef,
       tlsProceedHosts: school.tlsProceedHosts,
     );
+    if (!context.mounted || session.selectedSchool?.id != school.id) {
+      await bridge.stop();
+      bridge.dispose();
+      return null;
+    }
     final result = await Navigator.of(context).push<WebViewLoginResult>(
       MaterialPageRoute(
         builder: (_) =>
@@ -103,6 +128,13 @@ Future<WebViewLoginResult?> runSchoolLogin(
       trace.mark('credential_flush_complete');
     }
     return result;
+  } on AppTunnelException {
+    return WebViewLoginResult(
+      status: WebViewLoginStatus.error,
+      error: context.mounted
+          ? AppLocalizations.of(context).appTunnelBrowserUnavailable
+          : 'app_tunnel_legacy_unsupported',
+    );
   } on StateError catch (error) {
     if (error.message != 'browser_busy') rethrow;
     return WebViewLoginResult(

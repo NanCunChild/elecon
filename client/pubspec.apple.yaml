@@ -28,6 +28,8 @@ dependencies:
   geolocator: 14.0.2
   # ADR-061: host-only SQLite in a memory VFS; protected snapshots. pub.dev, MIT.
   sqlite3: 3.3.4
+  # ADR-062: Dart-owned native Hermes control bridge, dart.dev, BSD-3-Clause.
+  ffi: 2.2.0
   elecon_contract:
     path: ../contract/generated/dart
   # Apple-only UI chrome. MIT; does not participate in credential/adapter paths.
@@ -47,3 +49,5 @@ flutter:
     - assets/bootstrap/
     - assets/bootstrap/bundles/
     - assets/stdlib/html.bundle.js
+    - assets/native/hermes/LICENSE
+    - assets/native/hermes/THIRD_PARTY_NOTICES.txt

@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'network_policy.dart';
+import '../transport/app_tunnel.dart';
 
 typedef ScriptAddressResolver = Future<List<InternetAddress>> Function(String);
 
@@ -14,6 +15,7 @@ class ScriptHttpTransport {
   ScriptHttpTransport({
     required this.policy,
     ScriptAddressResolver? resolver,
+    this.appTunnel,
     this.maxRequests = 40,
     this.maxConcurrent = 4,
     this.maxRedirects = 8,
@@ -24,6 +26,7 @@ class ScriptHttpTransport {
   }) : _resolver = resolver ?? InternetAddress.lookup;
 
   final ScriptNetworkPolicy policy;
+  final AppTunnelRoute? appTunnel;
   final ScriptAddressResolver _resolver;
   final int maxRequests;
   final int maxConcurrent;
@@ -56,6 +59,8 @@ class ScriptHttpTransport {
           throw const ScriptNetworkException('request_timeout');
         },
       );
+    } on AppTunnelException catch (error) {
+      throw ScriptNetworkException(error.code);
     } on ScriptNetworkException {
       rethrow;
     } catch (_) {
@@ -129,7 +134,7 @@ class ScriptHttpTransport {
       _requestCount++;
       final literal = InternetAddress.tryParse(uri.host);
       final addresses = literal == null
-          ? await _resolver(uri.host)
+          ? await (appTunnel?.resolve(uri.host) ?? _resolver(uri.host))
           : <InternetAddress>[literal];
       _assertActive(context);
       final permitted = addresses.where(policy.allowsAddress).toList();
@@ -265,7 +270,9 @@ class ScriptHttpTransport {
         _assertActive(context);
         if (cancelled) throw const ScriptNetworkException('transport_closed');
         try {
-          pending = await Socket.startConnect(address, uri.port);
+          pending = appTunnel == null
+              ? await Socket.startConnect(address, uri.port)
+              : await appTunnel!.connect(uri.host, address, uri.port);
           if (cancelled || !context.active || _closed) {
             pending!.cancel();
             throw const ScriptNetworkException('transport_closed');
@@ -279,6 +286,9 @@ class ScriptHttpTransport {
             _assertActive(context);
           }
           return socket!;
+        } on AppTunnelException {
+          socket?.destroy();
+          rethrow;
         } on ScriptNetworkException {
           socket?.destroy();
           rethrow;
@@ -293,7 +303,11 @@ class ScriptHttpTransport {
       throw const ScriptNetworkException('connection_failed');
     }
 
-    return ConnectionTask.fromSocket(connect(), () {
+    final connecting = connect();
+    // A native bridge can reject before HttpClient attaches to task.socket.
+    // Observe early errors without consuming the caller's failing future.
+    unawaited(connecting.then<void>((_) {}, onError: (Object _) {}));
+    return ConnectionTask.fromSocket(connecting, () {
       cancelled = true;
       pending?.cancel();
       socket?.destroy();
