@@ -23,6 +23,7 @@ const Set<String> kCapabilityIds = {
   'course.catalog',
   'course.selection',
   'dining.summary',
+  'directory.phones',
   'dorm.health',
   'dorm.service',
   'energy.meters',

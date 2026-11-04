@@ -1,0 +1,498 @@
+{
+  "entryUrl": "https://tel.xidian.cc/",
+  "reviewedDate": "2026-11-04",
+  "method": "手工核对服务名称与号码；8位西安办公电话补029；多个服务共用号码可分别展示；分机仅作说明；不收录个人手机号、传真、银行账号、邮编或临时假期值班表。",
+  "sources": [
+    {
+      "name": "通信工程学院",
+      "url": "https://ste.xidian.edu.cn/jj1/bgzn.htm",
+      "status": "included",
+      "entries": 13,
+      "includedSourceUrls": [
+        "https://ste.xidian.edu.cn/jj1/bgzn.htm"
+      ]
+    },
+    {
+      "name": "电子工程学院",
+      "url": "https://see.xidian.edu.cn/xyjj/bgzn.htm",
+      "status": "included",
+      "entries": 14,
+      "includedSourceUrls": [
+        "https://see.xidian.edu.cn/xyjj/bgzn.htm"
+      ]
+    },
+    {
+      "name": "计算机科学与技术学院",
+      "url": "https://cs.xidian.edu.cn/xygk/gljg.htm",
+      "status": "included",
+      "entries": 14,
+      "includedSourceUrls": [
+        "https://cs.xidian.edu.cn/xygk/gljg.htm",
+        "https://cs.xidian.edu.cn/info/1008/8011.htm",
+        "https://cs.xidian.edu.cn/info/1008/8102.htm",
+        "https://cs.xidian.edu.cn/info/1008/8103.htm",
+        "https://cs.xidian.edu.cn/info/1008/22294.htm",
+        "https://cs.xidian.edu.cn/info/1008/8104.htm"
+      ]
+    },
+    {
+      "name": "机电工程学院",
+      "url": "https://eme.xidian.edu.cn/xygk/bgry.htm",
+      "status": "included",
+      "entries": 7,
+      "includedSourceUrls": [
+        "https://eme.xidian.edu.cn/xygk/bgry.htm"
+      ]
+    },
+    {
+      "name": "光电工程学院",
+      "url": "https://soe.xidian.edu.cn/xygk/bgzn.htm",
+      "status": "included",
+      "entries": 4,
+      "includedSourceUrls": [
+        "https://soe.xidian.edu.cn/xygk/bgzn.htm"
+      ]
+    },
+    {
+      "name": "物理学院",
+      "url": "https://phy.xidian.edu.cn/xygk/bsfw.htm",
+      "status": "included",
+      "entries": 4,
+      "includedSourceUrls": [
+        "https://phy.xidian.edu.cn/xygk/bsfw.htm"
+      ]
+    },
+    {
+      "name": "经济与管理学院",
+      "url": "https://sem.xidian.edu.cn/xygk/lxwm.htm",
+      "status": "included",
+      "entries": 10,
+      "includedSourceUrls": [
+        "https://sem.xidian.edu.cn/xygk/lxwm.htm"
+      ]
+    },
+    {
+      "name": "数学与统计学院",
+      "url": "https://math.xidian.edu.cn/xygk/bszn.htm",
+      "status": "included",
+      "entries": 4,
+      "includedSourceUrls": [
+        "https://math.xidian.edu.cn/xygk/bszn.htm"
+      ]
+    },
+    {
+      "name": "人文学院",
+      "url": "https://rwxy.xidian.edu.cn/xygk/xyjg/zhbgs.htm",
+      "status": "included",
+      "entries": 2,
+      "includedSourceUrls": [
+        "https://rwxy.xidian.edu.cn/xygk/xyjg/zhbgs.htm"
+      ]
+    },
+    {
+      "name": "外国语学院",
+      "url": "https://sfl.xidian.edu.cn/xygk/xrld.htm",
+      "status": "included",
+      "entries": 9,
+      "includedSourceUrls": [
+        "https://sfl.xidian.edu.cn/xygk/xrld.htm"
+      ]
+    },
+    {
+      "name": "微电子学院",
+      "url": "https://sme.xidian.edu.cn/html/xxfw/bszn/",
+      "status": "included",
+      "entries": 2,
+      "includedSourceUrls": [
+        "https://sme.xidian.edu.cn/html/xxfw/bszn/"
+      ]
+    },
+    {
+      "name": "生命科学技术学院",
+      "url": "https://life.xidian.edu.cn/2025gb/zw.jsp?urltype=tree.TreeTempUrl&wbtreeid=1977",
+      "status": "included",
+      "entries": 2,
+      "includedSourceUrls": [
+        "https://life.xidian.edu.cn/xygk/bszn.htm"
+      ],
+      "note": "原链接未提供正文；转入同站现行办事指南。"
+    },
+    {
+      "name": "空间科学与技术学院",
+      "url": "https://sast.xidian.edu.cn/xygk/jgsz/xybgs.htm",
+      "status": "included",
+      "entries": 2,
+      "includedSourceUrls": [
+        "https://sast.xidian.edu.cn/xygk/jgsz/xybgs.htm"
+      ]
+    },
+    {
+      "name": "先进材料与纳米科技学院",
+      "url": "https://amn.xidian.edu.cn/xygk/bszn.htm",
+      "status": "included",
+      "entries": 4,
+      "includedSourceUrls": [
+        "https://amn.xidian.edu.cn/xygk/bszn.htm"
+      ]
+    },
+    {
+      "name": "网络与信息安全学院",
+      "url": "https://ce.xidian.edu.cn/sy/xygk/xzry.htm",
+      "status": "included",
+      "entries": 5,
+      "includedSourceUrls": [
+        "https://ce.xidian.edu.cn/sy/xygk/xzry.htm"
+      ]
+    },
+    {
+      "name": "人工智能学院",
+      "url": "https://sai.xidian.edu.cn/xygk/bszn.htm",
+      "status": "included",
+      "entries": 8,
+      "includedSourceUrls": [
+        "https://sai.xidian.edu.cn/xygk/bszn.htm"
+      ]
+    },
+    {
+      "name": "马克思主义学院",
+      "url": "https://xdm.xidian.edu.cn/info/1026/14013.htm",
+      "status": "unverified",
+      "entries": 0,
+      "includedSourceUrls": [],
+      "note": "原链接是临时假期值班表，未作为常驻电话；学院机构页404。"
+    },
+    {
+      "name": "网络与继续教育学院",
+      "url": "https://xdwy.xidian.edu.cn/lxwm.htm",
+      "status": "included",
+      "entries": 5,
+      "includedSourceUrls": [
+        "https://xdwy.xidian.edu.cn/lxwm.htm"
+      ]
+    },
+    {
+      "name": "国际教育学院",
+      "url": "https://sie.xidian.edu.cn/gywm/lxwm.htm",
+      "status": "unverified",
+      "entries": 0,
+      "includedSourceUrls": [],
+      "note": "原链接404，未取得可核对号码。"
+    },
+    {
+      "name": "集成电路学院",
+      "url": "https://jcdlyjy.xidian.edu.cn/yjygk/jgsz.htm",
+      "status": "included",
+      "entries": 1,
+      "includedSourceUrls": [
+        "https://jcdlyjy.xidian.edu.cn/yjygk/jgsz.htm"
+      ]
+    },
+    {
+      "name": "信息力学与感知工程学院",
+      "url": "https://imse.xidian.edu.cn/xygk/bszn.htm",
+      "status": "included",
+      "entries": 5,
+      "includedSourceUrls": [
+        "https://imse.xidian.edu.cn/xygk/bszn.htm"
+      ]
+    },
+    {
+      "name": "体育部",
+      "url": "https://tyb.xidian.edu.cn/bmgk1/jgsz.htm",
+      "status": "included",
+      "entries": 6,
+      "includedSourceUrls": [
+        "https://tyb.xidian.edu.cn/bmgk1/jgsz.htm"
+      ]
+    },
+    {
+      "name": "创新创业学院",
+      "url": "https://ie.xidian.edu.cn/gywm/gwzz.htm",
+      "status": "included",
+      "entries": 3,
+      "includedSourceUrls": [
+        "https://ie.xidian.edu.cn/gywm/gwzz.htm"
+      ]
+    },
+    {
+      "name": "教务处",
+      "url": "https://jwc.xidian.edu.cn/jgjj/bszn.htm",
+      "status": "included",
+      "entries": 15,
+      "includedSourceUrls": [
+        "https://jwc.xidian.edu.cn/jgjj/bszn.htm"
+      ]
+    },
+    {
+      "name": "人事处",
+      "url": "https://jgrsrc.xidian.edu.cn/zzjg/jgsz.htm",
+      "status": "included",
+      "entries": 9,
+      "includedSourceUrls": [
+        "https://jgrsrc.xidian.edu.cn/zzjg/jgsz.htm"
+      ]
+    },
+    {
+      "name": "科研院",
+      "url": "https://ord.xidian.edu.cn/gywm/jgsz.htm",
+      "status": "included",
+      "entries": 14,
+      "includedSourceUrls": [
+        "https://ord.xidian.edu.cn/gywm/jgsz.htm"
+      ]
+    },
+    {
+      "name": "研究生院",
+      "url": "https://gr.xidian.edu.cn/yyjs/jbqk1.htm",
+      "status": "included",
+      "entries": 8,
+      "includedSourceUrls": [
+        "https://gr.xidian.edu.cn/yyjs/jbqk1.htm"
+      ]
+    },
+    {
+      "name": "本科生院",
+      "url": "https://bksy.xidian.edu.cn/info/1005/30672.htm",
+      "status": "unverified",
+      "entries": 0,
+      "includedSourceUrls": [],
+      "note": "TLS连接失败，未取得可核对号码；教务处另列。"
+    },
+    {
+      "name": "后勤保障部",
+      "url": "https://hqbzb.xidian.edu.cn/lxwm.htm",
+      "status": "unverified",
+      "entries": 0,
+      "includedSourceUrls": [],
+      "note": "TLS连接失败；常用电话内保留主站后勤一站式服务号码。"
+    },
+    {
+      "name": "就业办",
+      "url": "https://job.xidian.edu.cn/news/view/tag/lxfs",
+      "status": "included",
+      "entries": 4,
+      "includedSourceUrls": [
+        "https://job.xidian.edu.cn/news/view/tag/lxfs"
+      ]
+    },
+    {
+      "name": "财务处",
+      "url": "https://cwc.xidian.edu.cn/zwy.jsp?urltype=tree.TreeTempUrl&wbtreeid=1091",
+      "status": "unverified",
+      "entries": 0,
+      "includedSourceUrls": [],
+      "note": "网站返回访问验证页面，未取得正文。"
+    },
+    {
+      "name": "国际处",
+      "url": "https://oice.xidian.edu.cn/bmjj1/zzjg.htm",
+      "status": "unverified",
+      "entries": 0,
+      "includedSourceUrls": [],
+      "note": "TLS连接失败，未取得可核对号码。"
+    },
+    {
+      "name": "学工处",
+      "url": "https://xgc.xidian.edu.cn/bmjs/jgsz.htm",
+      "status": "included",
+      "entries": 8,
+      "includedSourceUrls": [
+        "https://xgc.xidian.edu.cn/bmjs/jgsz.htm"
+      ]
+    },
+    {
+      "name": "党政办",
+      "url": "https://dzb.xidian.edu.cn/bmjj/gwzz.htm",
+      "status": "included",
+      "entries": 10,
+      "includedSourceUrls": [
+        "https://dzb.xidian.edu.cn/bmjj/gwzz.htm"
+      ]
+    },
+    {
+      "name": "国资处",
+      "url": "https://gzc.xidian.edu.cn/jgsz/gzcznjs.htm",
+      "status": "included",
+      "entries": 4,
+      "includedSourceUrls": [
+        "https://gzc.xidian.edu.cn/jgsz/gzcznjs.htm"
+      ]
+    },
+    {
+      "name": "内控办",
+      "url": "https://nkb.xidian.edu.cn",
+      "status": "unverified",
+      "entries": 0,
+      "includedSourceUrls": [],
+      "note": "访问超时，未取得可核对号码。"
+    },
+    {
+      "name": "采购招标办",
+      "url": "https://cg.xidian.edu.cn/aboutus.chtml",
+      "status": "included",
+      "entries": 4,
+      "includedSourceUrls": [
+        "https://cg.xidian.edu.cn/aboutus.chtml"
+      ]
+    },
+    {
+      "name": "校史馆/博物馆",
+      "url": "https://museum.xidian.edu.cn/index.htm",
+      "status": "included",
+      "entries": 2,
+      "includedSourceUrls": [
+        "https://museum.xidian.edu.cn/index.htm"
+      ]
+    },
+    {
+      "name": "工会",
+      "url": "https://gh.xidian.edu.cn/ghgk/gzzz.htm",
+      "status": "included",
+      "entries": 1,
+      "includedSourceUrls": [
+        "https://gh.xidian.edu.cn/ghgk/gzzz.htm"
+      ]
+    },
+    {
+      "name": "发展规划部",
+      "url": "https://dp.xidian.edu.cn/jgjs/lxfs.htm",
+      "status": "included",
+      "entries": 3,
+      "includedSourceUrls": [
+        "https://dp.xidian.edu.cn/jgjs/lxfs.htm"
+      ]
+    },
+    {
+      "name": "校友总会",
+      "url": "https://xyzh.xidian.edu.cn/zzjg/lxwm.htm",
+      "status": "included",
+      "entries": 3,
+      "includedSourceUrls": [
+        "https://xyzh.xidian.edu.cn/zzjg/lxwm.htm"
+      ]
+    },
+    {
+      "name": "实验室设备处",
+      "url": "https://sys.xidian.edu.cn/jgsz/bmcy.htm",
+      "status": "included",
+      "entries": 3,
+      "includedSourceUrls": [
+        "https://sys.xidian.edu.cn/jgsz/bmcy.htm"
+      ]
+    },
+    {
+      "name": "公安保卫处",
+      "url": "https://bwc.xidian.edu.cn/bmjj/kszn.htm",
+      "status": "unverified",
+      "entries": 0,
+      "includedSourceUrls": [],
+      "note": "访问超时；常用电话内保留主站校园报警和火警号码。"
+    },
+    {
+      "name": "基本建设处",
+      "url": "https://jjc.xidian.edu.cn/bmgk1/kszz.htm",
+      "status": "included",
+      "entries": 4,
+      "includedSourceUrls": [
+        "https://jjc.xidian.edu.cn/bmgk1/kszz.htm"
+      ]
+    },
+    {
+      "name": "基础教育集团",
+      "url": "https://jcjy.xidian.edu.cn/a/introudction/",
+      "status": "included",
+      "entries": 1,
+      "includedSourceUrls": [
+        "https://jcjy.xidian.edu.cn/jgjj.htm"
+      ],
+      "note": "原链接404；转入同站机构简介。"
+    },
+    {
+      "name": "出版社",
+      "url": "https://www.xduph.com/pages/ZDAboutUs.aspx",
+      "status": "unverified",
+      "entries": 0,
+      "includedSourceUrls": [],
+      "note": "介绍及联系我们页面正文未提供可核对号码。"
+    },
+    {
+      "name": "校医院",
+      "url": "https://xyy.xidian.edu.cn/",
+      "status": "included",
+      "entries": 41,
+      "includedSourceUrls": [
+        "https://xyy.xidian.edu.cn/fwzn/ksdh.htm"
+      ]
+    },
+    {
+      "name": "离退休工作处",
+      "url": "https://ltb.xidian.edu.cn/zzjg/jgsz.htm",
+      "status": "included",
+      "entries": 1,
+      "includedSourceUrls": [
+        "https://ltb.xidian.edu.cn/zzjg/jgsz.htm"
+      ],
+      "note": "来源另一号码区号印为089，存在歧义，未收录或擅自更正。"
+    },
+    {
+      "name": "档案馆",
+      "url": "https://archives.xidian.edu.cn/fwzn/blxz.htm",
+      "status": "included",
+      "entries": 6,
+      "includedSourceUrls": [
+        "https://archives.xidian.edu.cn/fwzn/blxz.htm"
+      ]
+    },
+    {
+      "name": "宣传部",
+      "url": "https://xcb.xidian.edu.cn/bmjj.htm",
+      "status": "included",
+      "entries": 5,
+      "includedSourceUrls": [
+        "https://xcb.xidian.edu.cn/bmjj.htm"
+      ]
+    },
+    {
+      "name": "西电学报期刊中心",
+      "url": "https://journal.xidian.edu.cn/",
+      "status": "unverified",
+      "entries": 0,
+      "includedSourceUrls": [],
+      "note": "返回页面未取得可核对电话正文。"
+    },
+    {
+      "name": "资产经营有限公司",
+      "url": "https://zcgs.xidian.edu.cn/contact/index.html",
+      "status": "unverified",
+      "entries": 0,
+      "includedSourceUrls": [],
+      "note": "原链接404，官网入口亦未取得可核对正文。"
+    },
+    {
+      "name": "广州研究院",
+      "url": "https://gzyjy.xidian.edu.cn/gygk/gljg.htm",
+      "status": "included",
+      "entries": 13,
+      "includedSourceUrls": [
+        "https://gzyjy.xidian.edu.cn/gygk/gljg.htm"
+      ]
+    },
+    {
+      "name": "杭州研究院",
+      "url": "https://hz.xidian.edu.cn/lxwm.htm",
+      "status": "included",
+      "entries": 8,
+      "includedSourceUrls": [
+        "https://hz.xidian.edu.cn/lxwm.htm"
+      ]
+    }
+  ],
+  "relatedLinks": [
+    {
+      "name": "南校区后勤一站式服务介绍",
+      "url": "https://mp.weixin.qq.com/s/KYA6XM6_wNg9Bmuvg77hiQ",
+      "status": "unverified",
+      "note": "微信文章无法取得正文；主站明确给出的029-81891000已收录在常用电话。"
+    }
+  ]
+}

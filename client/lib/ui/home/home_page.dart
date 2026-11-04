@@ -32,6 +32,7 @@ import 'schedule_view.dart';
 export 'schedule_view.dart' show ScheduleCard;
 import 'energy_climate_sections.dart';
 import 'faculty_search_section.dart';
+import 'phone_directory_section.dart';
 import 'checkin_section.dart';
 import 'web_content_section.dart';
 import '../widgets/adaptive_school_title.dart';
@@ -258,6 +259,7 @@ class _EleconHomePageState extends State<EleconHomePage>
         'exam' => Icons.event_note_outlined,
         'classroom' => Icons.meeting_room_outlined,
         'faculty' => Icons.person_search_outlined,
+        'directory' => Icons.contact_phone_outlined,
         'energy' => Icons.bolt_outlined,
         'climate' => Icons.ac_unit,
         'checkin' => Icons.qr_code_scanner,
@@ -349,6 +351,12 @@ class _EleconHomePageState extends State<EleconHomePage>
         entry('checkin', l10n.homeCheckinTitle, (_) => const CheckinSection()),
       if (_liveSections && data.supportsAll(const ['exam.list']))
         entry('exam', l10n.homeExamTitle, (_) => const ExamSection()),
+      if (_liveSections && data.supportsAll(const ['directory.phones']))
+        entry(
+          'directory',
+          l10n.phoneDirectoryTitle,
+          (_) => const PhoneDirectorySection(),
+        ),
       if (_liveSections && data.supportsAll(const ['faculty.search']))
         entry(
           'faculty',
@@ -398,6 +406,7 @@ class _EleconHomePageState extends State<EleconHomePage>
           transactionsEnabled:
               package.manifest.capability('card.transactions') != null,
         ),
+        'directory' => const PhoneDirectorySection(),
         'generic' => const GenericCapabilitySection(),
         _ => const SizedBox.shrink(),
       };
@@ -413,6 +422,7 @@ class _EleconHomePageState extends State<EleconHomePage>
             'energy' => l10n.energyTitle,
             'climate' => l10n.climateTitle,
             'card' => l10n.homeCardTitle,
+            'directory' => l10n.phoneDirectoryTitle,
             _ => package.manifest.name,
           };
       cards.add(

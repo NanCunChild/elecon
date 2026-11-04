@@ -11,6 +11,7 @@ import {
 } from "./academic.js";
 import { createAccountSession } from "./accounts.js";
 import { cardBalance, cardQr, cardTransactions, libraryLoans } from "./campus.js";
+import { phoneDirectory } from "./phone_directory.js";
 import { facultySearch } from "./faculty.js";
 import { createLogin, recoverAcademicSession } from "./login.js";
 import { noticeDetail, noticeList } from "./notices.js";
@@ -46,6 +47,7 @@ export function createCapabilities(role) {
     "query.controls": createQueryControls(role),
     "forum.session": forumSession,
     "faculty.search": facultySearch,
+    "directory.phones": phoneDirectory,
     "notice.list": noticeList,
     "notice.detail": noticeDetail,
     "generic.section": createLogin(role),

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.directory.phones",
+  "title": "学校电话黄页",
+  "type": "object",
+  "required": [
+    "items",
+    "sourceUrl",
+    "verifiedDate"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "当前来源完整公开电话目录；空数组仅表示已确认无条目，不表示请求失败。",
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "category",
+          "phone",
+          "sourceUrl"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "学校和当前包内稳定的电话条目标识；同名服务或不同校区不得混合。",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "name": {
+            "type": "string",
+            "description": "公开服务或办公室名称，纯文本。",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "category": {
+            "type": "string",
+            "description": "学校提供的分类或所属单位，纯文本；客户端不预设学校类别。",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "phone": {
+            "type": "string",
+            "description": "可拨号码：3–15 位数字，可有前导加号；地区号由脚本明确补全，不含分机、USSD 或 URI。",
+            "pattern": "^\\+?[0-9]{3,15}$",
+            "maxLength": 16
+          },
+          "sourceUrl": {
+            "type": "string",
+            "description": "此号码的公开来源绝对 HTTP(S) URL，供核对；不是脚本网络授权。",
+            "format": "uri",
+            "pattern": "^https?://",
+            "maxLength": 2048
+          },
+          "campus": {
+            "type": "string",
+            "description": "来源明确的校区，纯文本；省略表示来源未提供，不按号码猜测。",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "address": {
+            "type": "string",
+            "description": "公开办公地点，纯文本；省略表示未知。",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "note": {
+            "type": "string",
+            "description": "公开服务范围、时间或分机说明，纯文本；省略表示未提供，不自动执行分机。",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        }
+      }
+    },
+    "sourceUrl": {
+      "type": "string",
+      "description": "目录入口的绝对 HTTP(S) URL，供用户核对来源。",
+      "format": "uri",
+      "pattern": "^https?://",
+      "maxLength": 2048
+    },
+    "verifiedDate": {
+      "type": "string",
+      "description": "作者最后核对公开来源的日历日 YYYY-MM-DD；不是抓取时间或学校对电话有效性的确认。",
+      "format": "date"
+    }
+  }
+}

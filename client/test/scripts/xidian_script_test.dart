@@ -395,9 +395,9 @@ process.stdout.write(result.outputFiles[0].text);''',
     'source packages bind SDK 16 and combine browser login with authenticated data',
     () {
       expect(school.manifest.sdkVersion, 16);
-      expect(school.manifest.version, '0.28.1');
+      expect(school.manifest.version, '0.29.0');
       expect(school.manifest.browser, isTrue);
-      expect(school.manifest.capabilities, hasLength(23));
+      expect(school.manifest.capabilities, hasLength(24));
       expect(
         school.manifest.capability('query.controls')?.schemaVersion,
         '2.1',
@@ -634,6 +634,32 @@ process.stdout.write(result.outputFiles[0].text);''',
       expect(items, isNotEmpty);
       expect(items.every((item) => item['campus'] == 'S'), isTrue);
       expect(items.any((item) => item['buildingId'] == 'A'), isTrue);
+    },
+  );
+
+  test(
+    'phone directory runs offline through real QuickJS for both roles',
+    () async {
+      for (final package in [undergraduate, postgraduate]) {
+        final result =
+            await runtime.run(
+                  package: package,
+                  capability: 'directory.phones',
+                  credentials: ScriptCredentials(
+                    store: store,
+                    schoolId: package.manifest.schoolId,
+                    scriptId: package.manifest.id,
+                    sdkVersion: package.manifest.sdkVersion,
+                  ),
+                  fetch: (_, _) async =>
+                      throw StateError('phone directory must be offline'),
+                  htmlStdlib: htmlStdlib,
+                )
+                as Map;
+        expect(result['items'], isNotEmpty);
+        expect(result['sourceUrl'], 'https://tel.xidian.cc/');
+        expect(package.manifest.cards.single.type, 'directory');
+      }
     },
   );
 

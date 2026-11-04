@@ -31,6 +31,8 @@ dependencies:
   sqlite3: 3.3.4
   # ADR-062: Dart-owned native Hermes control bridge, dart.dev, BSD-3-Clause.
   ffi: 2.2.0
+  # ADR-084: shared phone-directory dialer; Flutter official BSD-3-Clause.
+  url_launcher: 6.3.3
   elecon_contract:
     path: ../contract/generated/dart
   # Apple-only UI chrome. MIT; does not participate in credential/adapter paths.

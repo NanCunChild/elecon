@@ -614,5 +614,20 @@
   "classroomCapacity": "Joylar",
   "queryClearCondition": "Shartni tozalash",
   "queryPendingSelection": "{value} tanlangan, tekshiruv kutilmoqda; hozir qidirish uchun tozalang",
-  "queryOptionalRetry": "Ixtiyoriy shartlarni qayta yuklash (qidirish mumkin)"
+  "queryOptionalRetry": "Ixtiyoriy shartlarni qayta yuklash (qidirish mumkin)",
+  "phoneDirectoryTitle": "Telefon ma’lumotnomasi",
+  "phoneDirectoryHint": "Kampus telefonlarini oflayn qidiring; qo‘ng‘iroq qilish uchun raqamni bosing",
+  "phoneDirectorySearch": "Nom, kampus yoki telefon raqami bo‘yicha qidirish",
+  "phoneDirectoryCategory": "Toifa / bo‘lim",
+  "phoneDirectoryAll": "Barchasi",
+  "phoneDirectoryEmpty": "Mos telefon raqami topilmadi",
+  "phoneDirectoryDialFailed": "Telefon ilovasini ochib bo‘lmadi. Raqamdan nusxa oling.",
+  "phoneDirectoryCopy": "Raqamdan nusxa olish",
+  "phoneDirectoryCopied": "Nusxa olindi",
+  "phoneDirectorySource": "Manba havolasidan nusxa olish",
+  "phoneDirectoryMore": "Ko‘proq ko‘rsatish",
+  "phoneDirectoryRefreshFailed": "Yangilab bo‘lmadi. Avvalgi ma’lumotnoma ko‘rsatilmoqda.",
+  "phoneDirectoryVerified": "Manba tekshirilgan sana: {date}",
+  "phoneDirectoryCount": "{count} ta telefon raqami",
+  "phoneDirectoryCall": "{phone} raqamiga qo‘ng‘iroq qilish"
 }

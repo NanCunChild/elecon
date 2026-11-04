@@ -15,8 +15,8 @@ import addFormats from "ajv-formats";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const schemaDir = join(repoRoot, "contract/schema");
 const registryPath = join(repoRoot, "contract/capability/registry.json");
-const expectedSchemaCount = 73;
-const expectedRegistryReferenceCount = 71;
+const expectedSchemaCount = 79;
+const expectedRegistryReferenceCount = 77;
 
 interface InvalidGolden {
   behavior: string;
@@ -72,6 +72,64 @@ const historyPage = {
 const sendParams = { ...messageTarget, clientId: "9007199254740993", text: "Synthetic message" };
 
 const cases: Record<string, SchemaGolden> = {
+  "elecon.web.content": {
+    valid: { pageId: "synthetic-page", status: "unknown" },
+    invalid: [
+      {
+        behavior: "unknown submission cannot be rewritten as a successful boolean",
+        value: { pageId: "synthetic-page", status: true },
+      },
+    ],
+  },
+  "elecon.params.web.content": {
+    valid: { pageId: "synthetic-page" },
+    invalid: [
+      {
+        behavior: "page identity is not an arbitrary remote URL",
+        value: { pageId: "https://example.invalid/" },
+      },
+    ],
+  },
+  "elecon.query.controls": {
+    valid: { target: "grades.list", title: "Synthetic filters", submitLabel: "Search", controls: [] },
+    invalid: [
+      {
+        behavior: "a read-only form cannot target a command",
+        value: { target: "climate.command", title: "Synthetic filters", submitLabel: "Search", controls: [] },
+      },
+    ],
+  },
+  "elecon.params.query.controls": {
+    valid: { target: "grades.list" },
+    invalid: [{ behavior: "a form request cannot target a command", value: { target: "climate.command" } }],
+  },
+  "elecon.directory.phones": {
+    valid: {
+      items: [
+        {
+          id: "synthetic-office",
+          name: "Synthetic office",
+          category: "Services",
+          phone: "10000",
+          sourceUrl: "https://example.invalid/contact",
+        },
+      ],
+      sourceUrl: "https://example.invalid/",
+      verifiedDate: "2026-11-04",
+    },
+    invalid: [
+      {
+        behavior: "author review date is required, not fabricated from fetch time",
+        value: { items: [], sourceUrl: "https://example.invalid/" },
+      },
+    ],
+  },
+  "elecon.params.directory.phones": {
+    valid: {},
+    invalid: [
+      { behavior: "a directory query never accepts a dialing command", value: { operation: "call" } },
+    ],
+  },
   "elecon.account.session": {
     valid: { status: "authenticated", accountId: "synthetic-account", checkedAt: "2026-11-03T00:00:00Z" },
     invalid: [

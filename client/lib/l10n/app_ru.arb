@@ -815,5 +815,20 @@
   "classroomCapacity": "Места",
   "queryClearCondition": "Сбросить условие",
   "queryPendingSelection": "Выбрано {value}, ожидается проверка; сбросьте для поиска",
-  "queryOptionalRetry": "Повторить загрузку условий (поиск доступен)"
+  "queryOptionalRetry": "Повторить загрузку условий (поиск доступен)",
+  "phoneDirectoryTitle": "Телефонный справочник",
+  "phoneDirectoryHint": "Телефоны служб кампуса доступны офлайн. Нажмите на номер для звонка.",
+  "phoneDirectorySearch": "Поиск по названию, кампусу или номеру",
+  "phoneDirectoryCategory": "Категория / подразделение",
+  "phoneDirectoryAll": "Все",
+  "phoneDirectoryEmpty": "Подходящих номеров нет",
+  "phoneDirectoryDialFailed": "Не удалось открыть приложение телефона. Скопируйте номер.",
+  "phoneDirectoryCopy": "Копировать номер",
+  "phoneDirectoryCopied": "Скопировано",
+  "phoneDirectorySource": "Копировать ссылку на источник",
+  "phoneDirectoryMore": "Показать ещё",
+  "phoneDirectoryRefreshFailed": "Не удалось обновить. Показан предыдущий справочник.",
+  "phoneDirectoryVerified": "Источник проверен: {date}",
+  "phoneDirectoryCount": "Номеров: {count}",
+  "phoneDirectoryCall": "Позвонить {phone}"
 }

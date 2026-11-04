@@ -14,7 +14,7 @@ assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildXidianPackages())]);
 for (const role of ["undergraduate", "postgraduate"]) {
   const data = JSON.parse(first.get(`school-xidian-${role}.elecon.json`)!);
-  assert.equal(data.manifest.version, "0.28.1");
+  assert.equal(data.manifest.version, "0.29.0");
   assert.equal(data.manifest.sdkVersion, 16);
   assert.deepEqual(data.manifest.school, {
     id: "xidian",
@@ -48,12 +48,25 @@ for (const role of ["undergraduate", "postgraduate"]) {
   assert.ok(!data.manifest.accounts[0].capabilities.some((id: string) => id.startsWith("climate.")));
   assert.deepEqual(data.manifest.accounts[1].capabilities, ["forum.session", "account.session"]);
   assert.equal(data.manifest.browser, true);
-  assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 23 : 18);
-  assert.equal(data.manifest.capabilities.find((cap: { id: string }) => cap.id === "query.controls").schemaVersion, "2.1");
-  assert.equal(data.manifest.capabilities.find((cap: { id: string }) => cap.id === "classroom.available").schemaVersion, "1.3");
+  assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 24 : 19);
+  assert.equal(
+    data.manifest.capabilities.find((cap: { id: string }) => cap.id === "query.controls").schemaVersion,
+    "2.1",
+  );
+  assert.equal(
+    data.manifest.capabilities.find((cap: { id: string }) => cap.id === "classroom.available").schemaVersion,
+    "1.3",
+  );
   assert.deepEqual(Object.keys(data.manifest.localization.messages).sort(), ["en", "fa", "ru", "uz", "zh"]);
   assert.ok(data.manifest.network.origins.includes("https://faculty.xidian.edu.cn"));
   assert.ok(data.manifest.capabilities.some((cap: { id: string }) => cap.id === "faculty.search"));
+  assert.ok(data.manifest.capabilities.some((cap: { id: string }) => cap.id === "directory.phones"));
+  assert.ok(data.manifest.cards.some((card: { type: string }) => card.type === "directory"));
+  assert.ok(
+    !data.manifest.accounts.some((account: { capabilities: string[] }) =>
+      account.capabilities.includes("directory.phones"),
+    ),
+  );
   assert.equal(
     data.manifest.capabilities.find((cap: { id: string }) => cap.id === "schedule.week").schemaVersion,
     "1.2",

@@ -210,7 +210,7 @@ export type ScriptCardEntry = { id?: string; title?: string } & (
       defaultVariant: "compact" | "regular" | "expanded";
     }
   | {
-      type: "card" | "exam" | "classroom" | "energy" | "climate" | "generic";
+      type: "card" | "exam" | "classroom" | "energy" | "climate" | "generic" | "directory";
       defaultVariant: "regular";
     });
 
@@ -380,3 +380,7 @@ export type ClassroomAvailableParams = import("../generated/ts/params.classroom.
 /** 1.3 room capacities have distinct meanings; missing is unknown. coverage
  * refers to appliedFilters/query scope, never an implicit all-campus guarantee. */
 export type ClassroomAvailable = import("../generated/ts/classroom.available.js").ClassroomAvailable;
+
+/** ADR-084: read-only complete phone directory. Empty params; local search and
+ * user-triggered system dialing belong to the host. No script launch API. */
+export type PhoneDirectory = import("../generated/ts/directory.phones.js").DirectoryPhones;

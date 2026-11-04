@@ -32,6 +32,7 @@ SDK12 起，显式 `id` 标识包内卡片实例，`title` 可选；同类型可
 | `classroom` | `classroom.buildings`、`classroom.available` | 1.0、1.2 | `query.controls` 1.0 |
 | `energy` | `energy.meters`、`energy.usage` | 1.0、1.1 | 表具选择、历史窗口 |
 | `climate` | `climate.devices`、`climate.status` | 均 1.0 | `climate.command` 1.0 |
+| `directory` | `directory.phones` | 1.0 | 离线目录、本地搜索、系统拨号 |
 | `generic` | `generic.section` | 1.0 | 语义字段、简单表格 |
 
 注册表里存在能力不等于已有独立首页模板。教师搜索、账号、聊天、签到和包内网页使用各自原生功能入口，不应填成新的 `cards.type`。
@@ -262,6 +263,12 @@ export const capabilities = {
 ```
 
 语义角色包括 identifier、label、status、datetime、deadline、amount、quantity、link、unknown。金额仍为 `{amountMinor,currency}`。此输出没有按钮回调、任意 HTML 或学校自定义可执行组件；已有领域模型适用时优先使用领域能力。见 [generic.section](../../contract/schema/generic.section.schema.json)。
+
+## 电话黄页 `directory`
+
+请求 `directory.phones`，参数为 `{}`。返回完整 `items`、目录入口 `sourceUrl` 和作者核对日期 `verifiedDate`（YYYY-MM-DD）。条目必须包含稳定 `id`、服务名称 `name`、分类 `category`、`phone` 与逐条 `sourceUrl`；可选 `campus/address/note`。同名服务、不同校区保留不同 ID，多号码分条，不把未知号码补成占位值。
+
+号码为可选前导加号及 3–15 位数字，由脚本补齐有证据的地区号；分机留在 `note`，不能作为独立号码或自动发送。宿主本地搜索、按分类筛选，用户点击电话按钮后打开系统电话应用，失败可复制号码。公开目录可打包在学校源码内，支持 `home` 只读缓存；缓存日期不会替代作者的来源核对日期。来源页面无法访问时记录未核实范围，不能声称号码已经学校验收。见 [schema](../../contract/schema/directory.phones.schema.json)和 [ADR-084](../adr/adr_084_phone_directory.md)。
 
 ## 缓存与自动查询
 

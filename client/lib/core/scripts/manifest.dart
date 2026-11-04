@@ -796,6 +796,7 @@ class ScriptCardEntry {
     'energy': ['energy.meters', 'energy.usage'],
     'climate': ['climate.devices', 'climate.status'],
     'generic': ['generic.section'],
+    'directory': ['directory.phones'],
   };
 
   static const _resizableTypes = {'notice', 'schedule', 'grades', 'library'};

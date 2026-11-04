@@ -614,5 +614,20 @@
   "classroomCapacity": "ظرفیت",
   "queryClearCondition": "پاک کردن شرط",
   "queryPendingSelection": "انتخاب‌شده {value}، در انتظار تأیید؛ برای جستجوی فوری پاک کنید",
-  "queryOptionalRetry": "تلاش دوباره برای فیلترهای اختیاری (جستجو ممکن است)"
+  "queryOptionalRetry": "تلاش دوباره برای فیلترهای اختیاری (جستجو ممکن است)",
+  "phoneDirectoryTitle": "دفترچه تلفن",
+  "phoneDirectoryHint": "جستجوی آفلاین تلفن خدمات دانشگاه؛ برای تماس روی شماره بزنید",
+  "phoneDirectorySearch": "جستجو بر اساس نام، پردیس یا شماره تلفن",
+  "phoneDirectoryCategory": "دسته / واحد",
+  "phoneDirectoryAll": "همه",
+  "phoneDirectoryEmpty": "شماره‌ای پیدا نشد",
+  "phoneDirectoryDialFailed": "برنامه تلفن باز نشد. شماره را کپی کنید.",
+  "phoneDirectoryCopy": "کپی شماره",
+  "phoneDirectoryCopied": "کپی شد",
+  "phoneDirectorySource": "کپی پیوند منبع",
+  "phoneDirectoryMore": "نمایش بیشتر",
+  "phoneDirectoryRefreshFailed": "به‌روزرسانی ناموفق بود. دفترچه قبلی نمایش داده می‌شود.",
+  "phoneDirectoryVerified": "تاریخ بررسی منبع: {date}",
+  "phoneDirectoryCount": "{count} شماره تلفن",
+  "phoneDirectoryCall": "تماس با {phone}"
 }

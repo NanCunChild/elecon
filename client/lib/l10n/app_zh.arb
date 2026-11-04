@@ -932,5 +932,35 @@
   "queryClearCondition": "清除条件",
   "queryPendingSelection": "已选 {value}，等待确认；可清除后直接查询",
   "queryOptionalRetry": "重试加载可选条件（仍可查询）",
-  "@queryPendingSelection": {"placeholders": {"value": {"type": "String"}}}
+  "@queryPendingSelection": {"placeholders": {"value": {"type": "String"}}},
+  "phoneDirectoryTitle": "电话黄页",
+  "phoneDirectoryHint": "离线查询校园服务电话，点击号码拨号",
+  "phoneDirectorySearch": "搜索名称、校区或电话号码",
+  "phoneDirectoryCategory": "分类 / 部门",
+  "phoneDirectoryAll": "全部",
+  "phoneDirectoryEmpty": "没有匹配的电话",
+  "phoneDirectoryDialFailed": "无法打开电话应用，可复制号码后拨打",
+  "phoneDirectoryCopy": "复制号码",
+  "phoneDirectoryCopied": "已复制",
+  "phoneDirectorySource": "复制目录来源链接",
+  "phoneDirectoryMore": "显示更多",
+  "phoneDirectoryRefreshFailed": "刷新失败，保留上次目录",
+  "phoneDirectoryVerified": "来源核对日期：{date}",
+  "@phoneDirectoryVerified": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "phoneDirectoryCount": "共 {count} 条电话",
+  "@phoneDirectoryCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "phoneDirectoryCall": "拨打 {phone}",
+  "@phoneDirectoryCall": { "placeholders": { "phone": { "type": "String" } } }
 }

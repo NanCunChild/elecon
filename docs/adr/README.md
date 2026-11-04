@@ -20,6 +20,8 @@
 | 后续匿名增强与中继 | [042](adr_042_providers_pages_enhancements.md)，未实施部分仍为 Proposed |
 | V1 整理与退役 | [065](adr_065_repository_cleanup.md)、[兼容维护边界](../reference/legacy_compatibility.md) |
 
+电话黄页与原生拨号见 [084](adr_084_phone_directory.md)。
+
 其他领域决定按能力名查本目录文件或契约历史；所有 ADR 正文与编号保留。2026-11-04 收敛前的逐项 Decision/Landing/Security signoff 状态见[完整状态快照](../archived/2026-11-04/docs/adr/README.md)，不用过去一次测试数量代替当前实现证据。
 
 ## 历史记录与维护原则

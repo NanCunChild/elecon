@@ -815,5 +815,35 @@
   "classroomCapacity": "Seats",
   "queryClearCondition": "Clear condition",
   "queryPendingSelection": "Selected {value}, awaiting validation; clear to query now",
-  "queryOptionalRetry": "Retry optional filters (you can still query)"
+  "queryOptionalRetry": "Retry optional filters (you can still query)",
+  "phoneDirectoryTitle": "Phone directory",
+  "phoneDirectoryHint": "Find campus phone numbers offline; tap a number to call",
+  "phoneDirectorySearch": "Search by name, campus or phone number",
+  "phoneDirectoryCategory": "Category / department",
+  "phoneDirectoryAll": "All",
+  "phoneDirectoryEmpty": "No matching phone numbers",
+  "phoneDirectoryDialFailed": "Could not open the phone app. Copy the number to call.",
+  "phoneDirectoryCopy": "Copy number",
+  "phoneDirectoryCopied": "Copied",
+  "phoneDirectorySource": "Copy directory source link",
+  "phoneDirectoryMore": "Show more",
+  "phoneDirectoryRefreshFailed": "Refresh failed. Showing the previous directory.",
+  "phoneDirectoryVerified": "Source reviewed: {date}",
+  "@phoneDirectoryVerified": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "phoneDirectoryCount": "{count} phone numbers",
+  "@phoneDirectoryCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "phoneDirectoryCall": "Call {phone}",
+  "@phoneDirectoryCall": { "placeholders": { "phone": { "type": "String" } } }
 }

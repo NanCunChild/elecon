@@ -1,7 +1,7 @@
 {
   "sdkVersion": 16,
   "id": "school-xidian-postgraduate",
-  "version": "0.28.1",
+  "version": "0.29.0",
   "schoolId": "xidian_postgraduate",
   "name": "西安电子科技大学（研究生）",
   "network": {
@@ -112,6 +112,11 @@
       "id": "query.controls",
       "schema": "elecon.query.controls",
       "schemaVersion": "2.1"
+    },
+    {
+      "id": "directory.phones",
+      "schema": "elecon.directory.phones",
+      "schemaVersion": "1.0"
     }
   ],
   "home": [
@@ -169,6 +174,11 @@
       "capability": "notice.detail",
       "ttlSeconds": 86400,
       "preload": false
+    },
+    {
+      "capability": "directory.phones",
+      "ttlSeconds": 86400,
+      "preload": true
     }
   ],
   "accounts": [
@@ -440,5 +450,12 @@
       "id": "postgraduate",
       "name": "研究生"
     }
-  }
+  },
+  "cards": [
+    {
+      "id": "phone-directory",
+      "type": "directory",
+      "defaultVariant": "regular"
+    }
+  ]
 }

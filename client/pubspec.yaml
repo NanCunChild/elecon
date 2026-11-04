@@ -55,6 +55,8 @@ dependencies:
   sqlite3: 3.3.4
   # ADR-062: Dart-owned native Hermes control bridge, dart.dev, BSD-3-Clause.
   ffi: 2.2.0
+  # ADR-084: Flutter official URL launcher, pub.dev, BSD-3-Clause; user-triggered tel only.
+  url_launcher: 6.3.3
   # contract/schema 生成的 Dart 类型（tools codegen 产物包；审阅 P0-1 接线）。
   # UI 模型消费此包，消除手写模型与 schema 的漂移（红线 #6 契约单源）。
   elecon_contract:

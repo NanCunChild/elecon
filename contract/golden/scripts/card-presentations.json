@@ -692,6 +692,63 @@
           }
         ]
       }
+    },
+    {
+      "name": "directory_regular",
+      "valid": true,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "directory.phones",
+            "schema": "elecon.directory.phones",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "directory",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "directory_requires_capability",
+      "valid": false,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "notice.list",
+            "schema": "elecon.notice.list",
+            "schemaVersion": "1.1"
+          }
+        ],
+        "cards": [
+          {
+            "type": "directory",
+            "defaultVariant": "regular"
+          }
+        ]
+      }
+    },
+    {
+      "name": "directory_rejects_expanded_suggestion",
+      "valid": false,
+      "manifest": {
+        "capabilities": [
+          {
+            "id": "directory.phones",
+            "schema": "elecon.directory.phones",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "cards": [
+          {
+            "type": "directory",
+            "defaultVariant": "expanded"
+          }
+        ]
+      }
     }
   ]
 }

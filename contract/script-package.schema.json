@@ -1675,6 +1675,33 @@
                     "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "directory.phones"
+                  },
+                  "schema": {
+                    "const": "elecon.directory.phones"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
+                  }
+                }
               }
             ]
           },
@@ -1749,7 +1776,8 @@
                   "classroom",
                   "energy",
                   "climate",
-                  "generic"
+                  "generic",
+                  "directory"
                 ],
                 "description": "Stable host business-card type; the package must provide all its required capabilities."
               },
@@ -3427,6 +3455,99 @@
                 }
               }
             }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "cards"
+            ],
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "directory"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cards": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "directory"
+                    }
+                  }
+                }
+              },
+              "capabilities": {
+                "type": "array",
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "directory.phones"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "sdkVersion": {
+                      "type": "integer",
+                      "maximum": 11
+                    }
+                  },
+                  "required": [
+                    "sdkVersion"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "cards": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "directory"
+                          }
+                        }
+                      },
+                      "maxContains": 1
+                    }
+                  }
+                }
+              }
+            ]
           }
         }
       ]
