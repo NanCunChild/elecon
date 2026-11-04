@@ -26,6 +26,22 @@ const TARGETS = {
   },
 };
 
+// SDK17 carries host errors in code; older bridges used the exact message.
+// Never classify arbitrary diagnostic text containing a retryable word.
+function browserErrorCode(error) {
+  return error?.code ?? error?.message;
+}
+
+async function loginStage(ctx, stage, operation) {
+  ctx.log?.("info", `xidian_login_stage:${stage}`);
+  try {
+    return await operation();
+  } catch (error) {
+    if (error && typeof error === "object" && !error.authStage) error.authStage = stage;
+    throw error;
+  }
+}
+
 export async function webviewLogin(ctx, params, role) {
   const system = params.system;
   const target = TARGETS[system];
@@ -144,7 +160,7 @@ async function preparePasswordLogin(ctx, attempt, deadline) {
     try {
       result = await ctx.browser.evaluate(submitSavedPassword, null, null, true);
     } catch (error) {
-      if (!["browser_navigation_changed", "browser_not_loaded"].some((code) => String(error).includes(code)))
+      if (!["browser_navigation_changed", "browser_not_loaded"].includes(browserErrorCode(error)))
         throw error;
     }
     if (result === "ready") {
@@ -155,7 +171,7 @@ async function preparePasswordLogin(ctx, attempt, deadline) {
         const submitted = await ctx.browser.evaluate(submitSavedPassword, attempt.username, attempt.password);
         if (submitted !== "submitted") throw failure("academic_response_invalid");
       } catch (error) {
-        if (!String(error).includes("browser_navigation_changed")) throw error;
+        if (browserErrorCode(error) !== "browser_navigation_changed") throw error;
       }
       return;
     }
@@ -170,14 +186,19 @@ export async function loginIds(ctx, params, role) {
   if (!ctx.browser) throw new Error("xidian_login_browser_required");
   const deadline = ctx.now() + 100000;
   const ids = params.forceLogin ? null : await readSession(ctx, "ids");
-  const progress = { passwordAttempt: !!params.passwordAttempt };
+  const progress = { passwordAttempt: !!params.passwordAttempt, system: params.system };
   await restore(ctx, ids, IDS_ACCOUNT_URLS);
   ctx.log?.("info", "xidian_login_open:ids");
   // No service parameter, password extraction, replacement form or protocol
   // login. The user completes the school's own slider and MFA in this page.
-  await ctx.browser.open(IDS_LOGIN);
-  if (params.passwordAttempt) await preparePasswordLogin(ctx, params.passwordAttempt, deadline);
-  const verified = await waitForIdsSession(ctx, deadline, ids, progress);
+  await loginStage(ctx, "open", () => ctx.browser.open(IDS_LOGIN));
+  if (params.passwordAttempt)
+    await loginStage(ctx, "passwordSubmission", () =>
+      preparePasswordLogin(ctx, params.passwordAttempt, deadline),
+    );
+  const verified = await loginStage(ctx, "primaryVerification", () =>
+    waitForIdsSession(ctx, deadline, ids, progress),
+  );
   const supplied = params.passwordAttempt?.username ?? params.studentId ?? params.account;
   const studentId = (typeof supplied === "string" ? supplied.trim() : "") || progress.studentId;
   const metadata = { role, authFlow: "webview", ...(studentId ? { studentId } : {}) };
@@ -198,25 +219,33 @@ export async function waitForIdsSession(ctx, deadline, previous, progress) {
   let sampleAt = 0;
   let captures = 0;
   let busy = false;
+  let transientFailures = 0;
+  let browserFailures = 0;
   for (let poll = 0; poll < 150 && ctx.now() < deadline; poll++) {
     let state;
     try {
       if (progress.passwordAttempt) {
         const outcome = await ctx.browser.evaluate(inspectPasswordOutcome);
-        if (outcome) {
-          const error = failure("xidian_login_required_ehall");
+        // The visible official page remains available for the user to solve
+        // its challenge. A challenge is neither a bad password nor permission
+        // to click submit again. Reset partial cookie evidence on every one.
+        progress.interactionRequired = outcome === "interactionRequired";
+        if (outcome && outcome !== "interactionRequired") {
+          const error = failure(`xidian_login_required_${progress.system ?? "ehall"}`);
           error.authOutcome = outcome;
           throw error;
         }
       }
       state = await ctx.browser.evaluate(inspectLoginPage, "ids", poll ? (busy ? 250 : 750) : 0);
+      transientFailures = 0;
+      browserFailures = 0;
+      if (progress.interactionRequired) state = { ready: false };
     } catch (error) {
-      if (
-        !["browser_navigation_changed", "browser_not_loaded", "browser_failed"].some((code) =>
-          String(error).includes(code),
-        )
-      )
-        throw error;
+      const code = browserErrorCode(error);
+      if (!["browser_navigation_changed", "browser_not_loaded", "browser_failed"].includes(code)) throw error;
+      // Retry only reads during navigation. Repeated failure is surfaced at
+      // its original stage instead of becoming a misleading login timeout.
+      if (++transientFailures >= 20 || (code === "browser_failed" && ++browserFailures >= 3)) throw error;
       fingerprint = undefined;
       if (busy) {
         await ctx.browser.setBusy(false);
@@ -263,7 +292,9 @@ export async function waitForIdsSession(ctx, deadline, previous, progress) {
     if (ctx.now() >= deadline) throw failure("xidian_login_timeout");
     return { cookies };
   }
-  throw failure("xidian_login_timeout");
+  const error = failure("xidian_login_timeout");
+  if (progress.interactionRequired) error.authOutcome = "interactionRequired";
+  throw error;
 }
 
 export function inspectIdsLocation() {
@@ -286,7 +317,9 @@ export async function establishAcademicSession(ctx, system, metadata, deadline) 
   const pending = { version: 1, service: system, cookies: [], data: { ...metadata } };
   const client = await createClient(ctx, system, { initialSession: pending, persistSession: false });
   ctx.log?.("info", `xidian_login_exchange:${system}`);
-  const landing = await client.request(`${IDS_LOGIN}?service=${encodeURIComponent(target.service)}`);
+  const landing = await loginStage(ctx, "serviceExchange", () =>
+    client.request(`${IDS_LOGIN}?service=${encodeURIComponent(target.service)}`),
+  );
   const actual = parseUrl(landing.url);
   if (!landing.ok) throw failure("academic_response_invalid");
   if (actual.host === "ids.xidian.edu.cn") {
@@ -305,7 +338,7 @@ export async function establishAcademicSession(ctx, system, metadata, deadline) 
   ctx.log?.("info", `xidian_login_probe:${system}`);
   let result;
   try {
-    result = await client.postForm(`${actual.origin}${target.probe}`);
+    result = await loginStage(ctx, "businessProbe", () => client.postForm(`${actual.origin}${target.probe}`));
   } catch (error) {
     if (["xidian_non_json_response", "xidian_http_failed"].includes(error?.message))
       throw failure("academic_response_invalid");

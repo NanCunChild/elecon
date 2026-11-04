@@ -1,6 +1,7 @@
 /*! Copyright 2026 elecon contributors. SPDX-License-Identifier: MPL-2.0 */
 import { termList } from "./academic.js";
 import { createLogin } from "./login.js";
+import { profileName } from "./profile.js";
 import { forumSession } from "./ruisi.js";
 import { requireParams, serviceError } from "./service_session.js";
 import { readSession } from "./session.js";
@@ -76,9 +77,13 @@ export function createAccountSession(role) {
       }
       saved = await readSession(ctx, system);
       const id = saved?.data?.studentId;
+      // Optional school-owned display metadata; never use an identifier as a
+      // person's name, and never pass arbitrary account settings to the UI.
+      const label = profileName(saved?.data?.accountLabel);
       return schoolState({
         status: "authenticated",
         ...(typeof id === "string" && id ? { accountId: id } : {}),
+        ...(label ? { accountLabel: label } : {}),
         checkedAt: new Date(ctx.now()).toISOString(),
       });
     } catch (error) {

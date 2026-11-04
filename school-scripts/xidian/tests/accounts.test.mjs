@@ -97,6 +97,28 @@ async function status(h, role = "undergraduate") {
   return result;
 }
 
+test("verified school account exposes only an optional plain display label from its session", async () => {
+  for (const label of [
+    "合成同学",
+    "  Synthetic Student  ",
+    "",
+    "bad\nlabel",
+    "x".repeat(161),
+    { name: "private" },
+  ]) {
+    const h = accountHarness();
+    const saved = JSON.parse(h.records.get("ids"));
+    saved.data.accountLabel = label;
+    h.records.set("ids", JSON.stringify(saved));
+    const result = await status(h);
+    assert.equal(result.status, "authenticated");
+    assert.equal(
+      result.accountLabel,
+      label === "合成同学" ? label : label === "  Synthetic Student  " ? label.trim() : undefined,
+    );
+  }
+});
+
 for (const [role, system] of [
   ["undergraduate", "ehall"],
   ["postgraduate", "yjspt"],

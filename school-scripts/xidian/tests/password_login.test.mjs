@@ -10,6 +10,7 @@ function passwordHarness(options = {}) {
   const h = harness(options);
   const calls = [];
   const evaluate = h.ctx.browser.evaluate;
+  let outcomeChecks = 0;
   h.ctx.browser.evaluate = async (fn, ...args) => {
     if (fn.name === "submitSavedPassword") {
       if (args[2] === true) return "ready";
@@ -17,7 +18,13 @@ function passwordHarness(options = {}) {
       if (options.navigationAfterClick) throw new Error("browser_navigation_changed");
       return "submitted";
     }
-    if (fn.name === "inspectPasswordOutcome") return options.outcome ?? null;
+    if (fn.name === "inspectPasswordOutcome") {
+      outcomeChecks++;
+      if (options.outcomeError) throw options.outcomeError;
+      return typeof options.outcome === "function"
+        ? options.outcome(outcomeChecks)
+        : (options.outcome ?? null);
+    }
     return evaluate(fn, ...args);
   };
   h.ctx.accounts = {
@@ -49,7 +56,7 @@ function passwordHarness(options = {}) {
       calls.push(["report", id, event]);
     },
   };
-  return { ...h, calls };
+  return { ...h, calls, outcomeChecks: () => outcomeChecks };
 }
 
 for (const [role, system] of [
@@ -69,7 +76,7 @@ for (const [role, system] of [
     assert.equal(h.events.filter((e) => e[0] === "restore").length, 0);
   });
 }
-for (const outcome of ["credentialsRejected", "interactionRequired", "accountDisabled"]) {
+for (const outcome of ["credentialsRejected", "accountDisabled"]) {
   test(`${outcome}: password flow stops immediately without service exchange or resubmit`, async () => {
     const h = passwordHarness({ outcome });
     await assert.rejects(
@@ -79,6 +86,52 @@ for (const outcome of ["credentialsRejected", "interactionRequired", "accountDis
     assert.equal(h.calls.filter((c) => c[0] === "submit").length, 1);
     assert.deepEqual(h.calls.at(-1)[2], { attemptId: "EXAMPLE_ATTEMPT", outcome });
     assert.equal(h.events.filter((e) => e[0] === "request").length, 0);
+  });
+}
+test("visible CAPTCHA/MFA stays open until user completes it, without password resubmission", async () => {
+  const h = passwordHarness({ outcome: (poll) => (poll <= 3 ? "interactionRequired" : null) });
+  await passwordLogin(h.ctx, { system: "ehall" }, "undergraduate");
+  assert.ok(h.outcomeChecks() >= 5, "challenge completion still needs two stable authenticated snapshots");
+  assert.equal(h.calls.filter((c) => c[0] === "submit").length, 1);
+  assert.equal(h.calls.at(-1)[2].outcome, "authenticated");
+  assert.equal(h.events.filter((e) => e[0] === "open").length, 1);
+});
+test("unresolved challenge times out as interaction required, preserving password classification", async () => {
+  const h = passwordHarness({ outcome: "interactionRequired" });
+  await assert.rejects(
+    passwordLogin(h.ctx, { system: "ehall" }, "undergraduate"),
+    (error) =>
+      error.code === "authentication_timeout" &&
+      error.authOutcome === "interactionRequired" &&
+      error.authStage === "primaryVerification",
+  );
+  assert.equal(h.calls.filter((c) => c[0] === "submit").length, 1);
+  assert.equal(h.calls.at(-1)[2].outcome, "interactionRequired");
+  assert.equal(h.events.filter((e) => e[0] === "request" || e[0] === "cookies").length, 0);
+});
+test("repeated structured browser failures stop after three reads, without resubmitting", async () => {
+  const error = Object.assign(new Error("sanitized host message"), { code: "browser_failed" });
+  const h = passwordHarness({ outcomeError: error });
+  await assert.rejects(
+    passwordLogin(h.ctx, { system: "ehall" }, "undergraduate"),
+    (actual) => actual === error && actual.authStage === "primaryVerification",
+  );
+  assert.equal(h.outcomeChecks(), 3);
+  assert.equal(h.calls.filter((c) => c[0] === "submit").length, 1);
+  assert.equal(h.calls.at(-1)[2].outcome, "unknown");
+});
+for (const error of [
+  Object.assign(new Error("browser_navigation_changed"), { code: "script_cancelled" }),
+  new Error("unexpected text browser_navigation_changed"),
+]) {
+  test(`nonretryable ${error.code ?? error.message} stops on the first read`, async () => {
+    const h = passwordHarness({ outcomeError: error });
+    await assert.rejects(
+      passwordLogin(h.ctx, { system: "ehall" }, "undergraduate"),
+      (actual) => actual === error,
+    );
+    assert.equal(h.outcomeChecks(), 1);
+    assert.equal(h.calls.filter((c) => c[0] === "submit").length, 1);
   });
 }
 test("a lost DOM return after password click never replays submission", async () => {
