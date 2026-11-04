@@ -1,0 +1,63 @@
+{
+  "date": "2026-11-04",
+  "decision": "ADR-081",
+  "transformation": "Original text preserved except archive notice and relocated Markdown links; archive bytes and pre-refactor source hashes recorded.",
+  "files": [
+    {
+      "source": "docs/architecture.md",
+      "archive": "docs/archived/2026-11-04/docs/architecture.md",
+      "sourceSha256": "b24c1f39b26db32d91e11fba374ff56c505cbb5383e97879a1cf552d10d847e1",
+      "archiveSha256": "4279866f7874bdd24d2bbcf4e5e5d4dfa33b32ebeef6a5738e19b46c829b74f9",
+      "sourceLines": 99
+    },
+    {
+      "source": "docs/reference/core_script_boundaries.md",
+      "archive": "docs/archived/2026-11-04/docs/reference/core_script_boundaries.md",
+      "sourceSha256": "803fc21de62790a3ad030483c0e7d0652afc3ece9458efd7e9a330b7c2ba4757",
+      "archiveSha256": "3c7526b64281f1289f9f9d177e9d2d18e65f3e2eb192bd53f174213febd792a5",
+      "sourceLines": 126
+    },
+    {
+      "source": "docs/reference/trusted_scripts.md",
+      "archive": "docs/archived/2026-11-04/docs/reference/trusted_scripts.md",
+      "sourceSha256": "e5c59a1ffa1c6e9a4a47eddab57872078d842e4e328591d8268a45e8eaae82f4",
+      "archiveSha256": "7b0bd4ce5c429952cd727217fd1892e46b29f7c7f740fb4779fec91978d802c0",
+      "sourceLines": 341
+    },
+    {
+      "source": "docs/planning/trusted_scripts.md",
+      "archive": "docs/archived/2026-11-04/docs/planning/trusted_scripts.md",
+      "sourceSha256": "47dbd90470b743488d18334aa9a2ad1e3bfee4b2c2ca4caf05881d5bff5ffca2",
+      "archiveSha256": "c1ecd43955d7cea89f0895562662f1a7d551b25e854133b6eb4b838b6bdfb8ab",
+      "sourceLines": 502
+    },
+    {
+      "source": "docs/planning/platform_evolution.md",
+      "archive": "docs/archived/2026-11-04/docs/planning/platform_evolution.md",
+      "sourceSha256": "bac6993614addfb6b161f0434d491ad316eddc9427f4b728ca78b418c8b31d3b",
+      "archiveSha256": "7e031f5669d236abff6ee221d28d7ee3786f2812cda80e57c4ec52ed67b3deec",
+      "sourceLines": 83
+    },
+    {
+      "source": "docs/planning/forum_and_messages.md",
+      "archive": "docs/archived/2026-11-04/docs/planning/forum_and_messages.md",
+      "sourceSha256": "c5a65af2dfd65930a90aff7c6ef2ff2c43477288337ebaf1c67436ba9f9042b4",
+      "archiveSha256": "bbdc6015c55e835e5cdef19304352db3eee279f9c7c25b2f8a79a9bbbb3a60b5",
+      "sourceLines": 61
+    },
+    {
+      "source": "docs/planning/feature_supplements.md",
+      "archive": "docs/archived/2026-11-04/docs/planning/feature_supplements.md",
+      "sourceSha256": "1e11458801b90c999bd8f1457846f6e594c229ebb0a29db24376ad24ac094d93",
+      "archiveSha256": "55fb5e163889ab0ec1437b4a760916a3027e684c39b38805df398e2bdb02b91b",
+      "sourceLines": 36
+    },
+    {
+      "source": "docs/adr/README.md",
+      "archive": "docs/archived/2026-11-04/docs/adr/README.md",
+      "sourceSha256": "242c6f6b1f2351bac66e550bda8f274d8466fb0419209e0f755ddcc17dead625",
+      "archiveSha256": "3d012e0aee4db2d3853a277fa855f399c0955439597c1b51c6c22c5524c5fd67",
+      "sourceLines": 59
+    }
+  ]
+}

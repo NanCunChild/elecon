@@ -1,78 +1,63 @@
 # Elecon 当前架构
 
-当前主线是**受信学校脚本、宿主能力边界、标准业务数据和客户端页面**。学校变化集中在脚本，跨学校可复用的业务含义留在契约。决策基线见 [ADR-041](adr/adr_041_current_architecture.md)，开发入口见 [AGENTS](../AGENTS.md)。
+学校差异由用户安装的受信 JavaScript 扩展实现；核心提供跨学校的执行、身份、网络、存储、认证输入和展示基底。脚本作者使用普通 ES 模块、异步函数与异常，学校协议和交互流程不进入核心。
 
-逐功能的宿主、脚本、契约与页面职责见[核心与脚本边界](reference/core_script_boundaries.md)。旧文档与测试整理依 [ADR-065](adr/adr_065_repository_cleanup.md)，归档和夹具迁移不表示活跃 V1 执行器已删除。
+本文是现行架构的唯一维护入口。作者从 [Wiki](wiki/README.md) 开始，接口字段以 [SDK 类型](../contract/script-sdk/types.d.ts)、[包 schema](../contract/script-package.schema.json)和[领域契约](../contract/schema/)为准；实施状态见[统一计划](planning/implementation.md)。[ADR 索引](adr/README.md)用于追溯决策原因，不要求逐篇阅读。
 
-## 已有实现
+## 模块与职责
 
 ```mermaid
 flowchart TD
-  UI[Flutter 页面与首页卡片] --> Session[会话与能力调用]
-  Session --> Host[安装授权 / 身份 / 缓存 / 取消]
-  Host --> Script[背景 QuickJS 学校脚本]
-  Script --> API[受限 HTTP / 可见浏览器 / 当前学校凭据]
-  API --> School[学校业务系统]
-  Script --> Data[标准数据与输出校验]
-  Data --> UI
+  Trigger[原生页面 / 卡片 / 工作台] --> Session[会话：来源、身份、交互模式、取消]
+  Session --> Host[宿主：授权字节、网络、资源、结构化结果]
+  Host --> Script[QuickJS：普通 ES 模块与异步函数]
+  Script --> Ports[HTTP / 浏览器 / 凭据 / 原生输入]
+  Ports --> School[学校系统]
+  Script --> Contract[标准业务数据与 schema 校验]
+  Contract --> Trigger
 ```
 
-`school-scripts/` 是新学校源码；`adapters/_template/trusted/` 是现有源码模板。`contract/script-package.schema.json` 和 `contract/script-sdk/` 定义包与宿主 API；`contract/schema/` 定义数据，不能用模板名替代领域语义。客户端已按 [ADR-043](adr/adr_043_card_layout_and_overrides.md) 保存逐能力的默认/覆盖来源，更新不抢占；主包无需识别增强包。SDK 6 cards 仅建议有限展示，SDK 7 homeTitle 可命名学校首页。首页固定单元格沿列向上补空，拖动时暂时固定落点；图标与名称占 1×1、半宽摘要占 2×2，全宽详情按整行对齐；长按吸附拖动及显隐/尺寸/样式/格位按学校保存。逐卡片展示样式扩展入口已预留。
+| 模块 | 核心责任 | 脚本责任 | 实现入口 |
+|---|---|---|---|
+| 安装与来源 | 审查包内容、学校和网络范围；保存批准 digest；更新重新确认；逐能力来源及显式覆盖 | 声明能力、资源、账号与运行需要；普通模块函数只在必要时注册成宿主入口 | [scripts](../client/lib/core/scripts/)、[打包器](../tools/src/script/package.ts) |
+| 调用与生命周期 | 校验来源、参数、身份和取消；处理交互、错误、输出及资源回收 | `capabilities[id](ctx, params)` 返回标准数据或抛异常；辅助函数保持普通 JS | [script_session](../client/lib/session/script_session.dart)、[runtime](../client/lib/core/scripts/runtime.dart)、[查询门面](../client/lib/session/capability_query.dart) |
+| 身份、凭据与认证 | Profile 隔离、受保护存储、账号页面、短期输入与恢复额度；主密钥不离开宿主 | 学校 SSO、Cookie/token、母子票据、登录成功验证与学校错误判定 | [credentials](../client/lib/core/scripts/credentials.dart)、[account_auth](../client/lib/core/scripts/account_auth.dart)、[账号手册](wiki/accounts.md) |
+| HTTP、WSS、浏览器与隧道 | 声明网络范围、DNS/TLS、跳转、预算和取消；Hermes 原生传输与独立秘密；浏览器容器 | URL、协议、签名、请求体、DOM 和业务成功条件 | [transport](../client/lib/core/transport/)、[browser](../client/lib/core/scripts/browser.dart)、[浏览器手册](wiki/browser.md) |
+| 标准业务数据 | 时间、单位、缺失值、实体身份、版本和输出校验；可共享的原生领域组件 | 把学校数据归一为约定含义；网页局部状态无需进入全局 schema | [contract](../contract/)、[解码器](../client/lib/ui/home/decoders/)、[学校源码](../school-scripts/) |
+| 页面、首页与缓存 | 原生路由、输入、卡片布局和用户选择；缓存固定身份、来源 digest、参数、语言与原始时间 | 文案、查询条件和已有展示建议；不把业务流程编码成 Widget tree | [home](../client/lib/ui/home/)、[卡片手册](wiki/cards.md)、[交互手册](wiki/interactions.md) |
 
-脚本可见本校授权凭据。SDK 2 namespace 只避免存储键冲突，同校共享是显式寻址，不是隔离权限。客户端保管主密钥、安装授权与执行代际；脚本不得读取其他学校身份或任意原生能力。输出 schema 校验不等于能识别任意秘密的防泄漏过滤。
+## 作者运行环境
 
-公网 `server/src/public` 目前提供签名产物静态分发；`server/src/campus` 仍返回 501。新源码脚本没有生产服务端执行器。现有 V1 official/Broker/Masker 路径按[兼容边界](reference/legacy_compatibility.md)继续维护。
+普通 ES 模块经过构建打包为受信源码，在背景 QuickJS isolate 运行。模块和函数边界不引入新的流程语言；包版本、SDK 版本、业务 schema 版本分别管理。只有跨宿主调用的入口需要注册，内部认证步骤、工具函数和网页事件使用普通 JS。
 
-[ADR-046](adr/adr_046_triggered_script_requests.md) 废除新源码 action 通道。空调控件直接触发普通能力的一次控制 POST，结束后查询一次状态；不额外确认、不自动重发、不乐观更新。旧 action 包保留原安装内容与 digest，但需更新后才能执行；V1 边界不变。签到同样使用通用请求；学习通 QR 首片见 ADR-052。
+[ADR-081](adr/adr_081_script_runtime_consolidation.md) 收敛 SDK17 的请求/响应、取消与错误协议，专有端口集中到 `elecon` 命名空间；旧 `ctx` 与 SDK1–16 保持其版本语义。标准 API 的实际支持范围、生命周期和不支持项只维护在[SDK 手册](wiki/sdk-and-host.md)，不将标准形状等同于完整浏览器或 Node 环境。
 
-[ADR-044](adr/adr_044_local_profiles.md) 的本地 Profiles 各自拥有会话、凭据/缓存和脚本安装授权；旧根目录原位归属 Profile 1，新用户重新选脚本。切换取消旧调用并重建页面导航；设置按 Profile 展示，保护状态用图标表达。非密学校首页布局与主题继续共享。
+运行错误以稳定分类跨宿主传递，JS 继续使用 `throw`、`try/catch` 和 `Error`。业务码和宿主分类分开；宿主桥不再通过异常显示文字判定错误。学校侧旧认证封装的 message 分支迁移仍见统一计划。取消、资源超限、认证需要交互和业务失败不能相互冒充。恢复策略由调用层与学校流程明确实施，错误本身不授权重试。
 
-[ADR-045](adr/adr_045_script_qr_scanner.md) 的 SDK 8 可声明 `scanner` 并前台调用 `ctx.ui.scanQRCode()`，返回二维码文本或取消 null；后台拒绝，首片 Android/iOS，学习通增强包的受限扫码提交见 ADR-052。脚本保护仅完成[研究](research/script_protection_feasibility.md)，没有加密包或 VMP 加载器。
+## 执行与身份边界
 
-[ADR-048](adr/adr_048_schedule_navigation_and_segments.md) 的 `schedule.week` 1.1 提供学校时间分段与逐周课程预览，客户端拥有周按钮、滑动切周、满宽网格和重叠提示；1.0 继续按历史 schema 校验。[ADR-054](adr/adr_054_schedule_term_cache.md) 的 1.2 增加明确的整学期周详情，切周复用原始时效的缓存，过期后台刷新且保留当前网格；旧版本继续按各自契约读取。西电教学楼目录已核实并内置于学校脚本，占用情况仍实时查询。
+- 执行字节必须匹配批准 digest。来源更新、禁用、退出和切身份使旧执行及迟到结果失效；显示来源或卡片不授予执行权限。
+- 当前学校受信脚本可处理其授权凭据；UI 不取得完整凭据库或主密钥。namespace 是寻址与 API 组织方式，同校共享须显式寻址，不是包间最小权限沙箱。
+- 宿主不开放任意文件、进程、FFI、raw socket 或原生模块侧载。公网静态分发不持凭据或私密数据；校内部署位置本身不产生共享授权。
+- 用户按钮发起普通请求，无另一个 action 通道或逐次额外确认。展示、预加载和缓存恢复不能发起写操作；发送结果未知时不自动重放。
+- 只读查询可按明确学校认证证据恢复；验证码、MFA、网络失败和合法无权限不等于密码错误。成功登录仍须验证目标业务会话。
 
-[ADR-050](adr/adr_050_faculty_search.md) 的 `faculty.search` 1.0 提供公开教师检索，西电按官网单页查询；原生页面保留教师身份、分页、来源和简介，不获取凭据、不预加载或持久缓存检索结果。
+## 已有产品能力及限制
 
-按 [ADR-052](adr/adr_052_community_accounts_and_chaoxing.md)，论坛和消息 Tab 仅在当前学校有对应可执行包时显示。基本包提供睿思独立账号登录及本地退出；学习通第三方社区包由用户自行导入，客户端不内置或推荐。[ADR-055](adr/adr_055_checkin_locations_and_diagnostics.md) 的签到 1.1 增加用户指定地点矩阵及固定失败诊断，地点按本地身份/学校/来源保存，只有选中地点进入主动扫码请求。SDK 9 WebSocket 单独声明 wss origins，固定 DNS/TLS、长度/流量/时长预算，取消销毁；协议、token 和 protobuf 留在脚本。账号操作、消息和签到禁止预加载与首页缓存。
+原生领域组件覆盖课表、成绩、考试、空教室、通知、校园卡、借阅、水电、空调与教师检索等；具体学校是否支持以安装包声明及源站验证为准。SDK12 同型卡片实例固定来源，默认能力覆盖独立保存；更新不抢占用户布局。成绩学期与教室筛选、课表缓存和时间轴复用共性组件。
 
-[ADR-061](adr/adr_061_message_history_and_storage.md) 增加学习通群聊/私聊会话、历史分页与一次纯文本发送。核心拥有原生聊天页面和按 Profile/学校/批准来源/服务账号隔离的 SQLite 库；SQL 在背景 isolate 执行，有界数据库快照沿用 H/S/M 保护，脚本没有数据库/文件接口。退出/撤销清除记录，撤回墓碑阻止旧页恢复正文；发送无确认时保留未知态、不自动重发。作业、课程、任务、活动及附件只显示不可点击摘要。旧 `messages.list` 窗口语义不变。论坛帖子、未读、附件操作及后台推送仍待实施，见[专项计划](planning/forum_and_messages.md)。
+账号声明支持独立服务与同包登录/状态入口；保存密码先验证再替换。SDK16 可声明 Hermes 网关账号和逐能力依赖，不满足依赖时停止，不直连回退；普通 WebView 尚未接入 APPTunnel。当前包内网页是 Android 离线 HTML 与固定 DOM 操作模式，作者网页 JS/直接网络仍关闭；这描述旧模式的实现，不是扩展目标的永久限制。
 
-按 [ADR-053](adr/adr_053_provider_updates_and_service_cancellation.md)，同一基础包经批准升级后，其能力绑定同步声明的 schemaVersion；注册表 v3 兼容修复 v2 的旧版本绑定，保留学校、批准 digest、启用状态和显式覆盖选择。社区页面取消只撤销自身调用，学校身份变更仍撤销全部调用；睿思认证失败不阻塞学校功能。
+消息已有会话、群/私聊历史及一次文本发送，受保护 SQLite 由核心托管；论坛帖子、未读、附件操作及推送尚未实现。系统 AI 为四个具名只读 AppFunctions，当前身份逐次授权，不提供任意脚本执行口。原生权限、平台支持和真实服务验收不能从 schema 存在推断。
 
-[ADR-056](adr/adr_056_foreground_request_cards.md) 为已有签到能力增加首页入口，并复用通用前台请求组件；账号、扫码及网络协议仍由同来源脚本执行，只有按钮触发请求。按 [ADR-057](adr/adr_057_bounded_script_probes.md)，正式版日志可查看/复制经过严格格式校验的有界阶段探针；运行时日志页的自由文本仍仅用于 debug，探针没有原始响应记录或自动上传。课表沿用 `calendar.academic.currentWeek` 标记本周，首次打开以默认当前周缓存为先、选中周居中，切周带方向动画。首页更新时间按经过的分钟/小时展示，超过三天显示本地日期，原始时间与缓存 TTL 不变。
+## 已接受的扩展目标
 
-[ADR-058](adr/adr_058_foreground_device_inputs.md) 的 SDK 10 增加显式声明的前台拍照、选图和当前位置输入，宿主提供有界原生输入及二进制 HTTP body，学校脚本决定签到需求、坐标转换与上传协议。签到模板使用中性按钮，首页是唯一签到入口；消息 Tab 聚焦账号与消息。系统选图的短期生命周期租约不授权后台执行，身份与前台撤销仍生效。
+[ADR-080](adr/adr_080_trusted_script_extensibility.md) 接受长期 WebView JS、自绘按钮/框图、全部能力首页入口、脚本决定使用的独立验证码/MFA 界面，以及用户启用后自动执行的定时任务。一次调用、长期网页会话和持久计划分别管理生命周期，复用同一调用语义；不能通过无限延长短请求超时实现全部目标。
 
-[ADR-059](adr/adr_059_capability_configuration_state.md) 区分「未完善信息」和「请求失败」：固定 `configuration_required` 可用于任何能力，待配置标记绑定当前 Profile/学校/来源 digest/参数并保存在 H/S/M 后端；整体刷新跳过，明确的交互配置成功后恢复。[ADR-060](adr/adr_060_cache_first_startup.md) 先恢复当前身份和本地桌面，JS 及查询在首个桌面帧后启动；未使用的 Profile 延迟恢复，私密数据仍从受保护缓存读取。查询卡片本身承载查看语义，右上角刷新，详情不再堆叠重新查询文字按钮。
+远端增强须兑现网页网络范围、桥接来源与取消，依赖隧道时不能直连。自动化须记录时间窗口、错过、认证等待和未知结果，不能承诺所有平台锁屏或退出后精确执行。上述接口的实施状态与验证条件只维护在[统一计划](planning/implementation.md#受信扩展)。
 
-[ADR-062](adr/adr_062_app_tunnel_selection.md) 增加核心 APPTunnel 选择，按 Profile/学校保存；首版使用随构建固定的 Hermes/aTrust 原生桥，只服务本应用的 HTTP/WSS，不创建系统 VPN。普通脚本仍受 origin/IP、目标 TLS、取消与预算约束；失败停止，切换不重发。网关原站登录和会话材料由核心托管，H/S/M 保护；普通 WebView 尚未接隧道，选择后拒绝其直连。V1 在隧道模式拒绝执行，已有不可取消的 V1 操作结束前拒绝切换。
+## 兼容、发布与证据
 
-[ADR-063](adr/adr_063_conversation_names_and_order.md) 的 `messages.conversations` 1.1 支持确认有内容和源站最新消息时刻；超星 0.3.1 批量补全群名，核心与脚本按有内容优先、已知最新源站时间排序，离线使用同样证据，未知群组不等于空群。
+仍有消费者的 V1 official/Broker/Masker 路径按[兼容维护边界](reference/legacy_compatibility.md)维护；不为它扩充学校 DSL。可以完整退役旧调用链，但文档归档不等于删除运行代码或保护。`server/src/public` 是零凭据静态分发，`server/src/campus` 仍是 stub，没有新源码服务端生产执行器。
 
-[ADR-064](adr/adr_064_script_accounts_and_tunnel_credentials.md) 的 SDK 11 统一声明脚本账号名称、用途、登录说明及可选同包登录绑定，设置按当前学校展示并固定来源调用。旧包仍为未声明，更新需重新批准。Hermes 设置支持独立的受保护账号凭证与主动单次密码登录；验证码/MFA 保留官方网页登录，保存账号不等于登录，普通脚本不能取得隧道密码或会话。
-
-## 后续方向
-
-[ADR-042](adr/adr_042_providers_pages_enhancements.md)提出：用显式 provider 绑定连接学校包与增强包，以业务 feature 组合多个查询和页面，以固定原生模板复用展示。公开通知缓存优先试点；鉴权空教室和账户水电分别验证授权与隔离，不共享学生会话。
-
-同名能力覆盖与有限卡片的首片已由 ADR-043 实施；通用页面注册、匿名增强权限及中继仍为 **Proposed**。现有能力的原生查看页、周课表与今日时间线按 [ADR-047](adr/adr_047_feature_pages_and_card_qr.md) 实施；普通首页点击不改尺寸。校园卡二维码独立于余额/流水，不持久缓存。一卡通消费分布/每日变化由核心按标准流水派生，按币种和日期范围展示，标明已加载记录及分页完整性；无流水能力或无可统计消费时隐藏图。代码观察与切片见[接口审计](reference/interface_evolution.md)、[中继研究](research/relay_enhancement_feasibility.md)及[实施计划](planning/platform_evolution.md)。
-
-## 状态来源
-
-| 问题 | 入口 |
-|---|---|
-| 哪些决策有效 | [ADR 索引](adr/README.md) |
-| 现有脚本实现与验收 | [trusted_scripts](planning/trusted_scripts.md) |
-| 新页面与增强包先做哪步 | [platform_evolution](planning/platform_evolution.md) |
-| 如何打包和安装 | [受信脚本使用文档](reference/trusted_scripts.md) |
-| 历史论证与签收 | [archived](archived/README.md) |
-
-决策接受、代码存在、自动测试、真机与人工签收分别记录；任何一项不能推导其余项已完成。
-
-### ADR-066：领域查询、账号状态和多来源
-
-SDK 12 的显式卡片 id/title 支持同类型多个实例，各实例查询/缓存/详情/登录固定包与批准 digest，不改变默认 capability 覆盖。领域组件与标准数据解码器已拆分，`CapabilityQueries` 和 `CachedQuerySection` 承担共同来源与生命周期。
-
-`account.session` 区分 authenticated/signedOut/expired/unknown；只读检查禁用交互，重登必须重新验证。脚本可声明内置 APPTunnel 服务并包装账号，宿主固定页面管理 Hermes 密钥/会话。消息活动/指令仅标识；发送权限由当前在线结果和脚本实际发送前复核共同约束。
-
-细节见 [ADR-066](adr/adr_066_feature_sources_and_account_state.md) 与[功能边界](reference/core_script_boundaries.md)。这不实施任意页面注册、增强包独立沙箱或脚本侧原生模块加载。
+架构或契约含义变化记录整体决定；普通实现拆分和已有决定覆盖的功能不另造 ADR。当前开发阶段可显式升版破坏性更新，不能无声改变旧字段。依[功能工作流](rules/feature_workflow.md)和[测试规则](rules/testing.md)验证实际改动；代码、自动测试、平台真机、学校验证与人工审阅分别记录。历史实现流水见[收敛快照](archived/2026-11-04/README.md)。

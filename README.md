@@ -2,23 +2,21 @@
 
 面向学生整合课表、成绩、通知、校园卡、图书等服务。学校差异由可更新的受信学校脚本处理，客户端负责授权、标准数据、异步执行和统一页面。
 
-**当前开发入口**：[AGENTS](AGENTS.md) → [架构](docs/architecture.md) → [ADR 状态](docs/adr/README.md)。各功能的宿主、学校脚本和契约归属见[核心与脚本边界](docs/reference/core_script_boundaries.md)。旧 ADR-000–033 与总则已[废弃归档](docs/archived/README.md)，不再作为新接入的默认指南；未迁移 V1 按[兼容边界](docs/reference/legacy_compatibility.md)维护。
+**当前开发入口**：[AGENTS](AGENTS.md) → [现行架构](docs/architecture.md)。脚本作者从 [Wiki](docs/wiki/README.md) 开始，当前状态与待办只维护在[实施计划](docs/planning/implementation.md)；[ADR](docs/adr/README.md)按需查原因，旧设计与验证流水见[档案](docs/archived/README.md)。未迁移 V1 按[兼容边界](docs/reference/legacy_compatibility.md)维护。
+
+**开发教程**：[开发 Wiki](docs/wiki/README.md)提供快速开始、10 类卡片模板、登录与凭据保存、按钮响应、WebView/DOM、SDK 与 Flutter 组件调用，以及可打包的离线示例。
 
 ## 当前路线
 
 `elecon-script/1` 源码包经用户检查内容、学校身份与网络范围后安装，允许未签名源码；更新重新确认。受信脚本能处理当前学校凭据、HTTP 和可见浏览器 DOM，宿主保持密钥、身份、执行 digest、取消和能力边界。SDK 2 namespace 是寻址分组，不是同校脚本间的权限隔离。
 
-使用、模板与打包见[受信脚本参考](docs/reference/trusted_scripts.md)，学校源码见 [school-scripts](school-scripts/README.md)，西电接入见[学校说明](school-scripts/xidian/README.md)。客户端平台、真实学校与人工验收状态见[实施记录](docs/planning/trusted_scripts.md)，不以代码存在推断发布已完成。
+使用、模板与打包见[作者手册](docs/wiki/README.md)，学校源码见 [school-scripts](school-scripts/README.md)，西电接入见[学校说明](school-scripts/xidian/README.md)。客户端平台、真实学校与人工验收状态见[实施计划](docs/planning/implementation.md)，不以代码存在推断发布已完成。
 
 **本科宿舍功能**：支持校园网水电多表/历史查询及空调状态与控制；研究生包不声明这些能力。新源码空调按 [ADR-046](docs/adr/adr_046_triggered_script_requests.md) 由按钮触发一次控制发送后查询状态，不额外确认、不自动重发，未知结果保留。使用与平台边界见[学校说明](school-scripts/xidian/README.md)，真实设备与核心人工验收另行记录。
 
 ## 下一步规划
 
-[ADR-042](docs/adr/adr_042_providers_pages_enhancements.md)规划独立页面与可选择的增强包。[ADR-043](docs/adr/adr_043_card_layout_and_overrides.md) 已实现同名能力覆盖与首页长按编辑、拖动排序、有限尺寸调整，见[使用说明](docs/reference/card_layout_and_overrides.md)；匿名增强和中继仍未实现。课表与课程标准分开建模；图书搜索不复用个人借阅语义，论坛不冒充通知。公开通知是中继缓存的首个试点，空教室先核实共享授权，水电按身份与表具隔离。
-
-- [模板与接口审计](docs/reference/interface_evolution.md)
-- [中继研究与可复现实验](docs/research/relay_enhancement_feasibility.md)
-- [分期实施与验收](docs/planning/platform_evolution.md)
+本轮统一脚本运行接口、调用语义和错误处理，保留普通 ES 模块与异步函数。后续支持长期 WebView JS、自绘界面、全部能力首页入口、独立验证码/MFA 及用户启用的自动操作；实现状态、依赖与验收见[统一实施计划](docs/planning/implementation.md)。匿名增强和中继仍为独立候选，不作为当前受信扩展的前置。
 
 ## 仓库结构
 

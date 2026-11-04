@@ -1,8 +1,8 @@
 # AGENTS.md · elecon 开发总则
 
-> 当前基线：2026-10-31。修改前先读本文、[当前架构](docs/architecture.md)及相关 [rules](docs/rules/)。旧总则已[归档并废弃](docs/archived/2026-10-31/AGENTS.pre-2026-10-31.md)，不再要求先读 ADR-000。
+> 当前基线：2026-11-04（ADR-081 统一运行模型与文档收敛；ADR-080 扩展按切片实施）。修改前先读本文、[当前架构](docs/architecture.md)及相关 [rules](docs/rules/)。旧总则已[归档并废弃](docs/archived/2026-10-31/AGENTS.pre-2026-10-31.md)，不再要求先读 ADR-000。
 
-elecon 面向学生聚合校园服务。学校差异集中在可更新的受信学校脚本；宿主负责执行授权、身份与网络边界、标准契约和原生页面。优先减少学校变更波及面与长期维护负担。当前决策基线为 [ADR-041](docs/adr/adr_041_current_architecture.md)和 ADR-034 起的有效 ADR。
+elecon 面向学生聚合校园服务。学校差异集中在可更新的受信学校脚本；宿主负责执行授权、身份与网络边界、标准契约、原生页面与可编程网页容器。核心提供跨学校共性基底，学校交互与自动化策略尽量留在受信脚本。优先减少学校变更波及面与长期维护负担。现行规则集中在[当前架构](docs/architecture.md)，决策原因按需查 [ADR 索引](docs/adr/README.md)，无需逐篇阅读历史 ADR。
 
 ## 1. 现行边界
 
@@ -15,11 +15,11 @@ elecon 面向学生聚合校园服务。学校差异集中在可更新的受信�
 
 **B3. 公网边界**：公网服务不持凭据、私密数据不经公共中继。现有 `server/src/public` 是零凭据静态分发服务；公开业务缓存是独立待实施服务。校内授权中继仍是 stub，部署位置本身不产生查询或共享数据的授权。
 
-**B4. 宿主能力**：学校认证、请求、签名和 DOM 编排留在脚本；宿主约束声明的网络范围、身份、取消与资源预算，不开放任意文件、进程、FFI、raw socket 或原生模块侧载。客户端脚本在背景 isolate，UI 异步。
+**B4. 宿主能力**：学校认证、请求、签名和 DOM 编排留在脚本；宿主约束声明的网络范围、身份、取消与资源预算，不开放任意文件、进程、FFI、raw socket 或原生模块侧载。宿主侧脚本在背景 isolate，UI 异步；[ADR-080](docs/adr/adr_080_trusted_script_extensibility.md) 接受 WebView 内作者 JS、长期会话与自动化方向，按独立生命周期和资源策略实施，不以短请求预算永久限制扩展。
 
-**B5. 契约含义**：输入、输出、单位、时间、缺失值、副作用和实体身份必须明确。`contract/` 或核心抽象变更先有 ADR；当前开发阶段允许明确版本与迁移方案的破坏性更新，不能无声重解释已有字段。公测稳定后的兼容政策由人工决定。
+**B5. 契约含义**：输入、输出、单位、时间、缺失值、副作用和实体身份必须明确。`contract/` 或核心抽象变更先有覆盖该变化的 ADR；已有决定覆盖的实现拆分不另建 ADR；当前开发阶段允许明确版本与迁移方案的破坏性更新，不能无声重解释已有字段。公测稳定后的兼容政策由人工决定。
 
-**B6. 页面与操作**：客户端拥有布局、路由和交互；脚本提供标准数据，不下发 Widget tree。页面可组合多个能力，卡片是其中一种展示。新受信脚本按 [ADR-046](docs/adr/adr_046_triggered_script_requests.md) 使用通用请求，空调按钮触发一次控制发送后查询状态，不另设 action 或额外确认；命令不预加载、不自动重发，未知结果保留。V1 的命令确认与平台门按兼容边界维护。
+**B6. 页面与操作**：客户端拥有原生布局、路由和网页容器；脚本提供标准数据，也可在新网页模式内用 JS 自绘交互，不下发 Flutter Widget tree。[ADR-080](docs/adr/adr_080_trusted_script_extensibility.md) 接受全部能力首页入口、用户启用的定时自动操作及脚本决定使用的验证码/MFA 独立界面；接口未实施前沿用旧 SDK 行为。新受信脚本按 [ADR-046](docs/adr/adr_046_triggered_script_requests.md) 使用通用请求，不另设 action 或逐次额外确认；展示、预加载和缓存恢复不触发命令，未知结果不自动重发。自动化由明确启用的计划触发，不能借刷新隐式执行。V1 的命令确认与平台门按兼容边界维护。
 
 **B7. 旧路径隔离**：未迁移 V1 official bundle 继续验签、身份绑定、吊销和 Broker/Masker 保护；新源码安装授权不替代旧验签，旧 C3/official-only 也不阻塞新脚本。不再为旧 DSL 扩充学校协议算子。详见[兼容维护边界](docs/reference/legacy_compatibility.md)。
 
@@ -40,10 +40,9 @@ elecon 面向学生聚合校园服务。学校差异集中在可更新的受信�
 
 | 内容 | 唯一维护入口 |
 |---|---|
-| 架构与有效决策 | [架构](docs/architecture.md)、[ADR 索引](docs/adr/README.md) |
-| 已有受信脚本实施和剩余验收 | [trusted_scripts](docs/planning/trusted_scripts.md) |
-| 页面、增强包、中继的后续切片 | [platform_evolution](docs/planning/platform_evolution.md) |
-| 使用、源码模板与打包 | [受信脚本参考](docs/reference/trusted_scripts.md) |
+| 当前架构与边界 | [架构](docs/architecture.md)；[ADR](docs/adr/README.md)仅按需追溯原因 |
+| 当前实施、待办与剩余验收 | [统一实施计划](docs/planning/implementation.md) |
+| 作者用法、源码模板与打包 | [作者手册](docs/wiki/README.md)；字段以 SDK/schema 为准 |
 | 术语 | [glossary](docs/glossary.md) |
 | 废弃总纲和旧机制记录 | [archived](docs/archived/README.md)；[archive](docs/archive/README.md) 为更早档案 |
 
