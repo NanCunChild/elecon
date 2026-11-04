@@ -8,5 +8,6 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         flutterEngine.plugins.add(HardwareKeystorePlugin())
         flutterEngine.plugins.add(BackupExcludePlugin())
+        flutterEngine.plugins.add(AppFunctionsPlugin())
     }
 }

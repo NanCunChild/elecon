@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'core/adapter_service.dart';
+import 'core/ai/app_functions_controller.dart';
 import 'core/credential/blob_store.dart';
 import 'core/credential/hardware_keystore_channel.dart';
 import 'core/debug/perf_trace.dart';
@@ -17,6 +18,7 @@ import 'session/session_scope.dart';
 import 'session/profile_controller.dart';
 import 'session/profile_scope.dart';
 import 'ui/i18n/locale_options.dart';
+import 'ui/ai/app_functions_scope.dart';
 import 'ui/home/home_page.dart';
 import 'ui/home/desktop_placeholder.dart';
 import 'ui/login/login_flow.dart';
@@ -104,10 +106,11 @@ class EleconApp extends StatefulWidget {
   State<EleconApp> createState() => _EleconAppState();
 }
 
-class _EleconAppState extends State<EleconApp> {
+class _EleconAppState extends State<EleconApp> with WidgetsBindingObserver {
   late final ProfileController _profiles;
   late final Future<void> _profilesLoad;
   late final ThemeController _theme = ThemeController();
+  late final AppFunctionsController _appFunctions;
 
   @override
   void initState() {
@@ -125,84 +128,113 @@ class _EleconAppState extends State<EleconApp> {
             adapterServiceProvider: _adapterServiceProvider,
           ),
         );
+    WidgetsBinding.instance.addObserver(this);
+    _theme.addListener(_syncScriptLocale);
+    _profiles.addListener(_syncScriptLocale);
+    _syncScriptLocale();
     _profilesLoad = _profiles.bootstrap();
+    _appFunctions = AppFunctionsController(
+      profiles: _profiles,
+      channel: !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+          ? const MethodChannel('elecon/app_functions')
+          : null,
+    );
     unawaited(_theme.load());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _theme.removeListener(_syncScriptLocale);
+    _profiles.removeListener(_syncScriptLocale);
+    _appFunctions.dispose();
     _profiles.dispose();
     _theme.dispose();
     super.dispose();
   }
 
+  void _syncScriptLocale() {
+    // A script may support languages that the core has not translated yet.
+    final locale =
+        resolveAppLocale(_theme.prefs.localeTag) ??
+        WidgetsBinding.instance.platformDispatcher.locale;
+    _profiles.active.session.scriptLocale = locale.toLanguageTag();
+  }
+
+  @override
+  void didChangeLocales(List<Locale>? locales) => _syncScriptLocale();
+
   @override
   Widget build(BuildContext context) {
-    return ThemeScope(
-      controller: _theme,
-      child: ProfileScope(
-        controller: _profiles,
-        child: FutureBuilder<void>(
-          future: _profilesLoad,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done &&
-                !_profiles.isRestored) {
-              if (kSideloadEnabled) {
-                return const MaterialApp(home: DevSideloadStartupWarning());
+    return AppFunctionsScope(
+      controller: _appFunctions,
+      child: ThemeScope(
+        controller: _theme,
+        child: ProfileScope(
+          controller: _profiles,
+          child: FutureBuilder<void>(
+            future: _profilesLoad,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done &&
+                  !_profiles.isRestored) {
+                if (kSideloadEnabled) {
+                  return const MaterialApp(home: DevSideloadStartupWarning());
+                }
+                return const MaterialApp(
+                  home: Scaffold(body: DesktopPlaceholder()),
+                );
               }
-              return const MaterialApp(
-                home: Scaffold(body: DesktopPlaceholder()),
-              );
-            }
-            if (snapshot.hasError) {
-              return MaterialApp(
-                localizationsDelegates: AppLocalizations.localizationsDelegates,
-                supportedLocales: AppLocalizations.supportedLocales,
-                home: Builder(
-                  builder: (context) => Scaffold(
-                    body: Center(
-                      child: Text(
-                        AppLocalizations.of(context).profilesLoadFailed,
+              if (snapshot.hasError) {
+                return MaterialApp(
+                  localizationsDelegates:
+                      AppLocalizations.localizationsDelegates,
+                  supportedLocales: AppLocalizations.supportedLocales,
+                  home: Builder(
+                    builder: (context) => Scaffold(
+                      body: Center(
+                        child: Text(
+                          AppLocalizations.of(context).profilesLoadFailed,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              );
-            }
-            // 偏好未落盘前用默认；load 完成后 ThemeController.notify 触发重建。
-            return ListenableBuilder(
-              listenable: Listenable.merge([_theme, _profiles]),
-              builder: (context, _) {
-                final p = _theme.prefs;
-                final session = _profiles.active.session;
-                return SessionScope(
-                  controller: session,
-                  child: MaterialApp(
-                    key: ValueKey(_profiles.active.id),
-                    // 任务切换器标题也走 l10n（文案单源）。
-                    onGenerateTitle: (context) =>
-                        AppLocalizations.of(context).appName,
-                    debugShowCheckedModeBanner: false,
-                    // 语言：偏好为空（默认）时传 null → 由系统语言在
-                    // supportedLocales 中协商，未命中则回落模板语言 zh。
-                    locale: resolveAppLocale(p.localeTag),
-                    localizationsDelegates:
-                        AppLocalizations.localizationsDelegates,
-                    supportedLocales: AppLocalizations.supportedLocales,
-                    themeMode: p.themeMode,
-                    theme: AppTheme.light(p),
-                    darkTheme: AppTheme.dark(p),
-                    home: _BootGate(
-                      session: session,
-                      startupTrace: widget.startupTrace,
-                      loginRunner: widget.loginRunner,
-                      loadHomeSnapshot: widget.loadHomeSnapshot,
-                    ),
-                  ),
                 );
-              },
-            );
-          },
+              }
+              // 偏好未落盘前用默认；load 完成后 ThemeController.notify 触发重建。
+              return ListenableBuilder(
+                listenable: Listenable.merge([_theme, _profiles]),
+                builder: (context, _) {
+                  final p = _theme.prefs;
+                  final session = _profiles.active.session;
+                  return SessionScope(
+                    controller: session,
+                    child: MaterialApp(
+                      key: ValueKey(_profiles.active.id),
+                      // 任务切换器标题也走 l10n（文案单源）。
+                      onGenerateTitle: (context) =>
+                          AppLocalizations.of(context).appName,
+                      debugShowCheckedModeBanner: false,
+                      // 语言：偏好为空（默认）时传 null → 由系统语言在
+                      // supportedLocales 中协商，未命中则回落模板语言 zh。
+                      locale: resolveAppLocale(p.localeTag),
+                      localizationsDelegates:
+                          AppLocalizations.localizationsDelegates,
+                      supportedLocales: AppLocalizations.supportedLocales,
+                      themeMode: p.themeMode,
+                      theme: AppTheme.light(p),
+                      darkTheme: AppTheme.dark(p),
+                      home: _BootGate(
+                        session: session,
+                        startupTrace: widget.startupTrace,
+                        loginRunner: widget.loginRunner,
+                        loadHomeSnapshot: widget.loadHomeSnapshot,
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );

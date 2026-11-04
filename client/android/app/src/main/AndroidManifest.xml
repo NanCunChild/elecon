@@ -42,6 +42,21 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <service
+            android:name=".EleconAppFunctionService"
+            android:enabled="@bool/elecon_app_functions_enabled"
+            android:permission="android.permission.BIND_APP_FUNCTION_SERVICE"
+            android:exported="true">
+            <property android:name="android.app.appfunctions.schema"
+                android:value="app_functions_schema.xsd" />
+            <property android:name="android.app.appfunctions.v2"
+                android:value="elecon_app_functions.xml" />
+            <intent-filter>
+                <action android:name="android.app.appfunctions.AppFunctionService" />
+            </intent-filter>
+        </service>
+        <property android:name="android.app.appfunctions.app_metadata"
+            android:resource="@xml/elecon_app_metadata" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

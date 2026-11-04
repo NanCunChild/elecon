@@ -3,6 +3,7 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
+    id("com.google.devtools.ksp")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -104,7 +105,8 @@ val buildHermes = tasks.register<Exec>("buildEleconHermes") {
 
 android {
     namespace = "dev.nancunchild.elecon"
-    compileSdk = flutter.compileSdkVersion
+    // AppFunctions beta01 declares API 37 / AGP 9.1 in its AAR metadata.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -133,8 +135,8 @@ android {
     sourceSets {
         getByName("main") {
             // 护栏 4b：profile 标记随 APK 打包（assets/elecon_build_profile.txt）。
-            assets.srcDir(buildProfileAssetsDir)
-            jniLibs.srcDir(hermesLibraries)
+            assets.srcDir(buildProfileAssetsDir.get().asFile)
+            jniLibs.srcDir(hermesLibraries.get().asFile)
         }
     }
 
@@ -185,4 +187,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Google Maven; Apache-2.0. ADR-074 records the execution boundary.
+    implementation("androidx.appfunctions:appfunctions:1.0.0-beta01")
+    ksp("androidx.appfunctions:appfunctions-compiler:1.0.0-beta01")
 }
