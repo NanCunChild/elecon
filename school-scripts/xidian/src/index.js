@@ -10,11 +10,12 @@ import {
   termList,
 } from "./academic.js";
 import { createAccountSession } from "./accounts.js";
-import { cardBalance, cardQr, cardTransactions, libraryLoans } from "./campus.js";
-import { phoneDirectory } from "./phone_directory.js";
+import { cardBalance, cardQr, cardTransactions, libraryLoans, librarySearch } from "./campus.js";
 import { facultySearch } from "./faculty.js";
 import { createLogin, recoverAcademicSession } from "./login.js";
 import { noticeDetail, noticeList } from "./notices.js";
+import { phoneDirectory } from "./phone_directory.js";
+import { createProfile } from "./profile.js";
 import { createQueryControls } from "./query_controls.js";
 import { forumSession } from "./ruisi.js";
 
@@ -44,6 +45,8 @@ export function createCapabilities(role) {
   if (role !== "undergraduate" && role !== "postgraduate") throw new Error("academic_role_invalid");
   return {
     "account.session": createAccountSession(role),
+    "profile.me": createProfile(role),
+    "library.search": librarySearch,
     "query.controls": createQueryControls(role),
     "forum.session": forumSession,
     "faculty.search": facultySearch,

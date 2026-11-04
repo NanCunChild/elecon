@@ -392,12 +392,12 @@ process.stdout.write(result.outputFiles[0].text);''',
   );
 
   test(
-    'source packages bind SDK 16 and combine browser login with authenticated data',
+    'source packages bind SDK 18 and combine browser login with authenticated data',
     () {
-      expect(school.manifest.sdkVersion, 16);
-      expect(school.manifest.version, '0.29.0');
+      expect(school.manifest.sdkVersion, 18);
+      expect(school.manifest.version, '0.30.0');
       expect(school.manifest.browser, isTrue);
-      expect(school.manifest.capabilities, hasLength(24));
+      expect(school.manifest.capabilities, hasLength(26));
       expect(
         school.manifest.capability('query.controls')?.schemaVersion,
         '2.1',
@@ -658,8 +658,49 @@ process.stdout.write(result.outputFiles[0].text);''',
                 as Map;
         expect(result['items'], isNotEmpty);
         expect(result['sourceUrl'], 'https://tel.xidian.cc/');
-        expect(package.manifest.cards.single.type, 'directory');
+        expect(
+          package.manifest.cards.any((card) => card.type == 'directory'),
+          isTrue,
+        );
       }
+    },
+  );
+
+  test(
+    'public book search and optional profile name run through real QuickJS',
+    () async {
+      final books =
+          await run(
+                'library.search',
+                params: {'query': '合成', 'page': 1, 'size': 10},
+                fetch: (url, init) async {
+                  expect(Uri.parse(url).path, '/find/unify/search');
+                  return response(url, {
+                    'code': 200,
+                    'data': {
+                      'total': 1,
+                      'searchResult': [
+                        {
+                          'recordId': 42,
+                          'title': '合成书目',
+                          'author': '合成作者',
+                          'callNo': ['TP1'],
+                        },
+                      ],
+                    },
+                  });
+                },
+              )
+              as Map;
+      expect((books['items'] as List).single['bookId'], '42');
+      seed('ids', data: {'accountLabel': '合成姓名'});
+      final profile =
+          await run(
+                'profile.me',
+                fetch: (_, _) async => throw StateError('profile is local'),
+              )
+              as Map;
+      expect(profile['name'], '合成姓名');
     },
   );
 

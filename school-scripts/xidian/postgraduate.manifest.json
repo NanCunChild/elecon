@@ -1,7 +1,7 @@
 {
-  "sdkVersion": 16,
+  "sdkVersion": 18,
   "id": "school-xidian-postgraduate",
-  "version": "0.29.0",
+  "version": "0.30.0",
   "schoolId": "xidian_postgraduate",
   "name": "西安电子科技大学（研究生）",
   "network": {
@@ -117,6 +117,16 @@
       "id": "directory.phones",
       "schema": "elecon.directory.phones",
       "schemaVersion": "1.0"
+    },
+    {
+      "id": "library.search",
+      "schema": "elecon.library.search",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "profile.me",
+      "schema": "elecon.profile.me",
+      "schemaVersion": "1.0"
     }
   ],
   "home": [
@@ -179,6 +189,21 @@
       "capability": "directory.phones",
       "ttlSeconds": 86400,
       "preload": true
+    },
+    {
+      "capability": "library.search",
+      "ttlSeconds": 3600,
+      "preload": false
+    },
+    {
+      "capability": "profile.me",
+      "ttlSeconds": 3600,
+      "preload": true
+    },
+    {
+      "capability": "faculty.search",
+      "ttlSeconds": 3600,
+      "preload": false
     }
   ],
   "accounts": [
@@ -456,6 +481,38 @@
       "id": "phone-directory",
       "type": "directory",
       "defaultVariant": "regular"
+    },
+    {
+      "id": "campus-card",
+      "type": "card",
+      "defaultVariant": "regular",
+      "pageId": "campus-card"
+    },
+    {
+      "id": "library",
+      "type": "library",
+      "defaultVariant": "regular",
+      "pageId": "library"
+    }
+  ],
+  "pages": [
+    {
+      "id": "campus-card",
+      "title": "一卡通",
+      "template": "card",
+      "tab": false
+    },
+    {
+      "id": "library",
+      "title": "图书馆",
+      "template": "library",
+      "tab": false
+    },
+    {
+      "id": "forum",
+      "title": "睿思",
+      "template": "forum",
+      "tab": true
     }
   ]
 }
