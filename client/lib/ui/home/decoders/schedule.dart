@@ -29,6 +29,7 @@ ScheduleWeek? scheduleWeekFromDynamic(Object? raw) {
     weekType: map['weekType']?.toString(),
     timeSegments: _scheduleSegments(map['timeSegments']),
     weekPreviews: _schedulePreviews(map['weekPreviews']),
+    termWeeks: _scheduleTermWeeks(map['termWeeks']),
     updatedAt: map['updatedAt']?.toString(),
     sourceSystem: map['sourceSystem']?.toString(),
     days: days,
@@ -170,4 +171,71 @@ ScheduleWeekDaysSlots? _scheduleSlot(Object? raw) {
         ? (map['weekExceptions'] as List).map(asInt).whereType<int>().toList()
         : null,
   );
+}
+
+List<ScheduleWeekTermWeeks>? _scheduleTermWeeks(Object? raw) {
+  if (raw is! List || raw.length > 100) return null;
+  final weeks = <ScheduleWeekTermWeeks>[];
+  final seen = <int>{};
+  for (final entry in raw) {
+    final map = asStringKeyedMap(entry);
+    final week = asInt(map?['week']);
+    final start = map?['teachingWeekStart'];
+    final end = map?['teachingWeekEnd'];
+    if (week == null ||
+        week < 1 ||
+        week > 100 ||
+        !seen.add(week) ||
+        start is! String ||
+        end is! String ||
+        map?['days'] is! List) {
+      return null;
+    }
+    weeks.add(
+      ScheduleWeekTermWeeks(
+        week: week,
+        teachingWeekStart: start,
+        teachingWeekEnd: end,
+        weekType: map?['weekType'] as String?,
+        days: [
+          for (final rawDay in map!['days'] as List)
+            if (_scheduleDay(rawDay) case final day?)
+              ScheduleWeekTermWeeksDays(
+                dayOfWeek: day.dayOfWeek,
+                slots: [
+                  for (final slot in day.slots)
+                    ScheduleWeekTermWeeksDaysSlots(
+                      start: slot.start,
+                      end: slot.end,
+                      courseName: slot.courseName,
+                      courseId: slot.courseId,
+                      date: slot.date,
+                      timeStart: slot.timeStart,
+                      timeEnd: slot.timeEnd,
+                      campus: slot.campus,
+                      building: slot.building,
+                      room: slot.room,
+                      roomCapacity: slot.roomCapacity,
+                      courseNature: slot.courseNature,
+                      classNo: slot.classNo,
+                      language: slot.language,
+                      courseUrl: slot.courseUrl,
+                      group: slot.group,
+                      onlineUrl: slot.onlineUrl,
+                      meetingNumberPresent: slot.meetingNumberPresent,
+                      meetingPasswordPresent: slot.meetingPasswordPresent,
+                      changeType: slot.changeType,
+                      changeReason: slot.changeReason,
+                      weekExceptions: slot.weekExceptions,
+                      teacher: slot.teacher,
+                      location: slot.location,
+                      weeks: slot.weeks,
+                    ),
+                ],
+              ),
+        ],
+      ),
+    );
+  }
+  return weeks;
 }

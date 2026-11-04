@@ -433,6 +433,7 @@ class _ScheduleSectionState extends State<ScheduleSection>
             maxWeek: _maxWeek,
             enabled: !busy,
             previews: _previews.values.toList(),
+            schedule: _data,
             onChanged: _selectWeek,
           ),
         if (busy) const LinearProgressIndicator(),

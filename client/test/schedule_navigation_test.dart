@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:elecon/core/adapter_service.dart';
 import 'package:elecon/core/loader/diagnostics.dart';
@@ -143,6 +144,90 @@ class CalendarScheduleSession extends ScheduleSession {
 }
 
 void main() {
+  testWidgets('week thumbnail paints all-day labs from top to bottom', (
+    tester,
+  ) async {
+    final raw = <String, dynamic>{
+      ...payload(1),
+      'termWeeks': [
+        {
+          'week': 1,
+          'teachingWeekStart': '2026-11-02',
+          'teachingWeekEnd': '2026-11-08',
+          'days': [
+            {
+              'dayOfWeek': 1,
+              'slots': [
+                {
+                  'start': '1',
+                  'end': '12',
+                  'courseName': 'All-day lab',
+                  'timeStart': '08:00',
+                  'timeEnd': '18:00',
+                },
+              ],
+            },
+            {
+              'dayOfWeek': 2,
+              'slots': [
+                {
+                  'start': '1',
+                  'end': '2',
+                  'courseName': 'Short course',
+                  'timeStart': '08:00',
+                  'timeEnd': '10:00',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    final data = scheduleWeekFromDynamic(raw)!;
+    expect(
+      data.termWeeks!.single.days.first.slots.single.courseName,
+      'All-day lab',
+    );
+    // Both full-term responses and the current week's older response preserve duration.
+    final currentOnly = scheduleWeekFromDynamic({
+      ...raw,
+      'days': (raw['termWeeks'] as List).first['days'],
+      'termWeeks': null,
+    })!;
+    for (final data in [data, currentOnly]) {
+      await tester.pumpWidget(
+        app(
+          ScheduleWeekPicker(
+            week: 1,
+            maxWeek: 1,
+            schedule: data,
+            previews: data.weekPreviews!,
+            onChanged: (_) {},
+          ),
+        ),
+      );
+      final painter = tester
+          .widget<CustomPaint>(find.byKey(const ValueKey('schedule-preview-1')))
+          .painter!;
+      await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        painter.paint(Canvas(recorder), const Size(70, 100));
+        final picture = recorder.endRecording();
+        final image = await picture.toImage(70, 100);
+        final bytes = (await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        ))!;
+        int alpha(int x, int y) => bytes.getUint8((y * 70 + x) * 4 + 3);
+        expect(alpha(5, 5), greaterThan(180));
+        expect(alpha(5, 95), greaterThan(180));
+        expect(alpha(15, 5), greaterThan(180));
+        expect(alpha(15, 95), lessThan(80));
+        image.dispose();
+        picture.dispose();
+      });
+    }
+  });
+
   testWidgets('today date is highlighted only in its actual teaching week', (
     tester,
   ) async {

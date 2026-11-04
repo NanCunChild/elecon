@@ -230,6 +230,7 @@ class ScheduleWeekPicker extends StatefulWidget {
     required this.onChanged,
     this.currentWeek,
     this.previews = const [],
+    this.schedule,
     this.enabled = true,
   });
 
@@ -238,6 +239,7 @@ class ScheduleWeekPicker extends StatefulWidget {
   final int? currentWeek;
   final ValueChanged<int> onChanged;
   final List<ScheduleWeekWeekPreviews> previews;
+  final ScheduleWeek? schedule;
   final bool enabled;
 
   @override
@@ -387,6 +389,7 @@ class _ScheduleWeekPickerState extends State<ScheduleWeekPicker> {
                                     ),
                                     painter: _WeekPreviewPainter(
                                       counts,
+                                      _previewSpans(widget.schedule, week),
                                       selected
                                           ? colors.onPrimaryContainer
                                           : colors.primary,
@@ -476,14 +479,122 @@ class _ScheduleWeekTransitionState extends State<ScheduleWeekTransition>
   }
 }
 
+/// Known periods use their actual duration; older count-only previews retain
+/// the density fallback and never invent a course's time.
+List<({int day, double top, double bottom})>? _previewSpans(
+  ScheduleWeek? data,
+  int week,
+) {
+  if (data == null) return null;
+  final terms = data.termWeeks
+      ?.where((entry) => entry.week == week)
+      .firstOrNull;
+  if (terms == null && data.week != week) return null;
+  final slots =
+      <
+        ({
+          int day,
+          String start,
+          String end,
+          String? timeStart,
+          String? timeEnd,
+        })
+      >[
+        if (terms != null) ...[
+          for (final day in terms.days)
+            for (final slot in day.slots)
+              if ((slot.weeks == null || slot.weeks!.contains(week)) &&
+                  !(slot.weekExceptions?.contains(week) ?? false) &&
+                  slot.changeType != 'cancelled')
+                (
+                  day: day.dayOfWeek,
+                  start: slot.start,
+                  end: slot.end,
+                  timeStart: slot.timeStart,
+                  timeEnd: slot.timeEnd,
+                ),
+        ] else ...[
+          for (final day in data.days)
+            for (final slot in day.slots)
+              if (_inWeek(slot, week) && slot.changeType != 'cancelled')
+                (
+                  day: day.dayOfWeek,
+                  start: slot.start,
+                  end: slot.end,
+                  timeStart: slot.timeStart,
+                  timeEnd: slot.timeEnd,
+                ),
+        ],
+      ];
+  final timed = slots.every(
+    (s) => _minute(s.timeStart) != null && _minute(s.timeEnd) != null,
+  );
+  final positioned = <({int day, int start, int end})>[];
+  for (final slot in slots) {
+    final start = timed ? _minute(slot.timeStart) : int.tryParse(slot.start);
+    final end = timed ? _minute(slot.timeEnd) : int.tryParse(slot.end);
+    if (start == null ||
+        end == null ||
+        slot.day < 1 ||
+        slot.day > 7 ||
+        end < start ||
+        (timed && end == start)) {
+      return null;
+    }
+    positioned.add((day: slot.day, start: start, end: timed ? end : end + 1));
+  }
+  final min = positioned.map((s) => s.start).fold(timed ? 480 : 1, math.min);
+  final max = positioned.map((s) => s.end).fold(timed ? 1080 : 13, math.max);
+  return [
+    for (final slot in positioned)
+      (
+        day: slot.day,
+        top: (slot.start - min) / (max - min),
+        bottom: (slot.end - min) / (max - min),
+      ),
+  ];
+}
+
 class _WeekPreviewPainter extends CustomPainter {
-  const _WeekPreviewPainter(this.counts, this.color);
+  const _WeekPreviewPainter(this.counts, this.spans, this.color);
+  final List<({int day, double top, double bottom})>? spans;
   final List<int?> counts;
   final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
     final cell = size.width / 7;
+    if (spans != null) {
+      for (var day = 0; day < 7; day++) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(
+              day * cell + 1,
+              0,
+              math.max(1, cell - 2),
+              size.height,
+            ),
+            const Radius.circular(2),
+          ),
+          Paint()..color = color.withValues(alpha: .12),
+        );
+      }
+      for (final span in spans!) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(
+              (span.day - 1) * cell + 1,
+              span.top * size.height,
+              math.max(1, cell - 2),
+              math.max(2, (span.bottom - span.top) * size.height),
+            ),
+            const Radius.circular(2),
+          ),
+          Paint()..color = color.withValues(alpha: .85),
+        );
+      }
+      return;
+    }
     for (var day = 0; day < 7; day++) {
       final count = counts[day];
       if (count == null) {
@@ -516,6 +627,7 @@ class _WeekPreviewPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _WeekPreviewPainter oldDelegate) =>
       oldDelegate.color != color ||
+      oldDelegate.spans.toString() != spans.toString() ||
       oldDelegate.counts.toString() != counts.toString();
 }
 
