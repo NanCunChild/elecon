@@ -3,7 +3,14 @@
 // Harvest verified SSO independently; business requests never render app HTML.
 import { IDS_ACCOUNT_URLS, inspectLoginPage, restore } from "./browser_login.js";
 import { failure } from "./errors.js";
-import { createClient, parseUrl, readSession, replaceBrowserCookiesForUrl, saveSession } from "./session.js";
+import {
+  createClient,
+  isPrimaryLoginPage,
+  parseUrl,
+  readSession,
+  replaceBrowserCookiesForUrl,
+  saveSession,
+} from "./session.js";
 
 const IDS_LOGIN = "https://ids.xidian.edu.cn/authserver/login";
 const TARGETS = {
@@ -35,19 +42,143 @@ export async function webviewLogin(ctx, params, role) {
   };
 }
 
+// SDK14: password values exist only in this invocation and the official page.
+// Password storage is committed only after the real academic API succeeds.
+export async function passwordLogin(ctx, params, role) {
+  let attempt;
+  try {
+    attempt = await ctx.accounts.password("school", { mode: "manual" });
+  } catch (error) {
+    if (error?.code === "account_interactive_fallback") return webviewLogin(ctx, params, role);
+    throw error;
+  }
+  if (!attempt) throw failure("input_cancelled");
+  try {
+    const { metadata, deadline } = await loginIds(
+      ctx,
+      { ...params, forceLogin: true, passwordAttempt: attempt },
+      role,
+    );
+    await establishAcademicSession(ctx, params.system, metadata, deadline);
+    await ctx.accounts.completePassword("school", { attemptId: attempt.attemptId, outcome: "authenticated" });
+    return {
+      sectionId: "xidian.login",
+      title: "西电登录会话",
+      fields: [{ label: "状态", role: "status", value: "已验证并保存会话" }],
+    };
+  } catch (error) {
+    // Do not replace a failed durable commit with an unrelated second attempt.
+    if (!String(error?.code ?? "").startsWith("account_")) {
+      await ctx.accounts.completePassword("school", {
+        attemptId: attempt.attemptId,
+        outcome: error?.authOutcome ?? "unknown",
+      });
+    }
+    throw error;
+  } finally {
+    attempt.password = "";
+    attempt.username = "";
+  }
+}
+
+// This function runs in the school's document. No form submission fallback:
+// the site's own click handler must apply its slider/encryption/MFA rules.
+export function submitSavedPassword(username, password, inspectOnly = false) {
+  const url = new URL(location.href);
+  if (url.origin !== "https://ids.xidian.edu.cn" || url.pathname !== "/authserver/login") return "pending";
+  // The mobile IDS theme duplicates #loginFromId/#username/#login_submit in
+  // its SMS and password sections. Scope the mobile lookup to its password
+  // section; a global ID lookup can select the hidden SMS form instead.
+  const desktopForm = document.querySelector("#pwdFromId");
+  const form = desktopForm ?? document.querySelector("#pwdLoginDiv form#loginFromId");
+  const user = form?.querySelector("#username");
+  const secret = form?.querySelector("#password");
+  const submit =
+    form?.querySelector("#login_submit, button[type=submit], input[type=submit]") ??
+    (desktopForm ? document.querySelector("#login_submit") : null);
+  const visible = (node) => node && node.getClientRects().length > 0;
+  if (![form, user, secret, submit].every(visible) || submit.disabled || document.readyState !== "complete")
+    return "pending";
+  // An unexpected external action is not an IDS password form.
+  const action = new URL(form.getAttribute("action") || location.href, location.href);
+  if (action.origin !== url.origin || action.pathname !== "/authserver/login") return "invalid";
+  if (inspectOnly) return "ready";
+  user.value = username;
+  secret.value = password;
+  for (const input of [user, secret]) {
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  submit.click();
+  return "submitted";
+}
+
+// Only known IDS error containers count as evidence; never scan arbitrary body
+// text or turn an unexpected response into a claim that the account is disabled.
+export function inspectPasswordOutcome() {
+  const url = new URL(location.href);
+  if (url.origin !== "https://ids.xidian.edu.cn") return null;
+  if (url.pathname.startsWith("/authserver/reAuthCheck/")) return "interactionRequired";
+  if (url.pathname !== "/authserver/login") return null;
+  const visible = (node) => node && node.getClientRects().length > 0;
+  const message = [...document.querySelectorAll("#msg, #errorMsg, #showErrorTip")]
+    .filter(visible)
+    .map((node) => node.textContent || "")
+    .join(" ")
+    .trim();
+  if (/(用户名或密码错误|账号或密码错误|密码错误|invalid username or password)/i.test(message))
+    return "credentialsRejected";
+  if (/(账号已禁用|账户已禁用|账号已停用|account disabled)/i.test(message)) return "accountDisabled";
+  if (
+    [...document.querySelectorAll("#sliderCaptcha, #captcha, .captcha_verify_container, #reAuthForm")].some(
+      visible,
+    )
+  )
+    return "interactionRequired";
+  return null;
+}
+
+async function preparePasswordLogin(ctx, attempt, deadline) {
+  for (let poll = 0; poll < 20 && ctx.now() < deadline; poll++) {
+    let result;
+    try {
+      result = await ctx.browser.evaluate(submitSavedPassword, null, null, true);
+    } catch (error) {
+      if (!["browser_navigation_changed", "browser_not_loaded"].some((code) => String(error).includes(code)))
+        throw error;
+    }
+    if (result === "ready") {
+      // Readiness may retry; the side-effecting click is issued exactly once.
+      // A navigation race can lose its return value after submission, so it
+      // must never lead to another password submission.
+      try {
+        const submitted = await ctx.browser.evaluate(submitSavedPassword, attempt.username, attempt.password);
+        if (submitted !== "submitted") throw failure("academic_response_invalid");
+      } catch (error) {
+        if (!String(error).includes("browser_navigation_changed")) throw error;
+      }
+      return;
+    }
+    if (result === "invalid") throw failure("academic_response_invalid");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw failure("xidian_login_timeout");
+}
+
 // ADR-040 §2: water/electricity reuse verified IDS without requiring E-Hall.
 export async function loginIds(ctx, params, role) {
   if (!ctx.browser) throw new Error("xidian_login_browser_required");
   const deadline = ctx.now() + 100000;
   const ids = params.forceLogin ? null : await readSession(ctx, "ids");
-  const progress = {};
+  const progress = { passwordAttempt: !!params.passwordAttempt };
   await restore(ctx, ids, IDS_ACCOUNT_URLS);
   ctx.log?.("info", "xidian_login_open:ids");
   // No service parameter, password extraction, replacement form or protocol
   // login. The user completes the school's own slider and MFA in this page.
   await ctx.browser.open(IDS_LOGIN);
+  if (params.passwordAttempt) await preparePasswordLogin(ctx, params.passwordAttempt, deadline);
   const verified = await waitForIdsSession(ctx, deadline, ids, progress);
-  const supplied = params.studentId ?? params.account;
+  const supplied = params.passwordAttempt?.username ?? params.studentId ?? params.account;
   const studentId = (typeof supplied === "string" ? supplied.trim() : "") || progress.studentId;
   const metadata = { role, authFlow: "webview", ...(studentId ? { studentId } : {}) };
   await saveSession(ctx, "ids", {
@@ -70,6 +201,14 @@ export async function waitForIdsSession(ctx, deadline, previous, progress) {
   for (let poll = 0; poll < 150 && ctx.now() < deadline; poll++) {
     let state;
     try {
+      if (progress.passwordAttempt) {
+        const outcome = await ctx.browser.evaluate(inspectPasswordOutcome);
+        if (outcome) {
+          const error = failure("xidian_login_required_ehall");
+          error.authOutcome = outcome;
+          throw error;
+        }
+      }
       state = await ctx.browser.evaluate(inspectLoginPage, "ids", poll ? (busy ? 250 : 750) : 0);
     } catch (error) {
       if (
@@ -149,8 +288,17 @@ export async function establishAcademicSession(ctx, system, metadata, deadline) 
   ctx.log?.("info", `xidian_login_exchange:${system}`);
   const landing = await client.request(`${IDS_LOGIN}?service=${encodeURIComponent(target.service)}`);
   const actual = parseUrl(landing.url);
-  if (actual.host === "ids.xidian.edu.cn") throw failure(`xidian_login_required_${system}`);
-  if (!landing.ok || actual.host !== parseUrl(target.origin).host) throw failure("academic_response_invalid");
+  if (!landing.ok) throw failure("academic_response_invalid");
+  if (actual.host === "ids.xidian.edu.cn") {
+    const body = await landing.text();
+    if (!isPrimaryLoginPage(landing.url, body)) throw failure("academic_response_invalid");
+    const error = failure(`xidian_login_required_${system}`);
+    // Script-local evidence: an actual primary login form can offer fallback;
+    // the initial IDS URL alone (e.g. maintenance/429) proves nothing.
+    error.authStage = "primary";
+    throw error;
+  }
+  if (actual.host !== parseUrl(target.origin).host) throw failure("academic_response_invalid");
   // Never execute the mobile/desktop app's HTML bootstrap. A successful CAS
   // callback and its Cookie alone are insufficient: verify the actual API.
   pending.data.origin = actual.origin;

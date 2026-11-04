@@ -12,8 +12,9 @@ import {
 import { createAccountSession } from "./accounts.js";
 import { cardBalance, cardQr, cardTransactions, libraryLoans } from "./campus.js";
 import { facultySearch } from "./faculty.js";
-import { createLogin } from "./login.js";
+import { createLogin, recoverAcademicSession } from "./login.js";
 import { noticeDetail, noticeList } from "./notices.js";
+import { createQueryControls } from "./query_controls.js";
 import { forumSession } from "./ruisi.js";
 
 // ADR-034 §3 / ADR-035 §2: the installed school owns the academic route.
@@ -31,7 +32,8 @@ function authenticated(handler, role) {
         // invalid inputs and unexpected school responses must remain failures.
         if (!system || loggedIn.has(system)) throw error;
         loggedIn.add(system);
-        await createLogin(role)(ctx, { ...params, system });
+        if (["ehall", "yjspt"].includes(system)) await recoverAcademicSession(ctx, role, system);
+        else await createLogin(role)(ctx, { ...params, system });
       }
     }
   };
@@ -41,6 +43,7 @@ export function createCapabilities(role) {
   if (role !== "undergraduate" && role !== "postgraduate") throw new Error("academic_role_invalid");
   return {
     "account.session": createAccountSession(role),
+    "query.controls": createQueryControls(role),
     "forum.session": forumSession,
     "faculty.search": facultySearch,
     "notice.list": noticeList,

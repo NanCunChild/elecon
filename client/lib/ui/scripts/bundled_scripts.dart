@@ -8,12 +8,21 @@ import '../../core/scripts/manifest.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import 'script_install_dialog.dart';
+import 'script_selection_feedback.dart';
 
 class BundledScriptSchool {
   const BundledScriptSchool(this.id, this.dataId, this.loginId);
   final String id;
   final String dataId;
   final String loginId;
+
+  String get institutionId => 'xidian';
+  String schoolName(AppLocalizations l10n) => l10n.scriptsXidianName;
+  String typeName(AppLocalizations l10n) => switch (id) {
+    'xidian_undergraduate' => l10n.scriptsUndergraduate,
+    'xidian_postgraduate' => l10n.scriptsPostgraduate,
+    _ => id,
+  };
 
   String label(AppLocalizations l10n) => switch (id) {
     'xidian_undergraduate' => l10n.scriptsXidianUndergraduate,
@@ -104,6 +113,10 @@ Future<bool> installBundledSchool(
     }
     await session.removeTrustedScript(school.loginId);
   }
-  await session.selectTrustedScriptSchool(school.dataId);
+  if (!context.mounted) return false;
+  await selectScriptWithFeedback(context, session, () async {
+    await session.selectTrustedScriptSchool(school.dataId);
+    return registry.find(school.dataId)?.package;
+  });
   return true;
 }

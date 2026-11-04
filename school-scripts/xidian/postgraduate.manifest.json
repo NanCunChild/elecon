@@ -1,7 +1,7 @@
 {
-  "sdkVersion": 12,
+  "sdkVersion": 16,
   "id": "school-xidian-postgraduate",
-  "version": "0.22.0",
+  "version": "0.26.0",
   "schoolId": "xidian_postgraduate",
   "name": "西安电子科技大学（研究生）",
   "network": {
@@ -16,7 +16,8 @@
       "https://tyrzfw.chaoxing.com",
       "https://mfindxidian.libsp.cn",
       "https://faculty.xidian.edu.cn",
-      "https://rs.xidian.edu.cn"
+      "https://rs.xidian.edu.cn",
+      "https://atrust.xidian.edu.cn"
     ]
   },
   "browser": true,
@@ -54,7 +55,7 @@
     {
       "id": "classroom.available",
       "schema": "elecon.classroom.available",
-      "schemaVersion": "1.1"
+      "schemaVersion": "1.2"
     },
     {
       "id": "card.balance",
@@ -99,11 +100,17 @@
     {
       "id": "forum.session",
       "schema": "elecon.forum.session",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "appTunnelAccountId": "apptunnel"
     },
     {
       "id": "account.session",
       "schema": "elecon.account.session",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "query.controls",
+      "schema": "elecon.query.controls",
       "schemaVersion": "1.0"
     }
   ],
@@ -168,7 +175,7 @@
     {
       "id": "school",
       "name": "西电统一认证账号",
-      "instructions": "使用研究生身份对应的学校统一认证账号在官方登录页面完成登录与验证。研究生教务、一卡通、图书馆分别建立会话，首次查看对应服务时可能需要再次授权。",
+      "instructions": "使用学校统一认证账号。可输入账密或使用官方网页登录；遇验证码或二次验证时按学校页面提示完成。",
       "capabilities": [
         "schedule.week",
         "grades.list",
@@ -196,12 +203,18 @@
           "account": "school",
           "operation": "status"
         }
+      },
+      "authentication": {
+        "namespace": "xidian.primary",
+        "savedPassword": true,
+        "interactiveWeb": true,
+        "silentWeb": false
       }
     },
     {
       "id": "ruisi",
       "name": "睿思论坛账号",
-      "instructions": "使用睿思论坛独立注册的用户名和密码登录；此账号独立于学校统一认证。遇到验证码时在睿思官方页面完成验证。",
+      "instructions": "使用睿思独立注册的账号，与学校统一认证账号不同。先登录校园接入，再登录论坛。",
       "capabilities": [
         "forum.session",
         "account.session"
@@ -219,12 +232,13 @@
           "account": "ruisi",
           "operation": "status"
         }
-      }
+      },
+      "appTunnelAccountId": "apptunnel"
     },
     {
       "id": "apptunnel",
-      "name": "APPTunnel · Hermes",
-      "instructions": "由内置 Hermes 管理 aTrust 校园接入账号。登录后可在 APPTunnel 设置中选择连接；不会自动切换网络。",
+      "name": "校园接入 · APPTunnel",
+      "instructions": "通过学校 aTrust 官方页面完成统一认证和二次验证。睿思请求使用此连接，其他功能按各自声明连接。",
       "capabilities": [
         "account.session"
       ],
@@ -241,10 +255,80 @@
           "account": "apptunnel",
           "operation": "login"
         }
+      },
+      "appTunnel": {
+        "service": "hermes-atrust",
+        "gatewayUrl": "https://atrust.xidian.edu.cn",
+        "loginDomain": "",
+        "loginMode": "web",
+        "nodeCertificateSha256": "fd04e9a15e1f500fbbd19ad207daee7fd92f004cc05ed05814657258819e0320"
       }
     }
   ],
   "appTunnels": [
     "hermes-atrust"
-  ]
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "messages": {
+      "zh": {
+        "query.title": "筛选条件",
+        "query.submit": "查询",
+        "query.term": "学期",
+        "query.date": "日期",
+        "query.room": "教室名称",
+        "query.timeRange": "学校当地时间段",
+        "classroom.availableReason": "教务系统未记录本节占用；不代表教室开放",
+        "classroom.occupiedReason": "教务系统记录本节占用"
+      },
+      "en": {
+        "query.title": "Filters",
+        "query.submit": "Search",
+        "query.term": "Term",
+        "query.date": "Date",
+        "query.room": "Classroom name",
+        "query.timeRange": "Time range at the school",
+        "classroom.availableReason": "No scheduled use recorded for this period; room access is not confirmed",
+        "classroom.occupiedReason": "The academic system records this period as occupied"
+      },
+      "uz": {
+        "query.title": "Qidiruv shartlari",
+        "query.submit": "Qidirish",
+        "query.term": "Semestr",
+        "query.date": "Sana",
+        "query.room": "Auditoriya nomi",
+        "query.timeRange": "Universitetning mahalliy vaqtidagi oraliq",
+        "classroom.availableReason": "Bu davrda bandlik qayd etilmagan; xonaning ochiqligi tasdiqlanmagan",
+        "classroom.occupiedReason": "O‘quv tizimida bu davr band deb qayd etilgan"
+      },
+      "ru": {
+        "query.title": "Условия поиска",
+        "query.submit": "Найти",
+        "query.term": "Семестр",
+        "query.date": "Дата",
+        "query.room": "Название аудитории",
+        "query.timeRange": "Интервал по местному времени вуза",
+        "classroom.availableReason": "Занятость на этот период не зарегистрирована; доступ в аудиторию не подтверждён",
+        "classroom.occupiedReason": "Учебная система отмечает этот период как занятый"
+      },
+      "fa": {
+        "query.title": "شرایط جستجو",
+        "query.submit": "جستجو",
+        "query.term": "نیم‌سال",
+        "query.date": "تاریخ",
+        "query.room": "نام کلاس",
+        "query.timeRange": "بازهٔ زمانی به وقت محلی دانشگاه",
+        "classroom.availableReason": "برای این بازه اشغالی ثبت نشده است؛ باز بودن کلاس تأیید نشده است",
+        "classroom.occupiedReason": "سامانهٔ آموزشی این بازه را اشغال‌شده ثبت کرده است"
+      }
+    }
+  },
+  "school": {
+    "id": "xidian",
+    "name": "西安电子科技大学",
+    "type": {
+      "id": "postgraduate",
+      "name": "研究生"
+    }
+  }
 }

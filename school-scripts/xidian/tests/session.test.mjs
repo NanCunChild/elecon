@@ -54,6 +54,17 @@ test("academic SSO reuses verified same-school IDS account metadata without repl
   assert.deepEqual(ctx.writes, []);
 });
 
+test("academic HTTP 403 without login evidence does not request authentication", async () => {
+  for (const service of ["ehall", "yjspt"]) {
+    const url = `https://${service}.xidian.edu.cn/query`;
+    const ctx = context({ [service]: session(service) }, async () => response(url, { status: 403 }));
+    await assert.rejects(
+      (await createClient(ctx, service)).getJSON(url),
+      (error) => error.message === "xidian_http_failed" && error.code !== "authentication_required",
+    );
+  }
+});
+
 test("denied redirect diagnostics identify only its scheme and host", async () => {
   const ctx = context({ ehall: session("ehall") }, async () =>
     response("https://ehall.xidian.edu.cn/", {

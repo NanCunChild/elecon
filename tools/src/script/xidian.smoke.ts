@@ -14,8 +14,32 @@ assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildXidianPackages())]);
 for (const role of ["undergraduate", "postgraduate"]) {
   const data = JSON.parse(first.get(`school-xidian-${role}.elecon.json`)!);
-  assert.equal(data.manifest.version, "0.22.0");
-  assert.equal(data.manifest.sdkVersion, 12);
+  assert.equal(data.manifest.version, "0.26.0");
+  assert.equal(data.manifest.sdkVersion, 16);
+  assert.deepEqual(data.manifest.school, {
+    id: "xidian",
+    name: "西安电子科技大学",
+    type: { id: role, name: role === "undergraduate" ? "本科生" : "研究生" },
+  });
+  assert.equal(
+    data.manifest.accounts.find((a: { id: string }) => a.id === "ruisi").appTunnelAccountId,
+    "apptunnel",
+  );
+  const tunnel = data.manifest.accounts.find((a: { id: string }) => a.id === "apptunnel");
+  assert.equal(tunnel.appTunnel.gatewayUrl, "https://atrust.xidian.edu.cn");
+  assert.equal(tunnel.appTunnel.loginMode, "web");
+  assert.equal(tunnel.appTunnel.loginDomain, "");
+  assert.equal(tunnel.credentialReuse, undefined, "CAS is not the gateway's local password realm");
+  assert.match(tunnel.appTunnel.nodeCertificateSha256, /^[a-f0-9]{64}$/);
+  assert.equal(
+    data.manifest.capabilities.find((c: { id: string }) => c.id === "forum.session").appTunnelAccountId,
+    "apptunnel",
+  );
+  assert.ok(
+    data.manifest.capabilities
+      .filter((c: { id: string }) => c.id !== "forum.session")
+      .every((c: { appTunnelAccountId?: string }) => c.appTunnelAccountId === undefined),
+  );
   assert.deepEqual(
     data.manifest.accounts.map((account: { id: string }) => account.id),
     ["school", "ruisi", "apptunnel"],
@@ -24,7 +48,9 @@ for (const role of ["undergraduate", "postgraduate"]) {
   assert.ok(!data.manifest.accounts[0].capabilities.some((id: string) => id.startsWith("climate.")));
   assert.deepEqual(data.manifest.accounts[1].capabilities, ["forum.session", "account.session"]);
   assert.equal(data.manifest.browser, true);
-  assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 22 : 17);
+  assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 23 : 18);
+  assert.ok(data.manifest.capabilities.some((cap: { id: string }) => cap.id === "query.controls"));
+  assert.deepEqual(Object.keys(data.manifest.localization.messages).sort(), ["en", "fa", "ru", "uz", "zh"]);
   assert.ok(data.manifest.network.origins.includes("https://faculty.xidian.edu.cn"));
   assert.ok(data.manifest.capabilities.some((cap: { id: string }) => cap.id === "faculty.search"));
   assert.equal(
@@ -108,5 +134,5 @@ try {
   rmSync(out, { recursive: true, force: true });
 }
 console.log(
-  "Xidian SDK12 source packages: deterministic build, explicit trust and real module fixtures passed",
+  "Xidian SDK16 source packages: deterministic build, explicit trust and real module fixtures passed",
 );

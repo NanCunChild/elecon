@@ -92,10 +92,7 @@ async function openApp(client, pg, app) {
       : `${PG}/${app}/*default/index.do`
     : `${EH}/appShow?appId=${app}`;
   const response = await client.request(url);
-  if (
-    response &&
-    ([401, 403].includes(response.status) || parseUrl(response.url).host === "ids.xidian.edu.cn")
-  )
+  if (response && (response.status === 401 || parseUrl(response.url).host === "ids.xidian.edu.cn"))
     throw failure(`xidian_login_required_${client.session.service}`);
   if (!response || response.status < 200 || response.status >= 300)
     throw new Error("academic_app_open_failed");
@@ -629,23 +626,28 @@ function gradeOutput(row, pg) {
   return output;
 }
 
+async function gradeRows(client, pg) {
+  await openApp(client, pg, pg ? "wdcjapp" : "4768574631264620");
+  // PDA score_session.dart sends one SFYX object for the UG endpoint. This
+  // endpoint does not share the array querySetting used by other Emap apps.
+  // The grade query and historical term discovery share this bounded fetch.
+  const filters = pg ? [] : { name: "SFYX", value: "1", linkOpt: "and", builder: "m_value_equal" };
+  return pages(
+    client,
+    pg ? `${PG}/wdcjapp/modules/wdcj/xscjcx.do` : `${EH}/jwapp/sys/cjcx/modules/cjcx/xscjcx.do`,
+    {
+      ...(pg ? {} : { "*json": 1, "*order": "+XNXQDM,KCH,KXH" }),
+      querySetting: JSON.stringify(filters),
+    },
+    "xscjcx",
+  );
+}
+
 export async function gradesList(ctx, params = {}) {
   const pg = postgraduate(params);
   const client = await createClient(ctx, pg ? "yjspt" : "ehall");
   const term = await resolveTerm(client, pg, params);
-  await openApp(client, pg, pg ? "wdcjapp" : "4768574631264620");
-  const filters = pg
-    ? []
-    : [
-        { name: "SFYX", value: "1", linkOpt: "and", builder: "m_value_equal" },
-        { name: "XNXQDM", value: term, linkOpt: "and", builder: "m_value_equal" },
-      ];
-  const rows = await pages(
-    client,
-    pg ? `${PG}/wdcjapp/modules/wdcj/xscjcx.do` : `${EH}/jwapp/sys/cjcx/modules/cjcx/xscjcx.do`,
-    { "*json": 1, querySetting: JSON.stringify(filters), "*order": "+XNXQDM,KCH,KXH" },
-    "xscjcx",
-  );
+  const rows = await gradeRows(client, pg);
   return {
     term,
     academicYear: term.slice(0, 9),
@@ -861,6 +863,18 @@ export async function classroomAvailable(ctx, params = {}) {
             : "partial",
     };
     if (complete || any) item.occupied = any;
+    if (date) {
+      // Only observed sections are covered. Breaks and missing cells stay
+      // unknown; an empty timetable is not evidence that the room is open.
+      item.intervals = sections.map((section) => ({
+        startAt: new Date(`${date}T${section.timeStart}:00+08:00`).toISOString(),
+        endAt: new Date(`${date}T${section.timeEnd}:00+08:00`).toISOString(),
+        status: section.occupied ? "occupied" : "available",
+        reason: section.occupied
+          ? (ctx.i18n?.t("classroom.occupiedReason") ?? "教务系统记录本节占用")
+          : (ctx.i18n?.t("classroom.availableReason") ?? "教务系统未记录本节占用；不代表教室开放"),
+      }));
+    }
     optional(item, "roomId", row.JASDM);
     optional(item, "floor", row.LC);
     return item;
@@ -875,6 +889,7 @@ export async function classroomAvailable(ctx, params = {}) {
     sectionStart: window.first,
     sectionEnd: window.last,
     sourceSystem: "西电教务空教室",
+    timeZone: "Asia/Shanghai",
     items,
   };
   if (date) output.date = date;
@@ -887,12 +902,35 @@ export async function classroomAvailable(ctx, params = {}) {
 }
 
 export async function termList(ctx, params = {}) {
+  if (params.includePast != null && typeof params.includePast !== "boolean")
+    throw new Error("academic_include_past_invalid");
   const pg = postgraduate(params);
   const client = await createClient(ctx, pg ? "yjspt" : "ehall");
   await openApp(client, pg, pg ? "yjsemaphome" : "4770397878132218");
   const term = await currentTerm(client, pg);
-  // The proven endpoint provides only the current term, not historical terms.
-  return { currentTerm: term, items: [{ id: term, name: term, academicYear: term.slice(0, 9) }] };
+  const terms = new Map([[term, { id: term, name: term, academicYear: term.slice(0, 9) }]]);
+  // The current-term endpoint cannot enumerate history. Only an explicit
+  // includePast request reads the complete grade pages; never invent years.
+  if (params.includePast === true) {
+    const rows = await gradeRows(client, pg);
+    for (const row of rows) {
+      const id = gradeTerm(row);
+      if (id > term) continue;
+      let name = id;
+      const display = text(row.XNXQDM_DISPLAY);
+      if (display) {
+        try {
+          // Keep a source label only when it denotes the same normalized term.
+          if (gradeTerm({ XNXQDM_DISPLAY: display }) === id) name = display;
+        } catch {
+          // Optional invalid labels cannot override the verified identifier.
+        }
+      }
+      if (!terms.has(id) || terms.get(id).name === id)
+        terms.set(id, { id, name, academicYear: id.slice(0, 9) });
+    }
+  }
+  return { currentTerm: term, items: [...terms.values()].sort((a, b) => b.id.localeCompare(a.id)) };
 }
 
 export async function calendarAcademic(ctx, params = {}) {

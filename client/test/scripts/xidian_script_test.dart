@@ -1,10 +1,11 @@
-// Actual compiled SDK 4/5 packages, synthetic school responses, real QuickJS.
+// Actual compiled school packages, synthetic school responses, real QuickJS.
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:elecon/core/credential/secure_store.dart';
 import 'package:elecon/core/credential/store.dart';
 import 'package:elecon/core/scripts/credentials.dart';
+import 'package:elecon/core/scripts/account_auth.dart';
 import 'package:elecon/core/scripts/manifest.dart';
 import 'package:elecon/core/scripts/runtime.dart';
 import 'package:elecon/session/session_controller.dart';
@@ -36,6 +37,7 @@ class WebViewFixture {
   final busyStates = <bool>[];
   int authenticatedProbes = 0;
   int cookieReads = 0;
+  int passwordSubmissions = 0;
   String get origin =>
       pg ? 'https://yjspt.xidian.edu.cn' : 'https://ehall.xidian.edu.cn';
   Future<Object?> browser(String method, Map<String, Object?> args) async {
@@ -45,6 +47,13 @@ class WebViewFixture {
         opened.add(args['url'] as String);
         return null;
       case 'evaluate':
+        final source = args['source'] as String;
+        if (source.contains('function submitSavedPassword')) {
+          if (source.endsWith('.apply(null,[null,null,true])')) return 'ready';
+          passwordSubmissions++;
+          return 'submitted';
+        }
+        if (source.contains('function inspectPasswordOutcome')) return null;
         if ((args['source'] as String).contains(
           'function inspectIdsLocation',
         )) {
@@ -383,12 +392,20 @@ process.stdout.write(result.outputFiles[0].text);''',
   );
 
   test(
-    'source packages bind SDK 12 and combine browser login with authenticated data',
+    'source packages bind SDK 16 and combine browser login with authenticated data',
     () {
-      expect(school.manifest.sdkVersion, 12);
-      expect(school.manifest.version, '0.22.0');
+      expect(school.manifest.sdkVersion, 16);
+      expect(school.manifest.version, '0.26.0');
       expect(school.manifest.browser, isTrue);
-      expect(school.manifest.capabilities, hasLength(22));
+      expect(school.manifest.capabilities, hasLength(23));
+      expect(school.manifest.capability('query.controls'), isNotNull);
+      expect(school.manifest.localization!.supportedLocales, [
+        'en',
+        'fa',
+        'ru',
+        'uz',
+        'zh',
+      ]);
       expect(school.manifest.capability('notice.detail'), isNotNull);
       expect(login.manifest.browser, isTrue);
       expect(login.manifest.schoolId, school.manifest.schoolId);
@@ -398,6 +415,36 @@ process.stdout.write(result.outputFiles[0].text);''',
         postgraduateLogin.manifest.schoolId,
         postgraduate.manifest.schoolId,
       );
+    },
+  );
+
+  test(
+    'compiled school query controls use packaged author translations offline',
+    () async {
+      for (final entry in {
+        'ru-RU': 'Найти',
+        'uz': 'Qidirish',
+        'fa-IR': 'جستجو',
+      }.entries) {
+        final output =
+            await runtime.run(
+                  package: school,
+                  capability: 'query.controls',
+                  params: {'target': 'classroom.available'},
+                  credentials: credentials,
+                  locale: entry.key,
+                  fetch: (_, _) async =>
+                      throw StateError('classroom metadata is offline'),
+                  htmlStdlib: htmlStdlib,
+                )
+                as Map;
+        expect(output['submitLabel'], entry.value);
+        expect((output['controls'] as List).map((c) => c['parameter']), [
+          'date',
+          'room',
+          'start',
+        ]);
+      }
     },
   );
 
@@ -681,6 +728,49 @@ process.stdout.write(result.outputFiles[0].text);''',
   );
 
   test(
+    'UG grades preserve the endpoint query shape and filter the requested term',
+    () async {
+      seed('ehall');
+      final out =
+          await run(
+                'grades.list',
+                params: {'term': '2026-2027-1'},
+                fetch: (url, init) async {
+                  if (url.contains('/appShow?')) return response(url, 'app');
+                  expect(url, contains('/cjcx/modules/cjcx/xscjcx.do'));
+                  final form = Uri.splitQueryString(init['body'] as String);
+                  expect(jsonDecode(form['querySetting']!), {
+                    'name': 'SFYX',
+                    'value': '1',
+                    'linkOpt': 'and',
+                    'builder': 'm_value_equal',
+                  });
+                  expect(form['*json'], '1');
+                  expect(form['*order'], '+XNXQDM,KCH,KXH');
+                  return response(
+                    url,
+                    table('xscjcx', [
+                      for (final term in ['2026-2027-1', '2025-2026-2'])
+                        {
+                          'KCH': 'synthetic-$term',
+                          'XSKCM': 'Synthetic UG course',
+                          'XF': '2',
+                          'ZCJ': '0',
+                          'DJCJLXDM': '00',
+                          'XNXQDM': term,
+                        },
+                    ]),
+                  );
+                },
+              )
+              as Map;
+      final item = (out['items'] as List).single as Map;
+      expect(item['courseId'], 'synthetic-2026-2027-1');
+      expect((item['score'] as Map)['value'], 0);
+    },
+  );
+
+  test(
     'PG school routes grade queries to yjspt regardless of a stale saved role',
     () async {
       school = postgraduate;
@@ -702,6 +792,10 @@ process.stdout.write(result.outputFiles[0].text);''',
                     return response(url, '<html>app</html>');
                   }
                   expect(url, contains('/wdcjapp/modules/wdcj/xscjcx.do'));
+                  final form = Uri.splitQueryString(init['body'] as String);
+                  expect(jsonDecode(form['querySetting']!), isEmpty);
+                  expect(form.containsKey('*json'), isFalse);
+                  expect(form.containsKey('*order'), isFalse);
                   return response(
                     url,
                     table('xscjcx', [
@@ -727,6 +821,98 @@ process.stdout.write(result.outputFiles[0].text);''',
       expect(item.containsKey('gradePoint'), isFalse);
     },
   );
+
+  for (final pg in [false, true]) {
+    test(
+      '${pg ? 'PG' : 'UG'} historical grade terms feed a real package grade query',
+      () async {
+        school = pg ? postgraduate : undergraduate;
+        credentials = ScriptCredentials(
+          store: store,
+          schoolId: school.manifest.schoolId,
+          scriptId: school.manifest.id,
+          sdkVersion: school.manifest.sdkVersion,
+        );
+        seed(pg ? 'yjspt' : 'ehall');
+        final origin = pg
+            ? 'https://yjspt.xidian.edu.cn'
+            : 'https://ehall.xidian.edu.cn';
+        Future<Map<String, Object?>> fetch(
+          String url,
+          Map<String, dynamic> init,
+        ) async {
+          expect(Uri.parse(url).origin, origin);
+          if (init['method'] == 'GET') return response(url, 'app');
+          if (url.contains('/dqxnxq.do')) {
+            return response(
+              url,
+              table('dqxnxq', [
+                {'DM': '2026-2027-1'},
+              ]),
+            );
+          }
+          if (url.contains('/getUserInfo.do')) {
+            return response(url, {
+              'code': '0',
+              'data': {'xnxqdm': '2026-2027-1'},
+            });
+          }
+          expect(url, contains('/xscjcx.do'));
+          final form = Uri.splitQueryString(init['body'] as String);
+          expect(
+            jsonDecode(form['querySetting']!),
+            pg
+                ? []
+                : {
+                    'name': 'SFYX',
+                    'value': '1',
+                    'linkOpt': 'and',
+                    'builder': 'm_value_equal',
+                  },
+          );
+          return response(
+            url,
+            table('xscjcx', [
+              for (final term in ['2026-2027-1', '2025-2026-2'])
+                {
+                  'KCH': 'synthetic-$term',
+                  'XSKCM': 'Synthetic UG course',
+                  'KCMC': 'Synthetic PG course',
+                  'XF': '2',
+                  'ZCJ': '0',
+                  'DYBFZCJ': '0',
+                  'DJCJLXDM': '00',
+                  'CJFZDM': '0',
+                  if (!pg) 'XNXQDM': term,
+                  'XNXQDM_DISPLAY': term == '2026-2027-1'
+                      ? '2026-2027学年第一学期'
+                      : '2025-2026学年第二学期',
+                },
+            ]),
+          );
+        }
+
+        final terms =
+            await run('term.list', params: {'includePast': true}, fetch: fetch)
+                as Map;
+        final items = terms['items'] as List;
+        expect(items.map((item) => item['id']), ['2026-2027-1', '2025-2026-2']);
+        expect(items.last['name'], '2025-2026学年第二学期');
+        final grades =
+            await run(
+                  'grades.list',
+                  params: {'term': items.last['id']},
+                  fetch: fetch,
+                )
+                as Map;
+        expect(grades['term'], '2025-2026-2');
+        expect(
+          ((grades['items'] as List).single as Map)['courseId'],
+          'synthetic-2025-2026-2',
+        );
+      },
+    );
+  }
 
   test(
     'China exam wall time is normalized to UTC in the real package',
@@ -956,19 +1142,37 @@ process.stdout.write(result.outputFiles[0].text);''',
   );
 
   test(
-    'default school package harvests official WebView SSO and resumes the query in real QuickJS',
+    'default school package explicitly falls back to official WebView and then queries in real QuickJS',
     () async {
       final fixture = WebViewFixture();
+      var passwordPrompts = 0;
+      const params = {'account': 'school', 'operation': 'login'};
+      final accounts = ScriptAccountBridge(
+        package: school,
+        capability: 'account.session',
+        params: params,
+        store: ScriptAccountStore(store),
+        persist: () async {},
+        isActive: () => true,
+        interactive: true,
+        passwordCall: (_) async {
+          passwordPrompts++;
+          return const ScriptPasswordInput.web();
+        },
+      );
       final out = await runtime.run(
         package: school,
-        capability: 'term.list',
+        capability: 'account.session',
+        params: params,
+        accountCall: accounts.call,
         credentials: credentials,
         htmlStdlib: htmlStdlib,
         fetch: fixture.fetch,
         browserCall: fixture.browser,
         onLog: (_, m) => fixture.logs.add(m),
       );
-      expect((out as Map)['currentTerm'], '2026-2027-1');
+      expect((out as Map)['status'], 'authenticated');
+      expect(passwordPrompts, 1);
       expect(fixture.opened, ['https://ids.xidian.edu.cn/authserver/login']);
       expect(fixture.logs, contains('xidian_login_saved:ids'));
       expect(fixture.logs, contains('xidian_login_saved:ehall'));
@@ -979,6 +1183,118 @@ process.stdout.write(result.outputFiles[0].text);''',
       expect((cached as Map)['currentTerm'], '2026-2027-1');
     },
   );
+
+  test(
+    'compiled SDK14 native password login commits only after academic verification in real QuickJS',
+    () async {
+      final fixture = WebViewFixture();
+      const params = {'account': 'school', 'operation': 'login'};
+      final accountStore = ScriptAccountStore(store);
+      final events = <ScriptAccountEvent>[];
+      final accounts = ScriptAccountBridge(
+        package: school,
+        capability: 'account.session',
+        params: params,
+        store: accountStore,
+        persist: () async {
+          expect(credentials.get('ehall', namespace: 'xidian.auth'), isNotNull);
+        },
+        isActive: () => true,
+        interactive: true,
+        onEvent: events.add,
+        passwordCall: (_) async => const ScriptPasswordInput(
+          username: '2030000001',
+          password: 'SYNTHETIC-PASSWORD',
+          remember: true,
+        ),
+      );
+      final out = await runtime.run(
+        package: school,
+        capability: 'account.session',
+        params: params,
+        accountCall: accounts.call,
+        credentials: credentials,
+        htmlStdlib: htmlStdlib,
+        fetch: fixture.fetch,
+        browserCall: fixture.browser,
+      );
+      expect((out as Map)['status'], 'authenticated');
+      expect(fixture.passwordSubmissions, 1);
+      expect(
+        accountStore
+            .metadata(school.manifest.schoolId, 'xidian.primary')!
+            .username,
+        '2030000001',
+      );
+      expect(events.last.status, 'authenticated');
+      expect(fixture.opened, ['https://ids.xidian.edu.cn/authserver/login']);
+    },
+  );
+
+  for (final hasChild in [false, true]) {
+    test(
+      'SDK14 ordinary query without IDS preserves authentication_required (child=$hasChild) in real QuickJS',
+      () async {
+        if (hasChild) {
+          seed(
+            'ehall',
+            cookies: [
+              {
+                'name': 'MOD_AUTH_CAS',
+                'value': 'SYNTHETIC-EXPIRED',
+                'domain': 'ehall.xidian.edu.cn',
+                'path': '/',
+                'hostOnly': true,
+              },
+            ],
+          );
+        }
+        final events = <ScriptAccountEvent>[];
+        var fetches = 0;
+        var browserCalls = 0;
+        final accounts = ScriptAccountBridge(
+          package: school,
+          capability: 'term.list',
+          params: const {},
+          store: ScriptAccountStore(store),
+          persist: () async {},
+          isActive: () => true,
+          interactive: false,
+          onEvent: events.add,
+        );
+        await expectLater(
+          runtime.run(
+            package: school,
+            capability: 'term.list',
+            credentials: credentials,
+            htmlStdlib: htmlStdlib,
+            accountCall: accounts.call,
+            fetch: (url, _) async {
+              fetches++;
+              expect(Uri.parse(url).host, 'ehall.xidian.edu.cn');
+              return response(url, '', status: 401);
+            },
+            browserCall: (_, _) async {
+              browserCalls++;
+              throw StateError('No automatic popup');
+            },
+          ),
+          throwsA(
+            isA<ScriptRunException>().having(
+              (e) => e.code,
+              'code',
+              'authentication_required',
+            ),
+          ),
+        );
+        expect(events.single.status, hasChild ? 'unknown' : 'signedOut');
+        expect(events.single.reason, hasChild ? 'networkUnknown' : 'signedOut');
+        expect(fetches, hasChild ? greaterThan(0) : 0);
+        expect(browserCalls, 0);
+        if (!hasChild) expect(store.list(), isEmpty);
+      },
+    );
+  }
 
   test(
     'compiled login ignores legacy public-suffix cookies and still verifies SSO',

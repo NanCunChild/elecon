@@ -49,6 +49,16 @@ export function resolveUrl(value, base) {
   return `${b.origin}${parts.join("/") || "/"}${suffix}`;
 }
 
+/** School-owned evidence, not a generic "unexpected HTML means expired" rule. */
+export function isPrimaryLoginPage(url, body) {
+  const target = parseUrl(url);
+  return (
+    target.host === "ids.xidian.edu.cn" &&
+    target.path === "/authserver/login" &&
+    /<form\b[^>]*\bid\s*=\s*(?:"pwdFromId"|'pwdFromId'|pwdFromId(?=[\s>]))/i.test(body)
+  );
+}
+
 function domainMatches(host, domain) {
   // School-owned cookie sites, not a general public-suffix implementation.
   // A legacy response may have stored Domain=edu.cn / cn. Native browsers
@@ -413,13 +423,14 @@ export async function createClient(
     },
   };
   async function json(response) {
-    if (
-      response.status === 401 ||
-      response.status === 403 ||
-      parseUrl(response.url).host === "ids.xidian.edu.cn"
-    )
+    if (response.status === 401 || (response.status === 403 && !["ehall", "yjspt"].includes(service)))
       throw failure(`xidian_login_required_${service}`);
     if (!response.ok) throw new Error("xidian_http_failed");
+    if (parseUrl(response.url).host === "ids.xidian.edu.cn") {
+      if (isPrimaryLoginPage(response.url, await response.text()))
+        throw failure(`xidian_login_required_${service}`);
+      throw failure("academic_response_invalid");
+    }
     try {
       return await response.json();
     } catch {

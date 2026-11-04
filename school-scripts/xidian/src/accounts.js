@@ -4,6 +4,7 @@ import { createLogin } from "./login.js";
 import { forumSession } from "./ruisi.js";
 import { requireParams, serviceError } from "./service_session.js";
 import { readSession } from "./session.js";
+import { establishAcademicSession } from "./webview_login.js";
 
 export function createAccountSession(role) {
   return async (ctx, params = {}) => {
@@ -12,7 +13,9 @@ export function createAccountSession(role) {
     if (!["status", "login"].includes(operation)) throw serviceError("input_invalid_request");
     if (account === "apptunnel") {
       if (!ctx.appTunnel) throw serviceError("input_unavailable");
-      return ctx.appTunnel[operation]("hermes-atrust");
+      return operation === "login"
+        ? ctx.appTunnel.login("hermes-atrust", { accountId: "apptunnel" })
+        : ctx.appTunnel.status("hermes-atrust");
     }
     if (account === "ruisi") {
       const address = { namespace: "xidian.services" };
@@ -39,25 +42,51 @@ export function createAccountSession(role) {
       }
     }
     if (account !== "school") throw serviceError("input_invalid_request");
-    if (operation === "login") await createLogin(role)(ctx, { forceLogin: true });
+    const schoolState = async (state, reason) => {
+      if (ctx.accounts)
+        await ctx.accounts.report("school", {
+          status: state.status,
+          reason:
+            reason ??
+            {
+              authenticated: "verified",
+              signedOut: "signedOut",
+              expired: "primaryExpired",
+              unknown: "networkUnknown",
+            }[state.status],
+        });
+      return state;
+    };
+    if (operation === "login") await createLogin(role)(ctx, { forceLogin: true, passwordLogin: true });
     const system = role === "postgraduate" ? "yjspt" : "ehall";
-    const saved = await readSession(ctx, system);
-    if (!saved?.cookies?.length) return { status: "signedOut" };
     try {
-      // Deliberately bypass automatic login used by business queries.
-      await termList(ctx, { role });
-      const id = saved.data?.studentId;
-      return {
+      let saved = await readSession(ctx, system);
+      const ids = await readSession(ctx, "ids");
+      if (!saved?.cookies?.length && !ids?.cookies?.length) return schoolState({ status: "signedOut" });
+      try {
+        // Verify the actual service without the business query's login wrapper.
+        await termList(ctx, { role });
+      } catch (error) {
+        if (error?.message !== `xidian_login_required_${system}`) throw error;
+        if (!ids?.cookies?.length) return schoolState({ status: "unknown" }, "networkUnknown");
+        // A rejected child ticket proves nothing about IDS. Exchange existing
+        // SSO once and verify the business API; status never opens a browser or
+        // retrieves/submits a saved password, including on older SDKs.
+        await establishAcademicSession(ctx, system, { ...ids.data, role }, ctx.now() + 30000);
+      }
+      saved = await readSession(ctx, system);
+      const id = saved?.data?.studentId;
+      return schoolState({
         status: "authenticated",
         ...(typeof id === "string" && id ? { accountId: id } : {}),
         checkedAt: new Date(ctx.now()).toISOString(),
-      };
+      });
     } catch (error) {
-      const expired = /^xidian_login_required_(ehall|yjspt)$/.test(error?.message ?? "");
-      return {
+      const expired = error?.message === `xidian_login_required_${system}` && error.authStage === "primary";
+      return schoolState({
         status: expired ? "expired" : "unknown",
         ...(expired ? { checkedAt: new Date(ctx.now()).toISOString() } : {}),
-      };
+      });
     }
   };
 }

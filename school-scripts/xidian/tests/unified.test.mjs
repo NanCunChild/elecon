@@ -77,3 +77,42 @@ test("cancelled official WebView cannot save or run business", async () => {
   assert.equal(h.records.size, 0);
   assert.ok(!h.events.some((e) => e[0] === "request" && e[1].includes("ehall.xidian")));
 });
+
+test("a read-only query exchanges a rejected child ticket once using existing primary SSO", async () => {
+  const h = harness();
+  h.records.set(
+    "ids",
+    JSON.stringify({
+      version: 1,
+      service: "ids",
+      data: { role: "undergraduate" },
+      cookies: [
+        {
+          name: "CASTGC",
+          value: "EXAMPLE_SYNTHETIC_GLOBAL",
+          domain: "ids.xidian.edu.cn",
+          hostOnly: true,
+          path: "/authserver",
+          isSecure: true,
+        },
+      ],
+    }),
+  );
+  delete h.ctx.browser;
+  const fetch = h.ctx.fetch;
+  let expired = true;
+  h.ctx.fetch = async (url, init) => {
+    if (expired && url.includes("ehall.xidian.edu.cn")) {
+      expired = false;
+      return { url, status: 401, ok: false, headers: { get: () => null, getSetCookie: () => [] } };
+    }
+    return fetch(url, init);
+  };
+  const result = await createCapabilities("undergraduate")["term.list"](h.ctx);
+  assert.equal(result.currentTerm, "2026-2027-1");
+  assert.equal(
+    h.events.filter(([type, url]) => type === "request" && url.startsWith("https://ids.")).length,
+    1,
+  );
+  assert.ok(!h.events.some(([type]) => type === "open"));
+});

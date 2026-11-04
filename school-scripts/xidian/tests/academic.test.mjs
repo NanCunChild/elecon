@@ -14,6 +14,7 @@ import {
   scheduleWeek,
   termList,
 } from "../src/academic.js";
+import { createQueryControls } from "../src/query_controls.js";
 
 const TERM = "2025-2026-1";
 const ajv = new Ajv2020({ strict: false });
@@ -395,6 +396,14 @@ test("grades follow multiple pages, retain levels/zero/retake semantics and filt
   const ctx = fake((call) => {
     const page = Number(call.form.pageNumber);
     assert.equal(Number(call.form.pageSize), 200);
+    assert.deepEqual(JSON.parse(call.form.querySetting), {
+      name: "SFYX",
+      value: "1",
+      linkOpt: "and",
+      builder: "m_value_equal",
+    });
+    assert.equal(call.form["*json"], "1");
+    assert.equal(call.form["*order"], "+XNXQDM,KCH,KXH");
     return payload("xscjcx", rows.slice((page - 1) * 200, page * 200), 201);
   });
   const result = valid("grades.list", await gradesList(ctx, { term: TERM }));
@@ -411,8 +420,11 @@ test("grades follow multiple pages, retain levels/zero/retake semantics and filt
 });
 
 test("PG scores use display term, source grading kind and exam source", async () => {
-  const ctx = fake(() =>
-    payload("xscjcx", [
+  const ctx = fake((call) => {
+    assert.deepEqual(JSON.parse(call.form.querySetting), []);
+    assert.equal(call.form["*json"], undefined);
+    assert.equal(call.form["*order"], undefined);
+    return payload("xscjcx", [
       {
         KCDM: "pg-score",
         KCMC: "研究课程",
@@ -425,8 +437,8 @@ test("PG scores use display term, source grading kind and exam source", async ()
         KCLBMC: "专业必修",
         KSXZDM_DISPLAY: "补考",
       },
-    ]),
-  );
+    ]);
+  });
   const result = valid("grades.list", await gradesList(ctx, { role: "postgraduate", term: TERM }));
   assert.equal(result.items[0].score.value, "良好");
   assert.equal(result.items[0].sourceStatus, "makeup");
@@ -626,6 +638,10 @@ test("term/current calendar capabilities expose only proven fields for both role
   const ugTerm = valid("term.list", await termList(ug));
   assert.equal(ugTerm.currentTerm, TERM);
   assert.equal(ugTerm.items.length, 1);
+  assert.equal(
+    ug.calls.some((call) => call.url.pathname.endsWith("/xscjcx.do")),
+    false,
+  );
   const ugCal = valid("calendar.academic", await calendarAcademic(ug, { term: TERM }));
   assert.deepEqual(ugCal, { term: TERM, startDate: "2025-09-01", currentWeek: 3 });
   const pg = fake((call) =>
@@ -634,7 +650,99 @@ test("term/current calendar capabilities expose only proven fields for both role
       : { msg: { QSRQ: "2025-09-01 00:00:00" } },
   );
   assert.equal(valid("term.list", await termList(pg, { role: "postgraduate" })).currentTerm, TERM);
+  assert.equal(
+    pg.calls.some((call) => call.url.pathname.endsWith("/xscjcx.do")),
+    false,
+  );
   assert.deepEqual(valid("calendar.academic", await calendarAcademic(pg, { role: "postgraduate" })), ugCal);
+});
+
+for (const pg of [false, true]) {
+  test(`${pg ? "PG" : "UG"} historical terms come only from complete grade pages`, async () => {
+    const historical = "2024-2025-2";
+    const older = "2023-2024-1";
+    const row = (term) =>
+      pg
+        ? { XNXQDM_DISPLAY: term.replace(/-([12])$/, "学年第$1学期") }
+        : { XNXQDM: term, XNXQDM_DISPLAY: term.replace(/-([12])$/, "学年第$1学期") };
+    const rows = [
+      ...Array.from({ length: 199 }, () => row(historical)),
+      row("2026-2027-1"), // A future row is not a past-term option.
+      row(older),
+    ];
+    const ctx = fake((call) => {
+      if (call.url.pathname.endsWith("/getUserInfo.do")) return { code: "0", data: { xnxqdm: TERM } };
+      if (call.url.pathname.endsWith("/dqxnxq.do")) return payload("dqxnxq", [{ DM: TERM }]);
+      assert.ok(call.url.pathname.endsWith("/xscjcx.do"));
+      assert.deepEqual(
+        JSON.parse(call.form.querySetting),
+        pg
+          ? []
+          : {
+              name: "SFYX",
+              value: "1",
+              linkOpt: "and",
+              builder: "m_value_equal",
+            },
+      );
+      const page = Number(call.form.pageNumber);
+      return payload("xscjcx", rows.slice((page - 1) * 200, page * 200), rows.length);
+    });
+    const result = valid(
+      "term.list",
+      await termList(ctx, {
+        role: pg ? "postgraduate" : "undergraduate",
+        includePast: true,
+      }),
+    );
+    assert.equal(result.currentTerm, TERM);
+    assert.deepEqual(
+      result.items.map((item) => item.id),
+      [TERM, historical, older],
+    );
+    assert.equal(result.items[1].name, "2024-2025学年第2学期");
+    assert.equal(result.items[2].academicYear, "2023-2024");
+    assert.equal(ctx.calls.filter((call) => call.url.pathname.endsWith("/xscjcx.do")).length, 2);
+    const controls = valid(
+      "query.controls",
+      await createQueryControls(pg ? "postgraduate" : "undergraduate")(ctx, { target: "grades.list" }),
+    );
+    assert.equal(controls.controls[0].parameter, "term");
+    assert.equal(controls.controls[0].initialValue, TERM);
+    assert.deepEqual(
+      controls.controls[0].options,
+      result.items.map(({ id, name }) => ({ value: id, label: name })),
+    );
+  });
+}
+
+test("historical term discovery rejects invalid identities and incomplete pages", async () => {
+  const ctx = fake((call) =>
+    call.url.pathname.endsWith("/dqxnxq.do")
+      ? payload("dqxnxq", [{ DM: TERM }])
+      : payload("xscjcx", [{ XNXQDM: "2024-2026-1" }]),
+  );
+  await assert.rejects(termList(ctx, { includePast: true }), /academic_term_invalid/);
+  const incomplete = fake((call) =>
+    call.url.pathname.endsWith("/dqxnxq.do")
+      ? payload("dqxnxq", [{ DM: TERM }])
+      : payload("xscjcx", Number(call.form.pageNumber) === 1 ? [{ XNXQDM: TERM }] : [], 2),
+  );
+  await assert.rejects(termList(incomplete, { includePast: true }), /academic_pagination_incomplete/);
+  const invalid = fake(() => undefined);
+  await assert.rejects(termList(invalid, { includePast: "true" }), /academic_include_past_invalid/);
+  assert.equal(invalid.calls.length, 0);
+});
+
+test("opening an academic app with ordinary 403 does not report expired authentication", async () => {
+  const ctx = fake(() => undefined);
+  let calls = 0;
+  ctx.fetch = async (url) => {
+    calls++;
+    return { status: 403, url, headers: { get: () => null, getSetCookie: () => [] } };
+  };
+  await assert.rejects(gradesList(ctx, { term: TERM }), /academic_app_open_failed/);
+  assert.equal(calls, 1);
 });
 
 test("current week follows China midnight and school term start rather than device timezone", async () => {
@@ -749,4 +857,51 @@ test("explicit null sections are free; absent sections remain unknown", async ()
   assert.equal(result.items[0].sections.length, 11);
   assert.ok(result.items[0].sections.every((section) => section.occupied === false));
   assert.equal(result.items[1].occupied, undefined);
+});
+
+test("classroom absolute intervals retain uncovered breaks and missing section evidence", async () => {
+  const result = valid(
+    "classroom.available",
+    await classroomAvailable(fake(classroomsRoute), {
+      term: TERM,
+      date: "2025-09-16",
+      buildingId: "demo-building",
+    }),
+  );
+  assert.equal(result.timeZone, "Asia/Shanghai");
+  const first = result.items[0].intervals;
+  assert.equal(first[0].startAt, "2025-09-16T00:30:00.000Z");
+  assert.equal(first[0].endAt, "2025-09-16T01:15:00.000Z");
+  assert.equal(first[0].status, "available");
+  assert.match(first[0].reason, /不代表教室开放/);
+  assert.equal(first[1].status, "occupied");
+  assert.ok(Date.parse(first[0].endAt) < Date.parse(first[1].startAt), "break remains uncovered");
+  assert.equal(result.items[2].intervals.length, 10, "missing JC1 remains unknown");
+  const undated = await classroomAvailable(fake(classroomsRoute), {
+    term: TERM,
+    week: 3,
+    weekday: 2,
+    buildingId: "demo-building",
+  });
+  assert.equal(undated.items[0].intervals, undefined, "do not invent dates for week-only queries");
+});
+
+test("query controls declare school-local classroom inputs and reject command targets without I/O", async () => {
+  const ctx = { now: () => Date.parse("2026-11-03T16:05:00Z"), i18n: { t: (key) => `translated:${key}` } };
+  const query = createQueryControls("undergraduate");
+  const out = valid("query.controls", await query(ctx, { target: "classroom.available" }));
+  assert.equal(out.controls[0].initialValue, "2026-11-04");
+  assert.equal(out.submitLabel, "translated:query.submit");
+  assert.deepEqual(
+    out.controls.map((item) => item.parameter),
+    ["date", "room", "start"],
+  );
+  await assert.rejects(query(ctx, { target: "climate.command" }), /input_invalid_request/);
+  await assert.rejects(query(ctx, { target: "grades.list", operation: "login" }), /input_invalid_request/);
+  const denied = {
+    ...ctx,
+    credentials: { get: async () => null },
+    browser: { open: () => assert.fail("metadata must not open login") },
+  };
+  await assert.rejects(query(denied, { target: "grades.list" }), /xidian_login_required_ehall/);
 });
