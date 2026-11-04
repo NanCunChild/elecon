@@ -13,7 +13,11 @@
 | 统一桥接错误 | 已实现并通过本轮回归：结构化成功/失败，稳定宿主分类与学校业务码，不解析显示文字 | 取消、迟到结果、未知异常、秘密不透传；错误不自动触发重试 |
 | 调用语义 | 已实现并通过本轮回归：来源、参数、交互及取消沿统一会话边界 | 各入口不得绕过 digest/身份/来源；当前不创建后台计划或长期网页实例 |
 
-本轮验证（2026-11-04）：`bash client/tool/flutter_test.sh fvm flutter test --no-pub test/scripts test/session --reporter expanded` 共 **586 项通过**，含真实 QuickJS、账号/浏览器/权限、旧 SDK、不可变调用和 SDK17 模板回归。定向 Flutter analyze、工具 TypeScript 检查、`npm run scripts:check-sdk -w tools`、源码打包 smoke、SDK17 模板实际打包及差异检查通过；8 份归档 SHA-256 与文档本地链接检查通过。提交前复核修复 Headers 动态遍历、旧 SDK fetch 错误分类与 SDK17 默认 AbortError 终止分类；新增迁移/构建/生命周期示例，36 个 JS 代码块语法、11 个 JSON 示例、7 个离线示例执行结果及文档链接检查通过。测试针对包含既有未提交改动的当前工作区，不是独立提交的 CI 或真实学校验收。SDK17 首片不表示完整 Web API、Node 或浏览器兼容；URL、流式数据等尚未支持的 API 不应通过示例暗示可用。
+本轮定向验证（2026-11-04）：脚本与会话 **586 项通过**，含真实 QuickJS、账号/浏览器/权限、旧 SDK、不可变调用和 SDK17 模板回归。`npm run scripts:check-sdk -w tools`、SDK17 模板实际打包及差异检查通过；8 份归档 SHA-256 与文档本地链接检查通过。提交前复核修复 Headers 动态遍历、旧 SDK fetch 错误分类与 SDK17 默认 AbortError 终止分类；新增迁移/构建/生命周期示例，36 个 JS 代码块语法、11 个 JSON 示例、7 个离线示例执行结果及文档链接检查通过。
+
+全部工作区最终验证（同日）：`bash client/tool/flutter_test.sh fvm flutter test --no-pub --reporter expanded` **1747 项通过、11 项跳过、0 失败**；跳过项要求 DEV 侧载构建配置，本轮未另跑该配置。全量 Flutter analyze 无问题；三个 npm workspace 类型检查通过；77 个 schema 生成物检查无过期或手改，保留 27 条既有 description 提示；西电 Node 合成测试 **207 项通过**，脚本打包 smoke **13 组通过**，包含源码与内置包确定性一致检查；Hermes `cargo test --workspace --locked` **250 项通过**。全量检查发现并修复窄屏大字体的 Profile 标记溢出，布局测试启用减少动画以避免等待持续标题滚动，保留专门动画测试及原有布局断言。
+
+以上是最终整合工作区的本地验证，不是各中间提交的独立 CI；本轮没有新增真机、真实学校或人工安全签收。SDK17 首片不表示完整 Web API、Node 或浏览器兼容；URL、流式数据等尚未支持的 API 不应通过示例暗示可用。
 
 ## 受信扩展
 
