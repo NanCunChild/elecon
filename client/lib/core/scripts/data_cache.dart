@@ -38,6 +38,19 @@ class ScriptDataCache {
   static const maxSchoolBytes = 4 * 1024 * 1024;
   static const retentionMs = 7 * 24 * 60 * 60 * 1000;
 
+  /// A same-school login can replace credentials shared by multiple packages.
+  /// Discard every locale/parameter snapshot, never the school credentials.
+  Set<String> clearSchool(String schoolId) {
+    final refs = {
+      for (final entry in store.list())
+        if (entry.type == type && entry.schoolId == schoolId) entry.ref,
+    };
+    for (final ref in refs) {
+      store.delete(ref);
+    }
+    return refs;
+  }
+
   static Object? _canonical(Object? value) {
     if (value is Map) {
       final keys = value.keys.cast<String>().toList()..sort();

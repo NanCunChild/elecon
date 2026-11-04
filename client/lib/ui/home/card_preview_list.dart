@@ -24,6 +24,7 @@ class CardPreviewList extends StatelessWidget {
         .dependOnInheritedWidgetOfExactType<SessionScope>()
         ?.notifier;
     final generation = session?.trustedScriptViewGeneration;
+    final dataGeneration = session?.trustedScriptDataGeneration;
     final presentation = HomeCardPresentation.maybeOf(context);
     final limit = presentation?.isPage == true
         ? children.length
@@ -44,6 +45,7 @@ class CardPreviewList extends StatelessWidget {
                   title: title,
                   session: session,
                   generation: generation,
+                  dataGeneration: dataGeneration,
                   children: children,
                 ),
               ),
@@ -65,11 +67,13 @@ class _PreviewSnapshotPage extends StatelessWidget {
     required this.children,
     required this.session,
     required this.generation,
+    required this.dataGeneration,
   });
   final String title;
   final List<Widget> children;
   final SessionController? session;
   final int? generation;
+  final int? dataGeneration;
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +83,8 @@ class _PreviewSnapshotPage extends StatelessWidget {
     Widget body() {
       if (session != null &&
           (!identical(current, session) ||
-              generation != session!.trustedScriptViewGeneration)) {
+              generation != session!.trustedScriptViewGeneration ||
+              dataGeneration != session!.trustedScriptDataGeneration)) {
         return Padding(
           padding: const EdgeInsets.all(16),
           child: Text(AppLocalizations.of(context).homeCardDataChanged),

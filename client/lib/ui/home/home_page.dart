@@ -64,6 +64,7 @@ class _EleconHomePageState extends State<EleconHomePage>
   String? _school;
   int? _revision;
   int? _generation;
+  int? _dataGeneration;
   CampusSnapshot? _lastSnapshot;
   Timer? _homeRefreshTimer;
   Map<String, HomeCardSize> _cardDefaults = {};
@@ -128,11 +129,13 @@ class _EleconHomePageState extends State<EleconHomePage>
       final changed =
           _session != session ||
           _school != session.selectedSchool?.id ||
-          _generation != session.trustedScriptViewGeneration;
+          _generation != session.trustedScriptViewGeneration ||
+          _dataGeneration != session.trustedScriptDataGeneration;
       if (changed) {
         _session = session;
         _school = session.selectedSchool?.id;
         _generation = session.trustedScriptViewGeneration;
+        _dataGeneration = session.trustedScriptDataGeneration;
         _lastSnapshot = null;
         _refreshAfterDesktop = true;
         _cardDefaults = {};
@@ -455,6 +458,7 @@ class _EleconHomePageState extends State<EleconHomePage>
       return loadDemoCampusSnapshot();
     }
     final session = SessionScope.of(context);
+    final dataGeneration = session.trustedScriptDataGeneration;
     final snapshot = await loadCampusSnapshot(
       session,
       preferCacheOnly: !refreshNotices,
@@ -463,6 +467,9 @@ class _EleconHomePageState extends State<EleconHomePage>
     await (widget.layoutStore ?? CardLayoutStore.shared).load(
       session.selectedSchool?.id ?? 'preview',
     );
+    if (dataGeneration != session.trustedScriptDataGeneration) {
+      throw StateError('identity_changed');
+    }
     return snapshot;
   }
 
@@ -471,11 +478,13 @@ class _EleconHomePageState extends State<EleconHomePage>
     if (_liveSections) {
       final session = _session;
       final generation = _generation;
+      final dataGeneration = _dataGeneration;
       final school = _school;
       bool current() =>
           mounted &&
           identical(session, _session) &&
           session?.trustedScriptViewGeneration == generation &&
+          session?.trustedScriptDataGeneration == dataGeneration &&
           session?.selectedSchool?.id == school;
       await _refreshSilently(force: true);
       if (!current()) return;
@@ -519,7 +528,7 @@ class _EleconHomePageState extends State<EleconHomePage>
     return Scaffold(
       body: SafeArea(
         child: FutureBuilder<CampusSnapshot>(
-          key: ValueKey((_school, _generation)),
+          key: ValueKey((_school, _generation, _dataGeneration)),
           future: _snapshot,
           builder: (context, state) {
             if (state.hasData) _lastSnapshot = state.data;
@@ -540,10 +549,12 @@ class _EleconHomePageState extends State<EleconHomePage>
               _refreshAfterDesktop = false;
               final session = _session;
               final generation = _generation;
+              final dataGeneration = _dataGeneration;
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted &&
                     identical(session, _session) &&
-                    generation == _generation) {
+                    generation == _generation &&
+                    dataGeneration == _dataGeneration) {
                   unawaited(_refreshSilently());
                 }
               });

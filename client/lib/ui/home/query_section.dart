@@ -49,10 +49,14 @@ Future<QueryOutcome<T>> runOnceDecoded<T>(
   CapabilitySource? source,
   required T? Function(Object?) decode,
 }) async {
+  final dataGeneration = session.trustedScriptDataGeneration;
   final run = await CapabilityQueries(
     session,
     source: source,
   ).runCapability(capability, params: params, interactive: interactive);
+  if (dataGeneration != session.trustedScriptDataGeneration) {
+    return const QueryOutcome(reason: 'script_cancelled');
+  }
   if (!run.ok) {
     if (run.reason == 'configuration_required') {
       return const QueryOutcome(reason: 'configuration_required');
@@ -220,6 +224,7 @@ mixin CachedQuerySection<W extends StatefulWidget, D> on State<W> {
   String? _cacheSchool;
   int? _cacheRevision;
   int? _cacheGeneration;
+  int? _cacheDataGeneration;
   int cacheRead = 0;
   DateTime? cacheFetchedAt;
   DateTime? cacheFreshUntil;
@@ -245,14 +250,19 @@ mixin CachedQuerySection<W extends StatefulWidget, D> on State<W> {
         _cacheSource != source ||
         cacheSession != session ||
         _cacheSchool != school ||
-        _cacheGeneration != session.trustedScriptViewGeneration;
+        _cacheGeneration != session.trustedScriptViewGeneration ||
+        _cacheDataGeneration != session.trustedScriptDataGeneration;
     if (changed) {
       cacheSession = session;
       _cacheSource = source;
       _cacheSchool = school;
       _cacheGeneration = session.trustedScriptViewGeneration;
+      _cacheDataGeneration = session.trustedScriptDataGeneration;
       cacheRead++;
       cacheFetchedAt = null;
+      cacheFreshUntil = null;
+      cacheStale = false;
+      restoredParams = const {};
       clearCache();
     }
     if (changed || _cacheRevision != session.homeDataRevision) {
@@ -266,6 +276,7 @@ mixin CachedQuerySection<W extends StatefulWidget, D> on State<W> {
     if (session == null) return;
     final read = ++cacheRead;
     final generation = session.trustedScriptViewGeneration;
+    final dataGeneration = session.trustedScriptDataGeneration;
     final school = _cacheSchool;
     try {
       final cached = useLatestCache
@@ -278,6 +289,7 @@ mixin CachedQuerySection<W extends StatefulWidget, D> on State<W> {
               source: _cacheSource,
             ).cachedCapability(cacheCapability, params: cacheParams);
       if (!isCurrentSession(this, session, generation) ||
+          dataGeneration != session.trustedScriptDataGeneration ||
           read != cacheRead ||
           session.selectedSchool?.id != school) {
         return;
@@ -288,7 +300,9 @@ mixin CachedQuerySection<W extends StatefulWidget, D> on State<W> {
           session,
           source: _cacheSource,
         ).capabilityNeedsConfiguration(cacheCapability, params: cacheParams);
-        if (!isCurrentSession(this, session, generation) || read != cacheRead) {
+        if (!isCurrentSession(this, session, generation) ||
+            dataGeneration != session.trustedScriptDataGeneration ||
+            read != cacheRead) {
           return;
         }
         if (needsConfiguration) {

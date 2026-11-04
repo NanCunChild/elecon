@@ -57,6 +57,10 @@ class _ScriptSessionState {
   final deviceInputLease = ScriptSystemInputLease();
   Future<bool> Function()? storageConsent;
   int generation = 0;
+  // Separate from execution generation: a login must invalidate business data
+  // without cancelling its own browser/password presenter.
+  int dataGeneration = 0;
+  final pendingCacheRemovals = <String, Set<String>>{};
   String locale = 'zh';
   bool disposed = false;
   int homeRevision = 0;
@@ -73,6 +77,7 @@ extension TrustedScriptSession on SessionController {
       _scriptStates[this] ??= _ScriptSessionState();
 
   int get trustedScriptViewGeneration => _scripts.generation;
+  int get trustedScriptDataGeneration => _scripts.dataGeneration;
 
   set scriptStorageConsent(Future<bool> Function()? consent) =>
       _scripts.storageConsent = consent;
@@ -437,6 +442,7 @@ extension TrustedScriptSession on SessionController {
   }) async {
     final school = _school;
     final generation = _scripts.generation;
+    final dataGeneration = _scripts.dataGeneration;
     if (school == null || _scripts.disposed) return null;
     try {
       final package = await _querySource(
@@ -447,6 +453,7 @@ extension TrustedScriptSession on SessionController {
       );
       if (package == null ||
           generation != _scripts.generation ||
+          dataGeneration != _scripts.dataGeneration ||
           _school?.id != school.id) {
         return null;
       }
@@ -466,6 +473,7 @@ extension TrustedScriptSession on SessionController {
   }) async {
     final school = _school;
     final generation = _scripts.generation;
+    final dataGeneration = _scripts.dataGeneration;
     if (school == null || _scripts.disposed) return null;
     try {
       final package = await _querySource(
@@ -476,6 +484,7 @@ extension TrustedScriptSession on SessionController {
       );
       if (package == null ||
           generation != _scripts.generation ||
+          dataGeneration != _scripts.dataGeneration ||
           _school?.id != school.id) {
         return null;
       }
@@ -523,6 +532,7 @@ extension TrustedScriptSession on SessionController {
     final state = _scripts;
     if (state.refreshingHome != null) return state.refreshingHome!;
     final generation = state.generation;
+    final dataGeneration = state.dataGeneration;
     final school = _school;
     if (school == null || state.disposed) return Future.value();
     final future = () async {
@@ -547,6 +557,7 @@ extension TrustedScriptSession on SessionController {
             }
             if (state.disposed ||
                 state.generation != generation ||
+                state.dataGeneration != dataGeneration ||
                 _school?.id != school.id) {
               return;
             }
@@ -633,9 +644,11 @@ extension TrustedScriptSession on SessionController {
   }) {
     final state = _scripts;
     final generation = state.generation;
+    final dataGeneration = state.dataGeneration;
     final pending = state.queue.then<CapabilityRun>((_) {
       if (state.disposed ||
           state.generation != generation ||
+          state.dataGeneration != dataGeneration ||
           cancellation?.isCancelled == true) {
         return const CapabilityRun.failed(
           CapabilityFailureKind.run,
@@ -732,14 +745,16 @@ extension TrustedScriptSession on SessionController {
     // A declared login can replace the principal without changing the school.
     // Invalidate assistant grants at initiation, not only after a successful
     // password response. Query-only ticket renewal does not enter this branch.
-    if (interactive &&
+    final identityLogin =
+        interactive &&
         installation.package.manifest.accounts.any(
           (account) => ScriptAccountBridge.isLoginInvocation(
             account,
             capability,
             params,
           ),
-        )) {
+        );
+    if (identityLogin) {
       _invalidateIdentity();
     }
     final admissionEpoch = registry.epoch;
@@ -770,6 +785,36 @@ extension TrustedScriptSession on SessionController {
     final epoch = admissionEpoch;
     final store = _store;
     final backend = _secure;
+    if (identityLogin) {
+      // ADR-038: no old-school-principal snapshots may survive a new login.
+      // Persist removal before allowing school code to replace credentials.
+      // Failure/cancellation cannot restore those snapshots: authentication
+      // may already have changed remotely even if the final result is unknown.
+      state.dataGeneration++;
+      state.homeRevision++;
+      state.refreshingHome = null;
+      final removals = state.pendingCacheRemovals.putIfAbsent(
+        school.id,
+        () => <String>{},
+      );
+      // SecureStore deletes update memory before their async flush. Retry the
+      // removals after a storage failure without restoring old account data.
+      for (final ref in removals) {
+        store.delete(ref);
+      }
+      removals.addAll(ScriptDataCache(store).clearSchool(school.id));
+      onCredentialsChanged();
+      try {
+        await _flushCredentialBackend(backend);
+        state.pendingCacheRemovals.remove(school.id);
+      } catch (_) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'credential_persist_failed',
+        );
+      }
+    }
+    final dataGeneration = state.dataGeneration;
     var foregroundRevoked = false;
     bool active() {
       // A picker lease only suspends lifecycle cancellation while native input
@@ -781,6 +826,7 @@ extension TrustedScriptSession on SessionController {
           !state.disposed &&
           cancellation?.isCancelled != true &&
           state.generation == generation &&
+          state.dataGeneration == dataGeneration &&
           registry.epoch == epoch &&
           identical(store, _store) &&
           _school?.id == school.id &&

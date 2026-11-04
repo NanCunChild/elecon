@@ -15,6 +15,15 @@ Future<CampusSnapshot> loadCampusSnapshot(
 }) async {
   final school = session.selectedSchool;
   final generation = session.trustedScriptViewGeneration;
+  final dataGeneration = session.trustedScriptDataGeneration;
+  void checkCurrent() {
+    if (session.selectedSchool?.id != school?.id ||
+        session.trustedScriptViewGeneration != generation ||
+        session.trustedScriptDataGeneration != dataGeneration) {
+      throw StateError('identity_changed');
+    }
+  }
+
   if (school == null) {
     throw StateError('未选校');
   }
@@ -51,6 +60,7 @@ Future<CampusSnapshot> loadCampusSnapshot(
     }
   }
   if (cachedNotices != null && !refreshNotices) {
+    checkCurrent();
     return CampusSnapshot(
       schoolName: school.displayName,
       schoolType: school.typeName,
@@ -63,6 +73,7 @@ Future<CampusSnapshot> loadCampusSnapshot(
   // ADR-060: reading a desktop is strictly local, including packages that
   // deliberately omit preload. Background work starts after its first frame.
   if (preferCacheOnly) {
+    checkCurrent();
     return CampusSnapshot(
       schoolName: school.displayName,
       schoolType: school.typeName,
@@ -71,37 +82,39 @@ Future<CampusSnapshot> loadCampusSnapshot(
       supportedCapabilities: capabilities,
     );
   }
-  if (session.selectedSchool?.id != school.id ||
-      session.trustedScriptViewGeneration != generation) {
-    throw StateError('school_changed');
-  }
+  checkCurrent();
   final run = await session.runCapability('notice.list', interactive: false);
+  checkCurrent();
   if (!run.ok) {
+    final supportedCapabilities = {
+      ...school.capabilityCredentials.keys,
+      ...await session.trustedScriptCapabilities(),
+    };
+    checkCurrent();
     return CampusSnapshot(
       schoolName: school.displayName,
       schoolType: school.typeName,
       homeTitle: homeTitle,
       updatedAt: updatedAt,
       notices: cachedNotices,
-      supportedCapabilities: {
-        ...school.capabilityCredentials.keys,
-        ...await session.trustedScriptCapabilities(),
-      },
+      supportedCapabilities: supportedCapabilities,
     );
   }
   final notices = noticeListFromDynamic(run.data);
   if (notices == null) {
     throw StateError('notice.list 产出无法解码');
   }
+  final supportedCapabilities = {
+    ...run.supportedCapabilities,
+    ...await session.trustedScriptCapabilities(),
+  };
+  checkCurrent();
   return CampusSnapshot(
     schoolName: school.displayName,
     schoolType: school.typeName,
     homeTitle: homeTitle,
     updatedAt: DateTime.now().toUtc(),
     notices: notices,
-    supportedCapabilities: {
-      ...run.supportedCapabilities,
-      ...await session.trustedScriptCapabilities(),
-    },
+    supportedCapabilities: supportedCapabilities,
   );
 }

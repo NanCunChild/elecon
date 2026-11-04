@@ -36,6 +36,7 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
   bool _invalidated = false;
   int _requestId = 0;
   int? _generation;
+  int? _dataGeneration;
   String? _schoolId;
 
   @override
@@ -47,7 +48,8 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
     if (_bound) {
       if (!identical(_session, session) ||
           _schoolId != session?.selectedSchool?.id ||
-          _generation != session?.trustedScriptViewGeneration) {
+          _generation != session?.trustedScriptViewGeneration ||
+          _dataGeneration != session?.trustedScriptDataGeneration) {
         // ADR-034 §3 / ADR-038 §2: an open detail belongs to its original
         // identity and approved installation, including already-rendered data.
         _requestId++;
@@ -62,6 +64,7 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
     _session = session;
     _schoolId = session?.selectedSchool?.id;
     _generation = session?.trustedScriptViewGeneration;
+    _dataGeneration = session?.trustedScriptDataGeneration;
     if ((widget.item.content?.trim().isEmpty ?? true) &&
         (widget.loadDetail != null || session != null)) {
       _loading = true;
@@ -73,6 +76,7 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
     if (_invalidated || _session?.selectedSchool?.id != _schoolId) return;
     final requestId = ++_requestId;
     final generation = _session?.trustedScriptViewGeneration;
+    final dataGeneration = _session?.trustedScriptDataGeneration;
     NoticeDetail? detail;
     try {
       if (widget.loadDetail != null) {
@@ -96,7 +100,8 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
             // Missing detail capability is an empty body, never a fallback source.
             if (mounted &&
                 requestId == _requestId &&
-                generation == _session?.trustedScriptViewGeneration) {
+                generation == _session?.trustedScriptViewGeneration &&
+                dataGeneration == _session?.trustedScriptDataGeneration) {
               setState(() {
                 _loading = false;
                 _failed = false;
@@ -144,7 +149,10 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
       // ADR-025 §2.7: never echo a school URL or raw exception to the user.
     }
     if (!mounted || requestId != _requestId) return;
-    if (generation != _session?.trustedScriptViewGeneration) detail = null;
+    if (generation != _session?.trustedScriptViewGeneration ||
+        dataGeneration != _session?.trustedScriptDataGeneration) {
+      return;
+    }
     setState(() {
       _loading = false;
       _failed = detail == null || detail.id != widget.item.id;

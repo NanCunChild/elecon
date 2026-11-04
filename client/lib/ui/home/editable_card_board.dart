@@ -724,6 +724,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
             preset: card.supportedPreset(_layout.presets[card.id]),
             session: session,
             generation: session?.trustedScriptViewGeneration,
+            dataGeneration: session?.trustedScriptDataGeneration,
             onClosed: () {
               if (mounted) setState(() {});
             },

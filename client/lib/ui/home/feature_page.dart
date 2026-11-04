@@ -17,6 +17,7 @@ class HomeFeaturePage extends StatelessWidget {
     this.preset = HomeCardPreset.standard,
     this.session,
     this.generation,
+    this.dataGeneration,
   });
   final HomeCardEntry card;
   final GlobalKey contentKey;
@@ -25,6 +26,7 @@ class HomeFeaturePage extends StatelessWidget {
   final String preset;
   final SessionController? session;
   final int? generation;
+  final int? dataGeneration;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +36,9 @@ class HomeFeaturePage extends StatelessWidget {
     Widget body() =>
         session != null &&
             (!identical(session, current) ||
-                generation != session!.trustedScriptViewGeneration)
+                generation != session!.trustedScriptViewGeneration ||
+                (dataGeneration != null &&
+                    dataGeneration != session!.trustedScriptDataGeneration))
         ? Center(child: Text(AppLocalizations.of(context).homeCardDataChanged))
         : HomeCardPresentation(
             size: HomeCardSize.expanded,
