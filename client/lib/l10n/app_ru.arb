@@ -1,0 +1,810 @@
+{
+  "scriptsUpdateRequired": "Установленный скрипт использует устаревшие действия. Перед запуском импортируйте новую версию.",
+  "@@locale": "ru",
+  "appName": "elecon",
+  "appTagline": "Вся информация кампуса в одном месте",
+  "commonCancel": "Отмена",
+  "commonRetry": "Повторить",
+  "commonCopyLink": "Копировать ссылку",
+  "commonLinkCopied": "Ссылка скопирована",
+  "commonListSeparator": ", ",
+  "commonCopiedToClipboard": "Скопировано в буфер обмена",
+  "navHome": "Главная",
+  "navSettings": "Настройки",
+  "navForum": "Форум",
+  "navMessages": "Сообщения",
+  "forumPlannedTitle": "Форум в разработке",
+  "forumPlannedDescription": "В будущем здесь появятся обсуждения кампуса, темы и ответы.",
+  "forumPlannedAccount": "Для форума может потребоваться отдельная учётная запись. Вход в систему университета не выполняет вход на форум.",
+  "messagesPlannedTitle": "Сообщения в разработке",
+  "messagesPlannedDescription": "В будущем здесь появятся ответы, упоминания и входящие сообщения.",
+  "messagesPlannedAccount": "Сообщения будут привязаны к учётной записи каждого сервиса. Вход станет доступен после подключения сервиса.",
+  "communityPlannedAccountTitle": "Учётная запись сервиса",
+  "communityPlannedAvailability": "Функция пока недоступна. Вход и загрузка содержимого ещё не поддерживаются.",
+  "settingsTitle": "Настройки",
+  "settingsSectionAccount": "Учётная запись",
+  "settingsSectionDebug": "Отладка",
+  "settingsSectionAbout": "О приложении",
+  "settingsNoSchool": "Университет не выбран",
+  "settingsNoSchoolSubtitle": "Вернитесь на начальный экран и выберите университет",
+  "settingsLoggedIn": "Данные входа в университет сохранены",
+  "settingsLoggedOut": "Данные входа в университет не сохранены",
+  "settingsCredentialSummary": "Сохранено данных входа: {count}; {refs}",
+  "settingsProtectionTitle": "Защита данных входа",
+  "settingsProtectionHardware": "Аппаратная защита ключа",
+  "settingsProtectionSoftware": "Только программное шифрование: ключ не защищён аппаратно и хранится вместе с зашифрованными данными",
+  "settingsProtectionMemory": "Только в памяти: данные входа удаляются при выходе из приложения",
+  "settingsProtectionMixed": "Используются разные уровни защиты; войдите снова, чтобы привести хранение данных к одному уровню",
+  "settingsLoginPrompt": "Войдите, чтобы собрать информацию вашего кампуса",
+  "settingsActionLogin": "Войти",
+  "settingsActionLogout": "Выйти",
+  "settingsRelogin": "Войти снова",
+  "settingsReloginSubtitle": "Обновить данные входа после истечения сеанса",
+  "settingsSwitchSchool": "Сменить университет",
+  "settingsLogoutDialogTitle": "Выйти",
+  "settingsLogoutDialogBody": "Все сохранённые данные входа для текущего университета, включая сохранённые скриптами, будут удалены. Данные других университетов останутся. Возможно, потребуется войти снова.",
+  "settingsLogoutDone": "Выход выполнен, данные входа удалены",
+  "settingsSwitchSchoolDialogTitle": "Сменить университет",
+  "settingsSwitchSchoolDialogBody": "Вернуться к выбору университета, сохранив данные входа для всех университетов. Чтобы удалить данные текущего университета, сначала выйдите из учётной записи.",
+  "settingsSwitchSchoolConfirm": "Сменить",
+  "settingsDevLogTitle": "Журнал выполнения",
+  "settingsDevLogSubtitleDebug": "Единый журнал сети, выполнения, WebView и адаптеров; по умолчанию данные скрыты",
+  "settingsDevLogSubtitleRelease": "Только сеть: адреса без параметров и коды состояния, без содержимого и данных входа",
+  "settingsHelloWorldTitle": "Проверка цепочки адаптера HelloWorld",
+  "settingsHelloWorldSubtitle": "Удалённая загрузка, проверка подписи, выполнение, журналы и тестовые карточки",
+  "settingsWebViewLogTitle": "Журнал WebView",
+  "settingsWebViewLogSubtitle": "Показывать журнал сбора данных с временем при входе; cookie скрыты",
+  "settingsAboutTile": "О приложении elecon",
+  "settingsPrivacyTile": "Политика конфиденциальности",
+  "settingsPrivacySubtitle": "Как мы обрабатываем ваши данные",
+  "aboutTitle": "О приложении",
+  "aboutIconSemanticLabel": "Значок приложения (временный)",
+  "aboutVersion": "Версия {version}",
+  "aboutQuote": "Любую задачу в информатике можно решить, добавив ещё один уровень косвенности",
+  "aboutQuoteSource": "Основная теорема программной инженерии",
+  "aboutSectionLegal": "Правовая информация",
+  "aboutPrivacyTile": "Политика конфиденциальности",
+  "aboutOpenSourceLicenses": "Лицензии открытого ПО",
+  "aboutOpenSourceLicensesSubtitle": "Сторонние компоненты этого приложения",
+  "privacyTitle": "Политика конфиденциальности",
+  "privacyPlaceholderNotice": "Пока используется временный адрес. Страница появится после публикации окончательной политики.",
+  "privacyLoadFailedTitle": "Не удалось загрузить политику конфиденциальности",
+  "privacyLoadFailedBody": "Проверьте подключение и повторите попытку или скопируйте ссылку и откройте её в браузере: {url}",
+  "appearanceSection": "Оформление",
+  "appearanceSeedTitle": "Цвет акцента",
+  "appearanceSeedSubtitle": "Определяет основные и акцентные цвета",
+  "appearanceSeedBlue": "Университетский синий",
+  "appearanceSeedIndigo": "Индиго",
+  "appearanceSeedTeal": "Бирюзовый",
+  "appearanceSeedGreen": "Зелёный",
+  "appearanceSeedAmber": "Янтарный",
+  "appearanceSeedOrange": "Оранжевый",
+  "appearanceSeedRose": "Розовый",
+  "appearanceSeedViolet": "Фиолетовый",
+  "appearanceThemeModeTitle": "Тёмная тема",
+  "appearanceThemeModeSystem": "Системная",
+  "appearanceThemeModeLight": "Светлая",
+  "appearanceThemeModeDark": "Тёмная",
+  "appearanceThemeModeSystemDetail": "Как в системе",
+  "appearanceThemeModeLightDetail": "Всегда светлая",
+  "appearanceThemeModeDarkDetail": "Всегда тёмная",
+  "appearanceLanguageTitle": "Язык",
+  "appearanceLanguageSystem": "Как в системе",
+  "appearanceLanguageZh": "简体中文",
+  "appearanceLanguageEn": "English",
+  "appearanceLanguageUz": "Oʻzbekcha",
+  "appearanceLanguageRu": "Русский",
+  "appearanceLanguageFa": "فارسی",
+  "accessibilitySection": "Специальные возможности",
+  "accessibilityHighContrastTitle": "Высокая контрастность",
+  "accessibilityHighContrastSubtitle": "Повышает контраст текста и элементов управления во всех темах",
+  "experimentalSection": "Экспериментальные функции",
+  "experimentalLiquidGlassTitle": "Жидкое стекло",
+  "experimentalLiquidGlassSubtitle": "Эффект стекла в стиле iOS 26 для вкладок и карточек; может влиять на производительность",
+  "experimentalLiquidGlassDisabledByContrast": "Автоматически отключено при высокой контрастности: прозрачность снижает контраст",
+  "devLogTitle": "Журнал выполнения",
+  "devLogClear": "Очистить",
+  "devLogCopyVisible": "Копировать видимые записи",
+  "devLogFilterAll": "Все",
+  "devLogFilterNetworkOnly": "Только сеть",
+  "devLogFilterNetworkRelease": "Сетевые запросы",
+  "devLogRedactOn": "Данные скрыты",
+  "devLogRedactOff": "Данные не скрыты",
+  "devLogHintRedacted": "Журнал хранится на устройстве. Параметры адресов удаляются, данные входа всегда скрыты. Диагностика содержит только этапы, состояние, время и признаки.",
+  "devLogHintUnredacted": "Скрытие отключено: новые записи могут содержать исходные параметры запросов и cookie. Записи хранятся только в кольцевом буфере устройства. Не передавайте их другим.",
+  "devLogHintRelease": "В релизной сборке показаны сетевые записи без параметров адресов и ограниченные диагностические данные скриптов, без тел запросов, ответов и данных входа.",
+  "devLogEmpty": "Записей пока нет",
+  "homeExamTitle": "Экзамены",
+  "homeExamPrompt": "Расписание экзаменов загружается только по вашему запросу",
+  "homeExamLoad": "Посмотреть экзамены",
+  "homeExamEmpty": "Экзамены не назначены",
+  "homeExamCount": "Экзаменов: {count}",
+  "homeExamTermCount": "{term} · Экзаменов: {count}",
+  "homeExamSeat": "Место {seat}",
+  "homeExamStatusScheduled": "Назначен",
+  "homeExamStatusChanged": "Изменён",
+  "homeExamStatusCancelled": "Отменён",
+  "homeExamStatusCompleted": "Завершён",
+  "homeExamStatusUnknown": "Состояние неизвестно",
+  "homeLibraryLoansTitle": "Книги на руках",
+  "homeLibraryLoansPrompt": "Список выданных книг загружается только по вашему запросу",
+  "homeLibraryLoansLoad": "Посмотреть выданные книги",
+  "homeLibraryLoansEmpty": "Нет книг на руках",
+  "homeLibraryLoansCount": "Книг на руках: {count}",
+  "homeLibraryLoansDue": "Вернуть до {dueAt}",
+  "homeLibraryLoansOverdue": "Срок возврата истёк",
+  "homeLibraryLoansOverdueFee": "Штраф за просрочку: {fee}",
+  "scriptsTitle": "Скрипты университетов",
+  "scriptsDescription": "Управление скриптами вузов и источниками функций.",
+  "scriptsImportFile": "Импортировать файл",
+  "scriptsPaste": "Вставить пакет",
+  "scriptsExample": "Загрузить пример",
+  "scriptsInstall": "Проверить и установить",
+  "scriptsPackageLabel": "JSON пакета скрипта",
+  "scriptsParams": "Параметры в JSON",
+  "scriptsRun": "Запустить",
+  "scriptsRunning": "Выполняется…",
+  "scriptsUseSchool": "Выбрать этот университет",
+  "scriptsDelete": "Удалить",
+  "scriptsDeleteBody": "Удаление остановит этот скрипт. Данные входа университета сохранятся; для их удаления выйдите из учётной записи в настройках.",
+  "scriptsEmpty": "Нет установленных скриптов",
+  "scriptsTrustTitle": "Доверять скрипту и установить его?",
+  "scriptsTrustBody": "Этот локальный скрипт не проверен проектом. Он может читать, изменять или раскрывать данные входа и личные данные университетской учётной записи, а также выполнять действия в системе университета. Устанавливайте только код, которому доверяете.",
+  "scriptsBrowserPermission": "Может управлять страницами университета и читать DOM и cookie браузера. Ресурсы страницы загружаются средствами браузера; ограничения IP-соединений в этом режиме не применяются.",
+  "scriptsNetwork": "Разрешённые сайты",
+  "scriptsIp": "Дополнительное ограничение IP / CIDR",
+  "scriptsIpNone": "Без дополнительных ограничений адресов заявленных сайтов; сети кампуса поддерживаются",
+  "scriptsApprove": "Доверять и установить",
+  "scriptsInstalled": "Скрипт установлен",
+  "scriptsFailed": "Операция не выполнена: {code}",
+  "scriptsBrowserTitle": "Страница университета",
+  "scriptsBrowserClose": "Закрыть и отменить",
+  "scriptsBrowserLoading": "Загрузка страницы",
+  "scriptsBrowserSigningIn": "Выполняется вход",
+  "scriptsBrowserBlocked": "Эта страница не входит в список сайтов, заявленных скриптом",
+  "scriptsBrowserFailed": "Не удалось выполнить действие на странице. Повторите попытку или закройте страницу.",
+  "scriptsBrowserUnavailable": "Режим страниц недоступен на этой платформе или при текущих сетевых правилах. Используйте HTTP-скрипт.",
+  "scriptsResult": "Результат",
+  "scriptsCancel": "Отменить выполнение",
+  "scriptsVersionRejected": "Обновление отклонено: версия должна быть выше, а идентификатор университета должен оставаться прежним.",
+  "homeNoticeUnavailable": "Объявления недоступны. Другие функции продолжают работать.",
+  "scriptsEnabled": "Включён",
+  "scriptsSelectCapability": "Выбрать функцию",
+  "scriptsSchoolRequired": "Сначала переключитесь на университет этого скрипта",
+  "scriptsCredentialsLocal": "Данные входа университета хранятся на устройстве и доступны доверенным скриптам в пределах разрешённой учётной записи.",
+  "@scriptsFailed": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptsLogs": "Журналы скриптов",
+  "scriptsCopyResult": "Копировать весь результат",
+  "scriptsResultPreview": "Результат большой. Ниже показана только его часть.",
+  "scriptsRegistryRecovered": "Записи установки повреждены. Прежние скрипты отключены; импортируйте доверенные пакеты заново.",
+  "scriptsBrowserBusy": "Браузер занят другим процессом университета. Закройте его и повторите попытку.",
+  "scriptsBundled": "Встроенные скрипты",
+  "scriptsInstallBundled": "Проверить встроенные скрипты университетов",
+  "scriptsViewSource": "Просмотреть исходный код",
+  "scriptsXidianUndergraduate": "Университет Сидянь (бакалавриат)",
+  "scriptsXidianPostgraduate": "Университет Сидянь (магистратура и аспирантура)",
+  "scriptsSelectAndEnter": "Выбрать и продолжить",
+  "scriptsLoginUnavailable": "В этом скрипте нет отдельного входа. Выполните поддерживаемый запрос данных, чтобы войти.",
+  "scriptsLoginFailed": "Не удалось завершить вход в систему университета. Повторите попытку.",
+  "scriptsLoginRunning": "Запускается вход в выбранный университет…",
+  "cardNumberRequiredTitle": "Введите номер кампусной карты",
+  "cardNumberRequiredBody": "Университет вернул баланс без номера карты. Для продолжения введите настоящий номер кампусной карты; он будет сохранён для этого университета.",
+  "cardNumberLabel": "Номер кампусной карты",
+  "cardNumberInvalid": "Введите номер кампусной карты.",
+  "cardNumberContinue": "Продолжить запрос",
+  "studentIdRequiredTitle": "Введите номер студента",
+  "studentIdRequiredBody": "В сеансе университета отсутствует номер студента. Для продолжения введите свой настоящий номер; он будет сохранён для этого университета.",
+  "studentIdLabel": "Номер студента",
+  "studentIdInvalid": "Введите номер студента.",
+  "scriptsNetworkDenied": "Университет перенаправил запрос на сайт, не разрешённый этому скрипту. Обновите скрипт университета и повторите попытку.",
+  "scriptsSourceResponseInvalid": "Полученные данные университета не распознаны. Повторите попытку или обновите скрипт.",
+  "scriptsAuthenticationTimeout": "Вход не завершён вовремя. Войдите снова.",
+  "homeScheduleTitle": "Расписание",
+  "homeSchedulePrompt": "Посмотреть текущую неделю по учебному календарю или выбрать другую",
+  "homeScheduleSelectWeek": "Выбрать неделю",
+  "homeScheduleLoadCurrent": "Текущая неделя",
+  "homeScheduleLoadWeek": "Посмотреть неделю {week}",
+  "@homeScheduleLoadWeek": {
+    "placeholders": {
+      "week": {
+        "type": "int"
+      }
+    }
+  },
+  "cardAccountLabel": "Счёт кампусной карты",
+  "scriptsInputTitle": "Скрипту университета нужны данные",
+  "scriptsInputSubmit": "Отправить и продолжить",
+  "scriptsInputInvalid": "Введите или выберите допустимое значение",
+  "scriptsInputNoSelection": "Не выбрано",
+  "scriptsInputCancelled": "Ввод данных отменён",
+  "scriptsInputPermission": "Скрипт может запрашивать данные во время выполнения. Введённые значения передаются этому скрипту университета; он решает, сохранять ли их.",
+  "noticeDetailTitle": "Объявление",
+  "noticeDetailLoading": "Загрузка объявления…",
+  "noticeDetailFailed": "Не удалось загрузить объявление. Повторите попытку.",
+  "noticeDetailRetry": "Повторить",
+  "noticeDetailEmpty": "В объявлении нет текста.",
+  "noticeAttachments": "Вложения",
+  "homeDataUpdatedAt": "Обновлено: {time}",
+  "@homeDataUpdatedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "homeDataStaleAt": "Сохранённые данные от {time}",
+  "@homeDataStaleAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "homeCampusTitle": "Информация кампуса",
+  "homeSnapshotUpdatedAt": "{school} · Обновлено: {time}",
+  "@homeSnapshotUpdatedAt": {
+    "placeholders": {
+      "school": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "homeNoticeTitle": "Объявления",
+  "homeNoticeCount": "{count, plural, one{{count} новое объявление} few{{count} новых объявления} many{{count} новых объявлений} other{{count} нового объявления}}",
+  "@homeNoticeCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeNoticeCategoryAcademic": "Учёба",
+  "homeNoticeCategoryAdmin": "Администрация",
+  "homeNoticeCategoryEvent": "Мероприятия",
+  "homeNoticeCategoryOther": "Другое",
+  "energyTitle": "Коммунальные услуги общежития",
+  "energyPrompt": "Подключитесь к сети кампуса, чтобы посмотреть счётчики и историю расхода.",
+  "energyLoad": "Посмотреть счётчики",
+  "energyEmpty": "Для этой учётной записи счётчики не найдены.",
+  "energyMeter": "Счётчик",
+  "energyHistory": "История расхода",
+  "energyDates": "Выбрать период",
+  "energyRemaining": "Остаток",
+  "energyReadDate": "Дата последних показаний",
+  "energyUsage": "Расход",
+  "energyReading": "Показание",
+  "energyPrevious": "Предыдущее показание",
+  "energyReadAt": "Дата снятия показаний",
+  "energyNoHistory": "Нет записей о расходе за этот период.",
+  "energyWater": "Вода",
+  "energyElectricity": "Электричество",
+  "campusLoadFailed": "Не удалось загрузить данные. Проверьте подключение или войдите в учётную запись и повторите попытку.",
+  "climateTitle": "Кондиционер в общежитии",
+  "climatePrompt": "Привяжите устройство, которым вам разрешено управлять, чтобы посмотреть его состояние и настройки.",
+  "climateLoad": "Посмотреть или привязать устройство",
+  "climateConfigure": "Сменить устройство",
+  "climateRefresh": "Обновить состояние",
+  "climateUnknown": "Состояние неизвестно. Обновите его перед управлением.",
+  "climateReadOnly": "На этой платформе доступен только просмотр состояния устройства.",
+  "climatePower": "Питание",
+  "climateTemperature": "Заданная температура",
+  "climateIndoor": "Температура в помещении",
+  "climateMode": "Режим",
+  "climateFan": "Скорость вентилятора",
+  "climateSwing": "Вертикальное качание заслонок",
+  "climateTurbo": "Турборежим",
+  "climateAuxHeat": "Дополнительный обогрев",
+  "climateOn": "Вкл.",
+  "climateOff": "Выкл.",
+  "climateModeFan": "Вентиляция",
+  "climateModeHeat": "Обогрев",
+  "climateModeCool": "Охлаждение",
+  "climateModeDry": "Осушение",
+  "climateModeAuto": "Авто",
+  "climateFanSilent": "Тихая",
+  "climateFanLow": "Низкая",
+  "climateFanMedium": "Средняя",
+  "climateFanHigh": "Высокая",
+  "climateApplied": "Проверено: состояние устройства соответствует заданным настройкам.",
+  "climateAccepted": "Команда принята. Результат ещё не проверен; уточните фактическое состояние.",
+  "climateRejected": "Действие отклонено. Проверьте состояние устройства.",
+  "climateUncertain": "Результат неизвестен; действие могло не выполниться. Проверьте состояние перед повторной попыткой.",
+  "climateError": "Устройство сообщает об ошибке. Проверьте его перед управлением.",
+  "climateIndoorClean": "Очистка внутреннего блока",
+  "climateOutdoorClean": "Очистка наружного блока",
+  "climateDecreaseTemperature": "Уменьшить заданную температуру",
+  "climateIncreaseTemperature": "Увеличить заданную температуру",
+  "homeLayoutEdit": "Изменить расположение",
+  "homeLayoutDone": "Готово",
+  "homeLayoutReset": "Сбросить расположение",
+  "homeLayoutHint": "Удерживайте и перетаскивайте карточку; задержитесь, чтобы сдвинуть соседние. Нажмите на карточку, чтобы изменить размер или порядок.",
+  "homeLayoutCompact": "Значок и подпись",
+  "homeLayoutRegular": "Половина ширины",
+  "homeLayoutExpanded": "Полная ширина",
+  "homeLayoutMoveBefore": "Переместить раньше",
+  "homeLayoutMoveAfter": "Переместить позже",
+  "homeLayoutResize": "Изменить размер карточки",
+  "homeLayoutSaveFailed": "Не удалось сохранить расположение. Повторите попытку.",
+  "homeLayoutRetry": "Повторить сохранение",
+  "homeGradesTitle": "Оценки",
+  "homeCardTitle": "Кампусная карта",
+  "homeClassroomTitle": "Свободные аудитории",
+  "homeCardShowAll": "Посмотреть все ({count})",
+  "scriptsUseProvider": "Использовать этот источник",
+  "scriptsRestoreProvider": "Восстановить источник по умолчанию",
+  "scriptsProviderActive": "Активный источник",
+  "scriptsProviderIncompatible": "Этот источник несовместим с текущей версией функции",
+  "scriptsProviderGroupRequired": "Этот источник должен предоставлять все связанные настроенные функции",
+  "@homeCardShowAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeCardDataChanged": "Источник или учётная запись изменились. Вернитесь на главную для обновления.",
+  "homeCardCollapse": "Свернуть",
+  "homeCardLoading": "Загрузка…",
+  "homeCardNeedsLogin": "Войдите для просмотра",
+  "homeCardAvailableRooms": "Подтверждённые свободные аудитории",
+  "homeCardTableRows": "Записей: {count}",
+  "@homeCardTableRows": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeLayoutManage": "Карточки главного экрана",
+  "homeLayoutManageHint": "Выберите карточки для главного экрана. Скрытые карточки сохраняют размер, стиль и порядок.",
+  "homeLayoutHide": "Скрыть с главного экрана",
+  "homeLayoutEmpty": "Карточки не отображаются. Добавьте их в разделе «Карточки главного экрана».",
+  "homeLayoutPreset": "Стиль отображения",
+  "homeLayoutPresetStandard": "Стандартный",
+  "homeRefresh": "Обновить",
+  "homeDataNotUpdated": "Данные ещё не обновлялись успешно",
+  "homeLayoutMoveUp": "На одну ячейку вверх",
+  "homeLayoutMoveDown": "На одну ячейку вниз",
+  "homeLayoutMoveLeft": "На одну ячейку влево",
+  "homeLayoutMoveRight": "На одну ячейку вправо",
+  "scriptsHomeTitle": "Заголовок главного экрана: {title}",
+  "@scriptsHomeTitle": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "profilesLoadFailed": "Не удалось загрузить профили. Сохраните данные приложения и повторите попытку.",
+  "profilesChangeFailed": "Не удалось сохранить профиль. Повторите попытку.",
+  "profilesCurrent": "Текущий",
+  "profilesAdd": "Добавить профиль",
+  "profilesActivate": "Переключиться на этот профиль",
+  "profilesSelectScript": "Выбрать университет и скрипт заново",
+  "scannerTitle": "Сканировать QR-код",
+  "scannerPermission": "Скрипт может запрашивать сканирование QR-кода камерой на переднем плане. Сканирование не открывает ссылки и не отправляет отметку о присутствии.",
+  "scannerHint": "Наведите камеру на QR-код",
+  "scannerFailed": "Камера недоступна. Проверьте разрешение на доступ к камере или повторите попытку.",
+  "homeFeatureView": "Посмотреть",
+  "scheduleToday": "Занятия сегодня",
+  "scheduleTodayEmpty": "Сегодня занятий нет",
+  "scheduleTodayUnavailable": "Расписание на сегодня недоступно. Откройте или обновите текущую неделю.",
+  "scheduleWeekEmpty": "На этой неделе занятий нет",
+  "scheduleWeekLabel": "Неделя {week}",
+  "cardQrShow": "Показать QR-код",
+  "cardQrRefresh": "Обновить QR-код",
+  "cardQrExpired": "QR-код скрыт. Обновите его для использования.",
+  "cardQrInvalid": "Не удалось показать QR-код. Повторите попытку.",
+  "cardQrHint": "Откройте, чтобы загрузить QR-код кампусной карты",
+  "cardTransactions": "Операции",
+  "classroomSearchHint": "Для поиска выберите корпус и дату",
+  "classroomRoomHint": "Фильтр по названию аудитории",
+  "classroomPreparing": "Загрузка корпусов…",
+  "classroomNoBuildings": "Нет доступных корпусов. Повторите попытку.",
+  "@scheduleWeekLabel": {
+    "placeholders": {
+      "week": {
+        "type": "int"
+      }
+    }
+  },
+  "scheduleOverlapHint": "Совпадают по времени: {count} занятий. Нажмите, чтобы посмотреть все.",
+  "@scheduleOverlapHint": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "scheduleOverlappingCourses": "Занятия в одно время",
+  "schedulePreviewUnavailable": "Предпросмотр недоступен",
+  "schedulePreviewCourses": "Занятий: {count}",
+  "@schedulePreviewCourses": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cardSpendingTitle": "Расходы",
+  "cardSpendingDistribution": "По продавцам",
+  "cardSpendingDaily": "По дням",
+  "cardSpendingLastDays": "За последние {days} дн.",
+  "@cardSpendingLastDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "cardSpendingLoadedOnly": "Учитываются только загруженные списания. Пополнения, возвраты и незавершённые операции исключены; списания без состояния учитываются по данным источника.",
+  "cardSpendingPartial": "Загружены не все записи; графики не отражают все расходы за этот период.",
+  "cardSpendingUnknownMerchant": "Неизвестный продавец",
+  "cardSpendingNoRecords": "Нет операций за этот период",
+  "cardSpendingLocalDates": "Даты указаны по местному времени устройства",
+  "cardTransactionsLoadMore": "Загрузить ещё операции",
+  "cardTransactionsLogin": "Войдите для просмотра",
+  "cardTransactionsEntry": "Операция по карте",
+  "cardSpendingCurrency": "Валюта",
+  "cardSpendingTotal": "Расходы по загруженным данным",
+  "cardTransactionFinal": "Завершена",
+  "cardTransactionPending": "Ожидается",
+  "cardTransactionFailed": "Ошибка",
+  "cardTransactionCancelled": "Отменена",
+  "cardTransactionUnknown": "Неизвестно",
+  "facultyTitle": "Поиск преподавателей",
+  "facultyName": "Имя или ключевое слово",
+  "facultyDirection": "Область исследований (необязательно)",
+  "facultySearch": "Поиск",
+  "facultyHint": "Поиск общедоступных сведений о преподавателях по имени или области исследований.",
+  "facultyEmpty": "Подходящие преподаватели не найдены.",
+  "facultyFailed": "Сведения о преподавателях недоступны. Повторите попытку.",
+  "facultyPrevious": "Назад",
+  "facultyNext": "Далее",
+  "facultyPage": "Страница {page}",
+  "@facultyPage": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "facultyResultCount": "Результатов: {total}",
+  "@facultyResultCount": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "facultyProfile": "Общедоступный профиль",
+  "facultyNoSummary": "Краткая информация не предоставлена.",
+  "facultySource": "Источник: {source}",
+  "@facultySource": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptsWebsocketPermission": "Разрешает ограниченные соединения WebSocket на переднем плане:",
+  "forumAccountDescription": "Подключите отдельную учётную запись Ruisi. Доступны вход и локальный выход; просмотр форума в разработке.",
+  "messagesWindowDescription": "Получение групповых сообщений Chaoxing в течение короткого периода на переднем плане. История и личные сообщения не включены; подтверждение доставки не означает прочтение.",
+  "communitySignedOut": "Учётная запись этого сервиса не подключена",
+  "communityConnect": "Войти в сервис",
+  "communityDisconnect": "Выйти на этом устройстве",
+  "communityConnected": "{service} · {account}",
+  "communityLoginRequired": "Перед повторной попыткой войдите в этот сервис.",
+  "communityRequestFailed": "Запрос не завершён. Проверьте подключение или войдите снова, затем повторите запрос вручную.",
+  "messagesFetch": "Получить сообщения",
+  "messagesWindowTime": "Период приёма: с {start} до {end}",
+  "messagesWindowEmpty": "За этот период групповых сообщений не получено. Это не означает, что нет истории или непрочитанных сообщений.",
+  "messagesSource": "Группа {conversation} · Отправитель {sender}",
+  "checkinScan": "Сканировать для отметки",
+  "checkinConfirmed": "Присутствие подтверждено.",
+  "checkinAlready": "Вы уже отметили присутствие на этом мероприятии.",
+  "checkinEnded": "Отметка на этом мероприятии завершена или удалена.",
+  "checkinUnsupported": "Для этого мероприятия есть дополнительные требования. Завершите отметку в Chaoxing.",
+  "checkinCancelled": "Действие отменено.",
+  "checkinRejected": "Отметка не выполнена. Проверьте мероприятие и QR-код.",
+  "checkinUnknown": "Результат отметки неизвестен. Перед повторной отправкой проверьте состояние в Chaoxing.",
+  "@communityConnected": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      },
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "@messagesWindowTime": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "@messagesSource": {
+    "placeholders": {
+      "conversation": {
+        "type": "String"
+      },
+      "sender": {
+        "type": "String"
+      }
+    }
+  },
+  "checkinPlacesTitle": "Место отметки",
+  "checkinPlacesHelp": "Выберите место для этой отметки. Можно сохранить до 16 мест с координатами сервиса отметок.",
+  "checkinNoPlace": "Без места",
+  "checkinPlaceAdd": "Добавить место",
+  "checkinPlaceEdit": "Изменить место",
+  "checkinPlaceDelete": "Удалить место",
+  "checkinPlaceSave": "Сохранить место",
+  "checkinPlaceName": "Название места",
+  "checkinPlaceAddress": "Адрес",
+  "checkinLatitude": "Широта (координаты сервиса)",
+  "checkinLongitude": "Долгота (координаты сервиса)",
+  "checkinPlaceRequired": "Обязательное поле",
+  "checkinCoordinateInvalid": "Введите допустимые координаты: широта от −90 до 90, долгота от −180 до 180",
+  "checkinPlacesSaveFailed": "Не удалось загрузить или сохранить места. Повторите попытку.",
+  "checkinLocationRequired": "Для этого мероприятия нужно указать место. Выберите место, затем отсканируйте текущий QR-код.",
+  "checkinLocationRejected": "Сервис не принял выбранное место. Проверьте место и координаты.",
+  "checkinFaceRequired": "Для этого мероприятия требуется проверка лица. Завершите её в Chaoxing.",
+  "checkinPhotoRequired": "Для этого мероприятия требуется фотография. Завершите отметку в Chaoxing.",
+  "checkinVerificationRequired": "Сервис требует проверочный код. Пройдите проверку в Chaoxing.",
+  "checkinRequirementsUnknown": "Не удалось проверить требования мероприятия. Уточните их в Chaoxing.",
+  "checkinActivityUnsupported": "Это мероприятие не поддерживает такую отметку по QR-коду. Проверьте его в Chaoxing.",
+  "checkinQrExpired": "Срок действия QR-кода истёк. Отсканируйте код, показанный сейчас.",
+  "checkinPreflightFailed": "Подготовка отметки завершилась ошибкой до отправки. Проверьте подключение и повторите сканирование.",
+  "checkinQrInvalid": "Это недействительный QR-код отметки Chaoxing.",
+  "profilesNotLoaded": "Переключитесь для просмотра",
+  "capabilityConfigurationRequired": "Настройка не завершена",
+  "capabilityCompleteConfiguration": "Завершить настройку",
+  "scheduleCurrentWeek": "Текущая",
+  "homeCheckinTitle": "Отметка присутствия",
+  "homeTimeJustNow": "только что",
+  "homeTimeMinutesAgo": "{count, plural, one{{count} минуту назад} few{{count} минуты назад} many{{count} минут назад} other{{count} минуты назад}}",
+  "homeTimeHoursAgo": "{count, plural, one{{count} час назад} few{{count} часа назад} many{{count} часов назад} other{{count} часа назад}}",
+  "devLogFilterProbes": "Диагностика скриптов",
+  "@homeTimeMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@homeTimeHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deviceInputCamera": "Сделать снимок",
+  "deviceInputImage": "Выбрать изображение",
+  "deviceInputLocation": "Использовать текущее местоположение",
+  "deviceInputImageHelp": "Скрипту передаётся только сделанный вами снимок или выбранное изображение. Это не доказательство присутствия живого человека; сервис сам решает, принять ли изображение.",
+  "deviceInputLocationHelp": "Передать скрипту текущее местоположение устройства и его точность. Сохранённые места не подставляются, фоновое отслеживание не ведётся.",
+  "deviceInputCameraPermission": "Может запросить съёмку на переднем плане",
+  "deviceInputImagePermission": "Может запросить одно выбранное вами изображение на переднем плане",
+  "deviceInputLocationPermission": "Может запросить текущее местоположение на переднем плане",
+  "deviceInputFailed": "Не удалось получить данные. Проверьте разрешение и повторите попытку.",
+  "checkinStart": "Начать отметку",
+  "checkinInputHelp": "Для этого мероприятия скрипт может запросить подтверждение, сканирование QR-кода, фотографию или текущее местоположение.",
+  "messagesRefresh": "Обновить сообщения",
+  "messagesSavedAt": "Загружено · {time}",
+  "messagesStorageFailed": "Сообщения загружены, но не удалось сохранить их на устройстве.",
+  "messagesRefreshFailed": "Запрос не завершён. Загруженные сообщения остаются доступны.",
+  "messagesSearch": "Поиск бесед",
+  "messagesPartial": "Некоторые беседы не удалось загрузить. Обновите для повторной попытки.",
+  "messagesLoading": "Загрузка сообщений…",
+  "messagesNoMatches": "Подходящие беседы не найдены",
+  "messagesConversationsEmpty": "Нет загруженных бесед",
+  "messagesGroup": "Группа",
+  "messagesDirect": "Личные",
+  "messagesHistoryEmpty": "Сообщения не загружены. Обновите, чтобы посмотреть историю.",
+  "messagesSending": "Отправка…",
+  "messagesRejected": "Сервис отклонил сообщение",
+  "messagesSendUnknown": "Доставка не подтверждена. Обновите историю для проверки. Сообщение не будет отправлено повторно автоматически.",
+  "messagesRecalled": "Сообщение отозвано",
+  "messagesUnknownSender": "Неизвестный отправитель",
+  "messagesMoreLocal": "Показать более ранние сохранённые сообщения",
+  "messagesMoreHistory": "Загрузить более раннюю историю",
+  "messagesHistoryEnd": "Конец истории, возвращённой сервисом",
+  "messagesCompose": "Написать сообщение",
+  "messagesSend": "Отправить",
+  "@messagesSavedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "appTunnelTitle": "APPTunnel приложения",
+  "appTunnelDescription": "Выберите APPTunnel для запросов elecon в этом профиле и университете. Если выбранный провайдер недоступен, запросы прекращаются.",
+  "appTunnelSelectSchool": "Сначала выберите университет.",
+  "appTunnelChoice": "Подключение",
+  "appTunnelDirect": "Напрямую",
+  "appTunnelUnavailable": "Этот провайдер недоступен в данной сборке. Подключение для запросов невозможно.",
+  "appTunnelGateway": "HTTPS-адрес шлюза aTrust",
+  "appTunnelCertificate": "SHA-256 сертификата узла (необязательно)",
+  "appTunnelCertificateHelp": "Введите отпечаток сертификата из доверенного источника: 64 шестнадцатеричных символа. Оставьте поле пустым для обычной проверки сертификата. При несовпадении подключение прекращается.",
+  "appTunnelSignedOut": "Для этого университета нет сохранённого сеанса APPTunnel.",
+  "appTunnelSessionSaved": "Для этого университета сохранён защищённый сеанс APPTunnel.",
+  "appTunnelLogin": "Войти на официальном сайте",
+  "appTunnelClear": "Удалить учётную запись и сеанс туннеля",
+  "appTunnelFailed": "Не удалось завершить настройку туннеля или вход. Проверьте шлюз, учётную запись, пароль и отпечаток сертификата.",
+  "appTunnelLoginHelp": "Завершите вход и многофакторную проверку на официальной странице шлюза, затем проверьте сеанс ниже.",
+  "appTunnelLoginComplete": "Проверить завершённый вход",
+  "appTunnelLoginFailed": "Не удалось проверить сеанс, или вход перенаправил на сайт вне разрешённого списка университета. Завершите вход на официальном шлюзе и повторите попытку.",
+  "appTunnelLoginCancelled": "Вход отменён. Вернитесь назад и откройте его снова.",
+  "appTunnelBrowserUnavailable": "Выбранный APPTunnel приложения не поддерживает этот сценарий браузера. Используйте поддерживаемый запрос или явно выберите прямое подключение.",
+  "scriptAccountsTitle": "Учётные записи скриптов",
+  "scriptAccountsDescription": "Статус входа и учётные записи вуза для этого профиля.",
+  "scriptAccountsLoadFailed": "Не удалось загрузить требования скриптов к учётным записям",
+  "scriptAccountsEmpty": "Для этого университета скрипты не установлены",
+  "scriptAccountsNone": "Этот скрипт не требует учётных записей",
+  "scriptAccountsUndeclared": "Этот старый скрипт не указал требования к учётным записям. Посмотрите его документацию или обновите скрипт.",
+  "scriptAccountsDisabled": "Скрипт отключён",
+  "scriptAccountsUpdateRequired": "Обновите скрипт перед входом",
+  "scriptAccountsUsedBy": "Используется функциями: {capabilities}",
+  "appTunnelUsername": "Имя пользователя туннеля",
+  "appTunnelPassword": "Пароль туннеля",
+  "appTunnelPasswordHelp": "Сохранённые пароли не отображаются. Оставьте поле пустым, чтобы сохранить прежний пароль этой учётной записи.",
+  "appTunnelDomain": "Домен входа (необязательно)",
+  "appTunnelDomainHelp": "Если на шлюзе единственный домен парольного входа, оставьте поле пустым. Если доменов несколько, укажите значение от администратора.",
+  "appTunnelSaveAccount": "Сохранить данные входа",
+  "appTunnelAccountLogin": "Войти с сохранёнными данными",
+  "appTunnelAccountSaved": "Данные входа сохранены. Войдите, чтобы установить туннель.",
+  "appTunnelAccountMissing": "Нет сохранённых данных входа в туннель",
+  "appTunnelInteractionRequired": "Шлюз требует CAPTCHA, дополнительную проверку или определённый домен входа. Проверьте домен или войдите через сайт.",
+  "@scriptAccountsUsedBy": {
+    "placeholders": {
+      "capabilities": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptAccountsSigningIn": "Вход в {account}…",
+  "@scriptAccountsSigningIn": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptAccountsLoginSucceeded": "Вход в учётную запись завершён",
+  "scriptAccountsLoginCancelled": "Вход в учётную запись отменён",
+  "messagesKindActivity": "Мероприятие",
+  "messagesKindCommand": "Командное сообщение",
+  "messagesCannotSendMuted": "Этой учётной записи запрещено отправлять сообщения в эту группу.",
+  "messagesPermissionUnknown": "Право отправки не подтверждено. Обновите для повторной проверки.",
+  "messagesGroupDisabled": "Эта группа отключена. Отправка сообщений недоступна.",
+  "scriptAccountChecking": "Проверка состояния входа…",
+  "scriptAccountAuthenticated": "Вход выполнен",
+  "scriptAccountSignedOut": "Вход не выполнен",
+  "scriptAccountExpired": "Срок сеанса истёк. Войдите снова.",
+  "scriptAccountUnknown": "Состояние входа неизвестно. Повторите проверку или войдите.",
+  "scriptAccountRelogin": "Войти снова",
+  "scriptAccountCheck": "Проверить состояние",
+  "scriptsAppTunnelPermission": "Может проверять состояние или входить во встроенный APPTunnel · Hermes через интерфейс приложения. Скрипты не получают пароли туннеля или данные сеанса.",
+  "gradesTermFilter": "Фильтр по семестру",
+  "gradesTermsUnavailable": "Этот источник не предоставил список семестров.",
+  "gradesEmpty": "Нет оценок за этот семестр",
+  "classroomNoPreciseTimes": "Источник не предоставил надёжных данных о точном времени",
+  "classroomAvailableStatus": "Свободно",
+  "classroomOccupiedStatus": "Занято",
+  "classroomUnknownStatus": "Неизвестно / нет данных",
+  "classroomCurrentTime": "Текущее время: {time}",
+  "@classroomCurrentTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "classroomLocalTimeHint": "Шкала и фильтры используют местное время устройства. Пробелы не означают, что аудитория свободна.",
+  "classroomStartTime": "С: {time}",
+  "@classroomStartTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "classroomEndTime": "До: {time}",
+  "@classroomEndTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "classroomOnlyFree": "Свободно весь период",
+  "classroomInvalidRange": "Время окончания должно быть позже времени начала",
+  "classroomNoRangeMatches": "Нет аудиторий, подтверждённо свободных весь выбранный период",
+  "classroomNoReason": "Источник не указал причину",
+  "queryFilters": "Условия поиска",
+  "scriptsLanguages": "Языки скрипта: {languages}",
+  "scriptsDefaultLanguage": "Язык по умолчанию: {language}",
+  "scriptsViewTranslations": "Переводы в пакете",
+  "accountPasswordTitle": "Вход с паролем",
+  "accountPasswordUsername": "Учётная запись",
+  "accountPasswordPassword": "Пароль",
+  "accountPasswordRemember": "Сохранить данные после проверки",
+  "accountPasswordUseSaved": "Войти с сохранённым паролем",
+  "accountPasswordSubmit": "Проверить и войти",
+  "accountPasswordWeb": "Войти через сайт университета",
+  "accountPasswordBlocked": "Автоматический вход остановлен. Повторите вход вручную или введите новый пароль.",
+  "accountPasswordSaved": "Данные для входа сохранены",
+  "accountPasswordDelete": "Удалить сохранённый пароль",
+  "accountPasswordDeleted": "Пароль удалён; текущие сеансы сохранены",
+  "accountPasswordInvalid": "Введите корректные данные для входа",
+  "accountReasonInteraction": "Завершите проверку входа на сайте университета",
+  "accountReasonRejected": "Университет отклонил вход с паролем. Обновите данные или войдите вручную.",
+  "accountReasonDisabled": "Университет сообщил о блокировке аккаунта. Обратитесь в университет.",
+  "accountReasonUnknown": "Статус входа неизвестен. Проверьте сеть и повторите попытку.",
+  "aiAccessTitle": "Доступ системного помощника",
+  "aiAccessSummary": "Выберите данные для передачи",
+  "aiAccessExplanation": "Разрешите системным помощникам запрашивать данные текущего профиля и вуза. Включайте каждую категорию отдельно; помощник может обрабатывать полученные данные. Разрешение сбрасывается при завершении процесса приложения, смене профиля или обновлении источника. Для входа откройте приложение.",
+  "aiAccessUnsupported": "Требуется Android 16 или новее с поддержкой AppFunctions.",
+  "aiAccessSchedule": "Расписание",
+  "aiAccessClassrooms": "Свободные аудитории",
+  "aiAccessGrades": "Оценки",
+  "aiAccessUnavailable": "Для текущего вуза нет доступного одобренного источника.",
+  "webContentOpen": "Открыть страницу",
+  "webContentCompleted": "Операция завершена",
+  "webContentCancelled": "Отменено до отправки",
+  "webContentUnknown": "Результат неизвестен. Проверьте его в сервисе перед повторной попыткой.",
+  "webContentUnavailable": "Этот шаблон страницы недоступен на устройстве.",
+  "scriptsSelectionChanged": "Выбран скрипт: {name}",
+  "@scriptsSelectionChanged": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptsAccountCheckUnavailable": "Скрипт не предоставляет проверку состояния аккаунта",
+  "scriptAccountCredentialReuse": "Для входа на {gateway} может использоваться сохранённый пароль {source}; целевой сервис проверяется отдельно.",
+  "@scriptAccountCredentialReuse": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "gateway": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptsXidianName": "Университет Сидянь",
+  "scriptsUndergraduate": "Бакалавриат",
+  "scriptsPostgraduate": "Магистратура и аспирантура",
+  "scriptTunnelManagedDescription": "Шлюз, домен аутентификации и параметры сертификата заданы текущим скриптом.",
+  "scriptTunnelRequired": "Для этой функции войдите в аккаунт APPTunnel, указанный в скрипте.",
+  "scriptTunnelDefaultDomain": "Определяется страницей входа вуза или шлюзом",
+  "scriptTunnelSystemCertificate": "Используется системная проверка сертификатов",
+  "scriptTunnelDependency": "Требуется учётная запись подключения: {account}",
+  "@scriptTunnelDependency": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptAccountDetails": "Сведения об учётной записи и подключении"
+}

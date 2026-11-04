@@ -2,7 +2,6 @@
   "scriptsUpdateRequired": "此脚本使用已废除的 actions，请导入更高版本后再运行。",
   "@@locale": "zh",
   "@@x-notes": "文案单源（模板语言）。新增显示字段一律先加键再用 l10n.<key> 引用，不在 widget 里写字面量；改键须同步 app_en.arb，否则 gen_l10n 会把缺口写进 l10n_untranslated.json。",
-
   "appName": "elecon",
   "@appName": {
     "description": "应用名。品牌名，各语言均不翻译"
@@ -11,7 +10,6 @@
   "@appTagline": {
     "description": "应用副标题/一句话定位"
   },
-
   "commonCancel": "取消",
   "commonRetry": "重试",
   "commonCopyLink": "复制链接",
@@ -21,7 +19,6 @@
     "description": "行内枚举的分隔符（中文用顿号，英文用逗号+空格）"
   },
   "commonCopiedToClipboard": "已复制到剪贴板",
-
   "navHome": "首页",
   "navSettings": "设置",
   "navForum": "论坛",
@@ -34,7 +31,6 @@
   "messagesPlannedAccount": "消息将跟随对应服务账号显示，具体登录方式将在接入服务后提供。",
   "communityPlannedAccountTitle": "服务账号",
   "communityPlannedAvailability": "功能尚未开放，暂不支持登录或加载内容。",
-
   "settingsTitle": "设置",
   "settingsSectionAccount": "账户",
   "settingsSectionDebug": "调试",
@@ -47,8 +43,12 @@
   "@settingsCredentialSummary": {
     "description": "登录态下的凭证摘要。refs 只是凭证引用名（红线 #1：不含凭证值）",
     "placeholders": {
-      "count": { "type": "int" },
-      "refs": { "type": "String" }
+      "count": {
+        "type": "int"
+      },
+      "refs": {
+        "type": "String"
+      }
     }
   },
   "settingsProtectionTitle": "凭证存储保护",
@@ -78,7 +78,6 @@
   "settingsAboutTile": "关于 elecon",
   "settingsPrivacyTile": "隐私政策",
   "settingsPrivacySubtitle": "我们如何处理你的数据",
-
   "aboutTitle": "关于",
   "aboutIconSemanticLabel": "应用图标（占位）",
   "@aboutIconSemanticLabel": {
@@ -88,7 +87,10 @@
   "@aboutVersion": {
     "description": "关于页图标下方的版本副标题",
     "placeholders": {
-      "version": { "type": "String", "example": "0.1.0-dev" }
+      "version": {
+        "type": "String",
+        "example": "0.1.0-dev"
+      }
     }
   },
   "aboutQuote": "Any problem in computer science can be solved with another level of indirection",
@@ -103,7 +105,6 @@
   "aboutPrivacyTile": "隐私政策",
   "aboutOpenSourceLicenses": "开源许可",
   "aboutOpenSourceLicensesSubtitle": "本应用使用的第三方组件与许可证",
-
   "privacyTitle": "隐私政策",
   "privacyPlaceholderNotice": "当前指向占位地址，正式条款发布后此页内容随之更新。",
   "privacyLoadFailedTitle": "无法加载隐私政策",
@@ -111,10 +112,12 @@
   "@privacyLoadFailedBody": {
     "description": "隐私政策页加载失败时的说明",
     "placeholders": {
-      "url": { "type": "String", "example": "https://elecon.xidian.one/privacy" }
+      "url": {
+        "type": "String",
+        "example": "https://elecon.xidian.one/privacy"
+      }
     }
   },
-
   "appearanceSection": "外观",
   "appearanceSeedTitle": "主题色",
   "appearanceSeedSubtitle": "影响主色与界面强调色",
@@ -143,6 +146,9 @@
     "description": "语言名按母语书写，各 arb 保持一致（endonym）"
   },
   "appearanceLanguageEn": "English",
+  "appearanceLanguageUz": "Oʻzbekcha",
+  "appearanceLanguageRu": "Русский",
+  "appearanceLanguageFa": "فارسی",
   "@appearanceLanguageEn": {
     "description": "语言名按母语书写，各 arb 保持一致（endonym）"
   },
@@ -153,7 +159,6 @@
   "experimentalLiquidGlassTitle": "液态玻璃",
   "experimentalLiquidGlassSubtitle": "底栏与卡片使用 iOS 26 风格 shader 液态玻璃，可能影响性能",
   "experimentalLiquidGlassDisabledByContrast": "高对比模式下已自动关闭（半透明会降低对比度）",
-
   "devLogTitle": "运行时日志",
   "devLogClear": "清空",
   "devLogCopyVisible": "复制可见条目",
@@ -166,25 +171,36 @@
   "devLogHintUnredacted": "脱敏已关：新条目可含 query / cookie 原文；仅存本机环缓冲，勿外传。",
   "devLogHintRelease": "正式版显示无参数的网络记录与脚本阶段探针，不含请求/响应正文或凭据。",
   "devLogEmpty": "暂无日志",
-
   "homeExamTitle": "考试安排",
   "homeExamPrompt": "仅在你点击后查询考试安排",
   "homeExamLoad": "查看考试安排",
   "homeExamEmpty": "暂无考试安排",
   "homeExamCount": "{count} 场考试",
   "@homeExamCount": {
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "homeExamTermCount": "{term} · {count} 场考试",
   "@homeExamTermCount": {
     "placeholders": {
-      "term": { "type": "String" },
-      "count": { "type": "int" }
+      "term": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
     }
   },
   "homeExamSeat": "座位 {seat}",
   "@homeExamSeat": {
-    "placeholders": { "seat": { "type": "String" } }
+    "placeholders": {
+      "seat": {
+        "type": "String"
+      }
+    }
   },
   "homeExamStatusScheduled": "已安排",
   "homeExamStatusChanged": "已变更",
@@ -197,19 +213,31 @@
   "homeLibraryLoansEmpty": "暂无借阅记录",
   "homeLibraryLoansCount": "当前借阅 {count} 本",
   "@homeLibraryLoansCount": {
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "homeLibraryLoansDue": "应还 {dueAt}",
   "@homeLibraryLoansDue": {
-    "placeholders": { "dueAt": { "type": "String" } }
+    "placeholders": {
+      "dueAt": {
+        "type": "String"
+      }
+    }
   },
   "homeLibraryLoansOverdue": "已逾期",
   "homeLibraryLoansOverdueFee": "逾期费 {fee}",
   "@homeLibraryLoansOverdueFee": {
-    "placeholders": { "fee": { "type": "String" } }
+    "placeholders": {
+      "fee": {
+        "type": "String"
+      }
+    }
   },
   "scriptsTitle": "学校脚本",
-  "scriptsDescription": "导入、更新和运行你信任的学校脚本。启用后，脚本优先提供它声明的首页能力。",
+  "scriptsDescription": "管理学校脚本与功能来源。",
   "scriptsImportFile": "从文件导入",
   "scriptsPaste": "粘贴源码包",
   "scriptsExample": "加载示例",
@@ -305,15 +333,42 @@
   "noticeDetailEmpty": "本条通知未提供文字正文。",
   "noticeAttachments": "附件",
   "homeDataUpdatedAt": "更新于 {time}",
-  "@homeDataUpdatedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@homeDataUpdatedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "homeDataStaleAt": "缓存于 {time}，等待更新",
-  "@homeDataStaleAt": {"placeholders": {"time": {"type": "String"}}},
+  "@homeDataStaleAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "homeCampusTitle": "校园信息",
   "homeSnapshotUpdatedAt": "{school} · 更新于 {time}",
-  "@homeSnapshotUpdatedAt": {"placeholders": {"school": {"type": "String"}, "time": {"type": "String"}}},
+  "@homeSnapshotUpdatedAt": {
+    "placeholders": {
+      "school": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "homeNoticeTitle": "通知",
   "homeNoticeCount": "{count} 条最新消息",
-  "@homeNoticeCount": {"placeholders": {"count": {"type": "int"}}},
+  "@homeNoticeCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "homeNoticeCategoryAcademic": "教学",
   "homeNoticeCategoryAdmin": "行政",
   "homeNoticeCategoryEvent": "活动",
@@ -404,7 +459,13 @@
   "homeCardNeedsLogin": "登录后查看",
   "homeCardAvailableRooms": "已知空闲教室",
   "homeCardTableRows": "{count} 条记录",
-  "@homeCardTableRows": {"placeholders": {"count": {"type": "int"}}},
+  "@homeCardTableRows": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "homeLayoutManage": "主页展示",
   "homeLayoutManageHint": "选择显示在主页上的卡片。隐藏后会保留尺寸、样式和顺序。",
   "homeLayoutHide": "从主页隐藏",
@@ -418,7 +479,13 @@
   "homeLayoutMoveLeft": "左移一格",
   "homeLayoutMoveRight": "右移一格",
   "scriptsHomeTitle": "首页标题：{title}",
-  "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}},
+  "@scriptsHomeTitle": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "profilesLoadFailed": "无法读取 Profiles，请保留应用数据后重试。",
   "profilesChangeFailed": "无法保存 Profile，更改未生效，请重试。",
   "profilesCurrent": "当前",
@@ -689,7 +756,7 @@
   "appTunnelLoginCancelled": "登录已取消，请返回后重新打开。",
   "appTunnelBrowserUnavailable": "当前选择的APPTunnel 尚不支持此浏览器流程，请使用支持的请求或明确切换为直连。",
   "scriptAccountsTitle": "脚本所需账号",
-  "scriptAccountsDescription": "查看当前学校各脚本需要的账号及登录方法。账号按当前本地身份分别保存。",
+  "scriptAccountsDescription": "查看登录状态，管理当前身份使用的学校账号。",
   "scriptAccountsLoadFailed": "无法读取脚本账号声明",
   "scriptAccountsEmpty": "当前学校尚未安装脚本",
   "scriptAccountsNone": "此脚本声明无需账号",
@@ -736,5 +803,124 @@
   "scriptAccountUnknown": "暂时无法确认登录状态，可重试检查或登录。",
   "scriptAccountRelogin": "重新登录",
   "scriptAccountCheck": "检查状态",
-  "scriptsAppTunnelPermission": "允许通过宿主固定入口检查或登录内置 APPTunnel · Hermes；脚本不会取得隧道密码或会话材料。"
+  "scriptsAppTunnelPermission": "允许通过宿主固定入口检查或登录内置 APPTunnel · Hermes；脚本不会取得隧道密码或会话材料。",
+  "gradesTermFilter": "按学期筛选",
+  "gradesTermsUnavailable": "此来源暂未提供可选学期。",
+  "gradesEmpty": "该学期暂无成绩",
+  "classroomNoPreciseTimes": "来源未提供可靠的精确时间",
+  "classroomAvailableStatus": "空闲",
+  "classroomOccupiedStatus": "占用",
+  "classroomUnknownStatus": "未知／未覆盖",
+  "classroomCurrentTime": "当前时间：{time}",
+  "@classroomCurrentTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "classroomLocalTimeHint": "时间轴与筛选使用设备本地时间；空白时间不代表空闲。",
+  "classroomStartTime": "开始：{time}",
+  "@classroomStartTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "classroomEndTime": "结束：{time}",
+  "@classroomEndTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "classroomOnlyFree": "整段空闲",
+  "classroomInvalidRange": "结束时间必须晚于开始时间",
+  "classroomNoRangeMatches": "没有教室被确认在整个时段内空闲",
+  "classroomNoReason": "来源未提供原因",
+  "queryFilters": "筛选条件",
+  "scriptsLanguages": "脚本语言：{languages}",
+  "scriptsDefaultLanguage": "默认语言：{language}",
+  "scriptsViewTranslations": "查看包内译文",
+  "@scriptsLanguages": {
+    "placeholders": {
+      "languages": {
+        "type": "String"
+      }
+    }
+  },
+  "@scriptsDefaultLanguage": {
+    "placeholders": {
+      "language": {
+        "type": "String"
+      }
+    }
+  },
+  "accountPasswordTitle": "账号密码登录",
+  "accountPasswordUsername": "账号",
+  "accountPasswordPassword": "密码",
+  "accountPasswordRemember": "验证成功后保留账号密码",
+  "accountPasswordUseSaved": "使用保存的密码登录",
+  "accountPasswordSubmit": "验证并登录",
+  "accountPasswordWeb": "使用学校网页登录",
+  "accountPasswordBlocked": "自动登录已停止。可以手动重试保存的密码，或输入新密码。",
+  "accountPasswordSaved": "已保留账号密码",
+  "accountPasswordDelete": "删除保存的密码",
+  "accountPasswordDeleted": "已删除保存的密码，现有会话保留",
+  "accountPasswordInvalid": "请填写有效的账号与密码",
+  "accountReasonInteraction": "需要在学校网页完成登录验证",
+  "accountReasonRejected": "学校拒绝了此次密码登录，请更新凭据或手动登录",
+  "accountReasonDisabled": "学校已报告账号停用，请联系学校",
+  "accountReasonUnknown": "尚不能确认登录状态，请检查网络后重试",
+  "aiAccessTitle": "系统助手访问",
+  "aiAccessSummary": "选择允许分享的校园查询",
+  "aiAccessExplanation": "仅允许系统授权的助手查询当前身份和学校。分别开启需要的项目；返回的数据可能由助手处理。授权在关闭应用进程、切换身份或来源更新后清除。需要登录时请回到应用。",
+  "aiAccessUnsupported": "需要 Android 16 或更新系统，且系统支持 AppFunctions。",
+  "aiAccessSchedule": "课表",
+  "aiAccessClassrooms": "空教室",
+  "aiAccessGrades": "成绩",
+  "aiAccessUnavailable": "当前学校没有可用的已批准来源。",
+  "webContentOpen": "打开网页",
+  "webContentCompleted": "操作已完成",
+  "webContentCancelled": "已取消，未提交",
+  "webContentUnknown": "操作结果未知，请在源站核对后再操作",
+  "webContentUnavailable": "此设备暂不支持此网页模板",
+  "scriptsSelectionChanged": "已切换至脚本：{name}",
+  "@scriptsSelectionChanged": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptsAccountCheckUnavailable": "脚本未提供账号有效性检查",
+  "scriptAccountCredentialReuse": "可复用“{source}”的已保存密码登录 {gateway}；目标服务会单独验证。",
+  "@scriptAccountCredentialReuse": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "gateway": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptsXidianName": "西安电子科技大学",
+  "scriptsUndergraduate": "本科生",
+  "scriptsPostgraduate": "研究生",
+  "scriptTunnelManagedDescription": "网关、认证域和证书由当前脚本指定。",
+  "scriptTunnelRequired": "此功能需要先登录脚本声明的 APPTunnel 账号。",
+  "scriptTunnelDefaultDomain": "由学校认证页面或网关确定",
+  "scriptTunnelSystemCertificate": "使用系统证书验证",
+  "scriptTunnelDependency": "需要连接账号：{account}",
+  "@scriptTunnelDependency": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptAccountDetails": "账号说明与连接详情"
 }

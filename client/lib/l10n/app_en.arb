@@ -1,17 +1,14 @@
 {
   "scriptsUpdateRequired": "This installed script uses retired actions. Import a newer version before running it.",
   "@@locale": "en",
-
   "appName": "elecon",
   "appTagline": "Campus information, aggregated",
-
   "commonCancel": "Cancel",
   "commonRetry": "Retry",
   "commonCopyLink": "Copy link",
   "commonLinkCopied": "Link copied to clipboard",
   "commonListSeparator": ", ",
   "commonCopiedToClipboard": "Copied to clipboard",
-
   "navHome": "Home",
   "navSettings": "Settings",
   "navForum": "Forum",
@@ -24,7 +21,6 @@
   "messagesPlannedAccount": "Messages will belong to the account for each service. Sign-in options will be available once a service is connected.",
   "communityPlannedAccountTitle": "Service account",
   "communityPlannedAvailability": "This feature is not available yet. Sign-in and content loading are not supported.",
-
   "settingsTitle": "Settings",
   "settingsSectionAccount": "Account",
   "settingsSectionDebug": "Debug",
@@ -61,7 +57,6 @@
   "settingsAboutTile": "About elecon",
   "settingsPrivacyTile": "Privacy policy",
   "settingsPrivacySubtitle": "How we handle your data",
-
   "aboutTitle": "About",
   "aboutIconSemanticLabel": "App icon (placeholder)",
   "aboutVersion": "Version {version}",
@@ -71,12 +66,10 @@
   "aboutPrivacyTile": "Privacy policy",
   "aboutOpenSourceLicenses": "Open-source licenses",
   "aboutOpenSourceLicensesSubtitle": "Third-party components used by this app",
-
   "privacyTitle": "Privacy policy",
   "privacyPlaceholderNotice": "This points at a placeholder address for now; the page will follow once the final policy is published.",
   "privacyLoadFailedTitle": "Could not load the privacy policy",
   "privacyLoadFailedBody": "Check your connection and retry, or copy the link and open it in a browser: {url}",
-
   "appearanceSection": "Appearance",
   "appearanceSeedTitle": "Accent color",
   "appearanceSeedSubtitle": "Drives the primary and accent colors",
@@ -99,6 +92,9 @@
   "appearanceLanguageSystem": "Follow the system",
   "appearanceLanguageZh": "简体中文",
   "appearanceLanguageEn": "English",
+  "appearanceLanguageUz": "Oʻzbekcha",
+  "appearanceLanguageRu": "Русский",
+  "appearanceLanguageFa": "فارسی",
   "accessibilitySection": "Accessibility",
   "accessibilityHighContrastTitle": "High contrast",
   "accessibilityHighContrastSubtitle": "Raises text and control contrast across every theme",
@@ -106,7 +102,6 @@
   "experimentalLiquidGlassTitle": "Liquid glass",
   "experimentalLiquidGlassSubtitle": "iOS 26 style shader glass for the tab bar and cards; may affect performance",
   "experimentalLiquidGlassDisabledByContrast": "Turned off automatically in high contrast (translucency lowers contrast)",
-
   "devLogTitle": "Runtime log",
   "devLogClear": "Clear",
   "devLogCopyVisible": "Copy visible entries",
@@ -119,7 +114,6 @@
   "devLogHintUnredacted": "Redaction off: new entries may contain raw query strings and cookies. Kept in an on-device ring buffer only — do not share.",
   "devLogHintRelease": "Release builds show network records without URL parameters and bounded script probes, with no request/response bodies or credentials.",
   "devLogEmpty": "No log entries yet",
-
   "homeExamTitle": "Exams",
   "homeExamPrompt": "Exam arrangements are fetched only when you ask",
   "homeExamLoad": "View exams",
@@ -141,7 +135,7 @@
   "homeLibraryLoansOverdue": "Overdue",
   "homeLibraryLoansOverdueFee": "Overdue fee {fee}",
   "scriptsTitle": "School scripts",
-  "scriptsDescription": "Import, update and run school scripts you trust. Enabled scripts provide their declared home capabilities first.",
+  "scriptsDescription": "Manage school scripts and feature sources.",
   "scriptsImportFile": "Import file",
   "scriptsPaste": "Paste package",
   "scriptsExample": "Load example",
@@ -237,15 +231,42 @@
   "noticeDetailEmpty": "This notice has no text content.",
   "noticeAttachments": "Attachments",
   "homeDataUpdatedAt": "Updated {time}",
-  "@homeDataUpdatedAt": {"placeholders": {"time": {"type": "String"}}},
+  "@homeDataUpdatedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "homeDataStaleAt": "Cached data from {time}",
-  "@homeDataStaleAt": {"placeholders": {"time": {"type": "String"}}},
+  "@homeDataStaleAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "homeCampusTitle": "Campus information",
   "homeSnapshotUpdatedAt": "{school} · Updated {time}",
-  "@homeSnapshotUpdatedAt": {"placeholders": {"school": {"type": "String"}, "time": {"type": "String"}}},
+  "@homeSnapshotUpdatedAt": {
+    "placeholders": {
+      "school": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "homeNoticeTitle": "Notices",
   "homeNoticeCount": "{count, plural, =1{1 recent notice} other{{count} recent notices}}",
-  "@homeNoticeCount": {"placeholders": {"count": {"type": "int"}}},
+  "@homeNoticeCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "homeNoticeCategoryAcademic": "Academic",
   "homeNoticeCategoryAdmin": "Administration",
   "homeNoticeCategoryEvent": "Events",
@@ -336,7 +357,13 @@
   "homeCardNeedsLogin": "Sign in to view",
   "homeCardAvailableRooms": "Known available rooms",
   "homeCardTableRows": "{count} records",
-  "@homeCardTableRows": {"placeholders": {"count": {"type": "int"}}},
+  "@homeCardTableRows": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "homeLayoutManage": "Home cards",
   "homeLayoutManageHint": "Choose which cards appear on your home screen. Hidden cards keep their size, style and order.",
   "homeLayoutHide": "Hide from home",
@@ -350,7 +377,13 @@
   "homeLayoutMoveLeft": "Move left one cell",
   "homeLayoutMoveRight": "Move right one cell",
   "scriptsHomeTitle": "Home title: {title}",
-  "@scriptsHomeTitle": {"placeholders": {"title": {"type": "String"}}},
+  "@scriptsHomeTitle": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "profilesLoadFailed": "Unable to load Profiles. Keep your app data and try again.",
   "profilesChangeFailed": "Unable to save Profile. Please try again.",
   "profilesCurrent": "Current",
@@ -621,7 +654,7 @@
   "appTunnelLoginCancelled": "Sign-in was cancelled. Go back and open it again.",
   "appTunnelBrowserUnavailable": "The selected app APPTunnel does not support this browser flow. Use a supported request or explicitly select Direct.",
   "scriptAccountsTitle": "Script accounts",
-  "scriptAccountsDescription": "See the accounts each school script needs and how to sign in. Accounts are stored separately for each local profile.",
+  "scriptAccountsDescription": "View sign-in status and manage school accounts for this profile.",
   "scriptAccountsLoadFailed": "Could not load script account requirements",
   "scriptAccountsEmpty": "No scripts installed for this school",
   "scriptAccountsNone": "This script declares no account requirements",
@@ -668,5 +701,110 @@
   "scriptAccountUnknown": "Sign-in status is unknown. Check again or sign in.",
   "scriptAccountRelogin": "Sign in again",
   "scriptAccountCheck": "Check status",
-  "scriptsAppTunnelPermission": "May check or sign in to built-in APPTunnel · Hermes through the host interface. Scripts do not receive tunnel passwords or session material."
+  "scriptsAppTunnelPermission": "May check or sign in to built-in APPTunnel · Hermes through the host interface. Scripts do not receive tunnel passwords or session material.",
+  "gradesTermFilter": "Filter by term",
+  "gradesTermsUnavailable": "No term options are available from this source.",
+  "gradesEmpty": "No grades in this term",
+  "classroomNoPreciseTimes": "The source did not provide reliable exact times",
+  "classroomAvailableStatus": "Available",
+  "classroomOccupiedStatus": "Occupied",
+  "classroomUnknownStatus": "Unknown / uncovered",
+  "classroomCurrentTime": "Current time: {time}",
+  "@classroomCurrentTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "classroomLocalTimeHint": "Timeline and filters use device local time. Gaps do not mean available.",
+  "classroomStartTime": "From: {time}",
+  "@classroomStartTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "classroomEndTime": "To: {time}",
+  "@classroomEndTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "classroomOnlyFree": "Available for the entire range",
+  "classroomInvalidRange": "End time must be after start time",
+  "classroomNoRangeMatches": "No classroom is confirmed available for the entire range",
+  "classroomNoReason": "No reason provided by the source",
+  "queryFilters": "Filters",
+  "scriptsLanguages": "Script languages: {languages}",
+  "scriptsDefaultLanguage": "Default language: {language}",
+  "scriptsViewTranslations": "View packaged translations",
+  "accountPasswordTitle": "Sign in with a password",
+  "accountPasswordUsername": "Account",
+  "accountPasswordPassword": "Password",
+  "accountPasswordRemember": "Save account and password after verification",
+  "accountPasswordUseSaved": "Sign in with saved password",
+  "accountPasswordSubmit": "Verify and sign in",
+  "accountPasswordWeb": "Use school web sign-in",
+  "accountPasswordBlocked": "Automatic sign-in stopped. Retry the saved password manually or enter a new password.",
+  "accountPasswordSaved": "Account and password saved",
+  "accountPasswordDelete": "Delete saved password",
+  "accountPasswordDeleted": "Saved password deleted; current sessions remain",
+  "accountPasswordInvalid": "Enter a valid account and password",
+  "accountReasonInteraction": "Complete sign-in verification on the school website",
+  "accountReasonRejected": "The school rejected this password sign-in. Update credentials or sign in manually.",
+  "accountReasonDisabled": "The school reported this account disabled. Contact the school.",
+  "accountReasonUnknown": "Sign-in status is unknown. Check the connection and retry.",
+  "aiAccessTitle": "System assistant access",
+  "aiAccessSummary": "Choose campus queries to share",
+  "aiAccessExplanation": "Allow system-authorized assistants to query the current Profile and school. Enable each data category separately; assistants may process returned data. Access ends when the app process stops, identity changes or the source is updated. Open the app when login is needed.",
+  "aiAccessUnsupported": "Requires Android 16 or later with AppFunctions support.",
+  "aiAccessSchedule": "Schedule",
+  "aiAccessClassrooms": "Available classrooms",
+  "aiAccessGrades": "Grades",
+  "aiAccessUnavailable": "No approved source is available for the current school.",
+  "webContentOpen": "Open page",
+  "webContentCompleted": "Operation completed",
+  "webContentCancelled": "Cancelled before submission",
+  "webContentUnknown": "The outcome is unknown. Check the service before trying again.",
+  "webContentUnavailable": "This page template is unavailable on this device.",
+  "scriptsSelectionChanged": "Switched to script: {name}",
+  "@scriptsSelectionChanged": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptsAccountCheckUnavailable": "This script does not provide an account status check",
+  "scriptAccountCredentialReuse": "May use the saved password from {source} to sign in to {gateway}; the target service is checked separately.",
+  "@scriptAccountCredentialReuse": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "gateway": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptsXidianName": "Xidian University",
+  "scriptsUndergraduate": "Undergraduate",
+  "scriptsPostgraduate": "Postgraduate",
+  "scriptTunnelManagedDescription": "The current script provides the gateway, authentication domain and certificate settings.",
+  "scriptTunnelRequired": "Sign in to the APPTunnel account declared by this script to use this feature.",
+  "scriptTunnelDefaultDomain": "Determined by the school sign-in page or gateway",
+  "scriptTunnelSystemCertificate": "Use system certificate validation",
+  "scriptTunnelDependency": "Requires connection account: {account}",
+  "@scriptTunnelDependency": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptAccountDetails": "Account and connection details"
 }
