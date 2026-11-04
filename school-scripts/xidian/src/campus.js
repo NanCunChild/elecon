@@ -10,6 +10,7 @@ import { getChildren, getText, isTag, parseDocument, selectAll } from "elecon:ht
 import { failure } from "./errors.js";
 import { dateOnly, integer, moneyMinor, schoolDateTime, text } from "./normalize.js";
 import { PDA_UA } from "./pda_constants.js";
+import { requireParams, serviceError } from "./service_session.js";
 import { createClient, mergeCookies, normalizeBrowserCookies } from "./session.js";
 
 const CARD = "https://v8scan.xidian.edu.cn";
@@ -432,6 +433,140 @@ export async function libraryLoans(ctx, _params = {}) {
     }
   }
   fail("library_pagination_limit");
+}
+
+// ADR-088: the public catalogue is independent of the private loan session.
+// Fixed endpoint and school group; no JWT, credential read, login or cover fan-out.
+export async function librarySearch(ctx, params = {}) {
+  requireParams(params, ["query", "page", "size"]);
+  const query = typeof params.query === "string" ? params.query.trim() : "";
+  const page = params.page === undefined ? 1 : params.page;
+  const size = params.size === undefined ? 10 : params.size;
+  if (
+    !query ||
+    Array.from(query).length > 200 ||
+    !Number.isSafeInteger(page) ||
+    page < 1 ||
+    !Number.isSafeInteger(size) ||
+    size < 1 ||
+    size > 50 ||
+    !Number.isSafeInteger(page * size)
+  )
+    throw serviceError("input_invalid_request");
+  const body = {
+    searchFieldContent: query,
+    searchField: "keyWord",
+    matchMode: "2",
+    searchItems: null,
+    indexSearch: 1,
+    docCode: [null],
+    publishBegin: null,
+    publishEnd: null,
+    onlyOnShelf: null,
+    sortField: "relevance",
+    sortClause: "desc",
+    page,
+    rows: size,
+  };
+  for (const field of [
+    "litCode",
+    "resourceType",
+    "subject",
+    "discode1",
+    "publisher",
+    "locationId",
+    "collectionName",
+    "author",
+    "langCode",
+    "countryCode",
+    "coreInclude",
+    "ddType",
+    "verifyStatus",
+    "group",
+    "campusId",
+    "curLocationId",
+    "eCollectionIds",
+    "kindNo",
+    "libCode",
+    "neweCollectionIds",
+    "newCoreInclude",
+    "customSub",
+    "customSub0",
+  ])
+    body[field] = [];
+  const response = await ctx.fetch(`${LIBRARY}/find/unify/search`, {
+    method: "POST",
+    redirect: "error",
+    headers: {
+      "Content-Type": "application/json;charset=utf-8",
+      Referer: `${LIBRARY}/`,
+      groupCode: "200755",
+      mappingPath: "",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw serviceError();
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw serviceError();
+  }
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    (payload.code != null && !["0", "200"].includes(String(payload.code)))
+  )
+    throw serviceError();
+  const data = payload.data;
+  if (!data || !Array.isArray(data.searchResult) || data.searchResult.length > size) throw serviceError();
+  const ids = new Set();
+  const items = data.searchResult.map((row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) throw serviceError();
+    const rawId = row.recordId;
+    const bookId =
+      typeof rawId === "string"
+        ? rawId.trim()
+        : Number.isSafeInteger(rawId) && rawId > 0
+          ? String(rawId)
+          : "";
+    const title = typeof row.title === "string" ? getText(getChildren(parseDocument(row.title))).trim() : "";
+    if (!bookId || bookId === "0" || !title || ids.has(bookId)) throw serviceError();
+    ids.add(bookId);
+    const item = { bookId, title };
+    for (const field of ["author", "isbn", "publisher"]) {
+      if (row[field] == null || row[field] === "") continue;
+      if (typeof row[field] !== "string") throw serviceError();
+      if (row[field].trim()) item[field] = getText(getChildren(parseDocument(row[field]))).trim();
+    }
+    if (row.callNo != null) {
+      const numbers = Array.isArray(row.callNo) ? row.callNo : [row.callNo];
+      if (numbers.some((value) => typeof value !== "string")) throw serviceError();
+      const callNumber = numbers
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .join(" / ");
+      if (callNumber) item.callNumber = callNumber;
+    }
+    return item;
+  });
+  const total = data.total == null ? undefined : integer(data.total, "library_total_invalid");
+  const offset = (page - 1) * size;
+  if (
+    total !== undefined &&
+    (total < 0 ||
+      (items.length > 0 && total < offset + items.length) ||
+      (items.length < size && total > offset + items.length))
+  )
+    throw serviceError();
+  return {
+    query,
+    page,
+    size,
+    items,
+    hasNext: total === undefined ? items.length === size : page * size < total,
+    ...(total === undefined ? {} : { total }),
+  };
 }
 
 // ADR-047: display-only school image; do not persist it in the auth session.

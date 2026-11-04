@@ -5,6 +5,7 @@ import '../../session/profile_controller.dart';
 import '../../session/profile_scope.dart';
 import '../../session/session_controller.dart';
 import '../../session/session_scope.dart';
+import 'script_profile_name.dart';
 
 Future<void> changeProfile(
   BuildContext context,
@@ -44,6 +45,7 @@ Future<void> showProfiles(BuildContext context) async {
                 ),
                 title: _ProfileName(
                   name: profile.name,
+                  session: profile.session,
                   active: profile.id == profiles.active.id,
                 ),
                 subtitle: Text(
@@ -101,7 +103,8 @@ class ProfileAccountsHeader extends StatelessWidget {
 }
 
 class _ProfileName extends StatelessWidget {
-  const _ProfileName({required this.name, required this.active});
+  const _ProfileName({required this.name, required this.active, this.session});
+  final SessionController? session;
   final String name;
   final bool active;
 
@@ -111,7 +114,10 @@ class _ProfileName extends StatelessWidget {
     runSpacing: 4,
     crossAxisAlignment: WrapCrossAlignment.center,
     children: [
-      Text(name),
+      if (session == null)
+        Text(name)
+      else
+        ScriptProfileName(session: session!, fallback: name, active: active),
       if (active)
         Text(
           AppLocalizations.of(context).profilesCurrent,
@@ -147,6 +153,7 @@ class ProfileAccounts extends StatelessWidget {
             ListTile(
               title: _ProfileName(
                 name: profile?.name ?? 'Profile 1',
+                session: session,
                 active: current,
               ),
               subtitle: Text(
@@ -248,7 +255,7 @@ class _ProfileRow extends StatelessWidget {
     if (!active && !session.isRestored) {
       return ListTile(
         leading: const Icon(Icons.account_circle_outlined),
-        title: _ProfileName(name: name, active: active),
+        title: _ProfileName(name: name, active: active, session: session),
         subtitle: Text(l10n.profilesNotLoaded),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
@@ -271,6 +278,11 @@ class _ProfileRow extends StatelessWidget {
       _ => (Icons.lock_open_outlined, l10n.settingsProtectionMemory),
     };
     return FutureBuilder<ScriptPackage?>(
+      key: ValueKey((
+        session,
+        session.selectedSchool?.id,
+        session.trustedScriptViewGeneration,
+      )),
       future: session.scriptRegistry.then(
         (r) => r.provider(session.selectedSchool?.id ?? '', 'generic.section'),
       ),
@@ -283,7 +295,7 @@ class _ProfileRow extends StatelessWidget {
           leading: Icon(
             active ? Icons.account_circle : Icons.account_circle_outlined,
           ),
-          title: _ProfileName(name: name, active: active),
+          title: _ProfileName(name: name, active: active, session: session),
           subtitle: Text(
             '$script · ${session.isLoggedIn ? l10n.settingsLoggedIn : l10n.settingsLoggedOut}',
           ),

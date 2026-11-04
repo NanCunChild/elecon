@@ -967,5 +967,8 @@
   "shortcutsHint": "长按应用图标可打开常用功能，也可选择下方功能请求添加到桌面。入口使用当前身份与学校。",
   "shortcutsRequested": "已请求添加，请在系统桌面提示中确认",
   "shortcutsPinFailed": "当前桌面无法添加快捷方式",
-  "shortcutsUnavailable": "当前学校或已批准脚本未提供此功能，请返回首页检查来源设置。"
+  "shortcutsUnavailable": "当前学校或已批准脚本未提供此功能，请返回首页检查来源设置。",
+  "librarySearchTitle": "图书查询",
+  "librarySearchHint": "书名、作者或 ISBN",
+  "librarySearchEmpty": "没有找到匹配书目"
 }

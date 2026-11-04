@@ -16,6 +16,7 @@ import 'section_card.dart';
 
 import 'query_section.dart';
 import 'capability_source.dart';
+import 'library_search_section.dart';
 
 class LibraryLoansSection extends StatefulWidget {
   const LibraryLoansSection({super.key});
@@ -26,6 +27,28 @@ class LibraryLoansSection extends StatefulWidget {
 
 class _LibraryLoansSectionState extends State<LibraryLoansSection>
     with CachedQuerySection<LibraryLoansSection, LibraryLoans> {
+  Object? _searchKey;
+  Future<String?>? _searchSchema;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final session = SessionScope.of(context);
+    final key = (
+      session,
+      session.selectedSchool?.id,
+      session.trustedScriptViewGeneration,
+      CapabilitySourceScope.maybeOf(context)?.source,
+    );
+    if (_searchKey != key) {
+      _searchKey = key;
+      _searchSchema = CapabilitySourceScope.queriesOf(
+        context,
+        session,
+      ).schemaVersion('library.search');
+    }
+  }
+
   @override
   void onConfigurationRequired() => _phase = QueryPhase.needConfiguration;
 
@@ -91,6 +114,29 @@ class _LibraryLoansSectionState extends State<LibraryLoansSection>
 
   @override
   Widget build(BuildContext context) {
+    final loans = _loans(context);
+    if (HomeCardPresentation.maybeOf(context)?.isPage != true) return loans;
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FutureBuilder<String?>(
+          key: ValueKey(_searchKey),
+          future: _searchSchema,
+          builder: (_, snapshot) => snapshot.data == null
+              ? const SizedBox.shrink()
+              : const LibrarySearchSection(),
+        ),
+        const SizedBox(height: 16),
+        loans,
+      ],
+    );
+    final source = CapabilitySourceScope.maybeOf(context)?.source;
+    return source == null
+        ? content
+        : CapabilitySourceScope(source: source, child: content);
+  }
+
+  Widget _loans(BuildContext context) {
     final data = _data;
     if (data != null) {
       return withCacheTime(

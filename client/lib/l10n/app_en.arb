@@ -850,5 +850,8 @@
   "shortcutsHint": "Touch and hold the app icon for common features, or request a home screen shortcut below. Opens the current profile and school.",
   "shortcutsRequested": "Shortcut requested. Confirm in the launcher prompt.",
   "shortcutsPinFailed": "This launcher could not add a shortcut.",
-  "shortcutsUnavailable": "This feature is unavailable for the current school or approved script. Check sources on the home page."
+  "shortcutsUnavailable": "This feature is unavailable for the current school or approved script. Check sources on the home page.",
+  "librarySearchTitle": "Find books",
+  "librarySearchHint": "Title, author or ISBN",
+  "librarySearchEmpty": "No matching books"
 }

@@ -18,9 +18,134 @@ const compiled = await build({
     "elecon:html": fileURLToPath(new URL("../../../adapters/_stdlib/html.bundle.js", import.meta.url)),
   },
 });
-const { cardBalance, cardQr, cardTransactions, libraryLoans } = await import(
+const { cardBalance, cardQr, cardTransactions, libraryLoans, librarySearch } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`
 );
+
+function catalogue(payload, status = 200) {
+  const calls = [];
+  const ctx = {
+    credentials: new Proxy(
+      {},
+      {
+        get() {
+          assert.fail("public catalogue must not read credentials");
+        },
+      },
+    ),
+    async fetch(url, init) {
+      calls.push({ url, init, body: JSON.parse(init.body) });
+      return response(url, payload, { status });
+    },
+  };
+  return { ctx, calls };
+}
+
+test("public catalogue normalizes source record IDs and metadata without credential or cover requests", async () => {
+  const h = catalogue({
+    code: 0,
+    data: {
+      total: 11,
+      searchResult: [
+        {
+          recordId: 101,
+          title: "<em>合成</em>书目",
+          author: "合成作者",
+          isbn: "SYNTHETIC-ISBN",
+          publisher: "合成出版社",
+          callNo: ["TP/1", "TP/2"],
+          propNo: "NOT-A-RECORD-ID",
+        },
+      ],
+    },
+  });
+  const result = await librarySearch(h.ctx, { query: "  合成  ", page: 2, size: 10 });
+  assert.deepEqual(result, {
+    query: "合成",
+    page: 2,
+    size: 10,
+    total: 11,
+    hasNext: false,
+    items: [
+      {
+        bookId: "101",
+        title: "合成书目",
+        author: "合成作者",
+        isbn: "SYNTHETIC-ISBN",
+        publisher: "合成出版社",
+        callNumber: "TP/1 / TP/2",
+      },
+    ],
+  });
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].url, `${LIBRARY}/find/unify/search`);
+  assert.equal(h.calls[0].init.method, "POST");
+  assert.equal(h.calls[0].init.redirect, "error");
+  assert.equal(h.calls[0].body.searchFieldContent, "合成");
+  assert.equal(h.calls[0].body.searchField, "keyWord");
+  assert.equal(h.calls[0].body.page, 2);
+  assert.equal(h.calls[0].body.rows, 10);
+  assert.equal(h.calls[0].init.headers.groupCode, "200755");
+  assert.equal(h.calls[0].init.headers.Cookie, undefined);
+  assert.equal(h.calls[0].init.headers.jwtOpacAuth, undefined);
+});
+
+test("catalogue keeps absent totals unknown and offers the next page only for a full page", async () => {
+  const h = catalogue({ data: { searchResult: [{ recordId: "BOOK-SYNTHETIC", title: "Book" }] } });
+  const result = await librarySearch(h.ctx, { query: "Book", size: 1 });
+  assert.equal(result.hasNext, true);
+  assert.equal(Object.hasOwn(result, "total"), false);
+  assert.deepEqual(result.items, [{ bookId: "BOOK-SYNTHETIC", title: "Book" }]);
+  const empty = catalogue({ data: { searchResult: [] } });
+  assert.equal((await librarySearch(empty.ctx, { query: "Book", page: 2, size: 1 })).hasNext, false);
+});
+
+test("catalogue invalid inputs do not send requests", async () => {
+  for (const params of [
+    {},
+    { query: " " },
+    { query: "x".repeat(201) },
+    { query: "x", page: 0 },
+    { query: "x", size: 51 },
+    { query: "x", page: 1.5 },
+    { query: "x", role: "other" },
+  ]) {
+    const h = catalogue({});
+    await assert.rejects(librarySearch(h.ctx, params), (error) => error.code === "input_invalid_request");
+    assert.equal(h.calls.length, 0);
+  }
+});
+
+test("catalogue rejects error responses, incomplete pages and malformed records without empty fallback", async () => {
+  for (const payload of [
+    null,
+    {},
+    { data: {} },
+    { code: 401, data: { searchResult: [] } },
+    { data: { searchResult: [null] } },
+    { data: { searchResult: [{ title: "No ID", propNo: "BARCODE" }] } },
+    { data: { searchResult: [{ recordId: 1, title: "" }] } },
+    { data: { searchResult: [{ recordId: 1, title: "Book", author: {} }] } },
+    { data: { searchResult: [{ recordId: 1, title: "Book", callNo: [1] }] } },
+    { data: { total: 3, searchResult: [{ recordId: 1, title: "Incomplete" }] } },
+    { data: { total: -1, searchResult: [] } },
+    {
+      data: {
+        searchResult: [
+          { recordId: 1, title: "A" },
+          { recordId: 1, title: "Duplicate" },
+        ],
+      },
+    },
+  ]) {
+    const h = catalogue(payload);
+    await assert.rejects(librarySearch(h.ctx, { query: "x" }));
+    assert.equal(h.calls.length, 1);
+  }
+  const denied = catalogue({ data: { searchResult: [] } }, 429);
+  await assert.rejects(librarySearch(denied.ctx, { query: "x" }));
+  assert.equal(denied.calls.length, 1);
+});
 
 const NOW = Date.parse("2026-10-30T08:00:00Z");
 const LIBRARY = "https://mfindxidian.libsp.cn";
