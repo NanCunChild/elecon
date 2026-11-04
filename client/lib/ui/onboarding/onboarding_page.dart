@@ -9,12 +9,15 @@ import 'package:flutter/material.dart';
 
 import '../../catalog/schools.dart';
 import '../../session/session_scope.dart';
+import '../../session/session_controller.dart';
 import '../../session/profile_scope.dart';
 import '../settings/profile_accounts.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../scripts/script_workbench_page.dart';
 import '../scripts/bundled_scripts.dart';
+import '../scripts/script_selection_feedback.dart';
 import '../login/login_flow.dart';
+import '../widgets/adaptive_school_title.dart';
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key, this.loginRunner = runSchoolLogin});
@@ -69,7 +72,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
     if (selected == null) return;
     setState(() => _busy = true);
     if (selected.adapterId.startsWith('script:')) {
-      session.selectSchool(selected);
+      await selectScriptWithFeedback(context, session, () async {
+        final registry = await session.scriptRegistry;
+        session.selectSchool(selected);
+        return registry.find(selected.adapterId.substring(7))?.package;
+      });
       if (mounted) setState(() => _busy = false);
       return;
     }
@@ -132,39 +139,66 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                for (final school in bundledScriptSchools)
-                  Card(
-                    child: ListTile(
-                      title: Text(school.label(l10n)),
-                      subtitle: Text(l10n.scriptsBundled),
-                      trailing: Icon(
-                        _bundled == school
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_unchecked,
+                Card(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                        child: AdaptiveSchoolTitle(
+                          text: bundledScriptSchools.first.schoolName(l10n),
+                          style: theme.textTheme.titleLarge,
+                          minimumFontSize: 16,
+                        ),
                       ),
-                      onTap: _busy
-                          ? null
-                          : () => setState(() {
-                              _bundled = school;
-                              _selected = null;
-                            }),
+                      for (final school in bundledScriptSchools)
+                        ListTile(
+                          title: Text(school.typeName(l10n)),
+                          subtitle: Text(l10n.scriptsBundled),
+                          trailing: Icon(
+                            _bundled == school
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                          ),
+                          onTap: _busy
+                              ? null
+                              : () => setState(() {
+                                  _bundled = school;
+                                  _selected = null;
+                                }),
+                        ),
+                    ],
+                  ),
+                ),
+                for (final group in groupSchoolChoices(
+                  schools.where(
+                    (s) =>
+                        !bundledLegacySchoolIds.contains(s.id) &&
+                        !bundledScriptSchools.any((b) => b.id == s.id),
+                  ),
+                )) ...[
+                  if (group.first.institutionId != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: AdaptiveSchoolTitle(
+                        text: group.first.displayName,
+                        style: theme.textTheme.titleLarge,
+                        minimumFontSize: 16,
+                      ),
                     ),
-                  ),
-                for (final school in schools.where(
-                  (s) =>
-                      !bundledLegacySchoolIds.contains(s.id) &&
-                      !bundledScriptSchools.any((b) => b.id == s.id),
-                ))
-                  _SchoolTile(
-                    school: school,
-                    selected: _selected?.id == school.id,
-                    onTap: school.available && !_busy
-                        ? () => setState(() {
-                            _selected = school;
-                            _bundled = null;
-                          })
-                        : null,
-                  ),
+                  for (final school in group)
+                    _SchoolTile(
+                      school: school,
+                      grouped: school.institutionId != null,
+                      selected: _selected?.id == school.id,
+                      onTap: school.available && !_busy
+                          ? () => setState(() {
+                              _selected = school;
+                              _bundled = null;
+                            })
+                          : null,
+                    ),
+                ],
                 const SizedBox(height: 8),
                 _ComingSoonTile(),
                 TextButton.icon(
@@ -225,11 +259,13 @@ class _SchoolTile extends StatelessWidget {
     required this.school,
     required this.selected,
     required this.onTap,
+    this.grouped = false,
   });
 
   final SchoolDescriptor school;
   final bool selected;
   final VoidCallback? onTap;
+  final bool grouped;
 
   @override
   Widget build(BuildContext context) {
@@ -260,16 +296,20 @@ class _SchoolTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      school.displayName,
+                    AdaptiveSchoolTitle(
+                      text: grouped
+                          ? school.typeName ?? school.displayName
+                          : school.displayName,
                       style: theme.textTheme.titleMedium,
+                      minimumFontSize: 14,
                     ),
-                    Text(
-                      school.subtitle,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                    if (!grouped)
+                      Text(
+                        school.subtitle,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

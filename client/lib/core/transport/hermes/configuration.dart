@@ -54,6 +54,17 @@ class HermesConfiguration {
     'gatewayUrl': gateway.origin,
     'session': _session,
   };
+  bool matchesAccountScope({
+    String? gatewayUrl,
+    String? loginDomain,
+    String? certificateSha256,
+    bool checkCertificate = false,
+  }) =>
+      (gatewayUrl == null || gateway.origin == gatewayUrl) &&
+      (!checkCertificate || nodeCertificateSha256 == certificateSha256) &&
+      (loginDomain == null ||
+          loginDomain.isEmpty ||
+          _session['login_domain'] == loginDomain);
   Map<String, Object?> nativeStart(String directory) => {
     'op': 'start',
     'gatewayUrl': gateway.origin,
@@ -62,6 +73,30 @@ class HermesConfiguration {
     if (nodeCertificateSha256 != null)
       'nodeCertificateSha256': nodeCertificateSha256,
   };
+
+  /// A status refresh may rotate cookies, never change the verified identity or
+  /// the transport signing material. This object remains host-only.
+  HermesConfiguration withRotatedSession(Map<String, dynamic> session) {
+    for (final field in [
+      'username',
+      'device_id',
+      'connection_id',
+      'sign_key_hex',
+      'sign_key_provisional',
+      'login_method',
+      'login_domain',
+    ]) {
+      if (session[field] != _session[field]) {
+        throw const AppTunnelException('hermes_invalid_configuration');
+      }
+    }
+    return HermesConfiguration(
+      gatewayUrl: gateway.origin,
+      session: session,
+      nodeCertificateSha256: nodeCertificateSha256,
+    );
+  }
+
   Map<String, Object?> _json() => {
     'version': 1,
     'gatewayUrl': gateway.origin,

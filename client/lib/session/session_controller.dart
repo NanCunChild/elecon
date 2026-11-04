@@ -50,9 +50,11 @@ import '../core/transport/direct.dart';
 import '../core/transport/app_tunnel.dart';
 import '../core/transport/hermes/hermes.dart';
 import '../core/broker/inject_policy.dart' show BrokerManifestView;
+import '../core/scripts/invocation.dart';
 import '../core/scripts/manifest.dart';
 import '../core/scripts/registry.dart';
 import '../core/scripts/credentials.dart';
+import '../core/scripts/account_auth.dart';
 import '../core/scripts/runtime.dart';
 import '../core/scripts/input.dart';
 import '../core/scripts/device_input.dart';
@@ -197,6 +199,15 @@ class SessionController extends ChangeNotifier {
     _ssoMinter = minter;
   }
 
+  // Identity changes invalidate assistant grants independently from ordinary
+  // execution cancellation (backgrounding, locale changes and stale queries).
+  int _identityRevision = 0;
+  int get identityRevision => _identityRevision;
+  void _invalidateIdentity({bool notify = true}) {
+    _identityRevision++;
+    if (notify) notifyListeners();
+  }
+
   CredentialStore _store;
   SecureStore? _secure; // 已裁定的底层后端（用于 flush 等能力探测）
   BlobStore? _blobs;
@@ -225,6 +236,7 @@ class SessionController extends ChangeNotifier {
         (entry) =>
             entry.type != ScriptDataCache.type &&
             entry.type != ScriptReadinessStore.type &&
+            entry.type != ScriptAccountStore.type &&
             entry.type != AttendancePlacesStore.type &&
             entry.type != MessageArchiveStore.type &&
             entry.type != HermesConfigStore.type &&
@@ -452,6 +464,7 @@ class SessionController extends ChangeNotifier {
     }
     _secure = secure;
     _store = CredentialStore(store: secure);
+    _invalidateIdentity();
     // minter 闭包持 store 引用；换后端后须重建（注入 minter 则不动）。
     _wireSsoMinterFor(_school);
   }
@@ -508,6 +521,7 @@ class SessionController extends ChangeNotifier {
     if (_school?.id == school.id) return;
     _cancelTrustedScripts();
     _school = school;
+    _invalidateIdentity(notify: false);
     _wireSsoMinterFor(school);
     _scheduleSessionPersist();
     notifyListeners();
@@ -517,13 +531,29 @@ class SessionController extends ChangeNotifier {
   void clearSchoolSelection() {
     _cancelTrustedScripts();
     _school = null;
+    _invalidateIdentity(notify: false);
     _wireSsoMinterFor(null);
     _scheduleSessionPersist();
     notifyListeners();
   }
 
+  String get scriptLocale => _scripts.locale;
+
+  /// A language change invalidates in-flight presentation and its cache reads.
+  /// It does not reinstall scripts or retry operations with side effects.
+  set scriptLocale(String value) {
+    final next = normalizeScriptLocale(value) ?? 'zh';
+    if (_scripts.locale == next || _scripts.disposed) return;
+    _scripts.locale = next;
+    _cancelTrustedScripts();
+    notifyListeners();
+  }
+
   /// 登录收割完成后调用——store 已被收割路径写入，这里只触发 UI 刷新。
-  void onCredentialsChanged() => notifyListeners();
+  void onCredentialsChanged({bool identityChanged = false}) {
+    if (identityChanged) _invalidateIdentity(notify: false);
+    notifyListeners();
+  }
 
   Future<AdapterService?> _resolveAdapterService() async {
     if (_adapterService != null) return _adapterService;
@@ -548,6 +578,14 @@ class SessionController extends ChangeNotifier {
     void Function(String level, String message)? onLog,
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) async {
+    try {
+      params = ScriptInvocation.snapshotParams(params);
+    } catch (_) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'input_invalid_request',
+      );
+    }
     final school = _school;
     final generation = trustedScriptViewGeneration;
     if (school == null) {
@@ -584,6 +622,7 @@ class SessionController extends ChangeNotifier {
       return runTrustedScript(
         local.manifest.id,
         capability,
+        expectedDigest: local.digest,
         params: params,
         interactive: interactive,
         htmlStdlib: htmlStdlib,
@@ -833,6 +872,7 @@ class SessionController extends ChangeNotifier {
   /// 未选校时防御性抹除全部（无归属口径宁可多删，隐私优先于可用性）。
   void logout() {
     _cancelTrustedScripts();
+    _invalidateIdentity(notify: false);
     final id = _school?.id;
     for (final e in _store.list()) {
       if (id == null || e.schoolId == id) _store.delete(e.ref);

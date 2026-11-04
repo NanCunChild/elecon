@@ -22,6 +22,13 @@ typedef ScriptDeviceInputPresenter =
       ScriptSystemInputLease lease,
     );
 
+typedef ScriptPasswordPresenter =
+    Future<ScriptPasswordInput?> Function(
+      ScriptPackage package,
+      ScriptPasswordPrompt request,
+      bool Function() isActive,
+    );
+
 typedef ScriptScannerPresenter =
     Future<Object?> Function(ScriptPackage package, bool Function() isActive);
 
@@ -42,11 +49,15 @@ class _ScriptSessionState {
   bool recoveredRegistry = false;
   ScriptBrowserPresenter? presenter;
   ScriptInputPresenter? inputPresenter;
+  ScriptPasswordPresenter? passwordPresenter;
+  final accountEvents = <String, ScriptAccountEvent>{};
+  final accountChanges = ValueNotifier<int>(0);
   ScriptScannerPresenter? scannerPresenter;
   ScriptDeviceInputPresenter? deviceInputPresenter;
   final deviceInputLease = ScriptSystemInputLease();
   Future<bool> Function()? storageConsent;
   int generation = 0;
+  String locale = 'zh';
   bool disposed = false;
   int homeRevision = 0;
   Future<void>? refreshingHome;
@@ -76,6 +87,68 @@ extension TrustedScriptSession on SessionController {
   ScriptInputPresenter? get scriptInputPresenter => _scripts.inputPresenter;
   set scriptInputPresenter(ScriptInputPresenter? presenter) =>
       _scripts.inputPresenter = presenter;
+
+  ScriptPasswordPresenter? get scriptPasswordPresenter =>
+      _scripts.passwordPresenter;
+  set scriptPasswordPresenter(ScriptPasswordPresenter? value) =>
+      _scripts.passwordPresenter = value;
+  Listenable get scriptAccountChanges => _scripts.accountChanges;
+  ScriptAccountEvent? scriptAccountEvent(
+    ScriptPackage package,
+    String accountId,
+  ) => _scripts.accountEvents['${package.digest}:$accountId'];
+  ScriptAccountMetadata? savedScriptAccount(
+    ScriptPackage package,
+    String accountId,
+  ) {
+    if (_school?.id != package.manifest.schoolId) return null;
+    final auth = package.manifest.accounts
+        .where((a) => a.id == accountId)
+        .firstOrNull
+        ?.authentication;
+    if (auth == null) return null;
+    return ScriptAccountStore(
+      _store,
+    ).metadata(package.manifest.schoolId, auth.namespace);
+  }
+
+  Future<void> deleteSavedScriptAccount(
+    ScriptPackage package,
+    String accountId,
+  ) async {
+    final registry = await scriptRegistry;
+    if (_school?.id != package.manifest.schoolId ||
+        registry.find(package.manifest.id)?.package.digest != package.digest ||
+        registry.find(package.manifest.id)?.enabled != true) {
+      throw const ScriptAccountException('account_not_declared');
+    }
+    final auth = package.manifest.accounts
+        .where((a) => a.id == accountId)
+        .firstOrNull
+        ?.authentication;
+    if (auth == null) {
+      throw const ScriptAccountException('account_not_declared');
+    }
+    _cancelTrustedScripts();
+    final store = _store;
+    final backend = _secure;
+    final accounts = ScriptAccountStore(store);
+    final generation = _scripts.generation;
+    final epoch = registry.epoch;
+    await accounts.commit(
+      package.manifest.schoolId,
+      auth.namespace,
+      null,
+      () => _flushCredentialBackend(backend),
+      () =>
+          !_scripts.disposed &&
+          _scripts.generation == generation &&
+          registry.epoch == epoch &&
+          identical(store, _store) &&
+          _school?.id == package.manifest.schoolId,
+    );
+    _scripts.accountChanges.value++;
+  }
 
   ScriptScannerPresenter? get scriptScannerPresenter =>
       _scripts.scannerPresenter;
@@ -118,10 +191,13 @@ extension TrustedScriptSession on SessionController {
     state.generation++;
     state.homeRevision++;
     state.refreshingHome = null;
+    state.accountEvents.clear();
+    state.accountChanges.value++;
     if (dispose) {
       state.disposed = true;
       state.presenter = null;
       state.inputPresenter = null;
+      state.passwordPresenter = null;
       state.scannerPresenter = null;
       state.deviceInputPresenter = null;
     }
@@ -164,8 +240,11 @@ extension TrustedScriptSession on SessionController {
       schools.add(
         SchoolDescriptor(
           id: m.schoolId,
-          displayName: m.name,
-          subtitle: m.id,
+          displayName: m.school?.name ?? m.name,
+          subtitle: m.school?.type.name ?? m.id,
+          institutionId: m.school?.id,
+          typeId: m.school?.type.id,
+          typeName: m.school?.type.name,
           adapterId: 'script:${m.id}',
           login: LoginManifestView(
             schoolId: m.schoolId,
@@ -262,6 +341,51 @@ extension TrustedScriptSession on SessionController {
     selectSchool(school);
   }
 
+  /// ADR-076: only the selected, approved source can assess its accounts.
+  /// Null means revoked while checking; a null entry means no status contract.
+  Future<Map<String, String?>?> checkTrustedScriptAccounts(
+    ScriptPackage package,
+  ) async {
+    final generation = _scripts.generation;
+    final registry = await scriptRegistry;
+    bool active() =>
+        !_scripts.disposed &&
+        _scripts.generation == generation &&
+        _school?.id == package.manifest.schoolId &&
+        registry.find(package.manifest.id)?.enabled == true &&
+        registry.find(package.manifest.id)?.package.digest == package.digest;
+    if (!active()) return null;
+    final results = <String, String?>{};
+    for (final account in package.manifest.accounts) {
+      if (!active()) return null;
+      if (account.statusCapability == null) {
+        results[account.id] = null;
+        continue;
+      }
+      // account.session/status disables every interactive authentication port.
+      final run = await runTrustedScript(
+        package.manifest.id,
+        account.statusCapability!,
+        expectedDigest: package.digest,
+        params: account.statusParams,
+      );
+      if (!active()) return null;
+      final status = run.ok && run.data is Map
+          ? (run.data as Map)['status']
+          : null;
+      results[account.id] =
+          const {
+            'authenticated',
+            'signedOut',
+            'expired',
+            'unknown',
+          }.contains(status)
+          ? status as String
+          : 'unknown';
+    }
+    return results;
+  }
+
   Future<Set<String>> trustedScriptCapabilities() async {
     final school = _school;
     if (school == null) return const {};
@@ -328,6 +452,7 @@ extension TrustedScriptSession on SessionController {
       }
       return ScriptDataCache(
         _store,
+        locale: scriptLocale,
       ).read(package, capability, params: params ?? const {});
     } on Object {
       return null;
@@ -354,7 +479,10 @@ extension TrustedScriptSession on SessionController {
           _school?.id != school.id) {
         return null;
       }
-      return ScriptDataCache(_store).latest(package, capability);
+      return ScriptDataCache(
+        _store,
+        locale: scriptLocale,
+      ).latest(package, capability);
     } on Object {
       return null;
     }
@@ -429,6 +557,7 @@ extension TrustedScriptSession on SessionController {
             }
             final cached = ScriptDataCache(
               _store,
+              locale: scriptLocale,
             ).read(package, query.capability, params: query.params);
             if (!force && cached != null && !cached.isStale) continue;
             await runTrustedScript(
@@ -459,32 +588,46 @@ extension TrustedScriptSession on SessionController {
     ScriptBrowserCall? browserCall,
     Future<void> Function()? appTunnelLogin,
     ScriptInputCall? inputCall,
+    ScriptPasswordCall? passwordCall,
     ScriptRunCancellation? cancellation,
     void Function(String, String)? onLog,
-  }) => _queueTrustedScript(
-    id,
-    capability,
-    params: params,
-    expectedDigest: expectedDigest,
-    interactive: interactive,
-    htmlStdlib: htmlStdlib,
-    browserCall: browserCall,
-    inputCall: inputCall,
-    appTunnelLogin: appTunnelLogin,
-    cancellation: cancellation,
-    onLog: onLog,
-  );
+  }) {
+    final ScriptInvocation invocation;
+    try {
+      invocation = ScriptInvocation(
+        packageId: id,
+        capability: capability,
+        params: params,
+        expectedDigest: expectedDigest,
+        interactive: interactive,
+      );
+    } catch (_) {
+      return Future.value(
+        const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'input_invalid_request',
+        ),
+      );
+    }
+    return _queueTrustedScript(
+      invocation,
+      htmlStdlib: htmlStdlib,
+      browserCall: browserCall,
+      inputCall: inputCall,
+      passwordCall: passwordCall,
+      appTunnelLogin: appTunnelLogin,
+      cancellation: cancellation,
+      onLog: onLog,
+    );
+  }
 
   Future<CapabilityRun> _queueTrustedScript(
-    String id,
-    String capability, {
-    Map<String, dynamic>? params,
-    String? expectedDigest,
-    bool interactive = true,
+    ScriptInvocation invocation, {
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
     Future<void> Function()? appTunnelLogin,
     ScriptInputCall? inputCall,
+    ScriptPasswordCall? passwordCall,
     ScriptRunCancellation? cancellation,
     void Function(String, String)? onLog,
   }) {
@@ -500,15 +643,12 @@ extension TrustedScriptSession on SessionController {
         );
       }
       return _executeTrustedScript(
-        id,
-        capability,
+        invocation,
         expectedGeneration: generation,
-        params: params,
-        expectedDigest: expectedDigest,
-        interactive: interactive,
         htmlStdlib: htmlStdlib,
         browserCall: browserCall,
         inputCall: inputCall,
+        passwordCall: passwordCall,
         appTunnelLogin: appTunnelLogin,
         cancellation: cancellation,
         onLog: onLog,
@@ -519,22 +659,24 @@ extension TrustedScriptSession on SessionController {
   }
 
   Future<CapabilityRun> _executeTrustedScript(
-    String id,
-    String capability, {
+    ScriptInvocation invocation, {
     required int expectedGeneration,
-    Map<String, dynamic>? params,
-    String? expectedDigest,
-    bool interactive = true,
     String? htmlStdlib,
     ScriptBrowserCall? browserCall,
     Future<void> Function()? appTunnelLogin,
     ScriptInputCall? inputCall,
+    ScriptPasswordCall? passwordCall,
     ScriptRunCancellation? cancellation,
     void Function(String, String)? onLog,
   }) async {
+    final id = invocation.packageId;
+    final capability = invocation.capability;
+    final params = invocation.params;
+    final expectedDigest = invocation.expectedDigest;
+    final interactive = invocation.interactive;
     final state = _scripts;
     final statusOnly =
-        capability == 'account.session' && params?['operation'] == 'status';
+        capability == 'account.session' && params['operation'] == 'status';
     if (_changingNetwork) {
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
@@ -579,15 +721,26 @@ extension TrustedScriptSession on SessionController {
       );
     }
     if (!interactive &&
-        ScriptReadinessStore(_store).needsConfiguration(
-          installation.package,
-          capability,
-          params ?? const {},
-        )) {
+        ScriptReadinessStore(
+          _store,
+        ).needsConfiguration(installation.package, capability, params)) {
       return const CapabilityRun.failed(
         CapabilityFailureKind.configuration,
         'configuration_required',
       );
+    }
+    // A declared login can replace the principal without changing the school.
+    // Invalidate assistant grants at initiation, not only after a successful
+    // password response. Query-only ticket renewal does not enter this branch.
+    if (interactive &&
+        installation.package.manifest.accounts.any(
+          (account) => ScriptAccountBridge.isLoginInvocation(
+            account,
+            capability,
+            params,
+          ),
+        )) {
+      _invalidateIdentity();
     }
     final admissionEpoch = registry.epoch;
     try {
@@ -637,9 +790,31 @@ extension TrustedScriptSession on SessionController {
 
     final AppTunnelRoute? route;
     try {
-      route = await _networkRoutes.route(school.id);
+      final account = capability == 'account.session'
+          ? package.manifest.accounts
+                .where((a) => a.id == params['account'])
+                .firstOrNull
+          : null;
+      final dependency =
+          account?.appTunnelAccountId ??
+          package.manifest.capability(capability)?.appTunnelAccountId;
+      if (dependency != null) {
+        final declaration = package.manifest.accounts
+            .firstWhere((a) => a.id == dependency)
+            .appTunnel!;
+        route = _declaredTunnelRoute(declaration);
+      } else {
+        route = package.manifest.sdkVersion >= 16
+            ? null
+            : await _networkRoutes.route(school.id);
+      }
     } on AppTunnelException catch (error) {
-      return CapabilityRun.failed(CapabilityFailureKind.run, error.code);
+      return CapabilityRun.failed(
+        error.code == 'app_tunnel_required'
+            ? CapabilityFailureKind.auth
+            : CapabilityFailureKind.run,
+        error.code,
+      );
     }
     if (!active() || _changingNetwork) {
       route?.close();
@@ -669,17 +844,18 @@ extension TrustedScriptSession on SessionController {
     DevLog.instance.runtime('script start: $id $capability');
     CapabilityRun result;
     List<CredentialEntry>? previousCachedData;
+    ScriptAccountBridge? accountBridge;
     try {
       if (MessageArchiveStore.capabilities.contains(capability) &&
-          (params?['accountId'] == null ||
+          (params['accountId'] == null ||
               MessageArchiveStore(store).account(package)?['accountId'] !=
-                  params?['accountId'])) {
+                  params['accountId'])) {
         throw const ScriptRunException('input_invalid_request');
       }
       // Explicit account transitions revoke old archives before any network or
       // browser work, even when login/logout is later cancelled.
       if (capability == 'messages.session' &&
-          const ['login', 'logout'].contains(params?['operation'])) {
+          const ['login', 'logout'].contains(params['operation'])) {
         MessageArchiveStore(store).clearSource(school.id, id);
         await _flushCredentialBackend(backend);
         if (!active()) throw const ScriptRunException('script_cancelled');
@@ -691,14 +867,37 @@ extension TrustedScriptSession on SessionController {
         sdkVersion: package.manifest.sdkVersion,
         isActive: active,
       );
+      final accounts = accountBridge = ScriptAccountBridge(
+        package: package,
+        capability: capability,
+        params: params,
+        store: ScriptAccountStore(store),
+        persist: () => _flushCredentialBackend(backend),
+        isActive: active,
+        interactive: interactive && !statusOnly,
+        passwordCall: interactive && !statusOnly
+            ? passwordCall ??
+                  (state.passwordPresenter == null
+                      ? null
+                      : (request) =>
+                            state.passwordPresenter!(package, request, active))
+            : null,
+        onEvent: (event) {
+          if (!active()) return;
+          state.accountEvents['${package.digest}:${event.accountId}'] = event;
+          state.accountChanges.value++;
+        },
+      );
       Future<Object?> execute(
         ScriptBrowserCall? browser,
         ScriptInputCall? input,
       ) async => const TrustedScriptRuntime().run(
         package: package,
         capability: capability,
-        params: params ?? const {},
+        params: params,
+        locale: state.locale,
         credentials: credentials,
+        accountCall: accounts.call,
         fetch: transport.fetch,
         websocketCall: interactive ? socket.call : null,
         browserCall: route == null
@@ -709,6 +908,26 @@ extension TrustedScriptSession on SessionController {
                 );
               },
         inputCall: input,
+        appTunnelReuseCall: interactive && !statusOnly
+            ? (accountId) => loginHermesWithScriptAccount(
+                package: package,
+                accountId: accountId,
+                capability: capability,
+                params: params,
+                isActive: active,
+                cancellation: cancellation,
+                passwordCall:
+                    passwordCall ??
+                    (state.passwordPresenter == null
+                        ? null
+                        : (request) => state.passwordPresenter!(
+                            package,
+                            request,
+                            active,
+                          )),
+                webLogin: appTunnelLogin,
+              )
+            : null,
         appTunnelCall: interactive
             ? (method, provider) async {
                 if (!active()) {
@@ -723,9 +942,21 @@ extension TrustedScriptSession on SessionController {
                     throw const ScriptRunException('invocation_cancelled');
                   }
                 }
+                final target = capability == 'account.session'
+                    ? package.manifest.accounts
+                          .where((a) => a.id == params['account'])
+                          .firstOrNull
+                    : null;
+                final reuse = target?.credentialReuse;
+                final tunnel = target?.appTunnel;
                 return checkHermesAccount(
                   isActive: active,
                   cancellation: cancellation,
+                  expectedGatewayUrl: tunnel?.gatewayUrl ?? reuse?.gatewayUrl,
+                  expectedLoginDomain:
+                      tunnel?.loginDomain ?? reuse?.loginDomain,
+                  expectedCertificateSha256: tunnel?.nodeCertificateSha256,
+                  checkCertificate: tunnel != null,
                 );
               }
             : null,
@@ -808,14 +1039,14 @@ extension TrustedScriptSession on SessionController {
         archive.saveAccount(package, Map<String, dynamic>.from(data as Map));
       } else if (MessageArchiveStore.capabilities.contains(capability)) {
         final value = Map<String, dynamic>.from(data as Map);
-        if (!archive.accepts(package, capability, params ?? const {}, value)) {
+        if (!archive.accepts(package, capability, params, value)) {
           throw const ScriptRunException('source_response_invalid');
         }
         try {
           await archive.merge(
             package,
             capability,
-            params ?? const {},
+            params,
             value,
             isActive: active,
           );
@@ -834,7 +1065,8 @@ extension TrustedScriptSession on SessionController {
           .toList();
       if (ScriptDataCache(
         store,
-      ).write(package, capability, params ?? const {}, data)) {
+        locale: state.locale,
+      ).write(package, capability, params, data)) {
         previousCachedData = cachedBeforeWrite;
         state.homeRevision++;
       }
@@ -862,8 +1094,10 @@ extension TrustedScriptSession on SessionController {
             ? CapabilityFailureKind.configuration
             : CapabilityFailureKind.run,
         code,
+        businessCode: error is ScriptRunException ? error.businessCode : null,
       );
     } finally {
+      accountBridge?.close();
       cancellation?.removeListener(closeTransports);
       transport.close();
       state.transports.remove(transport);
@@ -879,7 +1113,7 @@ extension TrustedScriptSession on SessionController {
         clearedReadiness = readiness.entries(package, capability);
       }
       final changed = result.failureKind == CapabilityFailureKind.configuration
-          ? readiness.mark(package, capability, params ?? const {})
+          ? readiness.mark(package, capability, params)
           : result.ok && interactive
           ? readiness.clear(package, capability)
           : false;

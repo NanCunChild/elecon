@@ -19,6 +19,8 @@ import 'script_scanner_page.dart';
 import '../../core/scripts/input.dart';
 import 'script_install_dialog.dart';
 import 'bundled_scripts.dart';
+import 'script_selection_feedback.dart';
+import '../widgets/adaptive_school_title.dart';
 
 class ScriptWorkbenchPage extends StatefulWidget {
   const ScriptWorkbenchPage({super.key});
@@ -274,12 +276,29 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
           Text(l10n.scriptsDescription),
           DropdownButtonFormField<BundledScriptSchool>(
             initialValue: _bundled,
+            isExpanded: true,
+            isDense: false,
+            itemHeight: null,
             decoration: InputDecoration(labelText: l10n.scriptsBundled),
             items: [
               for (final school in bundledScriptSchools)
                 DropdownMenuItem(
                   value: school,
-                  child: Text(school.label(l10n)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AdaptiveSchoolTitle(
+                        text: school.schoolName(l10n),
+                        style: Theme.of(context).textTheme.titleMedium,
+                        minimumFontSize: 14,
+                      ),
+                      Text(
+                        school.typeName(l10n),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
                 ),
             ],
             onChanged: _busy
@@ -454,10 +473,20 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
                           installation.package.requiresUpdate
                       ? null
                       : () => _guard(
-                          () => _session!.selectTrustedScriptProvider(
-                            m.schoolId,
-                            capability,
-                            m.id,
+                          () => selectScriptWithFeedback(
+                            context,
+                            _session!,
+                            () async {
+                              await _session!.selectTrustedScriptProvider(
+                                m.schoolId,
+                                capability,
+                                m.id,
+                              );
+                              return (await _session!.scriptRegistry).provider(
+                                m.schoolId,
+                                capability,
+                              );
+                            },
                           ),
                         ),
                   icon: Icon(
@@ -484,10 +513,18 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
                     onPressed: _busy
                         ? null
                         : () => _guard(
-                            () => _session!.selectTrustedScriptProvider(
-                              m.schoolId,
-                              capability,
-                              null,
+                            () => selectScriptWithFeedback(
+                              context,
+                              _session!,
+                              () async {
+                                await _session!.selectTrustedScriptProvider(
+                                  m.schoolId,
+                                  capability,
+                                  null,
+                                );
+                                return (await _session!.scriptRegistry)
+                                    .provider(m.schoolId, capability);
+                              },
                             ),
                           ),
                     child: Text(l10n.scriptsRestoreProvider),
@@ -499,7 +536,14 @@ class _ScriptWorkbenchPageState extends State<ScriptWorkbenchPage> {
                           installation.package.requiresUpdate
                       ? null
                       : () => _guard(
-                          () => _session!.selectTrustedScriptSchool(m.id),
+                          () => selectScriptWithFeedback(
+                            context,
+                            _session!,
+                            () async {
+                              await _session!.selectTrustedScriptSchool(m.id);
+                              return installation.package;
+                            },
+                          ),
                         ),
                   child: Text(l10n.scriptsUseSchool),
                 ),

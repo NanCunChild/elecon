@@ -25,6 +25,39 @@ class CapabilityQueries {
   final SessionController session;
   final CapabilitySource? source;
 
+  /// Presentation metadata only. Execution still goes through the session's
+  /// authorization and cancellation gates; this does not grant permission.
+  Future<String?> schemaVersion(String capability) async {
+    final schoolId = session.selectedSchool?.id;
+    final generation = session.trustedScriptViewGeneration;
+    if (schoolId == null) return null;
+    try {
+      final registry = await session.scriptRegistry;
+      if (session.selectedSchool?.id != schoolId ||
+          session.trustedScriptViewGeneration != generation) {
+        return null;
+      }
+      final installation = source == null
+          ? null
+          : registry.find(source!.packageId);
+      final package = source == null
+          ? registry.provider(schoolId, capability)
+          : installation?.package;
+      if (package == null ||
+          package.requiresUpdate ||
+          package.manifest.schoolId != schoolId ||
+          (source != null &&
+              (installation?.enabled != true ||
+                  package.digest != source!.digest))) {
+        return null;
+      }
+      return package.manifest.capability(capability)?.schemaVersion;
+    } catch (_) {
+      // Missing/unavailable provenance cannot opt into a new field's meaning.
+      return null;
+    }
+  }
+
   Future<CapabilityRun> runCapability(
     String capability, {
     Map<String, dynamic>? params,

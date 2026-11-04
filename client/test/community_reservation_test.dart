@@ -114,9 +114,12 @@ void main() {
                   supportedLocales: AppLocalizations.supportedLocales,
                   theme: ThemeData(brightness: brightness),
                   builder: (context, child) => MediaQuery(
-                    data: MediaQuery.of(
-                      context,
-                    ).copyWith(textScaler: TextScaler.linear(2)),
+                    data: MediaQuery.of(context).copyWith(
+                      textScaler: TextScaler.linear(2),
+                      // Title scrolling has dedicated tests; keep navigation
+                      // assertions independent of its repeating animation.
+                      disableAnimations: true,
+                    ),
                     child: child!,
                   ),
                   home: MainShell(
@@ -183,9 +186,10 @@ void main() {
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
               builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(
-                  context,
-                ).copyWith(textScaler: TextScaler.linear(2)),
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(2),
+                  disableAnimations: true,
+                ),
                 child: child!,
               ),
               home: MainShell(

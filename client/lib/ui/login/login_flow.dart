@@ -79,6 +79,7 @@ Future<WebViewLoginResult?> runSchoolLogin(
     );
   }
 
+  session.onCredentialsChanged(identityChanged: true);
   final trace = PerfTrace.start(
     'school_login',
     attributes: <String, Object?>{'school': school.id},
@@ -123,7 +124,7 @@ Future<WebViewLoginResult?> runSchoolLogin(
     );
 
     if (result?.status == WebViewLoginStatus.success) {
-      session.onCredentialsChanged();
+      session.onCredentialsChanged(identityChanged: true);
       await session.flush(); // S 软件档：确保收割结果落盘
       trace.mark('credential_flush_complete');
     }

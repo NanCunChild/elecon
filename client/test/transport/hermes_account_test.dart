@@ -89,7 +89,7 @@ void main() {
       native.checkResult = {
         'status': 'authenticated',
         'accountLabel': 'Synthetic',
-        'session': 'SYNTHETIC_PRIVATE',
+        'session': syntheticSession(),
         'password': 'SECRET',
       };
       final state = await session.checkHermesAccount();
@@ -125,6 +125,119 @@ void main() {
     await failure;
     expect(native.cancelled, 1);
   });
+
+  test(
+    'manual cancellation rejects late status rotation without changing school',
+    () async {
+      final native = FakeHermes();
+      final session = SessionController(hermesBinding: native);
+      addTearDown(session.dispose);
+      session.selectSchool(testSchool());
+      await save(session);
+      await session.loginHermesAccount();
+      native.pending = Completer();
+      final failure = expectLater(
+        session.checkHermesAccount(),
+        throwsA(isA<Exception>()),
+      );
+      session.cancelHermesAccountLogin();
+      native.pending!.complete({
+        'status': 'authenticated',
+        'session': {...syntheticSession(), 'sid': 'SYNTHETIC_LATE_SID'},
+      });
+      await failure;
+      native.pending = null;
+      native.checkResult = {'status': 'unknown'};
+      await session.checkHermesAccount();
+      expect(
+        (native.calls.last['session'] as Map)['sid'],
+        'SYNTHETIC_PRIVATE_SID',
+      );
+      expect(native.cancelled, 1);
+    },
+  );
+
+  test(
+    'online status rotates protected cookies for the next call and restart',
+    () async {
+      final blobs = InMemoryBlobStore();
+      final native = FakeHermes();
+      final session = SessionController(
+        blobStoreProvider: () async => blobs,
+        hermesBinding: native,
+      )..scriptStorageConsent = () async => true;
+      addTearDown(session.dispose);
+      session.selectSchool(testSchool());
+      await save(session);
+      await session.loginHermesAccount();
+      final rotated = {
+        ...syntheticSession(),
+        'sid': 'SYNTHETIC_ROTATED_SID',
+        'cookies': [
+          {'name': 'sid', 'value': 'SYNTHETIC_ROTATED_SID'},
+        ],
+      };
+      native.checkResult = {
+        'status': 'authenticated',
+        'accountLabel': 'Synthetic',
+        'session': rotated,
+      };
+      final result = await session.checkHermesAccount();
+      expect(result['status'], 'authenticated');
+      expect(result.containsKey('session'), isFalse);
+      native.checkResult = {'status': 'unknown'};
+      await session.checkHermesAccount();
+      expect(
+        (native.calls.last['session'] as Map)['sid'],
+        'SYNTHETIC_ROTATED_SID',
+      );
+      final restored = HermesConfigStore(
+        CredentialStore(store: await SoftwareSecureStore.open(blobs)),
+      ).load(testSchool().id)!;
+      expect(
+        (restored.nativeCheck()['session'] as Map)['sid'],
+        'SYNTHETIC_ROTATED_SID',
+      );
+      expect(
+        utf8.decode((await blobs.read('store.enc'))!, allowMalformed: true),
+        isNot(contains('SYNTHETIC_ROTATED_SID')),
+      );
+    },
+  );
+
+  test(
+    'failed rotation persistence or identity mismatch retains previous material',
+    () async {
+      final blobs = FailingBlobs();
+      final native = FakeHermes();
+      final session = SessionController(
+        blobStoreProvider: () async => blobs,
+        hermesBinding: native,
+      )..scriptStorageConsent = () async => true;
+      addTearDown(session.dispose);
+      session.selectSchool(testSchool());
+      await save(session);
+      await session.loginHermesAccount();
+      native.checkResult = {
+        'status': 'authenticated',
+        'session': {...syntheticSession(), 'sid': 'SYNTHETIC_NEW_SID'},
+      };
+      blobs.fail = true;
+      expect(await session.checkHermesAccount(), {'status': 'unknown'});
+      blobs.fail = false;
+      native.checkResult = {
+        'status': 'authenticated',
+        'session': {...syntheticSession(), 'username': 'different-identity'},
+      };
+      expect(await session.checkHermesAccount(), {'status': 'unknown'});
+      native.checkResult = {'status': 'unknown'};
+      await session.checkHermesAccount();
+      expect(
+        (native.calls.last['session'] as Map)['sid'],
+        'SYNTHETIC_PRIVATE_SID',
+      );
+    },
+  );
 
   test(
     'the same school has independent tunnel accounts in local Profiles after restart',

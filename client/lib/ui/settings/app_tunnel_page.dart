@@ -163,7 +163,7 @@ class _AppTunnelPageState extends State<AppTunnelPage> {
         return;
       }
       final authenticated = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => _HermesLoginPage(bridge: bridge!)),
+        MaterialPageRoute(builder: (_) => HermesLoginPage(bridge: bridge!)),
       );
       if (mounted && request == _request) {
         if (authenticated == true) widget.onAuthenticated?.call();
@@ -436,14 +436,14 @@ class _AppTunnelPageState extends State<AppTunnelPage> {
   }
 }
 
-class _HermesLoginPage extends StatefulWidget {
-  const _HermesLoginPage({required this.bridge});
+class HermesLoginPage extends StatefulWidget {
+  const HermesLoginPage({super.key, required this.bridge});
   final HermesLoginBridge bridge;
   @override
-  State<_HermesLoginPage> createState() => _HermesLoginPageState();
+  State<HermesLoginPage> createState() => _HermesLoginPageState();
 }
 
-class _HermesLoginPageState extends State<_HermesLoginPage>
+class _HermesLoginPageState extends State<HermesLoginPage>
     with WidgetsBindingObserver {
   @override
   void initState() {

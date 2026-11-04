@@ -87,7 +87,56 @@ Future<void> _pumpUntil(WidgetTester tester, bool Function() completed) async {
   fail('The expected script UI state did not arrive');
 }
 
+Future<void> _waitSelectionCheck(
+  WidgetTester tester,
+  SessionController session,
+  String id,
+) async {
+  final package = (await session.scriptRegistry).find(id)!.package;
+  await _pumpUntil(
+    tester,
+    () => find
+        .byKey(ValueKey('script-selection-${package.digest}-complete'))
+        .evaluate()
+        .isNotEmpty,
+  );
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    // flutter_qjs_next shares its host-function ReceivePort across runtimes.
+    // Initialize that listener in the real event loop, before any widget's
+    // fake_async zone: later tests must not send replies through a frozen
+    // previous test's microtask queue. Exercise the actual host bridge too.
+    final session = SessionController();
+    try {
+      final raw = jsonDecode(_package()) as Map<String, dynamic>;
+      raw['source'] = '''export const capabilities={
+        'notice.list':async(ctx)=>{
+          await ctx.credentials.set('warmup','SYNTHETIC');
+          return {items:[]};
+        }
+      };''';
+      final package = ScriptPackage.parse(jsonEncode(raw));
+      await session.installTrustedScript(
+        package,
+        approvedDigest: package.digest,
+      );
+      await session.selectTrustedScriptSchool(package.manifest.id);
+      final result = await session.runTrustedScript(
+        package.manifest.id,
+        'notice.list',
+        interactive: false,
+        htmlStdlib: '',
+      );
+      expect(result.ok, isTrue, reason: result.reason);
+      expect(session.credentialCount, 1);
+    } finally {
+      session.dispose();
+    }
+  });
+
   Future<void> prepare(WidgetTester tester) async {
     // CachingAssetBundle futures must not retain a previous test's fake zone.
     rootBundle.clear();
@@ -156,14 +205,14 @@ void main() {
       await session.bootstrap();
       await tester.pumpWidget(_app(session, const ScriptWorkbenchPage()));
       await tester.pumpAndSettle();
-      expect(find.text('Xidian University (undergraduate)'), findsOneWidget);
+      expect(find.text('Undergraduate'), findsOneWidget);
       for (final school in bundledScriptSchools) {
         if (school == bundledScriptSchools.last) {
           await tester.tap(
             find.byType(DropdownButtonFormField<BundledScriptSchool>),
           );
           await tester.pumpAndSettle();
-          await tester.tap(find.text('Xidian University (postgraduate)').last);
+          await tester.tap(find.text('Postgraduate').last);
           await tester.pumpAndSettle();
         }
         await tester.tap(find.text('Review bundled school scripts'));
@@ -188,6 +237,7 @@ void main() {
         );
         await tester.tap(find.text('Trust and install'));
         await _pumpUntil(tester, () => session.selectedSchool?.id == school.id);
+        await _waitSelectionCheck(tester, session, school.dataId);
         await tester.pumpAndSettle();
         final registry = await session.scriptRegistry;
         expect(registry.find(school.dataId)?.enabled, isTrue);
@@ -244,8 +294,9 @@ void main() {
       await session.installTrustedScript(legacy, approvedDigest: legacy.digest);
       await tester.pumpWidget(_app(session, const OnboardingPage()));
       await tester.pumpAndSettle();
-      expect(find.text('Xidian University (undergraduate)'), findsOneWidget);
-      expect(find.text('Xidian University (postgraduate)'), findsOneWidget);
+      expect(find.text('Undergraduate'), findsOneWidget);
+      expect(find.text('Postgraduate'), findsOneWidget);
+      expect(find.text('Xidian University'), findsOneWidget);
       expect(find.text('UI School xidian'), findsNothing);
       expect((await session.scriptRegistry).find('legacy-script'), isNotNull);
       expect(session.availableSchools.single.id, 'xidian');
@@ -300,6 +351,7 @@ void main() {
         tester,
         () => find.text('Trust and install this script?').evaluate().isEmpty,
       );
+      await _waitSelectionCheck(tester, session, school.dataId);
       await tester.pumpAndSettle();
       expect((await session.scriptRegistry).find(school.loginId), isNull);
       expect(
@@ -330,8 +382,9 @@ void main() {
     await tester.pumpWidget(_app(session, const OnboardingPage()));
     await tester.pumpAndSettle();
     expect((await session.scriptRegistry).installations, isEmpty);
-    expect(find.text('Xidian University (undergraduate)'), findsOneWidget);
-    await tester.tap(find.text('Xidian University (postgraduate)'));
+    expect(find.text('Undergraduate'), findsOneWidget);
+    expect(find.text('Xidian University'), findsOneWidget);
+    await tester.tap(find.text('Postgraduate'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Select and continue'));
     await _pumpUntil(
@@ -351,6 +404,7 @@ void main() {
       tester,
       () => session.selectedSchool?.id == 'xidian_postgraduate',
     );
+    await _waitSelectionCheck(tester, session, 'school-xidian-postgraduate');
     await tester.pumpAndSettle();
     expect((await session.scriptRegistry).installations, hasLength(1));
     expect(tester.takeException(), isNull);

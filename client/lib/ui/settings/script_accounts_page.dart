@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/scripts/registry.dart';
+import '../../core/scripts/account_auth.dart';
 import '../../core/scripts/manifest.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
@@ -162,7 +163,34 @@ class _AccountCardState extends State<_AccountCard> {
   @override
   void initState() {
     super.initState();
+    widget.session.scriptAccountChanges.addListener(_changed);
     WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _deletePassword() async {
+    try {
+      await widget.session.deleteSavedScriptAccount(
+        widget.installation.package,
+        widget.account.id,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).accountPasswordDeleted),
+        ),
+      );
+    } on ScriptAccountException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).scriptsFailed(error.code)),
+        ),
+      );
+    }
   }
 
   Future<void> _check() async {
@@ -193,13 +221,18 @@ class _AccountCardState extends State<_AccountCard> {
       _checking = false;
       _state = result.ok && result.data is Map
           ? Map<String, dynamic>.from(result.data as Map)
-          : {'status': 'unknown'};
+          : {
+              'status': 'unknown',
+              if (result.reason == 'app_tunnel_required')
+                'tunnelRequired': true,
+            };
     });
   }
 
   @override
   void dispose() {
     _cancellation?.cancel();
+    widget.session.scriptAccountChanges.removeListener(_changed);
     super.dispose();
   }
 
@@ -207,10 +240,34 @@ class _AccountCardState extends State<_AccountCard> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final account = widget.account;
-    final status = _state?['status'];
+    final event = widget.session.scriptAccountEvent(
+      widget.installation.package,
+      account.id,
+    );
+    ScriptAccountMetadata? saved;
+    try {
+      saved = widget.session.savedScriptAccount(
+        widget.installation.package,
+        account.id,
+      );
+    } on ScriptAccountException {
+      /* Corrupt storage is shown by the login operation. */
+    }
+    final status = event?.status ?? _state?['status'];
+    final reason = switch (event?.reason) {
+      'credentialsRejected' => l10n.accountReasonRejected,
+      'accountDisabled' => l10n.accountReasonDisabled,
+      'interactionRequired' ||
+      'primaryExpired' => l10n.accountReasonInteraction,
+      'recoveryBlocked' => l10n.accountPasswordBlocked,
+      'networkUnknown' => l10n.accountReasonUnknown,
+      _ => saved?.blocked == true ? l10n.accountPasswordBlocked : null,
+    };
     final signedIn = status == 'authenticated';
     final description = _checking
         ? l10n.scriptAccountChecking
+        : _state?['tunnelRequired'] == true
+        ? l10n.scriptTunnelRequired
         : switch (status) {
             'authenticated' => l10n.scriptAccountAuthenticated,
             'signedOut' => l10n.scriptAccountSignedOut,
@@ -228,16 +285,27 @@ class _AccountCardState extends State<_AccountCard> {
           children: [
             Text(account.name, style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 8),
-            Text(account.instructions),
-            const SizedBox(height: 8),
-            Text(
-              l10n.scriptAccountsUsedBy(
-                account.capabilities
-                    .map((id) => _purpose(l10n, id))
-                    .toSet()
-                    .join(l10n.commonListSeparator),
+            if (account.appTunnel case final tunnel?) Text(tunnel.gatewayUrl),
+            if (account.appTunnelAccountId case final dependency?) ...[
+              Text(
+                l10n.scriptTunnelDependency(
+                  widget.installation.package.manifest.accounts
+                      .firstWhere((a) => a.id == dependency)
+                      .name,
+                ),
               ),
-            ),
+            ],
+            if (account.credentialReuse case final reuse?)
+              Text(
+                l10n.scriptAccountCredentialReuse(
+                  widget.installation.package.manifest.accounts
+                      .firstWhere(
+                        (source) => source.id == reuse.sourceAccountId,
+                      )
+                      .name,
+                  reuse.gatewayUrl,
+                ),
+              ),
             if (account.statusCapability != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -251,6 +319,16 @@ class _AccountCardState extends State<_AccountCard> {
               if (signedIn && id is String && id.isNotEmpty && id != label)
                 Text(id),
             ],
+            if (reason != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(reason),
+              ),
+            if (saved != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(l10n.accountPasswordSaved),
+              ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -277,6 +355,14 @@ class _AccountCardState extends State<_AccountCard> {
                           : l10n.settingsActionLogin,
                     ),
                   ),
+                if (saved != null)
+                  TextButton(
+                    key: ValueKey('account-delete-password:${account.id}'),
+                    onPressed: !_available || _checking || _loggingIn
+                        ? null
+                        : _deletePassword,
+                    child: Text(l10n.accountPasswordDelete),
+                  ),
                 if (account.statusCapability != null)
                   TextButton(
                     onPressed: !_available || _checking || _loggingIn
@@ -284,6 +370,47 @@ class _AccountCardState extends State<_AccountCard> {
                         : _check,
                     child: Text(l10n.scriptAccountCheck),
                   ),
+              ],
+            ),
+            ExpansionTile(
+              key: ValueKey(
+                'account-details:${widget.installation.package.manifest.id}:${account.id}',
+              ),
+              tilePadding: EdgeInsets.zero,
+              expandedCrossAxisAlignment: CrossAxisAlignment.start,
+              title: Text(
+                l10n.scriptAccountDetails,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              children: [
+                Text(account.instructions),
+                const SizedBox(height: 8),
+                Text(
+                  l10n.scriptAccountsUsedBy(
+                    account.capabilities
+                        .map((id) => _purpose(l10n, id))
+                        .toSet()
+                        .join(l10n.commonListSeparator),
+                  ),
+                ),
+                if (account.appTunnel case final tunnel?) ...[
+                  const SizedBox(height: 8),
+                  Text(l10n.scriptTunnelManagedDescription),
+                  const SizedBox(height: 8),
+                  Text(l10n.appTunnelDomain),
+                  Text(
+                    tunnel.loginDomain.isEmpty
+                        ? l10n.scriptTunnelDefaultDomain
+                        : tunnel.loginDomain,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(l10n.appTunnelCertificate),
+                  SelectableText(
+                    tunnel.nodeCertificateSha256 ??
+                        l10n.scriptTunnelSystemCertificate,
+                  ),
+                ],
+                const SizedBox(height: 8),
               ],
             ),
           ],

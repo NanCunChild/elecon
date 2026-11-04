@@ -106,6 +106,16 @@ void main() {
         expect(find.text('Account other'), findsNothing);
         expect(
           find.text('Official sign-in instructions for second.'),
+          findsNothing,
+        );
+        final details = find.byKey(
+          const ValueKey('account-details:second:account'),
+        );
+        await tester.ensureVisible(details);
+        await tester.tap(details);
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Official sign-in instructions for second.'),
           findsOneWidget,
         );
         expect(session.credentialCount, 0);

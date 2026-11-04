@@ -7,6 +7,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import '../scripts/script_input_presenter.dart';
 import '../scripts/script_presenter.dart';
+import '../settings/script_accounts_page.dart';
 import '../home/section_card.dart';
 import 'chat_page.dart';
 
@@ -56,6 +57,7 @@ class _ServicePageState extends State<_ServicePage>
   bool get _hasAccount =>
       widget.package.manifest.capability(_accountCapability) != null;
   bool get _loggedIn => _account?['status'] == 'authenticated';
+  bool get _tunnelRequired => _error == 'app_tunnel_required';
 
   @override
   void initState() {
@@ -63,6 +65,27 @@ class _ServicePageState extends State<_ServicePage>
     WidgetsBinding.instance.addObserver(this);
     // This widget only exists while its tab is visible. Discovery itself never
     // executes a script and hidden IndexedStack children cannot log in.
+    if (_hasAccount) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _run(_accountCapability, operation: 'status');
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ServicePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.session, widget.session) &&
+        oldWidget.package.digest == widget.package.digest &&
+        oldWidget.messages == widget.messages) {
+      return;
+    }
+    _request++;
+    _cancellation?.cancel();
+    _account = null;
+    _messages = null;
+    _error = null;
+    _busy = false;
     if (_hasAccount) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _run(_accountCapability, operation: 'status');
@@ -99,7 +122,12 @@ class _ServicePageState extends State<_ServicePage>
   Future<void> _run(String capability, {String? operation}) async {
     if (_busy) return;
     final request = ++_request;
-    final generation = widget.session.trustedScriptViewGeneration;
+    final session = widget.session;
+    final package = widget.package;
+    final generation = session.trustedScriptViewGeneration;
+    bool active() =>
+        _isCurrent(request, session, package) &&
+        generation == session.trustedScriptViewGeneration;
     final cancellation = ScriptRunCancellation();
     _cancellation = cancellation;
     setState(() {
@@ -113,13 +141,14 @@ class _ServicePageState extends State<_ServicePage>
       final result =
           await presentScriptInput(
                 context,
-                widget.package,
+                package,
                 (input) => presentScriptBrowser(
                   context,
-                  widget.package,
-                  (browser) => widget.session.runTrustedScript(
-                    widget.package.manifest.id,
+                  package,
+                  (browser) => session.runTrustedScript(
+                    package.manifest.id,
                     capability,
+                    expectedDigest: package.digest,
                     params: operation != null
                         ? {'operation': operation}
                         : const {},
@@ -132,15 +161,13 @@ class _ServicePageState extends State<_ServicePage>
                 onCancel: cancellation.cancel,
               )
               as CapabilityRun;
-      if (!mounted ||
-          request != _request ||
-          generation != widget.session.trustedScriptViewGeneration) {
-        return;
-      }
+      if (!active()) return;
       setState(() {
         if (!result.ok) {
           _error = result.reason ?? 'script_failed';
-          if (_error == 'authentication_required') _account = null;
+          if (_error == 'authentication_required' || _tunnelRequired) {
+            _account = null;
+          }
           return;
         }
         final data = Map<String, dynamic>.from(result.data as Map);
@@ -159,7 +186,7 @@ class _ServicePageState extends State<_ServicePage>
                   conversationId: raw['conversationId'] as String,
                   text: raw['text'] as String,
                   kind:
-                      widget.package.manifest
+                      package.manifest
                               .capability('messages.list')
                               ?.schemaVersion ==
                           '1.1'
@@ -176,12 +203,66 @@ class _ServicePageState extends State<_ServicePage>
         }
       });
     } catch (_) {
-      if (mounted && request == _request) {
+      if (active()) {
         setState(() => _error = 'script_failed');
       }
     } finally {
       if (identical(_cancellation, cancellation)) _cancellation = null;
       cancellation.dispose();
+      if (mounted && request == _request) setState(() => _busy = false);
+    }
+  }
+
+  bool _isCurrent(
+    int request,
+    SessionController session,
+    ScriptPackage package,
+  ) =>
+      mounted &&
+      request == _request &&
+      identical(session, widget.session) &&
+      package.digest == widget.package.digest &&
+      session.selectedSchool?.id == package.manifest.schoolId;
+
+  Future<void> _openAccounts() async {
+    if (_busy) return;
+    final request = ++_request;
+    final session = widget.session;
+    final package = widget.package;
+    var schoolChanged = false;
+    void watchSchool() {
+      schoolChanged |= session.selectedSchool?.id != package.manifest.schoolId;
+    }
+
+    session.addListener(watchSchool);
+    setState(() => _busy = true);
+    try {
+      final registry = await session.scriptRegistry;
+      final epoch = registry.epoch;
+      if (!mounted || !_isCurrent(request, session, package) || schoolChanged) {
+        return;
+      }
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => const ScriptAccountsPage()),
+      );
+      if (!_isCurrent(request, session, package) ||
+          schoolChanged ||
+          registry.epoch != epoch ||
+          registry.find(package.manifest.id)?.enabled != true ||
+          registry.find(package.manifest.id)?.package.digest !=
+              package.digest) {
+        return;
+      }
+      // The user may have signed into the tunnel. Recheck only; connecting the
+      // forum remains an explicit action and never replays the previous login.
+      setState(() => _busy = false);
+      if (_hasAccount) await _run(_accountCapability, operation: 'status');
+    } catch (_) {
+      if (_isCurrent(request, session, package) && !schoolChanged) {
+        setState(() => _error = 'script_failed');
+      }
+    } finally {
+      session.removeListener(watchSchool);
       if (mounted && request == _request) setState(() => _busy = false);
     }
   }
@@ -239,6 +320,8 @@ class _ServicePageState extends State<_ServicePage>
                         FilledButton(
                           onPressed: _busy
                               ? null
+                              : _tunnelRequired
+                              ? _openAccounts
                               : () => _run(
                                   _accountCapability,
                                   operation: 'login',
@@ -268,10 +351,20 @@ class _ServicePageState extends State<_ServicePage>
                       child: Text(
                         _error == 'authentication_required'
                             ? l10n.communityLoginRequired
+                            : _tunnelRequired
+                            ? l10n.scriptTunnelRequired
                             : _error == 'input_cancelled'
                             ? l10n.scriptsInputCancelled
                             : l10n.communityRequestFailed,
                         style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ),
+                  if (_tunnelRequired)
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: TextButton(
+                        onPressed: _busy ? null : _openAccounts,
+                        child: Text(l10n.scriptAccountsTitle),
                       ),
                     ),
                   if (_messages case final messages?) ...[

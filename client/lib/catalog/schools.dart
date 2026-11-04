@@ -20,6 +20,9 @@ class SchoolDescriptor {
     required this.subtitle,
     required this.login,
     required this.adapterId,
+    this.institutionId,
+    this.typeId,
+    this.typeName,
     this.tlsProceedHosts = const {},
     this.available = true,
     this.capabilityCredentials = const {},
@@ -29,6 +32,11 @@ class SchoolDescriptor {
   final String displayName;
   final String subtitle;
   final String adapterId;
+
+  /// ADR-079: presentation grouping only; [id] remains the credential scope.
+  final String? institutionId;
+  final String? typeId;
+  final String? typeName;
   final LoginManifestView login;
   final Set<String> tlsProceedHosts;
   final bool available;
@@ -108,6 +116,20 @@ class SchoolDescriptor {
       capabilityCredentials: policy,
     );
   }
+}
+
+/// Display grouping never changes the individual descriptors' security scopes.
+List<List<SchoolDescriptor>> groupSchoolChoices(
+  Iterable<SchoolDescriptor> schools,
+) {
+  final groups = <String, List<SchoolDescriptor>>{};
+  for (final school in schools) {
+    final key = school.institutionId == null
+        ? 'scope:${school.id}'
+        : 'institution:${school.institutionId}';
+    groups.putIfAbsent(key, () => []).add(school);
+  }
+  return [for (final group in groups.values) List.unmodifiable(group)];
 }
 
 Set<String> _declaredCapabilityIds(Map<String, dynamic> manifest) {

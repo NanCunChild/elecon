@@ -16,6 +16,7 @@ import '../scripts/script_presenter.dart';
 import '../settings/app_tunnel_page.dart';
 import '../../session/session_scope.dart';
 import '../scripts/script_input_presenter.dart';
+import '../scripts/script_password_dialog.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import 'webview_login_page.dart';
 
@@ -57,7 +58,16 @@ class _ScriptLoginPageState extends State<ScriptLoginPage> {
     setState(() => _finished = true);
     // Let PopScope rebuild before popping the completed operation.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) Navigator.of(context).pop(result);
+      if (!mounted) return;
+      final navigator = Navigator.of(context);
+      final route = ModalRoute.of(context);
+      if (route?.isCurrent == true) {
+        navigator.pop(result);
+      } else if (route?.isActive == true) {
+        // A timed-out input may still be on top until its cancellation tick.
+        // Complete this login route, never pop a differently typed dialog.
+        navigator.removeRoute(route!, result);
+      }
     });
   }
 
@@ -68,6 +78,7 @@ class _ScriptLoginPageState extends State<ScriptLoginPage> {
 
   Future<void> _login() async {
     final session = widget.session;
+    session.onCredentialsChanged(identityChanged: true);
     final generation = _generation;
     final l10n = AppLocalizations.of(context);
     try {
@@ -85,10 +96,27 @@ class _ScriptLoginPageState extends State<ScriptLoginPage> {
           widget.school.adapterId.substring('script:'.length);
       final installation = registry.find(id);
       final package = installation?.package;
-      final account = package?.manifest.accounts
-          .where((a) => a.id == widget.accountId)
+      final requestedAccountId =
+          widget.accountId ??
+          (widget.requiredRef == null &&
+                  (package?.manifest.sdkVersion ?? 0) >= 14
+              ? package?.manifest.accounts
+                    .where((a) => a.authentication != null)
+                    .firstOrNull
+                    ?.id
+              : null);
+      var account = package?.manifest.accounts
+          .where((a) => a.id == requestedAccountId)
           .firstOrNull;
-      final capability = widget.accountId == null
+      if (account?.appTunnelAccountId case final dependency?) {
+        final target = package!.manifest.accounts.firstWhere(
+          (a) => a.id == dependency,
+        );
+        if (!session.hasDeclaredTunnelConfiguration(target.appTunnel!)) {
+          account = target;
+        }
+      }
+      final capability = requestedAccountId == null
           ? 'generic.section'
           : account?.loginCapability;
       if (session.selectedSchool?.id != widget.school.id ||
@@ -133,9 +161,48 @@ class _ScriptLoginPageState extends State<ScriptLoginPage> {
             cancellation: _cancellation,
             browserCall: call,
             inputCall: input,
+            passwordCall: (request) => presentScriptPassword(
+              context,
+              request,
+              () =>
+                  mounted &&
+                  !_finished &&
+                  !_cancellation.isCancelled &&
+                  generation == session.trustedScriptViewGeneration,
+            ),
             appTunnelLogin: () async {
               if (!mounted || _finished || _cancellation.isCancelled) {
                 throw const ScriptRunException('invocation_cancelled');
+              }
+              if (account?.appTunnel case final tunnel?) {
+                final bridge = await session.createHermesLoginBridge(
+                  gatewayUrl: tunnel.gatewayUrl,
+                  nodeCertificateSha256: tunnel.nodeCertificateSha256,
+                  package: package,
+                  isAuthorized: () =>
+                      mounted && !_finished && !_cancellation.isCancelled,
+                );
+                if (!mounted || _finished || _cancellation.isCancelled) {
+                  bridge.dispose();
+                  throw const ScriptRunException('invocation_cancelled');
+                }
+                final page = Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => HermesLoginPage(bridge: bridge),
+                  ),
+                );
+                _tunnelPage = page.then<void>((authenticated) {
+                  _tunnelAuthenticated = authenticated == true;
+                });
+                try {
+                  await _tunnelPage;
+                } finally {
+                  bridge.dispose();
+                }
+                if (!_tunnelAuthenticated) {
+                  throw const ScriptRunException('invocation_cancelled');
+                }
+                return;
               }
               final page = Navigator.of(context).push<void>(
                 MaterialPageRoute(

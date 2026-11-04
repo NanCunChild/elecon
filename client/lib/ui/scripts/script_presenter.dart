@@ -57,7 +57,18 @@ Future<Object?> presentScriptBrowser(
       throw const ScriptRunException('invocation_cancelled');
     }
     if (bridge == null) {
-      final created = ScriptBrowserBridge(policy: package.manifest.network);
+      final contentOnly = method == 'openContent';
+      final pageId = contentOnly ? arguments['id'] : null;
+      final pages = package.manifest.webContent;
+      if (contentOnly && !pages.any((page) => page.id == pageId)) {
+        throw const ScriptBrowserException('browser_content_undeclared');
+      }
+      final created = ScriptBrowserBridge(
+        policy: package.manifest.network,
+        contentOnly: contentOnly,
+        contentPages: pages,
+        contentDigest: package.digest,
+      );
       bridge = created;
       created.prepare();
       final l10n = AppLocalizations.of(context);
@@ -67,7 +78,9 @@ Future<Object?> presentScriptBrowser(
         builder: (_) => ScriptBrowserPage(
           bridge: created,
           labels: ScriptBrowserPageLabels(
-            title: l10n.scriptsBrowserTitle,
+            title: contentOnly
+                ? pages.firstWhere((page) => page.id == pageId).title
+                : l10n.scriptsBrowserTitle,
             close: l10n.scriptsBrowserClose,
             loading: l10n.scriptsBrowserLoading,
             signingIn: l10n.scriptsBrowserSigningIn,

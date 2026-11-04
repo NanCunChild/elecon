@@ -13,6 +13,41 @@ extension HermesTunnelSession on SessionController {
   _HermesSessionState get _hermes =>
       _hermesStates[this] ??= _HermesSessionState();
 
+  bool hasDeclaredTunnelConfiguration(ScriptAppTunnel declaration) {
+    final school = _school;
+    if (school == null || _hermes.writing) return false;
+    try {
+      return HermesConfigStore(_store)
+              .load(school.id)
+              ?.matchesAccountScope(
+                gatewayUrl: declaration.gatewayUrl,
+                loginDomain: declaration.loginDomain,
+                certificateSha256: declaration.nodeCertificateSha256,
+                checkCertificate: true,
+              ) ==
+          true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  AppTunnelRoute _declaredTunnelRoute(ScriptAppTunnel declaration) {
+    final school = _school;
+    if (school == null || !hasDeclaredTunnelConfiguration(declaration)) {
+      throw const AppTunnelException('app_tunnel_required');
+    }
+    final config = HermesConfigStore(_store).load(school.id)!;
+    final provider =
+        _injectedAppTunnelProviders
+            ?.where((p) => p.id == declaration.service)
+            .firstOrNull ??
+        HermesProvider(
+          binding: _hermesBinding,
+          configuration: (_) async => config,
+        );
+    return AppTunnelRoute(provider, school.id);
+  }
+
   void _cancelHermesAuthentication() {
     final state = _hermesStates[this];
     if (state == null) return;
@@ -172,19 +207,222 @@ extension HermesTunnelSession on SessionController {
     }
   }
 
+  /// SDK15: a declared foreground target login reuses a protected source once.
+  Future<Map<String, Object?>> loginHermesWithScriptAccount({
+    required ScriptPackage package,
+    required String accountId,
+    required String capability,
+    required Map<String, dynamic> params,
+    required bool Function() isActive,
+    ScriptRunCancellation? cancellation,
+    ScriptPasswordCall? passwordCall,
+    Future<void> Function()? webLogin,
+  }) async {
+    final generation = _scripts.generation;
+    final store = _store;
+    final school = _school;
+    final authGeneration = _hermes.authenticationGeneration;
+    final registry = await scriptRegistry;
+    final epoch = registry.epoch;
+    final target = package.manifest.accounts
+        .where((a) => a.id == accountId)
+        .firstOrNull;
+    final reuse = target?.credentialReuse;
+    final tunnel = target?.appTunnel;
+    if (package.manifest.sdkVersion < 15 ||
+        target == null ||
+        (reuse == null && tunnel == null) ||
+        !ScriptAccountBridge.isLoginInvocation(target, capability, params) ||
+        !_scripts.deviceInputLease.foreground ||
+        school?.id != package.manifest.schoolId ||
+        registry.find(package.manifest.id)?.enabled != true ||
+        registry.find(package.manifest.id)?.package.digest != package.digest) {
+      throw const ScriptRunException('input_unavailable');
+    }
+    final source = reuse == null
+        ? null
+        : package.manifest.accounts.firstWhere(
+            (a) => a.id == reuse.sourceAccountId,
+          );
+    final archive = ScriptAccountStore(store);
+    final namespace = source?.authentication!.namespace;
+    final revision = namespace == null
+        ? null
+        : archive.entry(school!.id, namespace);
+    final schoolId = school!.id;
+    bool active() =>
+        !_scripts.disposed &&
+        _scripts.deviceInputLease.foreground &&
+        generation == _scripts.generation &&
+        identical(store, _store) &&
+        _school?.id == schoolId &&
+        registry.epoch == epoch &&
+        authGeneration == _hermes.authenticationGeneration &&
+        (namespace == null ||
+            identical(archive.entry(schoolId, namespace), revision)) &&
+        cancellation?.isCancelled != true &&
+        isActive();
+    if (!active()) throw const ScriptRunException('invocation_cancelled');
+    if (_hermes.request != null || _hermes.writing) {
+      throw const ScriptRunException('app_tunnel_unavailable');
+    }
+    final gatewayUrl = tunnel?.gatewayUrl ?? reuse!.gatewayUrl;
+    final domain = tunnel?.loginDomain ?? reuse!.loginDomain;
+    HermesAccount account;
+    bool? remember;
+    if (reuse != null) {
+      final saved = archive.read(schoolId, namespace!);
+      if (saved == null) {
+        throw const ScriptRunException('authentication_required');
+      }
+      account = HermesAccount(
+        gatewayUrl: gatewayUrl,
+        username: saved['username'] as String,
+        password: saved['password'] as String,
+        loginDomain: domain,
+        nodeCertificateSha256: tunnel?.nodeCertificateSha256,
+      );
+    } else {
+      if (tunnel!.loginMode == 'web') {
+        if (webLogin == null) {
+          throw const ScriptRunException('input_unavailable');
+        }
+        await webLogin();
+        return {
+          'status': 'unknown',
+        }; // UI rechecks after the browser identity transition.
+      }
+      if (passwordCall == null) {
+        throw const ScriptRunException('input_unavailable');
+      }
+      final saved = HermesAccountStore(store).load(schoolId);
+      final matching =
+          saved != null &&
+              saved.gateway.origin == gatewayUrl &&
+              saved.loginDomain == domain &&
+              saved.nodeCertificateSha256 == tunnel.nodeCertificateSha256
+          ? saved
+          : null;
+      final input = await passwordCall(
+        ScriptPasswordPrompt(
+          accountName: target.name,
+          username: matching?.username ?? '',
+          hasSavedPassword: matching != null,
+          blocked: false,
+          allowWeb: domain.isEmpty,
+          isActive: active,
+          instructions: target.instructions,
+          tunnel: tunnel,
+        ),
+      );
+      if (!active()) throw const ScriptRunException('invocation_cancelled');
+      if (input == null) throw const ScriptRunException('input_cancelled');
+      if (input.useWeb) {
+        if (domain.isNotEmpty || webLogin == null) {
+          throw const ScriptRunException('input_unavailable');
+        }
+        await webLogin();
+        return {'status': 'unknown'};
+      }
+      if (input.useSaved) {
+        if (matching == null) {
+          throw const ScriptRunException('authentication_required');
+        }
+        account = matching;
+      } else {
+        account = HermesAccount(
+          gatewayUrl: gatewayUrl,
+          username: input.username,
+          password: input.password,
+          loginDomain: domain,
+          nodeCertificateSha256: tunnel.nodeCertificateSha256,
+        );
+      }
+      remember = input.useSaved || input.remember;
+    }
+    HermesNativeRequest? request;
+    void cancel() => request?.cancel();
+    cancellation?.addListener(cancel);
+    try {
+      request = _hermesBinding.request(account.nativeAuthenticate());
+      _hermes.request = request;
+      final response = await request.result;
+      if (!active()) throw const ScriptRunException('invocation_cancelled');
+      final raw = response['session'];
+      if (raw is! Map) return {'status': 'unknown'};
+      var config = HermesConfiguration(
+        gatewayUrl: gatewayUrl,
+        session: Map<String, dynamic>.from(raw),
+        nodeCertificateSha256: tunnel?.nodeCertificateSha256,
+      );
+      if (!config.matchesAccountScope(
+        gatewayUrl: gatewayUrl,
+        loginDomain: domain,
+      )) {
+        return {'status': 'unknown'};
+      }
+      request = _hermesBinding.request(config.nativeCheck());
+      _hermes.request = request;
+      final state = await request.result;
+      if (!active()) throw const ScriptRunException('invocation_cancelled');
+      if (state['status'] != 'authenticated') {
+        return {'status': state['status'] == 'expired' ? 'expired' : 'unknown'};
+      }
+      if (state.containsKey('session')) {
+        if (state['session'] is! Map) return {'status': 'unknown'};
+        config = config.withRotatedSession(
+          Map<String, dynamic>.from(state['session'] as Map),
+        );
+      }
+      await _persistHermesChange(
+        schoolId: schoolId,
+        active: active,
+        change: () {
+          HermesConfigStore(store).save(schoolId, config);
+          if (remember == true) {
+            HermesAccountStore(store).save(schoolId, account);
+          }
+          if (remember == false) HermesAccountStore(store).clear(schoolId);
+        },
+      );
+      onCredentialsChanged();
+      final label = state['accountLabel'];
+      return {
+        'status': 'authenticated',
+        if (label is String && label.isNotEmpty && label.length <= 160)
+          'accountLabel': label,
+        'checkedAt': DateTime.now().toUtc().toIso8601String(),
+      };
+    } on ScriptRunException {
+      rethrow;
+    } catch (_) {
+      if (!active()) throw const ScriptRunException('invocation_cancelled');
+      return {'status': 'unknown'};
+    } finally {
+      cancellation?.removeListener(cancel);
+      if (identical(_hermes.request, request)) _hermes.request = null;
+    }
+  }
+
   /// Online proof from the fixed provider. Errors never imply expiration.
   Future<Map<String, Object?>> checkHermesAccount({
     bool Function()? isActive,
     ScriptRunCancellation? cancellation,
+    String? expectedGatewayUrl,
+    String? expectedLoginDomain,
+    String? expectedCertificateSha256,
+    bool checkCertificate = false,
   }) async {
     final school = _school;
     final store = _store;
     final generation = _scripts.generation;
+    final authenticationGeneration = _hermes.authenticationGeneration;
     bool active() =>
         !_scripts.disposed &&
         identical(store, _store) &&
         _school?.id == school?.id &&
         generation == _scripts.generation &&
+        authenticationGeneration == _hermes.authenticationGeneration &&
         cancellation?.isCancelled != true &&
         (isActive?.call() ?? true);
     if (school == null || !active()) {
@@ -192,8 +430,18 @@ extension HermesTunnelSession on SessionController {
     }
     HermesNativeRequest? request;
     try {
-      final config = HermesConfigStore(store).load(school.id);
+      final archive = HermesConfigStore(store);
+      final revision = archive.revision(school.id);
+      final config = archive.load(school.id);
       if (config == null) return {'status': 'signedOut'};
+      if (!config.matchesAccountScope(
+        gatewayUrl: expectedGatewayUrl,
+        loginDomain: expectedLoginDomain,
+        certificateSha256: expectedCertificateSha256,
+        checkCertificate: checkCertificate,
+      )) {
+        return {'status': 'signedOut'};
+      }
       if (_hermes.request != null || _hermes.writing) {
         return {'status': 'unknown'};
       }
@@ -205,6 +453,23 @@ extension HermesTunnelSession on SessionController {
       final status = value['status'];
       if (!const ['authenticated', 'expired', 'unknown'].contains(status)) {
         return {'status': 'unknown'};
+      }
+      if (status == 'authenticated' && value.containsKey('session')) {
+        final raw = value['session'];
+        if (raw is! Map) return {'status': 'unknown'};
+        final rotated = config.withRotatedSession(
+          Map<String, dynamic>.from(raw),
+        );
+        // Preserve the exact captured record revision through the mutation.
+        // Checking before change prevents a stale status overwriting a login.
+        if (!identical(archive.revision(school.id), revision)) {
+          return {'status': 'unknown'};
+        }
+        await _persistHermesChange(
+          schoolId: school.id,
+          active: active,
+          change: () => archive.save(school.id, rotated),
+        );
       }
       final label = value['accountLabel'];
       return {
@@ -254,18 +519,38 @@ extension HermesTunnelSession on SessionController {
   Future<HermesLoginBridge> createHermesLoginBridge({
     required String gatewayUrl,
     String? nodeCertificateSha256,
+    ScriptPackage? package,
+    bool Function()? isAuthorized,
   }) async {
     final school = _school;
     var generation = _scripts.generation;
     if (school == null) throw const AppTunnelException('app_tunnel_no_school');
     final gateway = HermesConfiguration.validateGateway(gatewayUrl);
     HermesConfiguration.validatePin(nodeCertificateSha256);
+    if (package != null &&
+        !package.manifest.accounts.any(
+          (a) =>
+              a.appTunnel?.gatewayUrl == gateway.origin &&
+              a.appTunnel?.loginDomain == '' &&
+              a.appTunnel?.nodeCertificateSha256 == nodeCertificateSha256,
+        )) {
+      throw const AppTunnelException('hermes_invalid_configuration');
+    }
     await ensurePersistentStore(
       confirmSoftwareFallback: _scripts.storageConsent ?? () async => false,
     );
+    final approvedRegistry = package == null ? null : await scriptRegistry;
+    final approvedEpoch = approvedRegistry?.epoch;
     final store = _store;
     bool active() =>
         !_scripts.disposed &&
+        (isAuthorized?.call() ?? true) &&
+        (package == null ||
+            (approvedRegistry!.epoch == approvedEpoch &&
+                approvedRegistry.find(package.manifest.id)?.enabled == true &&
+                approvedRegistry.find(package.manifest.id)?.package.digest ==
+                    package.digest &&
+                package.manifest.schoolId == school.id)) &&
         generation == _scripts.generation &&
         _school?.id == school.id &&
         identical(store, _store);
@@ -274,12 +559,13 @@ extension HermesTunnelSession on SessionController {
     if (!active()) throw const AppTunnelException('hermes_cancelled');
     final origins = <String>{gateway.origin};
     for (final installation in registry.installations) {
-      final package = installation.package;
+      final candidate = installation.package;
       if (installation.enabled &&
-          !package.requiresUpdate &&
-          package.manifest.schoolId == school.id) {
+          (package == null || installation.package.digest == package.digest) &&
+          !candidate.requiresUpdate &&
+          candidate.manifest.schoolId == school.id) {
         origins.addAll(
-          package.manifest.network.origins
+          candidate.manifest.network.origins
               .where((uri) => uri.scheme == 'https')
               .map((uri) => uri.origin),
         );

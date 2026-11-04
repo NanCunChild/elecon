@@ -13,6 +13,7 @@ import '../../session/session_scope.dart';
 import '../../session/session_controller.dart';
 import '../scripts/script_presenter.dart';
 import '../scripts/script_input_presenter.dart';
+import '../scripts/script_password_dialog.dart';
 import '../scripts/script_scanner_page.dart';
 import '../scripts/script_device_input_page.dart';
 import '../security/no_hardware_warning_dialog.dart';
@@ -40,6 +41,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   SessionController? _scriptSession;
   ScriptBrowserPresenter? _presenter;
   ScriptInputPresenter? _inputPresenter;
+  ScriptPasswordPresenter? _passwordPresenter;
   ScriptScannerPresenter? _scannerPresenter;
   ScriptDeviceInputPresenter? _deviceInputPresenter;
 
@@ -101,6 +103,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       )) {
         _scriptSession?.scriptDeviceInputPresenter = null;
       }
+      if (identical(
+        _scriptSession?.scriptPasswordPresenter,
+        _passwordPresenter,
+      )) {
+        _scriptSession?.scriptPasswordPresenter = null;
+      }
       _scriptSession = session;
       _presenter = (package, execute) => presentScriptBrowser(
         context,
@@ -116,6 +124,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         onCancel: session?.cancelTrustedScriptRuns,
       );
       session?.scriptInputPresenter = _inputPresenter;
+      _passwordPresenter = (package, request, valid) =>
+          presentScriptPassword(context, request, valid);
+      session?.scriptPasswordPresenter = _passwordPresenter;
       _scannerPresenter = (package, valid) =>
           presentScriptScanner(context, package, valid);
       session?.scriptScannerPresenter = _scannerPresenter;
@@ -149,6 +160,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       _deviceInputPresenter,
     )) {
       _scriptSession?.scriptDeviceInputPresenter = null;
+    }
+    if (identical(
+      _scriptSession?.scriptPasswordPresenter,
+      _passwordPresenter,
+    )) {
+      _scriptSession?.scriptPasswordPresenter = null;
     }
     super.dispose();
   }
@@ -328,10 +345,10 @@ class _MaterialShellBar extends StatelessWidget {
                 final tabW = constraints.maxWidth / n;
                 return Stack(
                   children: [
-                    AnimatedPositioned(
+                    AnimatedPositionedDirectional(
                       duration: const Duration(milliseconds: 280),
                       curve: Curves.easeOutCubic,
-                      left: selectedIndex * tabW + _inset,
+                      start: selectedIndex * tabW + _inset,
                       top: _inset,
                       bottom: _inset,
                       width: tabW - _inset * 2,
