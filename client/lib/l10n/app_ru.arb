@@ -806,5 +806,11 @@
       }
     }
   },
-  "scriptAccountDetails": "Сведения об учётной записи и подключении"
+  "scriptAccountDetails": "Сведения об учётной записи и подключении",
+  "classroomTeachingCapacity": "Учебные места",
+  "classroomExamCapacity": "Места для экзамена",
+  "classroomPartialCoverage": "Частичные результаты",
+  "classroomLoadedResultsFilter": "Фильтровать только загруженные результаты",
+  "classroomFloor": "Этаж",
+  "classroomCapacity": "Места"
 }

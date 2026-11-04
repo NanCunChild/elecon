@@ -32,6 +32,8 @@ class _ClassroomSectionState extends State<ClassroomSection>
   bool _prepared = false;
   String _room = "";
   String? _schemaVersion;
+  bool _usesScriptForm = false;
+  bool _formVersionReady = false;
   Map<String, dynamic> _scriptParams = {};
   bool _filtersLoading = false;
   String? _filterError;
@@ -46,19 +48,24 @@ class _ClassroomSectionState extends State<ClassroomSection>
   @override
   bool get useLatestCache => !_manualSelection;
   @override
-  Map<String, dynamic>? get cacheParams => {
-    ..._scriptParams,
-    'date': formatQueryDate(_date),
-    if (_selected?.buildingId != null) 'buildingId': _selected!.buildingId,
-    if (_selected != null) 'building': _selected!.building,
-    if (_selected?.campus != null) 'campus': _selected!.campus,
-  };
+  Map<String, dynamic>? get cacheParams => _usesScriptForm
+      ? _scriptParams
+      : {
+          ..._scriptParams,
+          'date': formatQueryDate(_date),
+          if (_selected?.buildingId != null)
+            'buildingId': _selected!.buildingId,
+          if (_selected != null) 'building': _selected!.building,
+          if (_selected?.campus != null) 'campus': _selected!.campus,
+        };
   @override
   void applyCache(ClassroomAvailable data) {
-    _scriptParams = {
-      for (final key in ['room', 'start', 'end'])
-        if (restoredParams[key] != null) key: restoredParams[key],
-    };
+    _scriptParams = _usesScriptForm
+        ? Map<String, dynamic>.from(restoredParams)
+        : {
+            for (final key in ['room', 'start', 'end'])
+              if (restoredParams[key] != null) key: restoredParams[key],
+          };
     _avail = data;
     _availPhase = QueryPhase.loaded;
     _date =
@@ -73,6 +80,8 @@ class _ClassroomSectionState extends State<ClassroomSection>
     _prepared = false;
     _room = "";
     _schemaVersion = null;
+    _usesScriptForm = false;
+    _formVersionReady = false;
     _scriptParams = {};
     _filtersLoading = false;
     _filterError = null;
@@ -90,22 +99,34 @@ class _ClassroomSectionState extends State<ClassroomSection>
     final pendingSession = cacheSession;
     if (pendingSession == null) return;
     final pendingGeneration = pendingSession.trustedScriptViewGeneration;
+    final pendingDataGeneration = pendingSession.trustedScriptDataGeneration;
     final pendingSource = CapabilitySourceScope.maybeOf(context)?.source;
     final version = await CapabilityQueries(
       pendingSession,
       source: pendingSource,
     ).schemaVersion(cacheCapability);
-    if (!isCurrentQuery(
-      this,
+    final controlsVersion = await scriptQueryControlsVersion(
       pendingSession,
-      pendingGeneration,
-      pendingSource,
-    )) {
+      cacheCapability,
+      source: pendingSource,
+    );
+    if (!isCurrentQuery(
+          this,
+          pendingSession,
+          pendingGeneration,
+          pendingSource,
+        ) ||
+        pendingSession.trustedScriptDataGeneration != pendingDataGeneration) {
       return;
     }
     _schemaVersion = version;
+    setState(() {
+      _usesScriptForm = controlsVersion == '2.0';
+      _formVersionReady = true;
+    });
     await super.restoreCache();
     if (!mounted) return;
+    if (_usesScriptForm) return;
     final session = cacheSession;
     if (session == null) return;
     final read = cacheRead;
@@ -161,7 +182,7 @@ class _ClassroomSectionState extends State<ClassroomSection>
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         await restoreCache();
-        if (mounted && _buildingsPhase == QueryPhase.idle) {
+        if (mounted && !_usesScriptForm && _buildingsPhase == QueryPhase.idle) {
           await _loadBuildings();
         }
       });
@@ -231,7 +252,11 @@ class _ClassroomSectionState extends State<ClassroomSection>
     final generation = session.trustedScriptViewGeneration;
     final source = CapabilitySourceScope.maybeOf(context)?.source;
     final building = _selected;
-    if (building == null) return;
+    if (!_usesScriptForm && building == null) return;
+    if (_usesScriptForm && !_scriptParams.containsKey('filters')) {
+      await _pickFilters();
+      return;
+    }
     setState(() => _availPhase = QueryPhase.loading);
     final version = await CapabilityQueries(
       session,
@@ -240,14 +265,17 @@ class _ClassroomSectionState extends State<ClassroomSection>
     if (!mounted || !isCurrentQuery(this, session, generation, source)) return;
     final params = <String, dynamic>{
       ..._scriptParams,
-      'date': formatQueryDate(_date),
+      if (!_usesScriptForm) 'date': formatQueryDate(_date),
       if (configure) 'configure': true,
     };
-    if (building.buildingId != null && building.buildingId!.isNotEmpty) {
+    if (!_usesScriptForm &&
+        building != null &&
+        building.buildingId != null &&
+        building.buildingId!.isNotEmpty) {
       params['buildingId'] = building.buildingId;
       params['building'] = building.building;
       if (building.campus != null) params['campus'] = building.campus;
-    } else {
+    } else if (!_usesScriptForm && building != null) {
       params['building'] = building.building;
     }
     final outcome = await runDecoded<ClassroomAvailable>(
@@ -299,7 +327,8 @@ class _ClassroomSectionState extends State<ClassroomSection>
       }
       if (selection.params == null) return;
       setState(() {
-        _scriptParams = Map.of(selection.params!)..remove('date');
+        _scriptParams = Map.of(selection.params!);
+        if (!_usesScriptForm) _scriptParams.remove('date');
         _date =
             DateTime.tryParse(selection.params!['date']?.toString() ?? '') ??
             _date;
@@ -353,6 +382,73 @@ class _ClassroomSectionState extends State<ClassroomSection>
 
   @override
   Widget build(BuildContext context) {
+    if (!_formVersionReady) {
+      return QueryPromptCard(
+        title: '空教室',
+        subtitle: AppLocalizations.of(context).classroomPreparing,
+        child: const LinearProgressIndicator(),
+      );
+    }
+    if (_usesScriptForm) {
+      final busy = _availPhase == QueryPhase.loading || _filtersLoading;
+      if (HomeCardPresentation.isPreview(context) && _avail != null) {
+        return withCacheTime(
+          _ClassroomResultCard(
+            data: _avail!,
+            trailing: SectionRefreshButton(
+              onPressed: busy ? null : _loadAvailable,
+            ),
+          ),
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          QueryPromptCard(
+            title: '空教室',
+            subtitle: AppLocalizations.of(context).queryFilters,
+            summary: querySummary(context, _availPhase),
+            trailing: SectionRefreshButton(
+              onPressed: busy ? null : _loadAvailable,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextButton.icon(
+                  onPressed: busy ? null : _pickFilters,
+                  icon: const Icon(Icons.filter_list),
+                  label: Text(AppLocalizations.of(context).queryFilters),
+                ),
+                if (_filterError != null) Text(_filterError!),
+                QueryPhaseBody(
+                  phase: _availPhase,
+                  error: _availError,
+                  onConfigure: () => _loadAvailable(configure: true),
+                  onLogin: () async {
+                    final session = SessionScope.of(context);
+                    final generation = session.trustedScriptViewGeneration;
+                    final source = CapabilitySourceScope.maybeOf(
+                      context,
+                    )?.source;
+                    final ok = await promptVisibleLogin(
+                      context,
+                      session,
+                      capability: cacheCapability,
+                    );
+                    if (ok &&
+                        isCurrentQuery(this, session, generation, source)) {
+                      await _pickFilters();
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          if (_avail != null)
+            withCacheTime(_ClassroomResultCard(data: _avail!)),
+        ],
+      );
+    }
     if (HomeCardPresentation.isPreview(context) && _avail != null) {
       return withCacheTime(
         _ClassroomResultCard(
@@ -525,6 +621,10 @@ class _ClassroomResultCard extends StatelessWidget {
       ),
       subtitle: [
         if (data.date != null) data.date!,
+        if (data.sourceSystem != null) data.sourceSystem!,
+        if (data.coverage?.complete == false)
+          AppLocalizations.of(context).classroomPartialCoverage,
+        if (data.coverage?.description != null) data.coverage!.description!,
         '${free.length}/${items.length} 空闲',
       ].join(' · '),
       child: items.isEmpty
@@ -553,8 +653,14 @@ class _ClassroomResultCard extends StatelessWidget {
                     title: Text('${room.building} ${room.room}'),
                     subtitle: Text(
                       [
-                        if (room.floor != null) '${room.floor} 层',
-                        if (room.capacity != null) '${room.capacity} 座',
+                        if (classroomRoomAttributes(
+                          room,
+                          AppLocalizations.of(context),
+                        ).isNotEmpty)
+                          classroomRoomAttributes(
+                            room,
+                            AppLocalizations.of(context),
+                          ),
                         if (room.status != null) _roomStatusText(room.status!),
                       ].join(' · '),
                     ),

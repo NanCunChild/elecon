@@ -605,5 +605,11 @@
       }
     }
   },
-  "scriptAccountDetails": "Hisob va ulanish tafsilotlari"
+  "scriptAccountDetails": "Hisob va ulanish tafsilotlari",
+  "classroomTeachingCapacity": "Dars uchun joylar",
+  "classroomExamCapacity": "Imtihon uchun joylar",
+  "classroomPartialCoverage": "Qisman natijalar",
+  "classroomLoadedResultsFilter": "Faqat yuklangan natijalarni filtrlash",
+  "classroomFloor": "Qavat",
+  "classroomCapacity": "Joylar"
 }

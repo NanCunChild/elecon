@@ -7,6 +7,19 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../../l10n/gen/app_localizations.dart';
 import 'models.dart';
 
+String classroomRoomAttributes(
+  ClassroomAvailableItems room,
+  AppLocalizations l10n,
+) => [
+  if (room.roomType != null) room.roomType!.label,
+  if (room.floor != null) '${l10n.classroomFloor}: ${room.floor}',
+  if (room.capacity != null) '${l10n.classroomCapacity}: ${room.capacity}',
+  if (room.teachingCapacity != null)
+    '${l10n.classroomTeachingCapacity}: ${room.teachingCapacity}',
+  if (room.examCapacity != null)
+    '${l10n.classroomExamCapacity}: ${room.examCapacity}',
+].join(' · ');
+
 class ClassroomInterval {
   const ClassroomInterval(this.start, this.end, this.status, this.reason);
   final DateTime start;
@@ -201,6 +214,10 @@ class _ClassroomTimelineState extends State<ClassroomTimeline> {
           l10n.classroomLocalTimeHint,
           style: Theme.of(context).textTheme.bodySmall,
         ),
+        Text(
+          l10n.classroomLoadedResultsFilter,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
         Wrap(
           spacing: 8,
           runSpacing: 4,
@@ -362,6 +379,8 @@ class _ClassroomTimelineState extends State<ClassroomTimeline> {
             '${selected.building} ${selected.room}',
             style: Theme.of(context).textTheme.titleSmall,
           ),
+          if (classroomRoomAttributes(selected, l10n).isNotEmpty)
+            Text(classroomRoomAttributes(selected, l10n)),
           if (classroomIntervals(selected).isEmpty)
             Text(l10n.classroomNoPreciseTimes),
           for (final interval in classroomIntervals(selected))

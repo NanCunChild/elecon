@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.grades.list",
+  "$comment": "草案：入参形状待 ADR 确认（红线 #6）。依据 elecon.grades.list 的 term 字段推导。",
+  "title": "grades.list 入参",
+  "type": "object",
+  "properties": {
+    "term": {
+      "type": "string",
+      "description": "学期标识，如 2025-2026-2；省略 = 当前学期（ADR-001 §3.4 缺失语义）"
+    }
+  }
+}

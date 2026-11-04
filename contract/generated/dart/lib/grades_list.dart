@@ -104,7 +104,7 @@ class GradesListItems {
   final String? sourceStatus;
   /// 该课程成绩排名，从 1 开始；缺失表示来源未提供。
   final int? rank;
-  final GradesListItemsGradeDistribution? gradeDistribution;
+  final Map<String, int>? gradeDistribution;
   /// 该课程的平均成绩；缺失表示来源未提供。
   final num? courseAverage;
   /// 课程的归一化成绩值及其记分类型。
@@ -117,11 +117,6 @@ class GradesListItems {
   final String category;
   /// 成绩发布状态：最终、暂定或未知。
   final String status;
-}
-
-class GradesListItemsGradeDistribution {
-  const GradesListItemsGradeDistribution();
-
 }
 
 class GradesListItemsScore {

@@ -11,13 +11,13 @@ class QueryControls {
     required this.controls,
   });
 
-  /// 这些控件绑定的同包只读领域查询；必须与请求target一致。
+  /// 同来源、同包只读查询目标；必须与请求target一致。
   final String target;
-  /// 条件对话框的纯文本标题，脚本按当前语言返回。
+  /// 原生表单的纯文本标题。
   final String title;
-  /// 显式应用条件并查询的按钮纯文本，不表示另一个能力或命令。
+  /// 显式提交查询的按钮纯文本；不能绑定其他能力或命令。
   final String submitLabel;
-  /// 固定原生控件描述；id和绑定参数均唯一，组合由原生消费者再次校验。
+  /// 0–32个字段实例；允许同kind多个不同id。完整元数据最多128KiB UTF-8，语义组合由宿主和脚本再校验。
   final List<QueryControlsControls> controls;
 }
 
@@ -26,26 +26,50 @@ class QueryControlsControls {
     required this.id,
     required this.kind,
     required this.label,
-    required this.parameter,
+    this.description,
+    this.required,
+    this.disabled,
+    this.disabledReason,
     this.initialValue,
-    this.initialEnd,
     this.options,
+    this.minimum,
+    this.maximum,
+    this.integer,
+    this.maxLength,
+    this.dependsOn,
+    this.timeZone,
   });
 
-  /// 此组条件内稳定唯一的控件标识，不是可执行函数名。
+  /// 同组稳定唯一字段标识；仅作为filters键，不是宿主参数或执行入口。
   final String id;
-  /// 固定原生输入种类，不接受脚本或HTML。
+  /// 宿主固定控件种类，学校业务含义由脚本定义。
   final String kind;
-  /// 输入标签纯文本，脚本按当前语言返回。
+  /// 字段纯文本标签。
   final String label;
-  /// 绑定已有标准参数；grades仅term；教室date/room；timeRange固定start并同时生成end。
-  final String parameter;
-  /// 可选默认值；省略表示沿当前参数或留空。timeRange格式HH:mm，必须与initialEnd同时给出。
-  final String? initialValue;
-  /// 仅timeRange可用的默认结束时刻HH:mm，与initialValue同日且更晚。
-  final String? initialEnd;
-  /// 仅select需要的唯一可选值列表，标签不是请求参数。
+  /// 可选纯文本帮助说明；省略表示没有附加说明。
+  final String? description;
+  /// 是否必须填写；省略等于false。false和0属于有效值。
+  final bool? required;
+  /// 字段当前是否不可用；省略等于false，禁用字段不得提交。
+  final bool? disabled;
+  /// 字段暂不可用的纯文本原因；disabled=true时应提供。
+  final String? disabledReason;
+  /// 仅用于初始化或无已有有效值时的默认值；类型须匹配kind且满足当前约束/选项，省略表示空值。
+  final Object? initialValue;
+  /// select/multiSelect所需选项，value同组唯一；空数组表示当前没有可选项，依赖未就绪时声明disabled及原因。
   final List<QueryControlsControlsOptions>? options;
+  /// 仅number：允许的最小值（含），必须有限；省略不设下界。
+  final num? minimum;
+  /// 仅number：允许的最大值（含），必须有限且不小于minimum；省略不设上界。
+  final num? maximum;
+  /// 仅number：true要求整数；省略等于false。
+  final bool? integer;
+  /// 仅text：最大Unicode字符数，1–512；省略使用512。
+  final int? maxLength;
+  /// 上游字段id，必须存在、无自身引用且依赖无环；改变上游清除递归下游值再读取元数据。省略表示无依赖。
+  final List<String>? dependsOn;
+  /// 仅timeRange且必填：学校解释墙钟时刻所用IANA时区名称，不能从设备地区推断。
+  final String? timeZone;
 }
 
 class QueryControlsControlsOptions {
@@ -54,8 +78,8 @@ class QueryControlsControlsOptions {
     required this.label,
   });
 
-  /// 送给领域参数的稳定字符串值。
+  /// 提交给学校脚本的稳定字符串值，标签不参与寻址。
   final String value;
-  /// 供用户阅读的纯文本选项名称。
+  /// 选项纯文本名称。
   final String label;
 }

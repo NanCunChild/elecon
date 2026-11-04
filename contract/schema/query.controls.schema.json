@@ -1,8 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "elecon.query.controls",
-  "title": "查询条件控件",
+  "title": "脚本查询表单",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "target",
     "title",
@@ -16,82 +17,130 @@
         "grades.list",
         "classroom.available"
       ],
-      "description": "这些控件绑定的同包只读领域查询；必须与请求target一致。"
+      "description": "同来源、同包只读查询目标；必须与请求target一致。"
     },
     "title": {
       "type": "string",
-      "minLength": 1,
       "maxLength": 160,
-      "description": "条件对话框的纯文本标题，脚本按当前语言返回。"
+      "description": "原生表单的纯文本标题。",
+      "minLength": 1
     },
     "submitLabel": {
       "type": "string",
-      "minLength": 1,
       "maxLength": 80,
-      "description": "显式应用条件并查询的按钮纯文本，不表示另一个能力或命令。"
+      "description": "显式提交查询的按钮纯文本；不能绑定其他能力或命令。",
+      "minLength": 1
     },
     "controls": {
       "type": "array",
-      "minItems": 1,
-      "maxItems": 8,
-      "description": "固定原生控件描述；id和绑定参数均唯一，组合由原生消费者再次校验。",
+      "maxItems": 32,
+      "description": "0–32个字段实例；允许同kind多个不同id。完整元数据最多128KiB UTF-8，语义组合由宿主和脚本再校验。",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": [
           "id",
           "kind",
-          "label",
-          "parameter"
+          "label"
         ],
         "properties": {
           "id": {
             "type": "string",
-            "pattern": "^[a-z][a-zA-Z0-9._-]{0,63}$",
-            "description": "此组条件内稳定唯一的控件标识，不是可执行函数名。"
+            "maxLength": 64,
+            "description": "同组稳定唯一字段标识；仅作为filters键，不是宿主参数或执行入口。",
+            "pattern": "^(?!(?:prototype|constructor|__proto__)$)[a-z][a-zA-Z0-9._-]{0,63}$"
           },
           "kind": {
             "type": "string",
             "enum": [
-              "select",
               "text",
+              "number",
+              "boolean",
+              "select",
+              "multiSelect",
               "date",
               "timeRange"
             ],
-            "description": "固定原生输入种类，不接受脚本或HTML。"
+            "description": "宿主固定控件种类，学校业务含义由脚本定义。"
           },
           "label": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 160,
-            "description": "输入标签纯文本，脚本按当前语言返回。"
+            "description": "字段纯文本标签。",
+            "minLength": 1
           },
-          "parameter": {
+          "description": {
             "type": "string",
-            "enum": [
-              "term",
-              "date",
-              "room",
-              "start"
-            ],
-            "description": "绑定已有标准参数；grades仅term；教室date/room；timeRange固定start并同时生成end。"
+            "maxLength": 512,
+            "description": "可选纯文本帮助说明；省略表示没有附加说明。"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "是否必须填写；省略等于false。false和0属于有效值。"
+          },
+          "disabled": {
+            "type": "boolean",
+            "description": "字段当前是否不可用；省略等于false，禁用字段不得提交。"
+          },
+          "disabledReason": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "字段暂不可用的纯文本原因；disabled=true时应提供。",
+            "minLength": 1
           },
           "initialValue": {
-            "type": "string",
-            "maxLength": 128,
-            "description": "可选默认值；省略表示沿当前参数或留空。timeRange格式HH:mm，必须与initialEnd同时给出。"
-          },
-          "initialEnd": {
-            "type": "string",
-            "maxLength": 5,
-            "description": "仅timeRange可用的默认结束时刻HH:mm，与initialValue同日且更晚。"
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 512
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "maxItems": 32,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "maxLength": 512
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "start",
+                  "end"
+                ],
+                "properties": {
+                  "start": {
+                    "type": "string",
+                    "maxLength": 5,
+                    "description": "同日开始墙钟时刻，HH:mm；必须早于end。",
+                    "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                  },
+                  "end": {
+                    "type": "string",
+                    "maxLength": 5,
+                    "description": "同日结束墙钟时刻，HH:mm；不含该时刻。",
+                    "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                  }
+                }
+              }
+            ],
+            "description": "仅用于初始化或无已有有效值时的默认值；类型须匹配kind且满足当前约束/选项，省略表示空值。"
           },
           "options": {
             "type": "array",
-            "minItems": 1,
             "maxItems": 200,
-            "description": "仅select需要的唯一可选值列表，标签不是请求参数。",
+            "description": "select/multiSelect所需选项，value同组唯一；空数组表示当前没有可选项，依赖未就绪时声明disabled及原因。",
             "items": {
               "type": "object",
+              "additionalProperties": false,
               "required": [
                 "value",
                 "label"
@@ -99,20 +148,199 @@
               "properties": {
                 "value": {
                   "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128,
-                  "description": "送给领域参数的稳定字符串值。"
+                  "maxLength": 512,
+                  "description": "提交给学校脚本的稳定字符串值，标签不参与寻址。",
+                  "minLength": 1
                 },
                 "label": {
                   "type": "string",
-                  "minLength": 1,
                   "maxLength": 160,
-                  "description": "供用户阅读的纯文本选项名称。"
+                  "description": "选项纯文本名称。",
+                  "minLength": 1
                 }
               }
             }
+          },
+          "minimum": {
+            "type": "number",
+            "description": "仅number：允许的最小值（含），必须有限；省略不设下界。"
+          },
+          "maximum": {
+            "type": "number",
+            "description": "仅number：允许的最大值（含），必须有限且不小于minimum；省略不设上界。"
+          },
+          "integer": {
+            "type": "boolean",
+            "description": "仅number：true要求整数；省略等于false。"
+          },
+          "maxLength": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 512,
+            "description": "仅text：最大Unicode字符数，1–512；省略使用512。"
+          },
+          "dependsOn": {
+            "type": "array",
+            "maxItems": 31,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^(?!(?:prototype|constructor|__proto__)$)[a-z][a-zA-Z0-9._-]{0,63}$"
+            },
+            "description": "上游字段id，必须存在、无自身引用且依赖无环；改变上游清除递归下游值再读取元数据。省略表示无依赖。"
+          },
+          "timeZone": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "仅timeRange且必填：学校解释墙钟时刻所用IANA时区名称，不能从设备地区推断。",
+            "minLength": 1
           }
-        }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "text",
+                "description": "匹配此控件类型。"
+              },
+              "initialValue": {
+                "type": "string",
+                "maxLength": 512,
+                "description": "匹配当前控件类型的默认值。"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "number",
+                "description": "匹配此控件类型。"
+              },
+              "initialValue": {
+                "type": "number",
+                "description": "匹配当前控件类型的默认值。"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "boolean",
+                "description": "匹配此控件类型。"
+              },
+              "initialValue": {
+                "type": "boolean",
+                "description": "匹配当前控件类型的默认值。"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "options"
+            ],
+            "properties": {
+              "kind": {
+                "const": "select",
+                "description": "匹配此控件类型。"
+              },
+              "initialValue": {
+                "type": "string",
+                "maxLength": 512,
+                "description": "匹配当前控件类型的默认值。"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "options"
+            ],
+            "properties": {
+              "kind": {
+                "const": "multiSelect",
+                "description": "匹配此控件类型。"
+              },
+              "initialValue": {
+                "type": "array",
+                "maxItems": 32,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "maxLength": 512
+                },
+                "description": "匹配当前控件类型的默认值。"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "date",
+                "description": "匹配此控件类型。"
+              },
+              "initialValue": {
+                "type": "string",
+                "format": "date",
+                "description": "匹配当前控件类型的默认值。"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "timeZone"
+            ],
+            "properties": {
+              "kind": {
+                "const": "timeRange",
+                "description": "匹配此控件类型。"
+              },
+              "initialValue": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "start",
+                  "end"
+                ],
+                "properties": {
+                  "start": {
+                    "type": "string",
+                    "maxLength": 5,
+                    "description": "同日开始墙钟时刻，HH:mm；必须早于end。",
+                    "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                  },
+                  "end": {
+                    "type": "string",
+                    "maxLength": 5,
+                    "description": "同日结束墙钟时刻，HH:mm；不含该时刻。",
+                    "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                  }
+                },
+                "description": "匹配当前控件类型的默认值。"
+              }
+            }
+          }
+        ]
       }
     }
   }

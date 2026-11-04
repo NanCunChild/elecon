@@ -61,7 +61,7 @@ export interface GradesListItems {
   sourceStatus?: "normal" | "retake" | "makeup" | "deferred" | "exempt" | "改分" | "withdrawn" | "unknown";
   /** 该课程成绩排名，从 1 开始；缺失表示来源未提供。 */
   rank?: number;
-  gradeDistribution?: GradesListItemsGradeDistribution;
+  gradeDistribution?: Record<string, number>;
   /** 该课程的平均成绩；缺失表示来源未提供。 */
   courseAverage?: number;
   /** 课程的归一化成绩值及其记分类型。 */
@@ -74,9 +74,6 @@ export interface GradesListItems {
   category: "required" | "elective" | "unknown";
   /** 成绩发布状态：最终、暂定或未知。 */
   status: "final" | "provisional" | "unknown";
-}
-
-export interface GradesListItemsGradeDistribution {
 }
 
 export interface GradesListItemsScore {

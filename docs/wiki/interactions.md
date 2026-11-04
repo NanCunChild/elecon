@@ -6,7 +6,7 @@
 
 | 需求 | 使用方式 |
 |---|---|
-| 成绩学期、空教室日期/名称/时段 | 同包 `query.controls`，宿主提供固定输入与提交按钮 |
+| 学校自定义的成绩/空教室筛选条件 | 同包 `query.controls` 2.0，脚本创建通用控件实例，宿主渲染表单 |
 | 缺少业务资料，前台临时输入 | `ctx.ui.requestInput` |
 | 账号密码与保存密码 | [账号登录入口](accounts.md)，使用 `ctx.accounts.password` |
 | 空调开关、温度等 | 原生空调按钮 → `climate.command` → 单独查状态 |
@@ -35,6 +35,49 @@
 前台输入取消的返回值以具体 API 为准，例如 requestInput 返回 null；全局 fetch 的 AbortSignal 则拒绝 Promise。先在内部规范化自己流程需要的状态，再按能力 schema 返回；不要把取消统一伪造为空业务数据。验证码/MFA 独立会话与自动调度的未来设计见[统一计划](../planning/implementation.md#受信扩展)。
 
 ## 查询条件与提交按钮
+
+### 2.0：脚本创建字段
+
+依据 [ADR-082](../adr/adr_082_script_query_forms.md)，核心提供控件种类，脚本决定字段实例。核心没有一套预置的“座位数/楼层”开关；任意学校字段可以重复使用数字、文本等控件，无需修改宿主代码。当前支持目标仍为 `grades.list` 和 `classroom.available`。
+
+同包声明 `query.controls` 的 `schemaVersion: "2.0"`，以及目标领域能力。第一次读取可以省略 current 或传入空对象，例如 `{"target":"classroom.available","current":{}}`；依赖条件变化时为 `{"target":"classroom.available","current":{"campus":"demo"},"changed":"campus"}`。current 只包含字段草稿值，不包含宿主调用配置。
+
+下面是可返回的合成表单；它展示同一种数字控件可创建多个业务字段，不表示每所学校必须支持这些条件：
+
+```json
+{
+  "target": "classroom.available",
+  "title": "教室筛选",
+  "submitLabel": "查询",
+  "controls": [
+    {"id":"minimumSeats","kind":"number","label":"教学座位数至少","integer":true,"minimum":1},
+    {"id":"maximumFloor","kind":"number","label":"最高楼层","integer":true,"minimum":1},
+    {"id":"accessible","kind":"boolean","label":"需要无障碍设施"}
+  ]
+}
+```
+
+提交值为 `{"filters":{"minimumSeats":40,"maximumFloor":3,"accessible":true}}`；字段名不提升成顶层参数。脚本必须检查允许的字段、类型及组合，再映射源站请求或过滤完整响应。学校未提供容量或设施信息时不声明相应字段，未知数据不能当成满足条件。
+
+| kind | 值 | 主要约束 |
+|---|---|---|
+| text | 字符串 | maxLength，可选空值省略 |
+| number | 有限数字 | minimum/maximum，integer=true 表示整数；0有效 |
+| boolean | 布尔值 | false有效，与省略不同 |
+| select | 字符串 | 必须属于 options 的 value |
+| multiSelect | 不重复的字符串数组 | 至多32项，必须属于 options |
+| date | YYYY-MM-DD字符串 | 真实日历日期 |
+| timeRange | `{start,end}`，HH:mm | 同日start<end；控件提供timeZone说明学校时区 |
+
+每项的 id/kind/label 必填；description、required、disabled、disabledReason、initialValue 和 dependsOn 可选。字段 id 稳定唯一、符合 `[a-z][a-zA-Z0-9._-]{0,63}`，不能使用 constructor/prototype/__proto__。最多32字段、每个选择字段200选项、字符串512字符；filters/current至多32KiB，元数据至多128KiB。空 controls 合法，表示当前没有学校筛选项。
+
+依赖用 `dependsOn:["campus"]` 表达。上级改变时清除下级草稿，再调用同包 query.controls 读取新选项。引用必须存在且无环。未选择上级时可以返回 disabled=true、disabledReason="请先选择校区"、options=[]；元数据读取失败由页面显示失败/重试，不要伪装成没有选项。迟到响应不能覆盖新的草稿；只有最终提交才执行领域查询，取消不会应用草稿。禁用字段和未声明字段不提交。
+
+默认值只在字段首次出现且缺少值时初始化，不能覆盖有效草稿，也不重新填充用户清除或依赖变化清除的字段。动态选项由学校代码读取，核心不执行学校表达式；字段的私有业务含义不要求标准语义绑定。本版没有把字段名/中文标签解释为自动跨学校参数的机制。
+
+查询、缓存、选项元数据始终固定目标来源、批准 digest 和当前身份；旧来源结果不能继续填入新表单。西电 0.27.0 接入日期、校区/楼栋、时段、类型、教学/考试座位数，完整性指实际所选楼栋与日期；无占用记录不等于保证开放。输出 classroom.available 1.3 区分 teachingCapacity/examCapacity，保留旧 capacity 含义；未知值省略，原因沿 intervals.reason 返回。
+
+### 1.0：旧包固定参数控件
 
 增加能力声明：
 

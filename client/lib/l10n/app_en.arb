@@ -806,5 +806,11 @@
       }
     }
   },
-  "scriptAccountDetails": "Account and connection details"
+  "scriptAccountDetails": "Account and connection details",
+  "classroomTeachingCapacity": "Teaching seats",
+  "classroomExamCapacity": "Exam seats",
+  "classroomPartialCoverage": "Partial results",
+  "classroomLoadedResultsFilter": "Filter currently loaded results only",
+  "classroomFloor": "Floor",
+  "classroomCapacity": "Seats"
 }

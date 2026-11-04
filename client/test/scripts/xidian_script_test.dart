@@ -395,7 +395,7 @@ process.stdout.write(result.outputFiles[0].text);''',
     'source packages bind SDK 16 and combine browser login with authenticated data',
     () {
       expect(school.manifest.sdkVersion, 16);
-      expect(school.manifest.version, '0.26.0');
+      expect(school.manifest.version, '0.27.0');
       expect(school.manifest.browser, isTrue);
       expect(school.manifest.capabilities, hasLength(23));
       expect(school.manifest.capability('query.controls'), isNotNull);
@@ -439,12 +439,100 @@ process.stdout.write(result.outputFiles[0].text);''',
                 )
                 as Map;
         expect(output['submitLabel'], entry.value);
-        expect((output['controls'] as List).map((c) => c['parameter']), [
-          'date',
-          'room',
-          'start',
-        ]);
+        final controls = output['controls'] as List;
+        expect(
+          controls.every(
+            (c) => c['id'] is String && !c.containsKey('parameter'),
+          ),
+          isTrue,
+        );
+        expect(
+          controls.where((c) => c['kind'] == 'number').length,
+          greaterThanOrEqualTo(2),
+        );
+        expect(controls.any((c) => c['kind'] == 'timeRange'), isTrue);
+        expect(controls.any((c) => c['kind'] == 'multiSelect'), isTrue);
       }
+    },
+  );
+
+  test(
+    'compiled classroom filters keep typed capacities, room type and reasons',
+    () async {
+      seed('ehall');
+      final filters = {
+        'date': '2026-11-04',
+        'campus': 'S',
+        'building': 'A',
+        'minimumTeachingSeats': 30,
+        'roomTypes': ['1'],
+      };
+      final output =
+          await run(
+                'classroom.available',
+                params: {'term': '2026-2027-1', 'filters': filters},
+                fetch: (url, init) async {
+                  if (init['method'] != 'POST') {
+                    return response(url, '<html>app</html>');
+                  }
+                  if (url.endsWith('/jxlcx.do')) {
+                    return response(
+                      url,
+                      table('jxlcx', [
+                        {
+                          'JXLDM': 'A',
+                          'JXLMC': 'Synthetic hall',
+                          'XXXQDM': 'S',
+                          'XXXQDM_DISPLAY': 'Synthetic campus',
+                        },
+                      ]),
+                    );
+                  }
+                  if (url.endsWith('/rqzhzcjc.do')) {
+                    return response(url, {
+                      'datas': {
+                        'rqzhzcjc': {'ZC': 10, 'XQJ': 3},
+                      },
+                    });
+                  }
+                  if (url.endsWith('/cxjsqk.do')) {
+                    return response(
+                      url,
+                      table('cxjsqk', [
+                        {
+                          'JASDM': 'SYNTHETIC-101',
+                          'JASMC': '101',
+                          'JASLXDM': '1',
+                          'JASLXDM_DISPLAY': 'Synthetic multimedia',
+                          'SKZWS': 40,
+                          'KSZWS': 20,
+                          'JC1': '1_01,1_04',
+                        },
+                        {
+                          'JASDM': 'SYNTHETIC-102',
+                          'JASMC': '102',
+                          'JASLXDM': '1',
+                          'JASLXDM_DISPLAY': 'Synthetic multimedia',
+                          'JC1': '0_01',
+                        },
+                      ]),
+                    );
+                  }
+                  throw StateError('Unexpected synthetic endpoint');
+                },
+              )
+              as Map;
+      final item = (output['items'] as List).single as Map;
+      expect(item['teachingCapacity'], 40);
+      expect(item['examCapacity'], 20);
+      expect(item['roomType'], {'code': '1', 'label': 'Synthetic multimedia'});
+      expect(item.containsKey('capacity'), isFalse);
+      final reason =
+          ((item['intervals'] as List).first as Map)['reason'] as String;
+      expect(reason, contains('上课'));
+      expect(reason, contains('借用'));
+      expect(output['appliedFilters'], filters);
+      expect((output['coverage'] as Map)['complete'], true);
     },
   );
 

@@ -34,12 +34,18 @@ class _GradesSectionState extends State<GradesSection>
   @override
   String get cacheCapability => 'grades.list';
   @override
-  Map<String, dynamic>? get cacheParams =>
-      _selectedTerm == null ? null : {'term': _selectedTerm};
+  Map<String, dynamic>? get cacheParams => _customFilters != null
+      ? {'filters': _customFilters}
+      : _selectedTerm == null
+      ? null
+      : {'term': _selectedTerm};
   @override
   GradesList? decodeCache(Object? value) => gradesListFromDynamic(value);
   @override
   void applyCache(GradesList data) {
+    if (restoredParams['filters'] is Map) {
+      _customFilters = Map<String, dynamic>.from(restoredParams['filters']);
+    }
     _selectedTerm ??= restoredParams['term'] as String?;
     _data = data;
     _phase = QueryPhase.loaded;
@@ -51,6 +57,7 @@ class _GradesSectionState extends State<GradesSection>
     _phase = QueryPhase.idle;
     _summary = null;
     _selectedTerm = null;
+    _customFilters = null;
     _filterError = null;
     _error = null;
     _termsLoading = false;
@@ -62,6 +69,7 @@ class _GradesSectionState extends State<GradesSection>
   GpaSummary? _summary;
   String? _error;
   String? _selectedTerm;
+  Map<String, dynamic>? _customFilters;
   String? _filterError;
   bool _termsLoading = false;
   int _request = 0;
@@ -71,7 +79,6 @@ class _GradesSectionState extends State<GradesSection>
     final generation = session.trustedScriptViewGeneration;
     final source = CapabilitySourceScope.maybeOf(context)?.source;
     final request = ++_request;
-    final term = _selectedTerm;
     setState(() {
       _phase = QueryPhase.loading;
       _error = null;
@@ -80,7 +87,7 @@ class _GradesSectionState extends State<GradesSection>
       context,
       session,
       'grades.list',
-      params: {'term': ?term, if (configure) 'configure': true},
+      params: {...?cacheParams, if (configure) 'configure': true},
       decode: gradesListFromDynamic,
     );
     if (!mounted ||
@@ -93,7 +100,7 @@ class _GradesSectionState extends State<GradesSection>
     // 不把它的 needLogin/error 冒泡成整个成绩区的失败态。
     final summary = outcome.data == null
         ? null
-        : await _loadGpaSummary(session, term: term);
+        : await _loadGpaSummary(session, term: outcome.data!.term);
     if (!mounted ||
         request != _request ||
         !isCurrentQuery(this, session, generation, source)) {
@@ -124,10 +131,11 @@ class _GradesSectionState extends State<GradesSection>
     final read = cacheRead;
     final generation = session.trustedScriptViewGeneration;
     final source = CapabilitySourceScope.maybeOf(context)?.source;
-    final cached = await CapabilitySourceScope.queriesOf(
-      context,
-      session,
-    ).cachedCapability('gpa.summary', params: cacheParams);
+    final cached = await CapabilitySourceScope.queriesOf(context, session)
+        .cachedCapability(
+          'gpa.summary',
+          params: _data?.term == null ? null : {'term': _data!.term},
+        );
     if (isCurrentQuery(this, session, generation, source) &&
         read == cacheRead &&
         cached != null) {
@@ -168,7 +176,9 @@ class _GradesSectionState extends State<GradesSection>
         context,
         session,
         'grades.list',
-        current: {'term': _selectedTerm ?? _data?.term},
+        current: _customFilters != null
+            ? {'filters': _customFilters}
+            : {'term': _selectedTerm ?? _data?.term},
       );
       if (!mounted || !isCurrentQuery(this, session, generation, source)) {
         return;
@@ -178,6 +188,9 @@ class _GradesSectionState extends State<GradesSection>
         if (selection.params != null) {
           setState(() {
             _selectedTerm = selection.params!['term'] as String?;
+            _customFilters = selection.params!['filters'] is Map
+                ? Map<String, dynamic>.from(selection.params!['filters'])
+                : null;
             _data = null;
             _summary = null;
             cacheRead++;
@@ -305,7 +318,7 @@ class _GradesSectionState extends State<GradesSection>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_selectedTerm != null) _filters(),
+          _filters(),
           QueryPhaseBody(
             phase: _phase,
             error: _error,

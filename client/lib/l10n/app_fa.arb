@@ -605,5 +605,11 @@
       }
     }
   },
-  "scriptAccountDetails": "جزئیات حساب و اتصال"
+  "scriptAccountDetails": "جزئیات حساب و اتصال",
+  "classroomTeachingCapacity": "ظرفیت آموزشی",
+  "classroomExamCapacity": "ظرفیت امتحان",
+  "classroomPartialCoverage": "نتایج ناقص",
+  "classroomLoadedResultsFilter": "فقط نتایج بارگذاری‌شده را فیلتر کنید",
+  "classroomFloor": "طبقه",
+  "classroomCapacity": "ظرفیت"
 }

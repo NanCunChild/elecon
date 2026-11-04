@@ -1,5 +1,13 @@
 # `contract/` 变更流水
 
+## 2026-11-04 · 脚本查询表单与教室属性（ADR-082）
+
+- `query.controls` 输出/参数升为 2.0，保留 1.0 精确快照。脚本创建 0–32 个 text/number/boolean/select/multiSelect/date/timeRange 字段，id 仅作为独立 filters 键；current/changed 用于重新读取依赖选项，不授权执行查询或命令。新表单和已有默认值、依赖组合须经宿主语义校验。
+- `params.grades.list` 1.1、`params.classroom.available` 1.2 增加有界 filters（32 项、字符串最多 512 字符、多选最多 32 项、无 null，32 KiB UTF-8）；旧标准参数不改义，旧参数版本保留快照。输入支持通过同包 `query.controls@2.0` 协商，SDK17 无需新增运行接口。
+- `classroom.available` 1.3 增加可选 roomType、teachingCapacity、examCapacity、appliedFilters 与 coverage；容量单位人，缺失表示未知，旧 capacity 不重解释。coverage 完整性仅针对实际采用条件，不意味着全校。保留 1.1/1.2 输出验证器。
+- 生成器支持有界字典、键名验证和不重复数组。既有 grades.list.gradeDistribution 按其原 schema 正确生成为 Dart Map/TS Record，取代此前遗漏动态项的空类；成绩输出 schema 版本和含义不变。
+- 新来源声明需重新批准 digest；未知版本由旧宿主拒绝。旧包保留 1.0 表单行为，不自动获得任意字段输入含义。
+
 ## 2026-11-04 · SDK17 运行环境与错误协议（ADR-081）
 
 - 包格式仍为 `elecon-script/1`，增加 SDK17 可选版本，旧 SDK1–16 的 ctx 接口不改变。新包需提升版本并重新批准，旧宿主拒绝 SDK17。

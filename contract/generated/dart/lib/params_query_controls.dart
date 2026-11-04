@@ -6,8 +6,14 @@ library;
 class ParamsQueryControls {
   const ParamsQueryControls({
     required this.target,
+    this.current,
+    this.changed,
   });
 
-  /// 要描述条件的同包只读查询，固定目标白名单。
+  /// 要描述字段的同包只读查询目标。
   final String target;
+  /// 当前字段草稿，最多32项/32KiB UTF-8；字段值不是宿主参数。省略表示读取初始表单，空值省略对应key。
+  final Map<String, Object>? current;
+  /// 本次改变的字段id，用于重新求取依赖选项；无用户字段变更时省略。
+  final String? changed;
 }

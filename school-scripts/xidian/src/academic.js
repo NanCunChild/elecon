@@ -11,6 +11,7 @@ import { classroomDirectory } from "./classroom_directory.js";
 import { failure } from "./errors.js";
 import { dateOnly, integer, number, schoolDateTime, text } from "./normalize.js";
 import { createClient, parseUrl } from "./session.js";
+import { applyQueryFilters } from "./query_filters.js";
 
 const EH = "https://ehall.xidian.edu.cn";
 const PG = "https://yjspt.xidian.edu.cn/gsapp/sys";
@@ -644,6 +645,7 @@ async function gradeRows(client, pg) {
 }
 
 export async function gradesList(ctx, params = {}) {
+  params = applyQueryFilters("grades.list", params);
   const pg = postgraduate(params);
   const client = await createClient(ctx, pg ? "yjspt" : "ehall");
   const term = await resolveTerm(client, pg, params);
@@ -744,6 +746,47 @@ export async function classroomBuildings(_ctx, params = {}) {
   return output;
 }
 
+/** Live discovery for the new form; legacy classroom.buildings stays offline. */
+export async function classroomBuildingsLive(ctx, existingClient) {
+  const client = existingClient ?? await createClient(ctx, "ehall");
+  await openApp(client, false, "4768402106681759");
+  const rows = await pages(client, `${CLASSROOM}/jxlcx.do`, { "*order": "+XXXQDM,+PX,+JXLDM" }, "jxlcx");
+  const items = rows.map((row) => {
+    const buildingId = text(row.JXLDM);
+    const building = text(row.JXLJC) || text(row.JXLMC);
+    if (!buildingId || !building) throw new Error("academic_building_identity_missing");
+    const item = { buildingId, building };
+    optional(item, "campus", row.XXXQDM);
+    optional(item, "campusLabel", row.XXXQDM_DISPLAY ?? row.XXXQMC);
+    return item;
+  });
+  if (new Set(items.map((item) => item.buildingId)).size !== items.length)
+    throw new Error("academic_building_identity_duplicate");
+  return items;
+}
+
+function classroomCapacity(value) {
+  if (value == null || text(value) === "") return undefined;
+  const result = integer(value, "classroom_capacity");
+  if (result < 0) throw new Error("academic_classroom_capacity_invalid");
+  return result;
+}
+
+function classroomReason(ctx, raw) {
+  const names = {
+    "01": ["classroom.reasonCourse", "上课占用"],
+    "02": ["classroom.reasonExam", "考试占用"],
+    "03": ["classroom.reasonRescheduled", "调课占用"],
+    "04": ["classroom.reasonBorrowed", "教室借用"],
+    "05": ["classroom.reasonBlocked", "教室屏蔽"],
+  };
+  const codes = [...new Set(String(raw).split(",").filter((value) => value.startsWith("1_")).map((value) => value.slice(2)))];
+  return codes.map((code) => {
+    const [key, fallback] = names[code] ?? ["classroom.occupiedReason", "教务系统记录本节占用"];
+    return ctx.i18n?.t(key) ?? fallback;
+  }).join(" / ");
+}
+
 function sectionWindow(params) {
   let first = positive(params.sectionStart ?? 1, "section", 11);
   let last = positive(params.sectionEnd ?? 11, "section", 11);
@@ -767,8 +810,15 @@ function sectionWindow(params) {
 }
 
 export async function classroomAvailable(ctx, params = {}) {
+  params = applyQueryFilters("classroom.available", params);
   const pg = postgraduate(params);
   const client = await createClient(ctx, "ehall");
+  let known = classroomDirectory().find((item) => item.buildingId === params.buildingId);
+  if (params.filters?.building || params.filters?.campus) {
+    known = (await classroomBuildingsLive(ctx, client)).find((item) => item.buildingId === params.buildingId);
+    if (!known || (params.filters.campus && known.campus !== params.filters.campus))
+      throw new Error("classroom_campus_building_conflict");
+  }
   // Classroom APIs are shared, but the caller's term defaults follow its role.
   const termClient = pg && !text(params.term) ? await createClient(ctx, "yjspt") : client;
   const term = await resolveTerm(termClient, pg, params);
@@ -780,8 +830,8 @@ export async function classroomAvailable(ctx, params = {}) {
   await openApp(client, false, "4768402106681759");
   let building;
   if (buildingId) {
-    building = { buildingId, building: buildingName || buildingId };
-    optional(building, "campus", params.campus);
+    building = { buildingId, building: buildingName || known?.building || buildingId };
+    optional(building, "campus", params.campus ?? known?.campus);
   } else {
     const choices = campusFilter(classroomDirectory(), text(params.campus));
     const exact = choices.filter((b) => b.building === buildingName);
@@ -826,6 +876,7 @@ export async function classroomAvailable(ctx, params = {}) {
         { name: "XNXQDM", builder: "equal", linkOpt: "AND", value: term },
         { name: "ZC", builder: "equal", linkOpt: "AND", value: week },
         { name: "XQ", builder: "equal", linkOpt: "AND", value: weekday },
+        ...(params.filters?.campus ? [{ name: "XXXQDM", builder: "equal", linkOpt: "AND", value: params.filters.campus }] : []),
       ]),
       "*order": "+LC,+JASMC",
     },
@@ -871,17 +922,32 @@ export async function classroomAvailable(ctx, params = {}) {
         endAt: new Date(`${date}T${section.timeEnd}:00+08:00`).toISOString(),
         status: section.occupied ? "occupied" : "available",
         reason: section.occupied
-          ? (ctx.i18n?.t("classroom.occupiedReason") ?? "教务系统记录本节占用")
+          ? classroomReason(ctx, row[`JC${section.index}`])
           : (ctx.i18n?.t("classroom.availableReason") ?? "教务系统未记录本节占用；不代表教室开放"),
       }));
     }
     optional(item, "roomId", row.JASDM);
     optional(item, "floor", row.LC);
+    const typeLabel = text(row.JASLXDM_DISPLAY);
+    if (typeLabel) {
+      item.roomType = { label: typeLabel };
+      optional(item.roomType, "code", row.JASLXDM);
+    }
+    const teachingCapacity = classroomCapacity(row.SKZWS);
+    const examCapacity = classroomCapacity(row.KSZWS);
+    if (teachingCapacity !== undefined) item.teachingCapacity = teachingCapacity;
+    if (examCapacity !== undefined) item.examCapacity = examCapacity;
     return item;
   });
   if (text(params.roomId)) items = items.filter((item) => item.roomId === text(params.roomId));
   else if (text(params.room)) items = items.filter((item) => item.room.includes(text(params.room)));
   if (params.onlyAvailable === true) items = items.filter((item) => item.status === "available");
+  const filters = params.filters ?? {};
+  for (const [condition, field] of [["minimumTeachingSeats", "teachingCapacity"], ["minimumExamSeats", "examCapacity"]]) {
+    if (filters[condition] !== undefined)
+      items = items.filter((item) => item[field] !== undefined && item[field] >= filters[condition]);
+  }
+  if (filters.roomTypes?.length) items = items.filter((item) => filters.roomTypes.includes(item.roomType?.code));
   const output = {
     term,
     week,
@@ -891,6 +957,11 @@ export async function classroomAvailable(ctx, params = {}) {
     sourceSystem: "西电教务空教室",
     timeZone: "Asia/Shanghai",
     items,
+    appliedFilters: { ...filters },
+    coverage: {
+      complete: true,
+      description: `${building.building} · ${date || `${term} / ${week} / ${weekday}`} · 已完成本次楼栋、日期和条件范围的分页；不是全校结果`,
+    },
   };
   if (date) output.date = date;
   if (window.start) {

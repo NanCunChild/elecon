@@ -26,6 +26,10 @@ export interface ClassroomAvailable {
   updatedAt?: string;
   /** 符合查询条件的教室列表；无匹配教室时可为空数组。 */
   items?: ClassroomAvailableItems[];
+  /** 学校脚本实际采用的字段值；缺失表示来源不提供回显，不可猜测为请求原值。 */
+  appliedFilters?: Record<string, string | number | boolean | string[] | ClassroomAvailableAppliedFiltersValue>;
+  /** 实际查询条件范围的完整性证据；缺失表示完整性未知，不是完整或空结果。 */
+  coverage?: ClassroomAvailableCoverage;
 }
 
 export interface ClassroomAvailableItems {
@@ -53,6 +57,26 @@ export interface ClassroomAvailableItems {
   sections?: ClassroomAvailableItemsSections[];
   /** 已知绝对时段，左闭右开；同教室不得重叠，结束晚于开始；缺口为未知，不从节间或无课程推断开放。省略表示仅有旧聚合/节次数据。 */
   intervals?: ClassroomAvailableItemsIntervals[];
+  /** 学校教室类型；缺失表示未知，不生成通用默认类型。 */
+  roomType?: ClassroomAvailableItemsRoomType;
+  /** 教学布置的座位容量，单位人；缺失表示未知，不能以0代替或继承考试容量。 */
+  teachingCapacity?: number;
+  /** 考试布置的座位容量，单位人；缺失表示未知，不能以0代替或继承教学容量。 */
+  examCapacity?: number;
+}
+
+export interface ClassroomAvailableAppliedFiltersValue {
+  /** 同日开始墙钟时刻，HH:mm；必须早于end。 */
+  start: string;
+  /** 同日结束墙钟时刻，HH:mm；不含该时刻。 */
+  end: string;
+}
+
+export interface ClassroomAvailableCoverage {
+  /** 是否已完整覆盖实际采用条件的查询范围；true不等于查询全校，false表示仅部分结果。 */
+  complete: boolean;
+  /** 可选纯文本范围和不完整原因说明；不用于推断未返回教室的状态。 */
+  description?: string;
 }
 
 export interface ClassroomAvailableItemsSections {
@@ -77,4 +101,11 @@ export interface ClassroomAvailableItemsIntervals {
   status: "available" | "occupied" | "unknown";
   /** 学校脚本提供的状态依据或原因，纯文本；缺失表示来源未提供，宿主不得猜测。 */
   reason?: string;
+}
+
+export interface ClassroomAvailableItemsRoomType {
+  /** 学校提供的教室类型名称，不据名称推断设备或用途权限。 */
+  label: string;
+  /** 学校作用域的类型代码；缺失表示来源未提供，不能以label替代。 */
+  code?: string;
 }

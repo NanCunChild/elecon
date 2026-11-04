@@ -49,7 +49,11 @@ void main() {
         outputValidatorFor('elecon.classroom.available', '1.1')!(payload),
         isTrue,
       );
-      expect(outputValidatorFor('elecon.classroom.available', '1.3'), isNull);
+      expect(
+        outputValidatorFor('elecon.classroom.available', '1.3')!(payload),
+        isFalse,
+      );
+      expect(outputValidatorFor('elecon.classroom.available', '1.4'), isNull);
     },
   );
 

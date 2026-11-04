@@ -14,7 +14,7 @@ assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildXidianPackages())]);
 for (const role of ["undergraduate", "postgraduate"]) {
   const data = JSON.parse(first.get(`school-xidian-${role}.elecon.json`)!);
-  assert.equal(data.manifest.version, "0.26.0");
+  assert.equal(data.manifest.version, "0.27.0");
   assert.equal(data.manifest.sdkVersion, 16);
   assert.deepEqual(data.manifest.school, {
     id: "xidian",
@@ -49,7 +49,8 @@ for (const role of ["undergraduate", "postgraduate"]) {
   assert.deepEqual(data.manifest.accounts[1].capabilities, ["forum.session", "account.session"]);
   assert.equal(data.manifest.browser, true);
   assert.equal(data.manifest.capabilities.length, role === "undergraduate" ? 23 : 18);
-  assert.ok(data.manifest.capabilities.some((cap: { id: string }) => cap.id === "query.controls"));
+  assert.equal(data.manifest.capabilities.find((cap: { id: string }) => cap.id === "query.controls").schemaVersion, "2.0");
+  assert.equal(data.manifest.capabilities.find((cap: { id: string }) => cap.id === "classroom.available").schemaVersion, "1.3");
   assert.deepEqual(Object.keys(data.manifest.localization.messages).sort(), ["en", "fa", "ru", "uz", "zh"]);
   assert.ok(data.manifest.network.origins.includes("https://faculty.xidian.edu.cn"));
   assert.ok(data.manifest.capabilities.some((cap: { id: string }) => cap.id === "faculty.search"));

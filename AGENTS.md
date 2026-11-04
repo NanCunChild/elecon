@@ -1,6 +1,6 @@
 # AGENTS.md · elecon 开发总则
 
-> 当前基线：2026-11-04（ADR-081 统一运行模型与文档收敛；ADR-080 扩展按切片实施）。修改前先读本文、[当前架构](docs/architecture.md)及相关 [rules](docs/rules/)。旧总则已[归档并废弃](docs/archived/2026-10-31/AGENTS.pre-2026-10-31.md)，不再要求先读 ADR-000。
+> 当前基线：2026-11-04（ADR-082 脚本查询表单；ADR-081 统一运行模型；ADR-080 扩展按切片实施）。修改前先读本文、[当前架构](docs/architecture.md)及相关 [rules](docs/rules/)。旧总则已[归档并废弃](docs/archived/2026-10-31/AGENTS.pre-2026-10-31.md)，不再要求先读 ADR-000。
 
 elecon 面向学生聚合校园服务。学校差异集中在可更新的受信学校脚本；宿主负责执行授权、身份与网络边界、标准契约、原生页面与可编程网页容器。核心提供跨学校共性基底，学校交互与自动化策略尽量留在受信脚本。优先减少学校变更波及面与长期维护负担。现行规则集中在[当前架构](docs/architecture.md)，决策原因按需查 [ADR 索引](docs/adr/README.md)，无需逐篇阅读历史 ADR。
 

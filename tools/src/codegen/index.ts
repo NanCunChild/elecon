@@ -59,6 +59,9 @@ interface JsonSchema {
   maxLength?: number;
   minItems?: number;
   maxItems?: number;
+  maxProperties?: number;
+  propertyNames?: JsonSchema;
+  uniqueItems?: boolean;
   additionalProperties?: boolean | JsonSchema;
   const?: unknown;
 }
@@ -95,6 +98,12 @@ function assertSupported(s: JsonSchema, ctx: string): void {
   if (s.allOf || s.anyOf) throw new Error(`${ctx}: 不支持 allOf/anyOf（需人工处理）`);
 }
 
+function dictionaryValue(s: JsonSchema): JsonSchema | undefined {
+  return s.type === "object" && !s.properties && typeof s.additionalProperties === "object"
+    ? s.additionalProperties
+    : undefined;
+}
+
 /**
  * 枚举 schema 内缺 `description` 的 `properties` 字段（含嵌套 object / array item）。
  * 返回点分路径列表。契约风格规范：每字段必有 description（docs/rules/schema_style.md §2）。
@@ -112,6 +121,9 @@ export function collectMissingDescriptions(root: JsonSchema): string[] {
         seenDefs.add(m[1]!);
       }
     }
+    for (const branch of s.oneOf ?? []) walkNode(branch, path);
+    const value = dictionaryValue(s);
+    if (value) walkNode(value, `${path}.*`);
     if (s.type === "object" && s.properties) {
       for (const [key, raw] of Object.entries(s.properties)) {
         const child = raw.$ref ? resolveRef(raw, root) : raw;
@@ -140,7 +152,10 @@ function tsType(
 ): string {
   s = resolveRef(s, root);
   assertSupported(s, `${parentName}.${prop}`);
-  if (s.oneOf) return s.oneOf.map((v) => tsType(v, parentName, prop, emit, root)).join(" | ");
+  // Object properties define the common shape; oneOf can add validation-only
+  // kind/default constraints without replacing those fields in generated types.
+  if (s.oneOf && !s.properties)
+    return s.oneOf.map((v) => tsType(v, parentName, prop, emit, root)).join(" | ");
   if (s.enum) return s.enum.map((e) => JSON.stringify(e)).join(" | ");
   switch (s.type) {
     case "string":
@@ -155,6 +170,8 @@ function tsType(
       return `${tsType(item, parentName, prop, emit, root)}[]`;
     }
     case "object": {
+      const value = dictionaryValue(s);
+      if (value) return `Record<string, ${tsType(value, parentName, `${prop}Value`, emit, root)}>`;
       const name = parentName + pascalCase(prop);
       emit.push({ name, schema: s });
       return name;
@@ -198,7 +215,7 @@ export function generateTs(rootName: string, root: JsonSchema): string {
 function dartType(s: JsonSchema, parentName: string, prop: string, root: JsonSchema): string {
   s = resolveRef(s, root);
   assertSupported(s, `${parentName}.${prop}`);
-  if (s.oneOf) return "Object";
+  if (s.oneOf && !s.properties) return "Object";
   if (s.enum) return "String"; // enum 以 String 承载（保持与 schema 校验一致，避免解析期抛错）
   switch (s.type) {
     case "string":
@@ -213,8 +230,11 @@ function dartType(s: JsonSchema, parentName: string, prop: string, root: JsonSch
       const item = s.items ?? {};
       return `List<${dartType(item, parentName, prop, root)}>`;
     }
-    case "object":
+    case "object": {
+      const value = dictionaryValue(s);
+      if (value) return `Map<String, ${dartType(value, parentName, `${prop}Value`, root)}>`;
       return parentName + pascalCase(prop);
+    }
     default:
       return "Object?";
   }
@@ -231,7 +251,13 @@ function dartClass(name: string, s: JsonSchema, root: JsonSchema): { code: strin
     const dt = dartType(ps, name, key, root);
     // 收集需要单独生成的嵌套 object 类型。
     const resolved = resolveRef(ps, root);
-    if (resolved.type === "object") {
+    const value = dictionaryValue(resolved);
+    if (value) {
+      const resolvedValue = resolveRef(value, root);
+      if (resolvedValue.type === "object" && !dictionaryValue(resolvedValue)) {
+        children.push({ name: name + pascalCase(`${key}Value`), schema: resolvedValue });
+      }
+    } else if (resolved.type === "object") {
       children.push({ name: name + pascalCase(key), schema: resolved });
     } else if (resolved.type === "array") {
       const item = resolveRef(resolved.items ?? {}, root);
@@ -315,6 +341,9 @@ function validatorDescriptor(s: JsonSchema, root: JsonSchema): ValidatorDescript
     "maxLength",
     "minItems",
     "maxItems",
+    "maxProperties",
+    "propertyNames",
+    "uniqueItems",
     "pattern",
     "format",
   ]);
@@ -357,6 +386,9 @@ function validatorDescriptor(s: JsonSchema, root: JsonSchema): ValidatorDescript
   if (s.maxLength !== undefined) out.L = s.maxLength;
   if (s.minItems !== undefined) out.q = s.minItems;
   if (s.maxItems !== undefined) out.m = s.maxItems;
+  if (s.maxProperties !== undefined) out.P = s.maxProperties;
+  if (s.propertyNames) out.k = validatorDescriptor(s.propertyNames, root);
+  if (s.uniqueItems === true) out.u = true;
   if (s.pattern !== undefined) out.g = s.pattern;
   if (s.format !== undefined) {
     if (!["date", "date-time", "uri"].includes(s.format)) {
@@ -459,6 +491,10 @@ bool _validate(Object? value, Map<String, Object?> schema) {
     case 'o':
       if (value is! Map || value.keys.any((key) => key is! String)) return false;
       final object = value.cast<String, Object?>();
+      final maxProperties = schema['P'];
+      if (maxProperties is int && object.length > maxProperties) return false;
+      final names = schema['k'];
+      if (names is Map && object.keys.any((key) => !_validate(key, names.cast<String, Object?>()))) return false;
       final required = schema['r'];
       if (required is List && required.any((key) => !object.containsKey(key))) return false;
       final properties = (schema['p'] as Map?)?.cast<String, Object?>() ?? const {};
@@ -478,6 +514,13 @@ bool _validate(Object? value, Map<String, Object?> schema) {
       final min = schema['q'];
       final max = schema['m'];
       if (min is int && value.length < min || max is int && value.length > max) return false;
+      if (schema['u'] == true) {
+        for (var i = 0; i < value.length; i++) {
+          for (var j = 0; j < i; j++) {
+            if (_jsonEqual(value[i], value[j])) return false;
+          }
+        }
+      }
       final item = schema['i'];
       if (item is Map && value.any((v) => !_validate(v, item.cast<String, Object?>()))) return false;
       break;

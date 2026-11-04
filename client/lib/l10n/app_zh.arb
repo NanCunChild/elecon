@@ -922,5 +922,11 @@
       }
     }
   },
-  "scriptAccountDetails": "账号说明与连接详情"
+  "scriptAccountDetails": "账号说明与连接详情",
+  "classroomTeachingCapacity": "教学座位数",
+  "classroomExamCapacity": "考试座位数",
+  "classroomPartialCoverage": "部分结果",
+  "classroomLoadedResultsFilter": "仅筛选当前已加载结果",
+  "classroomFloor": "楼层",
+  "classroomCapacity": "座位数"
 }

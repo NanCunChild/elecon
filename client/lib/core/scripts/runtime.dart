@@ -21,6 +21,7 @@ import 'scanner.dart';
 import 'device_input.dart';
 import 'host_protocol.dart';
 import 'runtime_bootstrap.dart';
+import 'query_filters.dart';
 
 export 'host_protocol.dart' show ScriptRunException;
 
@@ -80,6 +81,29 @@ class TrustedScriptRuntime {
     }
     final validator = outputValidatorFor(decl.schema, decl.schemaVersion);
     if (validator == null) throw const ScriptRunException('schema_unsupported');
+    final queryForm = package.manifest.capability('query.controls');
+    if (capability == 'query.controls' && decl.schemaVersion == '2.0') {
+      if (params.keys.any(
+            (k) => !const {'target', 'current', 'changed'}.contains(k),
+          ) ||
+          !const {
+            'grades.list',
+            'classroom.available',
+          }.contains(params['target']) ||
+          package.manifest.capability(params['target'] as String) == null ||
+          (params.containsKey('current') &&
+              !isQueryFilterMap(params['current'])) ||
+          (params.containsKey('changed') &&
+              !isQueryFieldId(params['changed']))) {
+        throw const ScriptRunException('input_invalid_request');
+      }
+    }
+    if (queryForm?.schemaVersion == '2.0' &&
+        const {'grades.list', 'classroom.available'}.contains(capability) &&
+        params.containsKey('filters') &&
+        !isQueryFilterMap(params['filters'])) {
+      throw const ScriptRunException('input_invalid_request');
+    }
     final paramsJson = jsonEncode(params);
     if (utf8.encode(paramsJson).length > 1024 * 1024) {
       throw const ScriptRunException('params_limit');
@@ -758,6 +782,14 @@ class TrustedScriptRuntime {
         );
       }
       final output = outcome['data'];
+      if (capability == 'query.controls' && decl.schemaVersion == '2.0') {
+        if (utf8.encode(jsonEncode(output)).length > 128 * 1024) {
+          throw const ScriptRunException('output_limit');
+        }
+        if (output is! Map || output['target'] != params['target']) {
+          throw const ScriptRunException('schema_validation_failed');
+        }
+      }
       if (capability == 'web.content' &&
           (output is! Map || output['pageId'] != params['pageId'])) {
         throw const ScriptRunException('schema_validation_failed');

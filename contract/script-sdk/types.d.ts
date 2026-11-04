@@ -352,3 +352,23 @@ export type ScriptContentOperation =
   | { operation: "getText" | "getValue" | "exists"; selector: string }
   | { operation: "queryAll"; selector: string; limit?: number }
   | { operation: "waitForEvent"; selector: string; event: "click" | "submit" | "change"; timeoutMs?: number };
+
+/** ADR-082: query.controls@2.0 describes same-package, read-only query fields.
+ * Kind is a host prefab; id/labels have school-defined meaning. At most 32 fields,
+ * 200 options per select, 32 selections and 512 Unicode characters per value.
+ * Metadata <=128KiB; current/filters <=32KiB UTF-8. Omit empty optional values;
+ * false and zero are valid. Disabled and undeclared fields are never submitted.
+ * The script revalidates final values; defaults/labels never grant authority.
+ * Legacy query.controls@1.0 keeps parameter/initialEnd semantics separately. */
+export type QueryControls = import("../generated/ts/query.controls.js").QueryControls;
+export type QueryControlsParams = import("../generated/ts/params.query.controls.js").ParamsQueryControls;
+export type QueryFilters = NonNullable<QueryControlsParams["current"]>;
+export type QueryFilterValue = QueryFilters[string];
+/** Query changes only on explicit submit. current/changed refresh dependent
+ * metadata without submitting; preserve valid draft values and clear dependents.
+ * timeRange is {start,end} in the field's required school IANA timeZone. */
+export type GradesListParams = import("../generated/ts/params.grades.list.js").ParamsGradesList;
+export type ClassroomAvailableParams = import("../generated/ts/params.classroom.available.js").ParamsClassroomAvailable;
+/** 1.3 room capacities have distinct meanings; missing is unknown. coverage
+ * refers to appliedFilters/query scope, never an implicit all-campus guarantee. */
+export type ClassroomAvailable = import("../generated/ts/classroom.available.js").ClassroomAvailable;

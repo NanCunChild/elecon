@@ -163,7 +163,8 @@ class AppFunctionsController extends ChangeNotifier {
       if (package == null ||
           package.requiresUpdate ||
           capability == null ||
-          (query == AiQuery.classrooms && capability.schemaVersion != '1.2')) {
+          (query == AiQuery.classrooms &&
+              !const {'1.2', '1.3'}.contains(capability.schemaVersion))) {
         return null;
       }
       final source = _Source(

@@ -193,9 +193,112 @@
                 }
               }
             }
+          },
+          "roomType": {
+            "type": "object",
+            "required": [
+              "label"
+            ],
+            "properties": {
+              "label": {
+                "type": "string",
+                "maxLength": 160,
+                "description": "学校提供的教室类型名称，不据名称推断设备或用途权限。",
+                "minLength": 1
+              },
+              "code": {
+                "type": "string",
+                "maxLength": 128,
+                "description": "学校作用域的类型代码；缺失表示来源未提供，不能以label替代。",
+                "minLength": 1
+              }
+            },
+            "description": "学校教室类型；缺失表示未知，不生成通用默认类型。"
+          },
+          "teachingCapacity": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "教学布置的座位容量，单位人；缺失表示未知，不能以0代替或继承考试容量。"
+          },
+          "examCapacity": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "考试布置的座位容量，单位人；缺失表示未知，不能以0代替或继承教学容量。"
           }
         }
       }
+    },
+    "appliedFilters": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^(?!(?:prototype|constructor|__proto__)$)[a-z][a-zA-Z0-9._-]{0,63}$",
+        "type": "string"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "maxLength": 512
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "array",
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "start",
+              "end"
+            ],
+            "properties": {
+              "start": {
+                "type": "string",
+                "maxLength": 5,
+                "description": "同日开始墙钟时刻，HH:mm；必须早于end。",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "end": {
+                "type": "string",
+                "maxLength": 5,
+                "description": "同日结束墙钟时刻，HH:mm；不含该时刻。",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              }
+            }
+          }
+        ]
+      },
+      "description": "学校脚本实际采用的字段值；缺失表示来源不提供回显，不可猜测为请求原值。"
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "complete"
+      ],
+      "properties": {
+        "complete": {
+          "type": "boolean",
+          "description": "是否已完整覆盖实际采用条件的查询范围；true不等于查询全校，false表示仅部分结果。"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "可选纯文本范围和不完整原因说明；不用于推断未返回教室的状态。"
+        }
+      },
+      "description": "实际查询条件范围的完整性证据；缺失表示完整性未知，不是完整或空结果。"
     }
   }
 }

@@ -3,6 +3,7 @@ library;
 
 import '../models.dart';
 import 'values.dart';
+import '../../../core/scripts/query_filters.dart';
 
 ClassroomBuildings? classroomBuildingsFromDynamic(Object? raw) {
   final map = asStringKeyedMap(raw);
@@ -44,7 +45,8 @@ ClassroomAvailable? classroomAvailableFromDynamic(
     for (final entry in itemsRaw) {
       final item = _classroomItem(
         entry,
-        preciseIntervals: schemaVersion == '1.2',
+        preciseIntervals: const ['1.2', '1.3'].contains(schemaVersion),
+        attributes: schemaVersion == '1.3',
       );
       if (item != null) items.add(item);
     }
@@ -60,12 +62,28 @@ ClassroomAvailable? classroomAvailableFromDynamic(
     sourceSystem: map['sourceSystem']?.toString(),
     updatedAt: map['updatedAt']?.toString(),
     items: items,
+    appliedFilters:
+        schemaVersion == '1.3' && isQueryFilterMap(map['appliedFilters'])
+        ? Map<String, Object>.from(map['appliedFilters'] as Map)
+        : null,
+    coverage:
+        schemaVersion == '1.3' &&
+            map['coverage'] is Map &&
+            map['coverage']['complete'] is bool
+        ? ClassroomAvailableCoverage(
+            complete: map['coverage']['complete'],
+            description: map['coverage']['description'] is String
+                ? map['coverage']['description']
+                : null,
+          )
+        : null,
   );
 }
 
 ClassroomAvailableItems? _classroomItem(
   Object? raw, {
   required bool preciseIntervals,
+  required bool attributes,
 }) {
   final map = asStringKeyedMap(raw);
   if (map == null) return null;
@@ -104,6 +122,28 @@ ClassroomAvailableItems? _classroomItem(
     roomId: map['roomId']?.toString(),
     floor: map['floor']?.toString(),
     capacity: asInt(map['capacity']),
+    teachingCapacity:
+        attributes &&
+            map['teachingCapacity'] is int &&
+            map['teachingCapacity'] >= 0
+        ? map['teachingCapacity']
+        : null,
+    examCapacity:
+        attributes && map['examCapacity'] is int && map['examCapacity'] >= 0
+        ? map['examCapacity']
+        : null,
+    roomType:
+        attributes &&
+            map['roomType'] is Map &&
+            map['roomType']['label'] is String &&
+            (map['roomType']['label'] as String).isNotEmpty
+        ? ClassroomAvailableItemsRoomType(
+            label: map['roomType']['label'],
+            code: map['roomType']['code'] is String
+                ? map['roomType']['code']
+                : null,
+          )
+        : null,
     equipment: asStringList(map['equipment']),
     occupied: map['occupied'] is bool ? map['occupied'] as bool : null,
     status: map['status']?.toString(),

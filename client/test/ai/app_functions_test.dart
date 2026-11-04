@@ -148,6 +148,20 @@ void main() {
     );
   });
   test(
+    'classroom 1.3 retains the standard absolute interval projection',
+    () async {
+      final (_, ai) = await setup(school(classroomVersion: '1.3'));
+      await ai.setAllowed(AiQuery.classrooms, true);
+      final result = await ai
+          .execute('classroom13', 'findAvailableClassrooms', {
+            'startAt': '2026-11-03T08:30:00+08:00',
+            'endAt': '2026-11-03T09:30:00+08:00',
+          });
+      expect(result['status'], 'partial');
+      expect(((result['data'] as Map)['items'] as List).single['room'], '101');
+    },
+  );
+  test(
     'legacy classroom extension cannot acquire 1.2 interval meaning',
     () async {
       final (_, ai) = await setup(school(classroomVersion: '1.1'));

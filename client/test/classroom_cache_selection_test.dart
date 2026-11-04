@@ -64,7 +64,7 @@ ScriptPackage _school({
           }
           return {
             date:params.date,
-            items:[{...building,room:params.room ? params.room+' '+params.start+'–'+params.end : 'Synthetic room '+params.buildingId,occupied:false,status:'available',
+            items:[{...building,room:params.room ? params.room+' '+params.start+'–'+params.end : 'Synthetic room '+params.buildingId,floor:'3',capacity:90,occupied:false,status:'available',
               ...($includeIntervals ? {intervals:[{
                 startAt:params.date+'T08:00:00Z',endAt:params.date+'T09:00:00Z',
                 status:'available',reason:'Synthetic interval evidence'
@@ -181,6 +181,7 @@ void main() {
             version == '1.2' ? findsOneWidget : findsNothing,
           );
           final revision = session.homeDataRevision;
+          expect(find.textContaining('Floor: 3 · Seats: 90'), findsOneWidget);
           await tester.ensureVisible(find.byTooltip('Refresh').first);
           await tester.tap(find.byTooltip('Refresh').first);
           await _until(tester, () => session.homeDataRevision > revision);

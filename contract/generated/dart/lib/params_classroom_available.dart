@@ -20,6 +20,7 @@ class ParamsClassroomAvailable {
     this.sectionStart,
     this.sectionEnd,
     this.onlyAvailable,
+    this.filters,
   });
 
   /// 查询日历日 YYYY-MM-DD
@@ -52,4 +53,6 @@ class ParamsClassroomAvailable {
   final int? sectionEnd;
   /// true=只返回在查询窗口内判定为空闲的教室；默认 false=返回楼内对照列表
   final bool? onlyAvailable;
+  /// query.controls 2.0同来源字段值，最多32项/32KiB UTF-8；仅同包声明新表单时使用。学校脚本重验字段和组合，不提升为其他宿主参数；省略保留旧标准参数行为。
+  final Map<String, Object>? filters;
 }

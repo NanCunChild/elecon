@@ -15,6 +15,7 @@ import {
   termList,
 } from "../src/academic.js";
 import { createQueryControls } from "../src/query_controls.js";
+import { validateQueryFilters } from "../src/query_filters.js";
 
 const TERM = "2025-2026-1";
 const ajv = new Ajv2020({ strict: false });
@@ -536,7 +537,7 @@ test("PG exams send student/term/publication filters and parse weekday parenthes
   );
 });
 
-const buildingRows = [{ JXLDM: "demo-building", JXLJC: "测试楼", XXXQMC: "南校区" }];
+const buildingRows = [{ JXLDM: "demo-building", JXLJC: "测试楼", XXXQDM: "S", XXXQDM_DISPLAY: "南校区" }];
 function room(index, extra = {}) {
   return {
     JASMC: `测试教室${index}`,
@@ -707,7 +708,7 @@ for (const pg of [false, true]) {
       "query.controls",
       await createQueryControls(pg ? "postgraduate" : "undergraduate")(ctx, { target: "grades.list" }),
     );
-    assert.equal(controls.controls[0].parameter, "term");
+    assert.equal(controls.controls[0].id, "term");
     assert.equal(controls.controls[0].initialValue, TERM);
     assert.deepEqual(
       controls.controls[0].options,
@@ -893,8 +894,8 @@ test("query controls declare school-local classroom inputs and reject command ta
   assert.equal(out.controls[0].initialValue, "2026-11-04");
   assert.equal(out.submitLabel, "translated:query.submit");
   assert.deepEqual(
-    out.controls.map((item) => item.parameter),
-    ["date", "room", "start"],
+    out.controls.map((item) => item.id),
+    ["date", "campus", "building", "room", "timeRange", "minimumTeachingSeats", "minimumExamSeats", "roomTypes", "onlyAvailable"],
   );
   await assert.rejects(query(ctx, { target: "climate.command" }), /input_invalid_request/);
   await assert.rejects(query(ctx, { target: "grades.list", operation: "login" }), /input_invalid_request/);
@@ -904,4 +905,168 @@ test("query controls declare school-local classroom inputs and reject command ta
     browser: { open: () => assert.fail("metadata must not open login") },
   };
   await assert.rejects(query(denied, { target: "grades.list" }), /xidian_login_required_ehall/);
+});
+
+test("school-owned grade filters select a term without changing the legacy term input", async () => {
+  const previous = "2024-2025-2";
+  const rows = [grade(1), grade(2, { XNXQDM: previous })];
+  const result = valid("grades.list", await gradesList(fake(() => payload("xscjcx", rows)), {
+    term: TERM, filters: { term: previous },
+  }));
+  assert.equal(result.term, previous);
+  assert.equal(result.items.length, 1);
+  assert.equal((await gradesList(fake(() => payload("xscjcx", rows)), { term: TERM })).items.length, 1);
+});
+
+function richClassroomsRoute(call) {
+  if (call.url.pathname.endsWith("/dqxnxq.do")) return payload("dqxnxq", [{ DM: TERM }]);
+  if (call.url.pathname.endsWith("/cxjsqk.do")) return payload("cxjsqk", [
+    room(1, { JASLXDM: "demo-media", JASLXDM_DISPLAY: "合成多媒体教室", SKZWS: "120", KSZWS: 60,
+      JC1: "1_01,1_04,0_03", JC2: "1_02,1_03,1_05" }),
+    room(2, { JASLXDM: "demo-lab", JASLXDM_DISPLAY: "合成实验室", SKZWS: 80, KSZWS: null }),
+    room(3, { JASLXDM: null, JASLXDM_DISPLAY: "", SKZWS: null, KSZWS: "" }),
+    room(4, { JASLXDM: "demo-media", JASLXDM_DISPLAY: "合成多媒体教室", SKZWS: 0, KSZWS: 0 }),
+  ]);
+  return classroomsRoute(call);
+}
+
+const richSelection = { date: "2025-09-16", campus: "S", building: "demo-building" };
+
+test("classroom type, separate capacities and multiple occupancy reasons preserve source meanings", async () => {
+  const ctx = fake(richClassroomsRoute);
+  const result = valid("classroom.available", await classroomAvailable(ctx, {
+    term: TERM, filters: richSelection,
+  }));
+  const [first, second, third, fourth] = result.items;
+  assert.deepEqual(first.roomType, { code: "demo-media", label: "合成多媒体教室" });
+  assert.equal(first.teachingCapacity, 120);
+  assert.equal(first.examCapacity, 60);
+  assert.equal(first.capacity, undefined, "do not silently redefine the old capacity field");
+  assert.equal(second.examCapacity, undefined);
+  assert.equal(third.roomType, undefined);
+  assert.equal(third.teachingCapacity, undefined);
+  assert.equal(fourth.teachingCapacity, 0);
+  assert.equal(fourth.examCapacity, 0);
+  assert.equal(first.intervals[0].reason, "上课占用 / 教室借用");
+  assert.equal(first.intervals[1].reason, "考试占用 / 调课占用 / 教室屏蔽");
+  assert.deepEqual(result.appliedFilters, richSelection);
+  assert.equal(result.coverage.complete, true);
+  assert.match(result.coverage.description, /测试楼/);
+  assert.equal(ctx.calls.filter((call) => call.url.pathname.endsWith("/rqzhzcjc.do")).length, 1);
+  assert.equal(ctx.calls.filter((call) => call.url.pathname.endsWith("/cxkxjsxq.do")).length, 0);
+});
+
+test("numeric and type filters run on complete classroom pages and exclude unknown capacity", async () => {
+  const query = (filters) => classroomAvailable(fake(richClassroomsRoute), { term: TERM, filters: { ...richSelection, ...filters } });
+  assert.deepEqual((await query({ minimumTeachingSeats: 100 })).items.map((item) => item.roomId), ["room-1"]);
+  assert.deepEqual((await query({ minimumExamSeats: 0 })).items.map((item) => item.roomId), ["room-1", "room-4"]);
+  assert.deepEqual((await query({ roomTypes: ["demo-lab"] })).items.map((item) => item.roomId), ["room-2"]);
+  assert.equal((await query({ roomTypes: [] })).items.length, 4, "empty selection retains unknown types");
+  assert.deepEqual((await query({ minimumTeachingSeats: 80, onlyAvailable: true })).items.map((item) => item.roomId), ["room-2"]);
+  const matching = await query({ room: "  测试教室2  " });
+  assert.deepEqual(matching.items.map((item) => item.roomId), ["room-2"]);
+  assert.equal(matching.appliedFilters.room, "测试教室2");
+});
+
+test("new timeRange retains section-window meaning and does not fill unknown breaks", async () => {
+  const result = await classroomAvailable(fake(richClassroomsRoute), {
+    term: TERM, filters: { ...richSelection, timeRange: { start: "08:30", end: "10:05" }, onlyAvailable: true },
+  });
+  assert.equal(result.sectionStart, 1);
+  assert.equal(result.sectionEnd, 2);
+  assert.equal(result.timeZone, "Asia/Shanghai");
+  assert.equal(result.items.length, 3);
+  assert.ok(result.items.every((item) => Date.parse(item.intervals[0].endAt) < Date.parse(item.intervals[1].startAt)));
+});
+
+test("new query filters reject unknown fields and malformed values before credentials or requests", async () => {
+  for (const filters of [
+    null, [], { role: "postgraduate" }, { configure: true }, { minimumTeachingSeats: "80" },
+    { minimumExamSeats: -1 }, { minimumExamSeats: 1.5 }, { minimumExamSeats: Infinity },
+    { onlyAvailable: "true" }, { roomTypes: ["x", "x"] }, { roomTypes: [1] },
+    { date: "2025-02-30" }, { date: "2025-2-3" }, { room: "x\n" },
+    { timeRange: { start: "23:00", end: "01:00" } },
+    { timeRange: { start: "08:00", end: "09:00", code: "run" } },
+  ]) {
+    const ctx = { credentials: { get: () => assert.fail("invalid filters must not access credentials") } };
+    await assert.rejects(classroomAvailable(ctx, { filters }), /input_invalid_request/);
+  }
+  await assert.rejects(gradesList({}, { filters: { term: "2025-2027-1" } }), /input_invalid_request/);
+  await assert.rejects(gradesList({}, { filters: { room: "101" } }), /input_invalid_request/);
+});
+
+test("school text limits count Unicode characters consistently with the declared form", async () => {
+  const form = await createQueryControls("undergraduate")(
+    { now: () => Date.parse("2025-09-16T00:00:00Z") },
+    { target: "classroom.available" },
+  );
+  const limit = form.controls.find((field) => field.id === "room").maxLength;
+  assert.equal(limit, 512);
+  const room = "😀".repeat(limit);
+  assert.equal(validateQueryFilters("classroom.available", { room }).room, room);
+  assert.throws(
+    () => validateQueryFilters("classroom.available", { room: `${room}😀` }),
+    /input_invalid_request/,
+  );
+});
+
+test("final query revalidates campus and building against the live directory", async () => {
+  for (const filters of [
+    { ...richSelection, campus: "N" },
+    { ...richSelection, building: "not-in-live-directory" },
+  ]) {
+    const ctx = fake(richClassroomsRoute);
+    await assert.rejects(classroomAvailable(ctx, { term: TERM, filters }), /classroom_campus_building_conflict/);
+    assert.ok(!ctx.calls.some((call) => call.url.pathname.endsWith("/cxjsqk.do")));
+  }
+});
+
+test("form discovers live buildings and room types only within the selected scope", async () => {
+  const ctx = fake(richClassroomsRoute);
+  const query = createQueryControls("undergraduate");
+  const initial = valid("query.controls", await query(ctx, { target: "classroom.available" }));
+  const building = initial.controls.find((control) => control.id === "building");
+  assert.deepEqual(building.options, [{ value: "demo-building", label: "测试楼" }]);
+  assert.match(building.description, /实时目录/);
+  assert.equal(building.initialValue, undefined, "the user chooses a building");
+  assert.equal(initial.controls.find((control) => control.id === "roomTypes").disabled, true);
+  assert.ok(!ctx.calls.some((call) => call.url.pathname.endsWith("/cxjsqk.do")));
+  const selected = valid("query.controls", await query(ctx, { target: "classroom.available", current: richSelection, changed: "building" }));
+  const types = selected.controls.find((control) => control.id === "roomTypes");
+  assert.deepEqual(types.options, [{ value: "demo-media", label: "合成多媒体教室" }, { value: "demo-lab", label: "合成实验室" }]);
+  assert.deepEqual(types.dependsOn, ["date", "campus", "building"]);
+  assert.equal(types.disabled, undefined);
+  assert.equal(ctx.calls.filter((call) => call.url.pathname.endsWith("/cxjsqk.do")).length, 1);
+  assert.equal(ctx.calls.filter((call) => call.url.pathname.endsWith("/cxkxjsxq.do")).length, 0);
+});
+
+test("changed campus does not silently select a new building or reuse stale type choices", async () => {
+  const ctx = fake((call) => call.url.pathname.endsWith("/jxlcx.do") ? payload("jxlcx", [
+    ...buildingRows, { JXLDM: "demo-north", JXLJC: "合成北楼", XXXQDM: "N" },
+  ]) : richClassroomsRoute(call));
+  const result = await createQueryControls("undergraduate")(ctx, {
+    target: "classroom.available", current: { ...richSelection, campus: "N" }, changed: "campus",
+  });
+  assert.equal(result.controls.find((control) => control.id === "building").initialValue, undefined);
+  assert.deepEqual(result.controls.find((control) => control.id === "building").options, [{ value: "demo-north", label: "合成北楼" }]);
+  assert.equal(result.controls.find((control) => control.id === "roomTypes").disabled, true);
+  assert.ok(!ctx.calls.some((call) => call.url.pathname.endsWith("/cxjsqk.do")));
+});
+
+test("offline directory fallback is explicit and cannot hide source failures", async () => {
+  const query = createQueryControls("undergraduate");
+  const ctx = { now: () => Date.parse("2025-09-16T00:00:00Z"), credentials: { get: async () => null } };
+  const fallback = await query(ctx, { target: "classroom.available" });
+  assert.match(fallback.controls.find((control) => control.id === "building").description, /尚未登录/);
+  assert.equal(fallback.controls.find((control) => control.id === "roomTypes").disabled, true);
+  const failed = fake(() => { throw new Error("synthetic_network_failure"); });
+  await assert.rejects(query(failed, { target: "classroom.available" }), /synthetic_network_failure/);
+  await assert.rejects(query(ctx, { target: "classroom.available", changed: "configure" }), /input_invalid_request/);
+});
+
+test("classroom filtering rejects incomplete pagination instead of claiming complete coverage", async () => {
+  const ctx = fake((call) => call.url.pathname.endsWith("/cxjsqk.do")
+    ? payload("cxjsqk", Number(call.form.pageNumber) === 1 ? [room(1, { SKZWS: 120 })] : [], 2)
+    : richClassroomsRoute(call));
+  await assert.rejects(classroomAvailable(ctx, { term: TERM, filters: { ...richSelection, minimumTeachingSeats: 80 } }), /academic_pagination_incomplete/);
 });

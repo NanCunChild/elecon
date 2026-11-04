@@ -32,4 +32,13 @@ export interface ParamsClassroomAvailable {
   sectionEnd?: number;
   /** true=只返回在查询窗口内判定为空闲的教室；默认 false=返回楼内对照列表 */
   onlyAvailable?: boolean;
+  /** query.controls 2.0同来源字段值，最多32项/32KiB UTF-8；仅同包声明新表单时使用。学校脚本重验字段和组合，不提升为其他宿主参数；省略保留旧标准参数行为。 */
+  filters?: Record<string, string | number | boolean | string[] | ParamsClassroomAvailableFiltersValue>;
+}
+
+export interface ParamsClassroomAvailableFiltersValue {
+  /** 同日开始墙钟时刻，HH:mm；必须早于end。 */
+  start: string;
+  /** 同日结束墙钟时刻，HH:mm；不含该时刻。 */
+  end: string;
 }

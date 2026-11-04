@@ -2,13 +2,15 @@
 library;
 
 import 'package:elecon_contract/output_validator_registry.dart';
-import 'package:elecon_contract/query_controls.dart';
 import 'package:flutter/material.dart';
 
 import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import 'capability_source.dart';
 import 'query_section.dart';
+import 'legacy_query_controls_model.dart';
+import 'query_form_model.dart';
+import 'query_form_dialog.dart';
 
 bool _plain(String value) => !RegExp(r'[\x00-\x1f\x7f]').hasMatch(value);
 bool _date(String value) {
@@ -146,6 +148,30 @@ class ScriptQuerySelection {
   final Map<String, dynamic>? params;
 }
 
+/// Metadata belongs to the chosen business provider, never its own override.
+Future<String?> scriptQueryControlsVersion(
+  SessionController session,
+  String target, {
+  CapabilitySource? source,
+}) async {
+  final school = session.selectedSchool?.id;
+  if (school == null) return null;
+  final registry = await session.scriptRegistry;
+  final installation = source == null ? null : registry.find(source.packageId);
+  final package = source == null
+      ? registry.provider(school, target)
+      : installation?.package;
+  if (package == null ||
+      package.manifest.schoolId != school ||
+      package.manifest.capability(target) == null ||
+      package.requiresUpdate ||
+      (source != null &&
+          (installation?.enabled != true || package.digest != source.digest))) {
+    return null;
+  }
+  return package.manifest.capability('query.controls')?.schemaVersion;
+}
+
 Future<ScriptQuerySelection> pickScriptQueryControls(
   BuildContext context,
   SessionController session,
@@ -153,12 +179,16 @@ Future<ScriptQuerySelection> pickScriptQueryControls(
   Map<String, dynamic>? current,
 }) async {
   final generation = session.trustedScriptViewGeneration;
+  final dataGeneration = session.trustedScriptDataGeneration;
+  final locale = session.scriptLocale;
   final schoolId = session.selectedSchool?.id;
   final bound = CapabilitySourceScope.maybeOf(context)?.source;
   final registry = await session.scriptRegistry;
   bool active() =>
       context.mounted &&
       session.trustedScriptViewGeneration == generation &&
+      session.trustedScriptDataGeneration == dataGeneration &&
+      session.scriptLocale == locale &&
       session.selectedSchool?.id == schoolId &&
       CapabilitySourceScope.maybeOf(context)?.source == bound;
   if (!active() || schoolId == null) {
@@ -178,6 +208,53 @@ Future<ScriptQuerySelection> pickScriptQueryControls(
       (bound != null &&
           (install?.enabled != true || package.digest != bound.digest))) {
     return const ScriptQuerySelection(supported: true);
+  }
+  if (package.manifest.capability('query.controls')!.schemaVersion == '2.0') {
+    if (!context.mounted) return const ScriptQuerySelection(supported: true);
+    bool currentSource() =>
+        active() &&
+        registry.find(package.manifest.id)?.enabled == true &&
+        registry.find(package.manifest.id)?.package.digest == package.digest &&
+        (bound != null ||
+            registry.provider(schoolId, target)?.digest == package.digest);
+    final selected = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => QueryFormDialog(
+        session: session,
+        isActive: currentSource,
+        current: current?['filters'] is Map
+            ? Map<String, dynamic>.from(current!['filters'])
+            : const {},
+        load: (draft, changed) async {
+          if (!currentSource()) throw const FormatException('script_cancelled');
+          final result = await runOnceDecoded<QueryForm>(
+            session,
+            'query.controls',
+            params: {
+              'target': target,
+              'current': draft,
+              'changed': ?changed,
+            },
+            interactive: false,
+            source: CapabilitySource(
+              packageId: package.manifest.id,
+              digest: package.digest,
+            ),
+            decode: (raw) => queryFormFromDynamic(raw, target),
+          );
+          if (!currentSource() || result.data == null) {
+            throw const FormatException('query_controls_unavailable');
+          }
+          return result.data!;
+        },
+      ),
+    );
+    return ScriptQuerySelection(
+      supported: true,
+      params: currentSource() && selected != null
+          ? {'filters': selected}
+          : null,
+    );
   }
   final result = await runOnceDecoded<QueryControls>(
     session,

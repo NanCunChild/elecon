@@ -102,6 +102,29 @@ const noticeSchema = {
 // ---- collectMissingDescriptions（description 门，schema_style.md §2）----
 
 {
+  const schema = {
+    type: "object",
+    properties: {
+      filters: { type: "object", additionalProperties: { oneOf: [{ type: "string" }, { type: "number" }] } },
+      control: {
+        type: "object",
+        required: ["id", "kind"],
+        properties: { id: { type: "string" }, kind: { type: "string" } },
+        oneOf: [{ type: "object", properties: { kind: { const: "text" } } }],
+      },
+    },
+  };
+  const ts = generateTs("Form", schema);
+  const dart = generateDart("Form", schema);
+  assert.ok(ts.includes("filters?: Record<string, string | number>;"));
+  assert.ok(dart.includes("final Map<String, Object>? filters;"));
+  assert.ok(ts.includes("control?: FormControl;") && ts.includes("id: string;"));
+  assert.ok(dart.includes("final FormControl? control;"));
+  assert.ok(!dart.includes("class FormFilters"), "dictionary must not become an empty class");
+  console.log("✓ dictionaries / common object fields with oneOf constraints");
+}
+
+{
   const miss = collectMissingDescriptions({
     type: "object",
     properties: {
