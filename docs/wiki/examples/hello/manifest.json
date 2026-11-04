@@ -1,0 +1,19 @@
+{
+  "sdkVersion": 16,
+  "id": "wiki.hello",
+  "version": "1.0.0",
+  "schoolId": "wiki-example",
+  "name": "Wiki 离线示例",
+  "network": { "origins": [] },
+  "browser": false,
+  "accounts": [],
+  "capabilities": [
+    { "id": "generic.section", "schema": "elecon.generic.section", "schemaVersion": "1.0" }
+  ],
+  "cards": [
+    { "id": "welcome", "type": "generic", "title": "开发示例", "defaultVariant": "regular" }
+  ],
+  "home": [
+    { "capability": "generic.section", "params": { "section": "welcome" }, "ttlSeconds": 900, "preload": true }
+  ]
+}
