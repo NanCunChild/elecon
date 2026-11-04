@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_schedule">برنامه درسی</string>
+    <string name="shortcut_grades">نمرات</string>
+    <string name="shortcut_exam">امتحان‌ها</string>
+    <string name="shortcut_classroom">کلاس‌های خالی</string>
+    <string name="shortcut_card">کارت دانشگاه</string>
+    <string name="shortcut_library">کتابخانه</string>
+    <string name="shortcut_energy">آب و برق</string>
+    <string name="shortcut_climate">تهویه</string>
+    <string name="shortcut_notice">اطلاعیه‌ها</string>
+    <string name="shortcut_faculty">جستجوی استاد</string>
+    <string name="shortcut_directory">دفترچه تلفن</string>
+</resources>

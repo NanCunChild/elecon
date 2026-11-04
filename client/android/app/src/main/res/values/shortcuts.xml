@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_schedule">Schedule</string>
+    <string name="shortcut_grades">Grades</string>
+    <string name="shortcut_exam">Exams</string>
+    <string name="shortcut_classroom">Classrooms</string>
+    <string name="shortcut_card">Campus card</string>
+    <string name="shortcut_library">Library loans</string>
+    <string name="shortcut_energy">Utilities</string>
+    <string name="shortcut_climate">Air conditioning</string>
+    <string name="shortcut_notice">Notices</string>
+    <string name="shortcut_faculty">Faculty search</string>
+    <string name="shortcut_directory">Phone directory</string>
+    <string-array name="shortcut_schedule_aliases"><item>Schedule</item><item>课表</item></string-array>
+    <string-array name="shortcut_grades_aliases"><item>Grades</item><item>成绩</item></string-array>
+    <string-array name="shortcut_exam_aliases"><item>Exams</item><item>考试</item></string-array>
+    <string-array name="shortcut_classroom_aliases"><item>Classrooms</item><item>空教室</item></string-array>
+    <string-array name="shortcut_card_aliases"><item>Campus card</item><item>校园卡</item></string-array>
+    <string-array name="shortcut_library_aliases"><item>Library loans</item><item>图书借阅</item></string-array>
+    <string-array name="shortcut_energy_aliases"><item>Utilities</item><item>水电</item></string-array>
+    <string-array name="shortcut_climate_aliases"><item>Air conditioning</item><item>空调</item></string-array>
+    <string-array name="shortcut_notice_aliases"><item>Notices</item><item>通知</item></string-array>
+    <string-array name="shortcut_faculty_aliases"><item>Faculty search</item><item>教师检索</item></string-array>
+    <string-array name="shortcut_directory_aliases"><item>Phone directory</item><item>电话黄页</item></string-array>
+</resources>

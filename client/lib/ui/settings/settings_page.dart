@@ -12,6 +12,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_scope.dart';
 import '../login/login_flow.dart';
 import '../ai/app_functions_settings.dart';
+import '../shortcuts/app_shortcuts_settings.dart';
 import '../debug/helloworld_test_page.dart';
 import '../theme/liquid_glass.dart';
 import '../scripts/script_workbench_page.dart';
@@ -132,6 +133,7 @@ class SettingsPage extends StatelessWidget {
           ),
           const AppearanceSection(),
           const AppFunctionsSettingsTile(),
+          const AppShortcutsSettingsTile(),
           const SizedBox(height: 16),
           _SectionTitle(title: l10n.settingsSectionDebug),
           LiquidGlassSurface(

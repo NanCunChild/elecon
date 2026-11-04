@@ -32,9 +32,28 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/feature_shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="elecon" android:host="feature" />
+                <data android:path="/schedule" />
+                <data android:path="/grades" />
+                <data android:path="/exam" />
+                <data android:path="/classroom" />
+                <data android:path="/card" />
+                <data android:path="/library" />
+                <data android:path="/energy" />
+                <data android:path="/climate" />
+                <data android:path="/notice" />
+                <data android:path="/faculty" />
+                <data android:path="/directory" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

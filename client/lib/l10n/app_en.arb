@@ -845,5 +845,10 @@
     }
   },
   "phoneDirectoryCall": "Call {phone}",
-  "@phoneDirectoryCall": { "placeholders": { "phone": { "type": "String" } } }
+  "@phoneDirectoryCall": { "placeholders": { "phone": { "type": "String" } } },
+  "shortcutsTitle": "App shortcuts",
+  "shortcutsHint": "Touch and hold the app icon for common features, or request a home screen shortcut below. Opens the current profile and school.",
+  "shortcutsRequested": "Shortcut requested. Confirm in the launcher prompt.",
+  "shortcutsPinFailed": "This launcher could not add a shortcut.",
+  "shortcutsUnavailable": "This feature is unavailable for the current school or approved script. Check sources on the home page."
 }

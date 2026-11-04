@@ -18,6 +18,8 @@ import 'campus_snapshot_loader.dart';
 import 'card_layout.dart';
 import 'capability_source.dart';
 import 'generic_section.dart';
+import 'native_feature.dart';
+import '../../core/navigation/app_feature.dart';
 import 'card_layout_store.dart';
 import 'editable_card_board.dart';
 import 'capability_sections.dart';
@@ -388,28 +390,9 @@ class _EleconHomePageState extends State<EleconHomePage>
     ];
     cards.removeWhere((card) => _explicitDefaultTypes.contains(card.id));
     for (final (package, declaration) in _scriptCards) {
-      Widget feature() => switch (declaration.type) {
-        'notice' => const NoticeSection(),
-        'schedule' => ScheduleSection(
-          calendarEnabled:
-              package.manifest.capability('calendar.academic') != null,
-        ),
-        'grades' => const GradesSection(),
-        'library' => const LibraryLoansSection(),
-        'exam' => const ExamSection(),
-        'classroom' => const ClassroomSection(),
-        'energy' => const EnergySection(),
-        'climate' => const ClimateSection(),
-        'card' => CardSection(
-          balanceEnabled: package.manifest.capability('card.balance') != null,
-          qrEnabled: package.manifest.capability('card.qr') != null,
-          transactionsEnabled:
-              package.manifest.capability('card.transactions') != null,
-        ),
-        'directory' => const PhoneDirectorySection(),
-        'generic' => const GenericCapabilitySection(),
-        _ => const SizedBox.shrink(),
-      };
+      Widget feature() => declaration.type == 'generic'
+          ? const GenericCapabilitySection()
+          : nativeFeatureContent(AppFeature.fromId(declaration.type)!, package);
       final label =
           declaration.title ??
           switch (declaration.type) {

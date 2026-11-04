@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_schedule">课表</string>
+    <string name="shortcut_grades">成绩</string>
+    <string name="shortcut_exam">考试</string>
+    <string name="shortcut_classroom">空教室</string>
+    <string name="shortcut_card">校园卡</string>
+    <string name="shortcut_library">图书借阅</string>
+    <string name="shortcut_energy">水电</string>
+    <string name="shortcut_climate">空调</string>
+    <string name="shortcut_notice">通知</string>
+    <string name="shortcut_faculty">教师检索</string>
+    <string name="shortcut_directory">电话黄页</string>
+</resources>

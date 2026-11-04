@@ -629,5 +629,10 @@
   "phoneDirectoryRefreshFailed": "Yangilab bo‘lmadi. Avvalgi ma’lumotnoma ko‘rsatilmoqda.",
   "phoneDirectoryVerified": "Manba tekshirilgan sana: {date}",
   "phoneDirectoryCount": "{count} ta telefon raqami",
-  "phoneDirectoryCall": "{phone} raqamiga qo‘ng‘iroq qilish"
+  "phoneDirectoryCall": "{phone} raqamiga qo‘ng‘iroq qilish",
+  "shortcutsTitle": "Ilova yorliqlari",
+  "shortcutsHint": "Tezkor funksiyalar uchun ilova belgisini bosib turing yoki quyidan yorliq tanlang. Joriy profil va universitet ishlatiladi.",
+  "shortcutsRequested": "Yorliq so‘raldi. Bosh ekran so‘rovini tasdiqlang.",
+  "shortcutsPinFailed": "Bosh ekran yorliq qo‘sha olmadi.",
+  "shortcutsUnavailable": "Bu funksiya joriy universitet yoki tasdiqlangan skriptda mavjud emas. Bosh sahifadagi manbalarni tekshiring."
 }

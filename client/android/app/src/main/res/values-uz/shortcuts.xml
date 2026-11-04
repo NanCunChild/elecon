@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_schedule">Dars jadvali</string>
+    <string name="shortcut_grades">Baholar</string>
+    <string name="shortcut_exam">Imtihonlar</string>
+    <string name="shortcut_classroom">Auditoriyalar</string>
+    <string name="shortcut_card">Kampus kartasi</string>
+    <string name="shortcut_library">Kutubxona</string>
+    <string name="shortcut_energy">Kommunal xizmatlar</string>
+    <string name="shortcut_climate">Konditsioner</string>
+    <string name="shortcut_notice">E’lonlar</string>
+    <string name="shortcut_faculty">O‘qituvchi qidiruvi</string>
+    <string name="shortcut_directory">Telefon ma’lumotnomasi</string>
+</resources>

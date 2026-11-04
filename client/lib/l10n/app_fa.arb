@@ -629,5 +629,10 @@
   "phoneDirectoryRefreshFailed": "به‌روزرسانی ناموفق بود. دفترچه قبلی نمایش داده می‌شود.",
   "phoneDirectoryVerified": "تاریخ بررسی منبع: {date}",
   "phoneDirectoryCount": "{count} شماره تلفن",
-  "phoneDirectoryCall": "تماس با {phone}"
+  "phoneDirectoryCall": "تماس با {phone}",
+  "shortcutsTitle": "میان‌برهای برنامه",
+  "shortcutsHint": "برای دسترسی سریع نماد برنامه را نگه دارید یا از فهرست زیر میان‌بر بسازید. نمایه و دانشگاه فعلی استفاده می‌شود.",
+  "shortcutsRequested": "درخواست ارسال شد. در پیام صفحه اصلی تأیید کنید.",
+  "shortcutsPinFailed": "افزودن میان‌بر در این صفحه اصلی ممکن نیست.",
+  "shortcutsUnavailable": "این قابلیت برای دانشگاه یا اسکریپت تأییدشده فعلی در دسترس نیست. منابع را در صفحه اصلی بررسی کنید."
 }

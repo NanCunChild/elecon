@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_schedule">Расписание</string>
+    <string name="shortcut_grades">Оценки</string>
+    <string name="shortcut_exam">Экзамены</string>
+    <string name="shortcut_classroom">Аудитории</string>
+    <string name="shortcut_card">Карта кампуса</string>
+    <string name="shortcut_library">Библиотека</string>
+    <string name="shortcut_energy">Коммунальные услуги</string>
+    <string name="shortcut_climate">Кондиционер</string>
+    <string name="shortcut_notice">Объявления</string>
+    <string name="shortcut_faculty">Поиск преподавателей</string>
+    <string name="shortcut_directory">Телефонный справочник</string>
+</resources>

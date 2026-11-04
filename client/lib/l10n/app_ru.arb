@@ -830,5 +830,10 @@
   "phoneDirectoryRefreshFailed": "Не удалось обновить. Показан предыдущий справочник.",
   "phoneDirectoryVerified": "Источник проверен: {date}",
   "phoneDirectoryCount": "Номеров: {count}",
-  "phoneDirectoryCall": "Позвонить {phone}"
+  "phoneDirectoryCall": "Позвонить {phone}",
+  "shortcutsTitle": "Ярлыки приложения",
+  "shortcutsHint": "Удерживайте значок приложения для быстрого доступа или выберите функцию ниже. Используется текущий профиль и вуз.",
+  "shortcutsRequested": "Запрос отправлен. Подтвердите добавление на рабочем столе.",
+  "shortcutsPinFailed": "Не удалось добавить ярлык.",
+  "shortcutsUnavailable": "Функция недоступна для текущего вуза или разрешённого скрипта. Проверьте источники на главной странице."
 }

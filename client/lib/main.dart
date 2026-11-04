@@ -8,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 
 import 'core/adapter_service.dart';
 import 'core/ai/app_functions_controller.dart';
+import 'core/navigation/app_shortcuts_controller.dart';
+import 'ui/shortcuts/app_shortcuts_scope.dart';
 import 'core/credential/blob_store.dart';
 import 'core/credential/hardware_keystore_channel.dart';
 import 'core/debug/perf_trace.dart';
@@ -111,6 +113,7 @@ class _EleconAppState extends State<EleconApp> with WidgetsBindingObserver {
   late final Future<void> _profilesLoad;
   late final ThemeController _theme = ThemeController();
   late final AppFunctionsController _appFunctions;
+  late final AppShortcutsController _shortcuts;
 
   @override
   void initState() {
@@ -139,6 +142,12 @@ class _EleconAppState extends State<EleconApp> with WidgetsBindingObserver {
           ? const MethodChannel('elecon/app_functions')
           : null,
     );
+    _shortcuts = AppShortcutsController(
+      profiles: _profiles,
+      channel: !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+          ? const MethodChannel('elecon/shortcuts')
+          : null,
+    );
     unawaited(_theme.load());
   }
 
@@ -148,6 +157,7 @@ class _EleconAppState extends State<EleconApp> with WidgetsBindingObserver {
     _theme.removeListener(_syncScriptLocale);
     _profiles.removeListener(_syncScriptLocale);
     _appFunctions.dispose();
+    _shortcuts.dispose();
     _profiles.dispose();
     _theme.dispose();
     super.dispose();
@@ -166,74 +176,77 @@ class _EleconAppState extends State<EleconApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return AppFunctionsScope(
-      controller: _appFunctions,
-      child: ThemeScope(
-        controller: _theme,
-        child: ProfileScope(
-          controller: _profiles,
-          child: FutureBuilder<void>(
-            future: _profilesLoad,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done &&
-                  !_profiles.isRestored) {
-                if (kSideloadEnabled) {
-                  return const MaterialApp(home: DevSideloadStartupWarning());
+    return AppShortcutsScope(
+      controller: _shortcuts,
+      child: AppFunctionsScope(
+        controller: _appFunctions,
+        child: ThemeScope(
+          controller: _theme,
+          child: ProfileScope(
+            controller: _profiles,
+            child: FutureBuilder<void>(
+              future: _profilesLoad,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done &&
+                    !_profiles.isRestored) {
+                  if (kSideloadEnabled) {
+                    return const MaterialApp(home: DevSideloadStartupWarning());
+                  }
+                  return const MaterialApp(
+                    home: Scaffold(body: DesktopPlaceholder()),
+                  );
                 }
-                return const MaterialApp(
-                  home: Scaffold(body: DesktopPlaceholder()),
-                );
-              }
-              if (snapshot.hasError) {
-                return MaterialApp(
-                  localizationsDelegates:
-                      AppLocalizations.localizationsDelegates,
-                  supportedLocales: AppLocalizations.supportedLocales,
-                  home: Builder(
-                    builder: (context) => Scaffold(
-                      body: Center(
-                        child: Text(
-                          AppLocalizations.of(context).profilesLoadFailed,
+                if (snapshot.hasError) {
+                  return MaterialApp(
+                    localizationsDelegates:
+                        AppLocalizations.localizationsDelegates,
+                    supportedLocales: AppLocalizations.supportedLocales,
+                    home: Builder(
+                      builder: (context) => Scaffold(
+                        body: Center(
+                          child: Text(
+                            AppLocalizations.of(context).profilesLoadFailed,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              }
-              // 偏好未落盘前用默认；load 完成后 ThemeController.notify 触发重建。
-              return ListenableBuilder(
-                listenable: Listenable.merge([_theme, _profiles]),
-                builder: (context, _) {
-                  final p = _theme.prefs;
-                  final session = _profiles.active.session;
-                  return SessionScope(
-                    controller: session,
-                    child: MaterialApp(
-                      key: ValueKey(_profiles.active.id),
-                      // 任务切换器标题也走 l10n（文案单源）。
-                      onGenerateTitle: (context) =>
-                          AppLocalizations.of(context).appName,
-                      debugShowCheckedModeBanner: false,
-                      // 语言：偏好为空（默认）时传 null → 由系统语言在
-                      // supportedLocales 中协商，未命中则回落模板语言 zh。
-                      locale: resolveAppLocale(p.localeTag),
-                      localizationsDelegates:
-                          AppLocalizations.localizationsDelegates,
-                      supportedLocales: AppLocalizations.supportedLocales,
-                      themeMode: p.themeMode,
-                      theme: AppTheme.light(p),
-                      darkTheme: AppTheme.dark(p),
-                      home: _BootGate(
-                        session: session,
-                        startupTrace: widget.startupTrace,
-                        loginRunner: widget.loginRunner,
-                        loadHomeSnapshot: widget.loadHomeSnapshot,
-                      ),
-                    ),
                   );
-                },
-              );
-            },
+                }
+                // 偏好未落盘前用默认；load 完成后 ThemeController.notify 触发重建。
+                return ListenableBuilder(
+                  listenable: Listenable.merge([_theme, _profiles]),
+                  builder: (context, _) {
+                    final p = _theme.prefs;
+                    final session = _profiles.active.session;
+                    return SessionScope(
+                      controller: session,
+                      child: MaterialApp(
+                        key: ValueKey(_profiles.active.id),
+                        // 任务切换器标题也走 l10n（文案单源）。
+                        onGenerateTitle: (context) =>
+                            AppLocalizations.of(context).appName,
+                        debugShowCheckedModeBanner: false,
+                        // 语言：偏好为空（默认）时传 null → 由系统语言在
+                        // supportedLocales 中协商，未命中则回落模板语言 zh。
+                        locale: resolveAppLocale(p.localeTag),
+                        localizationsDelegates:
+                            AppLocalizations.localizationsDelegates,
+                        supportedLocales: AppLocalizations.supportedLocales,
+                        themeMode: p.themeMode,
+                        theme: AppTheme.light(p),
+                        darkTheme: AppTheme.dark(p),
+                        home: _BootGate(
+                          session: session,
+                          startupTrace: widget.startupTrace,
+                          loginRunner: widget.loginRunner,
+                          loadHomeSnapshot: widget.loadHomeSnapshot,
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
           ),
         ),
       ),

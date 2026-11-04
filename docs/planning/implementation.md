@@ -39,6 +39,12 @@ E1/E2 可独立推进；E3 本地模式先于 E4。E5 的 HTTP 路径无需等�
 
 本轮定向回归98项通过（含原生搜索/复制/拨号失败、来源更新失效、两角色真实QuickJS离线执行、卡片声明和首页布局）；西电Node回归228项、共享卡片打包43例、79个schema golden、codegen/SDK/工具类型检查及Flutter analyze通过。补齐原schema golden中缺失的网页/查询表单四例与过时计数，没有修改其生产契约。Android调试APK已构建，并检查无CALL_PHONE权限。仍需 Android/iOS 真机系统电话应用验收和核心实现人工实质审阅。网页内容采集不等于真实电话接通验收；旧安装包升级需重新批准 digest。
 
+## 应用快捷方式与系统 AI 页面入口
+
+[ADR-085](../adr/adr_085_feature_shortcuts.md)：App默认/Apple版本与展示回退均升为 **0.8.2+13**。Android新增课表、成绩、考试、空教室四个静态快捷方式；设置可为11个固定原生功能申请桌面入口，App Actions `OPEN_APP_FEATURE` 共用同一清单。入口等待Profile/会话恢复、选校及解锁，不切身份、不传命令；页面固定当前默认来源并复用首页组件，隐藏卡片不影响显式打开。四个既有AppFunctions的数据授权语义不变。用法和URI见[系统AI参考](../reference/android_app_functions.md#应用快捷方式与-ai-页面入口adr-085)。
+
+本轮定向回归 **54项通过**，覆盖冷/热启动、引导后继续、一次消费、非法参数、身份切换、来源更新、既有AI授权、卡片来源/布局与电话黄页；Flutter analyze无问题。正式Android调试APK已构建，检查版本0.8.2/build13、四个Launcher入口、11个App Actions实体及包指向；另行生成DEV资源确认仅指向DEV包。补齐此前电话黄页在Apple依赖清单/锁中的url_launcher，与默认锁均通过enforce-lockfile解析；没有在Linux上声称完成Apple原生构建。仍待Launcher实际展示/固定确认、系统助手发现与匹配、真机学校功能及核心人工实质审阅；未安装到现有真机或发布。
+
 ## 已有功能的剩余验收
 
 | 范围 | 已有代码 | 仍待完成 |

@@ -8,6 +8,39 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Resource XML cannot expand manifest placeholders. Generate it per variant so
+// a DEV shortcut can never start the production application (ADR-085/024).
+abstract class GenerateFeatureShortcuts : DefaultTask() {
+    @get:org.gradle.api.tasks.Input
+    abstract val targetPackage: org.gradle.api.provider.Property<String>
+    @get:org.gradle.api.tasks.InputFile
+    @get:org.gradle.api.tasks.PathSensitive(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+    abstract val templateFile: org.gradle.api.file.RegularFileProperty
+    @get:org.gradle.api.tasks.OutputDirectory
+    abstract val outputDirectory: org.gradle.api.file.DirectoryProperty
+
+    @org.gradle.api.tasks.TaskAction
+    fun generate() {
+        val output = outputDirectory.file("xml/feature_shortcuts.xml").get().asFile
+        output.parentFile.mkdirs()
+        output.writeText(templateFile.get().asFile.readText()
+            .replace("@APPLICATION_ID@", targetPackage.get()))
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        val generated = tasks.register<GenerateFeatureShortcuts>(
+            "generate${variant.name.replaceFirstChar { it.uppercaseChar() }}FeatureShortcuts",
+        ) {
+            targetPackage.set(variant.applicationId)
+            templateFile.set(layout.projectDirectory.file("feature_shortcuts.xml.template"))
+            outputDirectory.set(layout.buildDirectory.dir("generated/feature-shortcuts/${variant.name}"))
+        }
+        variant.sources.res?.addGeneratedSourceDirectory(generated, GenerateFeatureShortcuts::outputDirectory)
+    }
+}
+
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
