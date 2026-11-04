@@ -1,7 +1,7 @@
 {
   "sdkVersion": 16,
   "id": "school-xidian-postgraduate",
-  "version": "0.27.0",
+  "version": "0.28.1",
   "schoolId": "xidian_postgraduate",
   "name": "西安电子科技大学（研究生）",
   "network": {
@@ -111,7 +111,7 @@
     {
       "id": "query.controls",
       "schema": "elecon.query.controls",
-      "schemaVersion": "2.0"
+      "schemaVersion": "2.1"
     }
   ],
   "home": [
@@ -285,7 +285,7 @@
         "query.campusSouth": "南校区",
         "query.campusNorth": "北校区",
         "query.liveDirectory": "选项来自学校实时目录",
-        "query.savedDirectory": "尚未登录：选项来自已核对的包内目录，查询时重新核对学校目录",
+        "query.savedDirectory": "选项来自2026-11-01核对的包内目录；查询时重新核对学校目录",
         "query.noCampuses": "学校未提供可选校区",
         "query.noBuildings": "当前校区没有可选教学楼",
         "query.sectionRange": "按与时间段相交的节次计算占用；不保证课间或实际开放",
@@ -317,7 +317,7 @@
         "query.campusSouth": "South campus",
         "query.campusNorth": "North campus",
         "query.liveDirectory": "Options come from the live school directory",
-        "query.savedDirectory": "Not signed in: reviewed packaged directory; the school directory is checked when querying",
+        "query.savedDirectory": "Options use the packaged directory reviewed on 2026-11-01; querying rechecks the school directory",
         "query.noCampuses": "No campuses supplied by the school",
         "query.noBuildings": "No buildings in this campus",
         "query.sectionRange": "Checks class periods overlapping this range; breaks and room access are not confirmed",
@@ -349,7 +349,7 @@
         "query.campusSouth": "Janubiy kampus",
         "query.campusNorth": "Shimoliy kampus",
         "query.liveDirectory": "Variantlar universitetning joriy katalogidan olingan",
-        "query.savedDirectory": "Kirish bajarilmagan: tekshirilgan paket katalogi; so‘rovda universitet katalogi qayta tekshiriladi",
+        "query.savedDirectory": "Variantlar 2026-11-01 kuni tekshirilgan paket katalogidan; so‘rov universitet katalogini qayta tekshiradi",
         "query.noCampuses": "Universitet kampuslar ro‘yxatini bermagan",
         "query.noBuildings": "Bu kampusda tanlanadigan bino yo‘q",
         "query.sectionRange": "Oraliqqa to‘g‘ri kelgan dars davrlari tekshiriladi; tanaffus va xonaga kirish tasdiqlanmaydi",
@@ -381,7 +381,7 @@
         "query.campusSouth": "Южный кампус",
         "query.campusNorth": "Северный кампус",
         "query.liveDirectory": "Варианты из текущего каталога вуза",
-        "query.savedDirectory": "Вход не выполнен: проверенный каталог пакета; при запросе каталог вуза проверяется снова",
+        "query.savedDirectory": "Варианты из каталога пакета, проверенного 2026-11-01; при запросе каталог вуза проверяется снова",
         "query.noCampuses": "Вуз не предоставил список кампусов",
         "query.noBuildings": "В этом кампусе нет доступных корпусов",
         "query.sectionRange": "Проверяются пересекающиеся занятия; перемены и доступ в аудиторию не подтверждены",
@@ -413,7 +413,7 @@
         "query.campusSouth": "پردیس جنوبی",
         "query.campusNorth": "پردیس شمالی",
         "query.liveDirectory": "گزینه‌ها از فهرست فعلی دانشگاه هستند",
-        "query.savedDirectory": "وارد نشده‌اید: فهرست بررسی‌شدهٔ بسته؛ هنگام جستجو فهرست دانشگاه دوباره بررسی می‌شود",
+        "query.savedDirectory": "گزینه‌ها از فهرست بستهٔ بررسی‌شده در 2026-11-01 هستند؛ هنگام جستجو فهرست دانشگاه دوباره بررسی می‌شود",
         "query.noCampuses": "دانشگاه فهرست پردیس‌ها را ارائه نکرده است",
         "query.noBuildings": "در این پردیس ساختمانی برای انتخاب وجود ندارد",
         "query.sectionRange": "جلسه‌های هم‌پوشان با بازه بررسی می‌شوند؛ زنگ تفریح و دسترسی به کلاس تأیید نشده‌اند",

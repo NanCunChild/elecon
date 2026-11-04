@@ -10,6 +10,7 @@ import 'package:elecon/ui/home/grades_section.dart';
 import 'package:elecon/ui/home/result_cards.dart';
 import 'package:elecon/ui/home/schema_decode.dart';
 import 'package:elecon/ui/home/script_query_controls.dart';
+import 'package:elecon/ui/home/section_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'script_query_controls_test.dart' show until;
@@ -180,6 +181,15 @@ void main() {
       );
       expect(find.textContaining('Synthetic subset'), findsOneWidget);
       expect(find.byType(TextField), findsNothing);
+      expect(
+        find.byType(SectionCard),
+        findsNothing,
+        reason: 'The native page uses a compact toolbar above room results',
+      );
+      expect(find.widgetWithText(TextButton, 'Filters'), findsOneWidget);
+      expect(find.byTooltip('Refresh'), findsOneWidget);
+      expect(find.byType(FilterChip), findsNothing);
+      expect(find.byType(OutlinedButton), findsNothing);
       final cached = await tester.runAsync(
         () => session.cachedCapability(
           'classroom.available',
@@ -214,6 +224,22 @@ void main() {
         refreshed = next != null && next.fetchedAt.isAfter(cached!.fetchedAt);
       }
       expect(refreshed, isTrue);
+      await tester.pumpWidget(
+        app(
+          session,
+          package,
+          HomeCardPresentation(
+            size: HomeCardSize.regular,
+            previewHeight: 180,
+            onOpen: () {},
+            child: const ClassroomSection(),
+          ),
+        ),
+      );
+      await until(tester, () => find.byType(CardSummary).evaluate().isNotEmpty);
+      expect(find.byType(SectionCard), findsOneWidget);
+      expect(find.text('1/1'), findsOneWidget);
+      expect(find.byTooltip('Refresh'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

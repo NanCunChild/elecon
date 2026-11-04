@@ -1,4 +1,4 @@
-// ADR-082: synthetic examples exercise versioned shapes, bounds and legacy meaning.
+// ADR-082/083: synthetic examples exercise versioned shapes, bounds and legacy meaning.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
@@ -37,6 +37,10 @@ for (const control of [
 ])
   assert.ok(form(make(control)), JSON.stringify(form.errors));
 assert.ok(form({ ...root, controls: [] }));
+const deferred = make({ ...common, kind: "select", options: [], deferred: true });
+assert.ok(form(deferred));
+assert.equal(validator("query.controls", "2.0")(deferred), false);
+assert.equal(form(make({ ...common, kind: "select", options: [], deferred: "true" })), false);
 for (const control of [
   { ...common, id: "constructor", kind: "text" },
   { ...common, id: "prototype", kind: "text" },
@@ -85,6 +89,23 @@ for (const name of ["params.grades.list", "params.classroom.available"]) {
 }
 const params = validator("params.query.controls");
 assert.ok(params({ target: "grades.list", current: filterValues, changed: "flag" }));
+assert.ok(params({ target: "grades.list", load: ["schoolField"] }));
+assert.ok(params({ target: "grades.list", load: Array.from({ length: 32 }, (_, i) => `field${i}`) }));
+assert.equal(
+  validator("params.query.controls", "2.0")({ target: "grades.list", load: ["schoolField"] }),
+  false,
+);
+for (const load of [
+  null,
+  [],
+  "schoolField",
+  ["same", "same"],
+  ["constructor"],
+  [1],
+  Array.from({ length: 33 }, (_, i) => `field${i}`),
+]) {
+  assert.equal(params({ target: "grades.list", load }), false);
+}
 assert.equal(params({ target: "grades.list", current: {}, configure: true }), false);
 assert.equal(validator("params.query.controls", "1.0")({ target: "grades.list", current: {} }), false);
 const old = {
@@ -144,6 +165,7 @@ const manifest = {
 };
 const source = "export const capabilities = {};";
 for (const [queryVersion, roomVersion] of [
+  ["2.1", "1.3"],
   ["2.0", "1.3"],
   ["1.0", "1.2"],
   ["1.0", "1.1"],

@@ -395,10 +395,13 @@ process.stdout.write(result.outputFiles[0].text);''',
     'source packages bind SDK 16 and combine browser login with authenticated data',
     () {
       expect(school.manifest.sdkVersion, 16);
-      expect(school.manifest.version, '0.27.0');
+      expect(school.manifest.version, '0.28.1');
       expect(school.manifest.browser, isTrue);
       expect(school.manifest.capabilities, hasLength(23));
-      expect(school.manifest.capability('query.controls'), isNotNull);
+      expect(
+        school.manifest.capability('query.controls')?.schemaVersion,
+        '2.1',
+      );
       expect(school.manifest.localization!.supportedLocales, [
         'en',
         'fa',
@@ -421,6 +424,7 @@ process.stdout.write(result.outputFiles[0].text);''',
   test(
     'compiled school query controls use packaged author translations offline',
     () async {
+      seed('ehall'); // Even a saved session must not make the base form fetch.
       for (final entry in {
         'ru-RU': 'Найти',
         'uz': 'Qidirish',
@@ -451,8 +455,87 @@ process.stdout.write(result.outputFiles[0].text);''',
           greaterThanOrEqualTo(2),
         );
         expect(controls.any((c) => c['kind'] == 'timeRange'), isTrue);
-        expect(controls.any((c) => c['kind'] == 'multiSelect'), isTrue);
+        final types =
+            controls.singleWhere((c) => c['id'] == 'roomTypes') as Map;
+        expect(types['kind'], 'multiSelect');
+        expect(types['deferred'], true);
+        expect(types['options'], isEmpty);
+        expect(types.containsKey('initialValue'), isFalse);
+        final building =
+            controls.singleWhere((c) => c['id'] == 'building') as Map;
+        expect(building['options'], hasLength(27));
       }
+    },
+  );
+
+  test(
+    'compiled classroom types load only through an explicit deferred request',
+    () async {
+      seed('ehall');
+      final paths = <String>[];
+      final output =
+          await run(
+                'query.controls',
+                params: {
+                  'target': 'classroom.available',
+                  'current': {'date': '2026-11-04', 'building': 'A'},
+                  'load': ['roomTypes'],
+                },
+                fetch: (url, init) async {
+                  final path = Uri.parse(url).path;
+                  paths.add(path);
+                  if (init['method'] != 'POST') {
+                    return response(url, '<html>app</html>');
+                  }
+                  if (path.endsWith('/dqxnxq.do')) {
+                    return response(
+                      url,
+                      table('dqxnxq', [
+                        {'DM': '2026-2027-1'},
+                      ]),
+                    );
+                  }
+                  if (path.endsWith('/rqzhzcjc.do')) {
+                    return response(url, {
+                      'datas': {
+                        'rqzhzcjc': {'ZC': 10, 'XQJ': 3},
+                      },
+                    });
+                  }
+                  if (path.endsWith('/cxjsqk.do')) {
+                    return response(
+                      url,
+                      table('cxjsqk', [
+                        {
+                          'JASDM': 'SYNTHETIC-101',
+                          'JASMC': '101',
+                          'JASLXDM': 'demo-type',
+                          'JASLXDM_DISPLAY': 'Synthetic type',
+                          'JC1': '0_01',
+                        },
+                      ]),
+                    );
+                  }
+                  throw StateError('Unexpected deferred endpoint');
+                },
+              )
+              as Map;
+      final types =
+          (output['controls'] as List).singleWhere(
+                (c) => c['id'] == 'roomTypes',
+              )
+              as Map;
+      expect(types.containsKey('deferred'), isFalse);
+      expect(types.containsKey('initialValue'), isFalse);
+      expect(types['dependsOn'], ['date', 'building']);
+      expect(types['options'], [
+        {'value': 'demo-type', 'label': 'Synthetic type'},
+      ]);
+      expect(paths.where((p) => p.endsWith('/cxjsqk.do')), hasLength(1));
+      expect(
+        paths.any((p) => p.endsWith('/jxlcx.do') || p.endsWith('/cxkxjsxq.do')),
+        isFalse,
+      );
     },
   );
 

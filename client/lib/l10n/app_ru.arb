@@ -717,7 +717,7 @@
       }
     }
   },
-  "classroomLocalTimeHint": "Шкала и фильтры используют местное время устройства. Пробелы не означают, что аудитория свободна.",
+  "classroomLocalTimeHint": "Шкала использует местное время устройства; пробелы не означают свободное время",
   "classroomStartTime": "С: {time}",
   "@classroomStartTime": {
     "placeholders": {
@@ -812,5 +812,8 @@
   "classroomPartialCoverage": "Частичные результаты",
   "classroomLoadedResultsFilter": "Фильтровать только загруженные результаты",
   "classroomFloor": "Этаж",
-  "classroomCapacity": "Места"
+  "classroomCapacity": "Места",
+  "queryClearCondition": "Сбросить условие",
+  "queryPendingSelection": "Выбрано {value}, ожидается проверка; сбросьте для поиска",
+  "queryOptionalRetry": "Повторить загрузку условий (поиск доступен)"
 }

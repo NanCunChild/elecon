@@ -82,9 +82,20 @@ class TrustedScriptRuntime {
     final validator = outputValidatorFor(decl.schema, decl.schemaVersion);
     if (validator == null) throw const ScriptRunException('schema_unsupported');
     final queryForm = package.manifest.capability('query.controls');
-    if (capability == 'query.controls' && decl.schemaVersion == '2.0') {
+    if (capability == 'query.controls' &&
+        params.containsKey('load') &&
+        (decl.schemaVersion != '2.1' || !isQueryFieldList(params['load']))) {
+      throw const ScriptRunException('input_invalid_request');
+    }
+    if (capability == 'query.controls' &&
+        const {'2.0', '2.1'}.contains(decl.schemaVersion)) {
       if (params.keys.any(
-            (k) => !const {'target', 'current', 'changed'}.contains(k),
+            (k) => !{
+              'target',
+              'current',
+              'changed',
+              if (decl.schemaVersion == '2.1') 'load',
+            }.contains(k),
           ) ||
           !const {
             'grades.list',
@@ -98,7 +109,7 @@ class TrustedScriptRuntime {
         throw const ScriptRunException('input_invalid_request');
       }
     }
-    if (queryForm?.schemaVersion == '2.0' &&
+    if (const {'2.0', '2.1'}.contains(queryForm?.schemaVersion) &&
         const {'grades.list', 'classroom.available'}.contains(capability) &&
         params.containsKey('filters') &&
         !isQueryFilterMap(params['filters'])) {
@@ -782,7 +793,8 @@ class TrustedScriptRuntime {
         );
       }
       final output = outcome['data'];
-      if (capability == 'query.controls' && decl.schemaVersion == '2.0') {
+      if (capability == 'query.controls' &&
+          const {'2.0', '2.1'}.contains(decl.schemaVersion)) {
         if (utf8.encode(jsonEncode(output)).length > 128 * 1024) {
           throw const ScriptRunException('output_limit');
         }

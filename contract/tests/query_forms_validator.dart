@@ -7,6 +7,7 @@ void expect(bool condition, String behavior) {
 
 void main() {
   final form = outputValidatorFor('elecon.query.controls', '2.0')!;
+  final deferredForm = outputValidatorFor('elecon.query.controls', '2.1')!;
   final legacy = outputValidatorFor('elecon.query.controls', '1.0')!;
   final base = {
     'target': 'classroom.available',
@@ -59,6 +60,19 @@ void main() {
     expect(!form(withControl(control)), 'reject invalid ${control['kind']}');
   }
   expect(form({...base, 'controls': []}), 'empty v2 form');
+  final deferred = withControl({
+    'kind': 'select',
+    'options': [],
+    'deferred': true,
+  });
+  expect(deferredForm(deferred), '2.1 accepts deferred field declarations');
+  expect(!form(deferred), '2.0 keeps its exact closed field shape');
+  expect(
+    !deferredForm(
+      withControl({'kind': 'select', 'options': [], 'deferred': 'true'}),
+    ),
+    'deferred must be a boolean',
+  );
   expect(!legacy({...base, 'controls': []}), 'legacy retains minItems');
   expect(
     legacy(withControl({'kind': 'text', 'parameter': 'room'})),

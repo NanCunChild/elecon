@@ -819,7 +819,7 @@
       }
     }
   },
-  "classroomLocalTimeHint": "时间轴与筛选使用设备本地时间；空白时间不代表空闲。",
+  "classroomLocalTimeHint": "时间轴使用设备本地时间；空白时间不代表空闲",
   "classroomStartTime": "开始：{time}",
   "@classroomStartTime": {
     "placeholders": {
@@ -928,5 +928,9 @@
   "classroomPartialCoverage": "部分结果",
   "classroomLoadedResultsFilter": "仅筛选当前已加载结果",
   "classroomFloor": "楼层",
-  "classroomCapacity": "座位数"
+  "classroomCapacity": "座位数",
+  "queryClearCondition": "清除条件",
+  "queryPendingSelection": "已选 {value}，等待确认；可清除后直接查询",
+  "queryOptionalRetry": "重试加载可选条件（仍可查询）",
+  "@queryPendingSelection": {"placeholders": {"value": {"type": "String"}}}
 }

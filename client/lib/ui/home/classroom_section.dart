@@ -30,7 +30,6 @@ class _ClassroomSectionState extends State<ClassroomSection>
     with CachedQuerySection<ClassroomSection, ClassroomAvailable> {
   bool _manualSelection = false;
   bool _prepared = false;
-  String _room = "";
   String? _schemaVersion;
   bool _usesScriptForm = false;
   bool _formVersionReady = false;
@@ -78,7 +77,6 @@ class _ClassroomSectionState extends State<ClassroomSection>
   @override
   void clearCache() {
     _prepared = false;
-    _room = "";
     _schemaVersion = null;
     _usesScriptForm = false;
     _formVersionReady = false;
@@ -121,7 +119,7 @@ class _ClassroomSectionState extends State<ClassroomSection>
     }
     _schemaVersion = version;
     setState(() {
-      _usesScriptForm = controlsVersion == '2.0';
+      _usesScriptForm = const {'2.0', '2.1'}.contains(controlsVersion);
       _formVersionReady = true;
     });
     await super.restoreCache();
@@ -391,9 +389,10 @@ class _ClassroomSectionState extends State<ClassroomSection>
     }
     if (_usesScriptForm) {
       final busy = _availPhase == QueryPhase.loading || _filtersLoading;
-      if (HomeCardPresentation.isPreview(context) && _avail != null) {
+      final preview = HomeCardPresentation.isPreview(context);
+      if (preview && _avail != null) {
         return withCacheTime(
-          _ClassroomResultCard(
+          _ClassroomResults(
             data: _avail!,
             trailing: SectionRefreshButton(
               onPressed: busy ? null : _loadAvailable,
@@ -401,57 +400,65 @@ class _ClassroomSectionState extends State<ClassroomSection>
           ),
         );
       }
+      final refresh = SectionRefreshButton(
+        onPressed: busy ? null : _loadAvailable,
+      );
+      final filters = TextButton.icon(
+        onPressed: busy ? null : _pickFilters,
+        icon: const Icon(Icons.filter_list),
+        label: Text(AppLocalizations.of(context).queryFilters),
+      );
+      final controls = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (preview)
+            filters
+          else
+            Row(children: [filters, const Spacer(), refresh]),
+          if (_filterError != null) Text(_filterError!),
+          QueryPhaseBody(
+            phase: _availPhase,
+            error: _availError,
+            onConfigure: () => _loadAvailable(configure: true),
+            onLogin: () async {
+              final session = SessionScope.of(context);
+              final generation = session.trustedScriptViewGeneration;
+              final source = CapabilitySourceScope.maybeOf(context)?.source;
+              final ok = await promptVisibleLogin(
+                context,
+                session,
+                capability: cacheCapability,
+              );
+              if (ok && isCurrentQuery(this, session, generation, source)) {
+                await _pickFilters();
+              }
+            },
+          ),
+        ],
+      );
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          QueryPromptCard(
-            title: '空教室',
-            subtitle: AppLocalizations.of(context).queryFilters,
-            summary: querySummary(context, _availPhase),
-            trailing: SectionRefreshButton(
-              onPressed: busy ? null : _loadAvailable,
+          if (preview)
+            QueryPromptCard(
+              title: '空教室',
+              subtitle: '',
+              summary: querySummary(context, _availPhase),
+              trailing: refresh,
+              child: controls,
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: controls,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextButton.icon(
-                  onPressed: busy ? null : _pickFilters,
-                  icon: const Icon(Icons.filter_list),
-                  label: Text(AppLocalizations.of(context).queryFilters),
-                ),
-                if (_filterError != null) Text(_filterError!),
-                QueryPhaseBody(
-                  phase: _availPhase,
-                  error: _availError,
-                  onConfigure: () => _loadAvailable(configure: true),
-                  onLogin: () async {
-                    final session = SessionScope.of(context);
-                    final generation = session.trustedScriptViewGeneration;
-                    final source = CapabilitySourceScope.maybeOf(
-                      context,
-                    )?.source;
-                    final ok = await promptVisibleLogin(
-                      context,
-                      session,
-                      capability: cacheCapability,
-                    );
-                    if (ok &&
-                        isCurrentQuery(this, session, generation, source)) {
-                      await _pickFilters();
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-          if (_avail != null)
-            withCacheTime(_ClassroomResultCard(data: _avail!)),
+          if (_avail != null) withCacheTime(_ClassroomResults(data: _avail!)),
         ],
       );
     }
     if (HomeCardPresentation.isPreview(context) && _avail != null) {
       return withCacheTime(
-        _ClassroomResultCard(
+        _ClassroomResults(
           data: _avail!,
           trailing: SectionRefreshButton(
             onPressed:
@@ -487,8 +494,7 @@ class _ClassroomSectionState extends State<ClassroomSection>
               onConfigure: () => _loadBuildings(configure: true),
             ),
           ),
-          if (_avail != null)
-            withCacheTime(_ClassroomResultCard(data: _avail!)),
+          if (_avail != null) withCacheTime(_ClassroomResults(data: _avail!)),
         ],
       );
     }
@@ -571,102 +577,100 @@ class _ClassroomSectionState extends State<ClassroomSection>
             ],
           ),
         ),
-        if (_avail != null) ...[
-          TextField(
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              labelText: AppLocalizations.of(context).classroomRoomHint,
-            ),
-            onChanged: (value) => setState(() => _room = value.trim()),
-          ),
-          withCacheTime(_ClassroomResultCard(data: _avail!, roomFilter: _room)),
-        ],
+        if (_avail != null) withCacheTime(_ClassroomResults(data: _avail!)),
       ],
     );
   }
 }
 
-class _ClassroomResultCard extends StatelessWidget {
-  const _ClassroomResultCard({
-    required this.data,
-    this.roomFilter = "",
-    this.trailing,
-  });
+class _ClassroomResults extends StatelessWidget {
+  const _ClassroomResults({required this.data, this.trailing});
   final Widget? trailing;
-  final String roomFilter;
-
   final ClassroomAvailable data;
 
   @override
   Widget build(BuildContext context) {
-    final items = (data.items ?? const <ClassroomAvailableItems>[])
-        .where((item) => item.room.contains(roomFilter))
-        .toList();
+    final l10n = AppLocalizations.of(context);
+    final items = data.items ?? const <ClassroomAvailableItems>[];
     final free = items
         .where(
-          (i) =>
-              i.occupied == false ||
-              (i.occupied == null && i.status == 'available'),
+          (item) =>
+              item.occupied == false ||
+              (item.occupied == null && item.status == 'available'),
         )
-        .toList();
-    return SectionCard(
-      title: '空教室',
-      trailing: trailing,
-      summary: CardSummary(
-        '${free.length}/${items.length}',
-        detail: [
-          AppLocalizations.of(context).homeCardAvailableRooms,
-          if (data.date != null) data.date!,
-        ].join(' · '),
-      ),
-      subtitle: [
-        if (data.date != null) data.date!,
-        if (data.sourceSystem != null) data.sourceSystem!,
-        if (data.coverage?.complete == false)
-          AppLocalizations.of(context).classroomPartialCoverage,
-        if (data.coverage?.description != null) data.coverage!.description!,
-        '${free.length}/${items.length} 空闲',
-      ].join(' · '),
-      child: items.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('该教学楼当日无可展示教室'),
-            )
-          : items.any((room) => room.intervals != null)
-          ? ClassroomTimeline(
-              key: ValueKey('${data.date}/${items.first.buildingId}'),
-              rooms: items,
-            )
-          : Column(
-              children: [
-                for (final room in items)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      room.occupied == true
-                          ? Icons.meeting_room
-                          : Icons.meeting_room_outlined,
-                      color: room.occupied == true
-                          ? Theme.of(context).colorScheme.error
-                          : Theme.of(context).colorScheme.primary,
-                    ),
-                    title: Text('${room.building} ${room.room}'),
-                    subtitle: Text(
-                      [
-                        if (classroomRoomAttributes(
-                          room,
-                          AppLocalizations.of(context),
-                        ).isNotEmpty)
-                          classroomRoomAttributes(
-                            room,
-                            AppLocalizations.of(context),
-                          ),
-                        if (room.status != null) _roomStatusText(room.status!),
-                      ].join(' · '),
-                    ),
+        .length;
+    final metadata = [
+      if (data.date != null) data.date!,
+      '$free/${items.length} ${l10n.homeCardAvailableRooms}',
+      if (data.sourceSystem != null) data.sourceSystem!,
+      if (data.coverage?.complete == false) l10n.classroomPartialCoverage,
+      if (data.coverage?.description != null) data.coverage!.description!,
+    ].join(' · ');
+    final content = items.isEmpty
+        ? const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('该教学楼当日无可展示教室'),
+          )
+        : items.any((room) => room.intervals != null)
+        ? ClassroomTimeline(
+            key: ValueKey('${data.date}/${items.first.buildingId}'),
+            rooms: items,
+          )
+        : Column(
+            children: [
+              for (final room in items)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    room.occupied == true
+                        ? Icons.meeting_room
+                        : Icons.meeting_room_outlined,
+                    color: room.occupied == true
+                        ? Theme.of(context).colorScheme.error
+                        : Theme.of(context).colorScheme.primary,
                   ),
-              ],
+                  title: Text('${room.building} ${room.room}'),
+                  subtitle: Text(
+                    [
+                      if (classroomRoomAttributes(room, l10n).isNotEmpty)
+                        classroomRoomAttributes(room, l10n),
+                      if (room.status != null) _roomStatusText(room.status!),
+                    ].join(' · '),
+                  ),
+                ),
+            ],
+          );
+    if (HomeCardPresentation.isPreview(context)) {
+      return SectionCard(
+        title: '空教室',
+        trailing: trailing,
+        summary: CardSummary(
+          '$free/${items.length}',
+          detail: [
+            l10n.homeCardAvailableRooms,
+            if (data.date != null) data.date!,
+          ].join(' · '),
+        ),
+        subtitle: metadata,
+        child: content,
+      );
+    }
+    return Padding(
+      key: const ValueKey('classroom-results'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            metadata,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
+          ),
+          const SizedBox(height: 8),
+          content,
+        ],
+      ),
     );
   }
 }

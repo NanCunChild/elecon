@@ -353,12 +353,20 @@ export type ScriptContentOperation =
   | { operation: "queryAll"; selector: string; limit?: number }
   | { operation: "waitForEvent"; selector: string; event: "click" | "submit" | "change"; timeoutMs?: number };
 
-/** ADR-082: query.controls@2.0 describes same-package, read-only query fields.
+/** ADR-082/083: query.controls@2.1 describes same-package, read-only query fields.
  * Kind is a host prefab; id/labels have school-defined meaning. At most 32 fields,
  * 200 options per select, 32 selections and 512 Unicode characters per value.
  * Metadata <=128KiB; current/filters <=32KiB UTF-8. Omit empty optional values;
  * false and zero are valid. Disabled and undeclared fields are never submitted.
  * The script revalidates final values; defaults/labels never grant authority.
+ * A deferred field is an optional leaf without initialValue. Its dependencies
+ * must be ordinary fields; disabled fields are not loaded. load contains 1–32
+ * unique ids; current includes only their values and declared dependencies.
+ * Return the full form, but only the requested fields are applied: preserve
+ * id/kind/dependsOn, omit initialValue, remain optional and resolve deferred.
+ * No follow-on loading or automatic retries. Existing unresolved selections
+ * are retained until confirmed or explicitly cleared; optional empty fields
+ * never block a base query. Old 2.0 packages receive no load/deferred fields.
  * Legacy query.controls@1.0 keeps parameter/initialEnd semantics separately. */
 export type QueryControls = import("../generated/ts/query.controls.js").QueryControls;
 export type QueryControlsParams = import("../generated/ts/params.query.controls.js").ParamsQueryControls;

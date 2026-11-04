@@ -99,10 +99,12 @@ void main() {
         );
         final line = find.byKey(const ValueKey('classroom-current-time-line'));
         expect(line, findsOneWidget);
-        // Fixed name column is 100; the line at the midpoint must stay centered
+        // Narrow layouts reserve 128 for room attributes; the midpoint stays
         // on the bar even when the surrounding page uses RTL.
-        expect(tester.getTopLeft(line).dx, closeTo(245, 1));
-        expect(find.text(l10n.classroomOnlyFree), findsOneWidget);
+        expect(tester.getTopLeft(line).dx, closeTo((390 + 128) / 2, 1));
+        expect(find.text(l10n.classroomOnlyFree), findsNothing);
+        expect(find.text(l10n.classroomLocalTimeHint), findsOneWidget);
+        expect(find.text(l10n.classroomAvailableStatus), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

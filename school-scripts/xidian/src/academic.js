@@ -802,7 +802,13 @@ function sectionWindow(params) {
     const overlaps = TIMES.flatMap(([s, e], i) =>
       s < end && e > start && i + 1 >= first && i + 1 <= last ? [i + 1] : [],
     );
-    if (!overlaps.length) throw new Error("classroom_time_window_no_sections");
+    if (!overlaps.length) {
+      // New school-owned time ranges can start at the current clock after the
+      // final known class. No mapped section means unknown, never free time.
+      // Preserve the historical top-level start/end rejection separately.
+      if (params.filters?.timeRange) return { start, end };
+      throw new Error("classroom_time_window_no_sections");
+    }
     first = overlaps[0];
     last = overlaps[overlaps.length - 1];
   }
@@ -898,8 +904,9 @@ export async function classroomAvailable(ctx, params = {}) {
             },
           ],
     );
-    const selected = sections.filter((s) => s.index >= window.first && s.index <= window.last);
-    const complete = selected.length === window.last - window.first + 1;
+    const selected = window.first === undefined ? [] :
+      sections.filter((s) => s.index >= window.first && s.index <= window.last);
+    const complete = window.first !== undefined && selected.length === window.last - window.first + 1;
     const any = selected.some((s) => s.occupied);
     const item = {
       ...building,
@@ -952,15 +959,14 @@ export async function classroomAvailable(ctx, params = {}) {
     term,
     week,
     weekday,
-    sectionStart: window.first,
-    sectionEnd: window.last,
+    ...(window.first !== undefined ? { sectionStart: window.first, sectionEnd: window.last } : {}),
     sourceSystem: "西电教务空教室",
     timeZone: "Asia/Shanghai",
     items,
     appliedFilters: { ...filters },
     coverage: {
       complete: true,
-      description: `${building.building} · ${date || `${term} / ${week} / ${weekday}`} · 已完成本次楼栋、日期和条件范围的分页；不是全校结果`,
+      description: `${building.building} · ${date || `${term} / ${week} / ${weekday}`} · 已完成本次楼栋、日期和条件范围的分页；不是全校结果${window.first === undefined ? "；查询时段超出已知课程节次，无法判断空闲" : ""}`,
     },
   };
   if (date) output.date = date;

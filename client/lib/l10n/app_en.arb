@@ -717,7 +717,7 @@
       }
     }
   },
-  "classroomLocalTimeHint": "Timeline and filters use device local time. Gaps do not mean available.",
+  "classroomLocalTimeHint": "The timeline uses device local time; gaps do not mean available",
   "classroomStartTime": "From: {time}",
   "@classroomStartTime": {
     "placeholders": {
@@ -812,5 +812,8 @@
   "classroomPartialCoverage": "Partial results",
   "classroomLoadedResultsFilter": "Filter currently loaded results only",
   "classroomFloor": "Floor",
-  "classroomCapacity": "Seats"
+  "classroomCapacity": "Seats",
+  "queryClearCondition": "Clear condition",
+  "queryPendingSelection": "Selected {value}, awaiting validation; clear to query now",
+  "queryOptionalRetry": "Retry optional filters (you can still query)"
 }

@@ -11,6 +11,12 @@ import 'query_form_model.dart';
 
 typedef QueryFormLoader =
     Future<QueryForm> Function(Map<String, dynamic> current, String? changed);
+typedef QueryFormDeferredLoader =
+    Future<QueryForm> Function(
+      Map<String, dynamic> current,
+      List<String> fields,
+      ScriptRunCancellation cancellation,
+    );
 
 class QueryFormDialog extends StatefulWidget {
   const QueryFormDialog({
@@ -19,8 +25,10 @@ class QueryFormDialog extends StatefulWidget {
     required this.current,
     required this.isActive,
     required this.session,
+    this.loadDeferred,
   });
   final QueryFormLoader load;
+  final QueryFormDeferredLoader? loadDeferred;
   final Map<String, dynamic> current;
   final bool Function() isActive;
   final SessionController session;
@@ -34,8 +42,12 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
   final _editors = <String, TextEditingController>{};
   final _invalidNumbers = <String>{};
   final _seenFields = <String>{};
+  final _baseFields = <String, QueryFormField>{};
   Timer? _debounce;
   int _revision = 0;
+  int _deferredRevision = 0;
+  ScriptRunCancellation? _deferredCancellation;
+  bool _deferredFailed = false;
   bool _loading = true, _failed = false, _validate = false;
   String? _changed;
 
@@ -54,6 +66,7 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
   void _checkIdentity() {
     if (mounted && !widget.isActive()) {
       _revision++;
+      _cancelDeferred();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && ModalRoute.of(context)?.isCurrent == true) {
           Navigator.pop(context);
@@ -66,6 +79,7 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
   @override
   void dispose() {
     _revision++;
+    _cancelDeferred();
     _debounce?.cancel();
     widget.session.removeListener(_checkIdentity);
     for (final controller in _editors.values) {
@@ -81,6 +95,7 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
 
   Future<void> _reload() async {
     _debounce?.cancel();
+    _cancelDeferred();
     final revision = ++_revision;
     if (!widget.isActive()) return;
     setState(() {
@@ -119,7 +134,10 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
                 _ => false,
               };
           if (!compatible) _values.remove(field.id);
-          if (field.isChoice && value != null && !field.accepts(value)) {
+          if (!field.deferred &&
+              field.isChoice &&
+              value != null &&
+              !field.accepts(value)) {
             _values.remove(field.id);
           }
           if (firstAppearance &&
@@ -143,14 +161,117 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
           }
         }
         _form = next;
+        _baseFields
+          ..clear()
+          ..addEntries(next.fields.map((field) => MapEntry(field.id, field)));
         _loading = false;
       });
+      unawaited(_resolveDeferred());
     } catch (_) {
       if (!mounted || !widget.isActive() || revision != _revision) return;
       setState(() {
         _loading = false;
         _failed = true;
       });
+    }
+  }
+
+  void _cancelDeferred() {
+    _deferredRevision++;
+    _deferredCancellation?.cancel();
+    _deferredCancellation = null;
+    _deferredFailed = false;
+  }
+
+  Future<void> _resolveDeferred() async {
+    final loader = widget.loadDeferred;
+    final form = _form;
+    if (loader == null || form == null || !widget.isActive()) return;
+    final fields = form.fields
+        .where(
+          (field) =>
+              field.deferred &&
+              !field.disabled &&
+              field.dependsOn.every((id) {
+                final dependency = form.fields.firstWhere(
+                  (entry) => entry.id == id,
+                );
+                return !dependency.disabled && dependency.accepts(_values[id]);
+              }),
+        )
+        .toList();
+    if (fields.isEmpty) return;
+    _cancelDeferred();
+    final revision = _deferredRevision;
+    final cancellation = ScriptRunCancellation();
+    _deferredCancellation = cancellation;
+    final keys = {
+      for (final field in fields) ...[field.id, ...field.dependsOn],
+    };
+    final current = Map<String, dynamic>.from(
+      jsonDecode(
+        jsonEncode({
+          for (final entry in _metadataDraft().entries)
+            if (keys.contains(entry.key)) entry.key: entry.value,
+        }),
+      ),
+    );
+    setState(() => _deferredFailed = false);
+    try {
+      final result = await loader(
+        current,
+        fields.map((field) => field.id).toList(),
+        cancellation,
+      );
+      if (!mounted || !widget.isActive() || revision != _deferredRevision) {
+        return;
+      }
+      final resolved = <String, QueryFormField>{};
+      for (final field in fields) {
+        final next = result.fields
+            .where((candidate) => candidate.id == field.id)
+            .firstOrNull;
+        if (next == null ||
+            next.kind != field.kind ||
+            next.deferred ||
+            next.required ||
+            next.initialValue != null ||
+            next.dependsOn.length != field.dependsOn.length ||
+            !next.dependsOn.toSet().containsAll(field.dependsOn)) {
+          throw const FormatException('invalid_deferred_query_field');
+        }
+        // A resolved but unavailable optional field stays hidden. Keep an old
+        // selection pending until it can be validated or explicitly cleared.
+        resolved[field.id] = next.disabled ? field : next;
+      }
+      setState(() {
+        _form = QueryForm(
+          target: form.target,
+          title: form.title,
+          submitLabel: form.submitLabel,
+          fields: [
+            for (final field in _form!.fields) resolved[field.id] ?? field,
+          ],
+        );
+        for (final field in resolved.values) {
+          if (!field.deferred && !field.accepts(_values[field.id])) {
+            _validate = true;
+          }
+        }
+        _deferredFailed = resolved.values.any(
+          (field) => field.deferred && _values.containsKey(field.id),
+        );
+      });
+    } catch (_) {
+      if (!mounted || !widget.isActive() || revision != _deferredRevision) {
+        return;
+      }
+      setState(() => _deferredFailed = true);
+    } finally {
+      if (identical(_deferredCancellation, cancellation)) {
+        _deferredCancellation = null;
+      }
+      cancellation.dispose();
     }
   }
 
@@ -171,6 +292,7 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
     if (!widget.isActive()) return;
     final descendants = _form!.descendants(field.id);
     final reload = descendants.isNotEmpty || _loading || _failed;
+    if (reload) _cancelDeferred();
     _revision++;
     setState(() {
       if (value == null || value == '') {
@@ -189,6 +311,21 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
         _editors[id]?.clear();
         _editors['range:$id:start']?.clear();
         _editors['range:$id:end']?.clear();
+      }
+      if (reload) {
+        final form = _form!;
+        _form = QueryForm(
+          target: form.target,
+          title: form.title,
+          submitLabel: form.submitLabel,
+          fields: [
+            for (final field in form.fields)
+              if (descendants.contains(field.id))
+                _baseFields[field.id] ?? field
+              else
+                field,
+          ],
+        );
       }
       _changed = field.id;
       if (reload) _loading = true;
@@ -212,11 +349,45 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
       firstDate: DateTime(1),
       lastDate: DateTime(9999, 12, 31),
     );
-    if (!mounted || picked == null || !widget.isActive()) return;
+    if (!mounted) return;
+    if (!widget.isActive()) {
+      _checkIdentity();
+      return;
+    }
+    if (picked == null) return;
     final text =
         '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
     _editor(field.id, text, sync: true);
     _change(field, text);
+  }
+
+  Future<void> _pickTime(QueryFormField field, String edge) async {
+    final range = _values[field.id];
+    final value = range is Map ? range[edge] : null;
+    final parts = value is String && queryTime(value) ? value.split(':') : null;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: parts == null
+          ? TimeOfDay.now()
+          : TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1])),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+    );
+    if (!mounted) return;
+    if (!widget.isActive()) {
+      _checkIdentity();
+      return;
+    }
+    if (picked == null) return;
+    final text =
+        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    _editor('range:${field.id}:$edge', text, sync: true);
+    _change(field, {
+      if (range is Map) ...Map<String, dynamic>.from(range),
+      edge: text,
+    });
   }
 
   Widget _field(QueryFormField field) {
@@ -234,12 +405,13 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
       if (field.timeZone != null) field.timeZone!,
       if (field.disabledReason != null) field.disabledReason!,
     ].join(' · ');
-    InputDecoration decoration({String? label}) => InputDecoration(
-      labelText: '${label ?? field.label}${field.required ? ' *' : ''}',
-      helperText: help.isEmpty ? null : help,
-      helperMaxLines: 4,
-      errorText: error,
-    );
+    InputDecoration decoration({String? label, bool showHelp = true}) =>
+        InputDecoration(
+          labelText: '${label ?? field.label}${field.required ? ' *' : ''}',
+          helperText: !showHelp || help.isEmpty ? null : help,
+          helperMaxLines: 4,
+          errorText: error,
+        );
     final key = ValueKey('query-control-${field.id}');
     switch (field.kind) {
       case 'boolean':
@@ -292,6 +464,18 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
             spacing: 6,
             runSpacing: 4,
             children: [
+              for (final value in selected)
+                if (!field.options.any((option) => option.value == value))
+                  InputChip(
+                    label: Text(value),
+                    deleteIcon: const Icon(Icons.close, size: 18),
+                    onDeleted: enabled
+                        ? () => _change(
+                            field,
+                            selected.where((item) => item != value).toList(),
+                          )
+                        : null,
+                  ),
               for (final option in field.options)
                 FilterChip(
                   label: Text(option.label),
@@ -316,30 +500,58 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final edge in ['start', 'end'])
-              TextField(
-                key: ValueKey('query-control-${field.id}-$edge'),
-                controller: _editor('range:${field.id}:$edge', ''),
-                enabled: enabled,
-                keyboardType: TextInputType.datetime,
-                maxLength: 5,
-                decoration: decoration(
-                  label:
-                      '${field.label} · ${edge == 'start' ? l10n.classroomStartTime('') : l10n.classroomEndTime('')}',
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '${field.label}${field.required ? ' *' : ''}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+            Row(
+              children: [
+                for (final edge in ['start', 'end'])
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(left: edge == 'end' ? 8 : 0),
+                      child: TextField(
+                        key: ValueKey('query-control-${field.id}-$edge'),
+                        controller: _editor('range:${field.id}:$edge', ''),
+                        enabled: enabled,
+                        readOnly: true,
+                        onTap: enabled ? () => _pickTime(field, edge) : null,
+                        decoration:
+                            decoration(
+                              showHelp: false,
+                              label: edge == 'start'
+                                  ? l10n.classroomStartTime('')
+                                  : l10n.classroomEndTime(''),
+                            ).copyWith(
+                              suffixIcon: const Icon(Icons.schedule, size: 20),
+                            ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            if (help.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(help, style: Theme.of(context).textTheme.bodySmall),
+              ),
+            if (!field.required && _values.containsKey(field.id))
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: TextButton(
+                  key: ValueKey('query-control-${field.id}-clear'),
+                  onPressed: enabled
+                      ? () {
+                          _editor('range:${field.id}:start', '', sync: true);
+                          _editor('range:${field.id}:end', '', sync: true);
+                          _change(field, null);
+                        }
+                      : null,
+                  child: Text(l10n.queryClearCondition),
                 ),
-                onChanged: (text) {
-                  final range = _values[field.id];
-                  final next = {
-                    if (range is Map) ...Map<String, dynamic>.from(range),
-                    edge: text,
-                  };
-                  _change(
-                    field,
-                    (next['start'] ?? '') == '' && (next['end'] ?? '') == ''
-                        ? null
-                        : next,
-                  );
-                },
               ),
           ],
         );
@@ -403,9 +615,30 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
               if (_loading)
                 LinearProgressIndicator(semanticsLabel: l10n.homeCardLoading),
               for (final field in _form?.fields ?? const <QueryFormField>[])
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  child: _field(field),
+                if (!field.deferred)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    child: _field(field),
+                  ),
+              for (final field in _form?.fields ?? const <QueryFormField>[])
+                if (field.deferred && _values.containsKey(field.id))
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(field.label),
+                    subtitle: Text(
+                      l10n.queryPendingSelection(_values[field.id].toString()),
+                    ),
+                    trailing: IconButton(
+                      tooltip: l10n.queryClearCondition,
+                      onPressed: () => _change(field, null),
+                      icon: const Icon(Icons.clear),
+                    ),
+                  ),
+              if (_deferredFailed)
+                TextButton.icon(
+                  onPressed: _resolveDeferred,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: Text(l10n.queryOptionalRetry),
                 ),
               if (_failed) ...[
                 Text(l10n.scriptsSourceResponseInvalid),
@@ -443,6 +676,7 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
                     setState(() => _validate = true);
                     return;
                   }
+                  _cancelDeferred();
                   Navigator.pop(context, values);
                 },
           child: Text(_form?.submitLabel ?? l10n.queryFilters),

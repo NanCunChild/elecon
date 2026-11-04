@@ -2,7 +2,7 @@
   "description": "所有合法 capability id 的注册表。新增 id 或改其语义需走 ADR。",
   "capabilities": {
     "web.content": { "description": "显式打开同包网页交互（ADR-073；仅前台、不缓存、不重放）", "emits": { "schema": "elecon.web.content", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.web.content", "schemaVersion": "1.0" } },
-    "query.controls": { "description": "同包只读查询表单（ADR-082；1.0保留ADR-071语义）", "emits": { "schema": "elecon.query.controls", "schemaVersion": "2.0", "previousVersions": ["1.0"] }, "params": { "schema": "elecon.params.query.controls", "schemaVersion": "2.0", "previousVersions": ["1.0"] } },
+    "query.controls": { "description": "同包只读查询表单（ADR-083/082；1.0保留ADR-071语义）", "emits": { "schema": "elecon.query.controls", "schemaVersion": "2.1", "previousVersions": ["1.0", "2.0"] }, "params": { "schema": "elecon.params.query.controls", "schemaVersion": "2.1", "previousVersions": ["1.0", "2.0"] } },
     "faculty.search": { "description": "检索学校公开教师资料（ADR-050）", "emits": { "schema": "elecon.faculty.search", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.faculty.search", "schemaVersion": "1.0" } },
     "grades.list": {
       "description": "获取学期成绩列表",

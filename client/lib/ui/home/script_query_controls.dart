@@ -209,7 +209,10 @@ Future<ScriptQuerySelection> pickScriptQueryControls(
           (install?.enabled != true || package.digest != bound.digest))) {
     return const ScriptQuerySelection(supported: true);
   }
-  if (package.manifest.capability('query.controls')!.schemaVersion == '2.0') {
+  final formVersion = package.manifest
+      .capability('query.controls')!
+      .schemaVersion;
+  if (const {'2.0', '2.1'}.contains(formVersion)) {
     if (!context.mounted) return const ScriptQuerySelection(supported: true);
     bool currentSource() =>
         active() &&
@@ -230,23 +233,49 @@ Future<ScriptQuerySelection> pickScriptQueryControls(
           final result = await runOnceDecoded<QueryForm>(
             session,
             'query.controls',
-            params: {
-              'target': target,
-              'current': draft,
-              'changed': ?changed,
-            },
+            params: {'target': target, 'current': draft, 'changed': ?changed},
             interactive: false,
             source: CapabilitySource(
               packageId: package.manifest.id,
               digest: package.digest,
             ),
-            decode: (raw) => queryFormFromDynamic(raw, target),
+            decode: (raw) =>
+                queryFormFromDynamic(raw, target, version: formVersion),
           );
           if (!currentSource() || result.data == null) {
             throw const FormatException('query_controls_unavailable');
           }
           return result.data!;
         },
+        loadDeferred: formVersion != '2.1'
+            ? null
+            : (draft, fields, cancellation) async {
+                if (!currentSource()) {
+                  throw const FormatException('script_cancelled');
+                }
+                final result = await session.runTrustedScript(
+                  package.manifest.id,
+                  'query.controls',
+                  expectedDigest: package.digest,
+                  params: {'target': target, 'current': draft, 'load': fields},
+                  interactive: false,
+                  cancellation: cancellation,
+                );
+                if (!currentSource() ||
+                    cancellation.isCancelled ||
+                    !result.ok) {
+                  throw const FormatException('query_controls_unavailable');
+                }
+                final form = queryFormFromDynamic(
+                  result.data,
+                  target,
+                  version: formVersion,
+                );
+                if (form == null) {
+                  throw const FormatException('query_controls_unavailable');
+                }
+                return form;
+              },
       ),
     );
     return ScriptQuerySelection(

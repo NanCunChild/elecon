@@ -919,6 +919,7 @@ test("school-owned grade filters select a term without changing the legacy term 
 });
 
 function richClassroomsRoute(call) {
+  if (call.url.pathname.endsWith("/getUserInfo.do")) return { code: "0", data: { xnxqdm: TERM } };
   if (call.url.pathname.endsWith("/dqxnxq.do")) return payload("dqxnxq", [{ DM: TERM }]);
   if (call.url.pathname.endsWith("/cxjsqk.do")) return payload("cxjsqk", [
     room(1, { JASLXDM: "demo-media", JASLXDM_DISPLAY: "合成多媒体教室", SKZWS: "120", KSZWS: 60,
@@ -1021,47 +1022,134 @@ test("final query revalidates campus and building against the live directory", a
   }
 });
 
-test("form discovers live buildings and room types only within the selected scope", async () => {
-  const ctx = fake(richClassroomsRoute);
+const deferredSelection = { date: "2025-09-16", building: "A" };
+
+test("classroom base form and ordinary dependency refresh use the reviewed directory without I/O", async () => {
+  const ctx = {
+    now: () => Date.parse("2025-09-16T00:00:00Z"),
+    credentials: { get: () => assert.fail("base form must not read credentials") },
+    fetch: () => assert.fail("base form must not send school requests"),
+  };
   const query = createQueryControls("undergraduate");
   const initial = valid("query.controls", await query(ctx, { target: "classroom.available" }));
   const building = initial.controls.find((control) => control.id === "building");
-  assert.deepEqual(building.options, [{ value: "demo-building", label: "测试楼" }]);
-  assert.match(building.description, /实时目录/);
+  assert.equal(building.options.length, 27);
+  assert.ok(building.options.some((item) => item.value === "A"));
+  assert.match(building.description, /2026-11-01.*包内目录/);
   assert.equal(building.initialValue, undefined, "the user chooses a building");
-  assert.equal(initial.controls.find((control) => control.id === "roomTypes").disabled, true);
-  assert.ok(!ctx.calls.some((call) => call.url.pathname.endsWith("/cxjsqk.do")));
-  const selected = valid("query.controls", await query(ctx, { target: "classroom.available", current: richSelection, changed: "building" }));
-  const types = selected.controls.find((control) => control.id === "roomTypes");
-  assert.deepEqual(types.options, [{ value: "demo-media", label: "合成多媒体教室" }, { value: "demo-lab", label: "合成实验室" }]);
-  assert.deepEqual(types.dependsOn, ["date", "campus", "building"]);
-  assert.equal(types.disabled, undefined);
-  assert.equal(ctx.calls.filter((call) => call.url.pathname.endsWith("/cxjsqk.do")).length, 1);
-  assert.equal(ctx.calls.filter((call) => call.url.pathname.endsWith("/cxkxjsxq.do")).length, 0);
+  const types = initial.controls.find((control) => control.id === "roomTypes");
+  assert.equal(types.disabled, true);
+  assert.equal(types.deferred, true);
+  assert.equal(types.initialValue, undefined);
+  const selected = valid("query.controls", await query(ctx, {
+    target: "classroom.available", current: { ...deferredSelection, campus: "S", roomTypes: ["demo-media"] }, changed: "building",
+  }));
+  const pendingTypes = selected.controls.find((control) => control.id === "roomTypes");
+  assert.equal(pendingTypes.deferred, true);
+  assert.equal(pendingTypes.disabled, undefined);
+  assert.deepEqual(pendingTypes.options, []);
+  assert.equal(pendingTypes.initialValue, undefined, "pending choices are drafts, never unverified option defaults");
 });
 
-test("changed campus does not silently select a new building or reuse stale type choices", async () => {
-  const ctx = fake((call) => call.url.pathname.endsWith("/jxlcx.do") ? payload("jxlcx", [
-    ...buildingRows, { JXLDM: "demo-north", JXLJC: "合成北楼", XXXQDM: "N" },
-  ]) : richClassroomsRoute(call));
+test("only an explicit deferred load discovers classroom types for its date and building", async () => {
+  for (const [role, building] of [["undergraduate", "A"], ["undergraduate", "L"], ["postgraduate", "A"]]) {
+    const ctx = fake(richClassroomsRoute);
+    const selected = valid("query.controls", await createQueryControls(role)(ctx, {
+      target: "classroom.available", current: { ...deferredSelection, building }, load: ["roomTypes"],
+    }));
+    const types = selected.controls.find((control) => control.id === "roomTypes");
+    assert.deepEqual(types.options, [{ value: "demo-media", label: "合成多媒体教室" }, { value: "demo-lab", label: "合成实验室" }]);
+    assert.deepEqual(types.dependsOn, ["date", "building"]);
+    assert.equal(types.deferred, undefined);
+    assert.equal(types.disabled, undefined);
+    assert.equal(ctx.calls.filter((call) => call.url.pathname.endsWith("/cxjsqk.do")).length, 1);
+    assert.equal(ctx.calls.filter((call) => call.url.pathname.endsWith("/cxkxjsxq.do")).length, 0);
+    assert.equal(ctx.calls.filter((call) => call.url.pathname.endsWith("/jxlcx.do")).length, 0,
+      "optional types do not re-fetch the directory; final business query still verifies it");
+  }
+});
+
+test("changed campus clears the building and keeps deferred types hidden without network", async () => {
+  const ctx = { now: () => Date.parse("2025-09-16T00:00:00Z") };
   const result = await createQueryControls("undergraduate")(ctx, {
-    target: "classroom.available", current: { ...richSelection, campus: "N" }, changed: "campus",
+    target: "classroom.available", current: { ...deferredSelection, campus: "N" }, changed: "campus",
   });
   assert.equal(result.controls.find((control) => control.id === "building").initialValue, undefined);
-  assert.deepEqual(result.controls.find((control) => control.id === "building").options, [{ value: "demo-north", label: "合成北楼" }]);
-  assert.equal(result.controls.find((control) => control.id === "roomTypes").disabled, true);
-  assert.ok(!ctx.calls.some((call) => call.url.pathname.endsWith("/cxjsqk.do")));
+  assert.equal(result.controls.find((control) => control.id === "building").options.length, 9);
+  const types = result.controls.find((control) => control.id === "roomTypes");
+  assert.equal(types.disabled, true);
+  assert.equal(types.deferred, true);
+  assert.deepEqual(types.options, []);
 });
 
-test("offline directory fallback is explicit and cannot hide source failures", async () => {
+test("deferred errors cannot prevent the offline form from being built", async () => {
   const query = createQueryControls("undergraduate");
   const ctx = { now: () => Date.parse("2025-09-16T00:00:00Z"), credentials: { get: async () => null } };
-  const fallback = await query(ctx, { target: "classroom.available" });
-  assert.match(fallback.controls.find((control) => control.id === "building").description, /尚未登录/);
-  assert.equal(fallback.controls.find((control) => control.id === "roomTypes").disabled, true);
+  const offline = await query(ctx, { target: "classroom.available", current: deferredSelection });
+  assert.equal(offline.controls.find((control) => control.id === "roomTypes").deferred, true);
+  await assert.rejects(query(ctx, {
+    target: "classroom.available", current: deferredSelection, load: ["roomTypes"],
+  }), /xidian_login_required_ehall/);
   const failed = fake(() => { throw new Error("synthetic_network_failure"); });
-  await assert.rejects(query(failed, { target: "classroom.available" }), /synthetic_network_failure/);
-  await assert.rejects(query(ctx, { target: "classroom.available", changed: "configure" }), /input_invalid_request/);
+  await query(failed, { target: "classroom.available", current: deferredSelection });
+  assert.equal(failed.calls.length, 0);
+  await assert.rejects(query(failed, {
+    target: "classroom.available", current: deferredSelection, load: ["roomTypes"],
+  }), /synthetic_network_failure/);
+});
+
+test("deferred loader rejects unknown targets, loads and extra draft values before I/O", async () => {
+  const query = createQueryControls("undergraduate");
+  for (const params of [
+    { target: "grades.list", load: ["roomTypes"] },
+    { target: "classroom.available", load: [] },
+    { target: "classroom.available", load: ["roomTypes", "roomTypes"] },
+    { target: "classroom.available", load: ["building"] },
+    { target: "classroom.available", load: ["roomTypes"], current: { ...deferredSelection, campus: "S" } },
+    { target: "classroom.available", load: ["roomTypes"], current: { date: deferredSelection.date } },
+    { target: "classroom.available", load: ["roomTypes"], current: { ...deferredSelection, building: "unknown" } },
+    { target: "classroom.available", changed: "configure" },
+  ]) {
+    await assert.rejects(query({ now: () => 0, credentials: { get: () => assert.fail("invalid load must not access credentials") } }, params), /input_invalid_request/);
+  }
+});
+
+test("school time range defaults use the current minute and cap the same-day end", async () => {
+  const query = createQueryControls("undergraduate");
+  for (const [now, expected] of [
+    ["2026-11-03T16:05:45Z", { start: "00:05", end: "01:05" }],
+    ["2026-11-04T06:35:00Z", { start: "14:35", end: "15:35" }],
+    ["2026-11-04T15:30:00Z", { start: "23:30", end: "23:59" }],
+    ["2026-11-04T15:59:00Z", undefined],
+  ]) {
+    const result = valid("query.controls", await query({ now: () => Date.parse(now) }, { target: "classroom.available" }));
+    assert.deepEqual(result.controls.find((control) => control.id === "timeRange").initialValue, expected);
+    assert.equal(result.controls.find((control) => control.id === "timeRange").timeZone, "Asia/Shanghai");
+  }
+  const result = await query({ now: () => 0 }, {
+    target: "classroom.available", current: { campus: "N" }, changed: "campus",
+  });
+  assert.equal(result.controls.find((control) => control.id === "timeRange").initialValue, undefined,
+    "dependency refresh must not reinsert a cleared time range");
+});
+
+test("new time filters outside known periods are unknown while legacy input still rejects", async () => {
+  const timeRange = { start: "22:00", end: "23:00" };
+  const query = (onlyAvailable) => classroomAvailable(fake(richClassroomsRoute), {
+    term: TERM, filters: { ...richSelection, timeRange, onlyAvailable },
+  });
+  const result = valid("classroom.available", await query(false));
+  assert.equal(result.sectionStart, undefined);
+  assert.equal(result.sectionEnd, undefined);
+  assert.equal(result.start, timeRange.start);
+  assert.equal(result.end, timeRange.end);
+  assert.ok(result.items.length > 0);
+  assert.ok(result.items.every((item) => item.status === "unknown" && item.occupied === undefined));
+  assert.match(result.coverage.description, /超出已知课程节次/);
+  assert.deepEqual((await query(true)).items, []);
+  await assert.rejects(classroomAvailable(fake(richClassroomsRoute), {
+    term: TERM, date: deferredSelection.date, buildingId: "demo-building", start: "22:00", end: "23:00",
+  }), /classroom_time_window_no_sections/);
 });
 
 test("classroom filtering rejects incomplete pagination instead of claiming complete coverage", async () => {
@@ -1069,4 +1157,48 @@ test("classroom filtering rejects incomplete pagination instead of claiming comp
     ? payload("cxjsqk", Number(call.form.pageNumber) === 1 ? [room(1, { SKZWS: 120 })] : [], 2)
     : richClassroomsRoute(call));
   await assert.rejects(classroomAvailable(ctx, { term: TERM, filters: { ...richSelection, minimumTeachingSeats: 80 } }), /academic_pagination_incomplete/);
+});
+
+
+test("an in-flight optional type load does not delay a new offline form", { timeout: 3000 }, async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let notifyEntered;
+  const entered = new Promise((resolve) => { notifyEntered = resolve; });
+  const ctx = fake(async (call) => {
+    if (call.url.pathname.endsWith("/cxjsqk.do")) {
+      notifyEntered();
+      await gate;
+    }
+    return richClassroomsRoute(call);
+  });
+  const query = createQueryControls("undergraduate");
+  let settled = false;
+  const pending = query(ctx, {
+    target: "classroom.available", current: deferredSelection, load: ["roomTypes"],
+  }).then((result) => { settled = true; return result; });
+  await entered;
+  try {
+    const current = await query(ctx, {
+      target: "classroom.available", current: { ...deferredSelection, campus: "S" }, changed: "building",
+    });
+    assert.equal(current.controls.find((control) => control.id === "roomTypes").deferred, true);
+    assert.equal(settled, false);
+  } finally {
+    release();
+  }
+  const result = await pending;
+  assert.equal(result.controls.find((control) => control.id === "roomTypes").deferred, undefined);
+});
+
+test("date and time defaults share one school-clock snapshot across midnight", async () => {
+  let reads = 0;
+  const instants = [Date.parse("2026-11-04T15:59:59.999Z"), Date.parse("2026-11-04T16:00:00.000Z")];
+  const result = valid("query.controls", await createQueryControls("undergraduate")({
+    now: () => instants[Math.min(reads++, 1)],
+  }, { target: "classroom.available" }));
+  assert.equal(result.controls.find((control) => control.id === "date").initialValue, "2026-11-04");
+  assert.equal(result.controls.find((control) => control.id === "timeRange").initialValue, undefined,
+    "23:59 has no valid same-day end; do not pair the old date with tomorrow's 00:00");
+  assert.equal(reads, 1);
 });

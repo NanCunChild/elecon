@@ -527,7 +527,7 @@
   "classroomOccupiedStatus": "Band",
   "classroomUnknownStatus": "Noma’lum yoki qamrab olinmagan",
   "classroomCurrentTime": "Joriy vaqt: {time}",
-  "classroomLocalTimeHint": "Vaqt chizig‘i va saralash qurilmaning mahalliy vaqtidan foydalanadi. Ma’lumotsiz oraliqlar bo‘sh degani emas.",
+  "classroomLocalTimeHint": "Vaqt jadvali qurilma mahalliy vaqtida; bo‘sh oraliqlar mavjudlikni anglatmaydi",
   "classroomStartTime": "Boshlanishi: {time}",
   "classroomEndTime": "Tugashi: {time}",
   "classroomOnlyFree": "Butun vaqt oralig‘ida bo‘sh",
@@ -611,5 +611,8 @@
   "classroomPartialCoverage": "Qisman natijalar",
   "classroomLoadedResultsFilter": "Faqat yuklangan natijalarni filtrlash",
   "classroomFloor": "Qavat",
-  "classroomCapacity": "Joylar"
+  "classroomCapacity": "Joylar",
+  "queryClearCondition": "Shartni tozalash",
+  "queryPendingSelection": "{value} tanlangan, tekshiruv kutilmoqda; hozir qidirish uchun tozalang",
+  "queryOptionalRetry": "Ixtiyoriy shartlarni qayta yuklash (qidirish mumkin)"
 }

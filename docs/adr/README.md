@@ -15,7 +15,7 @@
 | 账号、认证恢复与网页旧模式 | [068](adr_068_script_interaction_and_recovery.md)、[072](adr_072_saved_password_recovery.md)、[073](adr_073_packaged_web_content.md)；长期目标由 080 扩展 |
 | APPTunnel 与声明连接 | [062](adr_062_app_tunnel_selection.md)、[077](adr_077_declared_account_credential_reuse.md)、[078](adr_078_script_tunnel_accounts.md) |
 | 社区与消息 | [052](adr_052_community_accounts_and_chaoxing.md)、[061](adr_061_message_history_and_storage.md) |
-| SDK 文案、条件及学校标题 | [070](adr_070_script_localization.md)、[071](adr_071_script_query_controls.md)、[082](adr_082_script_query_forms.md)、[079](adr_079_school_presentation_and_titles.md) |
+| SDK 文案、条件及学校标题 | [070](adr_070_script_localization.md)、[071](adr_071_script_query_controls.md)、[082](adr_082_script_query_forms.md)、[083](adr_083_deferred_query_fields.md)、[079](adr_079_school_presentation_and_titles.md) |
 | 原生平台 AI | [069](adr_069_android_app_functions.md)、[074](adr_074_android_app_functions_implementation.md) |
 | 后续匿名增强与中继 | [042](adr_042_providers_pages_enhancements.md)，未实施部分仍为 Proposed |
 | V1 整理与退役 | [065](adr_065_repository_cleanup.md)、[兼容维护边界](../reference/legacy_compatibility.md) |

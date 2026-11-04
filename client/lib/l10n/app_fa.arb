@@ -530,7 +530,7 @@
   "classroomOccupiedStatus": "اشغال",
   "classroomUnknownStatus": "نامشخص / بدون داده",
   "classroomCurrentTime": "زمان فعلی: {time}",
-  "classroomLocalTimeHint": "خط زمان و فیلترها از زمان محلی دستگاه استفاده می‌کنند. فاصله‌های بدون داده به معنای خالی بودن نیستند.",
+  "classroomLocalTimeHint": "خط زمان از زمان محلی دستگاه استفاده می‌کند؛ فاصله‌ها به معنای خالی بودن نیستند",
   "classroomStartTime": "از: {time}",
   "classroomEndTime": "تا: {time}",
   "classroomOnlyFree": "خالی در تمام بازه",
@@ -611,5 +611,8 @@
   "classroomPartialCoverage": "نتایج ناقص",
   "classroomLoadedResultsFilter": "فقط نتایج بارگذاری‌شده را فیلتر کنید",
   "classroomFloor": "طبقه",
-  "classroomCapacity": "ظرفیت"
+  "classroomCapacity": "ظرفیت",
+  "queryClearCondition": "پاک کردن شرط",
+  "queryPendingSelection": "انتخاب‌شده {value}، در انتظار تأیید؛ برای جستجوی فوری پاک کنید",
+  "queryOptionalRetry": "تلاش دوباره برای فیلترهای اختیاری (جستجو ممکن است)"
 }

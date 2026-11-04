@@ -31,6 +31,7 @@ class QueryFormField {
       label = raw['label'],
       description = raw['description'],
       required = raw['required'] == true,
+      deferred = raw['deferred'] == true,
       disabled = raw['disabled'] == true,
       disabledReason = raw['disabledReason'],
       initialValue = raw['initialValue'],
@@ -46,7 +47,7 @@ class QueryFormField {
       ];
   final String id, kind, label;
   final String? description, disabledReason, timeZone;
-  final bool required, disabled, integer;
+  final bool required, disabled, integer, deferred;
   final num? minimum, maximum;
   final int maxLength;
   final Object? initialValue;
@@ -121,8 +122,14 @@ class QueryForm {
   Map<String, dynamic>? values(Map<String, dynamic> draft) {
     final result = <String, dynamic>{};
     for (final field in fields) {
-      if (field.disabled) continue;
       final value = draft[field.id];
+      if (field.deferred) {
+        if (value != null && value != '' && !(value is List && value.isEmpty)) {
+          return null; // Existing selections must be resolved or explicitly cleared.
+        }
+        continue;
+      }
+      if (field.disabled) continue;
       if (!field.accepts(value)) return null;
       if (value != null && value != '' && !(value is List && value.isEmpty)) {
         result[field.id] = value;
@@ -134,9 +141,15 @@ class QueryForm {
 }
 
 /// Schema-independent semantic checks also protect direct native consumers.
-QueryForm? queryFormFromDynamic(Object? raw, String target) {
+QueryForm? queryFormFromDynamic(
+  Object? raw,
+  String target, {
+  String version = '2.0',
+}) {
   try {
-    if (outputValidatorFor('elecon.query.controls', '2.0')?.call(raw) != true) {
+    if (!const {'2.0', '2.1'}.contains(version) ||
+        outputValidatorFor('elecon.query.controls', version)?.call(raw) !=
+            true) {
       return null;
     }
     if (utf8.encode(jsonEncode(raw)).length > 131072 ||
@@ -185,8 +198,12 @@ QueryForm? queryFormFromDynamic(Object? raw, String target) {
           return null;
         }
       }
-      for (final key in ['required', 'disabled', 'integer']) {
+      for (final key in ['required', 'disabled', 'integer', 'deferred']) {
         if (item.containsKey(key) && item[key] is! bool) return null;
+      }
+      if (item['deferred'] == true &&
+          (item['required'] == true || item.containsKey('initialValue'))) {
+        return null;
       }
       if (item['disabled'] == true && !text(item['disabledReason'], 512)) {
         return null;
@@ -260,7 +277,8 @@ QueryForm? queryFormFromDynamic(Object? raw, String target) {
     );
     for (final field in fields) {
       if (field.dependsOn.any((id) => !ids.contains(id)) ||
-          form.descendants(field.id).contains(field.id)) {
+          form.descendants(field.id).contains(field.id) ||
+          (field.deferred && form.descendants(field.id).isNotEmpty)) {
         return null;
       }
     }

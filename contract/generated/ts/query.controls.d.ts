@@ -43,6 +43,8 @@ export interface QueryControlsControls {
   dependsOn?: string[];
   /** 仅timeRange且必填：学校解释墙钟时刻所用IANA时区名称，不能从设备地区推断。 */
   timeZone?: string;
+  /** 2.1：true表示可选叶子字段待只读补充，不呈现或提交；不得required=true或含initialValue，其依赖须为普通字段。disabled时不加载；省略或false表示已解析。补充响应仅替换请求字段并保持id/kind/dependsOn，不能新增必填条件。 */
+  deferred?: boolean;
 }
 
 export interface QueryControlsControlsInitialValue {

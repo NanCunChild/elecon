@@ -8,6 +8,14 @@ bool isQueryFieldId(Object? value) =>
     RegExp(r'^[a-z][a-zA-Z0-9._-]{0,63}$').hasMatch(value) &&
     !const {'constructor', 'prototype', '__proto__'}.contains(value);
 
+/// ADR-083: explicitly requested optional fields, without duplicate work.
+bool isQueryFieldList(Object? value) =>
+    value is List &&
+    value.isNotEmpty &&
+    value.length <= 32 &&
+    value.every(isQueryFieldId) &&
+    value.toSet().length == value.length;
+
 bool isQueryFilterMap(Object? raw) {
   if (raw is! Map || raw.length > 32) return false;
   for (final entry in raw.entries) {

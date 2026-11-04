@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.query.controls",
+  "title": "脚本查询表单元数据参数",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "target"
+  ],
+  "properties": {
+    "target": {
+      "type": "string",
+      "enum": [
+        "grades.list",
+        "classroom.available"
+      ],
+      "description": "要描述字段的同包只读查询目标。"
+    },
+    "current": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^(?!(?:prototype|constructor|__proto__)$)[a-z][a-zA-Z0-9._-]{0,63}$",
+        "type": "string"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "maxLength": 512
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "array",
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "start",
+              "end"
+            ],
+            "properties": {
+              "start": {
+                "type": "string",
+                "maxLength": 5,
+                "description": "同日开始墙钟时刻，HH:mm；必须早于end。",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "end": {
+                "type": "string",
+                "maxLength": 5,
+                "description": "同日结束墙钟时刻，HH:mm；不含该时刻。",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              }
+            }
+          }
+        ]
+      },
+      "description": "当前字段草稿，最多32项/32KiB UTF-8；字段值不是宿主参数。省略表示读取初始表单，空值省略对应key。"
+    },
+    "changed": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "本次改变的字段id，用于重新求取依赖选项；无用户字段变更时省略。",
+      "pattern": "^(?!(?:prototype|constructor|__proto__)$)[a-z][a-zA-Z0-9._-]{0,63}$"
+    }
+  }
+}

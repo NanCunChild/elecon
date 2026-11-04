@@ -8,6 +8,8 @@ export interface ParamsQueryControls {
   current?: Record<string, string | number | boolean | string[] | ParamsQueryControlsCurrentValue>;
   /** 本次改变的字段id，用于重新求取依赖选项；无用户字段变更时省略。 */
   changed?: string;
+  /** 2.1：显式请求解析的1–32个唯一deferred字段id；省略表示基础表单。current仅含请求字段及其声明依赖的有效值。返回完整表单，宿主仅采用这些字段，不替换其他字段/标题/提交文案，不连锁加载或自动重试。 */
+  load?: string[];
 }
 
 export interface ParamsQueryControlsCurrentValue {
