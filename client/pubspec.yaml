@@ -24,7 +24,8 @@ dependencies:
   # 保留 IsolateQjs/host-fn 通道；升级时跑 host_fn/dual_run/fetch 测试。
   # 1.1.1：修复部分（请求体/句柄）泄露问题（2026-07-20 人工授权升级）。
   flutter_qjs_next: 1.2.1
-  flutter_inappwebview: ^6.0.0
+  # Official Apache-2.0 package; beta.3 fixes AGP 9's removed ProGuard default.
+  flutter_inappwebview: 6.2.0-beta.3
   # ADR-012 §2.8 三档加密（S 软件档）——纯 Dart AES-256-GCM AEAD；亦承 loader 验签
   # （Ed25519）与 digest（DartSha256）。承重且横跨凭证+验签两条路径。
   # 🔒 红线 #9：Apache-2.0；上游维护状态待 license/安全评审确认——评审未结前**精确 pin**

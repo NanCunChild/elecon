@@ -13,7 +13,8 @@ dependencies:
     sdk: flutter
   intl: any
   flutter_qjs_next: 1.2.1
-  flutter_inappwebview: ^6.0.0
+  # Same shared browser API as Android; official Apache-2.0 release.
+  flutter_inappwebview: 6.2.0-beta.3
   cryptography: 2.9.0
   crypto: 3.0.7
   pointycastle: 3.9.1
