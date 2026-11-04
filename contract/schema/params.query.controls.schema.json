@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.query.controls",
+  "title": "查询条件元数据参数",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "target"
+  ],
+  "properties": {
+    "target": {
+      "type": "string",
+      "enum": [
+        "grades.list",
+        "classroom.available"
+      ],
+      "description": "要描述条件的同包只读查询，固定目标白名单。"
+    }
+  }
+}

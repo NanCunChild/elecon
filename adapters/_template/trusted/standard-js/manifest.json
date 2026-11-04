@@ -1,0 +1,16 @@
+{
+  "sdkVersion": 17,
+  "id": "standard-js-example",
+  "version": "1.0.0",
+  "schoolId": "example",
+  "name": "Standard JavaScript example",
+  "network": { "origins": ["https://school.example"] },
+  "browser": false,
+  "accounts": [],
+  "capabilities": [
+    { "id": "notice.list", "schema": "elecon.notice.list", "schemaVersion": "1.1" }
+  ],
+  "cards": [
+    { "id": "notices", "type": "notice", "title": "Campus notices", "defaultVariant": "regular" }
+  ]
+}

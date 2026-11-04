@@ -1,0 +1,20 @@
+{
+  "sdkVersion": 14,
+  "accounts": [],
+  "id": "template.web-form",
+  "version": "1.0.0",
+  "schoolId": "template",
+  "name": "Synthetic package form",
+  "browser": true,
+  "network": { "origins": [] },
+  "capabilities": [
+    { "id": "web.content", "schema": "elecon.web.content", "schemaVersion": "1.0" }
+  ],
+  "webContent": [
+    {
+      "id": "draft",
+      "title": "Local draft form",
+      "html": "<style>body{font:18px sans-serif;padding:20px;color:#222;background:#fff}label,input,button,output{display:block;margin:16px 0}input,button{font:inherit;padding:12px;box-sizing:border-box;width:100%}</style><h1>Local draft</h1><p>This synthetic form stores nothing and sends no network request.</p><label for=subject>Draft subject</label><input id=subject maxlength=120 autocomplete=off><button id=submit type=button>Use draft</button><output id=result aria-live=polite></output><button id=close type=button disabled>Close</button>"
+    }
+  ]
+}

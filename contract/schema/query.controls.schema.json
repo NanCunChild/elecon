@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.query.controls",
+  "title": "查询条件控件",
+  "type": "object",
+  "required": [
+    "target",
+    "title",
+    "submitLabel",
+    "controls"
+  ],
+  "properties": {
+    "target": {
+      "type": "string",
+      "enum": [
+        "grades.list",
+        "classroom.available"
+      ],
+      "description": "这些控件绑定的同包只读领域查询；必须与请求target一致。"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "description": "条件对话框的纯文本标题，脚本按当前语言返回。"
+    },
+    "submitLabel": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "显式应用条件并查询的按钮纯文本，不表示另一个能力或命令。"
+    },
+    "controls": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "description": "固定原生控件描述；id和绑定参数均唯一，组合由原生消费者再次校验。",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "parameter"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-zA-Z0-9._-]{0,63}$",
+            "description": "此组条件内稳定唯一的控件标识，不是可执行函数名。"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "select",
+              "text",
+              "date",
+              "timeRange"
+            ],
+            "description": "固定原生输入种类，不接受脚本或HTML。"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "description": "输入标签纯文本，脚本按当前语言返回。"
+          },
+          "parameter": {
+            "type": "string",
+            "enum": [
+              "term",
+              "date",
+              "room",
+              "start"
+            ],
+            "description": "绑定已有标准参数；grades仅term；教室date/room；timeRange固定start并同时生成end。"
+          },
+          "initialValue": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "可选默认值；省略表示沿当前参数或留空。timeRange格式HH:mm，必须与initialEnd同时给出。"
+          },
+          "initialEnd": {
+            "type": "string",
+            "maxLength": 5,
+            "description": "仅timeRange可用的默认结束时刻HH:mm，与initialValue同日且更晚。"
+          },
+          "options": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 200,
+            "description": "仅select需要的唯一可选值列表，标签不是请求参数。",
+            "items": {
+              "type": "object",
+              "required": [
+                "value",
+                "label"
+              ],
+              "properties": {
+                "value": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "送给领域参数的稳定字符串值。"
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "description": "供用户阅读的纯文本选项名称。"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

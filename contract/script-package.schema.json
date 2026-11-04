@@ -47,7 +47,12 @@
             9,
             10,
             11,
-            12
+            12,
+            13,
+            14,
+            15,
+            16,
+            17
           ],
           "type": "integer"
         },
@@ -160,8 +165,171 @@
                     "description": "登录的固定参数，默认 {}；编码后最多 4 KiB UTF-8。"
                   }
                 }
+              },
+              "authentication": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "namespace",
+                  "savedPassword",
+                  "interactiveWeb",
+                  "silentWeb"
+                ],
+                "description": "SDK14：显式保存密码优先登录。受保护密码经当前调用访问，namespace 仅为同校寻址。隐藏认证尚不可用，silentWeb 必须为 false。",
+                "properties": {
+                  "namespace": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "同校稳定凭据地址；不代表独立权限沙箱。"
+                  },
+                  "savedPassword": {
+                    "const": true,
+                    "description": "声明宿主保存密码表单及一次尝试完成接口；须有同包 login 绑定。"
+                  },
+                  "interactiveWeb": {
+                    "type": "boolean",
+                    "description": "是否支持主动可见网页登录 fallback；为 true 时 manifest.browser 必须为 true。"
+                  },
+                  "silentWeb": {
+                    "const": false,
+                    "description": "隐藏认证网络边界未实现，当前版本仅接受 false。"
+                  }
+                }
+              },
+              "credentialReuse": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sourceAccountId",
+                  "service",
+                  "gatewayUrl",
+                  "loginDomain"
+                ],
+                "description": "SDK15：仅显式目标登录时，由宿主将同包保存密码一次交给声明的内置服务；不复制密码。",
+                "properties": {
+                  "sourceAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "同包另一已声明保存密码账号 ID，不允许链式复用。"
+                  },
+                  "service": {
+                    "const": "hermes-atrust",
+                    "description": "固定宿主内置目标服务。"
+                  },
+                  "gatewayUrl": {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "pattern": "^https://[^/?#@]+$",
+                    "description": "批准网络范围内的规范 HTTPS origin，不含末尾斜线、路径、查询、凭据或片段。"
+                  },
+                  "loginDomain": {
+                    "type": "string",
+                    "maxLength": 256,
+                    "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
+                    "description": "目标认证域；空值仅接受网关唯一密码域。"
+                  }
+                }
+              },
+              "appTunnel": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "service",
+                  "gatewayUrl",
+                  "loginDomain"
+                ],
+                "description": "SDK16固定宿主隧道账号配置。",
+                "properties": {
+                  "service": {
+                    "const": "hermes-atrust",
+                    "description": "固定宿主内置目标服务。"
+                  },
+                  "gatewayUrl": {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "pattern": "^https://[^/?#@]+$",
+                    "description": "批准网络范围内的规范 HTTPS origin，不含末尾斜线、路径、查询、凭据或片段。"
+                  },
+                  "loginDomain": {
+                    "type": "string",
+                    "maxLength": 256,
+                    "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
+                    "description": "目标认证域；空值仅接受网关唯一密码域。"
+                  },
+                  "nodeCertificateSha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "description": "可选固定节点叶证书SHA256指纹；缺失使用平台证书验证，不支持mTLS。"
+                  },
+                  "loginMode": {
+                    "enum": [
+                      "password",
+                      "web"
+                    ],
+                    "description": "默认password使用统一原生密码框；web直接官方网页登录且loginDomain必须为空。"
+                  }
+                }
+              },
+              "appTunnelAccountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "authentication"
+                  ],
+                  "properties": {
+                    "authentication": {}
+                  }
+                },
+                "then": {
+                  "required": [
+                    "login"
+                  ],
+                  "properties": {
+                    "login": {}
+                  }
+                }
+              },
+              {
+                "if": {
+                  "required": [
+                    "credentialReuse"
+                  ],
+                  "properties": {
+                    "credentialReuse": {}
+                  }
+                },
+                "then": {
+                  "required": [
+                    "login",
+                    "status"
+                  ],
+                  "properties": {
+                    "login": {},
+                    "status": {}
+                  },
+                  "not": {
+                    "required": [
+                      "authentication"
+                    ],
+                    "properties": {
+                      "authentication": {}
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         "homeTitle": {
@@ -255,6 +423,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -275,6 +450,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -299,6 +481,13 @@
                       "1.1",
                       "1.2"
                     ]
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -322,6 +511,13 @@
                       "1.0",
                       "1.1"
                     ]
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -342,6 +538,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -365,6 +568,13 @@
                       "1.0",
                       "1.1"
                     ]
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -388,6 +598,13 @@
                       "1.0",
                       "1.1"
                     ]
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -408,6 +625,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.1"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -432,6 +656,13 @@
                       "1.1",
                       "1.2"
                     ]
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -452,6 +683,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -472,6 +710,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -492,6 +737,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -512,6 +764,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -532,6 +791,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -552,6 +818,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.1"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -572,6 +845,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -592,6 +872,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -612,6 +899,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -632,6 +926,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -652,6 +953,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -671,7 +979,17 @@
                     "const": "elecon.classroom.available"
                   },
                   "schemaVersion": {
-                    "const": "1.1"
+                    "enum": [
+                      "1.1",
+                      "1.2"
+                    ]
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -692,6 +1010,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -712,6 +1037,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -732,6 +1064,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -752,6 +1091,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -775,6 +1121,13 @@
                       "1.0",
                       "1.1"
                     ]
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -795,6 +1148,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -815,6 +1175,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -835,6 +1202,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.1"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -855,6 +1229,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -875,6 +1256,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -895,6 +1283,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -915,6 +1310,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -935,6 +1337,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -955,6 +1364,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -975,6 +1391,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -995,6 +1418,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -1015,6 +1445,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -1035,6 +1472,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -1055,6 +1499,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -1075,6 +1526,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -1095,6 +1553,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -1115,6 +1580,13 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               },
@@ -1135,6 +1607,67 @@
                   },
                   "schemaVersion": {
                     "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "query.controls"
+                  },
+                  "schema": {
+                    "const": "elecon.query.controls"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "web.content"
+                  },
+                  "schema": {
+                    "const": "elecon.web.content"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
               }
@@ -1274,6 +1807,131 @@
             ]
           },
           "description": "SDK12: explicit host-owned APPTunnel management ports. No native code or secrets are returned."
+        },
+        "localization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "defaultLocale",
+            "messages"
+          ],
+          "description": "SDK13包内纯文本语言字典，作者自选语言；完整资源纳入批准digest，缺省不提供i18n。",
+          "properties": {
+            "defaultLocale": {
+              "type": "string",
+              "pattern": "^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-[A-Z]{2}|-[0-9]{3})?$(?![\\s\\S])",
+              "description": "默认语言的canonical BCP47受限标签，必须存在于messages；非完整IANA注册校验。"
+            },
+            "messages": {
+              "type": "object",
+              "minProperties": 1,
+              "maxProperties": 32,
+              "propertyNames": {
+                "pattern": "^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-[A-Z]{2}|-[0-9]{3})?$(?![\\s\\S])"
+              },
+              "description": "语言标签到纯文本字典；默认字典定义全部key，其他字典可缺key并回退默认。整体localization JSON UTF8限256KiB。",
+              "additionalProperties": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 1024,
+                "propertyNames": {
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$(?![\\s\\S])"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F]*$"
+                }
+              }
+            }
+          }
+        },
+        "webContent": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "description": "SDK14 包内HTML网页入口，全部资源入digest。单页HTML≤256KiB UTF-8、合计≤512KiB；Android有界零网络WebView，网页只能通过学校脚本的受限fetch通信。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "title",
+              "html"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9._-]{0,63}$",
+                "maxLength": 64,
+                "description": "包内稳定页面ID，仅用于web.content标准pageId参数。"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
+                "description": "宿主显示标题，纯文本，不得覆盖账号与安装提示。"
+              },
+              "html": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 262144,
+                "description": "包内HTML正文（不是URL或文件路径），由宿主前置CSP并禁止原生网络。"
+              }
+            }
+          }
+        },
+        "school": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "name",
+            "type"
+          ],
+          "description": "SDK16院校展示分组；不改变schoolId授权范围。",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+              "description": "稳定展示分组ID。"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
+              "description": "学校主标题。"
+            },
+            "type": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "name"
+              ],
+              "description": "学校内身份/类型展示。",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                  "description": "脚本自选稳定类型ID。"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
+                  "description": "类型副标题。"
+                }
+              }
+            }
+          }
         }
       },
       "allOf": [
@@ -1307,14 +1965,8 @@
           "then": {
             "properties": {
               "sdkVersion": {
-                "enum": [
-                  7,
-                  8,
-                  9,
-                  10,
-                  11,
-                  12
-                ]
+                "type": "integer",
+                "minimum": 7
               }
             }
           }
@@ -1331,17 +1983,8 @@
           "then": {
             "properties": {
               "sdkVersion": {
-                "enum": [
-                  4,
-                  5,
-                  6,
-                  7,
-                  8,
-                  9,
-                  10,
-                  11,
-                  12
-                ]
+                "type": "integer",
+                "minimum": 4
               }
             }
           }
@@ -1358,15 +2001,8 @@
           "then": {
             "properties": {
               "sdkVersion": {
-                "enum": [
-                  6,
-                  7,
-                  8,
-                  9,
-                  10,
-                  11,
-                  12
-                ]
+                "type": "integer",
+                "minimum": 6
               }
             }
           }
@@ -2477,6 +3113,310 @@
                     ],
                     "properties": {
                       "status": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "localization"
+            ],
+            "properties": {
+              "localization": {}
+            }
+          },
+          "then": {
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "minimum": 13
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "sdkVersion"
+            ],
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "maximum": 13
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "not": {
+                    "required": [
+                      "authentication"
+                    ],
+                    "properties": {
+                      "authentication": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "accounts"
+            ],
+            "properties": {
+              "accounts": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "authentication"
+                  ],
+                  "properties": {
+                    "authentication": {
+                      "type": "object",
+                      "required": [
+                        "interactiveWeb"
+                      ],
+                      "properties": {
+                        "interactiveWeb": {
+                          "const": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "browser": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "webContent"
+            ],
+            "properties": {
+              "webContent": {}
+            }
+          },
+          "then": {
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "minimum": 14
+              },
+              "browser": {
+                "const": true
+              },
+              "capabilities": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "schemaVersion"
+                  ],
+                  "properties": {
+                    "id": {
+                      "const": "web.content"
+                    },
+                    "schemaVersion": {
+                      "const": "1.0"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "maximum": 14
+              }
+            },
+            "required": [
+              "sdkVersion"
+            ]
+          },
+          "then": {
+            "properties": {
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "not": {
+                    "required": [
+                      "credentialReuse"
+                    ],
+                    "properties": {
+                      "credentialReuse": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "accounts"
+            ],
+            "properties": {
+              "accounts": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "credentialReuse"
+                  ],
+                  "properties": {
+                    "credentialReuse": {}
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "network": {
+                "type": "object",
+                "not": {
+                  "required": [
+                    "ipAllow"
+                  ],
+                  "properties": {
+                    "ipAllow": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "school"
+            ],
+            "properties": {
+              "school": {}
+            }
+          },
+          "then": {
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "minimum": 16
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "sdkVersion"
+            ],
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "maximum": 15
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "not": {
+                    "required": [
+                      "appTunnel"
+                    ],
+                    "properties": {
+                      "appTunnel": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "sdkVersion"
+            ],
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "maximum": 15
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "not": {
+                    "required": [
+                      "appTunnelAccountId"
+                    ],
+                    "properties": {
+                      "appTunnelAccountId": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "sdkVersion"
+            ],
+            "properties": {
+              "sdkVersion": {
+                "type": "integer",
+                "maximum": 15
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "not": {
+                    "required": [
+                      "appTunnelAccountId"
+                    ],
+                    "properties": {
+                      "appTunnelAccountId": {}
                     }
                   }
                 }

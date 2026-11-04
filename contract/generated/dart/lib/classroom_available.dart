@@ -58,6 +58,7 @@ class ClassroomAvailableItems {
     this.occupied,
     this.status,
     this.sections,
+    this.intervals,
   });
 
   /// 教室所属校区；缺失表示来源未提供。
@@ -82,6 +83,8 @@ class ClassroomAvailableItems {
   final String? status;
   /// 分节占用；缺失=该校不提供节次粒度；至多 24 节
   final List<ClassroomAvailableItemsSections>? sections;
+  /// 已知绝对时段，左闭右开；同教室不得重叠，结束晚于开始；缺口为未知，不从节间或无课程推断开放。省略表示仅有旧聚合/节次数据。
+  final List<ClassroomAvailableItemsIntervals>? intervals;
 }
 
 class ClassroomAvailableItemsSections {
@@ -103,4 +106,22 @@ class ClassroomAvailableItemsSections {
   final String? timeStart;
   /// 该节墙钟终点，推荐 HH:mm
   final String? timeEnd;
+}
+
+class ClassroomAvailableItemsIntervals {
+  const ClassroomAvailableItemsIntervals({
+    required this.startAt,
+    required this.endAt,
+    required this.status,
+    this.reason,
+  });
+
+  /// 区间起点（含），RFC3339/UTC；必须是查询日对应的真实时刻。
+  final String startAt;
+  /// 区间终点（不含），RFC3339/UTC；必须晚于 startAt。
+  final String endAt;
+  /// 本区间无占用记录、占用或无法确认；available 不保证实际开门或允许使用。
+  final String status;
+  /// 学校脚本提供的状态依据或原因，纯文本；缺失表示来源未提供，宿主不得猜测。
+  final String? reason;
 }

@@ -1,0 +1,425 @@
+{
+  "description": "ADR-070 synthetic package localization admission vectors, shared by Dart and Node.",
+  "cases": [
+    {
+      "name": "partial translation and repeated placeholder",
+      "valid": true,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "zh",
+        "messages": {
+          "zh": {
+            "greeting": "\u4f60\u597d\uff0c{name}\uff01",
+            "empty": "",
+            "count": "{count} \u9879"
+          },
+          "ru": {
+            "greeting": "\u041f\u0440\u0438\u0432\u0435\u0442, {name}!"
+          }
+        }
+      }
+    },
+    {
+      "name": "author chooses one non-core language",
+      "valid": true,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "tr",
+        "messages": {
+          "tr": {
+            "title": "\u00d6rnek"
+          }
+        }
+      }
+    },
+    {
+      "name": "script and region profiles",
+      "valid": true,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "uz-Cyrl-UZ",
+        "messages": {
+          "uz-Cyrl-UZ": {
+            "title": "\u041d\u0430\u043c\u0443\u043d\u0430"
+          },
+          "zh-Hant-TW": {
+            "title": "\u7bc4\u4f8b"
+          },
+          "es-419": {
+            "title": "Ejemplo"
+          }
+        }
+      }
+    },
+    {
+      "name": "SDK12 cannot declare resource",
+      "valid": false,
+      "sdkVersion": 12,
+      "localization": {
+        "defaultLocale": "zh",
+        "messages": {
+          "zh": {
+            "greeting": "\u4f60\u597d\uff0c{name}\uff01",
+            "empty": "",
+            "count": "{count} \u9879"
+          },
+          "ru": {
+            "greeting": "\u041f\u0440\u0438\u0432\u0435\u0442, {name}!"
+          }
+        }
+      }
+    },
+    {
+      "name": "null declaration",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": null
+    },
+    {
+      "name": "external resource property rejected",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "zh",
+        "messages": {
+          "zh": {
+            "greeting": "\u4f60\u597d\uff0c{name}\uff01",
+            "empty": "",
+            "count": "{count} \u9879"
+          },
+          "ru": {
+            "greeting": "\u041f\u0440\u0438\u0432\u0435\u0442, {name}!"
+          }
+        },
+        "url": "https://example.invalid/strings.json"
+      }
+    },
+    {
+      "name": "missing default language",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "zh": {
+            "greeting": "\u4f60\u597d\uff0c{name}\uff01",
+            "empty": "",
+            "count": "{count} \u9879"
+          },
+          "ru": {
+            "greeting": "\u041f\u0440\u0438\u0432\u0435\u0442, {name}!"
+          }
+        }
+      }
+    },
+    {
+      "name": "noncanonical or unsupported tag EN",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "EN",
+        "messages": {
+          "EN": {
+            "title": "Example"
+          }
+        }
+      }
+    },
+    {
+      "name": "noncanonical or unsupported tag en_us",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en_us",
+        "messages": {
+          "en_us": {
+            "title": "Example"
+          }
+        }
+      }
+    },
+    {
+      "name": "noncanonical or unsupported tag en-us",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en-us",
+        "messages": {
+          "en-us": {
+            "title": "Example"
+          }
+        }
+      }
+    },
+    {
+      "name": "noncanonical or unsupported tag zh-hans",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "zh-hans",
+        "messages": {
+          "zh-hans": {
+            "title": "Example"
+          }
+        }
+      }
+    },
+    {
+      "name": "noncanonical or unsupported tag zh-Hans-cn",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "zh-Hans-cn",
+        "messages": {
+          "zh-Hans-cn": {
+            "title": "Example"
+          }
+        }
+      }
+    },
+    {
+      "name": "noncanonical or unsupported tag en-US-x-school",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en-US-x-school",
+        "messages": {
+          "en-US-x-school": {
+            "title": "Example"
+          }
+        }
+      }
+    },
+    {
+      "name": "noncanonical or unsupported tag x-school",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "x-school",
+        "messages": {
+          "x-school": {
+            "title": "Example"
+          }
+        }
+      }
+    },
+    {
+      "name": "noncanonical or unsupported tag en-US-u-nu-latn",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en-US-u-nu-latn",
+        "messages": {
+          "en-US-u-nu-latn": {
+            "title": "Example"
+          }
+        }
+      }
+    },
+    {
+      "name": "noncanonical or unsupported tag ",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "",
+        "messages": {
+          "": {
+            "title": "Example"
+          }
+        }
+      }
+    },
+    {
+      "name": "empty language dictionary",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title": "Example"
+          },
+          "ru": {}
+        }
+      }
+    },
+    {
+      "name": "unknown translation key",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title": "Example"
+          },
+          "ru": {
+            "other": "\u041f\u0440\u0438\u043c\u0435\u0440"
+          }
+        }
+      }
+    },
+    {
+      "name": "missing placeholder",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title": "Hi {name}"
+          },
+          "ru": {
+            "title": "\u041f\u0440\u0438\u0432\u0435\u0442"
+          }
+        }
+      }
+    },
+    {
+      "name": "extra placeholder",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title": "Hi {name}"
+          },
+          "ru": {
+            "title": "{name} {extra}"
+          }
+        }
+      }
+    },
+    {
+      "name": "unfinished placeholder",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title": "Hi {name"
+          }
+        }
+      }
+    },
+    {
+      "name": "ICU unsupported",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title": "{count, plural, other {Items}}"
+          }
+        }
+      }
+    },
+    {
+      "name": "NUL rejected",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title": "hi\u0000"
+          }
+        }
+      }
+    },
+    {
+      "name": "C1 rejected",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title": "hi\u0085"
+          }
+        }
+      }
+    },
+    {
+      "name": "line breaks and tabs allowed",
+      "valid": true,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title": "One\nTwo\tThree\r\n"
+          }
+        }
+      }
+    },
+    {
+      "name": "unpaired surrogate",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title": "\ud800"
+          }
+        }
+      }
+    },
+    {
+      "name": "non-string message",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title": 42
+          }
+        }
+      }
+    },
+    {
+      "name": "invalid key",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title/source": "Example"
+          }
+        }
+      }
+    },
+    {
+      "name": "newline cannot terminate language tag",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en\n",
+        "messages": {
+          "en\n": {
+            "title": "Example"
+          }
+        }
+      }
+    },
+    {
+      "name": "newline cannot terminate key",
+      "valid": false,
+      "sdkVersion": 13,
+      "localization": {
+        "defaultLocale": "en",
+        "messages": {
+          "en": {
+            "title\n": "Example"
+          }
+        }
+      }
+    }
+  ]
+}

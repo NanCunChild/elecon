@@ -1,5 +1,48 @@
 # `contract/` 变更流水
 
+## 2026-11-04 · SDK17 运行环境与错误协议（ADR-081）
+
+- 包格式仍为 `elecon-script/1`，增加 SDK17 可选版本，旧 SDK1–16 的 ctx 接口不改变。新包需提升版本并重新批准，旧宿主拒绝 SDK17。
+- 全局 `elecon` 集中宿主 API；全局 `fetch` 与 Headers/Request/Response、AbortController/AbortSignal 提供有界缓冲子集，类型见 `script-sdk/sdk17.d.ts`。不承诺完整 DOM/Node、流、URL 解析或浏览器 Cookie/CORS 行为；不支持的请求选项明确拒绝。
+- 宿主桥统一结构化错误信封，保留旧固定错误分类；`elecon.errors.create(localCode)` 创建包命名空间业务错误，核心返回 `script_business_error` 和独立 businessCode，不把业务码当重试许可。
+- 调用参数在入口快照，排队、执行和缓存使用同一份数据；取消一个调用不会改写后续调用。AbortSignal 拒绝本地等待并忽略迟到响应，不宣称撤回已经发送的操作。
+
+## 2026-11-03 · SDK16 脚本隧道账号与学校展示（ADR-078/079）
+
+- `accounts[].appTunnel` 固定内置服务、HTTPS网关、认证域、可选节点证书指纹及 password/web 登录方式；SDK16只允许当前声明目标的显式账号调用，旧SDK保留旧管理入口兼容。
+- `capabilities[].appTunnelAccountId` 和 `accounts[].appTunnelAccountId` 指向同包隧道账号；仅依赖请求使用匹配网关/域/证书的路由，失败无直连回退，缺会话返回 `app_tunnel_required`。SDK16其它能力直连，旧全局网络选择不接管。
+- `manifest.school={id,name,type:{id,name}}` 提供学校主标题与身份副标题；展示分组不重解释原 `schoolId` 的授权、凭据或缓存作用域。
+- web 模式仅空 loginDomain，无凭据复用，不把官方CAS成功解释为验证特定域；不支持mTLS。新增字段需SDK16、新包版本及重新批准。
+
+## 2026-11-03 · SDK15 声明式账号凭据复用（ADR-077）
+
+- `accounts[].credentialReuse` 固定同包保存密码来源、内置服务、批准 HTTPS 网关与认证域；旧 SDK 拒绝，需新包版本及重新批准。
+- `ctx.appTunnel.login(provider, {accountId})` 仅接受目标账号显式前台登录，单次提交后独立检查目标状态，成功才保存会话；不复制密码，不修改源恢复门，不自动重试。
+- 当前固定服务控制面不支持脚本 `network.ipAllow`，声明此限制的包不得启用复用；普通脚本原有 IP 限制保持不变。
+
+## 2026-11-03 · SDK14 保存密码与账号事件（ADR-072）
+
+- `accounts[].authentication` 明确 namespace、savedPassword、interactiveWeb、silentWeb（当前仅 false）；旧 SDK 拒绝该声明。
+- `ctx.accounts.password/completePassword/report` 支持宿主输入、验证后保存、一次凭据修订持久恢复额度和固定账号事件；取消返回 null，选择网页登录返回固定 account_interactive_fallback。
+- 保存/删除凭据及失败阻断沿当前 Profile/学校/来源保护；silentWeb:true 拒绝，未开放自动隐藏远端浏览器。
+
+## 2026-11-03 · SDK14 包内网页（ADR-073）
+
+- 新增 `web.content` 1.0 与 `params.web.content` 1.0：同包 pageId 显式打开，completed/cancelled/unknown，不预加载、缓存或自动重放。
+- SDK14 `webContent` HTML 资源随 manifest 授权；Android 断网页面经 `browser.openContent` 与受限 `ctx.fetch` 组合，非任意远端 WebView 放行。
+
+## 2026-11-03 · ADR-070 SDK 13 包内语言资源
+
+可选 `manifest.localization` 将默认语言和作者自选的多语言纯文本字典随包安装，全部资源纳入批准 digest；支持语言从字典键派生，不强制适配核心语言。默认字典完整，译文允许缺 key 回退，但已提供占位符集合必须一致。SDK13增加请求 locale 及声明后的 i18n 端口；词典和语言标签有界，旧SDK拒绝新字段，不改变旧包授权字节。
+
+## 2026-11-03 · ADR-071 脚本查询条件
+
+新增 query.controls 1.0，同来源只读返回固定 select/text/date/timeRange 元数据，仅绑定成绩学期或教室日期/房间/时段已有参数。无任意命令或参数透传，旧包保留原筛选入口，缓存及请求仍包含实际条件。
+
+## 2026-11-03 · ADR-067 空教室精确区间
+
+`classroom.available` 1.2 增加可选绝对时间区间与状态原因，缺口保持未知，精确筛选要求连续完整空闲覆盖。保留 1.1 输出快照；参数仍为 1.1，原节次窗口语义不变。学校脚本升级声明需重新批准；当前时间线仅重绘，不触发网络查询。
+
 ## 2026-11-03 · ADR-066 SDK 12 来源实例与账号状态
 
 SDK 12 支持 `cards[].id/title`，同型实例使用不同包内 id 并固定声明包/digest；旧声明维持按类型唯一。`accounts[].status` 绑定同包 `account.session` 1.0，区分 authenticated/signedOut/expired/unknown，主动重登后重新核验。新增参数契约只接受 account 与 status/login 操作。声明 `appTunnels: ["hermes-atrust"]` 后可调用宿主固定状态/登录端口，凭据与会话仍不返回脚本；只读检查禁止交互，权限不由卡片或账号名称推导。包必须升版并重新批准，旧 SDK 不接受新字段。

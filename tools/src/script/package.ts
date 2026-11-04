@@ -17,7 +17,9 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import { validateScriptLocalization } from "./localization.js";
 import { validateScriptNetwork } from "./network.js";
+import { validateScriptWebContent } from "./web-content.js";
 
 export const MAX_SCRIPT_PACKAGE_BYTES = 1024 * 1024;
 
@@ -58,12 +60,17 @@ export function packageScript(manifest: unknown, source: unknown): string {
   }
   const typed = manifest as {
     name: string;
+    school?: { id: string; name: string; type: { id: string; name: string } };
     homeTitle?: string;
     websocketOrigins?: string[];
     network: { origins: string[]; ipAllow?: string[] };
-    capabilities: Array<{ id: string }>;
+    capabilities: Array<{ id: string; appTunnelAccountId?: string }>;
     home?: Array<{ capability: string; params?: Record<string, unknown> }>;
     sdkVersion: number;
+    browser: boolean;
+    appTunnels?: string[];
+    localization?: unknown;
+    webContent?: unknown;
     cards?: Array<{ type: string; defaultVariant: string; id?: string; title?: string }>;
     accounts?: Array<{
       id: string;
@@ -72,6 +79,21 @@ export function packageScript(manifest: unknown, source: unknown): string {
       capabilities: string[];
       login?: { capability: string; params?: Record<string, unknown> };
       status?: { capability: string; params?: Record<string, unknown> };
+      authentication?: {
+        namespace: string;
+        savedPassword: true;
+        interactiveWeb: boolean;
+        silentWeb: false;
+      };
+      credentialReuse?: { sourceAccountId: string; service: string; gatewayUrl: string; loginDomain: string };
+      appTunnel?: {
+        service: string;
+        gatewayUrl: string;
+        loginDomain: string;
+        nodeCertificateSha256?: string;
+        loginMode?: "password" | "web";
+      };
+      appTunnelAccountId?: string;
     }>;
   };
   if (
@@ -83,6 +105,84 @@ export function packageScript(manifest: unknown, source: unknown): string {
     throw new ScriptPackageError("script_package_manifest_invalid");
   }
   const capabilityIds = new Set(typed.capabilities.map((capability) => capability.id));
+  if (typed.school && (!typed.school.name.trim() || !typed.school.type.name.trim()))
+    throw new ScriptPackageError("script_package_manifest_invalid");
+  for (const account of typed.accounts ?? []) {
+    const tunnel = account.appTunnel;
+    if (
+      tunnel &&
+      (typed.sdkVersion < 16 ||
+        account.authentication ||
+        account.login?.capability !== "account.session" ||
+        !account.status ||
+        typed.network.ipAllow !== undefined ||
+        !typed.appTunnels?.includes(tunnel.service) ||
+        new URL(tunnel.gatewayUrl).origin !== tunnel.gatewayUrl ||
+        !typed.network.origins.some((o) => new URL(o).origin === tunnel.gatewayUrl) ||
+        (tunnel.loginMode === "web" && (tunnel.loginDomain !== "" || account.credentialReuse)) ||
+        (account.credentialReuse &&
+          (account.credentialReuse.service !== tunnel.service ||
+            account.credentialReuse.gatewayUrl !== tunnel.gatewayUrl ||
+            account.credentialReuse.loginDomain !== tunnel.loginDomain)))
+    ) {
+      throw new ScriptPackageError("script_package_manifest_invalid");
+    }
+    if (account.appTunnelAccountId && (tunnel || account.credentialReuse))
+      throw new ScriptPackageError("script_package_manifest_invalid");
+  }
+  for (const item of [...typed.capabilities, ...(typed.accounts ?? [])]) {
+    if (
+      item.appTunnelAccountId &&
+      (!typed.accounts?.some((a) => a.id === item.appTunnelAccountId && a.appTunnel) ||
+        (typed.capabilities.includes(item) && item.id === "account.session"))
+    )
+      throw new ScriptPackageError("script_package_manifest_invalid");
+  }
+  for (const account of typed.accounts ?? []) {
+    const reuse = account.credentialReuse;
+    if (!reuse) continue;
+    const source = typed.accounts?.find((a) => a.id === reuse.sourceAccountId);
+    let gateway: URL;
+    try {
+      gateway = new URL(reuse.gatewayUrl);
+    } catch {
+      throw new ScriptPackageError("script_package_manifest_invalid");
+    }
+    if (
+      typed.sdkVersion < 15 ||
+      !source?.authentication ||
+      source.id === account.id ||
+      source.credentialReuse ||
+      account.authentication ||
+      account.login?.capability !== "account.session" ||
+      !account.status ||
+      typed.network.ipAllow !== undefined ||
+      !typed.appTunnels?.includes(reuse.service) ||
+      gateway.protocol !== "https:" ||
+      gateway.username ||
+      gateway.password ||
+      gateway.origin !== reuse.gatewayUrl ||
+      !typed.network.origins.some((origin) => new URL(origin).origin === gateway.origin)
+    ) {
+      throw new ScriptPackageError("script_package_manifest_invalid");
+    }
+  }
+  if (typed.webContent !== undefined) {
+    try {
+      validateScriptWebContent(typed.webContent);
+    } catch {
+      throw new ScriptPackageError("script_package_web_content_invalid");
+    }
+  } else if (capabilityIds.has("web.content")) {
+    throw new ScriptPackageError("script_package_web_content_invalid");
+  }
+  if (typed.localization !== undefined) {
+    try {
+      validateScriptLocalization(typed.localization);
+    } catch {
+      throw new ScriptPackageError("script_package_localization_invalid");
+    }
+  }
   if (
     typed.accounts &&
     (new Set(typed.accounts.map((account) => account.id)).size !== typed.accounts.length ||
@@ -90,6 +190,12 @@ export function packageScript(manifest: unknown, source: unknown): string {
         (account) =>
           account.name.length > 160 ||
           account.instructions.length > 2048 ||
+          (account.authentication &&
+            (typed.sdkVersion < 14 ||
+              !account.login ||
+              account.authentication.namespace.includes("\n") ||
+              (account.authentication.interactiveWeb && !typed.browser) ||
+              account.authentication.silentWeb !== false)) ||
           (account.login && !capabilityIds.has(account.login.capability)) ||
           (account.login?.capability === "account.session" &&
             (account.login.params?.account !== account.id ||
@@ -119,6 +225,7 @@ export function packageScript(manifest: unknown, source: unknown): string {
         (entry) =>
           entry.capability === "climate.command" ||
           entry.capability === "card.qr" ||
+          entry.capability === "query.controls" ||
           [
             "account.session",
             "forum.session",
@@ -128,6 +235,7 @@ export function packageScript(manifest: unknown, source: unknown): string {
             "messages.history",
             "messages.send",
             "attendance.checkin",
+            "web.content",
           ].includes(entry.capability) ||
           !typed.capabilities.some((cap) => cap.id === entry.capability) ||
           Buffer.byteLength(JSON.stringify(entry.params ?? {}), "utf8") > 4096,

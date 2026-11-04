@@ -1,6 +1,8 @@
 {
   "description": "所有合法 capability id 的注册表。新增 id 或改其语义需走 ADR。",
   "capabilities": {
+    "web.content": { "description": "显式打开同包网页交互（ADR-073；仅前台、不缓存、不重放）", "emits": { "schema": "elecon.web.content", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.web.content", "schemaVersion": "1.0" } },
+    "query.controls": { "description": "同包只读查询条件元数据（ADR-071）", "emits": { "schema": "elecon.query.controls", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.query.controls", "schemaVersion": "1.0" } },
     "faculty.search": { "description": "检索学校公开教师资料（ADR-050）", "emits": { "schema": "elecon.faculty.search", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.faculty.search", "schemaVersion": "1.0" } },
     "grades.list": {
       "description": "获取学期成绩列表",
@@ -43,7 +45,7 @@
     "term.list": { "description": "获取学年学期列表", "emits": { "schema": "elecon.term.list", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.term.list", "schemaVersion": "1.0" } },
     "calendar.academic": { "description": "获取校历", "emits": { "schema": "elecon.calendar.academic", "schemaVersion": "1.0" } },
     "exam.list": { "description": "获取考试安排", "emits": { "schema": "elecon.exam.list", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.exam.list", "schemaVersion": "1.0" } },
-    "classroom.available": { "description": "查询空教室", "emits": { "schema": "elecon.classroom.available", "schemaVersion": "1.1" }, "params": { "schema": "elecon.params.classroom.available", "schemaVersion": "1.1" } },
+    "classroom.available": { "description": "查询空教室", "emits": { "schema": "elecon.classroom.available", "schemaVersion": "1.2", "previousVersions": ["1.1"] }, "params": { "schema": "elecon.params.classroom.available", "schemaVersion": "1.1" } },
     "classroom.buildings": { "description": "列出教学楼（空教室 discovery）", "emits": { "schema": "elecon.classroom.buildings", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.classroom.buildings", "schemaVersion": "1.0" } },
     "attendance.summary": { "description": "获取考勤汇总", "emits": { "schema": "elecon.attendance.summary", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.attendance.summary", "schemaVersion": "1.0" } },
     "library.seats": { "description": "查询图书馆座位", "emits": { "schema": "elecon.library.seats", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.library.seats", "schemaVersion": "1.0" } },

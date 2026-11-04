@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1/2/3/4/5/6/7/8/9/10/11/12 (ADR-034/035/037/038/039/040/043). Values include actual secrets.
+/** Trusted school script SDK 1–17 (ADR-034/035/037/038/039/040/043/070/072/073). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -42,6 +42,16 @@ export interface ScriptBrowser {
   /** SDK 4: fixed host login overlay; closing/cancelling remains available. */
   setBusy(busy: boolean): Promise<void>;
   open(url: string): Promise<unknown>;
+  /** SDK14: open one digest-authorized manifest.webContent page. Android only;
+   * direct page networking and page scripts are blocked. Scripts use ctx.fetch
+   * and content(); the document receives no native or credential bridge.
+   * Generic evaluate/text/queryAll are unavailable in a web.content run. */
+  openContent?(pageId: string): Promise<void>;
+  /** SDK14 + webContent: fixed DOM commands, no source evaluation. Selector
+   * <=1024 chars, text values <=65536 UTF8 bytes, queryAll limit 1–100. Events
+   * require real user input; submit/click prevent submission and repeat clicks.
+   * waitForEvent defaults to 60s (max 90s); true=input, false=timeout. */
+  content?(operation: ScriptContentOperation): Promise<unknown>;
   evaluate(source: string | ((...args: unknown[]) => unknown), ...args: unknown[]): Promise<unknown>;
   text(selector: string): Promise<string | null>;
   exists(selector: string): Promise<boolean>;
@@ -61,6 +71,40 @@ export interface ScriptBrowser {
   }>): Promise<void>;
 }
 export interface ScriptContext {
+  /** SDK17: namespaced business failures; use ordinary throw/try/catch.
+   * Local codes match [a-z][a-z0-9_]{0,63}; no messages or response text.
+   * For execution globals and the supported Web API subset, see sdk17.d.ts. */
+  readonly errors?: { create(localCode: string): Error & { readonly code: 'script_business_error'; readonly businessCode: string } };
+  /** SDK14: declared account only, bound to this invocation and approved source.
+   * Manual input is allowed only from the declared foreground login binding.
+   * Choosing web fallback throws account_interactive_fallback; null is cancel.
+   * Automatic attempts require an available declared silent presenter; currently
+   * unavailable. Never replay a command after authentication recovery. */
+  readonly accounts?: {
+    password(accountId: string, options: { mode: "manual" | "automatic" }): Promise<{
+      attemptId: string; username: string; password: string;
+    } | null>;
+    /** Report success only after a real service probe. New saved credentials are
+     * published only after validation and protected storage succeeds. */
+    completePassword(accountId: string, result: {
+      attemptId: string; outcome: ScriptPasswordOutcome;
+    }): Promise<void>;
+    report(accountId: string, event: {
+      status: "authenticated" | "signedOut" | "expired" | "unknown";
+      reason: ScriptAccountReason;
+    }): Promise<void>;
+  };
+  /** SDK13: canonical requested locale, independent of the host's translated UI languages. */
+  readonly locale?: string;
+  /** SDK13 + manifest.localization. Package-owned plain text; no network or evaluation. */
+  readonly i18n?: {
+    /** Selected package language after exact/script/language/default fallback. */
+    readonly locale: string;
+    readonly supportedLocales: readonly string[];
+    /** Missing keys fall back to the package default. Unknown keys or missing,
+     * extra or invalid values throw fixed errors. Supports {name} only, no ICU. */
+    t(key: string, values?: Record<string, string | number>): string;
+  };
   /** SDK 3+: fixed transient native form; no automatic persistence/retry. */
   readonly ui?: {
     requestInput(request: ScriptInputRequest): Promise<Record<string, string> | null>;
@@ -108,9 +152,10 @@ export interface ScriptContext {
   /** SDK12 + manifest.appTunnels; host-owned credentials never returned. */
   readonly appTunnel?: {
     status(provider: "hermes-atrust"): Promise<ScriptAccountState>;
-    /** Explicit account-page operation. Publishing new credentials revokes the
-     * invoking run; the native account page then rechecks this approved source. */
-    login(provider: "hermes-atrust"): Promise<ScriptAccountState>;
+    /** Explicit account-page operation. Without options, open the host manager
+     * and recheck after its identity transition. SDK15 accountId selects the
+     * declared reuse target; authenticate and verify once before saving. */
+    login(provider: "hermes-atrust", options?: {accountId: string}): Promise<ScriptAccountState>;
   };
   now(): number;
   log(level: "debug" | "info" | "warn" | "error", message: string): void;
@@ -178,6 +223,17 @@ export interface ScriptHomePresentation {
   homeTitle?: string;
 }
 
+/** SDK13 optional manifest resource. Authors select any supported language(s),
+ * independently of core UI languages. Entire content is covered by package digest.
+ * Canonical language[-Script][-REGION] profile; default dictionary is complete,
+ * other dictionaries may omit keys but cannot add keys or change placeholders.
+ * Max 32 languages, 1024 keys each, 4096 code points/message, 256 KiB UTF-8 JSON.
+ */
+export interface ScriptLocalizationDeclaration {
+  defaultLocale: string;
+  messages: Record<string, Record<string, string>>;
+}
+
 /** SDK8 manifest permission; omitted/false denies scanning. Digest authorized. */
 export interface ScriptScannerPermission { scanner?: boolean; }
 
@@ -242,11 +298,57 @@ export interface ScriptAccountRequirement {
   name: string;
   instructions: string;
   capabilities: string[];
+  /** SDK16: this account needs the named same-package tunnel before checking/login. */
+  appTunnelAccountId?: string;
+  /** SDK16: fixed host-managed connection, never arbitrary script/native loading. */
+  appTunnel?: ScriptAppTunnelAccount;
   login?: { capability: string; params?: Record<string, unknown> };
   /** SDK12, account.session with {account:id,operation:"status"}; no interaction. */
   status?: { capability: "account.session"; params: {account: string; operation: "status"} };
+  /** SDK14; login is required. This namespace is an address, not isolation. */
+  authentication?: {
+    namespace: string;
+    savedPassword: true;
+    interactiveWeb: boolean;
+    /** Unsupported until hidden browser network enforcement is implemented. */
+    silentWeb: false;
+  };
+  /** SDK15: target login only; host passes the source password to this fixed
+   * approved HTTPS gateway once and independently verifies the target session. */
+  credentialReuse?: {
+    sourceAccountId: string;
+    service: "hermes-atrust";
+    gatewayUrl: string;
+    loginDomain: string;
+  };
 }
+
+export interface ScriptAppTunnelAccount {
+  service: "hermes-atrust";
+  gatewayUrl: string;
+  loginDomain: string;
+  nodeCertificateSha256?: string;
+  /** web requires empty loginDomain; it does not prove a CAS realm. */
+  loginMode?: "password" | "web";
+}
+export interface ScriptSchool { id:string;name:string;type:{id:string;name:string}; }
+export interface ScriptCapabilityTunnelRequirement { appTunnelAccountId?: string; }
+
+export type ScriptPasswordOutcome = "authenticated" | "interactionRequired" | "credentialsRejected" | "accountDisabled" | "unknown";
+export type ScriptAccountReason = "verified" | "signedOut" | "primaryExpired" | "interactionRequired" | "credentialsRejected" | "accountDisabled" | "recoveryBlocked" | "networkUnknown";
 
 /** ADR-066: source-verified status; network failure is unknown, never expired. */
 export type ScriptAccountState = import("../generated/ts/account.session.js").AccountSession;
 export interface ScriptAppTunnelPermission { appTunnels?: ["hermes-atrust"]; }
+
+/** SDK14; browser:true and web.content/1.0 required. At most 8 unique pages,
+ * HTML <=256KiB each and <=512KiB total UTF-8. Resources are package-owned. */
+export interface ScriptWebContent { id: string; title: string; html: string; }
+
+export type ScriptContentOperation =
+  | { operation: "setText" | "setHtml" | "setValue"; selector: string; value: string }
+  | { operation: "setAttribute"; selector: string; attribute: string; value: string }
+  | { operation: "setDisabled"; selector: string; value: boolean }
+  | { operation: "getText" | "getValue" | "exists"; selector: string }
+  | { operation: "queryAll"; selector: string; limit?: number }
+  | { operation: "waitForEvent"; selector: string; event: "click" | "submit" | "change"; timeoutMs?: number };

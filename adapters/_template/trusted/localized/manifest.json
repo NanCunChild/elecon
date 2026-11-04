@@ -1,0 +1,20 @@
+{
+  "sdkVersion": 13,
+  "id": "school-localized-example",
+  "version": "0.1.0",
+  "schoolId": "example",
+  "name": "Example multilingual script",
+  "network": { "origins": [] },
+  "browser": false,
+  "accounts": [],
+  "capabilities": [
+    { "id": "generic.section", "schema": "elecon.generic.section", "schemaVersion": "1.0" }
+  ],
+  "localization": {
+    "defaultLocale": "tr",
+    "messages": {
+      "tr": { "title": "Dil örneği", "greeting": "Merhaba, {name}!" },
+      "uz": { "title": "Til misoli", "greeting": "Salom, {name}!" }
+    }
+  }
+}

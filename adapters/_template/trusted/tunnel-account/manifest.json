@@ -1,0 +1,68 @@
+{
+  "sdkVersion": 16,
+  "id": "example.tunnel-account",
+  "schoolId": "example",
+  "version": "1.0.0",
+  "name": "Declared tunnel template",
+  "browser": false,
+  "network": {
+    "origins": [
+      "https://vpn.example.invalid",
+      "https://service.example.invalid"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "account.session",
+      "schema": "elecon.account.session",
+      "schemaVersion": "1.0"
+    },
+    {
+      "id": "notice.list",
+      "schema": "elecon.notice.list",
+      "schemaVersion": "1.1",
+      "appTunnelAccountId": "vpn"
+    }
+  ],
+  "accounts": [
+    {
+      "id": "vpn",
+      "name": "School VPN",
+      "instructions": "Synthetic template: implement and verify school authentication before use.",
+      "capabilities": [
+        "account.session"
+      ],
+      "login": {
+        "capability": "account.session",
+        "params": {
+          "account": "vpn",
+          "operation": "login"
+        }
+      },
+      "status": {
+        "capability": "account.session",
+        "params": {
+          "account": "vpn",
+          "operation": "status"
+        }
+      },
+      "appTunnel": {
+        "service": "hermes-atrust",
+        "gatewayUrl": "https://vpn.example.invalid",
+        "loginDomain": "",
+        "loginMode": "password"
+      }
+    }
+  ],
+  "appTunnels": [
+    "hermes-atrust"
+  ],
+  "school": {
+    "id": "example",
+    "name": "Example University",
+    "type": {
+      "id": "student",
+      "name": "Student"
+    }
+  }
+}

@@ -41,6 +41,7 @@
     "smoke:all": "node ../scripts/run-smokes.mjs src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "audit": "npm audit --omit=dev",
+    "scripts:check-sdk": "tsc -p ../contract/script-sdk/tsconfig.json",
     "scripts:package": "tsx src/script/package.ts",
     "scripts:xidian": "tsx src/script/xidian.ts",
     "scripts:chaoxing": "tsx src/script/chaoxing.ts"

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "$id": "elecon.params.web.content",
+  "title": "包内网页交互参数",
+  "required": [
+    "pageId"
+  ],
+  "properties": {
+    "pageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]{0,63}$",
+      "description": "当前来源包已声明的网页 id；不接受其他来源或远程 URL。"
+    }
+  }
+}

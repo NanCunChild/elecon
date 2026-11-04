@@ -1,0 +1,997 @@
+{
+  "description": "ADR072/073 synthetic declaration admission shared by Node and Dart",
+  "cases": [
+    {
+      "name": "SDK14 without new declarations",
+      "valid": true,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "declared password login",
+      "valid": true,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [
+          {
+            "id": "school",
+            "name": "Synthetic account",
+            "instructions": "Synthetic only",
+            "capabilities": [
+              "generic.section"
+            ],
+            "login": {
+              "capability": "generic.section"
+            },
+            "authentication": {
+              "namespace": "example.primary",
+              "savedPassword": true,
+              "interactiveWeb": true,
+              "silentWeb": false
+            }
+          }
+        ],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SDK13 rejects authentication",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 13,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [
+          {
+            "id": "school",
+            "name": "Synthetic account",
+            "instructions": "Synthetic only",
+            "capabilities": [
+              "generic.section"
+            ],
+            "login": {
+              "capability": "generic.section"
+            },
+            "authentication": {
+              "namespace": "example.primary",
+              "savedPassword": true,
+              "interactiveWeb": true,
+              "silentWeb": false
+            }
+          }
+        ],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "undeclared browser cannot offer web login",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": false,
+        "accounts": [
+          {
+            "id": "school",
+            "name": "Synthetic account",
+            "instructions": "Synthetic only",
+            "capabilities": [
+              "generic.section"
+            ],
+            "login": {
+              "capability": "generic.section"
+            },
+            "authentication": {
+              "namespace": "example.primary",
+              "savedPassword": true,
+              "interactiveWeb": true,
+              "silentWeb": false
+            }
+          }
+        ],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing login",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [
+          {
+            "id": "school",
+            "name": "Synthetic account",
+            "instructions": "Synthetic only",
+            "capabilities": [
+              "generic.section"
+            ],
+            "authentication": {
+              "namespace": "example.primary",
+              "savedPassword": true,
+              "interactiveWeb": true,
+              "silentWeb": false
+            }
+          }
+        ],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unsupported silent presenter",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [
+          {
+            "id": "school",
+            "name": "Synthetic account",
+            "instructions": "Synthetic only",
+            "capabilities": [
+              "generic.section"
+            ],
+            "login": {
+              "capability": "generic.section"
+            },
+            "authentication": {
+              "namespace": "example.primary",
+              "savedPassword": true,
+              "interactiveWeb": true,
+              "silentWeb": true
+            }
+          }
+        ],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown auth method",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [
+          {
+            "id": "school",
+            "name": "Synthetic account",
+            "instructions": "Synthetic only",
+            "capabilities": [
+              "generic.section"
+            ],
+            "login": {
+              "capability": "generic.section"
+            },
+            "authentication": {
+              "namespace": "example.primary",
+              "savedPassword": true,
+              "interactiveWeb": true,
+              "silentWeb": false,
+              "nativeModule": "bad"
+            }
+          }
+        ],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "reserved namespace",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [
+          {
+            "id": "school",
+            "name": "Synthetic account",
+            "instructions": "Synthetic only",
+            "capabilities": [
+              "generic.section"
+            ],
+            "login": {
+              "capability": "generic.section"
+            },
+            "authentication": {
+              "namespace": "@legacy",
+              "savedPassword": true,
+              "interactiveWeb": true,
+              "silentWeb": false
+            }
+          }
+        ],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty namespace",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [
+          {
+            "id": "school",
+            "name": "Synthetic account",
+            "instructions": "Synthetic only",
+            "capabilities": [
+              "generic.section"
+            ],
+            "login": {
+              "capability": "generic.section"
+            },
+            "authentication": {
+              "namespace": "",
+              "savedPassword": true,
+              "interactiveWeb": true,
+              "silentWeb": false
+            }
+          }
+        ],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "false savedPassword",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [
+          {
+            "id": "school",
+            "name": "Synthetic account",
+            "instructions": "Synthetic only",
+            "capabilities": [
+              "generic.section"
+            ],
+            "login": {
+              "capability": "generic.section"
+            },
+            "authentication": {
+              "namespace": "example.primary",
+              "savedPassword": false,
+              "interactiveWeb": true,
+              "silentWeb": false
+            }
+          }
+        ],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing interactive declaration",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [
+          {
+            "id": "school",
+            "name": "Synthetic account",
+            "instructions": "Synthetic only",
+            "capabilities": [
+              "generic.section"
+            ],
+            "login": {
+              "capability": "generic.section"
+            },
+            "authentication": {
+              "namespace": "example.primary",
+              "savedPassword": true,
+              "silentWeb": false
+            }
+          }
+        ],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bounded web template",
+      "valid": true,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form",
+            "title": "Synthetic form",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SDK13 rejects webContent",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 13,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form",
+            "title": "Synthetic form",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>"
+          }
+        ]
+      }
+    },
+    {
+      "name": "web template needs browser",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": false,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form",
+            "title": "Synthetic form",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>"
+          }
+        ]
+      }
+    },
+    {
+      "name": "web template needs capability",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form",
+            "title": "Synthetic form",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>"
+          }
+        ]
+      }
+    },
+    {
+      "name": "web capability needs pages",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate page id",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form",
+            "title": "Synthetic form",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>"
+          },
+          {
+            "id": "form",
+            "title": "Synthetic form",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty webContent",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": []
+      }
+    },
+    {
+      "name": "URL is not page declaration",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form",
+            "title": "Synthetic form",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>",
+            "url": "https://example.invalid"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown page field",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form",
+            "title": "Synthetic form",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>",
+            "script": "bad"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty HTML",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form",
+            "title": "Synthetic form",
+            "html": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "unpaired HTML surrogate",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form",
+            "title": "Synthetic form",
+            "html": "\ud800"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unsafe page id",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "../form",
+            "title": "Synthetic form",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>"
+          }
+        ]
+      }
+    },
+    {
+      "name": "trailing newline id",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form\n",
+            "title": "Synthetic form",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bidi page title",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form",
+            "title": "\u202eform",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>"
+          }
+        ]
+      }
+    },
+    {
+      "name": "home web preload forbidden",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          },
+          {
+            "id": "web.content",
+            "schema": "elecon.web.content",
+            "schemaVersion": "1.0"
+          }
+        ],
+        "webContent": [
+          {
+            "id": "form",
+            "title": "Synthetic form",
+            "html": "<!doctype html><form><input id=\"answer\"><button>Submit</button></form>"
+          }
+        ],
+        "home": [
+          {
+            "capability": "web.content",
+            "ttlSeconds": 60,
+            "preload": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "authentication namespace rejects trailing newline",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 14,
+        "id": "interaction-example",
+        "schoolId": "example",
+        "version": "1.0.0",
+        "name": "Synthetic",
+        "network": {
+          "origins": []
+        },
+        "browser": true,
+        "accounts": [
+          {
+            "id": "school",
+            "name": "Synthetic account",
+            "instructions": "Synthetic only",
+            "capabilities": [
+              "generic.section"
+            ],
+            "login": {
+              "capability": "generic.section"
+            },
+            "authentication": {
+              "namespace": "example.primary\n",
+              "savedPassword": true,
+              "interactiveWeb": true,
+              "silentWeb": false
+            }
+          }
+        ],
+        "capabilities": [
+          {
+            "id": "generic.section",
+            "schema": "elecon.generic.section",
+            "schemaVersion": "1.0"
+          }
+        ]
+      }
+    }
+  ]
+}

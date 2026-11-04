@@ -25,6 +25,14 @@ for (const sdkVersion of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
     sdkVersion,
   );
 }
+// SDK17 changes the runtime surface, not the package authorization format.
+for (const sdkVersion of [16, 17]) {
+  assert.equal(
+    JSON.parse(packageScript({ ...manifest, sdkVersion, accounts: [] }, source)).manifest.sdkVersion,
+    sdkVersion,
+  );
+}
+assert.throws(() => packageScript({ ...manifest, sdkVersion: 18, accounts: [] }, source), ScriptPackageError);
 assert.equal(JSON.parse(packaged).manifest.version, "1.2.3");
 assert.equal(JSON.parse(packaged).source, source);
 // ADR-064: requirements are metadata, not a new credential permission grant.

@@ -1,0 +1,81 @@
+{
+  "sdkVersion": 15,
+  "id": "example.credential-reuse",
+  "schoolId": "example",
+  "version": "1.0.0",
+  "name": "Credential reuse template",
+  "browser": false,
+  "network": {
+    "origins": [
+      "https://vpn.example.invalid"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "account.session",
+      "schema": "elecon.account.session",
+      "schemaVersion": "1.0"
+    }
+  ],
+  "accounts": [
+    {
+      "id": "school",
+      "name": "School identity",
+      "instructions": "Synthetic template: implement and verify school authentication before use.",
+      "capabilities": [
+        "account.session"
+      ],
+      "login": {
+        "capability": "account.session",
+        "params": {
+          "account": "school",
+          "operation": "login"
+        }
+      },
+      "status": {
+        "capability": "account.session",
+        "params": {
+          "account": "school",
+          "operation": "status"
+        }
+      },
+      "authentication": {
+        "namespace": "example.school",
+        "savedPassword": true,
+        "interactiveWeb": false,
+        "silentWeb": false
+      }
+    },
+    {
+      "id": "vpn",
+      "name": "School VPN",
+      "instructions": "Synthetic template: implement and verify school authentication before use.",
+      "capabilities": [
+        "account.session"
+      ],
+      "login": {
+        "capability": "account.session",
+        "params": {
+          "account": "vpn",
+          "operation": "login"
+        }
+      },
+      "status": {
+        "capability": "account.session",
+        "params": {
+          "account": "vpn",
+          "operation": "status"
+        }
+      },
+      "credentialReuse": {
+        "sourceAccountId": "school",
+        "service": "hermes-atrust",
+        "gatewayUrl": "https://vpn.example.invalid",
+        "loginDomain": ""
+      }
+    }
+  ],
+  "appTunnels": [
+    "hermes-atrust"
+  ]
+}

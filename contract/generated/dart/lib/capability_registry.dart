@@ -46,8 +46,10 @@ const Set<String> kCapabilityIds = {
   'notice.list',
   'profile.me',
   'program.progress',
+  'query.controls',
   'research.income',
   'schedule.week',
   'term.list',
   'transport.schedule',
+  'web.content',
 };

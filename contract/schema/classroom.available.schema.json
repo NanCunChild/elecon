@@ -61,7 +61,10 @@
       "description": "符合查询条件的教室列表；无匹配教室时可为空数组。",
       "items": {
         "type": "object",
-        "required": ["building", "room"],
+        "required": [
+          "building",
+          "room"
+        ],
         "properties": {
           "campus": {
             "type": "string",
@@ -107,7 +110,12 @@
           },
           "status": {
             "type": "string",
-            "enum": ["available", "occupied", "partial", "unknown"],
+            "enum": [
+              "available",
+              "occupied",
+              "partial",
+              "unknown"
+            ],
             "description": "available=窗口内全空闲；occupied=窗口内全占用；partial=窗口内部分节次占用；unknown=无法判定"
           },
           "sections": {
@@ -116,7 +124,10 @@
             "description": "分节占用；缺失=该校不提供节次粒度；至多 24 节",
             "items": {
               "type": "object",
-              "required": ["index", "occupied"],
+              "required": [
+                "index",
+                "occupied"
+              ],
               "properties": {
                 "index": {
                   "type": "integer",
@@ -139,6 +150,46 @@
                 "timeEnd": {
                   "type": "string",
                   "description": "该节墙钟终点，推荐 HH:mm"
+                }
+              }
+            }
+          },
+          "intervals": {
+            "type": "array",
+            "maxItems": 96,
+            "description": "已知绝对时段，左闭右开；同教室不得重叠，结束晚于开始；缺口为未知，不从节间或无课程推断开放。省略表示仅有旧聚合/节次数据。",
+            "items": {
+              "type": "object",
+              "required": [
+                "startAt",
+                "endAt",
+                "status"
+              ],
+              "properties": {
+                "startAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "区间起点（含），RFC3339/UTC；必须是查询日对应的真实时刻。"
+                },
+                "endAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "区间终点（不含），RFC3339/UTC；必须晚于 startAt。"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "available",
+                    "occupied",
+                    "unknown"
+                  ],
+                  "description": "本区间无占用记录、占用或无法确认；available 不保证实际开门或允许使用。"
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "description": "学校脚本提供的状态依据或原因，纯文本；缺失表示来源未提供，宿主不得猜测。"
                 }
               }
             }

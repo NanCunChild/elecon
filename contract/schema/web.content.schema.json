@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "$id": "elecon.web.content",
+  "title": "包内网页交互结果",
+  "required": [
+    "pageId",
+    "status"
+  ],
+  "properties": {
+    "pageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]{0,63}$",
+      "description": "本次显式打开的包内网页 id，必须与请求一致。"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "cancelled",
+        "unknown"
+      ],
+      "description": "completed 表示脚本有业务成功证据；cancelled 表示尚未提交；unknown 表示提交可能已发生且禁止自动重发。"
+    }
+  }
+}
