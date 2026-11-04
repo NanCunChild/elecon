@@ -18,10 +18,13 @@
     "ledger:validate": "npm run ledger:validate -w tools",
     "test:release-preflight": "bash scripts/release-preflight.test.sh",
     "trace:browser": "node scripts/browser-trace.mjs",
-    "test:browser-trace": "node --test scripts/browser-trace.test.mjs"
+    "test:browser-trace": "node --test scripts/browser-trace.test.mjs",
+    "capture:browser": "node scripts/browser-har.mjs",
+    "test:browser-har": "node --test scripts/browser-har.test.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.3"
+    "@biomejs/biome": "^2.5.3",
+    "playwright-core": "1.64.1"
   },
   "allowScripts": {
     "esbuild@0.28.1": true

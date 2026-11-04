@@ -8,7 +8,7 @@
 | 首页布局与来源覆盖 | [使用说明](card_layout_and_overrides.md) |
 | 浏览器容器、密码与隧道账号 | [浏览器](script_browser_surfaces.md)、[保存密码](script_account_passwords.md)、[凭据复用](script_credential_reuse.md)、[隧道账号](script_tunnel_accounts.md) |
 | 语言代码与原生平台 AI | [语言代码](script_language_codes.md)、[Android AppFunctions](android_app_functions.md) |
-| 学校协议观察 | [浏览器追踪](browser_auth_trace.md)、[西电认证对照](xidian_pda_auth_comparison.md)、[能力对照](xidian_script_update.md) |
+| 学校协议观察 | [HAR 录制](browser_har_capture.md)、[浏览器追踪](browser_auth_trace.md)、[西电认证对照](xidian_pda_auth_comparison.md)、[能力对照](xidian_script_update.md) |
 | 依赖、发布与日志 | [依赖许可](trusted_scripts_dependencies.md)、[发布](release_workflow.md)、[日志](cross_end_logging.md) |
 | 旧运行时维护 | [兼容边界](legacy_compatibility.md)、[Masker 退役审计](masker_retirement_audit.md) |
 | 历史接口与路线研究 | [接口审计](interface_evolution.md)、[中继研究](../research/relay_enhancement_feasibility.md)；当前待办以统一计划为准 |
