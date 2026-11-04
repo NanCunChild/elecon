@@ -4,7 +4,7 @@ use std::sync::Arc;
 use atrust_protocol::to_wire_json;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use hermes_model::{DeviceId, GatewayEndpoint, SecretString};
+use hermes_model::{DeviceId, GatewayEndpoint, SecretString, SessionId};
 use hermes_transport::{HttpMethod, HttpRequest, HttpTransport, HttpTransportError};
 use rand::Rng as _;
 use serde::{Deserialize, Serialize};
@@ -41,6 +41,20 @@ impl fmt::Debug for AuthClient {
 }
 
 impl AuthClient {
+    /// elecon: read the live jar after control-plane responses. Imported/stored
+    /// SID values are not a fallback: a response may rotate or delete them.
+    pub fn current_session_id(&self) -> Result<SessionId, AuthError> {
+        let origin = self.endpoint_url("/")?;
+        let cookies = self.transport.session_cookies(&origin);
+        let source = crate::extract_sid_from_cookies(&cookies)
+            .map_err(|_| AuthError::SessionCookieUnavailable)?;
+        if source.value.expose().len() > 16384 {
+            return Err(AuthError::SessionCookieUnavailable);
+        }
+        SessionId::new(source.value.expose().to_owned())
+            .map_err(|_| AuthError::SessionCookieUnavailable)
+    }
+
     pub fn new(endpoint: GatewayEndpoint, transport: Arc<dyn HttpTransport>) -> Self {
         Self {
             endpoint,
@@ -676,6 +690,8 @@ pub enum AuthError {
     Transport(#[from] HttpTransportError),
     #[error("aTrust returned unexpected HTTP status {0}")]
     UnexpectedStatus(u16),
+    #[error("aTrust live session cookie is missing or invalid")]
+    SessionCookieUnavailable,
     #[error("aTrust returned an invalid authConfig response: {0}")]
     InvalidResponse(#[source] serde_json::Error),
     #[error("failed to build password request: {0}")]
@@ -737,7 +753,11 @@ impl AuthError {
     pub fn is_session_invalid(&self) -> bool {
         match self {
             Self::AuthenticationRejected { code, .. }
-            | Self::Resource(ResourceError::Rejected { code, .. }) => *code == SESSION_INVALID_CODE,
+            | Self::Resource(ResourceError::Rejected { code, .. }) => {
+                // elecon: both control-plane invalid-session codes are used by
+                // aTrust gateways. Other business/HTTP errors stay inconclusive.
+                matches!(*code, SESSION_INVALID_CODE | 10_000_004)
+            }
             _ => false,
         }
     }

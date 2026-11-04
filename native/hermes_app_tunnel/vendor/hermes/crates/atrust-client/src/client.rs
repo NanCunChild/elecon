@@ -379,13 +379,17 @@ impl AtrustClient {
         }
 
         let username = self.material.username.as_deref().unwrap_or_default();
+        // elecon: authConfig, onlineInfo and clientResource can each replace
+        // the SID. Use the current authenticated jar, not the saved snapshot.
+        // Keep this snapshot fixed for this handshake; never retry app bytes.
+        let current_sid = self.auth.current_session_id()?;
         let mut last_error = None;
         for endpoint in &endpoints {
             let request = DialTcpRequest {
                 node_host: &endpoint.host,
                 node_port: endpoint.port,
                 tls_policy: self.config.tls_policy,
-                sid: &self.material.sid,
+                sid: &current_sid,
                 device_id: &self.material.device_id,
                 connection_id: &self.material.connection_id,
                 sign_key: &self.material.sign_key,

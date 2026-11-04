@@ -82,20 +82,20 @@ async fn certificate_pin_requires_exact_certificate_and_real_tls_signatures() {
         }
     });
     let pin: [u8; 32] = Sha256::digest(CERT).into();
-    assert!(hermes_transport::connect_tls(
-        "127.0.0.1",
-        port,
-        TlsPolicy::PinnedCertificateSha256(pin)
-    )
-    .await
-    .is_ok());
-    assert!(hermes_transport::connect_tls(
-        "127.0.0.1",
-        port,
-        TlsPolicy::PinnedCertificateSha256([0; 32])
-    )
-    .await
-    .is_err());
+    assert!(
+        hermes_transport::connect_tls("127.0.0.1", port, TlsPolicy::PinnedCertificateSha256(pin))
+            .await
+            .is_ok()
+    );
+    assert!(
+        hermes_transport::connect_tls(
+            "127.0.0.1",
+            port,
+            TlsPolicy::PinnedCertificateSha256([0; 32])
+        )
+        .await
+        .is_err()
+    );
     assert!(
         hermes_transport::connect_tls("127.0.0.1", port, TlsPolicy::Verify)
             .await
@@ -105,6 +105,7 @@ async fn certificate_pin_requires_exact_certificate_and_real_tls_signatures() {
 }
 struct ResourceTransport {
     port: u16,
+    sid: Mutex<Option<String>>,
 }
 
 struct PasswordTransport {
@@ -301,10 +302,27 @@ impl HttpTransport for ResourceTransport {
         &self,
         _: HttpRequest,
     ) -> std::result::Result<HttpResponse, HttpTransportError> {
+        // Model a clientResource response that rotates the imported SID.
+        *self.sid.lock().unwrap() = Some("synthetic-rotated-sid".into());
         Ok(HttpResponse{status:200,location:None,body:json!({"code":0,"data":{"appList":{"data":{
             "appInfo":[{"apps":[{"id":"synthetic-app","nodeGroupId":"synthetic-node","addressList":[{"protocol":"tcp","port":"443","host":"service.synthetic.invalid","ip":["192.0.2.7"]}]}]}],
             "config":{"nodeGroupConf":{"nodeGroupList":[{"id":"synthetic-node","addressInfo":[{"address":format!("127.0.0.1:{}",self.port),"addressType":"ip"}]}]}}
         }},"sdpPolicy":{"data":{}}}}).to_string().into_bytes()})
+    }
+    fn session_cookies(&self, origin: &url::Url) -> Vec<GatewayCookie> {
+        self.sid
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|sid| GatewayCookie {
+                name: "sid".into(),
+                value: sid.clone(),
+                domain: origin.host_str().map(str::to_owned),
+                path: Some("/".into()),
+                secure: true,
+                http_only: true,
+            })
+            .collect()
     }
 }
 #[tokio::test]
@@ -323,6 +341,7 @@ async fn hermes_tunnel_uses_pinned_ip_and_single_private_socket_then_stop_cleans
         tls.read_exact(&mut init).await.unwrap();
         let init: Value = serde_json::from_slice(&init).unwrap();
         assert_eq!(init["destAddr"], "192.0.2.7:443");
+        assert_eq!(init["sid"], "synthetic-rotated-sid");
         let mut destination = [0u8; 10];
         tls.read_exact(&mut destination).await.unwrap();
         assert_eq!(destination, [5, 1, 1, 1, 192, 0, 2, 7, 1, 187]);
@@ -343,10 +362,11 @@ async fn hermes_tunnel_uses_pinned_ip_and_single_private_socket_then_stop_cleans
         tls.flush().await.unwrap();
     });
     let gateway = GatewayEndpoint::new("gateway.synthetic.invalid", 443).unwrap();
-    let auth = Arc::new(AuthClient::new(
-        gateway.clone(),
-        Arc::new(ResourceTransport { port }),
-    ));
+    let transport = Arc::new(ResourceTransport {
+        port,
+        sid: Mutex::new(Some("synthetic-sid".into())),
+    });
+    let auth = Arc::new(AuthClient::new(gateway.clone(), transport.clone()));
     let configuration = atrust_auth::AuthConfiguration {
         login_state: atrust_auth::LoginState::LoggedIn,
         methods: vec![],
@@ -413,6 +433,25 @@ async fn hermes_tunnel_uses_pinned_ip_and_single_private_socket_then_stop_cleans
     assert_eq!(&result, b"SYNTHETIC_PAYLOAD");
     assert!(UnixStream::connect(path).await.is_err());
     peer.await.unwrap();
+    // Deleting the live cookie cannot resurrect Stored.sid or open another
+    // connection, even though the resource table still authorizes the target.
+    for invalid_sid in [
+        None,
+        Some(String::new()),
+        Some("invalid\nsid".into()),
+        Some("x".repeat(16385)),
+    ] {
+        *transport.sid.lock().unwrap() = invalid_sid;
+        assert!(matches!(
+            session
+                .client
+                .dial_tcp_pinned("service.synthetic.invalid", "192.0.2.7", 443)
+                .await,
+            Err(atrust_client::ClientError::Auth(
+                atrust_auth::AuthError::SessionCookieUnavailable
+            ))
+        ));
+    }
     let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
     SESSIONS.lock().unwrap().insert(handle, session);
     stop(&json!({"handle":handle})).await.unwrap();
@@ -472,9 +511,11 @@ fn gateway_cookie_import_tightens_parent_domain_and_secure_attribute() {
     assert_eq!(exported.len(), 1);
     assert_eq!(exported[0].domain.as_deref(), Some("vpn.synthetic.invalid"));
     assert!(exported[0].secure);
-    assert!(transport
-        .session_cookies(&url::Url::parse("https://other.synthetic.invalid/").unwrap())
-        .is_empty());
+    assert!(
+        transport
+            .session_cookies(&url::Url::parse("https://other.synthetic.invalid/").unwrap())
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -492,10 +533,16 @@ async fn account_state_requires_online_identity_and_only_explicit_expiry_is_expi
             json!({"code":75500002,"data":{},"message":"synthetic private detail"}),
             "expired",
         ),
+        (
+            json!({"code":10000004,"data":{},"message":"synthetic private detail"}),
+            "expired",
+        ),
+        (json!({"code":10000006,"data":{}}), "unknown"),
         (json!({"code":500,"data":{}}), "unknown"),
         (json!({"unexpected":"format"}), "unknown"),
     ] {
-        let (transport, auth, config, _, _) = password_fixture(&["default"]);
+        let (transport, auth, mut config, _, _) = password_fixture(&["default"]);
+        config.login_state = atrust_auth::LoginState::LoggedIn;
         transport.responses.lock().unwrap().push_back(response);
         let state = online_account_state(&auth, &config, Some("synthetic-user")).await;
         assert_eq!(state["status"], expected);
@@ -504,5 +551,80 @@ async fn account_state_requires_online_identity_and_only_explicit_expiry_is_expi
         if expected != "authenticated" {
             assert!(state.get("accountLabel").is_none());
         }
+    }
+}
+
+#[tokio::test]
+async fn explicit_logged_out_configuration_expires_without_retry_or_password() {
+    let (transport, auth, config, _, _) = password_fixture(&["default"]);
+    assert_eq!(
+        online_account_state(&auth, &config, Some("synthetic-user")).await,
+        json!({"status":"expired"})
+    );
+    assert!(transport.requests.lock().unwrap().is_empty());
+}
+
+#[test]
+fn only_known_session_rejections_expire_resource_and_auth_failures() {
+    for (code, expired) in [
+        (75500002, true),
+        (10000004, true),
+        (10000006, false),
+        (500, false),
+    ] {
+        assert_eq!(
+            atrust_auth::AuthError::AuthenticationRejected {
+                code,
+                message: String::new()
+            }
+            .is_session_invalid(),
+            expired
+        );
+        assert_eq!(
+            atrust_auth::AuthError::Resource(atrust_auth::ResourceError::Rejected {
+                code,
+                message: String::new()
+            })
+            .is_session_invalid(),
+            expired
+        );
+    }
+    for status in [401, 403, 429, 500, 503] {
+        assert!(!atrust_auth::AuthError::UnexpectedStatus(status).is_session_invalid());
+    }
+}
+
+#[test]
+fn status_rotation_uses_live_cookies_and_keeps_verified_material() {
+    let stored = || {
+        serde_json::from_value::<Stored>(json!({
+        "version":1,"saved_unix_ms":0,"gateway_host":"gateway.synthetic.invalid","gateway_port":443,
+        "login_method":"cas","login_domain":null,"cookies":[],"sid":"synthetic-old-sid",
+        "sid_cookie_name":"sid","sid_sig_present":false,"device_id":"synthetic-device",
+        "connection_id":"synthetic-connection","sign_key_hex":"ab".repeat(32),
+        "sign_key_provisional":true,"username":"synthetic-user"
+    })).unwrap()
+    };
+    let cookie = |value: &str| GatewayCookie {
+        name: "sid".into(),
+        value: value.into(),
+        domain: Some("gateway.synthetic.invalid".into()),
+        path: Some("/".into()),
+        secure: true,
+        http_only: true,
+    };
+    let mut rotated = stored();
+    rotated
+        .update_cookies(vec![cookie("synthetic-rotated-sid")])
+        .unwrap();
+    assert_eq!(rotated.sid, "synthetic-rotated-sid");
+    assert_eq!(rotated.cookies[0].value, rotated.sid);
+    assert_eq!(rotated.username.as_deref(), Some("synthetic-user"));
+    assert_eq!(rotated.device_id, "synthetic-device");
+    assert_eq!(rotated.connection_id, "synthetic-connection");
+    assert_eq!(rotated.sign_key_hex, "ab".repeat(32));
+    assert!(rotated.saved_unix_ms > 0);
+    for cookies in [vec![], vec![cookie("")], vec![cookie("invalid\nsid")]] {
+        assert!(stored().update_cookies(cookies).is_err());
     }
 }

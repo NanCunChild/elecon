@@ -1,7 +1,7 @@
 //! Host-only Hermes adapter. No TUN, global routes, public proxy, session files,
 //! school HTTP headers or HTTP response bodies cross this interface.
 use std::collections::{HashMap, HashSet};
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::net::IpAddr;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::PathBuf;
@@ -10,8 +10,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use atrust_auth::{
-    extract_sid_from_cookies, AuthClient, AuthConfigOptions, AuthConfiguration, CasExchange,
-    FlowProtocol, PasswordCredentials, SessionMaterial, SessionProgress,
+    AuthClient, AuthConfigOptions, AuthConfiguration, CasExchange, FlowProtocol,
+    PasswordCredentials, SessionMaterial, SessionProgress, extract_sid_from_cookies,
 };
 use atrust_client::{AtrustClient, AtrustClientConfig};
 use hermes_model::{ConnectionId, DeviceId, GatewayEndpoint, SecretString, SessionId, SignKey};
@@ -20,10 +20,10 @@ use hermes_transport::{
 };
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::net::UnixListener;
 use tokio::runtime::{Builder, Runtime};
-use tokio::sync::{watch, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, watch};
 use tokio::task::JoinHandle;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -374,6 +374,36 @@ impl Drop for Stored {
     }
 }
 impl Stored {
+    // Preserve verified identity and signing material. Only the live jar can
+    // supply a SID after control-plane responses; never fall back to saved SID.
+    fn update_cookies(&mut self, cookies: Vec<GatewayCookie>) -> Result<()> {
+        let source = extract_sid_from_cookies(&cookies).map_err(|_| AUTH)?;
+        SessionId::new(source.value.expose().to_owned()).map_err(|_| AUTH)?;
+        if source.value.expose().len() > 16384 || cookies.len() > 256 {
+            return Err(AUTH);
+        }
+        self.sid.zeroize();
+        self.sid = source.value.expose().to_owned();
+        self.sid_cookie_name = source.cookie_name;
+        self.sid_sig_present = source.sid_sig_present;
+        self.cookies = cookies
+            .into_iter()
+            .map(|c| Cookie {
+                name: c.name,
+                value: c.value,
+                domain: c.domain,
+                path: c.path,
+                secure: c.secure,
+                http_only: c.http_only,
+            })
+            .collect();
+        self.saved_unix_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| INTERNAL)?
+            .as_millis();
+        Ok(())
+    }
+
     fn validate(&self, gateway: &GatewayEndpoint) -> Result<()> {
         if self.version != 1
             || !self.gateway_host.eq_ignore_ascii_case(gateway.host())
@@ -629,11 +659,13 @@ async fn capture_session(
 // Read-only online proof. Transport/protocol errors remain unknown; only an
 // explicit invalid-session response or different identity proves expiration.
 async fn check_session(value: &mut Value) -> Result<Value> {
-    let (gateway, _) = gateway(value)?;
-    let stored: Stored = serde_json::from_value(value.get_mut("session").ok_or(INVALID)?.take())
-        .map_err(|_| CONFIG)?;
+    let (gateway, origin) = gateway(value)?;
+    let mut stored: Stored =
+        serde_json::from_value(value.get_mut("session").ok_or(INVALID)?.take())
+            .map_err(|_| CONFIG)?;
     stored.validate(&gateway)?;
-    let auth = AuthClient::new(gateway.clone(), transport(&gateway, &stored.cookies)?);
+    let transport = transport(&gateway, &stored.cookies)?;
+    let auth = AuthClient::new(gateway.clone(), transport.clone());
     let configuration = match auth
         .auth_config(AuthConfigOptions {
             modified: true,
@@ -645,13 +677,29 @@ async fn check_session(value: &mut Value) -> Result<Value> {
         Err(error) if error.is_session_invalid() => return Ok(json!({"status":"expired"})),
         Err(_) => return Ok(json!({"status":"unknown"})),
     };
-    Ok(online_account_state(&auth, &configuration, stored.username.as_deref()).await)
+    let mut state = online_account_state(&auth, &configuration, stored.username.as_deref()).await;
+    if state["status"] == "authenticated" {
+        if stored
+            .update_cookies(transport.session_cookies(&origin))
+            .is_err()
+            || stored.validate(&gateway).is_err()
+        {
+            return Ok(json!({"status":"unknown"}));
+        }
+        state["session"] = serde_json::to_value(&stored).map_err(|_| INTERNAL)?;
+    }
+    Ok(state)
 }
 async fn online_account_state(
     auth: &AuthClient,
     configuration: &AuthConfiguration,
     expected: Option<&str>,
 ) -> Value {
+    // authConfig explicitly reporting a logged-out session is sufficient
+    // evidence. Do not send another request or submit saved credentials.
+    if configuration.login_state == atrust_auth::LoginState::LoggedOut {
+        return json!({"status":"expired"});
+    }
     match auth.online_info(configuration).await {
         Ok(username) if expected == Some(username.as_str()) => {
             json!({"status":"authenticated", "accountLabel":username})

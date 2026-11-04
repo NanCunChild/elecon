@@ -9,7 +9,8 @@ The `vendor/hermes` source is a subset of [Hermes-Atrust](https://github.com/ncc
 Local changes to upstream are limited to:
 
 - `atrust-auth/src/lib.rs`: remove the plaintext file session store module/exports. The bridge has its own bounded in-memory session DTO.
-- `atrust-client/src/client.rs`: add `dial_tcp_pinned(host,address,port)`, matching authorization against the original hostname while encoding the already-admitted numeric destination in the tunnel handshake. There is no second DNS lookup for target dialing.
+- `atrust-auth/src/client.rs`: recognize both explicit invalid-session business codes (`75500002`, `10000004`) and expose a bounded SID snapshot from the current gateway cookie jar. The bridge also treats an explicit `authConfig.isLogin=0` as expired without another request; network failures, generic HTTP denials and unknown business codes remain unknown.
+- `atrust-client/src/client.rs`: add `dial_tcp_pinned(host,address,port)`, matching authorization against the original hostname while encoding the already-admitted numeric destination in the tunnel handshake. There is no second DNS lookup for target dialing. Each TCP handshake uses the current jar SID, including rotation by `clientResource`; a missing/invalid live SID never falls back to the saved SID. Publishing that snapshot back to protected persistent storage remains future work.
 - `hermes-transport`: add exact DER certificate SHA-256 pin verification, retaining real TLS 1.2/1.3 signature checks. The FFI accepts only normal PKI or this pin; upstream's diagnostic certificate-disable policy has no bridge input or execution path.
 - `hermes-model/src/identifier.rs`: erase owned session/device/connection identifier strings when dropped, in addition to upstream key/SecretString erasure.
 
@@ -53,9 +54,18 @@ ADR-064 adds the host-only `authenticatePassword` operation. Credentials remain 
 
 ADR-066 adds host-only `checkSession` with `gatewayUrl` and a protected `session`.
 It checks `auth_config` and `online_info` against the stored username, returning
-only `authenticated` (with an optional account label), `expired`, or `unknown`.
+`authenticated` (with an optional account label), `expired`, or `unknown`.
+ADR-075 also returns a host-only refreshed session on authenticated checks. The
+host validates identity/material continuity and persists the latest Cookie jar
+before publishing success; SDK callers never receive that session. Deleted or
+invalid live SID means unknown, never fallback to a saved SID.
 Network errors stay unknown; a confirmed invalid session or account mismatch is
 expired. It does not open a tunnel or submit a password. SDK 12 scripts receive
 this reduced account state through the declared APPTunnel port, never the native
 request, stored session, or credentials. Authentication publication revokes the
 old script invocation; the native login page rechecks in the new generation.
+
+The [2026-11-03 ZJU Connect comparison](../../docs/research/hermes_zju_connect_alignment.md)
+records protocol differences, licensing boundaries and the remaining gateway
+acceptance work. Bridge tests cover the updated account-state behavior;
+they do not establish complete protocol parity or real gateway connectivity.
