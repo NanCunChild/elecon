@@ -13,18 +13,16 @@ import 'package:elecon_contract/output_validator_registry.dart';
 import 'package:flutter_qjs_next/flutter_qjs.dart';
 
 import 'credentials.dart';
+import 'account_auth.dart';
 import 'browser.dart';
 import 'manifest.dart';
 import 'input.dart';
 import 'scanner.dart';
 import 'device_input.dart';
+import 'host_protocol.dart';
+import 'runtime_bootstrap.dart';
 
-class ScriptRunException implements Exception {
-  const ScriptRunException(this.code);
-  final String code;
-  @override
-  String toString() => 'ScriptRunException($code)';
-}
+export 'host_protocol.dart' show ScriptRunException;
 
 class TrustedScriptRuntime {
   const TrustedScriptRuntime();
@@ -32,6 +30,7 @@ class TrustedScriptRuntime {
   Future<Object?> run({
     required ScriptPackage package,
     required String capability,
+    String locale = 'zh',
     Map<String, dynamic> params = const {},
     required ScriptCredentials credentials,
     required Future<Map<String, Object?>> Function(String, Map<String, dynamic>)
@@ -39,7 +38,9 @@ class TrustedScriptRuntime {
     Future<Object?> Function(String, Map<String, Object?>)? browserCall,
     Future<Object?> Function(String, Map<String, dynamic>)? websocketCall,
     Future<Object?> Function(String method, String provider)? appTunnelCall,
+    Future<Object?> Function(String accountId)? appTunnelReuseCall,
     ScriptInputCall? inputCall,
+    Future<Object?> Function(String, Object?, Object?)? accountCall,
     ScriptScanCall? scanCall,
     ScriptDeviceInputCall? deviceInputCall,
     bool Function()? isActive,
@@ -83,6 +84,14 @@ class TrustedScriptRuntime {
     if (utf8.encode(paramsJson).length > 1024 * 1024) {
       throw const ScriptRunException('params_limit');
     }
+    if (capability == 'web.content' &&
+        (params.length != 1 ||
+            !package.manifest.webContent.any(
+              (page) => page.id == params['pageId'],
+            ))) {
+      throw const ScriptRunException('input_invalid_request');
+    }
+    var contentOpened = false;
     final statusOnly =
         capability == 'account.session' && params['operation'] == 'status';
     var running = true;
@@ -133,403 +142,532 @@ class TrustedScriptRuntime {
       // Source-controlled rejection text can contain secrets; errors are codes.
       hostPromiseRejectionHandler: (_) {},
     );
-    qjs.setHostFunctions({
-      '__script_app_tunnel': (dynamic method, dynamic provider) async {
-        check();
-        if (package.manifest.sdkVersion < 12 ||
-            !package.manifest.appTunnels.contains(provider) ||
-            appTunnelCall == null) {
-          throw const ScriptRunException('app_tunnel_unavailable');
-        }
-        if (!const ['status', 'login'].contains(method) ||
-            (statusOnly && method != 'status')) {
-          throw const ScriptRunException('input_unavailable');
-        }
-        if (appTunnelPending ||
-            inputPending ||
-            devicePending ||
-            scanPending ||
-            (method == 'login' && ++appTunnelLogins > 1)) {
-          throw const ScriptRunException('input_unavailable');
-        }
-        if (++requests > maxRequests) {
-          fatal = const ScriptRunException('request_limit');
-          throw fatal!;
-        }
-        appTunnelPending = true;
-        try {
-          final value = await appTunnelCall(
-            method as String,
-            provider as String,
-          );
-          check(count: false);
-          return jsonEncode(value);
-        } finally {
-          appTunnelPending = false;
-        }
-      },
-      '__script_websocket': (dynamic method, dynamic encoded) async {
-        check();
-        if (package.manifest.sdkVersion < 9 ||
-            package.manifest.websocketNetwork.origins.isEmpty ||
-            websocketCall == null) {
-          throw const ScriptRunException('websocket_unavailable');
-        }
-        if (method is! String ||
-            encoded is! String ||
-            encoded.length > 400000) {
-          throw const ScriptRunException('websocket_invalid_request');
-        }
-        try {
-          final args = jsonDecode(encoded);
-          if (args is! Map<String, dynamic>) {
+    qjs.setHostFunctions(
+      scriptHostFunctions({
+        '__script_accounts':
+            (dynamic method, dynamic account, dynamic encoded) async {
+              check();
+              if (package.manifest.sdkVersion < 14 || accountCall == null) {
+                throw const ScriptRunException('account_password_unavailable');
+              }
+              if (method is! String ||
+                  account is! String ||
+                  encoded is! String ||
+                  encoded.length > 16384) {
+                throw const ScriptRunException('account_invalid_request');
+              }
+              if (statusOnly && method != 'report') {
+                throw const ScriptRunException('account_manual_login_required');
+              }
+              if (inputPending ||
+                  scanPending ||
+                  devicePending ||
+                  appTunnelPending) {
+                throw const ScriptRunException('input_busy');
+              }
+              inputPending = true;
+              try {
+                final result = await accountCall(
+                  method,
+                  account,
+                  jsonDecode(encoded),
+                );
+                check(count: false);
+                if (result is Map) {
+                  for (final key in const [
+                    'username',
+                    'password',
+                    'attemptId',
+                  ]) {
+                    final value = result[key];
+                    if (value is String && value.isNotEmpty) {
+                      knownSecrets.add(value);
+                    }
+                  }
+                }
+                return jsonEncode(result);
+              } on ScriptAccountException catch (error) {
+                throw ScriptRunException(error.code);
+              } on ScriptRunException {
+                rethrow;
+              } catch (_) {
+                throw const ScriptRunException('account_invalid_request');
+              } finally {
+                inputPending = false;
+              }
+            },
+        '__script_app_tunnel':
+            (dynamic method, dynamic provider, dynamic encoded) async {
+              check();
+              final options = encoded is String ? jsonDecode(encoded) : null;
+              if (options is! Map<String, dynamic> ||
+                  options.keys.any((k) => k != 'accountId') ||
+                  (options.isNotEmpty &&
+                      (method != 'login' ||
+                          package.manifest.sdkVersion < 15 ||
+                          options['accountId'] is! String ||
+                          appTunnelReuseCall == null))) {
+                throw const ScriptRunException('input_unavailable');
+              }
+              if (package.manifest.sdkVersion >= 16) {
+                final target = capability == 'account.session'
+                    ? package.manifest.accounts
+                          .where((a) => a.id == params['account'])
+                          .firstOrNull
+                    : null;
+                if ((target?.appTunnel?.service ??
+                            target?.credentialReuse?.service) !=
+                        provider ||
+                    (method == 'login' && options.isEmpty)) {
+                  throw const ScriptRunException('input_unavailable');
+                }
+              }
+              if (options.isNotEmpty) {
+                final target = package.manifest.accounts
+                    .where((a) => a.id == options['accountId'])
+                    .firstOrNull;
+                if ((target?.appTunnel?.service ??
+                            target?.credentialReuse?.service) !=
+                        provider ||
+                    target == null ||
+                    !ScriptAccountBridge.isLoginInvocation(
+                      target,
+                      capability,
+                      params,
+                    )) {
+                  throw const ScriptRunException('input_unavailable');
+                }
+              }
+              if (package.manifest.sdkVersion < 12 ||
+                  !package.manifest.appTunnels.contains(provider) ||
+                  (options.isEmpty && appTunnelCall == null)) {
+                throw const ScriptRunException('app_tunnel_unavailable');
+              }
+              if (!const ['status', 'login'].contains(method) ||
+                  (statusOnly && method != 'status')) {
+                throw const ScriptRunException('input_unavailable');
+              }
+              if (appTunnelPending ||
+                  inputPending ||
+                  devicePending ||
+                  scanPending ||
+                  (method == 'login' && ++appTunnelLogins > 1)) {
+                throw const ScriptRunException('input_unavailable');
+              }
+              if (++requests > maxRequests) {
+                fatal = const ScriptRunException('request_limit');
+                throw fatal!;
+              }
+              appTunnelPending = true;
+              try {
+                final value = options.isNotEmpty
+                    ? await appTunnelReuseCall!(options['accountId'] as String)
+                    : await appTunnelCall!(
+                        method as String,
+                        provider as String,
+                      );
+                check(count: false);
+                return jsonEncode(value);
+              } finally {
+                appTunnelPending = false;
+              }
+            },
+        '__script_websocket': (dynamic method, dynamic encoded) async {
+          check();
+          if (package.manifest.sdkVersion < 9 ||
+              package.manifest.websocketNetwork.origins.isEmpty ||
+              websocketCall == null) {
+            throw const ScriptRunException('websocket_unavailable');
+          }
+          if (method is! String ||
+              encoded is! String ||
+              encoded.length > 400000) {
             throw const ScriptRunException('websocket_invalid_request');
           }
-          if (method == 'open') {
-            final uri = args['url'] is String
-                ? Uri.tryParse(args['url'] as String)
-                : null;
-            if (uri == null ||
-                uri.scheme != 'wss' ||
-                uri.hasFragment ||
-                !package.manifest.websocketNetwork.allowsUrl(
-                  uri.replace(scheme: 'https'),
-                )) {
-              throw const ScriptRunException('network_denied');
+          try {
+            final args = jsonDecode(encoded);
+            if (args is! Map<String, dynamic>) {
+              throw const ScriptRunException('websocket_invalid_request');
             }
-          }
-          final result = await websocketCall(method, args);
-          check(count: false);
-          return jsonEncode(result);
-        } on ScriptRunException {
-          rethrow;
-        } catch (_) {
-          throw const ScriptRunException('websocket_failed');
-        }
-      },
-      '__script_device_input': (dynamic kind, dynamic argumentCount) async {
-        check();
-        if (statusOnly) throw const ScriptRunException('input_unavailable');
-        if (package.manifest.sdkVersion < 10 ||
-            deviceInputCall == null ||
-            !package.manifest.deviceInputs.contains(kind)) {
-          throw const ScriptRunException('device_input_unavailable');
-        }
-        if (argumentCount != 0 || !scriptDeviceInputKinds.contains(kind)) {
-          throw const ScriptRunException('device_input_invalid_request');
-        }
-        if (inputPending || scanPending || devicePending) {
-          throw const ScriptRunException('device_input_busy');
-        }
-        if (++deviceRequests > 4) {
-          throw const ScriptRunException('device_input_limit');
-        }
-        devicePending = true;
-        try {
-          final raw = await deviceInputCall(
-            kind as String,
-            () => running && (isActive?.call() ?? true),
-          );
-          check(count: false);
-          final result = validateDeviceInput(kind, raw);
-          if (result != null) {
-            if (kind == 'location') {
-              for (final value in result.values) {
-                knownSecrets.add(value.toString());
+            if (method == 'open') {
+              final uri = args['url'] is String
+                  ? Uri.tryParse(args['url'] as String)
+                  : null;
+              if (uri == null ||
+                  uri.scheme != 'wss' ||
+                  uri.hasFragment ||
+                  !package.manifest.websocketNetwork.allowsUrl(
+                    uri.replace(scheme: 'https'),
+                  )) {
+                throw const ScriptRunException('network_denied');
               }
-            } else {
-              knownSecrets.add(
-                base64Encode((result['bytes'] as List).cast<int>()),
-              );
-              knownSecrets.add(jsonEncode(result['bytes']));
             }
+            final result = await websocketCall(method, args);
+            check(count: false);
+            return jsonEncode(result);
+          } on ScriptRunException {
+            rethrow;
+          } catch (_) {
+            throw const ScriptRunException('websocket_failed');
           }
-          return jsonEncode(result);
-        } on ScriptDeviceInputException catch (error) {
-          throw ScriptRunException(error.code);
-        } on ScriptRunException {
-          rethrow;
-        } catch (_) {
-          throw const ScriptRunException('device_input_unavailable');
-        } finally {
-          devicePending = false;
-        }
-      },
-      '__script_scan': (dynamic argumentCount) async {
-        check();
-        if (statusOnly) throw const ScriptRunException('input_unavailable');
-        if (package.manifest.sdkVersion < 8 ||
-            !package.manifest.scanner ||
-            scanCall == null) {
-          throw const ScriptRunException('scanner_unavailable');
-        }
-        if (argumentCount != 0) {
-          throw const ScriptRunException('scanner_invalid_request');
-        }
-        if (scanPending || inputPending) {
-          throw const ScriptRunException('scanner_busy');
-        }
-        if (++scans > 3) throw const ScriptRunException('scanner_limit');
-        scanPending = true;
-        try {
-          final raw = await scanCall(
-            () => running && (isActive?.call() ?? true),
-          );
-          check(count: false);
-          if (raw is Map &&
-              raw['text'] is String &&
-              (raw['text'] as String).isNotEmpty) {
-            knownSecrets.add(raw['text'] as String);
+        },
+        '__script_device_input': (dynamic kind, dynamic argumentCount) async {
+          check();
+          if (statusOnly) throw const ScriptRunException('input_unavailable');
+          if (package.manifest.sdkVersion < 10 ||
+              deviceInputCall == null ||
+              !package.manifest.deviceInputs.contains(kind)) {
+            throw const ScriptRunException('device_input_unavailable');
           }
-          return jsonEncode(validateScanResult(raw));
-        } on ScriptScannerException catch (error) {
-          throw ScriptRunException(error.code);
-        } on ScriptRunException {
-          rethrow;
-        } catch (_) {
-          throw const ScriptRunException('scanner_unavailable');
-        } finally {
-          scanPending = false;
-        }
-      },
-      '__script_input': (dynamic encoded) async {
-        check();
-        if (statusOnly) throw const ScriptRunException('input_unavailable');
-        if (package.manifest.sdkVersion < 3) {
-          throw const ScriptRunException('input_unavailable');
-        }
-        if (inputPending || scanPending) {
-          throw const ScriptRunException('input_busy');
-        }
-        if (++inputRequests > 8) {
-          fatal = const ScriptRunException('input_limit');
-          throw fatal!;
-        }
-        if (encoded is! String) {
-          throw const ScriptRunException('input_invalid_request');
-        }
-        try {
-          final request = ScriptInputRequest.decode(encoded);
-          final input = inputCall;
-          if (input == null) {
+          if (argumentCount != 0 || !scriptDeviceInputKinds.contains(kind)) {
+            throw const ScriptRunException('device_input_invalid_request');
+          }
+          if (inputPending || scanPending || devicePending) {
+            throw const ScriptRunException('device_input_busy');
+          }
+          if (++deviceRequests > 4) {
+            throw const ScriptRunException('device_input_limit');
+          }
+          devicePending = true;
+          try {
+            final raw = await deviceInputCall(
+              kind as String,
+              () => running && (isActive?.call() ?? true),
+            );
+            check(count: false);
+            final result = validateDeviceInput(kind, raw);
+            if (result != null) {
+              if (kind == 'location') {
+                for (final value in result.values) {
+                  knownSecrets.add(value.toString());
+                }
+              } else {
+                knownSecrets.add(
+                  base64Encode((result['bytes'] as List).cast<int>()),
+                );
+                knownSecrets.add(jsonEncode(result['bytes']));
+              }
+            }
+            return jsonEncode(result);
+          } on ScriptDeviceInputException catch (error) {
+            throw ScriptRunException(error.code);
+          } on ScriptRunException {
+            rethrow;
+          } catch (_) {
+            throw const ScriptRunException('device_input_unavailable');
+          } finally {
+            devicePending = false;
+          }
+        },
+        '__script_scan': (dynamic argumentCount) async {
+          check();
+          if (statusOnly) throw const ScriptRunException('input_unavailable');
+          if (package.manifest.sdkVersion < 8 ||
+              !package.manifest.scanner ||
+              scanCall == null) {
+            throw const ScriptRunException('scanner_unavailable');
+          }
+          if (argumentCount != 0) {
+            throw const ScriptRunException('scanner_invalid_request');
+          }
+          if (scanPending || inputPending) {
+            throw const ScriptRunException('scanner_busy');
+          }
+          if (++scans > 3) throw const ScriptRunException('scanner_limit');
+          scanPending = true;
+          try {
+            final raw = await scanCall(
+              () => running && (isActive?.call() ?? true),
+            );
+            check(count: false);
+            if (raw is Map &&
+                raw['text'] is String &&
+                (raw['text'] as String).isNotEmpty) {
+              knownSecrets.add(raw['text'] as String);
+            }
+            return jsonEncode(validateScanResult(raw));
+          } on ScriptScannerException catch (error) {
+            throw ScriptRunException(error.code);
+          } on ScriptRunException {
+            rethrow;
+          } catch (_) {
+            throw const ScriptRunException('scanner_unavailable');
+          } finally {
+            scanPending = false;
+          }
+        },
+        '__script_input': (dynamic encoded) async {
+          check();
+          if (statusOnly) throw const ScriptRunException('input_unavailable');
+          if (package.manifest.sdkVersion < 3) {
             throw const ScriptRunException('input_unavailable');
           }
-          inputPending = true;
-          final raw = await input(request);
-          check(count: false);
-          // ADR-037 §2: all submitted fields, including ordinary identifiers,
-          // are secrets before any JS code can log or persist the result.
-          if (raw is Map) {
-            for (final value in raw.values) {
-              if (value is String && value.isNotEmpty) knownSecrets.add(value);
-            }
+          if (inputPending || scanPending) {
+            throw const ScriptRunException('input_busy');
           }
-          return jsonEncode(request.validateResult(raw));
-        } on ScriptInputException catch (error) {
-          throw ScriptRunException(error.code);
-        } on ScriptRunException {
-          rethrow;
-        } catch (_) {
-          throw const ScriptRunException('input_unavailable');
-        } finally {
-          inputPending = false;
-        }
-      },
-      '__script_fetch': (dynamic url, dynamic init) async {
-        check();
-        if (++requests > maxRequests) {
-          fatal = const ScriptRunException('request_limit');
-          throw fatal!;
-        }
-        if (url is! String || init is! Map) {
-          throw const ScriptRunException('invalid_fetch');
-        }
-        if (init['body'] != null &&
-            init['body'] is! String &&
-            package.manifest.sdkVersion < 10) {
-          throw const ScriptRunException('invalid_fetch');
-        }
-        final uri = Uri.tryParse(url);
-        if (uri == null || !package.manifest.network.allowsUrl(uri)) {
-          throw const ScriptRunException('network_denied');
-        }
-        try {
-          final response = await fetch(url, Map<String, dynamic>.from(init));
-          check(count: false);
-          // The pinned isolate bridge maps a Dart null field to JS undefined.
-          // Preserve explicit decoding failure with a separate boolean marker.
-          return <String, Object?>{
-            ...response,
-            'textAvailable':
-                !response.containsKey('body') || response['body'] is String,
-          };
-        } on ScriptRunException {
-          rethrow;
-        } catch (_) {
-          throw const ScriptRunException('fetch_failed');
-        }
-      },
-      '__script_credentials':
-          (dynamic method, dynamic key, dynamic value, dynamic options) {
-            check();
-            try {
-              if (options is! Map ||
-                  options.keys.any(
-                    (key) => !const {
-                      'namespace',
-                      'type',
-                      'scope',
-                      'expiresAt',
-                    }.contains(key),
-                  ) ||
-                  (options.containsKey('namespace') &&
-                      options['namespace'] is! String)) {
-                throw const ScriptRunException('invalid_credential_options');
+          if (++inputRequests > 8) {
+            fatal = const ScriptRunException('input_limit');
+            throw fatal!;
+          }
+          if (encoded is! String) {
+            throw const ScriptRunException('input_invalid_request');
+          }
+          try {
+            final request = ScriptInputRequest.decode(encoded);
+            final input = inputCall;
+            if (input == null) {
+              throw const ScriptRunException('input_unavailable');
+            }
+            inputPending = true;
+            final raw = await input(request);
+            check(count: false);
+            // ADR-037 §2: all submitted fields, including ordinary identifiers,
+            // are secrets before any JS code can log or persist the result.
+            if (raw is Map) {
+              for (final value in raw.values) {
+                if (value is String && value.isNotEmpty) {
+                  knownSecrets.add(value);
+                }
               }
-              final namespace = options['namespace'] as String?;
-              switch (method) {
-                case 'get':
-                  if (key is! String) {
-                    throw const ScriptRunException('invalid_credential_key');
-                  }
-                  final record = credentials.get(key, namespace: namespace);
-                  if (record != null &&
-                      (record['value'] as String).isNotEmpty) {
-                    knownSecrets.add(record['value'] as String);
-                  }
-                  return jsonEncode(record);
-                case 'list':
-                  final records = credentials.list();
-                  knownSecrets.addAll(
-                    records
-                        .map((r) => r['value'] as String)
-                        .where((v) => v.isNotEmpty),
-                  );
-                  return jsonEncode(records);
-                case 'delete':
-                  if (key is! String) {
-                    throw const ScriptRunException('invalid_credential_key');
-                  }
-                  credentials.delete(key, namespace: namespace);
-                  return 'null';
-                case 'set':
-                  if (key is! String || value is! String) {
-                    throw const ScriptRunException('invalid_credential_value');
-                  }
-                  final type = options['type'];
-                  final expiresAt = options['expiresAt'];
-                  final scope = options['scope'];
-                  if ((options.containsKey('type') && type is! String) ||
-                      (expiresAt != null && expiresAt is! int) ||
-                      (options.containsKey('scope') &&
-                          (scope is! List ||
-                              scope.any((item) => item is! String)))) {
-                    throw const ScriptRunException(
-                      'invalid_credential_options',
+            }
+            return jsonEncode(request.validateResult(raw));
+          } on ScriptInputException catch (error) {
+            throw ScriptRunException(error.code);
+          } on ScriptRunException {
+            rethrow;
+          } catch (_) {
+            throw const ScriptRunException('input_unavailable');
+          } finally {
+            inputPending = false;
+          }
+        },
+        '__script_fetch': (dynamic url, dynamic init) async {
+          check();
+          if (++requests > maxRequests) {
+            fatal = const ScriptRunException('request_limit');
+            throw fatal!;
+          }
+          if (url is! String || init is! Map) {
+            throw const ScriptRunException('invalid_fetch');
+          }
+          if (init['body'] != null &&
+              init['body'] is! String &&
+              package.manifest.sdkVersion < 10) {
+            throw const ScriptRunException('invalid_fetch');
+          }
+          final uri = Uri.tryParse(url);
+          if (uri == null || !package.manifest.network.allowsUrl(uri)) {
+            throw const ScriptRunException('network_denied');
+          }
+          try {
+            final response = await fetch(url, Map<String, dynamic>.from(init));
+            check(count: false);
+            // The pinned isolate bridge maps a Dart null field to JS undefined.
+            // Preserve explicit decoding failure with a separate boolean marker.
+            return <String, Object?>{
+              ...response,
+              'textAvailable':
+                  !response.containsKey('body') || response['body'] is String,
+            };
+          } on ScriptRunException {
+            rethrow;
+          } catch (_) {
+            throw const ScriptRunException('fetch_failed');
+          }
+        },
+        '__script_credentials':
+            (dynamic method, dynamic key, dynamic value, dynamic options) {
+              check();
+              try {
+                if (options is! Map ||
+                    options.keys.any(
+                      (key) => !const {
+                        'namespace',
+                        'type',
+                        'scope',
+                        'expiresAt',
+                      }.contains(key),
+                    ) ||
+                    (options.containsKey('namespace') &&
+                        options['namespace'] is! String)) {
+                  throw const ScriptRunException('invalid_credential_options');
+                }
+                final namespace = options['namespace'] as String?;
+                switch (method) {
+                  case 'get':
+                    if (key is! String) {
+                      throw const ScriptRunException('invalid_credential_key');
+                    }
+                    final record = credentials.get(key, namespace: namespace);
+                    if (record != null &&
+                        (record['value'] as String).isNotEmpty) {
+                      knownSecrets.add(record['value'] as String);
+                    }
+                    return jsonEncode(record);
+                  case 'list':
+                    final records = credentials.list();
+                    knownSecrets.addAll(
+                      records
+                          .map((r) => r['value'] as String)
+                          .where((v) => v.isNotEmpty),
                     );
-                  }
-                  if (value.isNotEmpty) knownSecrets.add(value);
-                  credentials.set(
-                    key,
-                    value,
-                    namespace: namespace,
-                    type: type as String?,
-                    expiresAt: options.containsKey('expiresAt')
-                        ? expiresAt
-                        : scriptCredentialUnspecified,
-                    scope: scope == null
-                        ? null
-                        : List<String>.from(scope as List),
-                  );
-                  return 'null';
-                default:
-                  throw const ScriptRunException(
-                    'invalid_credential_operation',
-                  );
+                    return jsonEncode(records);
+                  case 'delete':
+                    if (key is! String) {
+                      throw const ScriptRunException('invalid_credential_key');
+                    }
+                    credentials.delete(key, namespace: namespace);
+                    return 'null';
+                  case 'set':
+                    if (key is! String || value is! String) {
+                      throw const ScriptRunException(
+                        'invalid_credential_value',
+                      );
+                    }
+                    final type = options['type'];
+                    final expiresAt = options['expiresAt'];
+                    final scope = options['scope'];
+                    if ((options.containsKey('type') && type is! String) ||
+                        (expiresAt != null && expiresAt is! int) ||
+                        (options.containsKey('scope') &&
+                            (scope is! List ||
+                                scope.any((item) => item is! String)))) {
+                      throw const ScriptRunException(
+                        'invalid_credential_options',
+                      );
+                    }
+                    if (value.isNotEmpty) knownSecrets.add(value);
+                    credentials.set(
+                      key,
+                      value,
+                      namespace: namespace,
+                      type: type as String?,
+                      expiresAt: options.containsKey('expiresAt')
+                          ? expiresAt
+                          : scriptCredentialUnspecified,
+                      scope: scope == null
+                          ? null
+                          : List<String>.from(scope as List),
+                    );
+                    return 'null';
+                  default:
+                    throw const ScriptRunException(
+                      'invalid_credential_operation',
+                    );
+                }
+              } on ScriptCredentialException catch (e) {
+                throw ScriptRunException(e.code);
               }
-            } on ScriptCredentialException catch (e) {
-              throw ScriptRunException(e.code);
+            },
+        '__script_browser': (dynamic method, dynamic args) async {
+          check();
+          if (statusOnly) throw const ScriptRunException('input_unavailable');
+          if (!package.manifest.browser || browserCall == null) {
+            throw const ScriptRunException('browser_unavailable');
+          }
+          if (method is! String || args is! Map) {
+            throw const ScriptRunException('invalid_browser_operation');
+          }
+          if (method == 'openContent' || method == 'content') {
+            if (package.manifest.sdkVersion < 14 ||
+                package.manifest.webContent.isEmpty ||
+                capability != 'web.content') {
+              throw const ScriptRunException('browser_content_undeclared');
             }
-          },
-      '__script_browser': (dynamic method, dynamic args) async {
-        check();
-        if (statusOnly) throw const ScriptRunException('input_unavailable');
-        if (!package.manifest.browser || browserCall == null) {
-          throw const ScriptRunException('browser_unavailable');
-        }
-        if (method is! String || args is! Map) {
-          throw const ScriptRunException('invalid_browser_operation');
-        }
-        if (method == 'setBusy' && package.manifest.sdkVersion < 4) {
-          throw const ScriptRunException('invalid_browser_operation');
-        }
-        try {
-          // Restored cookies are already known secrets even if the platform
-          // rejects the write; diagnostics must never echo their values.
-          if (method == 'setCookies' && args['cookies'] is List) {
-            for (final cookie in args['cookies'] as List) {
-              if (cookie is Map &&
-                  cookie['value'] is String &&
-                  (cookie['value'] as String).isNotEmpty) {
-                knownSecrets.add(cookie['value'] as String);
-              }
+            if (method == 'openContent' &&
+                (args.length != 1 || args['id'] != params['pageId'])) {
+              throw const ScriptRunException('browser_content_undeclared');
+            }
+            if (method == 'content' && !contentOpened) {
+              throw const ScriptRunException('browser_content_not_open');
             }
           }
-          final result = await browserCall(
-            method,
-            Map<String, Object?>.from(args),
-          );
-          check(count: false);
-          if (method == 'cookies' && result is List) {
-            for (final cookie in result) {
-              if (cookie is Map &&
-                  cookie['value'] is String &&
-                  (cookie['value'] as String).isNotEmpty) {
-                knownSecrets.add(cookie['value'] as String);
+          if (capability == 'web.content' &&
+              !const {'openContent', 'content', 'setBusy'}.contains(method)) {
+            throw const ScriptRunException(
+              'browser_content_evaluate_forbidden',
+            );
+          }
+          if (method == 'setBusy' && package.manifest.sdkVersion < 4) {
+            throw const ScriptRunException('invalid_browser_operation');
+          }
+          try {
+            // Restored cookies are already known secrets even if the platform
+            // rejects the write; diagnostics must never echo their values.
+            if (method == 'setCookies' && args['cookies'] is List) {
+              for (final cookie in args['cookies'] as List) {
+                if (cookie is Map &&
+                    cookie['value'] is String &&
+                    (cookie['value'] as String).isNotEmpty) {
+                  knownSecrets.add(cookie['value'] as String);
+                }
               }
             }
+            final result = await browserCall(
+              method,
+              Map<String, Object?>.from(args),
+            );
+            check(count: false);
+            if (method == 'openContent') contentOpened = true;
+            if (method == 'cookies' && result is List) {
+              for (final cookie in result) {
+                if (cookie is Map &&
+                    cookie['value'] is String &&
+                    (cookie['value'] as String).isNotEmpty) {
+                  knownSecrets.add(cookie['value'] as String);
+                }
+              }
+            }
+            if (utf8.encode(jsonEncode(result)).length > maxOutputBytes) {
+              throw const ScriptRunException('browser_result_limit');
+            }
+            return jsonEncode(result);
+          } on ScriptRunException {
+            rethrow;
+          } on ScriptBrowserException catch (error) {
+            // ADR-034 §6: forward only known stable codes, never native text/URLs.
+            final code = switch (error.code) {
+              'browser_navigation_blocked' ||
+              'browser_navigation_changed' ||
+              'browser_not_loaded' ||
+              'browser_closed' ||
+              'browser_unavailable' ||
+              'browser_content_unavailable' ||
+              'browser_content_undeclared' ||
+              'browser_content_invalid_operation' ||
+              'browser_content_evaluate_forbidden' ||
+              'browser_content_remote_forbidden' ||
+              'browser_content_cookies_forbidden' ||
+              'browser_content_not_open' => error.code,
+              _ => 'browser_failed',
+            };
+            throw ScriptRunException(code);
+          } catch (_) {
+            throw const ScriptRunException('browser_failed');
           }
-          if (utf8.encode(jsonEncode(result)).length > maxOutputBytes) {
-            throw const ScriptRunException('browser_result_limit');
+        },
+        '__script_log': (dynamic level, dynamic message) {
+          check();
+          if (++logs > 100) return null;
+          var clean = message is String ? message : '';
+          if (clean.length > 4096) clean = clean.substring(0, 4096);
+          for (final secret in knownSecrets) {
+            clean = clean.replaceAll(secret, '[credential]');
           }
-          return jsonEncode(result);
-        } on ScriptRunException {
-          rethrow;
-        } on ScriptBrowserException catch (error) {
-          // ADR-034 §6: forward only known stable codes, never native text/URLs.
-          final code = switch (error.code) {
-            'browser_navigation_blocked' ||
-            'browser_navigation_changed' ||
-            'browser_not_loaded' ||
-            'browser_closed' => error.code,
-            _ => 'browser_failed',
-          };
-          throw ScriptRunException(code);
-        } catch (_) {
-          throw const ScriptRunException('browser_failed');
-        }
-      },
-      '__script_log': (dynamic level, dynamic message) {
-        check();
-        if (++logs > 100) return null;
-        var clean = message is String ? message : '';
-        if (clean.length > 4096) clean = clean.substring(0, 4096);
-        for (final secret in knownSecrets) {
-          clean = clean.replaceAll(secret, '[credential]');
-        }
-        clean = clean.replaceAll(RegExp(r'(?:https?|wss)://[^\s]+'), '[url]');
-        logBytes += utf8.encode(clean).length;
-        if (logBytes <= 64 * 1024) {
-          onLog?.call(
-            const {'debug', 'info', 'warn', 'error'}.contains(level)
-                ? level as String
-                : 'info',
-            clean,
-          );
-        }
-        return null;
-      },
-    });
+          clean = clean.replaceAll(RegExp(r'(?:https?|wss)://[^\s]+'), '[url]');
+          logBytes += utf8.encode(clean).length;
+          if (logBytes <= 64 * 1024) {
+            onLog?.call(
+              const {'debug', 'info', 'warn', 'error'}.contains(level)
+                  ? level as String
+                  : 'info',
+              clean,
+            );
+          }
+          return null;
+        },
+      }),
+    );
 
     final cancelled = Completer<Object?>();
     final timer = Timer.periodic(const Duration(milliseconds: 25), (_) {
@@ -555,18 +693,22 @@ class TrustedScriptRuntime {
           });
         })()''');
         await qjs.evaluate(
-          "import * as adapter from 'adapter'; globalThis.__scriptCaps = adapter.capabilities;",
-          name: '<script-load>',
-          evalFlags: JSEvalFlag.MODULE,
-        );
-        check(count: false);
-        return qjs.evaluate(
-          _bootstrap(
+          scriptRuntimeBootstrap(
             capability: capability,
+            sdkVersion: package.manifest.sdkVersion,
+            packageId: package.manifest.id,
             paramsJson: paramsJson,
+            locale: package.manifest.sdkVersion >= 13
+                ? (normalizeScriptLocale(locale) ?? 'zh')
+                : null,
+            localization: package.manifest.localization,
             browser: package.manifest.browser,
             browserBusy: package.manifest.sdkVersion >= 4,
+            webContent:
+                package.manifest.sdkVersion >= 14 &&
+                package.manifest.webContent.isNotEmpty,
             input: package.manifest.sdkVersion >= 3,
+            accounts: package.manifest.sdkVersion >= 14,
             websocket:
                 package.manifest.sdkVersion >= 9 &&
                 package.manifest.websocketNetwork.origins.isNotEmpty,
@@ -579,6 +721,13 @@ class TrustedScriptRuntime {
             maxOutputBytes: maxOutputBytes,
           ),
         );
+        await qjs.evaluate(
+          "import * as adapter from 'adapter'; globalThis.__scriptCaps = adapter.capabilities;",
+          name: '<script-load>',
+          evalFlags: JSEvalFlag.MODULE,
+        );
+        check(count: false);
+        return qjs.evaluate('globalThis.__scriptInvoke()');
       }
 
       final raw = await Future.any([execute(), cancelled.future]).timeout(
@@ -591,13 +740,28 @@ class TrustedScriptRuntime {
       }
       final outcome = jsonDecode(raw);
       if (outcome is! Map || outcome['ok'] != true) {
+        final error = outcome is Map ? outcome['error'] : null;
         throw ScriptRunException(
-          outcome is Map && outcome['code'] is String
-              ? outcome['code'] as String
+          error is Map && error['code'] is String
+              ? error['code'] as String
               : 'adapter_failed',
+          businessCode:
+              package.manifest.sdkVersion >= 17 &&
+                  error is Map &&
+                  error['code'] == 'script_business_error' &&
+                  isScriptBusinessCode(
+                    error['businessCode'],
+                    package.manifest.id,
+                  )
+              ? error['businessCode'] as String
+              : null,
         );
       }
       final output = outcome['data'];
+      if (capability == 'web.content' &&
+          (output is! Map || output['pageId'] != params['pageId'])) {
+        throw const ScriptRunException('schema_validation_failed');
+      }
       if (!validator(output)) {
         throw const ScriptRunException('schema_validation_failed');
       }
@@ -618,220 +782,3 @@ class TrustedScriptRuntime {
     }
   }
 }
-
-String _bootstrap({
-  required String capability,
-  required String paramsJson,
-  required bool browser,
-  required bool browserBusy,
-  required bool input,
-  required bool websocket,
-  required bool scanner,
-  required bool deviceInputs,
-  required bool appTunnel,
-  required int maxOutputBytes,
-}) =>
-    '''
-(async () => {
-  const caps = globalThis.__scriptCaps;
-  if (!caps || typeof caps !== 'object' || typeof caps[${jsonEncode(capability)}] !== 'function') {
-    return JSON.stringify({ok:false,code:'capability_missing'});
-  }
-  // flutter_qjs_next 1.2.1 _jsToDart omits STRING_ROPE. QuickJS String()
-  // linearizes rope strings; preserve every non-string's type for host checks.
-  // ADR-034 execution bridge fix, without changing the SDK or output contract.
-  const flat = value => typeof value === 'string' ? String(value) : value;
-  const flatFields = value => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) return value;
-    return Object.fromEntries(Object.keys(value).map(key => [key,flat(value[key])]));
-  };
-  const hostCredentials = (method,key,value,options) => {
-    options = flatFields(options || {});
-    if (options && Array.isArray(options.scope)) options.scope = options.scope.map(flat);
-    return Promise.resolve(globalThis.__script_credentials(method,flat(key),flat(value),options)).then(JSON.parse);
-  };
-  const ctx = {
-    now: () => Date.now(),
-    log: (level,message) => globalThis.__script_log(level,String(message)),
-    credentials: Object.freeze({
-      get: (key,options) => hostCredentials('get',key,null,options),
-      list: () => hostCredentials('list',null,null,{}),
-      set: (key,value,options) => hostCredentials('set',key,value,options),
-      delete: (key,options) => hostCredentials('delete',key,null,options),
-    }),
-    fetch: async (url,init) => {
-      init = flatFields(init || {});
-      if (init && init.headers) init.headers = flatFields(init.headers);
-      if ($deviceInputs && init && init.body != null && typeof init.body !== 'string' && !(init.body instanceof Uint8Array)) throw new Error('invalid_fetch');
-      if ($deviceInputs && init && init.body instanceof Uint8Array) {
-        if (init.body.byteLength > 1048576) throw new Error('request_body_limit');
-        init.body = Array.from(init.body);
-      }
-      const r = await globalThis.__script_fetch(String(url),init);
-      const raw = r.headers || {};
-      const find = name => {
-        const key = Object.keys(raw).find(k => k.toLowerCase() === String(name).toLowerCase());
-        return key === undefined ? [] : (Array.isArray(raw[key]) ? raw[key].map(String) : [String(raw[key])]);
-      };
-      const headers = Object.freeze({
-        get: name => { const v = find(name); return v.length ? v.join(', ') : null; },
-        getSetCookie: () => find('set-cookie'),
-        raw: () => JSON.parse(JSON.stringify(raw)),
-      });
-      const text = () => {
-        if (r.textAvailable === false) throw new Error('unsupported_encoding');
-        return r.body === undefined ? '' : r.body;
-      };
-      return Object.freeze({status:r.status,ok:r.status>=200 && r.status<300,url:r.url,headers,
-        text:async()=>text(),json:async()=>JSON.parse(text()),
-        bytes:async()=>new Uint8Array(r.bodyBytes || []),
-        arrayBuffer:async()=>(new Uint8Array(r.bodyBytes || [])).buffer});
-    },
-  };
-  if ($appTunnel) {
-    const call = async (method,provider) => {
-      try { return JSON.parse(await globalThis.__script_app_tunnel(method,flat(provider))); }
-      catch (error) {
-        const code = ['app_tunnel_unavailable','input_unavailable','invocation_cancelled'].find(
-          value => String(error).includes('ScriptRunException(' + value + ')')) || 'app_tunnel_unavailable';
-        const failure = new Error(code); failure.code = code; throw failure;
-      }
-    };
-    ctx.appTunnel = Object.freeze({status: provider => call('status',provider), login: provider => call('login',provider)});
-  }
-  if ($websocket) {
-    const call = async (method,args) => JSON.parse(await globalThis.__script_websocket(method,String(JSON.stringify(args))));
-    ctx.websocket = Object.freeze({
-      open: url => call('open',{url}),
-      send: bytes => call('send',{bytes:bytes instanceof Uint8Array ? Array.from(bytes) : bytes}),
-      receive: async (timeoutMs=1000) => { const bytes = await call('receive',{timeoutMs}); return bytes === null ? null : new Uint8Array(bytes); },
-      close: () => call('close',{}),
-    });
-  }
-  if ($input) {
-    ctx.ui = {requestInput: async request => {
-      try {
-        return JSON.parse(await globalThis.__script_input(String(JSON.stringify(request))));
-      } catch (error) {
-        const codes = ['input_invalid_request','input_invalid_result','input_unavailable',
-          'input_busy','input_limit','invocation_cancelled'];
-        const code = codes.find(value => String(error).includes('ScriptRunException(' + value + ')'));
-        if (!code) throw error;
-        const failure = new Error(code);
-        failure.code = code;
-        throw failure;
-      }
-    }};
-    if ($scanner) ctx.ui.scanQRCode = async (...args) => {
-      try { return JSON.parse(await globalThis.__script_scan(args.length)); }
-      catch (error) {
-        const codes = ['scanner_unavailable','scanner_invalid_request','scanner_invalid_result',
-          'scanner_busy','scanner_limit','scanner_permission_denied','invocation_cancelled'];
-        const code = codes.find(value => String(error).includes('ScriptRunException(' + value + ')'));
-        if (!code) throw error;
-        const failure = new Error(code); failure.code = code; throw failure;
-      }
-    };
-    if ($deviceInputs) {
-      const deviceInput = async (kind,args) => {
-        try {
-          const result = JSON.parse(await globalThis.__script_device_input(kind,args.length));
-          if (result && result.bytes) result.bytes = new Uint8Array(result.bytes);
-          return result;
-        } catch (error) {
-          const codes = ['device_input_unavailable','device_input_invalid_request','device_input_invalid_result',
-            'device_input_busy','device_input_limit','device_input_permission_denied','device_input_timeout','invocation_cancelled'];
-          const code = codes.find(value => String(error).includes('ScriptRunException(' + value + ')'));
-          if (!code) throw error;
-          const failure = new Error(code); failure.code = code; throw failure;
-        }
-      };
-      ctx.ui.capturePhoto = (...args) => deviceInput('camera',args);
-      ctx.ui.pickImage = (...args) => deviceInput('image',args);
-      ctx.ui.getCurrentPosition = (...args) => deviceInput('location',args);
-    }
-    Object.freeze(ctx.ui);
-  }
-  if ($browser) {
-    const call = async (method,args) => {
-      try { return JSON.parse(await globalThis.__script_browser(method,flatFields(args))); }
-      catch (error) {
-        // The native bridge supplies a fixed code, never its rejected URL.
-        if (String(error).includes('ScriptRunException(browser_navigation_blocked)')) {
-          const failure = new Error('browser_navigation_blocked');
-          failure.code = 'network_denied';
-          throw failure;
-        }
-        throw error;
-      }
-    };
-    ctx.browser = Object.freeze({
-      ${browserBusy ? "setBusy: busy => call('setBusy',{busy})," : ''}
-      open: url => call('open',{url:String(url)}),
-      evaluate: (source,...args) => call('evaluate',{
-        source:typeof source === 'function' ? '(' + String(source) + ').apply(null,' + JSON.stringify(args) + ')' : String(source)
-      }),
-      text: selector => call('text',{selector:String(selector)}),
-      exists: selector => call('exists',{selector:String(selector)}),
-      queryAll: (selector,limit=100) => call('queryAll',{selector:String(selector),limit}),
-      waitFor: (selector,timeout=10000) => call('waitFor',{selector:String(selector),timeout}),
-      cookies: url => call('cookies',url === undefined ? {} : {url:String(url)}),
-      setCookies: async (url,cookies) => { await call('setCookies',{url:String(url),cookies:Array.isArray(cookies) ? cookies.map(flatFields) : cookies}); },
-    });
-  }
-  // Build JSON ourselves: JSON.stringify silently drops unsupported values and
-  // invokes toJSON. Strict output never repairs missing/NaN/class values.
-  let nodes = 0;
-  const seen = new Set();
-  const max = $maxOutputBytes;
-  const encode = (value,depth) => {
-    if (++nodes > 100000 || depth > 64) throw new Error('output_limit');
-    let text;
-    if (value === null) return 'null';
-    if (typeof value === 'string' || typeof value === 'boolean') text = JSON.stringify(value);
-    else if (typeof value === 'number' && Number.isFinite(value)) text = String(value);
-    else if (typeof value === 'object') {
-      if (seen.has(value)) throw new Error('non_json_output');
-      seen.add(value);
-      if (Array.isArray(value)) {
-        const parts = [];
-        for(let i=0;i<value.length;i++) parts.push(encode(value[i],depth+1));
-        text = '['+parts.join(',')+']';
-      } else {
-        const proto = Object.getPrototypeOf(value);
-        if (proto !== Object.prototype && proto !== null) throw new Error('non_json_output');
-        if (Object.getOwnPropertySymbols(value).length) throw new Error('non_json_output');
-        text = '{'+Object.keys(value).map(key=>JSON.stringify(key)+':'+encode(value[key],depth+1)).join(',')+'}';
-      }
-      seen.delete(value);
-    } else throw new Error('non_json_output');
-    if (text.length > max) throw new Error('output_limit');
-    return text;
-  };
-  try {
-    const result = await caps[${jsonEncode(capability)}](Object.freeze(ctx),JSON.parse(${jsonEncode(paramsJson)}));
-    return String('{"ok":true,"data":'+encode(result,0)+'}');
-  } catch(e) {
-    // Useful diagnostics go through the same bounded secret/URL sanitizer as
-    // ctx.log; the result channel continues to expose stable codes only.
-    try {
-      const message = String(e && e.message || e);
-      const stack = String(e && e.stack || '');
-      globalThis.__script_log('error',String((message + '\\n' + stack).slice(0,4096)));
-    } catch (_) {}
-    // ADR-034 §6: only a fixed vocabulary may cross the error result channel.
-    // A script can classify a failure without exposing its message or data.
-    const safeCodes = new Set(['input_required_card_number','input_required_student_id',
-      'authentication_required','authentication_timeout','source_response_invalid','network_denied',
-      'configuration_required','app_tunnel_unavailable',
-      'input_invalid_request','input_invalid_result','input_unavailable','input_busy','input_limit','input_cancelled',
-      'device_input_unavailable','device_input_permission_denied','device_input_invalid_request',
-      'device_input_invalid_result','device_input_busy','device_input_limit','device_input_timeout','invocation_cancelled']);
-    const code = e && (e.message === 'non_json_output' || e.message === 'output_limit' || e.message === 'unsupported_encoding')
-      ? e.message : e && safeCodes.has(e.code) ? e.code : 'adapter_failed';
-    return JSON.stringify({ok:false,code});
-  }
-})()
-''';

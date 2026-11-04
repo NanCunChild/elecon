@@ -27,9 +27,11 @@ class ScriptCachedData {
 }
 
 class ScriptDataCache {
-  ScriptDataCache(this.store, {int Function()? now})
-    : now = now ?? (() => DateTime.now().millisecondsSinceEpoch);
+  ScriptDataCache(this.store, {int Function()? now, String locale = 'zh'})
+    : locale = normalizeScriptLocale(locale) ?? 'zh',
+      now = now ?? (() => DateTime.now().millisecondsSinceEpoch);
   final CredentialStore store;
+  final String locale;
   final int Function() now;
   static const type = 'script-data';
   static const maxBytes = 512 * 1024;
@@ -47,12 +49,14 @@ class ScriptDataCache {
 
   String _prefix(ScriptPackage package) =>
       'script-cache:${package.manifest.schoolId}:${package.manifest.id}:${package.digest}:';
+  String _languagePrefix(ScriptPackage package) =>
+      '${_prefix(package)}${package.manifest.sdkVersion >= 13 ? 'locale:$locale:' : ''}';
   String _ref(
     ScriptPackage package,
     String capability,
     Map<String, dynamic> params,
   ) =>
-      '${_prefix(package)}$capability:${sha256.convert(utf8.encode(jsonEncode(_canonical(params))))}';
+      '${_languagePrefix(package)}$capability:${sha256.convert(utf8.encode(jsonEncode(_canonical(params))))}';
   ScriptHomeEntry? _policy(ScriptPackage package, String capability) => package
       .manifest
       .home
@@ -97,7 +101,9 @@ class ScriptDataCache {
   List<CredentialEntry> _entries(ScriptPackage package, String capability) =>
       store
           .list()
-          .where((e) => e.ref.startsWith('${_prefix(package)}$capability:'))
+          .where(
+            (e) => e.ref.startsWith('${_languagePrefix(package)}$capability:'),
+          )
           .toList()
         ..sort((a, b) => b.acquiredAt.compareTo(a.acquiredAt));
 

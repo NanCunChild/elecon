@@ -94,11 +94,13 @@ class CapabilityRun {
     this.localStorageFailed = false,
   }) : failureKind = null,
        reason = null,
-       runReason = null;
+       runReason = null,
+       businessCode = null;
   const CapabilityRun.failed(
     CapabilityFailureKind this.failureKind,
     this.reason, {
     this.runReason,
+    this.businessCode,
   }) : data = null,
        localStorageFailed = false,
        supportedCapabilities = const <String>{};
@@ -119,6 +121,9 @@ class CapabilityRun {
 
   /// 运行期失败的结构化词表（[failureKind] == run 时非 null），供 UI 映射（续期/重登/升级……）。
   final AdapterFailureReason? runReason;
+
+  /// SDK17 package-qualified business code; never a message or retry grant.
+  final String? businessCode;
 
   bool get ok => failureKind == null;
 }

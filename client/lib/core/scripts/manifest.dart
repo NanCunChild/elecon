@@ -2,12 +2,21 @@
 /// 🔒 Parsing does not evaluate source or grant execution trust.
 library;
 
+import 'sdk_version.dart';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:elecon_contract/output_validator_registry.dart';
 
 import 'network_policy.dart';
+import 'localization.dart';
+import 'account_auth_declaration.dart';
+import 'web_content.dart';
+import 'school_declaration.dart';
+export 'localization.dart';
+export 'account_auth_declaration.dart';
+export 'web_content.dart';
+export 'school_declaration.dart';
 
 const scriptPackageFormat = 'elecon-script/1';
 
@@ -21,6 +30,7 @@ const foregroundCommunityCapabilities = {
   'messages.history',
   'messages.send',
   'attendance.checkin',
+  'web.content',
 };
 const maxScriptPackageBytes = 1024 * 1024;
 
@@ -86,6 +96,7 @@ class ScriptManifest {
     required this.id,
     required this.version,
     required this.schoolId,
+    required this.school,
     required this.name,
     required this.homeTitle,
     required this.network,
@@ -98,6 +109,8 @@ class ScriptManifest {
     required this.cards,
     required this.accounts,
     required this.appTunnels,
+    required this.localization,
+    required this.webContent,
   });
 
   factory ScriptManifest.fromJson(Map<String, dynamic> json) {
@@ -106,6 +119,7 @@ class ScriptManifest {
       'id',
       'version',
       'schoolId',
+      if (json.containsKey('school')) 'school',
       'name',
       if (json.containsKey('homeTitle')) 'homeTitle',
       'network',
@@ -118,24 +132,19 @@ class ScriptManifest {
       if (json.containsKey('cards')) 'cards',
       if (json.containsKey('accounts')) 'accounts',
       if (json.containsKey('appTunnels')) 'appTunnels',
+      if (json.containsKey('localization')) 'localization',
+      if (json.containsKey('webContent')) 'webContent',
     }, 'manifest');
-    if (!const {
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10,
-          11,
-          12,
-        }.contains(json['sdkVersion']) ||
+    if (!supportsTrustedScriptSdk(json['sdkVersion']) ||
         json['sdkVersion'] is! int) {
       throw const FormatException('unsupported script SDK version');
     }
+    if (json.containsKey('localization') && (json['sdkVersion'] as int) < 13) {
+      throw const FormatException('localization requires SDK 13');
+    }
+    final localization = json.containsKey('localization')
+        ? ScriptLocalization.fromJson(json['localization'])
+        : null;
     final sockets = json.containsKey('websocketOrigins')
         ? json['websocketOrigins']
         : const [];
@@ -210,7 +219,12 @@ class ScriptManifest {
       throw const FormatException('manifest.browser must be a boolean');
     }
     final caps = rawCapabilities
-        .map((raw) => ScriptCapability.fromJson(_object(raw, 'capability')))
+        .map(
+          (raw) => ScriptCapability.fromJson(
+            _object(raw, 'capability'),
+            sdkVersion: json['sdkVersion'] as int,
+          ),
+        )
         .toList(growable: false);
     if (caps.map((c) => c.id).toSet().length != caps.length) {
       throw const FormatException('duplicate script capability');
@@ -230,6 +244,7 @@ class ScriptManifest {
           (e) =>
               e.capability == 'climate.command' ||
               e.capability == 'card.qr' ||
+              e.capability == 'query.controls' ||
               foregroundCommunityCapabilities.contains(e.capability) ||
               !caps.any((c) => c.id == e.capability),
         )) {
@@ -252,6 +267,22 @@ class ScriptManifest {
         )
         .toList(growable: false);
     final capabilityIds = caps.map((c) => c.id).toSet();
+    final webContent = json.containsKey('webContent')
+        ? ScriptWebContent.parseList(json['webContent'])
+        : const <ScriptWebContent>[];
+    if (json.containsKey('webContent') &&
+        ((json['sdkVersion'] as int) < 14 ||
+            json['browser'] != true ||
+            !caps.any(
+              (c) => c.id == 'web.content' && c.schemaVersion == '1.0',
+            ))) {
+      throw const FormatException(
+        'webContent requires SDK14, browser and web.content/1.0',
+      );
+    }
+    if (capabilityIds.contains('web.content') && webContent.isEmpty) {
+      throw const FormatException('web.content requires declared pages');
+    }
     if (cards.map((c) => c.id).toSet().length != cards.length ||
         cards.any(
           (c) => !(c.type == 'card'
@@ -291,6 +322,11 @@ class ScriptManifest {
                   a.statusCapability != 'account.session') ||
               (a.statusCapability != null &&
                   !capabilityIds.contains(a.statusCapability)) ||
+              (a.authentication != null &&
+                  (a.loginCapability == null ||
+                      (a.authentication!.interactiveWeb &&
+                          json['browser'] != true) ||
+                      a.authentication!.silentWeb)) ||
               !capabilityIds.containsAll(a.capabilities),
         )) {
       throw const FormatException('duplicate account or undeclared capability');
@@ -302,11 +338,72 @@ class ScriptManifest {
         appTunnels.any((v) => v != 'hermes-atrust')) {
       throw const FormatException('invalid APPTunnel declaration');
     }
+    for (final account in accounts) {
+      final tunnel = account.appTunnel;
+      if (tunnel != null &&
+          (account.authentication != null ||
+              account.loginCapability != 'account.session' ||
+              account.statusCapability == null ||
+              network.ipAllow != null ||
+              !appTunnels.contains(tunnel.service) ||
+              !network.origins.any((u) => u.origin == tunnel.gatewayUrl))) {
+        throw const FormatException('invalid script tunnel binding');
+      }
+      final reuse = account.credentialReuse;
+      if (reuse == null) continue;
+      if (tunnel != null &&
+          (tunnel.loginMode != 'password' ||
+              reuse.service != tunnel.service ||
+              reuse.gatewayUrl != tunnel.gatewayUrl ||
+              reuse.loginDomain != tunnel.loginDomain)) {
+        throw const FormatException('credential reuse target mismatch');
+      }
+      final source = accounts
+          .where((a) => a.id == reuse.sourceAccountId)
+          .firstOrNull;
+      if (source == null ||
+          source.id == account.id ||
+          source.authentication == null ||
+          source.credentialReuse != null ||
+          account.authentication != null ||
+          account.loginCapability != 'account.session' ||
+          account.statusCapability == null ||
+          network.ipAllow != null ||
+          !appTunnels.contains(reuse.service) ||
+          !network.origins.any((u) => u.origin == reuse.gatewayUrl)) {
+        throw const FormatException('invalid credential reuse binding');
+      }
+    }
+    for (final ref in [
+      ...caps.map((c) => c.appTunnelAccountId),
+      ...accounts.map((a) => a.appTunnelAccountId),
+    ]) {
+      if (ref != null &&
+          !accounts.any((a) => a.id == ref && a.appTunnel != null)) {
+        throw const FormatException('unknown tunnel account dependency');
+      }
+    }
+    if (accounts.any(
+          (a) =>
+              a.appTunnelAccountId != null &&
+              (a.appTunnel != null || a.credentialReuse != null),
+        ) ||
+        caps.any(
+          (c) => c.id == 'account.session' && c.appTunnelAccountId != null,
+        )) {
+      throw const FormatException('tunnel management cannot depend on itself');
+    }
+    if (json.containsKey('school') && (json['sdkVersion'] as int) < 16) {
+      throw const FormatException('school display requires SDK16');
+    }
     return ScriptManifest._(
       sdkVersion: json['sdkVersion'] as int,
       id: id,
       version: version,
       schoolId: schoolId,
+      school: json.containsKey('school')
+          ? ScriptSchool.fromJson(json['school'])
+          : null,
       name: _text(json, 'name', 160),
       homeTitle: homeTitle,
       network: network,
@@ -319,10 +416,13 @@ class ScriptManifest {
       cards: List.unmodifiable(cards),
       accounts: List.unmodifiable(accounts),
       appTunnels: Set.unmodifiable(appTunnels.cast<String>()),
+      localization: localization,
+      webContent: webContent,
     );
   }
 
   final int sdkVersion;
+  final ScriptSchool? school;
   final String id;
   final String version;
   final String schoolId;
@@ -332,6 +432,8 @@ class ScriptManifest {
   /// Use [declaresAccounts] to distinguish an older SDK from explicit [].
   final List<ScriptAccount> accounts;
   final Set<String> appTunnels;
+  final ScriptLocalization? localization;
+  final List<ScriptWebContent> webContent;
   bool get declaresAccounts => sdkVersion >= 11;
   final ScriptNetworkPolicy network;
   final ScriptNetworkPolicy websocketNetwork;
@@ -355,10 +457,20 @@ class ScriptCapability {
     required this.id,
     required this.schema,
     required this.schemaVersion,
+    this.appTunnelAccountId,
   });
 
-  factory ScriptCapability.fromJson(Map<String, dynamic> json) {
-    _keys(json, {'id', 'schema', 'schemaVersion'}, 'capability');
+  factory ScriptCapability.fromJson(
+    Map<String, dynamic> json, {
+    int sdkVersion = 1,
+  }) {
+    _keys(json, {
+      'id',
+      'schema',
+      'schemaVersion',
+      if (sdkVersion >= 16 && json.containsKey('appTunnelAccountId'))
+        'appTunnelAccountId',
+    }, 'capability');
     final id = _text(json, 'id', 128);
     final schema = _text(json, 'schema', 160);
     final version = _text(json, 'schemaVersion', 32);
@@ -369,12 +481,24 @@ class ScriptCapability {
         'invalid capability or unsupported output schema',
       );
     }
-    return ScriptCapability(id: id, schema: schema, schemaVersion: version);
+    final ref = json.containsKey('appTunnelAccountId')
+        ? _text(json, 'appTunnelAccountId', 128)
+        : null;
+    if (ref != null && !_identifier.hasMatch(ref)) {
+      throw const FormatException('invalid tunnel account id');
+    }
+    return ScriptCapability(
+      id: id,
+      schema: schema,
+      schemaVersion: version,
+      appTunnelAccountId: ref,
+    );
   }
 
   final String id;
   final String schema;
   final String schemaVersion;
+  final String? appTunnelAccountId;
 }
 
 final _identifier = RegExp(r'^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$');
@@ -487,6 +611,10 @@ class ScriptAccount {
     required this.loginParams,
     required this.statusCapability,
     required this.statusParams,
+    required this.authentication,
+    required this.credentialReuse,
+    required this.appTunnel,
+    required this.appTunnelAccountId,
   });
 
   factory ScriptAccount.fromJson(
@@ -500,6 +628,13 @@ class ScriptAccount {
       'capabilities',
       if (json.containsKey('login')) 'login',
       if (sdkVersion >= 12 && json.containsKey('status')) 'status',
+      if (sdkVersion >= 14 && json.containsKey('authentication'))
+        'authentication',
+      if (sdkVersion >= 15 && json.containsKey('credentialReuse'))
+        'credentialReuse',
+      if (sdkVersion >= 16 && json.containsKey('appTunnel')) 'appTunnel',
+      if (sdkVersion >= 16 && json.containsKey('appTunnelAccountId'))
+        'appTunnelAccountId',
     }, 'account');
     final id = _text(json, 'id', 128);
     final name = _text(json, 'name', 160);
@@ -566,6 +701,18 @@ class ScriptAccount {
       loginParams: _immutableJson(params) as Map<String, dynamic>,
       statusCapability: status['capability'] as String?,
       statusParams: _immutableJson(statusParams) as Map<String, dynamic>,
+      authentication: json.containsKey('authentication')
+          ? ScriptAccountAuthentication.fromJson(json['authentication'])
+          : null,
+      credentialReuse: json.containsKey('credentialReuse')
+          ? ScriptCredentialReuse.fromJson(json['credentialReuse'])
+          : null,
+      appTunnel: json.containsKey('appTunnel')
+          ? ScriptAppTunnel.fromJson(json['appTunnel'])
+          : null,
+      appTunnelAccountId: json.containsKey('appTunnelAccountId')
+          ? _text(json, 'appTunnelAccountId', 128)
+          : null,
     );
   }
 
@@ -575,6 +722,10 @@ class ScriptAccount {
   final Map<String, dynamic> statusParams;
   final List<String> capabilities;
   final Map<String, dynamic> loginParams;
+  final ScriptAccountAuthentication? authentication;
+  final ScriptCredentialReuse? credentialReuse;
+  final ScriptAppTunnel? appTunnel;
+  final String? appTunnelAccountId;
 }
 
 // ADR-038 §1 / ADR-034 §2: nested declaration parameters are digest-bound too.

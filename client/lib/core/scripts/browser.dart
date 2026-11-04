@@ -10,6 +10,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import 'network_policy.dart';
+import 'web_content.dart';
+import 'web_content_dom.dart';
 
 class ScriptBrowserException implements Exception {
   const ScriptBrowserException(this.code);
@@ -60,19 +62,78 @@ abstract interface class ScriptBrowserDriver {
   Future<void> close();
 }
 
+/// Only the Android content presenter implements the offline HTML loading seam.
+/// This is separate so legacy remote-browser drivers keep their original API.
+abstract interface class ScriptBrowserContentDriver {
+  Future<void> loadContent(String html, String baseUrl);
+}
+
+/// Host policy precedes every package byte. Removing the meta element later
+/// does not remove an already-applied CSP. Network remains blocked natively.
+const scriptWebContentPolicy =
+    "default-src 'none'; connect-src 'none'; script-src 'none'; "
+    "style-src 'unsafe-inline'; img-src data:; font-src 'none'; media-src 'none'; "
+    "frame-src 'none'; child-src 'none'; worker-src 'none'; object-src 'none'; "
+    "form-action 'none'; base-uri 'none'";
+
+String scriptWebContentDocument(String html) =>
+    '<!doctype html><html><head><meta charset="utf-8">'
+    '<meta http-equiv="Content-Security-Policy" content="$scriptWebContentPolicy">'
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    '</head><body>$html</body></html>';
+
 class ScriptBrowserBridge {
   ScriptBrowserBridge({
     required this.policy,
+    this.contentPages = const [],
+    this.contentDigest,
+    this.contentOnly = false,
     bool? available,
     this.loadTimeout = const Duration(seconds: 30),
     this.evaluateTimeout = const Duration(seconds: 30),
     this.maxResultBytes = 1024 * 1024,
-  }) : available = available ?? platformSupported;
+  }) : available =
+           available ??
+           (contentOnly ? (!kIsWeb && Platform.isAndroid) : platformSupported);
 
   static bool get platformSupported =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
   static const resultHandler = '__eleconScriptResult';
   final ScriptNetworkPolicy policy;
+  final List<ScriptWebContent> contentPages;
+  final String? contentDigest;
+  final bool contentOnly;
+
+  bool allowsNavigation(Uri url) {
+    if (!contentOnly) return policy.allowsUrl(url);
+    return url.scheme == 'https' &&
+        url.host == 'elecon-script.invalid' &&
+        !url.hasPort &&
+        url.userInfo.isEmpty &&
+        !url.hasQuery &&
+        contentDigest != null &&
+        contentPages.any((page) => url.path == '/$contentDigest/${page.id}');
+  }
+
+  String contentUrl(String id) =>
+      'https://elecon-script.invalid/$contentDigest/$id';
+
+  /// The virtual main request is served exclusively from authorized memory.
+  /// Serve only the currently host-opened document;
+  /// all other requests remain blocked and no network fallback is attempted.
+  String? contentDocumentFor(Uri url) {
+    if (!contentOnly ||
+        _closed ||
+        url != _currentUrl ||
+        !allowsNavigation(url)) {
+      return null;
+    }
+    final page = contentPages
+        .where((page) => contentUrl(page.id) == url.toString())
+        .firstOrNull;
+    return page == null ? null : scriptWebContentDocument(page.html);
+  }
+
   final bool available;
   final Duration loadTimeout;
   final Duration evaluateTimeout;
@@ -100,7 +161,7 @@ class ScriptBrowserBridge {
     if (!available) {
       throw const ScriptBrowserException('browser_unavailable');
     }
-    if (policy.ipAllow != null) {
+    if (!contentOnly && policy.ipAllow != null) {
       throw const ScriptBrowserException('browser_ip_policy_unsupported');
     }
     if (_lease == null) {
@@ -170,7 +231,24 @@ class ScriptBrowserBridge {
           _checkActive();
         }
         return null;
+      case 'content':
+        if (!contentOnly) {
+          throw const ScriptBrowserException('browser_content_not_open');
+        }
+        final operation = ScriptContentOperation.parse(args);
+        return _evaluateInPage(
+          (nonce) => _contentPageScript(nonce, operation.source),
+          timeout: operation.timeout,
+        );
+      case 'openContent':
+        await openContent(_string(args, 'id'));
+        return null;
       case 'open':
+        if (contentOnly) {
+          throw const ScriptBrowserException(
+            'browser_content_remote_forbidden',
+          );
+        }
         await open(_string(args, 'url'));
         return null;
       case 'evaluate':
@@ -205,6 +283,11 @@ class ScriptBrowserBridge {
           ),
         );
       case 'setCookies':
+        if (contentOnly) {
+          throw const ScriptBrowserException(
+            'browser_content_cookies_forbidden',
+          );
+        }
         final target = _checkedUrl(_string(args, 'url'));
         final cookies = _validatedCookies(target, args['cookies']);
         final driver = await _ready();
@@ -220,6 +303,11 @@ class ScriptBrowserBridge {
         }
         return null;
       case 'cookies':
+        if (contentOnly) {
+          throw const ScriptBrowserException(
+            'browser_content_cookies_forbidden',
+          );
+        }
         final rawUrl = args['url'];
         if (rawUrl != null && rawUrl is! String) {
           throw const ScriptBrowserException('browser_invalid_argument');
@@ -357,11 +445,53 @@ class ScriptBrowserBridge {
       throw const ScriptBrowserException('browser_url_too_large');
     }
     final url = Uri.tryParse(value);
-    if (url == null || !policy.allowsUrl(url)) {
+    if (url == null || !allowsNavigation(url)) {
       busy.value = false;
       throw const ScriptBrowserException('browser_navigation_blocked');
     }
     return url;
+  }
+
+  Future<void> openContent(String id) async {
+    if (!contentOnly ||
+        contentDigest == null ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(contentDigest!) ||
+        !contentPages.any((page) => page.id == id)) {
+      throw const ScriptBrowserException('browser_content_undeclared');
+    }
+    final page = contentPages.firstWhere((page) => page.id == id);
+    final driver = await _ready();
+    if (driver is! ScriptBrowserContentDriver) {
+      throw const ScriptBrowserException('browser_content_unavailable');
+    }
+    _checkActive();
+    _failPending('browser_navigation_changed');
+    _failLoading('browser_navigation_replaced');
+    final loading = _loading = Completer<void>();
+    loading.future.ignore();
+    final url = contentUrl(id);
+    _currentUrl = Uri.parse(url);
+    state.value = const ScriptBrowserState(
+      ScriptBrowserPhase.loading,
+      origin: 'https://elecon-script.invalid',
+    );
+    try {
+      await _whileActive(
+        (driver as ScriptBrowserContentDriver).loadContent(
+          scriptWebContentDocument(page.html),
+          url,
+        ),
+      ).timeout(loadTimeout);
+      await loading.future.timeout(loadTimeout);
+      _checkActive();
+    } on ScriptBrowserException {
+      rethrow;
+    } catch (_) {
+      if (!_closed) reportError();
+      throw const ScriptBrowserException('browser_load_failed');
+    } finally {
+      if (identical(_loading, loading)) _loading = null;
+    }
   }
 
   Future<void> open(String url) async {
@@ -403,7 +533,7 @@ class ScriptBrowserBridge {
   bool navigationStarted(String? value) {
     if (_closed) return false;
     final url = value == null ? null : Uri.tryParse(value);
-    if (url == null || !policy.allowsUrl(url)) {
+    if (url == null || !allowsNavigation(url)) {
       busy.value = false;
       _failPending('browser_navigation_blocked');
       _failLoading('browser_navigation_blocked');
@@ -427,7 +557,7 @@ class ScriptBrowserBridge {
   void navigationFinished(String? value) {
     if (_closed || state.value.phase == ScriptBrowserPhase.blocked) return;
     final url = value == null ? null : Uri.tryParse(value);
-    if (url == null || !policy.allowsUrl(url)) {
+    if (url == null || !allowsNavigation(url)) {
       navigationStarted(value);
       return;
     }
@@ -451,7 +581,7 @@ class ScriptBrowserBridge {
   bool historyChanged(String? value) {
     if (_closed) return false;
     final url = value == null ? null : Uri.tryParse(value);
-    if (url == null || !policy.allowsUrl(url)) return navigationStarted(value);
+    if (url == null || !allowsNavigation(url)) return navigationStarted(value);
     _currentUrl = url;
     return true;
   }
@@ -469,9 +599,20 @@ class ScriptBrowserBridge {
   }
 
   Future<Object?> evaluate(String source) async {
+    if (contentOnly) {
+      throw const ScriptBrowserException('browser_content_evaluate_forbidden');
+    }
     if (utf8.encode(source).length > 256 * 1024) {
       throw const ScriptBrowserException('browser_source_too_large');
     }
+    return _evaluateInPage((nonce) => _pageScript(nonce, source));
+  }
+
+  Future<Object?> _evaluateInPage(
+    String Function(String nonce) script, {
+    Duration? timeout,
+  }) async {
+    final deadline = timeout ?? evaluateTimeout;
     final driver = await _ready();
     if (state.value.phase == ScriptBrowserPhase.blocked) {
       throw const ScriptBrowserException('browser_navigation_blocked');
@@ -479,7 +620,9 @@ class ScriptBrowserBridge {
     if (_currentUrl == null || state.value.phase != ScriptBrowserPhase.ready) {
       throw const ScriptBrowserException('browser_not_loaded');
     }
-    policy.checkUrl(_currentUrl!);
+    if (!allowsNavigation(_currentUrl!)) {
+      throw const ScriptBrowserException('browser_navigation_blocked');
+    }
     if (_pending.length >= 16) {
       throw const ScriptBrowserException('browser_concurrency_limit');
     }
@@ -491,10 +634,8 @@ class ScriptBrowserBridge {
     pending.future.ignore();
     _pending[nonce] = pending;
     try {
-      await _whileActive(
-        driver.evaluate(_pageScript(nonce, source)),
-      ).timeout(evaluateTimeout);
-      return await pending.future.timeout(evaluateTimeout);
+      await _whileActive(driver.evaluate(script(nonce))).timeout(deadline);
+      return await pending.future.timeout(deadline);
     } on ScriptBrowserException {
       rethrow;
     } catch (_) {
@@ -503,6 +644,21 @@ class ScriptBrowserBridge {
       _pending.remove(nonce);
     }
   }
+
+  String _contentPageScript(String nonce, String source) =>
+      '''
+(() => {
+  const nonce = ${jsonEncode(nonce)};
+  const reply = payload => window.flutter_inappwebview.callHandler(${jsonEncode(resultHandler)}, payload);
+  Promise.resolve().then(() => $source).then(value => {
+    let json;
+    try { json = JSON.stringify(value === undefined ? null : value); }
+    catch (_) { return reply({nonce,ok:false}); }
+    if (typeof json !== 'string' || json.length > $maxResultBytes) return reply({nonce,ok:false});
+    return reply({nonce,ok:true,json});
+  }, () => reply({nonce,ok:false}));
+})()
+''';
 
   String _pageScript(String nonce, String source) =>
       '''
@@ -526,7 +682,7 @@ class ScriptBrowserBridge {
     if (_closed ||
         value is! Map ||
         _currentUrl == null ||
-        !policy.allowsUrl(_currentUrl!)) {
+        !allowsNavigation(_currentUrl!)) {
       return;
     }
     final nonce = value['nonce'];

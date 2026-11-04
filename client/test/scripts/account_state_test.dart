@@ -3,6 +3,7 @@ import 'package:elecon/core/credential/secure_store.dart';
 import 'package:elecon/core/credential/store.dart';
 import 'package:elecon/core/scripts/credentials.dart';
 import 'package:elecon/core/scripts/manifest.dart';
+import 'package:elecon/core/scripts/input.dart';
 import 'package:elecon/core/scripts/runtime.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,6 +42,7 @@ Future<Object?> run(
   String operation = 'status',
   Future<Object?> Function(String, String)? tunnel,
   Future<Object?> Function(String, Map<String, Object?>)? browser,
+  ScriptInputCall? input,
 }) => const TrustedScriptRuntime().run(
   package: package,
   capability: 'account.session',
@@ -54,6 +56,7 @@ Future<Object?> run(
   fetch: (_, _) async => throw StateError('no HTTP in fixture'),
   appTunnelCall: tunnel,
   browserCall: browser,
+  inputCall: input,
 );
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -89,9 +92,8 @@ void main() {
       var calls = 0;
       for (final body in [
         "await ctx.appTunnel.login('hermes-atrust');",
-        "await globalThis.__script_app_tunnel('login','hermes-atrust');",
         "await ctx.browser.open('https://synthetic.invalid');",
-        "await globalThis.__script_input('{}');",
+        "await ctx.ui.requestInput({title:'Synthetic',fields:[]});",
       ]) {
         await expectLater(
           run(
@@ -100,13 +102,45 @@ void main() {
               calls++;
               return {'status': 'authenticated'};
             },
+            input: (_) async {
+              calls++;
+              return null;
+            },
             browser: (_, _) async {
               calls++;
               return null;
             },
           ),
-          throwsA(isA<ScriptRunException>()),
+          throwsA(
+            isA<ScriptRunException>().having(
+              (e) => e.code,
+              'code',
+              'input_unavailable',
+            ),
+          ),
         );
+      }
+      for (final expression in [
+        "globalThis.__script_app_tunnel('login','hermes-atrust','{}')",
+        "globalThis.__script_input('{}')",
+      ]) {
+        final result = await run(
+          fixture(
+            "const result=JSON.parse(await $expression); return {status:'unknown',accountLabel:JSON.stringify(result)};",
+          ),
+          tunnel: (_, _) async {
+            calls++;
+            return {'status': 'authenticated'};
+          },
+          input: (_) async {
+            calls++;
+            return null;
+          },
+        );
+        expect(jsonDecode((result as Map)['accountLabel'] as String), {
+          'ok': false,
+          'error': {'code': 'input_unavailable', 'category': 'internal'},
+        });
       }
       expect(calls, 0);
     },

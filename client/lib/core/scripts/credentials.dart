@@ -3,6 +3,7 @@
 /// ADR-040 §4 / ADR-043 §3: SDK 5/6/7 preserve the same credential addresses.
 library;
 
+import 'sdk_version.dart';
 import 'dart:convert';
 
 import '../credential/store.dart';
@@ -30,7 +31,7 @@ class ScriptCredentials {
        _isActive = isActive ?? (() => true),
        _now = now ?? (() => DateTime.now().millisecondsSinceEpoch) {
     if (!_identifier.hasMatch(schoolId) ||
-        !const {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}.contains(sdkVersion) ||
+        !supportsTrustedScriptSdk(sdkVersion) ||
         (scriptId != null && !_identifier.hasMatch(scriptId!)) ||
         (sdkVersion >= 2 && scriptId == null)) {
       throw const ScriptCredentialException('invalid_credential_identity');

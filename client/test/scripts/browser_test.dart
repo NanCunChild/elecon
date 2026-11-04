@@ -346,6 +346,42 @@ void main() {
     },
   );
 
+  test(
+    'child navigation admits only declared origins without replacing the parent document',
+    () async {
+      await ready();
+      final before = bridge.state.value;
+      expect(
+        scriptBrowserNavigationPolicy(
+          bridge,
+          'https://sso.school.example/frame',
+          isForMainFrame: false,
+        ),
+        NavigationActionPolicy.ALLOW,
+      );
+      expect(identical(bridge.state.value, before), isTrue);
+      expect(
+        scriptBrowserNavigationPolicy(
+          bridge,
+          'https://outside.example/frame?secret=SYNTHETIC',
+          isForMainFrame: false,
+        ),
+        NavigationActionPolicy.CANCEL,
+      );
+      expect(bridge.state.value.phase, ScriptBrowserPhase.blocked);
+      expect(bridge.state.value.origin, 'https://outside.example');
+      await bridge.close();
+      expect(
+        scriptBrowserNavigationPolicy(
+          bridge,
+          'https://school.example/late',
+          isForMainFrame: false,
+        ),
+        NavigationActionPolicy.CANCEL,
+      );
+    },
+  );
+
   test('exclusive lease is shared, released idempotently, and reusable', () {
     final lease = ScriptBrowserLease.tryAcquire('legacy-login')!;
     expect(ScriptBrowserLease.busy, isTrue);

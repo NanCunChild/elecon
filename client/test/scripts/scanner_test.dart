@@ -186,7 +186,7 @@ void main() {
         expect(calls, 0);
         final raw = jsonDecode(p.encode()) as Map;
         raw['source'] =
-            'export const capabilities={"notice.list":async()=>{try{await globalThis.__script_scan(0);}catch(e){return {items:[],sourceSystem:String(e).includes("scanner_unavailable")?"denied":"bad"};}}};';
+            'export const capabilities={"notice.list":async()=>{const result=JSON.parse(await globalThis.__script_scan(0));return {items:[],sourceSystem:result.ok===false && result.error.code==="scanner_unavailable"?"denied":"bad"};}};';
         expect(
           await run(
             ScriptPackage.parse(jsonEncode(raw)),
