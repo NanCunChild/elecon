@@ -28,6 +28,7 @@
       "emits": { "schema": "elecon.card.transactions", "schemaVersion": "1.0" },
       "params": { "schema": "elecon.params.card.transactions", "schemaVersion": "1.0" }
     },
+    "library.search": { "description": "检索书目（ADR-088）", "emits": { "schema": "elecon.library.search", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.library.search", "schemaVersion": "1.0" } },
     "library.loans": {
       "description": "获取当前借阅列表",
       "emits": { "schema": "elecon.library.loans", "schemaVersion": "1.0" }

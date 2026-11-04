@@ -71,7 +71,8 @@ export function packageScript(manifest: unknown, source: unknown): string {
     appTunnels?: string[];
     localization?: unknown;
     webContent?: unknown;
-    cards?: Array<{ type: string; defaultVariant: string; id?: string; title?: string }>;
+    cards?: Array<{ type: string; defaultVariant: string; id?: string; title?: string; pageId?: string }>;
+    pages?: Array<{ id: string; title: string; template: string; tab?: boolean; webPageId?: string }>;
     accounts?: Array<{
       id: string;
       name: string;
@@ -215,6 +216,22 @@ export function packageScript(manifest: unknown, source: unknown): string {
   }
   if (typed.cards && new Set(typed.cards.map((card) => card.id ?? card.type)).size !== typed.cards.length)
     throw new ScriptPackageError("script_package_manifest_invalid");
+  const requiredPages: Record<string, string[][]> = {
+    notice: [["notice.list"]], schedule: [["schedule.week"]], grades: [["grades.list"]],
+    card: [["card.balance"], ["card.transactions"], ["card.qr"]], library: [["library.loans"]],
+    exam: [["exam.list"]], classroom: [["classroom.buildings", "classroom.available"]],
+    energy: [["energy.meters", "energy.usage"]], climate: [["climate.devices", "climate.status"]],
+    generic: [["generic.section"]], directory: [["directory.phones"]], faculty: [["faculty.search"]],
+    forum: [["forum.session"]], messages: [["messages.conversations"], ["messages.list"]], web: [["web.content"]],
+  };
+  const pages = typed.pages ?? [];
+  if (new Set(pages.map((page) => page.id)).size !== pages.length || pages.some((page) =>
+    !requiredPages[page.template]?.some((ids) => ids.every((id) => capabilityIds.has(id))) ||
+    (page.template === "web" && !(typed.webContent as Array<{id: string}> | undefined)?.some((web) => web.id === page.webPageId))) ||
+    typed.cards?.some((card) => card.pageId !== undefined && !pages.some((page) =>
+      page.id === card.pageId && (card.type === "generic" || card.type === page.template)))) {
+    throw new ScriptPackageError("script_package_manifest_invalid");
+  }
   // ADR-043 §3: the JSON schema checks card types, variants, uniqueness and
   // capability dependencies. Keep suggestions inside the approved manifest.
   // ADR-038 §1: semantic bounds mirror the client parser.

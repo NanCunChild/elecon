@@ -37,6 +37,7 @@ const Set<String> kCapabilityIds = {
   'invoice.list',
   'library.booking',
   'library.loans',
+  'library.search',
   'library.seats',
   'messages.conversations',
   'messages.history',

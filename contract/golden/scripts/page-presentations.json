@@ -1,0 +1,276 @@
+{
+  "baseManifest": {
+    "sdkVersion": 18,
+    "id": "school.pages",
+    "version": "1.0.0",
+    "schoolId": "fixture",
+    "name": "Page fixture",
+    "network": {
+      "origins": [
+        "https://school.example"
+      ]
+    },
+    "browser": false,
+    "accounts": [],
+    "capabilities": [
+      {
+        "id": "notice.list",
+        "schema": "elecon.notice.list",
+        "schemaVersion": "1.1"
+      },
+      {
+        "id": "forum.session",
+        "schema": "elecon.forum.session",
+        "schemaVersion": "1.0"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "native binding",
+      "valid": true,
+      "manifest": {
+        "pages": [
+          {
+            "id": "notice",
+            "title": "Notices",
+            "template": "notice",
+            "tab": true
+          }
+        ],
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "regular",
+            "pageId": "notice"
+          }
+        ]
+      }
+    },
+    {
+      "name": "generic portal without generic capability",
+      "valid": true,
+      "manifest": {
+        "pages": [
+          {
+            "id": "notice",
+            "title": "Notices",
+            "template": "notice",
+            "tab": true
+          }
+        ],
+        "cards": [
+          {
+            "type": "generic",
+            "defaultVariant": "regular",
+            "pageId": "notice"
+          }
+        ]
+      }
+    },
+    {
+      "name": "forum portal",
+      "valid": true,
+      "manifest": {
+        "pages": [
+          {
+            "id": "forum",
+            "title": "Notices",
+            "template": "forum",
+            "tab": true
+          }
+        ],
+        "cards": [
+          {
+            "type": "generic",
+            "defaultVariant": "regular",
+            "pageId": "forum"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty pages removes default tabs",
+      "valid": true,
+      "manifest": {
+        "pages": []
+      }
+    },
+    {
+      "name": "legacy rejects pages",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 17,
+        "pages": []
+      }
+    },
+    {
+      "name": "legacy rejects page binding",
+      "valid": false,
+      "manifest": {
+        "sdkVersion": 17,
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "regular",
+            "pageId": "notice"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing target",
+      "valid": false,
+      "manifest": {
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "regular",
+            "pageId": "notice"
+          }
+        ]
+      }
+    },
+    {
+      "name": "cross template binding",
+      "valid": false,
+      "manifest": {
+        "pages": [
+          {
+            "id": "notice",
+            "title": "Notices",
+            "template": "forum",
+            "tab": true
+          }
+        ],
+        "cards": [
+          {
+            "type": "notice",
+            "defaultVariant": "regular",
+            "pageId": "notice"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate pages",
+      "valid": false,
+      "manifest": {
+        "pages": [
+          {
+            "id": "notice",
+            "title": "Notices",
+            "template": "notice",
+            "tab": true
+          },
+          {
+            "id": "notice",
+            "title": "Notices",
+            "template": "notice",
+            "tab": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing template capability",
+      "valid": false,
+      "manifest": {
+        "pages": [
+          {
+            "id": "notice",
+            "title": "Notices",
+            "template": "grades",
+            "tab": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown template",
+      "valid": false,
+      "manifest": {
+        "pages": [
+          {
+            "id": "notice",
+            "title": "Notices",
+            "template": "future",
+            "tab": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "native web reference forbidden",
+      "valid": false,
+      "manifest": {
+        "pages": [
+          {
+            "id": "notice",
+            "title": "Notices",
+            "template": "notice",
+            "tab": true,
+            "webPageId": "web"
+          }
+        ]
+      }
+    },
+    {
+      "name": "web requires reference",
+      "valid": false,
+      "manifest": {
+        "pages": [
+          {
+            "id": "notice",
+            "title": "Notices",
+            "template": "web",
+            "tab": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "tab must be bool",
+      "valid": false,
+      "manifest": {
+        "pages": [
+          {
+            "id": "notice",
+            "title": "Notices",
+            "template": "notice",
+            "tab": "true"
+          }
+        ]
+      }
+    },
+    {
+      "name": "no arbitrary routes",
+      "valid": false,
+      "manifest": {
+        "pages": [
+          {
+            "id": "notice",
+            "title": "Notices",
+            "template": "notice",
+            "tab": true,
+            "route": "/anything"
+          }
+        ]
+      }
+    },
+    {
+      "name": "title rejects bidi",
+      "valid": false,
+      "manifest": {
+        "pages": [
+          {
+            "id": "notice",
+            "title": "a‮b",
+            "template": "notice",
+            "tab": true
+          }
+        ]
+      }
+    }
+  ]
+}

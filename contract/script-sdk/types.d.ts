@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1–17 (ADR-034/035/037/038/039/040/043/070/072/073). Values include actual secrets.
+/** Trusted school script SDK 1–18 (ADR-034/035/037/038/039/040/043/070/072/073). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -204,7 +204,7 @@ export interface ScriptHomeEntry {
  * Each type requires its corresponding standard capabilities. This does not
  * change manifest.home cache/preload policy or grant any additional access.
  */
-export type ScriptCardEntry = { id?: string; title?: string } & (
+export type ScriptCardEntry = { id?: string; title?: string; /** SDK18 same-package page binding. */ pageId?: string } & (
   | {
       type: "notice" | "schedule" | "grades" | "library";
       defaultVariant: "compact" | "regular" | "expanded";
@@ -384,3 +384,16 @@ export type ClassroomAvailable = import("../generated/ts/classroom.available.js"
 /** ADR-084: read-only complete phone directory. Empty params; local search and
  * user-triggered system dialing belong to the host. No script launch API. */
 export type PhoneDirectory = import("../generated/ts/directory.phones.js").DirectoryPhones;
+
+/** SDK18/ADR-086: host-owned detail pages; declarations do not grant execution.
+ * At most 32 pages, with unique ids; up to three requested tabs are shown.
+ * A typed card can bind its matching template; generic cards can bind any page.
+ */
+export interface ScriptPageEntry {
+  id: string;
+  title: string;
+  template: ScriptCardEntry["type"] | "faculty" | "forum" | "messages" | "web";
+  tab?: boolean;
+  /** Required only for web; references this package's webContent id. */
+  webPageId?: string;
+}

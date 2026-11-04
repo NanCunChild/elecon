@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "$id": "elecon.params.library.search",
+  "title": "书目检索条件",
+  "required": [
+    "query"
+  ],
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "书目关键词；去除首尾空白后非空。",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "page": {
+      "type": "integer",
+      "description": "页码，从1开始。",
+      "minimum": 1
+    },
+    "size": {
+      "type": "integer",
+      "description": "每页书目数，1至50。",
+      "minimum": 1,
+      "maximum": 50
+    }
+  },
+  "additionalProperties": false
+}

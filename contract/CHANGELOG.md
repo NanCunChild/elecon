@@ -1,5 +1,11 @@
 # `contract/` 变更流水
 
+## 2026-11-04 · 门户页面与书目检索（ADR-086/088）
+
+- SDK18 新增同包 `pages` 模板、可选 tab 与 `cards.pageId` 绑定；旧SDK拒绝新声明。首页/设置保留，页面固定来源digest，无任意路由、脚本Widget tree或额外执行权限。SDK18只读缓存home声明上限增至32，旧SDK保留16。
+- 新增 `library.search` 输出和参数1.0；书目身份、关键词、分页与可选作者/ISBN/出版社/索书号独立于个人借阅。同步registry与生成物，不改变library.loans。
+- profile展示消费已有profile.me.name；QR周期续订消费已有card.qr有效期，不修改业务字段或持久化二维码。
+
 ## 2026-11-04 · 电话黄页（ADR-084）
 
 - 新增只读 `directory.phones` 输出/空参数 1.0 与 `directory` 卡片：号码、分类、校区、地点、逐条来源和作者核对日期；无旧字段改义，无新脚本宿主调用。

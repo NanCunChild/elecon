@@ -52,7 +52,8 @@
             14,
             15,
             16,
-            17
+            17,
+            18
           ],
           "type": "integer"
         },
@@ -1702,6 +1703,33 @@
                     "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
                   }
                 }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "schema",
+                  "schemaVersion"
+                ],
+                "properties": {
+                  "id": {
+                    "const": "library.search"
+                  },
+                  "schema": {
+                    "const": "elecon.library.search"
+                  },
+                  "schemaVersion": {
+                    "const": "1.0"
+                  },
+                  "appTunnelAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                    "description": "SDK16该账号/能力依赖的同包APPTunnel账号，不允许直连fallback。"
+                  }
+                }
               }
             ]
           },
@@ -1709,7 +1737,7 @@
         },
         "home": {
           "type": "array",
-          "maxItems": 16,
+          "maxItems": 32,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -1803,6 +1831,12 @@
                 "maxLength": 160,
                 "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
                 "description": "SDK12 卡片显示名称；省略使用核心本地化名称。"
+              },
+              "pageId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
               }
             },
             "allOf": [
@@ -1964,6 +1998,91 @@
                 }
               }
             }
+          }
+        },
+        "pages": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "title",
+              "template"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
+                "description": "SDK12 卡片显示名称；省略使用核心本地化名称。"
+              },
+              "template": {
+                "enum": [
+                  "notice",
+                  "schedule",
+                  "grades",
+                  "card",
+                  "library",
+                  "exam",
+                  "classroom",
+                  "energy",
+                  "climate",
+                  "generic",
+                  "directory",
+                  "faculty",
+                  "forum",
+                  "messages",
+                  "web"
+                ]
+              },
+              "tab": {
+                "type": "boolean"
+              },
+              "webPageId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "template": {
+                      "const": "web"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "webPageId"
+                  ],
+                  "properties": {
+                    "webPageId": {}
+                  }
+                },
+                "else": {
+                  "not": {
+                    "required": [
+                      "webPageId"
+                    ],
+                    "properties": {
+                      "webPageId": {}
+                    }
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -2937,6 +3056,14 @@
                     "type": {
                       "const": "generic"
                     }
+                  },
+                  "not": {
+                    "required": [
+                      "pageId"
+                    ],
+                    "properties": {
+                      "pageId": {}
+                    }
                   }
                 }
               }
@@ -3548,6 +3675,46 @@
                 }
               }
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "sdkVersion": {
+                "maximum": 17,
+                "type": "integer"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "pages"
+              ],
+              "properties": {
+                "pages": {}
+              }
+            },
+            "properties": {
+              "cards": {
+                "items": {
+                  "not": {
+                    "required": [
+                      "pageId"
+                    ],
+                    "properties": {
+                      "pageId": {}
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "home": {
+                "type": "array",
+                "maxItems": 16
+              }
+            }
           }
         }
       ]

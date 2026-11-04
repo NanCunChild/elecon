@@ -107,6 +107,8 @@ class ScriptManifest {
     required this.capabilities,
     required this.home,
     required this.cards,
+    required this.pages,
+    required this.declaresPages,
     required this.accounts,
     required this.appTunnels,
     required this.localization,
@@ -130,6 +132,7 @@ class ScriptManifest {
       'capabilities',
       if (json.containsKey('home')) 'home',
       if (json.containsKey('cards')) 'cards',
+      if (json.containsKey('pages')) 'pages',
       if (json.containsKey('accounts')) 'accounts',
       if (json.containsKey('appTunnels')) 'appTunnels',
       if (json.containsKey('localization')) 'localization',
@@ -233,7 +236,7 @@ class ScriptManifest {
     if (json.containsKey('home') &&
         ((json['sdkVersion'] as int) < 4 ||
             rawHome is! List ||
-            rawHome.length > 16)) {
+            rawHome.length > ((json['sdkVersion'] as int) >= 18 ? 32 : 16))) {
       throw const FormatException('invalid script home declaration');
     }
     final home = (rawHome as List? ?? const [])
@@ -283,9 +286,38 @@ class ScriptManifest {
     if (capabilityIds.contains('web.content') && webContent.isEmpty) {
       throw const FormatException('web.content requires declared pages');
     }
+    final rawPages = json['pages'];
+    if (json.containsKey('pages') &&
+        ((json['sdkVersion'] as int) < 18 ||
+            rawPages is! List ||
+            rawPages.length > 32)) {
+      throw const FormatException('pages require SDK18 and at most 32 entries');
+    }
+    final pages = (rawPages as List? ?? const [])
+        .map((raw) => ScriptPageEntry.fromJson(_object(raw, 'page entry')))
+        .toList(growable: false);
+    if (pages.map((page) => page.id).toSet().length != pages.length ||
+        pages.any(
+          (page) =>
+              !page.supports(capabilityIds) ||
+              (page.template == 'web' &&
+                  !webContent.any((web) => web.id == page.webPageId)),
+        )) {
+      throw const FormatException('duplicate or unsupported script page');
+    }
+    for (final card in cards) {
+      if (card.pageId == null) continue;
+      final matches = pages.where((page) => page.id == card.pageId);
+      if (matches.length != 1 ||
+          (card.type != 'generic' && card.type != matches.single.template)) {
+        throw const FormatException('invalid card page binding');
+      }
+    }
     if (cards.map((c) => c.id).toSet().length != cards.length ||
         cards.any(
-          (c) => !(c.type == 'card'
+          (c) => !(c.type == 'generic' && c.pageId != null
+              ? true
+              : c.type == 'card'
               ? capabilityIds.any(
                   const {
                     'card.balance',
@@ -414,6 +446,8 @@ class ScriptManifest {
       capabilities: List.unmodifiable(caps),
       home: List.unmodifiable(home),
       cards: List.unmodifiable(cards),
+      pages: List.unmodifiable(pages),
+      declaresPages: json.containsKey('pages'),
       accounts: List.unmodifiable(accounts),
       appTunnels: Set.unmodifiable(appTunnels.cast<String>()),
       localization: localization,
@@ -443,6 +477,8 @@ class ScriptManifest {
   final List<ScriptCapability> capabilities;
   final List<ScriptHomeEntry> home;
   final List<ScriptCardEntry> cards;
+  final List<ScriptPageEntry> pages;
+  final bool declaresPages;
 
   ScriptCapability? capability(String id) {
     for (final c in capabilities) {
@@ -749,6 +785,7 @@ class ScriptCardEntry {
     this.id,
     this.title,
     this.hasExplicitId,
+    this.pageId,
   );
 
   factory ScriptCardEntry.fromJson(
@@ -760,6 +797,7 @@ class ScriptCardEntry {
       'defaultVariant',
       if (sdkVersion >= 12 && json.containsKey('id')) 'id',
       if (sdkVersion >= 12 && json.containsKey('title')) 'title',
+      if (sdkVersion >= 18 && json.containsKey('pageId')) 'pageId',
     }, 'card entry');
     final type = _text(json, 'type', 32);
     final variant = _text(json, 'defaultVariant', 32);
@@ -776,7 +814,20 @@ class ScriptCardEntry {
             ).hasMatch(title))) {
       throw const FormatException('invalid card instance identity or title');
     }
-    return ScriptCardEntry._(type, variant, id, title, json.containsKey('id'));
+    final pageId = json.containsKey('pageId')
+        ? _text(json, 'pageId', 128)
+        : null;
+    if (pageId != null && !_identifier.hasMatch(pageId)) {
+      throw const FormatException('invalid page id');
+    }
+    return ScriptCardEntry._(
+      type,
+      variant,
+      id,
+      title,
+      json.containsKey('id'),
+      pageId,
+    );
   }
 
   final String type;
@@ -784,6 +835,7 @@ class ScriptCardEntry {
   final String id;
   final String? title;
   final bool hasExplicitId;
+  final String? pageId;
 
   static const requiredCapabilitiesByType = <String, List<String>>{
     'notice': ['notice.list'],
@@ -806,4 +858,72 @@ class ScriptCardEntry {
       : const ['regular'];
 
   List<String> get requiredCapabilities => requiredCapabilitiesByType[type]!;
+}
+
+/// SDK18 host-owned second-level page, bound to one approved package.
+class ScriptPageEntry {
+  const ScriptPageEntry({
+    required this.id,
+    required this.title,
+    required this.template,
+    this.tab = false,
+    this.webPageId,
+  });
+  factory ScriptPageEntry.fromJson(Map<String, dynamic> json) {
+    _keys(json, {
+      'id',
+      'title',
+      'template',
+      if (json.containsKey('tab')) 'tab',
+      if (json.containsKey('webPageId')) 'webPageId',
+    }, 'page entry');
+    final id = _text(json, 'id', 128);
+    final title = _text(json, 'title', 160);
+    final template = _text(json, 'template', 32);
+    final webPageId = json.containsKey('webPageId')
+        ? _text(json, 'webPageId', 128)
+        : null;
+    if (!_identifier.hasMatch(id) ||
+        RegExp(
+          r'[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]',
+        ).hasMatch(title) ||
+        !templates.contains(template) ||
+        (json.containsKey('tab') && json['tab'] is! bool) ||
+        ((template == 'web') != (webPageId != null)) ||
+        (webPageId != null && !_identifier.hasMatch(webPageId))) {
+      throw const FormatException('invalid script page');
+    }
+    return ScriptPageEntry(
+      id: id,
+      title: title,
+      template: template,
+      tab: json['tab'] == true,
+      webPageId: webPageId,
+    );
+  }
+  static final templates = {
+    ...ScriptCardEntry.requiredCapabilitiesByType.keys,
+    'faculty',
+    'forum',
+    'messages',
+    'web',
+  };
+  final String id;
+  final String title;
+  final String template;
+  final bool tab;
+  final String? webPageId;
+  bool supports(Set<String> caps) => switch (template) {
+    'card' => caps.any(
+      const {'card.balance', 'card.transactions', 'card.qr'}.contains,
+    ),
+    'messages' =>
+      caps.contains('messages.conversations') || caps.contains('messages.list'),
+    'forum' => caps.contains('forum.session'),
+    'web' => caps.contains('web.content'),
+    'faculty' => caps.contains('faculty.search'),
+    _ => caps.containsAll(
+      ScriptCardEntry.requiredCapabilitiesByType[template] ?? const ['invalid'],
+    ),
+  };
 }

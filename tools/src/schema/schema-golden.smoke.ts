@@ -15,8 +15,8 @@ import addFormats from "ajv-formats";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const schemaDir = join(repoRoot, "contract/schema");
 const registryPath = join(repoRoot, "contract/capability/registry.json");
-const expectedSchemaCount = 79;
-const expectedRegistryReferenceCount = 77;
+const expectedSchemaCount = 81;
+const expectedRegistryReferenceCount = 79;
 
 interface InvalidGolden {
   behavior: string;
@@ -557,6 +557,30 @@ const cases: Record<string, SchemaGolden> = {
           items: [{ time: "2026-01-01T00:00:00Z", amountMinor: -1, currency: "CNY", direction: "debit" }],
         },
       },
+    ],
+  },
+  "elecon.params.library.search": {
+    valid: { query: "Synthetic book", page: 1, size: 10 },
+    invalid: [
+      { behavior: "nonempty keyword", value: { query: "" } },
+      { behavior: "positive page", value: { query: "book", page: 0 } },
+      { behavior: "bounded size", value: { query: "book", size: 51 } },
+    ],
+  },
+  "elecon.library.search": {
+    valid: {
+      query: "book",
+      page: 1,
+      size: 10,
+      hasNext: false,
+      items: [{ bookId: "synthetic-record", title: "Synthetic book", callNumber: "TP1" }],
+    },
+    invalid: [
+      {
+        behavior: "book identity required",
+        value: { query: "book", page: 1, size: 10, hasNext: false, items: [{ title: "Book" }] },
+      },
+      { behavior: "paging fact required", value: { query: "book", page: 1, size: 10, items: [] } },
     ],
   },
   "elecon.library.loans": {

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "$id": "elecon.library.search",
+  "title": "图书书目检索",
+  "required": [
+    "query",
+    "page",
+    "size",
+    "hasNext",
+    "items"
+  ],
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "书目关键词；去除首尾空白后非空。",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "page": {
+      "type": "integer",
+      "description": "页码，从1开始。",
+      "minimum": 1
+    },
+    "size": {
+      "type": "integer",
+      "description": "每页书目数，1至50。",
+      "minimum": 1,
+      "maximum": 50
+    },
+    "hasNext": {
+      "type": "boolean",
+      "description": "是否还有下一页；源站无总数时由满页推断。"
+    },
+    "total": {
+      "type": "integer",
+      "description": "总书目数；源站未提供则省略。",
+      "minimum": 0
+    },
+    "items": {
+      "type": "array",
+      "description": "当前页书目；不表示个人借阅。",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": [
+          "bookId",
+          "title"
+        ],
+        "properties": {
+          "bookId": {
+            "type": "string",
+            "description": "同源书目记录ID；不是借阅条码。",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "description": "书名。",
+            "minLength": 1
+          },
+          "author": {
+            "type": "string",
+            "description": "作者；来源未提供则省略。"
+          },
+          "isbn": {
+            "type": "string",
+            "description": "ISBN；来源未提供则省略。"
+          },
+          "publisher": {
+            "type": "string",
+            "description": "出版社；来源未提供则省略。"
+          },
+          "callNumber": {
+            "type": "string",
+            "description": "索书号；来源未提供则省略。"
+          }
+        }
+      }
+    }
+  }
+}
