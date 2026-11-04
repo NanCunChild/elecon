@@ -55,6 +55,10 @@ impl AuthClient {
             .map_err(|_| AuthError::SessionCookieUnavailable)
     }
 
+    pub fn gateway(&self) -> &GatewayEndpoint {
+        &self.endpoint
+    }
+
     pub fn new(endpoint: GatewayEndpoint, transport: Arc<dyn HttpTransport>) -> Self {
         Self {
             endpoint,

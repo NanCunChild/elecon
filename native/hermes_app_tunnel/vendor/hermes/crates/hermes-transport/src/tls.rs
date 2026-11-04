@@ -1,6 +1,5 @@
 use std::fmt;
 use sha2::{Digest, Sha256};
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -15,6 +14,7 @@ use tokio_rustls::TlsConnector;
 use tracing::debug;
 
 use crate::http::TlsPolicy;
+use crate::{SystemUnderlay, UnderlayDialer};
 
 /// Outcome of a TLS-only node smoke probe (no application bytes written).
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -47,6 +47,23 @@ pub async fn probe_node_tls(
     tls_policy: TlsPolicy,
     connect_timeout: Duration,
 ) -> NodeTlsProbeResult {
+    probe_node_tls_with_underlay(
+        host,
+        port,
+        tls_policy,
+        connect_timeout,
+        &SystemUnderlay::default(),
+    )
+    .await
+}
+
+pub async fn probe_node_tls_with_underlay(
+    host: &str,
+    port: u16,
+    tls_policy: TlsPolicy,
+    connect_timeout: Duration,
+    underlay: &dyn UnderlayDialer,
+) -> NodeTlsProbeResult {
     let started = Instant::now();
     let server_name = match ServerName::try_from(host.to_owned()) {
         Ok(name) => name,
@@ -62,7 +79,7 @@ pub async fn probe_node_tls(
 
     let outcome = match timeout(
         connect_timeout,
-        probe_once(host, port, tls_policy, server_name),
+        probe_once(host, port, tls_policy, server_name, underlay),
     )
     .await
     {
@@ -98,8 +115,9 @@ async fn probe_once(
     port: u16,
     tls_policy: TlsPolicy,
     _server_name: ServerName<'static>,
+    underlay: &dyn UnderlayDialer,
 ) -> Result<(), ProbeStepError> {
-    let _tls = connect_tls(host, port, tls_policy)
+    let _tls = connect_tls_with_underlay(host, port, tls_policy, underlay)
         .await
         .map_err(|error| match error {
             TlsConnectError::Resolve(_) | TlsConnectError::Tcp(_) => ProbeStepError::Tcp,
@@ -118,12 +136,19 @@ pub async fn connect_tls(
     port: u16,
     tls_policy: TlsPolicy,
 ) -> Result<NodeTlsStream, TlsConnectError> {
+    connect_tls_with_underlay(host, port, tls_policy, &SystemUnderlay::default()).await
+}
+
+pub async fn connect_tls_with_underlay(
+    host: &str,
+    port: u16,
+    tls_policy: TlsPolicy,
+    underlay: &dyn UnderlayDialer,
+) -> Result<NodeTlsStream, TlsConnectError> {
     let server_name =
         ServerName::try_from(host.to_owned()).map_err(|_| TlsConnectError::InvalidServerName)?;
-    let addr = resolve_first(host, port)
-        .await
-        .map_err(TlsConnectError::Resolve)?;
-    let stream = TcpStream::connect(addr)
+    let stream = underlay
+        .connect(host, port)
         .await
         .map_err(TlsConnectError::Tcp)?;
     let connector = TlsConnector::from(Arc::new(client_config(tls_policy, false)));
@@ -193,16 +218,6 @@ pub enum TlsConnectError {
     Tcp(std::io::Error),
     #[error("TLS handshake failed: {0}")]
     Tls(std::io::Error),
-}
-
-async fn resolve_first(host: &str, port: u16) -> Result<SocketAddr, std::io::Error> {
-    if let Ok(ip) = host.parse() {
-        return Ok(SocketAddr::new(ip, port));
-    }
-    let mut addrs = tokio::net::lookup_host((host, port)).await?;
-    addrs
-        .next()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "no addresses"))
 }
 
 fn client_config(policy: TlsPolicy, enable_sni: bool) -> ClientConfig {

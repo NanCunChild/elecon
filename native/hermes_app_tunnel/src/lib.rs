@@ -13,7 +13,7 @@ use atrust_auth::{
     AuthClient, AuthConfigOptions, AuthConfiguration, CasExchange, FlowProtocol,
     PasswordCredentials, SessionMaterial, SessionProgress, extract_sid_from_cookies,
 };
-use atrust_client::{AtrustClient, AtrustClientConfig};
+use atrust_client::{AtrustClient, AtrustClientConfig, ClientError};
 use hermes_model::{ConnectionId, DeviceId, GatewayEndpoint, SecretString, SessionId, SignKey};
 use hermes_transport::{
     GatewayCookie, HttpTransport, ReqwestTransport, ReqwestTransportConfig, TlsPolicy,
@@ -226,7 +226,10 @@ fn call(request: Value) -> Result<Value> {
                     }
                 }
                 "stop" => stop(&request).await,
-                "status" => { session(&request)?.active()?; Ok(json!({"status":"ready"})) },
+                "status" => {
+                    let session = session(&request)?;
+                    status(&session).await
+                },
                 _ => Err(INVALID),
             }
         };
@@ -745,7 +748,9 @@ async fn start(value: &mut Value) -> Result<Value> {
         auth,
         configuration,
         stored.material()?,
-        AtrustClientConfig::new(gateway, policy),
+        // Each host invocation is short-lived. Avoid a TLS probe pass
+        // before its first request; candidate connection fallback remains.
+        AtrustClientConfig::new(gateway, policy).with_node_refresh_interval(Duration::ZERO),
     )
     .await
     .map_err(|_| CONNECT)?;
@@ -821,8 +826,22 @@ fn host(value: &Value) -> Result<&str> {
     }
     Ok(h)
 }
+async fn status(session: &Session) -> Result<Value> {
+    session.active()?;
+    session.client.check_session().await.map_err(client_error)?;
+    Ok(json!({"status":"ready"}))
+}
+fn client_error(error: ClientError) -> &'static str {
+    match error {
+        ClientError::AuthenticationRequired => AUTH,
+        ClientError::Closed => CLOSED,
+        ClientError::Unauthorized { .. } => "hermes_not_authorized",
+        _ => CONNECT,
+    }
+}
 async fn resolve(session: &Session, value: &Value) -> Result<Value> {
     session.active()?;
+    session.client.check_session().await.map_err(client_error)?;
     let host = host(value)?;
     let addresses = if let Ok(ip) = host.parse::<IpAddr>() {
         vec![ip]
@@ -864,6 +883,7 @@ impl Drop for SocketPath {
 }
 async fn dial(session: &Arc<Session>, value: &Value, signal: Arc<Control>) -> Result<Value> {
     session.active()?;
+    session.client.check_session().await.map_err(client_error)?;
     let host = host(value)?;
     let address: IpAddr = string(value, "address", 80)?.parse().map_err(|_| INVALID)?;
     let port = value
@@ -898,7 +918,7 @@ async fn dial(session: &Arc<Session>, value: &Value, signal: Arc<Control>) -> Re
         .client
         .dial_tcp_pinned(host, &address.to_string(), port)
         .await
-        .map_err(|_| CONNECT)?
+        .map_err(client_error)?
         .tunnel;
     session.active()?;
     let path = session.directory.join(format!("h-{}", &random_id()[..16]));

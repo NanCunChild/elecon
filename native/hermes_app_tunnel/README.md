@@ -4,15 +4,17 @@ Host-only application TCP tunnels for ADR-062. The shared library is named `libe
 
 ## Provenance and licensing
 
-The `vendor/hermes` source is a subset of [Hermes-Atrust](https://github.com/ncc-devlab/Hermes-Atrust/tree/271a547d73c3839365a1995d1a6d72ed915e1458), commit `271a547d73c3839365a1995d1a6d72ed915e1458`, MIT. Its original `LICENSE` is retained. Source files are copied from the eight crates listed in `Cargo.toml`; CLI applications, browser integration, tracing tools, plaintext session store and its exports are excluded. The original workspace `Cargo.lock` was resolved for this smaller workspace and pinned here.
+The `vendor/hermes` source is a subset of [Hermes-Atrust](https://github.com/ncc-devlab/Hermes-Atrust/tree/061de04a699902196475227aece37923e08d646e), commit `061de04a699902196475227aece37923e08d646e`, MIT. Its original `LICENSE` is retained. Source files are copied from the eight crates listed in `Cargo.toml`; CLI applications, browser integration, tracing tools, plaintext session store and its exports, private-file helper and live-gateway tests are excluded. The original workspace `Cargo.lock` was resolved for this smaller workspace and pinned here.
 
 Local changes to upstream are limited to:
 
-- `atrust-auth/src/lib.rs`: remove the plaintext file session store module/exports. The bridge has its own bounded in-memory session DTO.
+- `atrust-auth/src/lib.rs` and `hermes-transport/src/lib.rs`: remove the plaintext file session store and private-file helper modules/exports. The bridge has its own bounded in-memory session DTO.
 - `atrust-auth/src/client.rs`: recognize both explicit invalid-session business codes (`75500002`, `10000004`) and expose a bounded SID snapshot from the current gateway cookie jar. The bridge also treats an explicit `authConfig.isLogin=0` as expired without another request; network failures, generic HTTP denials and unknown business codes remain unknown.
-- `atrust-client/src/client.rs`: add `dial_tcp_pinned(host,address,port)`, matching authorization against the original hostname while encoding the already-admitted numeric destination in the tunnel handshake. There is no second DNS lookup for target dialing. Each TCP handshake uses the current jar SID, including rotation by `clientResource`; a missing/invalid live SID never falls back to the saved SID. Publishing that snapshot back to protected persistent storage remains future work.
+- `atrust-client/src/client.rs`: add `dial_tcp_pinned(host,address,port)`, matching authorization against the original hostname while encoding the already-admitted numeric destination in the tunnel handshake. There is no second DNS lookup for target dialing. Each TCP handshake uses the current jar SID, including rotation by `clientResource`; a missing/invalid live SID never falls back to the saved SID. Publishing that snapshot from resource refresh back to protected persistent storage remains future work. Test transports supply synthetic live cookies.
 - `hermes-transport`: add exact DER certificate SHA-256 pin verification, retaining real TLS 1.2/1.3 signature checks. The FFI accepts only normal PKI or this pin; upstream's diagnostic certificate-disable policy has no bridge input or execution path.
 - `hermes-model/src/identifier.rs`: erase owned session/device/connection identifier strings when dropped, in addition to upstream key/SecretString erasure.
+- `atrust-protocol/src/l3_frame.rs`: retain the existing frame-limit correction.
+- The bridge disables the new automatic TLS node measurement for its short-lived invocation sessions, retaining candidate connection fallback. The upstream health/backoff implementation remains tested in its crate. Confirmed resource-session invalidation now blocks status, cached resolution and dial. L3-required resources fail closed because this bridge exposes only TCP.
 
 `THIRD_PARTY.json` records the resolved dependency graph, source versions and SPDX declarations, including test and target-specific packages. `THIRD_PARTY_NOTICES.txt` contains available license and notice texts from the resolved packages. Android/Linux normal graphs do not include EFI `r-efi`; for its multi-license declaration the MIT alternative is selected. No GPL-family license is selected. `Cargo.lock` pins sources/checksums. Ship this notice file and `vendor/hermes/LICENSE` with distributed native assets. The checked-in Flutter asset copies under `client/assets/native/hermes/` match this pinned edition; update both copies with any dependency change. Flutter bundles these paths and registers them in the in-app license page. The graph contains Rustls/ring, Tokio, Reqwest and the existing upstream crypto/serialization dependencies; no native module is obtained from a school script.
 
@@ -69,3 +71,5 @@ The [2026-11-03 ZJU Connect comparison](../../docs/research/hermes_zju_connect_a
 records protocol differences, licensing boundaries and the remaining gateway
 acceptance work. Bridge tests cover the updated account-state behavior;
 they do not establish complete protocol parity or real gateway connectivity.
+
+The [2026-11-04 local upstream audit](../../docs/research/hermes_upstream_alignment_2026_11_04.md) records the source update and its validation.

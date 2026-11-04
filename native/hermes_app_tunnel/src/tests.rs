@@ -105,6 +105,7 @@ async fn certificate_pin_requires_exact_certificate_and_real_tls_signatures() {
 }
 struct ResourceTransport {
     port: u16,
+    expired: AtomicBool,
     sid: Mutex<Option<String>>,
 }
 
@@ -302,6 +303,12 @@ impl HttpTransport for ResourceTransport {
         &self,
         _: HttpRequest,
     ) -> std::result::Result<HttpResponse, HttpTransportError> {
+        if self.expired.load(Ordering::Relaxed) {
+            return Ok(HttpResponse {
+                status: 200, location: None,
+                body: br#"{"code":75500002,"data":{}}"#.to_vec(),
+            });
+        }
         // Model a clientResource response that rotates the imported SID.
         *self.sid.lock().unwrap() = Some("synthetic-rotated-sid".into());
         Ok(HttpResponse{status:200,location:None,body:json!({"code":0,"data":{"appList":{"data":{
@@ -364,6 +371,7 @@ async fn hermes_tunnel_uses_pinned_ip_and_single_private_socket_then_stop_cleans
     let gateway = GatewayEndpoint::new("gateway.synthetic.invalid", 443).unwrap();
     let transport = Arc::new(ResourceTransport {
         port,
+        expired: AtomicBool::new(false),
         sid: Mutex::new(Some("synthetic-sid".into())),
     });
     let auth = Arc::new(AuthClient::new(gateway.clone(), transport.clone()));
@@ -388,7 +396,7 @@ async fn hermes_tunnel_uses_pinned_ip_and_single_private_socket_then_stop_cleans
     let config = AtrustClientConfig::new(
         gateway,
         TlsPolicy::PinnedCertificateSha256(Sha256::digest(CERT).into()),
-    );
+    ).with_node_refresh_interval(Duration::ZERO);
     let client = AtrustClient::start(auth, configuration, material, config)
         .await
         .unwrap();
@@ -452,6 +460,17 @@ async fn hermes_tunnel_uses_pinned_ip_and_single_private_socket_then_stop_cleans
             ))
         ));
     }
+    // A known invalid-session response must block cached DNS, new tunnels,
+    // and readiness publication without attempting a second node connection.
+    transport.expired.store(true, Ordering::Relaxed);
+    assert!(session.client.refresh_resources().await.is_err());
+    assert_eq!(status(&session).await, Err(AUTH));
+    assert_eq!(resolve(&session, &json!({"host":"service.synthetic.invalid"})).await, Err(AUTH));
+    assert_eq!(dial(
+        &session,
+        &json!({"host":"service.synthetic.invalid","address":"192.0.2.7","port":443}),
+        Arc::new(Control::new()),
+    ).await, Err(AUTH));
     let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
     SESSIONS.lock().unwrap().insert(handle, session);
     stop(&json!({"handle":handle})).await.unwrap();

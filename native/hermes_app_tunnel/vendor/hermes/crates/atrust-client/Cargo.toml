@@ -13,11 +13,13 @@ atrust-tcp = { path = "../atrust-tcp" }
 hermes-events = { path = "../hermes-events" }
 hermes-model = { path = "../hermes-model" }
 hermes-transport = { path = "../hermes-transport" }
+futures-util.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tracing.workspace = true
 
 [dev-dependencies]
+url.workspace = true
 async-trait.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 

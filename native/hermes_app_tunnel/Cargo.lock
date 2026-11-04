@@ -50,12 +50,14 @@ dependencies = [
  "atrust-l3",
  "atrust-protocol",
  "atrust-tcp",
+ "futures-util",
  "hermes-events",
  "hermes-model",
  "hermes-transport",
  "thiserror",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]

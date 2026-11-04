@@ -23,7 +23,7 @@
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant, SystemTime};
 
 use atrust_protocol::{
@@ -32,7 +32,9 @@ use atrust_protocol::{
 };
 use hermes_events::{EventBus, HermesEvent, L3DataLayout, OptionalEventBus as _};
 use hermes_model::SessionId;
-use hermes_transport::{TlsConnectError, TlsPolicy, connect_tls};
+use hermes_transport::{
+    SystemUnderlay, TlsConnectError, TlsPolicy, UnderlayDialer, connect_tls_with_underlay,
+};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
 use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot, watch};
@@ -52,6 +54,8 @@ use crate::packet::{Ipv4Flow, PacketError, parse_ipv4_flow};
 
 /// Heartbeat cadence validated for one L3 connection.
 pub const L3_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
+/// Close after three unanswered probe intervals; cadence remains deployment-controlled.
+pub const L3_HEARTBEAT_MISS_LIMIT: u64 = 3;
 
 /// Monotonic flow-authorization counters for diagnostics and concurrency tests.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -108,6 +112,8 @@ pub enum L3CloseReason {
     ReadError,
     WriteError,
     FlushError,
+    WriteTimeout,
+    HeartbeatTimeout,
     FramingError,
     InboundBufferLimit,
     PacketConsumerDropped,
@@ -123,6 +129,8 @@ impl L3CloseReason {
             Self::ReadError => "read_error",
             Self::WriteError => "write_error",
             Self::FlushError => "flush_error",
+            Self::WriteTimeout => "write_timeout",
+            Self::HeartbeatTimeout => "heartbeat_timeout",
             Self::FramingError => "framing_error",
             Self::InboundBufferLimit => "inbound_buffer_limit",
             Self::PacketConsumerDropped => "packet_consumer_dropped",
@@ -164,6 +172,8 @@ const READ_CHUNK: usize = 16 * 1024;
 const WRITE_QUEUE_DEPTH: usize = 64;
 const AUTH_RETRY_QUEUE_DEPTH: usize = 64;
 const PACKET_QUEUE_DEPTH: usize = 256;
+const WRITE_TIMEOUT: Duration = Duration::from_secs(20);
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(1);
 
 struct OutboundFrame {
     bytes: Vec<u8>,
@@ -196,6 +206,12 @@ pub struct L3SessionConfig<'a> {
     pub events: Option<Arc<EventBus>>,
 }
 
+#[derive(Debug)]
+struct PacketSubscription {
+    id: u64,
+    sender: mpsc::Sender<Vec<u8>>,
+}
+
 /// State shared between the caller and the session tasks.
 #[derive(Debug)]
 struct SessionShared {
@@ -207,6 +223,8 @@ struct SessionShared {
     /// Callers awaiting a `0x93` for a given auth id. A flow can have more than
     /// one waiter when several packets race into the same unauthorized flow.
     waiters: Mutex<HashMap<u64, Vec<oneshot::Sender<AuthOutcome>>>>,
+    packet_subscribers: Mutex<HashMap<FlowKey, PacketSubscription>>,
+    next_subscriber: AtomicU64,
     closed: AtomicBool,
     close_info: Mutex<Option<L3CloseInfo>>,
     /// Inbound packets discarded because the consumer was not keeping up.
@@ -226,6 +244,8 @@ struct SessionShared {
     heartbeat_requests_sent: AtomicU64,
     heartbeat_acks_received: AtomicU64,
     last_heartbeat_ack: Mutex<Option<(SystemTime, Instant)>>,
+    last_heartbeat_ack_monotonic: Mutex<Option<tokio::time::Instant>>,
+    first_heartbeat_written: Mutex<Option<tokio::time::Instant>>,
     /// Broadcast stop signal. Every task selects on it, so closing a session
     /// does not have to wait for a task's own timer to fire.
     stop_tx: watch::Sender<bool>,
@@ -255,6 +275,8 @@ impl SessionShared {
             node_group_id,
             conntrack: Mutex::new(ConntrackTable::new()),
             waiters: Mutex::new(HashMap::new()),
+            packet_subscribers: Mutex::new(HashMap::new()),
+            next_subscriber: AtomicU64::new(1),
             closed: AtomicBool::new(false),
             close_info: Mutex::new(None),
             dropped_packets: AtomicU64::new(0),
@@ -273,6 +295,8 @@ impl SessionShared {
             heartbeat_requests_sent: AtomicU64::new(0),
             heartbeat_acks_received: AtomicU64::new(0),
             last_heartbeat_ack: Mutex::new(None),
+            last_heartbeat_ack_monotonic: Mutex::new(None),
+            first_heartbeat_written: Mutex::new(None),
             stop_tx: watch::channel(false).0,
             events,
             seen_length_prefixed: AtomicBool::new(false),
@@ -306,6 +330,10 @@ impl SessionShared {
             .collect();
         drop(drained);
         self.auth_in_flight.store(0, Ordering::Relaxed);
+        self.packet_subscribers
+            .lock()
+            .expect("packet subscribers mutex")
+            .clear();
 
         warn!(
             event = "atrust_l3.session.vip_changed",
@@ -419,6 +447,10 @@ impl SessionShared {
             self.closed.store(true, Ordering::SeqCst);
         }
         let _ = self.stop_tx.send(true);
+        self.packet_subscribers
+            .lock()
+            .expect("packet subscribers mutex")
+            .clear();
         let cancelled = {
             let mut table = self.conntrack.lock().expect("conntrack mutex");
             let cancelled = table.scheduled_retries();
@@ -456,6 +488,10 @@ impl SessionShared {
         self.heartbeat_acks_received.fetch_add(1, Ordering::Relaxed);
         *self.last_heartbeat_ack.lock().expect("heartbeat ack mutex") =
             Some((SystemTime::now(), Instant::now()));
+        *self
+            .last_heartbeat_ack_monotonic
+            .lock()
+            .expect("heartbeat clock mutex") = Some(tokio::time::Instant::now());
     }
 }
 
@@ -469,16 +505,89 @@ pub struct L3Session {
     shared: Arc<SessionShared>,
     write_tx: mpsc::Sender<OutboundFrame>,
     packets: AsyncMutex<mpsc::Receiver<Vec<u8>>>,
-    tasks: Mutex<Vec<JoinHandle<()>>>,
+    tasks: AsyncMutex<Vec<JoinHandle<()>>>,
+}
+
+/// Exclusive bounded reply queue for an outbound five-tuple. Matching packets
+/// do not compete with the raw packet reader or another flow's receiver.
+#[derive(Debug)]
+pub struct FlowPackets {
+    shared: Weak<SessionShared>,
+    key: FlowKey,
+    id: u64,
+    receiver: mpsc::Receiver<Vec<u8>>,
+}
+impl FlowPackets {
+    pub async fn recv(&mut self) -> Option<Vec<u8>> {
+        self.receiver.recv().await
+    }
+}
+impl Drop for FlowPackets {
+    fn drop(&mut self) {
+        if let Some(shared) = self.shared.upgrade() {
+            let mut subscribers = shared
+                .packet_subscribers
+                .lock()
+                .expect("packet subscribers mutex");
+            if subscribers
+                .get(&self.key)
+                .is_some_and(|entry| entry.id == self.id)
+            {
+                subscribers.remove(&self.key);
+            }
+        }
+    }
 }
 
 impl L3Session {
+    pub fn subscribe_flow(&self, flow: &Ipv4Flow) -> Result<FlowPackets, L3SessionError> {
+        let mut subscribers = self
+            .shared
+            .packet_subscribers
+            .lock()
+            .expect("packet subscribers mutex");
+        if self.is_closed() {
+            return Err(L3SessionError::Closed);
+        }
+        if flow.src_addr != self.vip() {
+            return Err(L3SessionError::VipChanged {
+                packet_source: flow.src_addr,
+                session_vip: self.vip(),
+            });
+        }
+        let key = flow.flow_key();
+        if subscribers.contains_key(&key) {
+            return Err(L3SessionError::FlowAlreadySubscribed);
+        }
+        let id = self.shared.next_subscriber.fetch_add(1, Ordering::Relaxed);
+        let (sender, receiver) = mpsc::channel(64);
+        subscribers.insert(key.clone(), PacketSubscription { id, sender });
+        Ok(FlowPackets {
+            shared: Arc::downgrade(&self.shared),
+            key,
+            id,
+            receiver,
+        })
+    }
+
     /// Connects to a node, performs Get-IP, and starts the session on that
     /// same connection.
     pub async fn establish(config: L3SessionConfig<'_>) -> Result<Self, L3SessionError> {
+        Self::establish_with_underlay(config, &SystemUnderlay::default()).await
+    }
+
+    pub async fn establish_with_underlay(
+        config: L3SessionConfig<'_>,
+        underlay: &dyn UnderlayDialer,
+    ) -> Result<Self, L3SessionError> {
         let stream = timeout(
             config.connect_timeout,
-            connect_tls(config.node_host, config.node_port, config.tls_policy),
+            connect_tls_with_underlay(
+                config.node_host,
+                config.node_port,
+                config.tls_policy,
+                underlay,
+            ),
         )
         .await
         .map_err(|_| L3SessionError::ConnectTimeout)??;
@@ -565,25 +674,28 @@ impl L3Session {
                     _ = writer_stop.changed() => break,
                     frame = write_rx.recv() => {
                         let Some(frame) = frame else { break };
-                        if let Err(error) = write_half.write_all(&frame.bytes).await {
+                        let result = tokio::select! {
+                            biased;
+                            _ = writer_stop.changed() => break,
+                            result = timeout(WRITE_TIMEOUT, async {
+                                write_half.write_all(&frame.bytes).await
+                                    .map_err(|error| (L3CloseReason::WriteError, error))?;
+                                write_half.flush().await
+                                    .map_err(|error| (L3CloseReason::FlushError, error))
+                            }) => result,
+                        };
+                        if result.is_err() {
+                            writer_shared.shutdown(L3CloseReason::WriteTimeout, "L3 write deadline exceeded");
+                            break;
+                        }
+                        if let Err((reason, error)) = result.expect("write completed before deadline") {
                             if let Some(written) = frame.written {
                                 let _ = written.send(Err(()));
                             }
                             warn!(event = "atrust_l3.session.write_failed", %error);
                             writer_shared.shutdown(
-                                L3CloseReason::WriteError,
+                                reason,
                                 format!("L3 connection write failed: {error}"),
-                            );
-                            break;
-                        }
-                        if let Err(error) = write_half.flush().await {
-                            if let Some(written) = frame.written {
-                                let _ = written.send(Err(()));
-                            }
-                            warn!(event = "atrust_l3.session.flush_failed", %error);
-                            writer_shared.shutdown(
-                                L3CloseReason::FlushError,
-                                format!("L3 connection flush failed: {error}"),
                             );
                             break;
                         }
@@ -591,6 +703,8 @@ impl L3Session {
                             let _ = written.send(Ok(()));
                         }
                         if frame.heartbeat {
+                            writer_shared.first_heartbeat_written.lock().expect("heartbeat clock mutex")
+                                .get_or_insert_with(tokio::time::Instant::now);
                             writer_shared
                                 .heartbeat_requests_sent
                                 .fetch_add(1, Ordering::Relaxed);
@@ -598,7 +712,7 @@ impl L3Session {
                     }
                 }
             }
-            let _ = write_half.shutdown().await;
+            let _ = timeout(CLOSE_TIMEOUT, write_half.shutdown()).await;
             debug!(event = "atrust_l3.session.writer_stopped");
         });
 
@@ -621,6 +735,7 @@ impl L3Session {
         });
 
         let heartbeat_tx = write_tx.clone();
+        let heartbeat_shared = Arc::clone(&shared);
         let mut heartbeat_stop = shared.stop_signal();
         let heartbeat = tokio::spawn(async move {
             let mut ticker = tokio::time::interval(heartbeat_interval);
@@ -632,6 +747,20 @@ impl L3Session {
                     biased;
                     _ = heartbeat_stop.changed() => break,
                     _ = ticker.tick() => {
+                        let now = tokio::time::Instant::now();
+                        let last_ack = *heartbeat_shared.last_heartbeat_ack_monotonic
+                            .lock().expect("heartbeat clock mutex");
+                        let first_probe_at = *heartbeat_shared.first_heartbeat_written.lock().expect("heartbeat clock mutex");
+                        let unanswered = heartbeat_shared.heartbeat_requests_sent.load(Ordering::Relaxed)
+                            .saturating_sub(heartbeat_shared.heartbeat_acks_received.load(Ordering::Relaxed));
+                        if unanswered >= L3_HEARTBEAT_MISS_LIMIT && first_probe_at.is_some_and(|first| {
+                            now.saturating_duration_since(last_ack.unwrap_or(first))
+                                >= heartbeat_interval.saturating_mul(L3_HEARTBEAT_MISS_LIMIT as u32)
+                        }) {
+                            heartbeat_shared.shutdown(L3CloseReason::HeartbeatTimeout,
+                                "L3 peer did not acknowledge heartbeat probes");
+                            break;
+                        }
                         if heartbeat_tx.send(OutboundFrame {
                             bytes: encode_l3_heartbeat_req().to_vec(),
                             written: None,
@@ -724,7 +853,7 @@ impl L3Session {
             shared,
             write_tx,
             packets: AsyncMutex::new(packets_rx),
-            tasks: Mutex::new(vec![writer, reader, heartbeat, retry_scheduler]),
+            tasks: AsyncMutex::new(vec![writer, reader, heartbeat, retry_scheduler]),
         })
     }
 
@@ -860,7 +989,29 @@ impl L3Session {
             let mut table = self.shared.conntrack.lock().expect("conntrack mutex");
             // Retire idle flows on the same lock acquisition that adds one, so
             // the table stays bounded without a second task contending here.
-            let prune = table.prune();
+            let prune = table.maintain_for_flow(&key);
+            if let Some((old_id, in_flight)) = table
+                .get_by_key(&key)
+                .filter(|entry| entry.app_id != app_id || entry.node_group_id != node_group_id)
+                .map(|entry| (entry.auth_id, entry.auth_in_flight()))
+            {
+                // Late replies and cancelled callers must not settle or remove
+                // the replacement authorization for this same five-tuple.
+                table.evict_by_auth_id(old_id);
+                self.shared.notify(
+                    old_id,
+                    &AuthOutcome::Failed {
+                        message: "flow resource changed during authorization".to_owned(),
+                    },
+                );
+                if in_flight {
+                    let _ = self.shared.auth_in_flight.fetch_update(
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                        |n| Some(n.saturating_sub(1)),
+                    );
+                }
+            }
             let entry = table.get_or_create(key.clone(), app_id, node_group_id);
             if let Some(outcome) = entry.outcome() {
                 return match outcome {
@@ -914,7 +1065,7 @@ impl L3Session {
             let frame = match build_flow_auth_frame(ctx, app_id, auth_id, &flow.to_five_tuple()) {
                 Ok(frame) => frame,
                 Err(error) => {
-                    self.abandon_flow(&key, auth_id);
+                    self.abandon_flow(auth_id);
                     return Err(error.into());
                 }
             };
@@ -939,7 +1090,7 @@ impl L3Session {
                 app_id
             );
             if self.write_frame(frame).await.is_err() {
-                self.abandon_flow(&key, auth_id);
+                self.abandon_flow(auth_id);
                 return Err(L3SessionError::Closed);
             }
             self.shared.record_auth_sent();
@@ -971,7 +1122,7 @@ impl L3Session {
             }),
             Ok(Err(_)) => Err(L3SessionError::Closed),
             Err(_) => {
-                self.abandon_flow(&key, auth_id);
+                self.abandon_flow(auth_id);
                 if must_send {
                     self.shared.settle_auth(true);
                 }
@@ -989,12 +1140,12 @@ impl L3Session {
     }
 
     /// Drops a flow and its waiters so the next attempt starts clean.
-    fn abandon_flow(&self, key: &FlowKey, auth_id: u64) {
+    fn abandon_flow(&self, auth_id: u64) {
         self.shared
             .conntrack
             .lock()
             .expect("conntrack mutex")
-            .evict(key);
+            .evict_by_auth_id(auth_id);
         self.shared
             .waiters
             .lock()
@@ -1037,8 +1188,16 @@ impl L3Session {
     /// acknowledgement a dead socket looks successful to callers, preventing
     /// the connection owner from performing a safe L3 retry.
     async fn write_frame(&self, bytes: Vec<u8>) -> Result<(), L3SessionError> {
+        let mut stop = self.shared.stop_signal();
+        if self.is_closed() {
+            return Err(L3SessionError::Closed);
+        }
         let (written, receiver) = oneshot::channel();
-        self.write_tx
+        tokio::select! {
+            biased;
+            _ = stop.changed() => Err(L3SessionError::Closed),
+            result = async {
+                self.write_tx
             .send(OutboundFrame {
                 bytes,
                 written: Some(written),
@@ -1046,9 +1205,11 @@ impl L3Session {
             })
             .await
             .map_err(|_| L3SessionError::Closed)?;
-        match receiver.await {
+                match receiver.await {
             Ok(Ok(())) => Ok(()),
             _ => Err(L3SessionError::Closed),
+                }
+            } => result,
         }
     }
 
@@ -1058,12 +1219,21 @@ impl L3Session {
     }
 
     /// Closes the connection and stops the reader, writer and heartbeat tasks.
-    pub async fn close(&self) {
+    pub fn request_close(&self) {
         self.shared
             .shutdown(L3CloseReason::Caller, "L3 session closed by caller");
-        let handles: Vec<_> = std::mem::take(&mut *self.tasks.lock().expect("tasks mutex"));
-        for handle in handles {
-            let _ = handle.await;
+    }
+
+    /// Requests closure and joins the owned tasks within their shutdown budget.
+    pub async fn close(&self) {
+        self.request_close();
+        let mut handles = self.tasks.lock().await;
+        while let Some(handle) = handles.last_mut() {
+            if timeout(CLOSE_TIMEOUT, &mut *handle).await.is_err() {
+                handle.abort();
+                let _ = handle.await;
+            }
+            handles.pop();
         }
         debug!(event = "atrust_l3.session.closed");
     }
@@ -1074,10 +1244,8 @@ impl Drop for L3Session {
         // A dropped session must not leave three tasks holding a live socket.
         self.shared
             .shutdown(L3CloseReason::Dropped, "L3 session object dropped");
-        if let Ok(mut tasks) = self.tasks.lock() {
-            for handle in tasks.drain(..) {
-                handle.abort();
-            }
+        for handle in self.tasks.get_mut().drain(..) {
+            handle.abort();
         }
     }
 }
@@ -1287,6 +1455,20 @@ fn deliver(
     shared: &Arc<SessionShared>,
     packet: Vec<u8>,
 ) -> Option<String> {
+    let subscriber = parse_ipv4_flow(&packet).ok().and_then(|flow| {
+        shared
+            .packet_subscribers
+            .lock()
+            .expect("packet subscribers mutex")
+            .get(&flow.reverse_flow_key())
+            .map(|entry| entry.sender.clone())
+    });
+    if let Some(sender) = subscriber {
+        if sender.try_send(packet).is_err() {
+            shared.record_drop();
+        }
+        return None;
+    }
     match packets_tx.try_send(packet) {
         Ok(()) => None,
         Err(mpsc::error::TrySendError::Full(_)) => {
@@ -1564,6 +1746,8 @@ fn dispatch(
 
 #[derive(Debug, Error)]
 pub enum L3SessionError {
+    #[error("flow already has an exclusive packet subscriber")]
+    FlowAlreadySubscribed,
     #[error("TLS connection failed: {0}")]
     Tls(#[from] TlsConnectError),
     #[error("timed out connecting to the L3 node")]
@@ -1715,7 +1899,7 @@ mod tests {
             Some(events),
             L3AuthRetryConfig::disabled(),
         ));
-        let flow = FlowKey::new(1, 6, "10.0.0.1", 1234, "192.0.2.1", 443);
+        let flow = crate::FlowKey::new(1, 6, "10.0.0.1", 1234, "192.0.2.1", 443);
         shared
             .conntrack
             .lock()

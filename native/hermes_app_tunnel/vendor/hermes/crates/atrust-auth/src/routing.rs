@@ -24,6 +24,7 @@
 //! so a live capture can confirm or refute the ranking. If the gateway turns out
 //! to be plain first-match-wins, only [`ResourceIndex::build`]'s sort changes.
 
+use crate::index::{DomainNode, IpNode};
 use std::net::Ipv4Addr;
 
 use hermes_model::GatewayEndpoint;
@@ -138,6 +139,8 @@ pub enum Destination<'a> {
 pub struct MatchedResource {
     pub app_id: String,
     pub node_group_id: String,
+    pub tcp_prefers_l3: bool,
+    pub addr_pretend: bool,
 }
 
 impl Destination<'_> {
@@ -181,6 +184,14 @@ impl Destination<'_> {
         MatchedResource {
             app_id: self.app_id().to_owned(),
             node_group_id: self.node_group_id().to_owned(),
+            tcp_prefers_l3: match self {
+                Self::Ip(r) => r.tcp_prefers_l3,
+                Self::Domain(r) => r.tcp_prefers_l3,
+            },
+            addr_pretend: match self {
+                Self::Ip(r) => r.addr_pretend,
+                Self::Domain(r) => r.addr_pretend,
+            },
         }
     }
 }
@@ -188,6 +199,8 @@ impl Destination<'_> {
 /// Resource tables pre-sorted so the first hit is the most specific one.
 #[derive(Clone, Debug)]
 pub struct ResourceIndex {
+    ip_tree: Option<Box<IpNode>>,
+    domain_tree: DomainNode,
     ip: Vec<IpResource>,
     domain: Vec<IndexedDomain>,
 }
@@ -199,6 +212,18 @@ struct IndexedDomain {
 }
 
 impl ResourceIndex {
+    /// Host-only policy query for DNS/Fake IP. Dialing still checks port and
+    /// protocol; this method grants no permission to send a packet.
+    pub fn domain_resources_for_host(&self, host: &str) -> Vec<&DomainResource> {
+        let Some(host) = normalize_host(host) else {
+            return Vec::new();
+        };
+        self.domain
+            .iter()
+            .filter(|entry| entry.pattern.matches(&host))
+            .map(|entry| &entry.resource)
+            .collect()
+    }
     /// Builds the index once per `clientResource` fetch.
     ///
     /// Sorting is stable, so resources of equal specificity keep the order the
@@ -219,7 +244,17 @@ impl ResourceIndex {
             .collect::<Vec<_>>();
         domain.sort_by_key(domain_specificity);
 
-        Self { ip, domain }
+        let ip_tree = IpNode::build(&ip);
+        let mut domain_tree = DomainNode::default();
+        for (index, entry) in domain.iter().enumerate() {
+            domain_tree.insert(&entry.pattern.suffix, index);
+        }
+        Self {
+            ip,
+            domain,
+            ip_tree,
+            domain_tree,
+        }
     }
 
     pub fn ip_len(&self) -> usize {
@@ -237,9 +272,13 @@ impl ResourceIndex {
     /// Most specific IP resource authorizing `flow`, or `None` when the flow is
     /// out of scope and must not be sent to the VPN.
     pub fn match_ip(&self, flow: FlowKey) -> Option<&IpResource> {
-        self.ip
-            .iter()
-            .find(|resource| ip_resource_matches(resource, flow))
+        let mut best = None;
+        self.ip_tree.as_ref()?.find(
+            u32::from(flow.destination),
+            &|i| ip_resource_matches(&self.ip[i], flow),
+            &mut best,
+        );
+        best.map(|i| &self.ip[i])
     }
 
     /// Every IP resource authorizing `flow`, most specific first. Use this to
@@ -255,10 +294,11 @@ impl ResourceIndex {
     /// wildcard, and a longer wildcard suffix beats a shorter one.
     pub fn match_domain(&self, flow: DomainFlow<'_>) -> Option<&DomainResource> {
         let host = normalize_host(flow.host)?;
-        self.domain
-            .iter()
-            .find(|entry| domain_entry_matches(entry, &host, flow))
-            .map(|entry| &entry.resource)
+        self.domain_tree
+            .find(&host, |i| {
+                domain_entry_matches(&self.domain[i], &host, flow)
+            })
+            .map(|i| &self.domain[i].resource)
     }
 
     pub fn match_domain_all(&self, flow: DomainFlow<'_>) -> Vec<&DomainResource> {
@@ -485,6 +525,8 @@ mod tests {
             protocol,
             app_id: app_id.to_owned(),
             node_group_id: format!("ng-{app_id}"),
+            tcp_prefers_l3: false,
+            addr_pretend: true,
         }
     }
 
@@ -501,6 +543,8 @@ mod tests {
             protocol,
             app_id: app_id.to_owned(),
             node_group_id: format!("ng-{app_id}"),
+            tcp_prefers_l3: false,
+            addr_pretend: true,
             resolved_ips: Vec::new(),
         }
     }
@@ -944,6 +988,8 @@ mod tests {
             MatchedResource {
                 app_id: "byip".to_owned(),
                 node_group_id: "ng-byip".to_owned(),
+                tcp_prefers_l3: false,
+                addr_pretend: true,
             }
         );
 
@@ -1143,10 +1189,67 @@ mod tests {
             protocol: ResourceProtocol::Icmp,
             app_id: "app-icmp".to_owned(),
             node_group_id: "ng".to_owned(),
+            tcp_prefers_l3: false,
+            addr_pretend: true,
         };
         let target = Ipv4Addr::new(10, 0, 0, 1);
         assert!(ip_resource_matches(&resource, FlowKey::icmp(target)));
         assert!(!ip_resource_matches(&resource, FlowKey::tcp(target, 80)));
         assert!(!ip_resource_matches(&resource, FlowKey::udp(target, 80)));
+    }
+    #[test]
+    fn indexed_queries_preserve_linear_specificity_results() {
+        let mut ips = Vec::new();
+        for i in 0..128u32 {
+            let start = (i * 977) % 65536;
+            let end = (start + 1024).min(65535);
+            ips.push(ip_resource(
+                (
+                    &Ipv4Addr::from(start).to_string(),
+                    &Ipv4Addr::from(end).to_string(),
+                ),
+                ((i % 10) as u16, (i % 10 + 100) as u16),
+                ResourceProtocol::All,
+                &format!("app-{i}"),
+            ));
+        }
+        let index = ResourceIndex::build(&resources(
+            ips,
+            vec![
+                domain_resource("*", (1, 65535), ResourceProtocol::All, "any"),
+                domain_resource("*.test", (80, 443), ResourceProtocol::Tcp, "wild"),
+                domain_resource("a.test", (443, 443), ResourceProtocol::Tcp, "exact"),
+                domain_resource("*.a.test", (80, 80), ResourceProtocol::All, "nested"),
+            ],
+        ));
+        for i in 0..2048u32 {
+            let flow = FlowKey::tcp(Ipv4Addr::from((i * 73) % 65536), (i % 150) as u16);
+            assert_eq!(
+                index.match_ip(flow),
+                index.match_ip_all(flow).first().copied()
+            );
+        }
+        for host in [
+            "test",
+            "a.test",
+            "b.test",
+            "x.a.test",
+            "badtest",
+            "other.org",
+        ] {
+            for port in [0, 80, 443, 8080] {
+                for protocol in [FlowProtocol::Tcp, FlowProtocol::Udp] {
+                    let flow = DomainFlow {
+                        host,
+                        port,
+                        protocol,
+                    };
+                    assert_eq!(
+                        index.match_domain(flow),
+                        index.match_domain_all(flow).first().copied()
+                    );
+                }
+            }
+        }
     }
 }

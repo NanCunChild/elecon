@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use std::net::Ipv4Addr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, RwLock};
 use std::time::Duration;
 
 use hermes_events::{EventBus, HermesEvent, OptionalEventBus as _};
 use hermes_model::SessionId;
-use hermes_transport::TlsPolicy;
+use hermes_transport::{SystemUnderlay, TlsPolicy, UnderlayDialer};
 use thiserror::Error;
 use tokio::sync::Mutex;
 use tracing::warn;
@@ -21,6 +22,7 @@ pub struct L3SessionManagerConfig {
     pub endpoints: Vec<L3NodeEndpoint>,
     pub node_group_id: String,
     pub tls_policy: TlsPolicy,
+    pub underlay: Arc<dyn UnderlayDialer>,
     pub sid: SessionId,
     pub connect_timeout: Duration,
     pub heartbeat_interval: Duration,
@@ -40,6 +42,7 @@ impl L3SessionManagerConfig {
             endpoints,
             node_group_id,
             tls_policy,
+            underlay: Arc::new(SystemUnderlay::default()),
             sid,
             connect_timeout,
             heartbeat_interval: L3_HEARTBEAT_INTERVAL,
@@ -91,6 +94,7 @@ pub struct L3SessionManager {
     config: L3SessionManagerConfig,
     endpoints: RwLock<Vec<L3NodeEndpoint>>,
     current: Mutex<SessionState>,
+    retired: AtomicBool,
 }
 
 #[derive(Debug, Default)]
@@ -101,15 +105,29 @@ struct SessionState {
     /// change can be reported. A new VIP invalidates every cached flow and any
     /// interface or route configured for the old one.
     last_vip: Option<Ipv4Addr>,
+    failures: u32,
+    retry_at: Option<tokio::time::Instant>,
 }
 
 impl L3SessionManager {
+    /// Permanently prevents reconnects and signals a live session synchronously.
+    /// Unlike close(), retirement remains in force for external manager handles.
+    pub fn retire(&self) {
+        self.retired.store(true, Ordering::Release);
+        if let Ok(state) = self.current.try_lock()
+            && let Some(session) = &state.session
+        {
+            session.request_close();
+        }
+    }
+
     pub fn new(config: L3SessionManagerConfig) -> Self {
         let endpoints = deduplicate_endpoints(config.endpoints.clone());
         Self {
             config,
             endpoints: RwLock::new(endpoints),
             current: Mutex::new(SessionState::default()),
+            retired: AtomicBool::new(false),
         }
     }
 
@@ -151,7 +169,13 @@ impl L3SessionManager {
 
     /// Returns the live session, establishing Get-IP lazily when absent/closed.
     pub async fn session(&self) -> Result<Arc<L3Session>, L3SessionManagerError> {
+        if self.retired.load(Ordering::Acquire) {
+            return Err(L3SessionManagerError::Retired);
+        }
         let mut state = self.current.lock().await;
+        if self.retired.load(Ordering::Acquire) {
+            return Err(L3SessionManagerError::Retired);
+        }
         if let Some(session) = state.session.as_ref()
             && !session.is_closed()
         {
@@ -160,6 +184,10 @@ impl L3SessionManager {
         if let Some(closed) = state.session.take() {
             state.last_vip = Some(closed.vip());
             closed.close().await;
+            state.retry_at = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+        }
+        if let Some(retry_at) = state.retry_at {
+            tokio::time::sleep_until(retry_at).await;
         }
         let endpoints = self
             .endpoints
@@ -177,19 +205,28 @@ impl L3SessionManager {
         for offset in 0..endpoints.len() {
             let index = (start + offset) % endpoints.len();
             let endpoint = &endpoints[index];
-            let result = L3Session::establish(L3SessionConfig {
-                node_host: &endpoint.host,
-                node_port: endpoint.port,
-                tls_policy: self.config.tls_policy,
-                sid: &self.config.sid,
-                connect_timeout: self.config.connect_timeout,
-                heartbeat_interval: self.config.heartbeat_interval,
-                node_group_id: Some(&self.config.node_group_id),
-                events: self.config.events.clone(),
-            })
+            let result = L3Session::establish_with_underlay(
+                L3SessionConfig {
+                    node_host: &endpoint.host,
+                    node_port: endpoint.port,
+                    tls_policy: self.config.tls_policy,
+                    sid: &self.config.sid,
+                    connect_timeout: self.config.connect_timeout,
+                    heartbeat_interval: self.config.heartbeat_interval,
+                    node_group_id: Some(&self.config.node_group_id),
+                    events: self.config.events.clone(),
+                },
+                self.config.underlay.as_ref(),
+            )
             .await;
             match result {
                 Ok(session) => {
+                    if self.retired.load(Ordering::Acquire) {
+                        session.request_close();
+                        return Err(L3SessionManagerError::Retired);
+                    }
+                    state.failures = 0;
+                    state.retry_at = None;
                     let session = Arc::new(session);
                     state.next_endpoint = (index + 1) % endpoints.len();
                     state.session = Some(Arc::clone(&session));
@@ -215,6 +252,10 @@ impl L3SessionManager {
                 Err(error) => return Err(error.into()),
             }
         }
+        state.failures = state.failures.saturating_add(1);
+        let delay = Duration::from_millis(250)
+            .saturating_mul(1u32 << state.failures.saturating_sub(1).min(5));
+        state.retry_at = Some(tokio::time::Instant::now() + delay);
         Err(last_error
             .expect("non-empty endpoint list produced an error")
             .into())
@@ -426,11 +467,13 @@ fn establishment_is_retryable(error: &L3SessionError) -> bool {
 #[derive(Debug)]
 pub struct L3SessionManagerCache {
     tls_policy: TlsPolicy,
+    underlay: Arc<dyn UnderlayDialer>,
     sid: SessionId,
     connect_timeout: Duration,
     heartbeat_interval: Duration,
     events: Option<Arc<EventBus>>,
     managers: StdMutex<HashMap<String, CachedManager>>,
+    retired: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -440,6 +483,29 @@ struct CachedManager {
 }
 
 impl L3SessionManagerCache {
+    pub fn retire(&self) {
+        self.retired.store(true, Ordering::Release);
+        for manager in self.managers() {
+            manager.retire();
+        }
+    }
+
+    /// Applies a probe result only to an existing manager at the same or a
+    /// newer resource generation. Delayed probes never resurrect retired groups.
+    pub fn update_endpoints_for_generation(
+        &self,
+        group: &str,
+        endpoints: Vec<L3NodeEndpoint>,
+        generation: u64,
+    ) {
+        let mut cache = self.managers.lock().expect("L3 manager cache poisoned");
+        if let Some(cached) = cache.get_mut(group)
+            && generation >= cached.resource_generation
+        {
+            cached.resource_generation = generation;
+            cached.manager.update_endpoints(endpoints);
+        }
+    }
     pub fn with_default_heartbeat(
         tls_policy: TlsPolicy,
         sid: SessionId,
@@ -447,17 +513,25 @@ impl L3SessionManagerCache {
     ) -> Self {
         Self {
             tls_policy,
+            underlay: Arc::new(SystemUnderlay::default()),
             sid,
             connect_timeout,
             heartbeat_interval: L3_HEARTBEAT_INTERVAL,
             events: None,
             managers: StdMutex::new(HashMap::new()),
+            retired: AtomicBool::new(false),
         }
     }
 
     #[must_use]
     pub fn with_heartbeat_interval(mut self, heartbeat_interval: Duration) -> Self {
         self.heartbeat_interval = heartbeat_interval;
+        self
+    }
+
+    #[must_use]
+    pub fn with_underlay(mut self, underlay: Arc<dyn UnderlayDialer>) -> Self {
+        self.underlay = underlay;
         self
     }
 
@@ -495,6 +569,7 @@ impl L3SessionManagerCache {
                     endpoints: endpoints.clone(),
                     node_group_id: node_group_id.to_owned(),
                     tls_policy: self.tls_policy,
+                    underlay: Arc::clone(&self.underlay),
                     sid: self.sid.clone(),
                     connect_timeout: self.connect_timeout,
                     heartbeat_interval: self.heartbeat_interval,
@@ -505,6 +580,9 @@ impl L3SessionManagerCache {
         if resource_generation >= cached.resource_generation {
             cached.manager.update_endpoints(endpoints);
             cached.resource_generation = resource_generation;
+        }
+        if self.retired.load(Ordering::Acquire) {
+            cached.manager.retire();
         }
         Arc::clone(&cached.manager)
     }
@@ -583,6 +661,7 @@ impl L3SessionManagerCache {
             });
         }
         for manager in removed {
+            manager.retire();
             manager.close().await;
             self.events.emit(|| HermesEvent::NodeGroupRetired {
                 node_group_id: manager.config.node_group_id.clone(),
@@ -591,6 +670,7 @@ impl L3SessionManagerCache {
     }
 
     pub async fn close(&self) {
+        self.retire();
         let managers = {
             let mut cache = self.managers.lock().expect("L3 manager cache poisoned");
             cache
@@ -646,6 +726,8 @@ impl RetryBudget {
 
 #[derive(Debug, Error)]
 pub enum L3SessionManagerError {
+    #[error("L3 session manager has been permanently retired")]
+    Retired,
     #[error(transparent)]
     Session(#[from] L3SessionError),
     #[error("node group {node_group_id} has no data-plane endpoints")]
@@ -839,5 +921,25 @@ mod tests {
             manager.session().await,
             Err(L3SessionManagerError::NoEndpoints { node_group_id }) if node_group_id == "empty"
         ));
+    }
+    #[tokio::test]
+    async fn retired_cache_cannot_reconnect_through_old_or_new_manager_handles() {
+        let cache = L3SessionManagerCache::with_default_heartbeat(
+            TlsPolicy::Verify,
+            SessionId::new("sid").unwrap(),
+            Duration::from_secs(1),
+        );
+        let old = cache.manager("g", vec![endpoint("node.test")]);
+        cache.retire();
+        assert!(matches!(
+            old.session().await,
+            Err(L3SessionManagerError::Retired)
+        ));
+        let new = cache.manager("new", vec![endpoint("node.test")]);
+        assert!(matches!(
+            new.session().await,
+            Err(L3SessionManagerError::Retired)
+        ));
+        cache.close().await;
     }
 }

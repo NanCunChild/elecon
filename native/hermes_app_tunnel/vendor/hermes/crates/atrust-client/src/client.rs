@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use atrust_auth::{
     AuthClient, AuthConfiguration, AuthError, FlowProtocol, MatchedResource, ResourceCache,
@@ -10,15 +12,17 @@ use atrust_l3::{
     L3SessionManagerCache, L3SessionManagerError, PacketError, ProcessIdentity, parse_ipv4_flow,
 };
 use atrust_tcp::{
-    DialTcpError, DialTcpRequest, TCP_DIAL_RETRIES, TcpTunnel, TunnelTarget, dial_tcp_with_retry,
+    DialTcpError, DialTcpRequest, TCP_DIAL_RETRIES, TcpTunnel, TunnelTarget,
+    dial_tcp_with_retry_and_underlay,
 };
 use hermes_events::{EventBus, EventStream, HermesEvent};
 use thiserror::Error;
-use tokio::sync::{Mutex, watch};
+use tokio::sync::{Mutex, RwLock, watch};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
 use crate::config::AtrustClientConfig;
+use crate::nodes::{NodeHealth, NodeSelector, refresh_interval};
 use crate::stats::{ClientStats, NodeGroupStats};
 
 /// The assembled runtime: authenticated session, live resource table, node
@@ -26,13 +30,70 @@ use crate::stats::{ClientStats, NodeGroupStats};
 #[derive(Debug)]
 pub struct AtrustClient {
     config: AtrustClientConfig,
+    active: RwLock<Arc<ClientSession>>,
+    events: Arc<EventBus>,
+    control: Mutex<()>,
+    closed: AtomicBool,
+    session_epoch: AtomicU64,
+}
+
+#[derive(Debug)]
+struct ClientSession {
     auth: Arc<AuthClient>,
     auth_config: Arc<AuthConfiguration>,
     material: SessionMaterial,
     resources: Arc<ResourceCache>,
     managers: Arc<L3SessionManagerCache>,
-    events: Arc<EventBus>,
+    nodes: Arc<NodeSelector>,
     background: Mutex<Option<Background>>,
+    stop: watch::Sender<bool>,
+}
+
+impl ClientSession {
+    async fn run<T>(
+        &self,
+        work: impl Future<Output = Result<T, ClientError>>,
+    ) -> Result<T, ClientError> {
+        let mut stop = self.stop.subscribe();
+        if *stop.borrow() {
+            return Err(ClientError::Closed);
+        }
+        if self.resources.is_session_invalid() {
+            return Err(ClientError::AuthenticationRequired);
+        }
+        tokio::select! {
+            biased;
+            _ = stop.changed() => Err(ClientError::Closed),
+            result = work => result,
+        }
+    }
+
+    async fn shutdown(&self) {
+        self.stop.send_replace(true);
+        self.managers.retire();
+        if let Some(mut background) = self.background.lock().await.take() {
+            background.nodes.0.abort();
+            let _ = (&mut background.nodes.0).await;
+            background.reconciler.shutdown().await;
+            background.refresh.shutdown().await;
+        }
+        self.managers.close().await;
+    }
+}
+
+impl Drop for ClientSession {
+    fn drop(&mut self) {
+        self.stop.send_replace(true);
+        self.managers.retire();
+    }
+}
+
+impl Drop for AtrustClient {
+    fn drop(&mut self) {
+        let active = self.active.get_mut();
+        active.stop.send_replace(true);
+        active.managers.retire();
+    }
 }
 
 /// Owned background work, kept together so shutdown cannot forget one of them.
@@ -40,6 +101,15 @@ pub struct AtrustClient {
 struct Background {
     refresh: ResourceRefreshTask,
     reconciler: Reconciler,
+    nodes: NodeTask,
+}
+
+#[derive(Debug)]
+struct NodeTask(JoinHandle<()>);
+impl Drop for NodeTask {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 /// One opened TCP tunnel plus the routing decision that produced it.
@@ -77,6 +147,25 @@ impl AtrustClient {
         config: AtrustClientConfig,
     ) -> Result<Arc<Self>, ClientError> {
         let events = EventBus::with_default_capacity();
+        let active =
+            Self::build_session(auth, auth_config, material, &config, Arc::clone(&events)).await?;
+        Ok(Arc::new(Self {
+            config,
+            active: RwLock::new(active),
+            events,
+            control: Mutex::new(()),
+            closed: AtomicBool::new(false),
+            session_epoch: AtomicU64::new(1),
+        }))
+    }
+
+    async fn build_session(
+        auth: Arc<AuthClient>,
+        auth_config: AuthConfiguration,
+        material: SessionMaterial,
+        config: &AtrustClientConfig,
+        events: Arc<EventBus>,
+    ) -> Result<Arc<ClientSession>, ClientError> {
         let resources = Arc::new(
             ResourceCache::load(&auth, &auth_config)
                 .await?
@@ -88,6 +177,7 @@ impl AtrustClient {
                 material.sid.clone(),
                 config.connect_timeout,
             )
+            .with_underlay(Arc::clone(&config.underlay))
             .with_heartbeat_interval(config.heartbeat_interval)
             .with_events(Some(Arc::clone(&events))),
         );
@@ -106,6 +196,32 @@ impl AtrustClient {
             config.endpoint_override_node_group_id.clone(),
         );
 
+        let nodes = Arc::new(NodeSelector::new(config.clone()));
+        let node_task = {
+            let nodes = Arc::clone(&nodes);
+            let resources = Arc::clone(&resources);
+            let managers = Arc::clone(&managers);
+            let interval = refresh_interval(config.node_refresh_interval);
+            let enabled = !config.node_refresh_interval.is_zero();
+            tokio::spawn(async move {
+                if !enabled {
+                    return;
+                }
+                loop {
+                    tokio::time::sleep(interval).await;
+                    let snapshot = resources.snapshot().await;
+                    for group in &snapshot.resources().node_groups {
+                        let endpoints = nodes.endpoints(&snapshot, &group.id).await;
+                        managers.update_endpoints_for_generation(
+                            &group.id,
+                            endpoints,
+                            snapshot.generation(),
+                        );
+                    }
+                }
+            })
+        };
+
         let snapshot = resources.snapshot().await;
         info!(
             event = "atrust_client.started",
@@ -116,19 +232,30 @@ impl AtrustClient {
             refresh_interval_seconds = config.resource_refresh_interval.as_secs()
         );
 
-        Ok(Arc::new(Self {
-            config,
+        Ok(Arc::new(ClientSession {
             auth,
             auth_config,
             material,
             resources,
             managers,
-            events,
+            nodes,
             background: Mutex::new(Some(Background {
                 refresh,
                 reconciler,
+                nodes: NodeTask(node_task),
             })),
+            stop: watch::channel(false).0,
         }))
+    }
+
+    /// Changes after a successful session handover. Resolver and Fake IP
+    /// caches use this alongside the resource generation to reject stale state.
+    pub fn session_epoch(&self) -> u64 {
+        self.session_epoch.load(Ordering::Acquire)
+    }
+
+    pub async fn check_session(&self) -> Result<(), ClientError> {
+        self.active.read().await.run(async { Ok(()) }).await
     }
 
     // ---- Observation --------------------------------------------------------
@@ -150,7 +277,8 @@ impl AtrustClient {
     }
 
     pub async fn resources(&self) -> Arc<ResourceSnapshot> {
-        self.resources.snapshot().await
+        let active = self.active.read().await.clone();
+        active.resources.snapshot().await
     }
 
     /// Resolves a destination to its app and node group without dialling.
@@ -160,7 +288,9 @@ impl AtrustClient {
         port: u16,
         protocol: FlowProtocol,
     ) -> Option<MatchedResource> {
-        self.resources
+        let active = self.active.read().await.clone();
+        active
+            .resources
             .snapshot()
             .await
             .routing()
@@ -169,9 +299,10 @@ impl AtrustClient {
     }
 
     pub async fn stats(&self) -> ClientStats {
-        let snapshot = self.resources.snapshot().await;
+        let active = self.active.read().await.clone();
+        let snapshot = active.resources.snapshot().await;
         let mut groups = Vec::new();
-        for manager in self.managers.managers() {
+        for manager in active.managers.managers() {
             let session = manager.current_session().await;
             let auth = session.as_ref().map(|session| session.flow_auth_stats());
             groups.push(NodeGroupStats {
@@ -190,7 +321,7 @@ impl AtrustClient {
         groups.sort_by(|left, right| left.node_group_id.cmp(&right.node_group_id));
         ClientStats {
             resource_generation: snapshot.generation(),
-            consecutive_refresh_failures: self.resources.consecutive_failures(),
+            consecutive_refresh_failures: active.resources.consecutive_failures(),
             ip_resources: snapshot.resources().ip_resources.len(),
             domain_resources: snapshot.resources().domain_resources.len(),
             node_groups_advertised: snapshot.resources().node_groups.len(),
@@ -198,6 +329,11 @@ impl AtrustClient {
             events_published: self.events.published(),
             groups,
         }
+    }
+
+    pub async fn node_health(&self) -> Vec<NodeHealth> {
+        let active = self.active.read().await.clone();
+        active.nodes.health().await
     }
 
     // ---- Data plane ---------------------------------------------------------
@@ -209,7 +345,17 @@ impl AtrustClient {
     /// **fail-closed**: a packet the resource table does not cover is rejected
     /// rather than sent to a default node group.
     pub async fn send_ipv4(&self, packet: &[u8]) -> Result<SentFlow, ClientError> {
-        self.dispatch(packet, true).await
+        self.dispatch(packet, true, None).await
+    }
+
+    /// Sends a packet using a retained policy hostname. The hostname is matched
+    /// against the current domain resources before any network operation.
+    pub async fn send_ipv4_for_domain(
+        &self,
+        packet: &[u8],
+        domain: &str,
+    ) -> Result<SentFlow, ClientError> {
+        self.dispatch(packet, true, Some(domain)).await
     }
 
     /// Authorizes the packet's flow without sending it.
@@ -218,51 +364,64 @@ impl AtrustClient {
     /// into two separately readable outcomes, which is what makes a live
     /// bring-up failure diagnosable.
     pub async fn authorize_ipv4(&self, packet: &[u8]) -> Result<SentFlow, ClientError> {
-        self.dispatch(packet, false).await
+        self.dispatch(packet, false, None).await
     }
 
-    async fn dispatch(&self, packet: &[u8], send: bool) -> Result<SentFlow, ClientError> {
-        let flow = parse_ipv4_flow(packet)?;
-        let snapshot = self.resources.snapshot().await;
-        let route = snapshot
-            .routing()
-            .match_destination(
-                &flow.dst_addr.to_string(),
-                flow.dst_port,
-                flow_protocol(flow.protocol),
-            )
-            .map(|destination| destination.to_matched_resource())
-            .ok_or_else(|| ClientError::Unauthorized {
-                destination: format!("{}:{}", flow.dst_addr, flow.dst_port),
-                protocol: flow.protocol.scheme(),
-            })?;
-        let manager = self.manager_for_snapshot(&snapshot, &route.node_group_id)?;
+    async fn dispatch(
+        &self,
+        packet: &[u8],
+        send: bool,
+        domain: Option<&str>,
+    ) -> Result<SentFlow, ClientError> {
+        let active = self.active.read().await.clone();
+        active
+            .run(async {
+                let flow = parse_ipv4_flow(packet)?;
+                let snapshot = active.resources.snapshot().await;
+                let route = snapshot
+                    .routing()
+                    .match_destination(
+                        domain.unwrap_or(&flow.dst_addr.to_string()),
+                        flow.dst_port,
+                        flow_protocol(flow.protocol),
+                    )
+                    .map(|destination| destination.to_matched_resource())
+                    .ok_or_else(|| ClientError::Unauthorized {
+                        destination: format!("{}:{}", flow.dst_addr, flow.dst_port),
+                        protocol: flow.protocol.scheme(),
+                    })?;
+                let manager = self
+                    .manager_for_snapshot(&active, &snapshot, &route.node_group_id)
+                    .await?;
 
-        let process = ProcessIdentity::default_for_port(flow.dst_port);
-        let ctx = L3AuthContext {
-            sid: &self.material.sid,
-            device_id: &self.material.device_id,
-            connection_id: &self.material.connection_id,
-            sign_key: &self.material.sign_key,
-            process: &process,
-            lang: &self.config.lang,
-        };
+                let process = ProcessIdentity::default_for_port(flow.dst_port);
+                let ctx = L3AuthContext {
+                    sid: &active.material.sid,
+                    device_id: &active.material.device_id,
+                    connection_id: &active.material.connection_id,
+                    sign_key: &active.material.sign_key,
+                    process: &process,
+                    lang: &self.config.lang,
+                    domain,
+                };
 
-        let authorized = if send {
-            manager
-                .authorize_and_send(&ctx, &route.app_id, &flow, packet)
-                .await?
-        } else {
-            manager.authorize_flow(&ctx, &route.app_id, &flow).await?
-        };
+                let authorized = if send {
+                    manager
+                        .authorize_and_send(&ctx, &route.app_id, &flow, packet)
+                        .await?
+                } else {
+                    manager.authorize_flow(&ctx, &route.app_id, &flow).await?
+                };
 
-        Ok(SentFlow {
-            flow,
-            app_id: route.app_id,
-            node_group_id: route.node_group_id,
-            connect_token_len: authorized.connect_token().len(),
-            session: Arc::clone(authorized.session()),
-        })
+                Ok(SentFlow {
+                    flow,
+                    app_id: route.app_id,
+                    node_group_id: route.node_group_id,
+                    connect_token_len: authorized.connect_token().len(),
+                    session: Arc::clone(authorized.session()),
+                })
+            })
+            .await
     }
 
     /// Returns the reconnect owner for a node group, creating it on first use.
@@ -270,53 +429,30 @@ impl AtrustClient {
     /// Endpoints come from the same generation that produced the route, so a
     /// refresh landing mid-dispatch cannot pair one generation's `appId` with
     /// another's node addresses.
-    async fn manager_for(&self, node_group_id: &str) -> Result<Arc<L3SessionManager>, ClientError> {
-        let snapshot = self.resources.snapshot().await;
-        self.manager_for_snapshot(&snapshot, node_group_id)
-    }
-
-    fn manager_for_snapshot(
+    async fn manager_for_snapshot(
         &self,
+        active: &ClientSession,
         snapshot: &ResourceSnapshot,
         node_group_id: &str,
     ) -> Result<Arc<L3SessionManager>, ClientError> {
-        let endpoints = self.endpoints_for(snapshot, node_group_id);
+        let endpoints = active.nodes.endpoints(snapshot, node_group_id).await;
         if endpoints.is_empty() {
             return Err(ClientError::NoEndpoints {
                 node_group_id: node_group_id.to_owned(),
             });
         }
-        Ok(self
+        Ok(active
             .managers
             .manager_for_generation(node_group_id, endpoints, snapshot.generation()))
     }
 
+    #[cfg(test)]
     fn endpoints_for(
         &self,
         snapshot: &ResourceSnapshot,
         node_group_id: &str,
     ) -> Vec<L3NodeEndpoint> {
-        let override_matches = self.config.endpoint_override_node_group_id.as_deref()
-            == Some(node_group_id)
-            || (self.config.endpoint_override_node_group_id.is_none()
-                && snapshot.resources().node_groups.len() == 1
-                && snapshot.resources().node_groups[0].id == node_group_id);
-        if override_matches && let Some(override_endpoints) = &self.config.endpoint_override {
-            return override_endpoints.clone();
-        }
-        snapshot
-            .resources()
-            .resolve_node_groups(&self.config.gateway)
-            .into_iter()
-            .find(|group| group.id == node_group_id)
-            .map(|group| {
-                group
-                    .endpoints
-                    .into_iter()
-                    .map(|endpoint| L3NodeEndpoint::new(endpoint.host, endpoint.port))
-                    .collect()
-            })
-            .unwrap_or_default()
+        crate::nodes::configured_endpoints(&self.config, snapshot, node_group_id)
     }
 
     /// Establishes (or reuses) a node group's connection and returns it.
@@ -330,7 +466,17 @@ impl AtrustClient {
         &self,
         node_group_id: &str,
     ) -> Result<Arc<L3Session>, ClientError> {
-        Ok(self.manager_for(node_group_id).await?.session().await?)
+        let active = self.active.read().await.clone();
+        active
+            .run(async {
+                let snapshot = active.resources.snapshot().await;
+                Ok(self
+                    .manager_for_snapshot(&active, &snapshot, node_group_id)
+                    .await?
+                    .session()
+                    .await?)
+            })
+            .await
     }
 
     /// Waits for the next inbound packet on a node group's connection.
@@ -338,8 +484,17 @@ impl AtrustClient {
     /// Returns `None` when the group has no live connection, rather than
     /// establishing one: receiving must never be the thing that dials.
     pub async fn recv_ipv4(&self, node_group_id: &str) -> Option<Vec<u8>> {
-        let session = self.managers.get(node_group_id)?.current_session().await?;
-        session.recv_packet().await
+        let active = self.active.read().await.clone();
+        let session = active
+            .managers
+            .get(node_group_id)?
+            .current_session()
+            .await?;
+        active
+            .run(async { Ok(session.recv_packet().await) })
+            .await
+            .ok()
+            .flatten()
     }
 
     // ---- TCP tunnel ---------------------------------------------------------
@@ -358,113 +513,135 @@ impl AtrustClient {
         self.dial_tcp_pinned(host, host, port).await
     }
 
-    /// elecon: route by the admitted host but dial the exact already-checked address.
+    /// elecon: authorize the admitted hostname but send only the checked address.
+    /// The live SID snapshot includes control-plane cookie rotation; it cannot
+    /// fall back to stored material after the gateway deletes a cookie.
     pub async fn dial_tcp_pinned(&self, host: &str, address: &str, port: u16) -> Result<DialedTunnel, ClientError> {
-        let snapshot = self.resources.snapshot().await;
-        let route = snapshot
-            .routing()
-            .match_destination(host, port, FlowProtocol::Tcp)
-            .map(|destination| destination.to_matched_resource())
-            .ok_or_else(|| ClientError::Unauthorized {
-                destination: format!("{host}:{port}"),
-                protocol: "tcp",
-            })?;
-        let target = tunnel_target(address, port, &route.app_id);
+        let active = self.active.read().await.clone();
+        active
+            .run(async {
+                let snapshot = active.resources.snapshot().await;
+                let route = snapshot
+                    .routing()
+                    .match_destination(host, port, FlowProtocol::Tcp)
+                    .map(|destination| destination.to_matched_resource())
+                    .ok_or_else(|| ClientError::Unauthorized {
+                        destination: format!("{host}:{port}"),
+                        protocol: "tcp",
+                    })?;
+                let target = tunnel_target(address, port, &route.app_id);
+                if route.tcp_prefers_l3 {
+                    return Err(ClientError::L3StackRequired);
+                }
 
-        let endpoints = self.endpoints_for(&snapshot, &route.node_group_id);
-        if endpoints.is_empty() {
-            return Err(ClientError::NoEndpoints {
-                node_group_id: route.node_group_id,
-            });
-        }
-
-        let username = self.material.username.as_deref().unwrap_or_default();
-        // elecon: authConfig, onlineInfo and clientResource can each replace
-        // the SID. Use the current authenticated jar, not the saved snapshot.
-        // Keep this snapshot fixed for this handshake; never retry app bytes.
-        let current_sid = self.auth.current_session_id()?;
-        let mut last_error = None;
-        for endpoint in &endpoints {
-            let request = DialTcpRequest {
-                node_host: &endpoint.host,
-                node_port: endpoint.port,
-                tls_policy: self.config.tls_policy,
-                sid: &current_sid,
-                device_id: &self.material.device_id,
-                connection_id: &self.material.connection_id,
-                sign_key: &self.material.sign_key,
-                username,
-                target: target.clone(),
-                process: None,
-                lang: &self.config.lang,
-                connect_timeout: self.config.connect_timeout,
-                handshake_timeout: self.config.tcp_handshake_timeout,
-            };
-            match dial_tcp_with_retry(request, TCP_DIAL_RETRIES).await {
-                Ok(tunnel) => {
-                    info!(
-                        event = "atrust_client.tcp_tunnel_opened",
-                        node_group_id = %route.node_group_id,
-                        node_port = endpoint.port,
-                        target_port = port
-                    );
-                    self.events.publish(HermesEvent::TcpTunnelOpened {
-                        node_group_id: route.node_group_id.clone(),
-                        node_host: endpoint.host.clone(),
-                        node_port: endpoint.port,
-                        app_id: route.app_id.clone(),
-                        target: target.dest_addr_string(),
-                    });
-                    return Ok(DialedTunnel {
-                        tunnel,
-                        app_id: route.app_id,
+                let endpoints = active
+                    .nodes
+                    .endpoints(&snapshot, &route.node_group_id)
+                    .await;
+                if endpoints.is_empty() {
+                    return Err(ClientError::NoEndpoints {
                         node_group_id: route.node_group_id,
-                        node_host: endpoint.host.clone(),
-                        node_port: endpoint.port,
                     });
                 }
-                Err(error) => {
-                    warn!(
-                        event = "atrust_client.tcp_dial_failed",
-                        node_group_id = %route.node_group_id,
-                        node_port = endpoint.port,
-                        error = %error
-                    );
-                    self.events.publish(HermesEvent::TcpDialFailed {
-                        node_group_id: route.node_group_id.clone(),
-                        node_host: endpoint.host.clone(),
+
+                let username = active.material.username.as_deref().unwrap_or_default();
+                let current_sid = active.auth.current_session_id()?;
+                let mut last_error = None;
+                for endpoint in &endpoints {
+                    let request = DialTcpRequest {
+                        node_host: &endpoint.host,
                         node_port: endpoint.port,
-                        target: target.dest_addr_string(),
-                        error: error.to_string(),
-                    });
-                    // A server-side refusal is about the destination, not the
-                    // path to it, so trying another node would only repeat it.
-                    if !error.is_retryable() {
-                        return Err(error.into());
+                        tls_policy: self.config.tls_policy,
+                        sid: &current_sid,
+                        device_id: &active.material.device_id,
+                        connection_id: &active.material.connection_id,
+                        sign_key: &active.material.sign_key,
+                        username,
+                        target: target.clone(),
+                        process: None,
+                        lang: &self.config.lang,
+                        connect_timeout: self.config.connect_timeout,
+                        handshake_timeout: self.config.tcp_handshake_timeout,
+                    };
+                    match dial_tcp_with_retry_and_underlay(
+                        request,
+                        TCP_DIAL_RETRIES,
+                        self.config.underlay.as_ref(),
+                    )
+                    .await
+                    {
+                        Ok(tunnel) => {
+                            info!(
+                                event = "atrust_client.tcp_tunnel_opened",
+                                node_group_id = %route.node_group_id,
+                                node_port = endpoint.port,
+                                target_port = port
+                            );
+                            self.events.publish(HermesEvent::TcpTunnelOpened {
+                                node_group_id: route.node_group_id.clone(),
+                                node_host: endpoint.host.clone(),
+                                node_port: endpoint.port,
+                                app_id: route.app_id.clone(),
+                                target: target.dest_addr_string(),
+                            });
+                            return Ok(DialedTunnel {
+                                tunnel,
+                                app_id: route.app_id,
+                                node_group_id: route.node_group_id,
+                                node_host: endpoint.host.clone(),
+                                node_port: endpoint.port,
+                            });
+                        }
+                        Err(error) => {
+                            warn!(
+                                event = "atrust_client.tcp_dial_failed",
+                                node_group_id = %route.node_group_id,
+                                node_port = endpoint.port,
+                                error = %error
+                            );
+                            self.events.publish(HermesEvent::TcpDialFailed {
+                                node_group_id: route.node_group_id.clone(),
+                                node_host: endpoint.host.clone(),
+                                node_port: endpoint.port,
+                                target: target.dest_addr_string(),
+                                error: error.to_string(),
+                            });
+                            // A server-side refusal is about the destination, not the
+                            // path to it, so trying another node would only repeat it.
+                            if !error.is_retryable() {
+                                return Err(error.into());
+                            }
+                            last_error = Some(error);
+                        }
                     }
-                    last_error = Some(error);
                 }
-            }
-        }
-        Err(last_error
-            .expect("a non-empty endpoint list produced an error")
-            .into())
+                Err(last_error
+                    .expect("a non-empty endpoint list produced an error")
+                    .into())
+            })
+            .await
     }
 
     // ---- Control ------------------------------------------------------------
 
     /// Fetches and publishes a resource generation immediately.
     pub async fn refresh_resources(&self) -> Result<Arc<ResourceSnapshot>, ClientError> {
-        Ok(self
-            .resources
-            .refresh(&self.auth, &self.auth_config)
-            .await?)
+        let active = self.active.read().await.clone();
+        active
+            .run(async {
+                Ok(active
+                    .resources
+                    .refresh(&active.auth, &active.auth_config)
+                    .await?)
+            })
+            .await
     }
 
     /// Drops a node group's connection. The next packet re-establishes it,
     /// which may land on a different endpoint and a different VIP.
     pub async fn reconnect(&self, node_group_id: &str) {
-        if let Some(manager) = self.managers.get(node_group_id) {
+        let active = self.active.read().await.clone();
+        if let Some(manager) = active.managers.get(node_group_id) {
             debug!(event = "atrust_client.reconnect_requested", node_group_id);
             manager.close().await;
         }
@@ -476,12 +653,53 @@ impl AtrustClient {
     /// process exits with node connections still open, leaving a session the
     /// gateway has to time out on its own.
     pub async fn shutdown(&self) {
-        if let Some(background) = self.background.lock().await.take() {
-            background.reconciler.shutdown().await;
-            background.refresh.shutdown().await;
-        }
-        self.managers.close().await;
+        let _control = self.control.lock().await;
+        self.closed.store(true, Ordering::Release);
+        let active = self.active.read().await.clone();
+        active.shutdown().await;
         info!(event = "atrust_client.shutdown");
+    }
+
+    /// Validates a newly authenticated control-plane session before switching.
+    /// Failed validation leaves the current runtime untouched. On success,
+    /// in-flight operations on the old session are cancelled and old L3
+    /// connections closed. Already returned TCP streams remain caller-owned.
+    /// This is session handover, not a gateway TTL renewal primitive.
+    pub async fn replace_session(
+        &self,
+        auth: Arc<AuthClient>,
+        auth_config: AuthConfiguration,
+        mut material: SessionMaterial,
+    ) -> Result<(), ClientError> {
+        if self.closed.load(Ordering::Acquire) {
+            return Err(ClientError::Closed);
+        }
+        if auth.gateway() != &self.config.gateway {
+            return Err(ClientError::GatewayMismatch);
+        }
+        material.username = Some(auth.online_info(&auth_config).await?);
+        let next = Self::build_session(
+            auth,
+            auth_config,
+            material,
+            &self.config,
+            Arc::clone(&self.events),
+        )
+        .await?;
+        let _control = self.control.lock().await;
+        if self.closed.load(Ordering::Acquire) {
+            next.shutdown().await;
+            return Err(ClientError::Closed);
+        }
+        let previous = {
+            let mut active = self.active.write().await;
+            active.stop.send_replace(true);
+            self.session_epoch.fetch_add(1, Ordering::AcqRel);
+            std::mem::replace(&mut *active, next)
+        };
+        previous.shutdown().await;
+        self.events.publish(HermesEvent::SessionReplaced);
+        Ok(())
     }
 }
 
@@ -590,6 +808,14 @@ fn tunnel_target(host: &str, port: u16, app_id: &str) -> TunnelTarget {
 
 #[derive(Debug, Error)]
 pub enum ClientError {
+    #[error("gateway session has expired; provide a newly authenticated session")]
+    AuthenticationRequired,
+    #[error("resource requires TCP over L3; use a packet network stack")]
+    L3StackRequired,
+    #[error("client session has been closed or replaced")]
+    Closed,
+    #[error("replacement session belongs to a different gateway")]
+    GatewayMismatch,
     #[error(transparent)]
     Auth(#[from] AuthError),
     #[error(transparent)]
@@ -629,6 +855,15 @@ mod tests {
 
     #[async_trait]
     impl HttpTransport for QueueTransport {
+        // elecon's live-SID gate also applies to the injected underlay tests.
+        fn session_cookies(&self, _origin: &url::Url) -> Vec<hermes_transport::GatewayCookie> {
+            vec![hermes_transport::GatewayCookie {
+                name: "sid".into(), value: "synthetic-test-sid".into(),
+                domain: Some("gateway.test".into()), path: Some("/".into()), secure: true,
+                http_only: true,
+            }]
+        }
+
         async fn execute(&self, _request: HttpRequest) -> Result<HttpResponse, HttpTransportError> {
             Ok(self
                 .responses
@@ -905,6 +1140,224 @@ mod tests {
     async fn shutdown_is_idempotent() {
         let client = client_with(vec![resource_response()]).await;
         client.shutdown().await;
+        client.shutdown().await;
+    }
+    fn replacement_auth(responses: Vec<HttpResponse>) -> Arc<AuthClient> {
+        Arc::new(AuthClient::new(
+            GatewayEndpoint::new("gateway.test", 443).unwrap(),
+            Arc::new(QueueTransport {
+                responses: StdMutex::new(responses.into()),
+            }),
+        ))
+    }
+
+    #[tokio::test]
+    async fn replacement_validates_then_swaps_all_state_and_cancels_old_operations() {
+        let client = client_with(vec![resource_response()]).await;
+        let old = client.active.read().await.clone();
+        let waiting = Arc::clone(&old);
+        let waiter = tokio::spawn(async move {
+            waiting
+                .run(std::future::pending::<Result<(), ClientError>>())
+                .await
+        });
+        let mut resource = resource_response();
+        resource.body = String::from_utf8(resource.body)
+            .unwrap()
+            .replace("app-1", "app-2")
+            .into_bytes();
+        let auth = replacement_auth(vec![
+            HttpResponse {
+                status: 200,
+                location: None,
+                body: br#"{"code":0,"data":{"username":"new-user"}}"#.to_vec(),
+            },
+            resource,
+        ]);
+        let mut next = material();
+        next.sid = SessionId::new("new-sid").unwrap();
+        let mut events = client.events();
+        client
+            .replace_session(auth, configuration(), next)
+            .await
+            .unwrap();
+        assert!(matches!(waiter.await.unwrap(), Err(ClientError::Closed)));
+        assert!(*old.stop.borrow());
+        assert_eq!(client.active.read().await.material.sid.as_str(), "new-sid");
+        assert_eq!(
+            client
+                .route("10.9.0.7", 80, FlowProtocol::Tcp)
+                .await
+                .unwrap()
+                .app_id,
+            "app-2"
+        );
+        assert!(
+            matches!(events.try_recv(), Some(EventDelivery::Event(e)) if matches!(*e, HermesEvent::SessionReplaced))
+        );
+        client.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn rejected_replacement_keeps_current_session_and_policy() {
+        let client = client_with(vec![resource_response()]).await;
+        let old = client.active.read().await.clone();
+        let auth = replacement_auth(vec![HttpResponse {
+            status: 200,
+            location: None,
+            body: br#"{"code":75500002,"message":"invalid","data":{}}"#.to_vec(),
+        }]);
+        assert!(
+            client
+                .replace_session(auth, configuration(), material())
+                .await
+                .is_err()
+        );
+        assert!(Arc::ptr_eq(&old, &*client.active.read().await));
+        assert!(!*old.stop.borrow());
+        assert!(
+            client
+                .route("10.9.0.7", 80, FlowProtocol::Tcp)
+                .await
+                .is_some()
+        );
+        client.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn shutdown_prevents_reopening_or_replacing_a_session() {
+        let client = client_with(vec![resource_response()]).await;
+        client.shutdown().await;
+        assert!(matches!(
+            client.dial_tcp("10.9.0.7", 80).await,
+            Err(ClientError::Closed)
+        ));
+        assert!(matches!(
+            client.connect_node_group("group-1").await,
+            Err(ClientError::Closed)
+        ));
+        assert!(matches!(
+            client.send_ipv4(&tcp_syn([10, 9, 0, 7], 80)).await,
+            Err(ClientError::Closed)
+        ));
+        assert!(matches!(
+            client.refresh_resources().await,
+            Err(ClientError::Closed)
+        ));
+        assert!(matches!(
+            client
+                .replace_session(replacement_auth(vec![]), configuration(), material())
+                .await,
+            Err(ClientError::Closed)
+        ));
+    }
+    #[derive(Debug, Default)]
+    struct RefusingUnderlay(std::sync::atomic::AtomicUsize);
+    #[async_trait]
+    impl hermes_transport::UnderlayDialer for RefusingUnderlay {
+        async fn connect(&self, _host: &str, _port: u16) -> std::io::Result<tokio::net::TcpStream> {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            Err(std::io::ErrorKind::ConnectionRefused.into())
+        }
+    }
+
+    #[tokio::test]
+    async fn tcp_and_l3_use_the_injected_underlay() {
+        let underlay = Arc::new(RefusingUnderlay::default());
+        let auth = replacement_auth(vec![resource_response()]);
+        let config = AtrustClientConfig::new(
+            GatewayEndpoint::new("gateway.test", 443).unwrap(),
+            TlsPolicy::Verify,
+        )
+        .with_underlay(underlay.clone());
+        let client = AtrustClient::start(auth, configuration(), material(), config)
+            .await
+            .unwrap();
+        assert!(client.dial_tcp("10.9.0.7", 80).await.is_err());
+        assert_eq!(underlay.0.load(Ordering::Relaxed), TCP_DIAL_RETRIES + 2);
+        assert!(client.connect_node_group("group-1").await.is_err());
+        assert_eq!(underlay.0.load(Ordering::Relaxed), TCP_DIAL_RETRIES + 3);
+        assert_eq!(client.node_health().await.len(), 1);
+        client.shutdown().await;
+    }
+    #[tokio::test(start_paused = true)]
+    async fn failed_node_probes_are_cached_and_reconnects_back_off() {
+        let underlay = Arc::new(RefusingUnderlay::default());
+        let auth = replacement_auth(vec![resource_response(), resource_response()]);
+        let config = AtrustClientConfig::new(
+            GatewayEndpoint::new("gateway.test", 443).unwrap(),
+            TlsPolicy::Verify,
+        )
+        .with_underlay(underlay.clone());
+        let client = AtrustClient::start(auth, configuration(), material(), config)
+            .await
+            .unwrap();
+        let active = client.active.read().await.clone();
+        let snapshot = active.resources.snapshot().await;
+        active.nodes.endpoints(&snapshot, "group-1").await;
+        active.nodes.endpoints(&snapshot, "group-1").await;
+        assert_eq!(underlay.0.load(Ordering::Relaxed), 1);
+        let before = tokio::time::Instant::now();
+        for _ in 0..3 {
+            assert!(client.connect_node_group("group-1").await.is_err());
+        }
+        assert!(before.elapsed() >= std::time::Duration::from_millis(750));
+        let updated = client.refresh_resources().await.unwrap();
+        active.nodes.endpoints(&updated, "group-1").await;
+        assert_eq!(underlay.0.load(Ordering::Relaxed), 5);
+        client.shutdown().await;
+    }
+    #[tokio::test]
+    async fn tcp_tunnel_refuses_resources_that_require_l3() {
+        let mut resource = resource_response();
+        resource.body = String::from_utf8(resource.body)
+            .unwrap()
+            .replace(
+                "\"id\":\"app-1\"",
+                "\"enableTCPPrefL3\":true,\"id\":\"app-1\"",
+            )
+            .into_bytes();
+        let client = client_with(vec![resource]).await;
+        assert!(matches!(
+            client.dial_tcp("10.9.0.7", 80).await,
+            Err(ClientError::L3StackRequired)
+        ));
+        assert!(client.node_health().await.is_empty());
+        client.shutdown().await;
+    }
+    #[tokio::test]
+    async fn invalidated_session_blocks_new_operations_until_validated_replacement() {
+        let client = client_with(vec![
+            resource_response(),
+            HttpResponse {
+                status: 200,
+                location: None,
+                body: br#"{"code":75500002,"message":"invalid","data":{}}"#.to_vec(),
+            },
+        ])
+        .await;
+        assert!(client.refresh_resources().await.is_err());
+        assert!(matches!(
+            client.check_session().await,
+            Err(ClientError::AuthenticationRequired)
+        ));
+        assert!(matches!(
+            client.dial_tcp("10.9.0.7", 80).await,
+            Err(ClientError::AuthenticationRequired)
+        ));
+        let auth = replacement_auth(vec![
+            HttpResponse {
+                status: 200,
+                location: None,
+                body: br#"{"code":0,"data":{"username":"new-user"}}"#.to_vec(),
+            },
+            resource_response(),
+        ]);
+        client
+            .replace_session(auth, configuration(), material())
+            .await
+            .unwrap();
+        client.check_session().await.unwrap();
         client.shutdown().await;
     }
 }
