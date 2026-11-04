@@ -8,8 +8,15 @@ import 'display_date.dart';
 import 'notice_detail_page.dart';
 
 class GradesCard extends StatelessWidget {
-  const GradesCard(this.data, {this.summary, this.trailing, super.key});
+  const GradesCard(
+    this.data, {
+    this.summary,
+    this.trailing,
+    this.controls,
+    super.key,
+  });
   final Widget? trailing;
+  final Widget? controls;
 
   final GradesList data;
 
@@ -80,34 +87,43 @@ class GradesCard extends StatelessWidget {
             data.items.first.courseName,
         ].join(' · '),
       ),
-      child: CardPreviewList(
-        title: '成绩',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final item in data.items)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(item.courseName),
-              subtitle: Text(
-                '${_categoryText(item.category)} · ${item.credit} 学分',
-              ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    item.scoreText,
-                    style: Theme.of(context).textTheme.titleMedium,
+          ?controls,
+          CardPreviewList(
+            title: '成绩',
+            children: [
+              if (data.items.isEmpty)
+                Text(AppLocalizations.of(context).gradesEmpty),
+              for (final item in data.items)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(item.courseName),
+                  subtitle: Text(
+                    '${_categoryText(item.category)} · ${item.credit} 学分',
                   ),
-                  Text(_statusText(item.status)),
-                ],
-              ),
-              // App 内下钻：由课程标识 + 本详情视图闸门，不依赖外链（ADR-025 §2.6）。
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => CourseDetailPage(item: item, term: data.term),
+                  trailing: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        item.scoreText,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(_statusText(item.status)),
+                    ],
+                  ),
+                  // App 内下钻：由课程标识 + 本详情视图闸门，不依赖外链（ADR-025 §2.6）。
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          CourseDetailPage(item: item, term: data.term),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+            ],
+          ),
         ],
       ),
     );

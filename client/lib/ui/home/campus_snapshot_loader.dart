@@ -29,12 +29,13 @@ Future<CampusSnapshot> loadCampusSnapshot(
   };
   String? homeTitle;
   try {
-    homeTitle = (await session.scriptRegistry).homeTitleForSchool(
+    final legacyTitle = (await session.scriptRegistry).homeTitleForSchool(
       school.id,
       packageId: school.adapterId.startsWith('script:')
           ? school.adapterId.substring(7)
           : null,
     );
+    homeTitle = school.institutionId == null ? legacyTitle : school.displayName;
   } catch (_) {
     // Optional presentation metadata must not prevent legacy data loading.
   }
@@ -52,6 +53,7 @@ Future<CampusSnapshot> loadCampusSnapshot(
   if (cachedNotices != null && !refreshNotices) {
     return CampusSnapshot(
       schoolName: school.displayName,
+      schoolType: school.typeName,
       homeTitle: homeTitle,
       updatedAt: updatedAt,
       notices: cachedNotices,
@@ -63,6 +65,7 @@ Future<CampusSnapshot> loadCampusSnapshot(
   if (preferCacheOnly) {
     return CampusSnapshot(
       schoolName: school.displayName,
+      schoolType: school.typeName,
       homeTitle: homeTitle,
       updatedAt: updatedAt,
       supportedCapabilities: capabilities,
@@ -76,6 +79,7 @@ Future<CampusSnapshot> loadCampusSnapshot(
   if (!run.ok) {
     return CampusSnapshot(
       schoolName: school.displayName,
+      schoolType: school.typeName,
       homeTitle: homeTitle,
       updatedAt: updatedAt,
       notices: cachedNotices,
@@ -91,6 +95,7 @@ Future<CampusSnapshot> loadCampusSnapshot(
   }
   return CampusSnapshot(
     schoolName: school.displayName,
+    schoolType: school.typeName,
     homeTitle: homeTitle,
     updatedAt: DateTime.now().toUtc(),
     notices: notices,

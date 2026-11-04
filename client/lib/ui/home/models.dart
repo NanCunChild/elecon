@@ -25,12 +25,14 @@ export 'package:elecon_contract/grades_list.dart';
 export 'package:elecon_contract/library_loans.dart';
 export 'package:elecon_contract/notice_list.dart';
 export 'package:elecon_contract/schedule_week.dart';
+export 'package:elecon_contract/term_list.dart';
 
 class CampusSnapshot {
   const CampusSnapshot({
     required this.schoolName,
     required this.updatedAt,
     this.homeTitle,
+    this.schoolType,
     this.grades,
     this.gpaSummary,
     this.schedule,
@@ -44,6 +46,7 @@ class CampusSnapshot {
   /// Latest successful data fetch; null means no successful data is available.
   final DateTime? updatedAt;
   final String? homeTitle;
+  final String? schoolType;
   final GradesList? grades;
 
   /// 学校官方绩点汇总（`gpa.summary`）。存在即权威，本体不得用自算值覆盖

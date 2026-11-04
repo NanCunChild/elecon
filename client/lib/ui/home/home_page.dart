@@ -33,6 +33,8 @@ export 'schedule_view.dart' show ScheduleCard;
 import 'energy_climate_sections.dart';
 import 'faculty_search_section.dart';
 import 'checkin_section.dart';
+import 'web_content_section.dart';
+import '../widgets/adaptive_school_title.dart';
 
 export 'demo_data.dart';
 export 'models.dart';
@@ -69,6 +71,7 @@ class _EleconHomePageState extends State<EleconHomePage>
   CapabilitySource? _noticeSource;
   bool _noticeSourceResolved = false;
   List<(ScriptPackage, ScriptCardEntry)> _scriptCards = const [];
+  List<(ScriptPackage, ScriptWebContent)> _webPages = const [];
 
   @override
   void initState() {
@@ -137,6 +140,7 @@ class _EleconHomePageState extends State<EleconHomePage>
         _noticeSource = null;
         _noticeSourceResolved = false;
         _scriptCards = const [];
+        _webPages = const [];
         unawaited(_loadCardDefaults(session));
       }
       if (!_bound || changed || _revision != session.homeDataRevision) {
@@ -193,12 +197,16 @@ class _EleconHomePageState extends State<EleconHomePage>
         }
       }
       final instances = <(ScriptPackage, ScriptCardEntry)>[];
+      final webPages = <(ScriptPackage, ScriptWebContent)>[];
       for (final installation in registry.installations) {
         final package = installation.package;
         if (!installation.enabled ||
             package.requiresUpdate ||
             package.manifest.schoolId != school) {
           continue;
+        }
+        for (final page in package.manifest.webContent) {
+          webPages.add((package, page));
         }
         for (final card in package.manifest.cards.where(
           (c) => c.hasExplicitId,
@@ -218,6 +226,7 @@ class _EleconHomePageState extends State<EleconHomePage>
           _noticeSourceResolved = true;
           _cardDefaults = defaults;
           _scriptCards = instances;
+          _webPages = webPages;
           _explicitDefaultTypes = explicitDefaults;
         });
       }
@@ -249,6 +258,7 @@ class _EleconHomePageState extends State<EleconHomePage>
         'energy' => Icons.bolt_outlined,
         'climate' => Icons.ac_unit,
         'checkin' => Icons.qr_code_scanner,
+        'web' => Icons.web_outlined,
         _ => Icons.widgets_outlined,
       },
       defaultSize:
@@ -415,6 +425,20 @@ class _EleconHomePageState extends State<EleconHomePage>
             child: feature(),
           ),
           type: declaration.type,
+        ),
+      );
+    }
+    for (final (package, page) in _webPages) {
+      cards.add(
+        entry(
+          'web:${package.manifest.id}/${page.id}',
+          page.title,
+          (_) => WebContentSection(
+            session: _session!,
+            package: package,
+            page: page,
+          ),
+          type: 'web',
         ),
       );
     }
@@ -587,11 +611,19 @@ class _SnapshotHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          snapshot.homeTitle ?? snapshot.schoolName,
+        AdaptiveSchoolTitle(
+          text: snapshot.homeTitle ?? snapshot.schoolName,
           key: const ValueKey('home-title'),
           style: theme.textTheme.headlineMedium,
         ),
+        if (snapshot.schoolType case final type?) ...[
+          const SizedBox(height: 4),
+          Text(
+            type,
+            key: const ValueKey('home-school-type'),
+            style: theme.textTheme.titleMedium,
+          ),
+        ],
         const SizedBox(height: 6),
         Text(
           snapshot.updatedAt == null

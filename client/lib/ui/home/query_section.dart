@@ -118,6 +118,38 @@ Future<bool> promptVisibleLogin(
   final school = session.selectedSchool;
   if (school == null) return false;
   final source = CapabilitySourceScope.maybeOf(context)?.source;
+  if (capability != null && school.adapterId.startsWith('script:')) {
+    final registry = await session.scriptRegistry;
+    final package = source == null
+        ? registry.provider(school.id, capability)
+        : registry.find(source.packageId)?.package;
+    final dependency = package?.manifest
+        .capability(capability)
+        ?.appTunnelAccountId;
+    if (context.mounted &&
+        session.selectedSchool?.id == school.id &&
+        package != null &&
+        (source == null || package.digest == source.digest) &&
+        dependency != null) {
+      final target = package.manifest.accounts.firstWhere(
+        (a) => a.id == dependency,
+      );
+      if (!session.hasDeclaredTunnelConfiguration(target.appTunnel!)) {
+        final result = await Navigator.of(context).push<WebViewLoginResult>(
+          MaterialPageRoute(
+            builder: (_) => ScriptLoginPage(
+              session: session,
+              school: school,
+              package: package,
+              accountId: target.id,
+            ),
+          ),
+        );
+        return result?.status == WebViewLoginStatus.success;
+      }
+    }
+  }
+  if (!context.mounted) return false;
   if (source != null) {
     final installation = (await session.scriptRegistry).find(source.packageId);
     final package = installation?.package;

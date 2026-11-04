@@ -32,14 +32,20 @@ ClassroomBuildings? classroomBuildingsFromDynamic(Object? raw) {
   );
 }
 
-ClassroomAvailable? classroomAvailableFromDynamic(Object? raw) {
+ClassroomAvailable? classroomAvailableFromDynamic(
+  Object? raw, {
+  String? schemaVersion,
+}) {
   final map = asStringKeyedMap(raw);
   if (map == null) return null;
   final itemsRaw = map['items'];
   final items = <ClassroomAvailableItems>[];
   if (itemsRaw is List) {
     for (final entry in itemsRaw) {
-      final item = _classroomItem(entry);
+      final item = _classroomItem(
+        entry,
+        preciseIntervals: schemaVersion == '1.2',
+      );
       if (item != null) items.add(item);
     }
   }
@@ -57,7 +63,10 @@ ClassroomAvailable? classroomAvailableFromDynamic(Object? raw) {
   );
 }
 
-ClassroomAvailableItems? _classroomItem(Object? raw) {
+ClassroomAvailableItems? _classroomItem(
+  Object? raw, {
+  required bool preciseIntervals,
+}) {
   final map = asStringKeyedMap(raw);
   if (map == null) return null;
   final building = map['building']?.toString();
@@ -99,5 +108,18 @@ ClassroomAvailableItems? _classroomItem(Object? raw) {
     occupied: map['occupied'] is bool ? map['occupied'] as bool : null,
     status: map['status']?.toString(),
     sections: sections,
+    // 1.1 is open: a same-named extension has no 1.2 interval semantics.
+    intervals: preciseIntervals && map['intervals'] is List
+        ? [
+            for (final raw in map['intervals'] as List)
+              if (asStringKeyedMap(raw) case final interval?)
+                ClassroomAvailableItemsIntervals(
+                  startAt: interval['startAt']?.toString() ?? '',
+                  endAt: interval['endAt']?.toString() ?? '',
+                  status: interval['status']?.toString() ?? 'unknown',
+                  reason: interval['reason']?.toString(),
+                ),
+          ]
+        : null,
   );
 }

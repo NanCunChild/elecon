@@ -4,6 +4,32 @@ library;
 import '../models.dart';
 import 'values.dart';
 
+TermList? termListFromDynamic(Object? raw) {
+  final map = asStringKeyedMap(raw);
+  if (map == null) return null;
+  final current = map['currentTerm'];
+  if (current != null && current is! String) return null;
+  final rows = map['items'];
+  if (rows == null) return TermList(currentTerm: current as String?);
+  if (rows is! List) return null;
+  final items = <TermListItems>[];
+  final ids = <String>{};
+  for (final row in rows) {
+    final item = asStringKeyedMap(row);
+    final id = item?['id'];
+    final name = item?['name'];
+    if (id is! String ||
+        id.isEmpty ||
+        name is! String ||
+        name.isEmpty ||
+        !ids.add(id)) {
+      return null;
+    }
+    items.add(TermListItems(id: id, name: name));
+  }
+  return TermList(currentTerm: current as String?, items: items);
+}
+
 GpaSummary? gpaSummaryFromDynamic(Object? raw) {
   final map = asStringKeyedMap(raw);
   if (map == null) return null;

@@ -14,8 +14,10 @@ import 'card_layout.dart';
 import 'models.dart';
 import 'schema_decode.dart';
 import 'section_card.dart';
+import 'classroom_timeline.dart';
 
 import 'query_section.dart';
+import 'script_query_controls.dart';
 
 class ClassroomSection extends StatefulWidget {
   const ClassroomSection({super.key});
@@ -29,6 +31,10 @@ class _ClassroomSectionState extends State<ClassroomSection>
   bool _manualSelection = false;
   bool _prepared = false;
   String _room = "";
+  String? _schemaVersion;
+  Map<String, dynamic> _scriptParams = {};
+  bool _filtersLoading = false;
+  String? _filterError;
   @override
   void onConfigurationRequired() => _availPhase = QueryPhase.needConfiguration;
 
@@ -36,11 +42,12 @@ class _ClassroomSectionState extends State<ClassroomSection>
   String get cacheCapability => 'classroom.available';
   @override
   ClassroomAvailable? decodeCache(Object? value) =>
-      classroomAvailableFromDynamic(value);
+      classroomAvailableFromDynamic(value, schemaVersion: _schemaVersion);
   @override
   bool get useLatestCache => !_manualSelection;
   @override
   Map<String, dynamic>? get cacheParams => {
+    ..._scriptParams,
     'date': formatQueryDate(_date),
     if (_selected?.buildingId != null) 'buildingId': _selected!.buildingId,
     if (_selected != null) 'building': _selected!.building,
@@ -48,6 +55,10 @@ class _ClassroomSectionState extends State<ClassroomSection>
   };
   @override
   void applyCache(ClassroomAvailable data) {
+    _scriptParams = {
+      for (final key in ['room', 'start', 'end'])
+        if (restoredParams[key] != null) key: restoredParams[key],
+    };
     _avail = data;
     _availPhase = QueryPhase.loaded;
     _date =
@@ -61,6 +72,10 @@ class _ClassroomSectionState extends State<ClassroomSection>
   void clearCache() {
     _prepared = false;
     _room = "";
+    _schemaVersion = null;
+    _scriptParams = {};
+    _filtersLoading = false;
+    _filterError = null;
     _buildingsPhase = QueryPhase.idle;
     _buildings = const [];
     _selected = null;
@@ -72,6 +87,23 @@ class _ClassroomSectionState extends State<ClassroomSection>
 
   @override
   Future<void> restoreCache() async {
+    final pendingSession = cacheSession;
+    if (pendingSession == null) return;
+    final pendingGeneration = pendingSession.trustedScriptViewGeneration;
+    final pendingSource = CapabilitySourceScope.maybeOf(context)?.source;
+    final version = await CapabilityQueries(
+      pendingSession,
+      source: pendingSource,
+    ).schemaVersion(cacheCapability);
+    if (!isCurrentQuery(
+      this,
+      pendingSession,
+      pendingGeneration,
+      pendingSource,
+    )) {
+      return;
+    }
+    _schemaVersion = version;
     await super.restoreCache();
     if (!mounted) return;
     final session = cacheSession;
@@ -201,7 +233,13 @@ class _ClassroomSectionState extends State<ClassroomSection>
     final building = _selected;
     if (building == null) return;
     setState(() => _availPhase = QueryPhase.loading);
+    final version = await CapabilityQueries(
+      session,
+      source: source,
+    ).schemaVersion(cacheCapability);
+    if (!mounted || !isCurrentQuery(this, session, generation, source)) return;
     final params = <String, dynamic>{
+      ..._scriptParams,
       'date': formatQueryDate(_date),
       if (configure) 'configure': true,
     };
@@ -217,7 +255,8 @@ class _ClassroomSectionState extends State<ClassroomSection>
       session,
       'classroom.available',
       params: params,
-      decode: classroomAvailableFromDynamic,
+      decode: (raw) =>
+          classroomAvailableFromDynamic(raw, schemaVersion: version),
     );
     if (!mounted || !isCurrentQuery(this, session, generation, source)) return;
     setState(() {
@@ -235,16 +274,70 @@ class _ClassroomSectionState extends State<ClassroomSection>
     });
   }
 
+  Future<void> _pickFilters() async {
+    final session = SessionScope.of(context);
+    final generation = session.trustedScriptViewGeneration;
+    final source = CapabilitySourceScope.maybeOf(context)?.source;
+    setState(() {
+      _filtersLoading = true;
+      _filterError = null;
+    });
+    try {
+      final selection = await pickScriptQueryControls(
+        context,
+        session,
+        'classroom.available',
+        current: cacheParams,
+      );
+      if (!mounted || !isCurrentQuery(this, session, generation, source)) {
+        return;
+      }
+      setState(() => _filtersLoading = false);
+      if (!selection.supported) {
+        await _pickDate();
+        return;
+      }
+      if (selection.params == null) return;
+      setState(() {
+        _scriptParams = Map.of(selection.params!)..remove('date');
+        _date =
+            DateTime.tryParse(selection.params!['date']?.toString() ?? '') ??
+            _date;
+        _manualSelection = true;
+        _avail = null;
+        cacheRead++;
+        cacheFetchedAt = null;
+      });
+      await _loadAvailable();
+    } catch (_) {
+      if (mounted && isCurrentQuery(this, session, generation, source)) {
+        setState(() {
+          _filtersLoading = false;
+          _filterError = AppLocalizations.of(
+            context,
+          ).scriptsSourceResponseInvalid;
+        });
+      }
+    }
+  }
+
   Future<void> _pickDate() async {
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     final source = CapabilitySourceScope.maybeOf(context)?.source;
     final now = DateTime.now();
+    final first = DateUtils.dateOnly(now.subtract(const Duration(days: 30)));
+    final last = DateUtils.dateOnly(now.add(const Duration(days: 180)));
+    final initial = _date.isBefore(first)
+        ? first
+        : _date.isAfter(last)
+        ? last
+        : _date;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date,
-      firstDate: now.subtract(const Duration(days: 30)),
-      lastDate: now.add(const Duration(days: 180)),
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
     );
     if (picked != null && isCurrentQuery(this, session, generation, source)) {
       setState(() {
@@ -354,6 +447,12 @@ class _ClassroomSectionState extends State<ClassroomSection>
                 ],
               ),
               const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: busy || _filtersLoading ? null : _pickFilters,
+                icon: const Icon(Icons.filter_list),
+                label: Text(AppLocalizations.of(context).queryFilters),
+              ),
+              if (_filterError != null) Text(_filterError!),
               QueryPhaseBody(
                 phase: _availPhase,
                 error: _availError,
@@ -432,6 +531,11 @@ class _ClassroomResultCard extends StatelessWidget {
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
               child: Text('该教学楼当日无可展示教室'),
+            )
+          : items.any((room) => room.intervals != null)
+          ? ClassroomTimeline(
+              key: ValueKey('${data.date}/${items.first.buildingId}'),
+              rooms: items,
             )
           : Column(
               children: [
