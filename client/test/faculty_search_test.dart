@@ -80,6 +80,114 @@ ScriptPackage package(String version) => ScriptPackage.parse(
 );
 
 void main() {
+  testWidgets(
+    'reopening restores faculty filters and cached results without querying',
+    (tester) async {
+      final session = SessionController();
+      addTearDown(session.dispose);
+      final cached = {
+        'items': [
+          {'id': 'cache', 'name': 'Cached teacher'},
+        ],
+        'page': 1,
+        'pageSize': 10,
+        'hasMore': false,
+        'sourceSystem': 'synthetic',
+        'sourceUrl': 'https://example.invalid/',
+      };
+      final source = ScriptPackage.parse(
+        jsonEncode({
+          'format': 'elecon-script/1',
+          'manifest': {
+            'sdkVersion': 4,
+            'id': 'synthetic-faculty-cache',
+            'schoolId': 'synthetic',
+            'version': '1.0.0',
+            'name': 'Synthetic',
+            'network': {'origins': []},
+            'browser': false,
+            'capabilities': [
+              {
+                'id': 'faculty.search',
+                'schema': 'elecon.faculty.search',
+                'schemaVersion': '1.0',
+              },
+            ],
+            'home': [
+              {
+                'capability': 'faculty.search',
+                'ttlSeconds': 3600,
+                'preload': false,
+              },
+            ],
+          },
+          'source':
+              'export const capabilities={"faculty.search":async()=>(${jsonEncode(cached)})};',
+        }),
+      );
+      await tester.runAsync(() async {
+        await session.installTrustedScript(
+          source,
+          approvedDigest: source.digest,
+        );
+        await session.selectTrustedScriptSchool(source.manifest.id);
+        expect(
+          (await session.runTrustedScript(
+            source.manifest.id,
+            'faculty.search',
+            params: {
+              'query': 'Saved query',
+              'researchArea': 'Saved area',
+              'page': 1,
+              'pageSize': 10,
+            },
+            interactive: false,
+          )).ok,
+          isTrue,
+        );
+      });
+      for (var reopening = 0; reopening < 2; reopening++) {
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SessionScope(
+              controller: session,
+              child: const Scaffold(
+                body: SingleChildScrollView(child: FacultySearchSection()),
+              ),
+            ),
+          ),
+        );
+        await tester.runAsync(() async {});
+        await tester.pumpAndSettle();
+        expect(find.text('Cached teacher'), findsOneWidget);
+        expect(find.text('Saved query'), findsOneWidget);
+        expect(find.text('Saved area'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+      }
+    },
+  );
+
+  testWidgets('failed refresh preserves the same faculty query result', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      app((_) async {
+        if (calls++ == 0) return result(1);
+        throw StateError('synthetic offline');
+      }),
+    );
+    await search(tester);
+    expect(find.text('合成教师1'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('faculty-search')));
+    await tester.pumpAndSettle();
+    expect(find.text('合成教师1'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+  });
+
   test('whole-page decoding preserves source and rejects malformed rows', () {
     final raw = <String, Object?>{
       'items': [

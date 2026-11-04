@@ -13,10 +13,12 @@ class CardSpendingView extends StatefulWidget {
     super.key,
     required this.summary,
     required this.partial,
+    this.onOpen,
   });
 
   final CardSpendingSummary summary;
   final bool partial;
+  final VoidCallback? onOpen;
 
   @override
   State<CardSpendingView> createState() => _CardSpendingViewState();
@@ -38,83 +40,95 @@ class _CardSpendingViewState extends State<CardSpendingView> {
     return Card(
       key: const ValueKey('card-spending-chart'),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(l10n.cardSpendingTitle, style: theme.textTheme.titleLarge),
-            if (currencies.length > 1)
-              DropdownButton<String>(
-                value: data.currency,
-                isExpanded: true,
-                hint: Text(l10n.cardSpendingCurrency),
-                items: [
-                  for (final value in currencies)
-                    DropdownMenuItem(
-                      value: value.currency,
-                      child: Text(value.currency),
-                    ),
-                ],
-                onChanged: (value) => setState(() => _currency = value),
-              ),
-            const SizedBox(height: 8),
-            Text(
-              '${l10n.cardSpendingTotal} · ${formatCardMoney(context, data.amountMinor, data.currency)}',
-              style: theme.textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                ChoiceChip(
-                  label: Text(l10n.cardSpendingDistribution),
-                  selected: !_daily,
-                  onSelected: (_) => setState(() => _daily = false),
-                ),
-                ChoiceChip(
-                  label: Text(l10n.cardSpendingDaily),
-                  selected: _daily,
-                  onSelected: (_) => setState(() => _daily = true),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (_daily)
-              _DailySpendingChart(data: data)
-            else
-              for (final merchant in data.merchants)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        merchant.merchant ?? l10n.cardSpendingUnknownMerchant,
+      child: InkWell(
+        onTap: widget.onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(l10n.cardSpendingTitle, style: theme.textTheme.titleLarge),
+              if (currencies.length > 1)
+                DropdownButton<String>(
+                  value: data.currency,
+                  isExpanded: true,
+                  hint: Text(l10n.cardSpendingCurrency),
+                  items: [
+                    for (final value in currencies)
+                      DropdownMenuItem(
+                        value: value.currency,
+                        child: Text(value.currency),
                       ),
-                      Text(
-                        '${formatCardMoney(context, merchant.amountMinor, data.currency)} · ${(100 * merchant.amountMinor / data.amountMinor).toStringAsFixed(1)}%',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 4),
-                      LinearProgressIndicator(
-                        value: merchant.amountMinor / data.amountMinor,
-                        minHeight: 8,
-                        borderRadius: BorderRadius.circular(4),
-                        semanticsLabel:
-                            '${merchant.merchant ?? l10n.cardSpendingUnknownMerchant} · ${formatCardMoney(context, merchant.amountMinor, data.currency)}',
-                      ),
-                    ],
-                  ),
+                  ],
+                  onChanged: (value) => setState(() => _currency = value),
                 ),
-            if (widget.partial) ...[
-              Text(l10n.cardSpendingPartial, style: theme.textTheme.bodyMedium),
               const SizedBox(height: 8),
+              Text(
+                '${l10n.cardSpendingTotal} · ${formatCardMoney(context, data.amountMinor, data.currency)}',
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  ChoiceChip(
+                    label: Text(l10n.cardSpendingDistribution),
+                    selected: !_daily,
+                    onSelected: (_) => setState(() => _daily = false),
+                  ),
+                  ChoiceChip(
+                    label: Text(l10n.cardSpendingDaily),
+                    selected: _daily,
+                    onSelected: (_) => setState(() => _daily = true),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (_daily)
+                _DailySpendingChart(data: data)
+              else
+                for (final merchant in data.merchants)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          merchant.merchant ?? l10n.cardSpendingUnknownMerchant,
+                        ),
+                        Text(
+                          '${formatCardMoney(context, merchant.amountMinor, data.currency)} · ${(100 * merchant.amountMinor / data.amountMinor).toStringAsFixed(1)}%',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 4),
+                        LinearProgressIndicator(
+                          value: merchant.amountMinor / data.amountMinor,
+                          minHeight: 8,
+                          borderRadius: BorderRadius.circular(4),
+                          semanticsLabel:
+                              '${merchant.merchant ?? l10n.cardSpendingUnknownMerchant} · ${formatCardMoney(context, merchant.amountMinor, data.currency)}',
+                        ),
+                      ],
+                    ),
+                  ),
+              if (widget.partial) ...[
+                Text(
+                  l10n.cardSpendingPartial,
+                  style: theme.textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 8),
+              ],
+              Text(
+                l10n.cardSpendingLoadedOnly,
+                style: theme.textTheme.bodySmall,
+              ),
+              Text(
+                l10n.cardSpendingLocalDates,
+                style: theme.textTheme.bodySmall,
+              ),
             ],
-            Text(l10n.cardSpendingLoadedOnly, style: theme.textTheme.bodySmall),
-            Text(l10n.cardSpendingLocalDates, style: theme.textTheme.bodySmall),
-          ],
+          ),
         ),
       ),
     );

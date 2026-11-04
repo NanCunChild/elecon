@@ -2,10 +2,12 @@
 library;
 
 import 'capability_source.dart';
+import 'display_date.dart';
 
 import 'package:elecon_contract/faculty_search.dart';
 import 'package:elecon_contract/output_validator_registry.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../l10n/gen/app_localizations.dart';
@@ -74,6 +76,10 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
   SessionController? _session;
   String? _schoolId;
   int? _generation;
+  int? _dataGeneration;
+  CapabilitySource? _source;
+  DateTime? _fetchedAt;
+  bool _stale = false;
   bool _bound = false, _invalidated = false, _loading = false, _failed = false;
   int _requestId = 0;
   FacultySearch? _result;
@@ -90,17 +96,59 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
       _session = session;
       _schoolId = session?.selectedSchool?.id;
       _generation = session?.trustedScriptViewGeneration;
-    } else if (!identical(session, _session) ||
+      _dataGeneration = session?.trustedScriptDataGeneration;
+      _source = CapabilitySourceScope.maybeOf(context)?.source;
+      if (session != null && widget.loadSearch == null) _restore();
+    } else if (_source != CapabilitySourceScope.maybeOf(context)?.source ||
+        !identical(session, _session) ||
         _schoolId != session?.selectedSchool?.id ||
-        _generation != session?.trustedScriptViewGeneration) {
+        _generation != session?.trustedScriptViewGeneration ||
+        _dataGeneration != session?.trustedScriptDataGeneration) {
       _requestId++;
       _invalidated = true;
       _result = null;
+      _fetchedAt = null;
       _submitted = null;
       _loading = false;
       _failed = false;
       _name.clear();
       _researchArea.clear();
+    }
+  }
+
+  Future<void> _restore() async {
+    final request = _requestId;
+    try {
+      final cached = await CapabilityQueries(
+        _session!,
+        source: _source,
+      ).latestCachedCapability('faculty.search');
+      if (!mounted ||
+          request != _requestId ||
+          _invalidated ||
+          _generation != _session?.trustedScriptViewGeneration ||
+          _dataGeneration != _session?.trustedScriptDataGeneration ||
+          _source != CapabilitySourceScope.maybeOf(context)?.source) {
+        return;
+      }
+      final result = cached == null
+          ? null
+          : facultySearchFromDynamic(cached.data);
+      if (result == null ||
+          result.page != cached!.params['page'] ||
+          result.pageSize != cached.params['pageSize']) {
+        return;
+      }
+      setState(() {
+        _result = result;
+        _submitted = Map.of(cached.params);
+        _name.text = cached.params['query'] as String? ?? '';
+        _researchArea.text = cached.params['researchArea'] as String? ?? '';
+        _fetchedAt = cached.fetchedAt;
+        _stale = cached.isStale;
+      });
+    } catch (_) {
+      // Storage failure leaves the search form available, without fake results.
     }
   }
 
@@ -127,7 +175,10 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
     setState(() {
       _loading = true;
       _failed = false;
-      _result = null;
+      if (_submitted == null || !mapEquals(_submitted, params)) {
+        _result = null;
+        _fetchedAt = null;
+      }
       _submitted = Map.unmodifiable(params);
     });
     FacultySearch? result;
@@ -146,6 +197,7 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
     }
     if (!mounted || requestId != _requestId || _invalidated) return;
     if (_generation != _session?.trustedScriptViewGeneration ||
+        _dataGeneration != _session?.trustedScriptDataGeneration ||
         _schoolId != _session?.selectedSchool?.id) {
       setState(() {
         _invalidated = true;
@@ -162,7 +214,11 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
     setState(() {
       _loading = false;
       _failed = result == null;
-      _result = result;
+      if (result != null) {
+        _result = result;
+        _fetchedAt = DateTime.now();
+        _stale = false;
+      }
     });
   }
 
@@ -245,9 +301,21 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
                       child: Text(l10n.commonRetry),
                     ),
                   ),
-                ] else if (result == null)
-                  Text(l10n.facultyHint)
-                else ...[
+                ],
+                if (result == null && !_loading && !_failed)
+                  Text(l10n.facultyHint),
+                if (result != null) ...[
+                  if (_fetchedAt != null)
+                    Text(
+                      _stale
+                          ? l10n.homeDataStaleAt(
+                              formatUpdateTime(_fetchedAt!, l10n),
+                            )
+                          : l10n.homeDataUpdatedAt(
+                              formatUpdateTime(_fetchedAt!, l10n),
+                            ),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   Text(
                     l10n.facultySource(Uri.parse(result.sourceUrl).host),
                     style: Theme.of(context).textTheme.bodySmall,

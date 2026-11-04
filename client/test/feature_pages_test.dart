@@ -16,7 +16,9 @@ const png =
 
 class FeatureSession extends SessionController {
   final calls = <String>[];
+  final interactiveCalls = <bool>[];
   bool expired = false;
+  int validitySeconds = 30;
   Completer<CapabilityRun>? gate;
   @override
   Future<CapabilityRun> runCapability(
@@ -28,6 +30,7 @@ class FeatureSession extends SessionController {
     void Function(AdapterDiagnostic)? onDiagnostic,
   }) async {
     calls.add(capability);
+    interactiveCalls.add(interactive);
     if (gate != null) return gate!.future;
     if (capability == 'classroom.buildings') {
       return const CapabilityRun.ok({
@@ -53,7 +56,7 @@ class FeatureSession extends SessionController {
       'imageBase64': png,
       'issuedAt': now.subtract(const Duration(seconds: 10)).toIso8601String(),
       'expiresAt': now
-          .add(Duration(seconds: expired ? -1 : 30))
+          .add(Duration(seconds: expired ? -1 : validitySeconds))
           .toIso8601String(),
     });
   }
@@ -174,33 +177,81 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Show QR code'), findsOneWidget);
       expect(find.text('Transactions'), findsNothing);
-      expect(session.calls, isEmpty);
+      expect(session.calls, ['card.qr']);
+      expect(find.byKey(const ValueKey('card-qr-panel')), findsOneWidget);
       expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
     },
   );
   testWidgets(
-    'QR clears at expiry and on background with no automatic refresh',
+    'QR refreshes without interaction, clears in background and remasks on return',
     (tester) async {
       final session = FeatureSession();
       addTearDown(session.dispose);
       await tester.pumpWidget(app(const CardQrPage(), session: session));
       await tester.pumpAndSettle();
       expect(find.byType(Image), findsOneWidget);
-      await tester.pump(const Duration(seconds: 31));
-      expect(find.byType(Image), findsNothing);
-      expect(session.calls, ['card.qr']);
-      await tester.tap(find.byTooltip('Refresh').first);
+      expect(find.byKey(const ValueKey('card-qr-reveal')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('card-qr-reveal')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('card-qr-reveal')), findsNothing);
+      await tester.pump(const Duration(seconds: 25));
       await tester.pumpAndSettle();
       expect(find.byType(Image), findsOneWidget);
+      expect(session.calls, ['card.qr', 'card.qr']);
+      expect(session.interactiveCalls, [true, false]);
+      expect(find.byKey(const ValueKey('card-qr-reveal')), findsNothing);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       await tester.pump();
       expect(find.byType(Image), findsNothing);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pump();
+      await tester.pump(const Duration(seconds: 90));
       expect(session.calls.length, 2);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(session.calls.length, 3);
+      expect(find.byKey(const ValueKey('card-qr-reveal')), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     },
   );
+  testWidgets('QR pauses when covered by another route and reloads on return', (
+    tester,
+  ) async {
+    final session = FeatureSession();
+    addTearDown(session.dispose);
+    await tester.pumpWidget(app(const CardQrPage(), session: session));
+    await tester.pumpAndSettle();
+    final navigator = Navigator.of(tester.element(find.byType(CardQrPage)));
+    navigator.push<void>(
+      MaterialPageRoute(
+        builder: (_) => const Scaffold(body: Text('Other page')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(Image, skipOffstage: false), findsNothing);
+    await tester.pump(const Duration(seconds: 90));
+    expect(session.calls, ['card.qr']);
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(session.calls, ['card.qr', 'card.qr']);
+    expect(session.interactiveCalls, [true, false]);
+    expect(find.byKey(const ValueKey('card-qr-reveal')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('sub-two-second QR is rejected without a renewal loop', (
+    tester,
+  ) async {
+    final session = FeatureSession()..validitySeconds = 1;
+    addTearDown(session.dispose);
+    await tester.pumpWidget(app(const CardQrPage(), session: session));
+    await tester.pumpAndSettle();
+    expect(find.byType(Image), findsNothing);
+    expect(find.text('Unable to display QR code. Try again.'), findsOneWidget);
+    await tester.pump(const Duration(minutes: 2));
+    expect(session.calls, ['card.qr']);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'expired QR and a late result after source change never display',
     (tester) async {

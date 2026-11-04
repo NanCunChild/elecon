@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' show ImageFilter;
 import 'package:elecon_contract/card_qr.dart';
 
 import 'package:flutter/material.dart';
@@ -137,26 +138,11 @@ class _CardSectionState extends State<CardSection>
           ],
         if (!home && (widget.qrEnabled || widget.transactionsEnabled)) ...[
           if (widget.balanceEnabled) const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (widget.qrEnabled)
-                FilledButton.tonalIcon(
-                  onPressed: () =>
-                      openCapabilityPage(context, const CardQrPage()),
-                  icon: const Icon(Icons.qr_code),
-                  label: Text(l10n.cardQrShow),
-                ),
-              if (widget.transactionsEnabled)
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      openCapabilityPage(context, const CardTransactionsPage()),
-                  icon: const Icon(Icons.receipt_long_outlined),
-                  label: Text(l10n.cardTransactions),
-                ),
-            ],
-          ),
+          if (widget.qrEnabled) const CardQrPage(embedded: true),
+          if (widget.transactionsEnabled) ...[
+            const SizedBox(height: 16),
+            const CardTransactionsPage(embedded: true),
+          ],
         ],
       ],
     );
@@ -196,7 +182,8 @@ class _CardSectionState extends State<CardSection>
 
 /// QR data has no persistent cache and is destroyed on expiry/background/exit.
 class CardQrPage extends StatefulWidget {
-  const CardQrPage({super.key});
+  const CardQrPage({super.key, this.embedded = false});
+  final bool embedded;
   @override
   State<CardQrPage> createState() => _CardQrPageState();
 }
@@ -210,9 +197,12 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
   SessionController? _session;
   CapabilitySource? _source;
   int? _generation;
+  int? _dataGeneration;
   int _request = 0;
   bool _started = false;
   bool _foreground = true;
+  bool _routeVisible = true;
+  bool _revealed = false;
 
   @override
   void initState() {
@@ -229,18 +219,32 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
       _session = session;
       _source = CapabilitySourceScope.maybeOf(context)?.source;
       _generation = session.trustedScriptViewGeneration;
+      _dataGeneration = session.trustedScriptDataGeneration;
+      _routeVisible = ModalRoute.of(context)?.isCurrent ?? true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _load();
       });
     } else if (_source != CapabilitySourceScope.maybeOf(context)?.source ||
         !identical(session, _session) ||
         session.trustedScriptViewGeneration != _generation ||
-        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+        session.trustedScriptDataGeneration != _dataGeneration) {
       _clear();
+    } else {
+      final visible = ModalRoute.of(context)?.isCurrent ?? true;
+      if (visible != _routeVisible) {
+        _routeVisible = visible;
+        _clear();
+        if (visible) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _load(automatic: true);
+          });
+        }
+      }
     }
   }
 
-  void _clear() {
+  void _clear({bool resetReveal = true}) {
+    if (resetReveal) _revealed = false;
     _request++;
     _expiry?.cancel();
     if (_image != null) unawaited(MemoryImage(_image!).evict());
@@ -252,7 +256,12 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
-    if (!_foreground && mounted) setState(_clear);
+    if (!mounted) return;
+    if (!_foreground) {
+      setState(_clear);
+    } else if (_routeVisible) {
+      unawaited(_load(automatic: true));
+    }
   }
 
   @override
@@ -262,12 +271,15 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  Future<void> _load({bool configure = false}) async {
+  Future<void> _load({bool configure = false, bool automatic = false}) async {
     final session = _session!;
-    if (!_foreground || !isCurrentQuery(this, session, _generation!, _source)) {
+    if (!_foreground ||
+        !_routeVisible ||
+        !isCurrentQuery(this, session, _generation!, _source) ||
+        session.trustedScriptDataGeneration != _dataGeneration) {
       return;
     }
-    _clear();
+    _clear(resetReveal: false);
     final request = _request;
     setState(() {
       _phase = QueryPhase.loading;
@@ -277,6 +289,7 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
       context,
       session,
       'card.qr',
+      interactive: !automatic,
       params: {if (configure) 'configure': true},
       decode: (raw) {
         if (raw is! Map ||
@@ -296,7 +309,8 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
     if (!mounted ||
         request != _request ||
         !_foreground ||
-        !isCurrentQuery(this, session, _generation!, _source)) {
+        !isCurrentQuery(this, session, _generation!, _source) ||
+        session.trustedScriptDataGeneration != _dataGeneration) {
       return;
     }
     try {
@@ -316,7 +330,7 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
           expires = DateTime.parse(data.expiresAt),
           now = DateTime.now();
       if (!expires.isAfter(issued) ||
-          !expires.isAfter(now) ||
+          !expires.isAfter(now.add(const Duration(seconds: 2))) ||
           issued.isAfter(now.add(const Duration(seconds: 5)))) {
         throw const FormatException();
       }
@@ -338,12 +352,15 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
         _purpose = data.purpose;
         _phase = QueryPhase.loaded;
       });
+      // Each bounded call obtains a fresh image before the previous image's
+      // display deadline. No timer or image survives a hidden page.
+      final lifetime = remaining < const Duration(seconds: 60)
+          ? remaining
+          : const Duration(seconds: 60);
       _expiry = Timer(
-        remaining < const Duration(seconds: 60)
-            ? remaining
-            : const Duration(seconds: 60),
+        Duration(milliseconds: (lifetime.inMilliseconds * .8).floor()),
         () {
-          if (mounted) setState(_clear);
+          if (mounted) unawaited(_load(automatic: true));
         },
       );
     } catch (_) {
@@ -361,7 +378,96 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
     final current =
         _source == CapabilitySourceScope.maybeOf(context)?.source &&
         identical(session, _session) &&
-        session.trustedScriptViewGeneration == _generation;
+        session.trustedScriptViewGeneration == _generation &&
+        session.trustedScriptDataGeneration == _dataGeneration;
+    final content = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!current)
+          Text(l10n.homeCardDataChanged)
+        else ...[
+          if (_image != null)
+            Center(
+              child: SizedBox(
+                width: widget.embedded ? 200 : 280,
+                height: widget.embedded ? 200 : 280,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ImageFiltered(
+                      imageFilter: ImageFilter.blur(
+                        sigmaX: _revealed ? 0 : 12,
+                        sigmaY: _revealed ? 0 : 12,
+                      ),
+                      child: ColoredBox(
+                        color: Colors.white,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Image.memory(
+                            _image!,
+                            gaplessPlayback: false,
+                            semanticLabel: l10n.cardQrShow,
+                            errorBuilder: (_, _, _) => Text(l10n.cardQrInvalid),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (!_revealed)
+                      Center(
+                        child: FilledButton.icon(
+                          key: const ValueKey('card-qr-reveal'),
+                          onPressed: () => setState(() => _revealed = true),
+                          icon: const Icon(Icons.qr_code),
+                          label: Text(l10n.cardQrShow),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          if (_purpose != null && !widget.embedded)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(_purpose!, textAlign: TextAlign.center),
+            ),
+          if (_phase == QueryPhase.idle)
+            Text(l10n.cardQrExpired, textAlign: TextAlign.center),
+          QueryPhaseBody(
+            phase: _phase,
+            error: _error,
+            onConfigure: () => _load(configure: true),
+            onLogin: () async {
+              _clear();
+              final ok = await promptVisibleLogin(
+                context,
+                session,
+                targetRef: 'card-session',
+                capability: 'card.qr',
+              );
+              if (mounted && current && ok) await _load();
+            },
+          ),
+          if (_phase == QueryPhase.error || _phase == QueryPhase.idle)
+            Center(
+              child: TextButton.icon(
+                onPressed: current ? _load : null,
+                icon: const Icon(Icons.refresh),
+                label: Text(l10n.commonRetry),
+              ),
+            ),
+        ],
+      ],
+    );
+    if (widget.embedded) {
+      return Card(
+        key: const ValueKey('card-qr-panel'),
+        child: SizedBox(
+          height: 264,
+          child: Center(child: SingleChildScrollView(child: content)),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.cardQrShow),
@@ -374,60 +480,7 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (!current)
-                Text(l10n.homeCardDataChanged)
-              else ...[
-                if (_image != null)
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 320),
-                      child: ColoredBox(
-                        color: Colors.white,
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Image.memory(
-                            _image!,
-                            gaplessPlayback: false,
-                            semanticLabel: l10n.cardQrShow,
-                            errorBuilder: (_, _, _) => Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Text(
-                                l10n.cardQrInvalid,
-                                style: const TextStyle(color: Colors.black),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                if (_purpose != null)
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(_purpose!, textAlign: TextAlign.center),
-                  ),
-                if (_phase == QueryPhase.idle) Text(l10n.cardQrExpired),
-                QueryPhaseBody(
-                  phase: _phase,
-                  error: _error,
-                  onConfigure: () => _load(configure: true),
-                  onLogin: () async {
-                    _clear();
-                    final ok = await promptVisibleLogin(
-                      context,
-                      session,
-                      targetRef: 'card-session',
-                      capability: 'card.qr',
-                    );
-                    if (mounted && current && ok) await _load();
-                  },
-                ),
-              ],
-            ],
-          ),
+          child: content,
         ),
       ),
     );
@@ -435,7 +488,9 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
 }
 
 class CardTransactionsPage extends StatefulWidget {
-  const CardTransactionsPage({super.key});
+  const CardTransactionsPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<CardTransactionsPage> createState() => _CardTransactionsPageState();
@@ -450,12 +505,14 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
   SessionController? _session;
   CapabilitySource? _source;
   int? _generation;
+  int? _dataGeneration;
   int _request = 0;
   int _page = 0;
   int _rangeDays = 30;
   bool _loadingMore = false;
   bool _hasMore = false;
   bool _complete = false;
+  bool _stale = false;
   bool _loginRequired = false;
   DateTime _to = DateTime.now();
   DateTime? _fetchedAt;
@@ -471,12 +528,14 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
       _session = session;
       _source = CapabilitySourceScope.maybeOf(context)?.source;
       _generation = session.trustedScriptViewGeneration;
+      _dataGeneration = session.trustedScriptDataGeneration;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _load();
+        if (mounted) _restoreOrLoad();
       });
     } else if (_source != CapabilitySourceScope.maybeOf(context)?.source ||
         !identical(session, _session) ||
-        session.trustedScriptViewGeneration != _generation) {
+        session.trustedScriptViewGeneration != _generation ||
+        session.trustedScriptDataGeneration != _dataGeneration) {
       _request++;
       _data = null;
       _items.clear();
@@ -491,9 +550,115 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
     super.dispose();
   }
 
+  Map<String, dynamic> _params(int page) => {
+    'from': formatLocalDate(_from),
+    'to': formatLocalDate(_to),
+    'page': page,
+    'size': _pageSize,
+  };
+
+  Future<void> _restoreOrLoad() async {
+    final session = _session!;
+    final request = _request;
+    final queries = CapabilityQueries(session, source: _source);
+    try {
+      final latest = await queries.latestCachedCapability('card.transactions');
+      if (!mounted ||
+          request != _request ||
+          !isCurrentQuery(this, session, _generation!, _source) ||
+          session.trustedScriptDataGeneration != _dataGeneration) {
+        return;
+      }
+      final params = latest?.params;
+      final from = DateTime.tryParse(params?['from']?.toString() ?? '');
+      final to = DateTime.tryParse(params?['to']?.toString() ?? '');
+      final days = from == null || to == null
+          ? null
+          : to.difference(from).inDays + 1;
+      if (params?['size'] == _pageSize && [7, 30, 90].contains(days)) {
+        _to = to!;
+        _rangeDays = days!;
+        // A cached page N cannot establish completeness without pages 1..N-1.
+        final lastPage = (params?['page'] as int? ?? 1).clamp(1, 100);
+        for (var page = 1; page <= lastPage; page++) {
+          final cached = await queries.cachedCapability(
+            'card.transactions',
+            params: _params(page),
+          );
+          if (!mounted ||
+              request != _request ||
+              !isCurrentQuery(this, session, _generation!, _source) ||
+              session.trustedScriptDataGeneration != _dataGeneration) {
+            return;
+          }
+          final data = cached == null
+              ? null
+              : cardTransactionsFromDynamic(cached.data);
+          if (data == null || (data.page != null && data.page != page)) break;
+          _acceptPage(data, page, more: page > 1, fetchedAt: cached!.fetchedAt);
+          _stale = _stale || cached.isStale;
+          if (_complete) break;
+        }
+        if (_data != null) {
+          setState(() => _phase = QueryPhase.loaded);
+          return;
+        }
+      }
+    } catch (_) {
+      // A failed cache read falls back to one foreground request.
+    }
+    if (mounted && request == _request) await _load();
+  }
+
+  void _acceptPage(
+    CardTransactions data,
+    int page, {
+    required bool more,
+    DateTime? fetchedAt,
+  }) {
+    if (!more) {
+      _items.clear();
+      _fetchedAt = fetchedAt ?? DateTime.now();
+      _stale = false;
+      _snapshotAt = data.snapshotAt;
+    }
+    _phase = QueryPhase.loaded;
+    _data = data;
+    _page = page;
+    final ids = {
+      for (final item in _items)
+        if (item.transactionId != null && item.transactionId!.isNotEmpty)
+          (item.currency, item.transactionId!),
+    };
+    final previousCount = _items.length;
+    for (final item in data.items) {
+      final id = item.transactionId;
+      if (id == null || id.isEmpty || ids.add((item.currency, id))) {
+        _items.add(item);
+      }
+    }
+    final total = data.total;
+    _complete =
+        data.hasNext != true &&
+        data.cursor == null &&
+        (total == null || _items.length >= total) &&
+        (data.hasNext == false || (total != null && _items.length >= total));
+    _hasMore =
+        !_complete &&
+        data.items.isNotEmpty &&
+        (!more || _items.length > previousCount) &&
+        data.cursor == null &&
+        (data.hasNext == true ||
+            (total != null && _items.length < total) ||
+            data.items.length >= _pageSize);
+  }
+
   Future<void> _load({bool more = false, bool configure = false}) async {
     final session = _session!;
-    if (!isCurrentQuery(this, session, _generation!, _source)) return;
+    if (!isCurrentQuery(this, session, _generation!, _source) ||
+        session.trustedScriptDataGeneration != _dataGeneration) {
+      return;
+    }
     if (more && (_loadingMore || !_hasMore)) return;
     final request = ++_request;
     final nextPage = more ? _page + 1 : 1;
@@ -503,31 +668,19 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
       _loadingMore = more;
       if (!more) {
         _phase = QueryPhase.loading;
-        _data = null;
-        _items.clear();
-        _fetchedAt = null;
-        _snapshotAt = null;
-        _page = 0;
-        _hasMore = false;
-        _complete = false;
       }
     });
     final outcome = await runDecoded<CardTransactions>(
       context,
       session,
       'card.transactions',
-      params: {
-        if (configure) 'configure': true,
-        'from': formatLocalDate(_from),
-        'to': formatLocalDate(_to),
-        'page': nextPage,
-        'size': _pageSize,
-      },
+      params: {..._params(nextPage), if (configure) 'configure': true},
       decode: cardTransactionsFromDynamic,
     );
     if (!mounted ||
         request != _request ||
-        !isCurrentQuery(this, session, _generation!, _source)) {
+        !isCurrentQuery(this, session, _generation!, _source) ||
+        session.trustedScriptDataGeneration != _dataGeneration) {
       return;
     }
     final l10n = AppLocalizations.of(context);
@@ -544,53 +697,26 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
         _phase = _data == null ? QueryPhase.error : QueryPhase.loaded;
         _error = outcome.error ?? l10n.campusLoadFailed;
       } else {
-        final data = outcome.data!;
-        _phase = QueryPhase.loaded;
-        _data = data;
-        _page = nextPage;
-        final ids = {
-          for (final item in _items)
-            if (item.transactionId != null && item.transactionId!.isNotEmpty)
-              (item.currency, item.transactionId!),
-        };
-        final previousCount = _items.length;
-        for (final item in data.items) {
-          final id = item.transactionId;
-          if (id == null || id.isEmpty || ids.add((item.currency, id))) {
-            _items.add(item);
-          }
-        }
-        _fetchedAt ??= DateTime.now();
-        if (!more) _snapshotAt = data.snapshotAt;
-        final total = data.total;
-        _complete =
-            data.hasNext != true &&
-            data.cursor == null &&
-            (total == null || _items.length >= total) &&
-            (data.hasNext == false ||
-                (total != null && _items.length >= total));
-        _hasMore =
-            !_complete &&
-            data.items.isNotEmpty &&
-            (!more || _items.length > previousCount) &&
-            data.cursor == null &&
-            (data.hasNext == true ||
-                (total != null && _items.length < total) ||
-                data.items.length >= _pageSize);
+        _acceptPage(outcome.data!, nextPage, more: more);
       }
     });
   }
 
   Future<void> _login() async {
     final session = _session!;
-    if (!isCurrentQuery(this, session, _generation!, _source)) return;
+    if (!isCurrentQuery(this, session, _generation!, _source) ||
+        session.trustedScriptDataGeneration != _dataGeneration) {
+      return;
+    }
     final ok = await promptVisibleLogin(
       context,
       session,
       targetRef: 'card-session',
       capability: 'card.transactions',
     );
-    if (!mounted || !isCurrentQuery(this, session, _generation!, _source)) {
+    if (!mounted ||
+        !isCurrentQuery(this, session, _generation!, _source) ||
+        session.trustedScriptDataGeneration != _dataGeneration) {
       return;
     }
     if (ok) await _load(more: _data != null);
@@ -603,7 +729,57 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
     final current =
         _source == CapabilitySourceScope.maybeOf(context)?.source &&
         identical(session, _session) &&
-        session.trustedScriptViewGeneration == _generation;
+        session.trustedScriptViewGeneration == _generation &&
+        session.trustedScriptDataGeneration == _dataGeneration;
+    if (widget.embedded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!current)
+            Text(l10n.homeCardDataChanged)
+          else ...[
+            if (_data != null)
+              CardSpendingView(
+                summary: CardSpendingSummary.fromTransactions(
+                  _items,
+                  from: _from,
+                  to: _to,
+                ),
+                partial: !_complete,
+                onOpen: () =>
+                    openCapabilityPage(context, const CardTransactionsPage()),
+              ),
+            if (_phase != QueryPhase.loaded)
+              QueryPhaseBody(
+                phase: _phase,
+                error: _error,
+                onLogin: _login,
+                onConfigure: () => _load(configure: true),
+              ),
+            if (_data != null && _items.isEmpty)
+              Text(l10n.cardSpendingNoRecords),
+            if (_fetchedAt != null)
+              Text(
+                _stale
+                    ? l10n.homeDataStaleAt(formatUpdateTime(_fetchedAt!, l10n))
+                    : l10n.homeDataUpdatedAt(
+                        formatUpdateTime(_fetchedAt!, l10n),
+                      ),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                onPressed: () =>
+                    openCapabilityPage(context, const CardTransactionsPage()),
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: Text(l10n.cardTransactions),
+              ),
+            ),
+          ],
+        ],
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.cardTransactions),
@@ -636,6 +812,13 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
                               setState(() {
                                 _rangeDays = days;
                                 _to = DateTime.now();
+                                _data = null;
+                                _items.clear();
+                                _fetchedAt = null;
+                                _snapshotAt = null;
+                                _page = 0;
+                                _hasMore = false;
+                                _complete = false;
                               });
                               _load();
                             },
@@ -673,7 +856,7 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
                         children: [Text(_error!, textAlign: TextAlign.center)],
                       ),
                     ),
-                  if (_phase == QueryPhase.loaded) ...[
+                  if (_data != null) ...[
                     if (_items.isEmpty)
                       Padding(
                         padding: const EdgeInsets.all(24),
@@ -697,7 +880,9 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
                           vertical: 8,
                         ),
                         child: Text(
-                          l10n.homeDataUpdatedAt(
+                          (_stale
+                              ? l10n.homeDataStaleAt
+                              : l10n.homeDataUpdatedAt)(
                             formatUpdateTime(
                               DateTime.tryParse(_snapshotAt ?? '') ??
                                   _fetchedAt!,

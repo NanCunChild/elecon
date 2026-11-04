@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:elecon/core/scripts/manifest.dart';
 
 import 'package:elecon/core/adapter_service.dart';
 import 'package:elecon/core/card_spending.dart';
@@ -68,6 +70,109 @@ Widget app(Widget child, {SpendingSession? session, double scale = 1}) {
 }
 
 void main() {
+  testWidgets(
+    'reopening restores cached transaction pages and failed refresh keeps them',
+    (tester) async {
+      final session = SpendingSession();
+      addTearDown(session.dispose);
+      final now = DateTime.now();
+      String date(DateTime value) => value.toIso8601String().substring(0, 10);
+      final params = {
+        'from': date(DateTime(now.year, now.month, now.day - 29)),
+        'to': date(now),
+        'page': 1,
+        'size': 100,
+      };
+      final pages = {
+        '1': {
+          'page': 1,
+          'hasNext': true,
+          'total': 2,
+          'items': [transaction('cached-one', 125)],
+        },
+        '2': {
+          'page': 2,
+          'hasNext': false,
+          'total': 2,
+          'items': [transaction('cached-two', 275)],
+        },
+      };
+      final package = ScriptPackage.parse(
+        jsonEncode({
+          'format': 'elecon-script/1',
+          'manifest': {
+            'sdkVersion': 4,
+            'id': 'synthetic-card-cache',
+            'schoolId': 'synthetic',
+            'version': '1.0.0',
+            'name': 'Synthetic',
+            'network': {'origins': []},
+            'browser': false,
+            'capabilities': [
+              {
+                'id': 'card.transactions',
+                'schema': 'elecon.card.transactions',
+                'schemaVersion': '1.0',
+              },
+            ],
+            'home': [
+              {
+                'capability': 'card.transactions',
+                'ttlSeconds': 300,
+                'preload': false,
+              },
+            ],
+          },
+          'source':
+              'export const capabilities={"card.transactions":async(_,params)=>(${jsonEncode(pages)})[params.page]};',
+        }),
+      );
+      await tester.runAsync(() async {
+        await session.installTrustedScript(
+          package,
+          approvedDigest: package.digest,
+        );
+        await session.selectTrustedScriptSchool(package.manifest.id);
+        for (final page in [1, 2]) {
+          expect(
+            (await session.runTrustedScript(
+              package.manifest.id,
+              'card.transactions',
+              params: {...params, 'page': page},
+              interactive: false,
+            )).ok,
+            isTrue,
+          );
+        }
+      });
+      for (var reopening = 0; reopening < 2; reopening++) {
+        await tester.pumpWidget(
+          app(const CardTransactionsPage(), session: session),
+        );
+        await tester.runAsync(() async {});
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('card-spending-chart')),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Not all records are loaded'), findsNothing);
+        expect(session.requests, isEmpty);
+        if (reopening == 0) await tester.pumpWidget(const SizedBox());
+      }
+      session.responses.add(
+        (_) async => const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'synthetic_offline',
+        ),
+      );
+      await tester.tap(find.byTooltip('Refresh').first);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('card-spending-chart')), findsOneWidget);
+      expect(find.textContaining('synthetic_offline'), findsWidgets);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('inconsistent totals remain partial and repeated pages stop', (
     tester,
   ) async {
