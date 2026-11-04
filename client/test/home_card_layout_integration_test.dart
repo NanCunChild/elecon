@@ -61,7 +61,13 @@ Widget app(
     ),
   ),
   builder: (context, child) => MediaQuery(
-    data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+    // These tests exercise card geometry, navigation and persistence. The
+    // adaptive title intentionally scrolls continuously at narrow widths;
+    // its movement/lifecycle are covered by adaptive_school_title_test.dart.
+    data: MediaQuery.of(context).copyWith(
+      textScaler: TextScaler.linear(scale),
+      disableAnimations: true,
+    ),
     child: child!,
   ),
   home: EleconHomePage(

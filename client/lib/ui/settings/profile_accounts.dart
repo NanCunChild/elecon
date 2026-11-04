@@ -106,18 +106,19 @@ class _ProfileName extends StatelessWidget {
   final bool active;
 
   @override
-  Widget build(BuildContext context) => Row(
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    runSpacing: 4,
+    crossAxisAlignment: WrapCrossAlignment.center,
     children: [
-      Expanded(child: Text(name)),
-      if (active) ...[
-        const SizedBox(width: 8),
+      Text(name),
+      if (active)
         Text(
           AppLocalizations.of(context).profilesCurrent,
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
             color: Theme.of(context).colorScheme.primary,
           ),
         ),
-      ],
     ],
   );
 }
