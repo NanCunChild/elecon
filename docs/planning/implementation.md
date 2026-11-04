@@ -123,3 +123,18 @@ E1/E2 可独立推进；E3 本地模式先于 E4。E5 的 HTTP 路径无需等�
 ## 维护方式
 
 本文只记录当前状态、下一步与关闭条件。历史测试流水和已完成阶段移入带日期的证据快照；专项手册可解释协议，不另维护一份项目进度。重要架构选择在 ADR 说明原因，状态变化更新本表及对应实际接口说明，不再把每个内部重构拆成新的 ADR。
+
+## 2026-11-04 门户、账户恢复与 Hermes 对齐
+
+[ADR-086](../adr/adr_086_portal_pages.md)/[087](../adr/adr_087_foreground_card_refresh.md)/[088](../adr/adr_088_library_search.md) 按本轮授权实施：
+
+- 首页全宽摘要限高280逻辑像素；电话常用/最近搜索摘要与详情搜索分离。成绩与空教室复用脚本内联表单，缓存优先、首次默认只读查询非交互，草稿不执行查询。
+- 一卡通详情含固定264像素二维码区（前台续订、遮罩点击显示、后台/离页清除），消费图表进入明细；交易分页及教师查询恢复受保护缓存。周课表缩略按真实课程时段绘制长条。
+- SDK18页面声明将一级入口绑定同包二级模板，可建议至多3个脚本tab，保留首页/设置；generic入口与当前受控web模板兜底。不是ADR-080长期作者JS/远程网页网络的完整交付。
+- 图书馆详情上方公共书目检索、下方个人借阅；新增library.search/1.0。profile显示已有profile.me.name；西电仅转发会话中可信accountLabel，真实姓名源字段尚待源站取证。
+- 密码仅提交一次，官方验证码/MFA页面供用户完成；导航/DOM短暂故障有限重试并记录无秘密阶段码。算法验证码求解需已有格式样本及离线准确率证据，本轮未引入模型权重、公共识别服务或未知格式猜解。
+- Hermes所用8crate对齐已提交061de04，保留本地DNS/TLS/SID与凭据保护，审计见[记录](../research/hermes_upstream_alignment_2026_11_04.md)。不引入系统TUN或上游未提交桌面工作。
+
+西电包升0.30.0/SDK18，已安装旧包须重新批准digest；旧版本字段不静默改义。自动测试/构建与真实学校、真机业务验收及核心人工审阅分别记录；本轮不发布或合并。
+
+验证记录：Hermes 298项Rust测试、strict Clippy及Linux/Android ARM64构建通过；西电238项Node合成测试与38项实际编译包QuickJS测试通过；页面/导航/快捷方式、内联筛选、二维码与缓存、课表、图书及Profile定向Flutter回归通过，最终Flutter analyze无问题。81个schema golden、SDK/工具TypeScript检查及codegen --check通过（原有27处schema字段description欠缺仍为既有非阻断提示）。Android debug APK已构建至 `client/build/app/outputs/flutter-apk/app-debug.apk`，未安装设备。真实验证码/二维码/图书源站、实际姓名字段与人工核心审阅仍待完成。
