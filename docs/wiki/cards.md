@@ -285,3 +285,13 @@ export const capabilities = {
 最多 16 个不同能力，TTL 为 30–86400 秒，参数 JSON 最多 4096 UTF-8 字节。`preload:true` 在后台执行，不能弹登录、表单、扫码或浏览器。宿主缓存验证成功的输出和实际完成时间，刷新失败保留旧结果与 stale 状态；身份、来源 digest、参数和适用语言参与隔离。
 
 禁止加入 home 的能力包括：`climate.command`、`card.qr`、`query.controls`、`account.session`、`forum.session`、`messages.session/list/conversations/history/send`、`attendance.checkin`、`web.content`。卡片显隐不等于注销账号或撤销缓存策略。
+
+## SDK18 门户页面
+
+首页所有宽度均显示摘要，全宽摘要高度为280逻辑像素；搜索/筛选在点击进入后的详情页。`pages` 声明同包 `id/title/template/tab`，`cards.pageId` 绑定同类型页面，generic入口可绑定任意同包页面。模板支持已有原生卡片类型、faculty、forum、messages和web；web必须指定已有 `webContent` 的 `webPageId`，仍遵循当前受控网页容器限制。省略pages保持旧路由；旧SDK不能使用新字段。
+
+```json
+{"pages":[{"id":"wallet","title":"一卡通","template":"card","tab":true}],"cards":[{"id":"wallet","type":"card","defaultVariant":"regular","pageId":"wallet"}]}
+```
+
+未被显式卡片绑定的页面也有通用首页入口；底栏最多容纳三个脚本页面，其余仍从首页访问。卡片与页面保持同一身份、来源digest及模板，不能点击后更换学校或provider。`home`负责缓存/预加载，与路由声明独立。二维码只在前台一卡通页自动续订、点击揭开遮罩，退出/后台清除，禁止持久缓存。

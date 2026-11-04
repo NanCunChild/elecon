@@ -26,7 +26,13 @@ class QueryFormDialog extends StatefulWidget {
     required this.isActive,
     required this.session,
     this.loadDeferred,
+    this.onSubmit,
+    this.onInitialSubmit,
+    this.submitInitial = false,
   });
+  final ValueChanged<Map<String, dynamic>>? onSubmit;
+  final ValueChanged<Map<String, dynamic>>? onInitialSubmit;
+  final bool submitInitial;
   final QueryFormLoader load;
   final QueryFormDeferredLoader? loadDeferred;
   final Map<String, dynamic> current;
@@ -48,6 +54,7 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
   int _deferredRevision = 0;
   ScriptRunCancellation? _deferredCancellation;
   bool _deferredFailed = false;
+  bool _initialSubmitted = false;
   bool _loading = true, _failed = false, _validate = false;
   String? _changed;
 
@@ -68,7 +75,9 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
       _revision++;
       _cancelDeferred();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+        if (mounted &&
+            widget.onSubmit == null &&
+            ModalRoute.of(context)?.isCurrent == true) {
           Navigator.pop(context);
         }
       });
@@ -161,6 +170,19 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
           }
         }
         _form = next;
+        if (!_initialSubmitted &&
+            widget.submitInitial &&
+            widget.onSubmit != null) {
+          _initialSubmitted = true;
+          final initial = next.values(_values);
+          if (initial != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && widget.isActive() && revision == _revision) {
+                (widget.onInitialSubmit ?? widget.onSubmit)!(initial);
+              }
+            });
+          }
+        }
         _baseFields
           ..clear()
           ..addEntries(next.fields.map((field) => MapEntry(field.id, field)));
@@ -603,85 +625,100 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return AlertDialog(
-      title: Text(_form?.title ?? l10n.queryFilters),
-      content: SizedBox(
-        width: 440,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_loading)
-                LinearProgressIndicator(semanticsLabel: l10n.homeCardLoading),
-              for (final field in _form?.fields ?? const <QueryFormField>[])
-                if (!field.deferred)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 7),
-                    child: _field(field),
-                  ),
-              for (final field in _form?.fields ?? const <QueryFormField>[])
-                if (field.deferred && _values.containsKey(field.id))
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(field.label),
-                    subtitle: Text(
-                      l10n.queryPendingSelection(_values[field.id].toString()),
-                    ),
-                    trailing: IconButton(
-                      tooltip: l10n.queryClearCondition,
-                      onPressed: () => _change(field, null),
-                      icon: const Icon(Icons.clear),
-                    ),
-                  ),
-              if (_deferredFailed)
-                TextButton.icon(
-                  onPressed: _resolveDeferred,
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: Text(l10n.queryOptionalRetry),
+    final content = SizedBox(
+      width: 440,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_loading)
+              LinearProgressIndicator(semanticsLabel: l10n.homeCardLoading),
+            for (final field in _form?.fields ?? const <QueryFormField>[])
+              if (!field.deferred)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  child: _field(field),
                 ),
-              if (_failed) ...[
-                Text(l10n.scriptsSourceResponseInvalid),
-                TextButton.icon(
-                  onPressed: _loading ? null : _reload,
-                  icon: const Icon(Icons.refresh),
-                  label: Text(l10n.commonRetry),
+            for (final field in _form?.fields ?? const <QueryFormField>[])
+              if (field.deferred && _values.containsKey(field.id))
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(field.label),
+                  subtitle: Text(
+                    l10n.queryPendingSelection(_values[field.id].toString()),
+                  ),
+                  trailing: IconButton(
+                    tooltip: l10n.queryClearCondition,
+                    onPressed: () => _change(field, null),
+                    icon: const Icon(Icons.clear),
+                  ),
                 ),
-              ],
+            if (_deferredFailed)
+              TextButton.icon(
+                onPressed: _resolveDeferred,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: Text(l10n.queryOptionalRetry),
+              ),
+            if (_failed) ...[
+              Text(l10n.scriptsSourceResponseInvalid),
+              TextButton.icon(
+                onPressed: _loading ? null : _reload,
+                icon: const Icon(Icons.refresh),
+                label: Text(l10n.commonRetry),
+              ),
             ],
-          ),
+          ],
         ),
       ),
-      actions: [
+    );
+    final actions = <Widget>[
+      if (widget.onSubmit == null)
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
         ),
-        FilledButton(
-          key: const ValueKey('query-form-submit'),
-          onPressed: _loading || _failed || _form == null || !widget.isActive()
-              ? null
-              : () {
-                  if (!widget.isActive()) {
-                    Navigator.pop(context);
-                    return;
-                  }
-                  final values = _form!.values(_values);
-                  if (values == null ||
-                      _form!.fields.any(
-                        (field) =>
-                            !field.disabled &&
-                            _invalidNumbers.contains(field.id),
-                      )) {
-                    setState(() => _validate = true);
-                    return;
-                  }
-                  _cancelDeferred();
+      FilledButton(
+        key: const ValueKey('query-form-submit'),
+        onPressed: _loading || _failed || _form == null || !widget.isActive()
+            ? null
+            : () {
+                if (!widget.isActive()) {
+                  if (widget.onSubmit == null) Navigator.pop(context);
+                  return;
+                }
+                final values = _form!.values(_values);
+                if (values == null ||
+                    _form!.fields.any(
+                      (field) =>
+                          !field.disabled && _invalidNumbers.contains(field.id),
+                    )) {
+                  setState(() => _validate = true);
+                  return;
+                }
+                _cancelDeferred();
+                if (widget.onSubmit != null) {
+                  widget.onSubmit!(values);
+                } else {
                   Navigator.pop(context, values);
-                },
-          child: Text(_form?.submitLabel ?? l10n.queryFilters),
-        ),
-      ],
+                }
+              },
+        child: Text(_form?.submitLabel ?? l10n.queryFilters),
+      ),
+    ];
+    if (widget.onSubmit != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          content,
+          Wrap(spacing: 8, children: actions),
+        ],
+      );
+    }
+    return AlertDialog(
+      title: Text(_form?.title ?? l10n.queryFilters),
+      content: content,
+      actions: actions,
     );
   }
 }

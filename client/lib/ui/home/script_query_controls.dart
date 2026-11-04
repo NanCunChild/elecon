@@ -5,7 +5,9 @@ import 'package:elecon_contract/output_validator_registry.dart';
 import 'package:flutter/material.dart';
 
 import '../../l10n/gen/app_localizations.dart';
+import '../../core/scripts/manifest.dart';
 import '../../session/session_controller.dart';
+import '../../session/session_scope.dart';
 import 'capability_source.dart';
 import 'query_section.dart';
 import 'legacy_query_controls_model.dart';
@@ -149,7 +151,7 @@ class ScriptQuerySelection {
 }
 
 /// Metadata belongs to the chosen business provider, never its own override.
-Future<String?> scriptQueryControlsVersion(
+Future<ScriptPackage?> _queryControlsProvider(
   SessionController session,
   String target, {
   CapabilitySource? source,
@@ -169,8 +171,18 @@ Future<String?> scriptQueryControlsVersion(
           (installation?.enabled != true || package.digest != source.digest))) {
     return null;
   }
-  return package.manifest.capability('query.controls')?.schemaVersion;
+  return package;
 }
+
+Future<String?> scriptQueryControlsVersion(
+  SessionController session,
+  String target, {
+  CapabilitySource? source,
+}) async => (await _queryControlsProvider(
+  session,
+  target,
+  source: source,
+))?.manifest.capability('query.controls')?.schemaVersion;
 
 Future<ScriptQuerySelection> pickScriptQueryControls(
   BuildContext context,
@@ -513,6 +525,164 @@ class _QueryControlsDialogState extends State<_QueryControlsDialog> {
           child: Text(widget.controls.submitLabel),
         ),
       ],
+    );
+  }
+}
+
+/// The same typed draft editor embedded in a detail page (ADR-086).
+class InlineScriptQueryControls extends StatefulWidget {
+  const InlineScriptQueryControls({
+    super.key,
+    required this.target,
+    required this.current,
+    required this.onSubmit,
+    required this.fallback,
+    this.submitInitial = false,
+    this.onInitialSubmit,
+  });
+  final String target;
+  final Map<String, dynamic> current;
+  final ValueChanged<Map<String, dynamic>> onSubmit;
+  final Widget fallback;
+  final bool submitInitial;
+  final ValueChanged<Map<String, dynamic>>? onInitialSubmit;
+  @override
+  State<InlineScriptQueryControls> createState() =>
+      _InlineScriptQueryControlsState();
+}
+
+class _InlineScriptQueryControlsState extends State<InlineScriptQueryControls> {
+  Object? _key;
+  Future<ScriptPackage?>? _provider;
+  ScriptRunCancellation? _baseCancellation;
+
+  @override
+  void dispose() {
+    _baseCancellation?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final session = SessionScope.of(context);
+    final source = CapabilitySourceScope.maybeOf(context)?.source;
+    final generation = session.trustedScriptViewGeneration;
+    final dataGeneration = session.trustedScriptDataGeneration;
+    final key = (
+      session,
+      source,
+      generation,
+      dataGeneration,
+      session.scriptLocale,
+      widget.target,
+    );
+    if (_key != key) {
+      _key = key;
+      _baseCancellation?.cancel();
+      _provider = _queryControlsProvider(
+        session,
+        widget.target,
+        source: source,
+      );
+    }
+    bool active() =>
+        mounted &&
+        _key == key &&
+        identical(SessionScope.of(context), session) &&
+        session.trustedScriptViewGeneration == generation &&
+        session.trustedScriptDataGeneration == dataGeneration;
+    return FutureBuilder<ScriptPackage?>(
+      future: _provider,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const LinearProgressIndicator();
+        }
+        final package = snapshot.data;
+        final version = package?.manifest
+            .capability('query.controls')
+            ?.schemaVersion;
+        if (package == null || !const {'2.0', '2.1'}.contains(version)) {
+          return widget.fallback;
+        }
+        return QueryFormDialog(
+          key: ValueKey(key),
+          session: session,
+          isActive: active,
+          current: widget.current['filters'] is Map
+              ? Map<String, dynamic>.from(widget.current['filters'])
+              : const {},
+          submitInitial: widget.submitInitial,
+          onInitialSubmit: (filters) {
+            if (active()) {
+              (widget.onInitialSubmit ?? widget.onSubmit)({'filters': filters});
+            }
+          },
+          onSubmit: (filters) {
+            if (active()) widget.onSubmit({'filters': filters});
+          },
+          load: (draft, changed) async {
+            _baseCancellation?.cancel();
+            final cancellation = ScriptRunCancellation();
+            _baseCancellation = cancellation;
+            if (!active()) throw const FormatException('script_cancelled');
+            final result = await session.runTrustedScript(
+              package.manifest.id,
+              'query.controls',
+              expectedDigest: package.digest,
+              params: {
+                'target': widget.target,
+                'current': draft,
+                'changed': ?changed,
+              },
+              interactive: false,
+              cancellation: cancellation,
+            );
+            if (!active() || cancellation.isCancelled || !result.ok) {
+              throw const FormatException('query_controls_unavailable');
+            }
+            final form = queryFormFromDynamic(
+              result.data,
+              widget.target,
+              version: version!,
+            );
+            if (form == null) {
+              throw const FormatException('query_controls_unavailable');
+            }
+            return form;
+          },
+          loadDeferred: version != '2.1'
+              ? null
+              : (draft, fields, cancellation) async {
+                  if (!active()) {
+                    throw const FormatException('script_cancelled');
+                  }
+                  final result = await session.runTrustedScript(
+                    package.manifest.id,
+                    'query.controls',
+                    expectedDigest: package.digest,
+                    params: {
+                      'target': widget.target,
+                      'current': draft,
+                      'load': fields,
+                    },
+                    interactive: false,
+                    cancellation: cancellation,
+                  );
+                  if (!active() || cancellation.isCancelled || !result.ok) {
+                    throw const FormatException('query_controls_unavailable');
+                  }
+                  final form = queryFormFromDynamic(
+                    result.data,
+                    widget.target,
+                    version: version!,
+                  );
+                  if (form == null) {
+                    throw const FormatException('query_controls_unavailable');
+                  }
+                  return form;
+                },
+        );
+      },
     );
   }
 }

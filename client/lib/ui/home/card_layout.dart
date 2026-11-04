@@ -55,7 +55,7 @@ class HomeCardPresentation extends InheritedWidget {
       maybeOf(context)?.preset ?? HomeCardPreset.standard;
 
   static bool isPreview(BuildContext context) =>
-      maybeOf(context)?.onOpen != null && of(context) != HomeCardSize.expanded;
+      maybeOf(context)?.onOpen != null && maybeOf(context)?.isPage != true;
 
   static HomeCardSize of(BuildContext context) =>
       context
@@ -78,6 +78,7 @@ class HomeCardEntry {
     required this.id,
     required this.label,
     required this.builder,
+    this.pageBuilder,
     this.icon = Icons.dashboard_outlined,
     this.sizes = HomeCardSize.values,
     this.defaultSize = HomeCardSize.regular,
@@ -88,6 +89,7 @@ class HomeCardEntry {
   final String id;
   final String label;
   final WidgetBuilder builder;
+  final WidgetBuilder? pageBuilder;
   final IconData icon;
   final List<HomeCardSize> sizes;
   final HomeCardSize defaultSize;

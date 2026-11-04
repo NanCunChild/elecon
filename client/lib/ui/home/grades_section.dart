@@ -53,6 +53,7 @@ class _GradesSectionState extends State<GradesSection>
 
   @override
   void clearCache() {
+    _cacheReady = false;
     _data = null;
     _phase = QueryPhase.idle;
     _summary = null;
@@ -72,9 +73,10 @@ class _GradesSectionState extends State<GradesSection>
   Map<String, dynamic>? _customFilters;
   String? _filterError;
   bool _termsLoading = false;
+  bool _cacheReady = false;
   int _request = 0;
 
-  Future<void> _load({bool configure = false}) async {
+  Future<void> _load({bool configure = false, bool interactive = true}) async {
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     final source = CapabilitySourceScope.maybeOf(context)?.source;
@@ -88,6 +90,7 @@ class _GradesSectionState extends State<GradesSection>
       session,
       'grades.list',
       params: {...?cacheParams, if (configure) 'configure': true},
+      interactive: interactive,
       decode: gradesListFromDynamic,
     );
     if (!mounted ||
@@ -124,8 +127,17 @@ class _GradesSectionState extends State<GradesSection>
 
   @override
   Future<void> restoreCache() async {
+    final initialSession = cacheSession;
+    final initialGeneration = initialSession?.trustedScriptViewGeneration;
+    final initialDataGeneration = initialSession?.trustedScriptDataGeneration;
     await super.restoreCache();
-    if (!mounted) return;
+    if (!mounted ||
+        initialSession != cacheSession ||
+        initialGeneration != cacheSession?.trustedScriptViewGeneration ||
+        initialDataGeneration != cacheSession?.trustedScriptDataGeneration) {
+      return;
+    }
+    setState(() => _cacheReady = true);
     final session = cacheSession;
     if (session == null) return;
     final read = cacheRead;
@@ -155,6 +167,7 @@ class _GradesSectionState extends State<GradesSection>
         session,
         'gpa.summary',
         params: term == null ? null : {'term': term},
+        interactive: false,
         decode: gpaSummaryFromDynamic,
       );
       return run.data;
@@ -275,33 +288,60 @@ class _GradesSectionState extends State<GradesSection>
     }
   }
 
-  Widget _filters() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
+  void _submitFilters(Map<String, dynamic> params, {bool initial = false}) {
+    if (initial && (_data != null || _phase != QueryPhase.idle)) return;
+    setState(() {
+      _customFilters = Map<String, dynamic>.from(params['filters']);
+      _selectedTerm = null;
+      cacheRead++;
+      cacheFetchedAt = null;
+    });
+    _load(interactive: !initial);
+  }
+
+  Widget _filters() => cacheSession?.selectedSchool == null
+      ? const SizedBox.shrink()
+      : !_cacheReady
+      ? const LinearProgressIndicator()
+      : InlineScriptQueryControls(
+          target: cacheCapability,
+          current: cacheParams ?? const {},
+          submitInitial: _data == null && _phase == QueryPhase.idle,
+          onInitialSubmit: (params) => _submitFilters(params, initial: true),
+          onSubmit: _submitFilters,
+          fallback: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextButton.icon(
+                onPressed: _termsLoading || _phase == QueryPhase.loading
+                    ? null
+                    : _pickTerm,
+                icon: const Icon(Icons.filter_list),
+                label: Text(AppLocalizations.of(context).queryFilters),
+              ),
+              if (_filterError != null) Text(_filterError!),
+            ],
+          ),
+        );
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      TextButton.icon(
-        onPressed: _termsLoading || _phase == QueryPhase.loading
-            ? null
-            : _pickTerm,
-        icon: const Icon(Icons.filter_list),
-        label: Text(AppLocalizations.of(context).queryFilters),
-      ),
-      if (_filterError != null) Text(_filterError!),
+      if (!HomeCardPresentation.isPreview(context)) _filters(),
+      _content(context),
     ],
   );
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _content(BuildContext context) {
     if (_data != null) {
       return withCacheTime(
         GradesCard(
           _data!,
           summary: _summary,
-          controls: HomeCardPresentation.isPreview(context)
+          controls: HomeCardPresentation.isPreview(context) || _error == null
               ? null
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [_filters(), if (_error != null) Text(_error!)],
-                ),
+              : Text(_error!),
           trailing: SectionRefreshButton(
             onPressed: _phase == QueryPhase.loading ? null : _load,
           ),
@@ -318,7 +358,6 @@ class _GradesSectionState extends State<GradesSection>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _filters(),
           QueryPhaseBody(
             phase: _phase,
             error: _error,

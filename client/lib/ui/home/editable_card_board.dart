@@ -165,7 +165,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
         for (final card in _layout.visible(widget.cards))
           card.id: _grid!.span(
             card.supportedSize(_layout.sizes[card.id]),
-            contentHeight: _heights[card.id] ?? 0,
+            contentHeight: 280,
           ),
       };
       _dragLocations = _grid!.place(spans, _layout.positions);
@@ -584,7 +584,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
               for (final card in cards)
                 card.id: grid.span(
                   card.supportedSize(_layout.sizes[card.id]),
-                  contentHeight: _heights[card.id] ?? 0,
+                  contentHeight: 280,
                 ),
             };
             _locations = grid.place(
@@ -601,7 +601,7 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                   if (card.supportedSize(_layout.sizes[card.id]) ==
                           HomeCardSize.expanded &&
                       _heights.containsKey(card.id))
-                    card.id: _heights[card.id]!,
+                    card.id: 280,
               },
             );
             _geometry = geometry;
@@ -833,9 +833,11 @@ class _EditableCardBoardState extends State<EditableCardBoard> {
                       maxWidth: compact ? boardWidth : null,
                       child: HomeCardPresentation(
                         size: size,
-                        previewHeight: size == HomeCardSize.regular
-                            ? _slots[card.id]!.height
-                            : null,
+                        previewHeight: size == HomeCardSize.compact
+                            ? null
+                            : size == HomeCardSize.expanded
+                            ? 280
+                            : _slots[card.id]!.height,
                         preset: card.supportedPreset(_layout.presets[card.id]),
                         icon: card.icon,
                         onOpen: open,

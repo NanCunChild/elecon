@@ -112,6 +112,7 @@ void main() {
       await tester.pumpWidget(app());
       await until(tester, () => find.byType(GradesCard).evaluate().isNotEmpty);
       expect(find.text('No grades in this term'), findsOneWidget);
+      await until(tester, () => find.text('Filters').evaluate().isNotEmpty);
       await tester.tap(find.text('Filters'));
       await until(
         tester,
@@ -180,6 +181,7 @@ void main() {
         () =>
             find.textContaining('term-before · GPA 2.50').evaluate().isNotEmpty,
       );
+      await until(tester, () => find.text('Filters').evaluate().isNotEmpty);
       await tester.tap(find.text('Filters'));
       await until(
         tester,
@@ -188,6 +190,10 @@ void main() {
       session.logout();
       await tester.pump();
       await tester.tap(find.text('School current semester'));
+      await until(
+        tester,
+        () => find.byType(LinearProgressIndicator).evaluate().isEmpty,
+      );
       await tester.pumpAndSettle();
       expect(find.byType(GradesCard), findsNothing);
       expect(tester.takeException(), isNull);
@@ -220,6 +226,7 @@ void main() {
         ),
       );
       await until(tester, () => find.byType(GradesCard).evaluate().isNotEmpty);
+      await until(tester, () => find.text('Filters').evaluate().isNotEmpty);
       await tester.tap(find.text('Filters'));
       await until(
         tester,

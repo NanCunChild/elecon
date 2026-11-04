@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:elecon/core/scripts/manifest.dart';
+import 'package:elecon/core/adapter_service.dart';
+import 'package:elecon/core/loader/diagnostics.dart';
 import 'package:elecon/l10n/gen/app_localizations.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:elecon/session/session_scope.dart';
@@ -14,6 +16,29 @@ import 'package:elecon/ui/home/section_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'script_query_controls_test.dart' show until;
+
+class RecordingQuerySession extends SessionController {
+  final requests = <(String, bool)>[];
+  @override
+  Future<CapabilityRun> runCapability(
+    String capability, {
+    Map<String, dynamic>? params,
+    bool interactive = true,
+    String? htmlStdlib,
+    void Function(String, String)? onLog,
+    void Function(AdapterDiagnostic)? onDiagnostic,
+  }) {
+    requests.add((capability, interactive));
+    return super.runCapability(
+      capability,
+      params: params,
+      interactive: interactive,
+      htmlStdlib: htmlStdlib,
+      onLog: onLog,
+      onDiagnostic: onDiagnostic,
+    );
+  }
+}
 
 ScriptPackage fixture() => ScriptPackage.parse(
   jsonEncode({
@@ -61,40 +86,49 @@ ScriptPackage fixture() => ScriptPackage.parse(
   }),
 );
 
-Future<SessionController> sessionFor(
+Future<RecordingQuerySession> sessionFor(
   WidgetTester tester,
   ScriptPackage package,
 ) async => (await tester.runAsync(() async {
-  final session = SessionController();
+  final session = RecordingQuerySession();
   await session.bootstrap();
   await session.installTrustedScript(package, approvedDigest: package.digest);
   await session.selectTrustedScriptSchool(package.manifest.id);
   return session;
 }))!;
-Widget app(SessionController session, ScriptPackage package, Widget child) =>
-    SessionScope(
-      controller: session,
-      child: MaterialApp(
-        locale: const Locale('en'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: CapabilitySourceScope(
-              source: CapabilitySource(
-                packageId: package.manifest.id,
-                digest: package.digest,
-              ),
-              child: HomeCardPresentation(
-                size: HomeCardSize.expanded,
-                isPage: true,
-                child: child,
-              ),
-            ),
-          ),
+Widget app(
+  SessionController session,
+  ScriptPackage package,
+  Widget child, {
+  bool bind = true,
+}) {
+  final page = HomeCardPresentation(
+    size: HomeCardSize.expanded,
+    isPage: true,
+    child: child,
+  );
+  return SessionScope(
+    controller: session,
+    child: MaterialApp(
+      locale: const Locale('en'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: bind
+              ? CapabilitySourceScope(
+                  source: CapabilitySource(
+                    packageId: package.manifest.id,
+                    digest: package.digest,
+                  ),
+                  child: page,
+                )
+              : page,
         ),
       ),
-    );
+    ),
+  );
+}
 
 void main() {
   test('new classroom attributes and coverage are decoded only for 1.3', () {
@@ -148,30 +182,9 @@ void main() {
       final package = fixture();
       final session = await sessionFor(tester, package);
       addTearDown(session.dispose);
-      Widget currentApp() => app(session, package, const ClassroomSection());
+      Widget currentApp() =>
+          app(session, package, const ClassroomSection(), bind: false);
       await tester.pumpWidget(currentApp());
-      await until(tester, () => find.byType(TextButton).evaluate().isNotEmpty);
-      expect(find.byType(DropdownButton), findsNothing);
-      expect(find.byType(TextField), findsNothing);
-      expect(
-        await tester.runAsync(
-          () => session.latestCachedCapability('classroom.available'),
-        ),
-        isNull,
-      );
-      await tester.tap(find.widgetWithText(TextButton, 'Filters'));
-      await until(tester, () => find.text('School form').evaluate().isNotEmpty);
-      expect(
-        find.byKey(const ValueKey('query-control-visitDate')),
-        findsOneWidget,
-      );
-      expect(
-        await tester.runAsync(
-          () => session.latestCachedCapability('classroom.available'),
-        ),
-        isNull,
-      );
-      await tester.tap(find.text('Apply school query'));
       await until(
         tester,
         () => find
@@ -180,13 +193,23 @@ void main() {
             .isNotEmpty,
       );
       expect(find.textContaining('Synthetic subset'), findsOneWidget);
-      expect(find.byType(TextField), findsNothing);
+      expect(
+        session.requests
+            .where((call) => call.$1 == 'classroom.available')
+            .toList(),
+        [('classroom.available', false)],
+      );
+      expect(
+        find.byKey(const ValueKey('query-control-visitDate')),
+        findsOneWidget,
+      );
+      expect(find.byType(AlertDialog), findsNothing);
       expect(
         find.byType(SectionCard),
         findsNothing,
         reason: 'The native page uses a compact toolbar above room results',
       );
-      expect(find.widgetWithText(TextButton, 'Filters'), findsOneWidget);
+      expect(find.text('Apply school query'), findsOneWidget);
       expect(find.byTooltip('Refresh'), findsOneWidget);
       expect(find.byType(FilterChip), findsNothing);
       expect(find.byType(OutlinedButton), findsNothing);
@@ -199,6 +222,9 @@ void main() {
         ),
       );
       expect(cached, isNotNull);
+      final queryCount = session.requests
+          .where((call) => call.$1 == 'classroom.available')
+          .length;
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpWidget(currentApp());
       await until(
@@ -207,6 +233,14 @@ void main() {
             .text('Synthetic laboratory · Teaching seats: 80 · Exam seats: 40')
             .evaluate()
             .isNotEmpty,
+      );
+      expect(
+        session.requests
+            .where((call) => call.$1 == 'classroom.available')
+            .length,
+        queryCount,
+        reason:
+            'Restored data must not be replaced by an automatic default query',
       );
       await tester.tap(find.byTooltip('Refresh').first);
       var refreshed = false;
@@ -249,11 +283,14 @@ void main() {
       final package = fixture();
       final session = await sessionFor(tester, package);
       addTearDown(session.dispose);
-      Widget currentApp() => app(session, package, const GradesSection());
+      Widget currentApp() =>
+          app(session, package, const GradesSection(), bind: false);
       await tester.pumpWidget(currentApp());
-      await tester.tap(find.text('Filters'));
-      await until(tester, () => find.text('School form').evaluate().isNotEmpty);
-      await tester.tap(find.text('Apply school query'));
+      await until(
+        tester,
+        () => find.text('Apply school query').evaluate().isNotEmpty,
+      );
+      expect(find.byType(AlertDialog), findsNothing);
       await until(
         tester,
         () =>
@@ -264,6 +301,10 @@ void main() {
       expect(
         tester.widget<GradesCard>(find.byType(GradesCard)).data.term,
         'actual-term',
+      );
+      expect(
+        session.requests.where((call) => call.$1 == 'grades.list').toList(),
+        [('grades.list', false)],
       );
       expect(
         await tester.runAsync(
@@ -293,6 +334,12 @@ void main() {
             find.byType(GradesCard).evaluate().isNotEmpty &&
             tester.widget<GradesCard>(find.byType(GradesCard)).summary?.gpa ==
                 3.25,
+      );
+      expect(
+        session.requests.where((call) => call.$1 == 'grades.list').length,
+        1,
+        reason:
+            'Restoring grades must reuse the latest query without resubmission',
       );
       expect(tester.takeException(), isNull);
     },

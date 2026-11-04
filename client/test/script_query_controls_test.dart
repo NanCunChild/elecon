@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:elecon/core/scripts/manifest.dart';
 import 'package:elecon/l10n/gen/app_localizations.dart';
 import 'package:elecon/session/session_controller.dart';
+import 'package:elecon/session/session_scope.dart';
 import 'package:elecon/ui/home/script_query_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -84,6 +85,88 @@ Future<void> until(WidgetTester tester, bool Function() ready) async {
 }
 
 void main() {
+  testWidgets(
+    'inline defaults stay bound to the business provider and submit only once',
+    (tester) async {
+      ScriptPackage formPackage(String id, bool target, String label) {
+        final raw =
+            jsonDecode(package(id, target: target, title: label).encode())
+                as Map<String, dynamic>;
+        raw['manifest']['sdkVersion'] = 17;
+        raw['manifest']['accounts'] = [];
+        raw['manifest']['capabilities'][0]['schemaVersion'] = '2.0';
+        raw['source'] =
+            '''export const capabilities={
+        'grades.list':async()=>({items:[]}),
+        'query.controls':async()=>({target:'grades.list',title:'Form',submitLabel:'Submit',controls:[{id:'term',kind:'text',label:'$label',initialValue:'A'}]})
+      };''';
+        return ScriptPackage.parse(jsonEncode(raw));
+      }
+
+      final session = (await tester.runAsync(() async {
+        final session = SessionController();
+        await session.bootstrap();
+        for (final p in [
+          formPackage('target-source', true, 'Correct provider'),
+          formPackage('other-source', false, 'Wrong provider'),
+        ]) {
+          await session.installTrustedScript(p, approvedDigest: p.digest);
+        }
+        await session.selectTrustedScriptSchool('target-source');
+        await session.selectTrustedScriptProvider(
+          'query-school',
+          'query.controls',
+          'other-source',
+        );
+        return session;
+      }))!;
+      addTearDown(session.dispose);
+      final initial = <Map<String, dynamic>>[];
+      final manual = <Map<String, dynamic>>[];
+      await tester.pumpWidget(
+        SessionScope(
+          controller: session,
+          child: MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: InlineScriptQueryControls(
+                target: 'grades.list',
+                current: const {},
+                onSubmit: manual.add,
+                onInitialSubmit: initial.add,
+                submitInitial: true,
+                fallback: const Text('Unavailable'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await until(tester, () => initial.isNotEmpty);
+      expect(initial, [
+        {
+          'filters': {'term': 'A'},
+        },
+      ]);
+      expect(manual, isEmpty);
+      expect(find.text('Correct provider'), findsOneWidget);
+      expect(find.text('Wrong provider'), findsNothing);
+      await tester.enterText(
+        find.byKey(const ValueKey('query-control-term')),
+        'B',
+      );
+      await tester.pumpAndSettle();
+      expect(initial.length, 1);
+      expect(manual, isEmpty);
+      await tester.tap(find.text('Submit'));
+      expect(manual, [
+        {
+          'filters': {'term': 'B'},
+        },
+      ]);
+    },
+  );
   test(
     'metadata rejects unsupported bindings, duplicate parameters and ambiguous defaults',
     () {

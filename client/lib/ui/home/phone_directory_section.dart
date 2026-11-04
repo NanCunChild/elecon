@@ -69,6 +69,8 @@ class _PhoneDirectorySectionState extends State<PhoneDirectorySection>
   QueryPhase _phase = QueryPhase.idle;
   String? _error;
   int _request = 0;
+  bool _attemptedLoad = false;
+  List<String> _recentIds = const [];
 
   @override
   String get cacheCapability => 'directory.phones';
@@ -86,9 +88,27 @@ class _PhoneDirectorySectionState extends State<PhoneDirectorySection>
     _data = null;
     _phase = QueryPhase.idle;
     _error = null;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _phase == QueryPhase.idle) _load();
-    });
+    _recentIds = const [];
+    _attemptedLoad = false;
+  }
+
+  @override
+  Future<void> restoreCache() async {
+    final session = cacheSession;
+    final generation = session?.trustedScriptViewGeneration;
+    final dataGeneration = session?.trustedScriptDataGeneration;
+    await super.restoreCache();
+    if (!mounted ||
+        session != cacheSession ||
+        generation != session?.trustedScriptViewGeneration ||
+        dataGeneration != session?.trustedScriptDataGeneration ||
+        _data != null ||
+        _phase != QueryPhase.idle ||
+        _attemptedLoad) {
+      return;
+    }
+    _attemptedLoad = true;
+    await _load();
   }
 
   Future<void> _load() async {
@@ -127,7 +147,22 @@ class _PhoneDirectorySectionState extends State<PhoneDirectorySection>
       trailing: SectionRefreshButton(
         onPressed: _phase == QueryPhase.loading ? null : _load,
       ),
-      summary: CardSummary(l10n.phoneDirectoryHint),
+      summary: data == null
+          ? CardSummary(l10n.phoneDirectoryHint)
+          : CardSummary(
+              {
+                    for (final id in _recentIds)
+                      for (final item in data.items.where(
+                        (entry) => entry.id == id,
+                      ))
+                        item,
+                    ...data.items,
+                  }
+                  .take(3)
+                  .map((item) => '${item.name} · ${item.phone}')
+                  .join('\n'),
+              detail: l10n.phoneDirectoryHint,
+            ),
       child: data == null
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -144,7 +179,12 @@ class _PhoneDirectorySectionState extends State<PhoneDirectorySection>
                   const LinearProgressIndicator(),
                 if (_phase == QueryPhase.error)
                   Text(l10n.phoneDirectoryRefreshFailed),
-                PhoneDirectoryView(key: ValueKey(data), directory: data),
+                PhoneDirectoryView(
+                  directory: data,
+                  onMatchesChanged: (items) => setState(() {
+                    _recentIds = items.take(2).map((item) => item.id).toList();
+                  }),
+                ),
               ],
             ),
     );
@@ -152,10 +192,16 @@ class _PhoneDirectorySectionState extends State<PhoneDirectorySection>
 }
 
 class PhoneDirectoryView extends StatefulWidget {
-  const PhoneDirectoryView({super.key, required this.directory, this.dial});
+  const PhoneDirectoryView({
+    super.key,
+    required this.directory,
+    this.dial,
+    this.onMatchesChanged,
+  });
 
   final DirectoryPhones directory;
   final Future<bool> Function(String phone)? dial;
+  final ValueChanged<List<DirectoryPhonesItems>>? onMatchesChanged;
 
   @override
   State<PhoneDirectoryView> createState() => _PhoneDirectoryViewState();
@@ -192,15 +238,9 @@ class _PhoneDirectoryViewState extends State<PhoneDirectoryView> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final categories = widget.directory.items
-        .map((i) => i.category)
-        .toSet()
-        .toList();
+  List<DirectoryPhonesItems> _matches() {
     final words = _query.trim().toLowerCase().split(RegExp(r'\s+'));
-    final matches = widget.directory.items.where((item) {
+    return widget.directory.items.where((item) {
       if (_category != null && item.category != _category) return false;
       final text = [
         item.name,
@@ -219,6 +259,22 @@ class _PhoneDirectoryViewState extends State<PhoneDirectoryView> {
                 item.phone.contains(word.replaceAll(RegExp(r'\D'), ''))),
       );
     }).toList();
+  }
+
+  void _remember() {
+    if (_query.trim().isNotEmpty || _category != null) {
+      widget.onMatchesChanged?.call(_matches());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final categories = widget.directory.items
+        .map((i) => i.category)
+        .toSet()
+        .toList();
+    final matches = _matches();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -242,6 +298,7 @@ class _PhoneDirectoryViewState extends State<PhoneDirectoryView> {
           onChanged: (value) => setState(() {
             _query = value;
             _limit = 40;
+            _remember();
           }),
         ),
         const SizedBox(height: 12),
@@ -265,6 +322,7 @@ class _PhoneDirectoryViewState extends State<PhoneDirectoryView> {
           onChanged: (value) => setState(() {
             _category = value == '' ? null : value;
             _limit = 40;
+            _remember();
           }),
         ),
         const SizedBox(height: 12),

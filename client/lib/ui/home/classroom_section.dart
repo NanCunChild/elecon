@@ -35,6 +35,7 @@ class _ClassroomSectionState extends State<ClassroomSection>
   bool _formVersionReady = false;
   Map<String, dynamic> _scriptParams = {};
   bool _filtersLoading = false;
+  int _request = 0;
   String? _filterError;
   @override
   void onConfigurationRequired() => _availPhase = QueryPhase.needConfiguration;
@@ -76,6 +77,7 @@ class _ClassroomSectionState extends State<ClassroomSection>
 
   @override
   void clearCache() {
+    _request++;
     _prepared = false;
     _schemaVersion = null;
     _usesScriptForm = false;
@@ -108,7 +110,8 @@ class _ClassroomSectionState extends State<ClassroomSection>
       cacheCapability,
       source: pendingSource,
     );
-    if (!isCurrentQuery(
+    if (!mounted ||
+        !isCurrentQuery(
           this,
           pendingSession,
           pendingGeneration,
@@ -118,12 +121,19 @@ class _ClassroomSectionState extends State<ClassroomSection>
       return;
     }
     _schemaVersion = version;
-    setState(() {
-      _usesScriptForm = const {'2.0', '2.1'}.contains(controlsVersion);
-      _formVersionReady = true;
-    });
+    _usesScriptForm = const {'2.0', '2.1'}.contains(controlsVersion);
     await super.restoreCache();
-    if (!mounted) return;
+    if (!mounted ||
+        !isCurrentQuery(
+          this,
+          pendingSession,
+          pendingGeneration,
+          pendingSource,
+        ) ||
+        pendingSession.trustedScriptDataGeneration != pendingDataGeneration) {
+      return;
+    }
+    setState(() => _formVersionReady = true);
     if (_usesScriptForm) return;
     final session = cacheSession;
     if (session == null) return;
@@ -181,7 +191,7 @@ class _ClassroomSectionState extends State<ClassroomSection>
         if (!mounted) return;
         await restoreCache();
         if (mounted && !_usesScriptForm && _buildingsPhase == QueryPhase.idle) {
-          await _loadBuildings();
+          await _loadBuildings(interactive: false);
         }
       });
     }
@@ -199,7 +209,10 @@ class _ClassroomSectionState extends State<ClassroomSection>
   ClassroomAvailable? _avail;
   String? _availError;
 
-  Future<void> _loadBuildings({bool configure = false}) async {
+  Future<void> _loadBuildings({
+    bool configure = false,
+    bool interactive = true,
+  }) async {
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     final source = CapabilitySourceScope.maybeOf(context)?.source;
@@ -209,6 +222,7 @@ class _ClassroomSectionState extends State<ClassroomSection>
       session,
       'classroom.buildings',
       params: {if (configure) 'configure': true},
+      interactive: interactive,
       decode: classroomBuildingsFromDynamic,
     );
     if (!mounted || !isCurrentQuery(this, session, generation, source)) return;
@@ -245,14 +259,19 @@ class _ClassroomSectionState extends State<ClassroomSection>
     if (ok) await _loadBuildings();
   }
 
-  Future<void> _loadAvailable({bool configure = false}) async {
+  Future<void> _loadAvailable({
+    bool configure = false,
+    bool interactive = true,
+  }) async {
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     final source = CapabilitySourceScope.maybeOf(context)?.source;
+    final dataGeneration = session.trustedScriptDataGeneration;
+    final request = ++_request;
     final building = _selected;
     if (!_usesScriptForm && building == null) return;
     if (_usesScriptForm && !_scriptParams.containsKey('filters')) {
-      await _pickFilters();
+      if (interactive) await _pickFilters();
       return;
     }
     setState(() => _availPhase = QueryPhase.loading);
@@ -260,7 +279,12 @@ class _ClassroomSectionState extends State<ClassroomSection>
       session,
       source: source,
     ).schemaVersion(cacheCapability);
-    if (!mounted || !isCurrentQuery(this, session, generation, source)) return;
+    if (!mounted ||
+        request != _request ||
+        dataGeneration != session.trustedScriptDataGeneration ||
+        !isCurrentQuery(this, session, generation, source)) {
+      return;
+    }
     final params = <String, dynamic>{
       ..._scriptParams,
       if (!_usesScriptForm) 'date': formatQueryDate(_date),
@@ -281,10 +305,16 @@ class _ClassroomSectionState extends State<ClassroomSection>
       session,
       'classroom.available',
       params: params,
+      interactive: interactive,
       decode: (raw) =>
           classroomAvailableFromDynamic(raw, schemaVersion: version),
     );
-    if (!mounted || !isCurrentQuery(this, session, generation, source)) return;
+    if (!mounted ||
+        request != _request ||
+        dataGeneration != session.trustedScriptDataGeneration ||
+        !isCurrentQuery(this, session, generation, source)) {
+      return;
+    }
     setState(() {
       if (outcome.needConfiguration) {
         _availPhase = QueryPhase.needConfiguration;
@@ -411,10 +441,29 @@ class _ClassroomSectionState extends State<ClassroomSection>
       final controls = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (!preview)
+            Align(alignment: AlignmentDirectional.centerEnd, child: refresh),
           if (preview)
             filters
           else
-            Row(children: [filters, const Spacer(), refresh]),
+            InlineScriptQueryControls(
+              target: cacheCapability,
+              current: _scriptParams,
+              submitInitial: _avail == null,
+              onInitialSubmit: (params) {
+                if (_avail != null || _availPhase != QueryPhase.idle) return;
+                setState(() => _scriptParams = params);
+                _loadAvailable(interactive: false);
+              },
+              fallback: Row(children: [filters, const Spacer(), refresh]),
+              onSubmit: (params) {
+                setState(() {
+                  _scriptParams = params;
+                  _manualSelection = true;
+                });
+                _loadAvailable();
+              },
+            ),
           if (_filterError != null) Text(_filterError!),
           QueryPhaseBody(
             phase: _availPhase,

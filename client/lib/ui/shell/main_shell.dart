@@ -21,7 +21,7 @@ import '../scripts/script_scanner_page.dart';
 import '../scripts/script_device_input_page.dart';
 import '../security/no_hardware_warning_dialog.dart';
 import '../home/home_page.dart';
-import '../community/community_pages.dart';
+import '../home/script_feature_page.dart';
 import '../settings/settings_page.dart';
 import '../theme/app_theme.dart';
 import '../theme/liquid_glass.dart';
@@ -41,7 +41,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   AppShortcutsController? _shortcuts;
   int? _scheduledShortcut;
   Object? _sourceKey;
-  Future<({ScriptPackage? forum, ScriptPackage? messages})>? _sources;
+  Future<List<_ShellPage>>? _sources;
 
   SessionController? _scriptSession;
   ScriptBrowserPresenter? _presenter;
@@ -211,28 +211,24 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  /// 标签文案随语言变，故在 build 里按当前 l10n 组装（图标是常量）。
   static List<LiquidGlassTabSpec> _tabsOf(
-    AppLocalizations l10n, {
-    required bool forum,
-    required bool messages,
-  }) => <LiquidGlassTabSpec>[
+    AppLocalizations l10n,
+    List<_ShellPage> pages,
+  ) => [
     LiquidGlassTabSpec(
       label: l10n.navHome,
       icon: Icons.home_outlined,
       selectedIcon: Icons.home,
     ),
-    if (forum)
+    for (final entry in pages)
       LiquidGlassTabSpec(
-        label: l10n.navForum,
-        icon: Icons.forum_outlined,
-        selectedIcon: Icons.forum,
-      ),
-    if (messages)
-      LiquidGlassTabSpec(
-        label: l10n.navMessages,
-        icon: Icons.chat_bubble_outline,
-        selectedIcon: Icons.chat_bubble,
+        label: entry.legacy
+            ? entry.page.template == 'forum'
+                  ? l10n.navForum
+                  : l10n.navMessages
+            : entry.page.title,
+        icon: scriptPageIcon(entry.page.template),
+        selectedIcon: scriptPageIcon(entry.page.template),
       ),
     LiquidGlassTabSpec(
       label: l10n.navSettings,
@@ -256,34 +252,59 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       _sourceKey = sourceKey;
       final school = session?.selectedSchool?.id;
       _sources = () async {
-        if (session == null || school == null) {
-          return (forum: null, messages: null);
-        }
+        if (session == null || school == null) return <_ShellPage>[];
         try {
           final registry = await session.scriptRegistry;
-          return (
-            forum: registry.provider(school, 'forum.session'),
-            messages:
-                registry.provider(school, 'messages.conversations') ??
-                registry.provider(school, 'messages.list'),
-          );
+          final pages = <_ShellPage>[];
+          for (final installation in registry.installations) {
+            final package = installation.package;
+            if (!installation.enabled ||
+                package.requiresUpdate ||
+                package.manifest.schoolId != school) {
+              continue;
+            }
+            for (final page in package.manifest.pages.where(
+              (page) => page.tab,
+            )) {
+              pages.add(_ShellPage(package, page));
+            }
+          }
+          final forum = registry.provider(school, 'forum.session');
+          final messages =
+              registry.provider(school, 'messages.conversations') ??
+              registry.provider(school, 'messages.list');
+          for (final (package, template) in [
+            (forum, 'forum'),
+            (messages, 'messages'),
+          ]) {
+            if (package != null &&
+                !package.requiresUpdate &&
+                !package.manifest.declaresPages) {
+              pages.add(
+                _ShellPage(
+                  package,
+                  ScriptPageEntry(
+                    id: template,
+                    title: template,
+                    template: template,
+                  ),
+                  legacy: true,
+                ),
+              );
+            }
+          }
+          return pages.take(3).toList(growable: false);
         } catch (_) {
-          return (forum: null, messages: null);
+          return <_ShellPage>[];
         }
       }();
     }
-    return FutureBuilder<({ScriptPackage? forum, ScriptPackage? messages})>(
+    return FutureBuilder<List<_ShellPage>>(
       key: ValueKey(sourceKey),
       future: _sources,
       builder: (context, snapshot) {
-        final forum = snapshot.data?.forum;
-        final messages = snapshot.data?.messages;
-        final ids = [
-          'home',
-          if (forum != null) 'forum',
-          if (messages != null) 'messages',
-          'settings',
-        ];
+        final pages = snapshot.data ?? const <_ShellPage>[];
+        final ids = ['home', for (final entry in pages) entry.id, 'settings'];
         // Stable tab identity survives insertion before Settings. An obsolete
         // community source is never kept alive using its previous index.
         if (!ids.contains(_tab) &&
@@ -291,11 +312,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           _tab = 'home';
         }
         final index = ids.contains(_tab) ? ids.indexOf(_tab) : 0;
-        final tabs = _tabsOf(
-          AppLocalizations.of(context),
-          forum: forum != null,
-          messages: messages != null,
-        );
+        final tabs = _tabsOf(AppLocalizations.of(context), pages);
         void select(int i) => setState(() => _tab = ids[i]);
         final glassBar = buildLiquidGlassShellBar(
           context: context,
@@ -314,20 +331,16 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 ),
                 loadSnapshot: widget.loadHomeSnapshot,
               ),
-              if (forum != null)
-                _tab == 'forum' && !_suspended
-                    ? ForumPage(
-                        key: ValueKey(('forum', sourceKey, forum.digest)),
-                        session: session!,
-                        package: forum,
-                      )
-                    : const SizedBox.shrink(),
-              if (messages != null)
-                _tab == 'messages' && !_suspended
-                    ? MessagesPage(
-                        key: ValueKey(('messages', sourceKey, messages.digest)),
-                        session: session!,
-                        package: messages,
+              for (final entry in pages)
+                _tab == entry.id && !_suspended
+                    ? ScriptFeaturePage(
+                        key: ValueKey((
+                          entry.id,
+                          sourceKey,
+                          entry.package.digest,
+                        )),
+                        package: entry.package,
+                        page: entry.page,
                       )
                     : const SizedBox.shrink(),
               const SettingsPage(key: ValueKey('settings')),
@@ -344,6 +357,15 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       },
     );
   }
+}
+
+class _ShellPage {
+  const _ShellPage(this.package, this.page, {this.legacy = false});
+  final ScriptPackage package;
+  final ScriptPageEntry page;
+  final bool legacy;
+  String get id =>
+      legacy ? page.template : 'page:${package.manifest.id}/${page.id}';
 }
 
 /// Material 底栏：Stack + 满高超椭圆指示器（非仅图标后 32px 小条）。

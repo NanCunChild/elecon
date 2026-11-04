@@ -59,22 +59,31 @@ class HomeFeaturePage extends StatelessWidget {
           onClosed();
         }
       },
-      child: Scaffold(
-        appBar: AppBar(title: Text(card.label)),
-        body: SafeArea(
-          child: ValueListenableBuilder<bool>(
-            valueListenable: active,
-            builder: (_, visible, _) => !visible
-                ? const SizedBox.shrink()
-                : session == null
-                ? body()
-                : ListenableBuilder(
-                    listenable: session!,
-                    builder: (_, _) => body(),
-                  ),
-          ),
-        ),
-      ),
+      child:
+          card.pageBuilder != null &&
+              (session == null ||
+                  (identical(session, current) &&
+                      generation == session!.trustedScriptViewGeneration &&
+                      (dataGeneration == null ||
+                          dataGeneration ==
+                              session!.trustedScriptDataGeneration)))
+          ? Builder(builder: card.pageBuilder!)
+          : Scaffold(
+              appBar: AppBar(title: Text(card.label)),
+              body: SafeArea(
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: active,
+                  builder: (_, visible, _) => !visible
+                      ? const SizedBox.shrink()
+                      : session == null
+                      ? body()
+                      : ListenableBuilder(
+                          listenable: session!,
+                          builder: (_, _) => body(),
+                        ),
+                ),
+              ),
+            ),
     );
   }
 }

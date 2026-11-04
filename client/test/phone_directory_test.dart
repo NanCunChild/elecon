@@ -5,6 +5,7 @@ import 'package:elecon/l10n/gen/app_localizations.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:elecon/session/session_scope.dart';
 import 'package:elecon/ui/home/capability_source.dart';
+import 'package:elecon/ui/home/card_layout.dart';
 import 'package:elecon/ui/home/phone_directory_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -106,6 +107,54 @@ ScriptPackage script(
 );
 
 void main() {
+  testWidgets(
+    'home directory stays bounded and carries recent search into its summary',
+    (tester) async {
+      final session = (await tester.runAsync(() async {
+        final session = SessionController();
+        await session.bootstrap();
+        final p = script('summary-phones');
+        await session.installTrustedScript(p, approvedDigest: p.digest);
+        await session.selectTrustedScriptSchool(p.manifest.id);
+        await session.runCapability('directory.phones', interactive: false);
+        return session;
+      }))!;
+      addTearDown(session.dispose);
+      Widget directory(bool page) => app(
+        HomeCardPresentation(
+          size: HomeCardSize.expanded,
+          isPage: page,
+          previewHeight: page ? null : 280,
+          onOpen: page ? null : () {},
+          child: const PhoneDirectorySection(),
+        ),
+        session: session,
+      );
+      await tester.pumpWidget(directory(false));
+      for (
+        var i = 0;
+        i < 100 && find.textContaining('10000').evaluate().isEmpty;
+        i++
+      ) {
+        await tester.pump(const Duration(milliseconds: 20));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+      }
+      expect(find.byKey(const Key('phone-search')), findsNothing);
+      expect(find.textContaining('10000'), findsOneWidget);
+      expect(tester.getSize(find.byType(PhoneDirectorySection)).height, 280);
+      await tester.pumpWidget(directory(true));
+      await tester.enterText(find.byKey(const Key('phone-search')), '合成教务');
+      await tester.pump();
+      await tester.pumpWidget(directory(false));
+      expect(find.byKey(const Key('phone-search')), findsNothing);
+      final summary = tester.widget<Text>(find.textContaining('合成教务'));
+      expect(summary.data!.startsWith('合成教务'), isTrue);
+      expect(tester.getSize(find.byType(PhoneDirectorySection)).height, 280);
+      expect(tester.takeException(), isNull);
+    },
+  );
   test(
     'decoder rejects an entire malformed directory and duplicate identities',
     () {

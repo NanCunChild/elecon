@@ -37,6 +37,7 @@ import 'faculty_search_section.dart';
 import 'phone_directory_section.dart';
 import 'checkin_section.dart';
 import 'web_content_section.dart';
+import 'script_feature_page.dart';
 import '../widgets/adaptive_school_title.dart';
 
 export 'demo_data.dart';
@@ -76,6 +77,7 @@ class _EleconHomePageState extends State<EleconHomePage>
   bool _noticeSourceResolved = false;
   List<(ScriptPackage, ScriptCardEntry)> _scriptCards = const [];
   List<(ScriptPackage, ScriptWebContent)> _webPages = const [];
+  List<(ScriptPackage, ScriptPageEntry)> _pages = const [];
 
   @override
   void initState() {
@@ -147,6 +149,7 @@ class _EleconHomePageState extends State<EleconHomePage>
         _noticeSourceResolved = false;
         _scriptCards = const [];
         _webPages = const [];
+        _pages = const [];
         unawaited(_loadCardDefaults(session));
       }
       if (!_bound || changed || _revision != session.homeDataRevision) {
@@ -198,12 +201,15 @@ class _EleconHomePageState extends State<EleconHomePage>
                 .toList() ??
             [];
         if (declarations.isNotEmpty &&
-            declarations.every((card) => card.hasExplicitId)) {
+            declarations.every(
+              (card) => card.hasExplicitId || card.pageId != null,
+            )) {
           explicitDefaults.add(entry.key);
         }
       }
       final instances = <(ScriptPackage, ScriptCardEntry)>[];
       final webPages = <(ScriptPackage, ScriptWebContent)>[];
+      final pages = <(ScriptPackage, ScriptPageEntry)>[];
       for (final installation in registry.installations) {
         final package = installation.package;
         if (!installation.enabled ||
@@ -211,11 +217,20 @@ class _EleconHomePageState extends State<EleconHomePage>
             package.manifest.schoolId != school) {
           continue;
         }
+        for (final page in package.manifest.pages) {
+          if (!package.manifest.cards.any((card) => card.pageId == page.id)) {
+            pages.add((package, page));
+          }
+        }
         for (final page in package.manifest.webContent) {
-          webPages.add((package, page));
+          if (!package.manifest.pages.any(
+            (declared) => declared.webPageId == page.id,
+          )) {
+            webPages.add((package, page));
+          }
         }
         for (final card in package.manifest.cards.where(
-          (c) => c.hasExplicitId,
+          (c) => c.hasExplicitId || c.pageId != null,
         )) {
           instances.add((package, card));
           defaults['script:${package.manifest.id}/${card.id}'] = HomeCardSize
@@ -233,6 +248,7 @@ class _EleconHomePageState extends State<EleconHomePage>
           _cardDefaults = defaults;
           _scriptCards = instances;
           _webPages = webPages;
+          _pages = pages;
           _explicitDefaultTypes = explicitDefaults;
         });
       }
@@ -248,10 +264,12 @@ class _EleconHomePageState extends State<EleconHomePage>
       String label,
       WidgetBuilder builder, {
       String? type,
+      WidgetBuilder? pageBuilder,
     }) => HomeCardEntry(
       id: id,
       label: label,
       builder: builder,
+      pageBuilder: pageBuilder,
       icon: switch (type ?? id) {
         'notice' => Icons.campaign_outlined,
         'schedule' => Icons.calendar_month_outlined,
@@ -390,8 +408,19 @@ class _EleconHomePageState extends State<EleconHomePage>
     ];
     cards.removeWhere((card) => _explicitDefaultTypes.contains(card.id));
     for (final (package, declaration) in _scriptCards) {
+      final page = declaration.pageId == null
+          ? null
+          : package.manifest.pages.singleWhere(
+              (page) => page.id == declaration.pageId,
+            );
       Widget feature() => declaration.type == 'generic'
-          ? const GenericCapabilitySection()
+          ? page == null
+                ? const GenericCapabilitySection()
+                : SectionCard(
+                    title: page.title,
+                    subtitle: package.manifest.name,
+                    child: Icon(scriptPageIcon(page.template), size: 32),
+                  )
           : nativeFeatureContent(AppFeature.fromId(declaration.type)!, package);
       final label =
           declaration.title ??
@@ -421,6 +450,24 @@ class _EleconHomePageState extends State<EleconHomePage>
             child: feature(),
           ),
           type: declaration.type,
+          pageBuilder: page == null
+              ? null
+              : (_) => ScriptFeaturePage(package: package, page: page),
+        ),
+      );
+    }
+    for (final (package, page) in _pages) {
+      cards.add(
+        entry(
+          'page:${package.manifest.id}/${page.id}',
+          page.title,
+          (_) => SectionCard(
+            title: page.title,
+            subtitle: package.manifest.name,
+            child: Icon(scriptPageIcon(page.template), size: 32),
+          ),
+          type: page.template,
+          pageBuilder: (_) => ScriptFeaturePage(package: package, page: page),
         ),
       );
     }
