@@ -189,12 +189,13 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
     final result = _result;
     return SectionCard(
       title: l10n.facultyTitle,
-      summary: Text(l10n.facultyHint),
+      summary: CardSummary(l10n.facultySearch, detail: l10n.facultyHint),
       child: _invalidated
           ? Text(l10n.homeCardDataChanged)
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const SizedBox(height: 4),
                 TextField(
                   key: const Key('faculty-name'),
                   controller: _name,
@@ -208,7 +209,7 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _submit(),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 TextField(
                   key: const Key('faculty-research-area'),
                   controller: _researchArea,
@@ -259,6 +260,7 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
                     ExpansionTile(
                       key: ValueKey('faculty-$_requestId-${item.id}'),
                       tilePadding: EdgeInsets.zero,
+                      childrenPadding: const EdgeInsets.only(bottom: 12),
                       title: Text(item.name),
                       subtitle: Text(
                         [
@@ -290,7 +292,6 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 12),
                       ],
                     ),
                   const SizedBox(height: 8),

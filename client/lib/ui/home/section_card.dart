@@ -41,24 +41,27 @@ class SectionCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        presentation.icon,
-                        size: 22,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Row(
+                      children: [
+                        Icon(
+                          presentation.icon,
+                          size: 20,
+                          color: theme.colorScheme.primary,
                         ),
-                      ),
-                      ?trailing,
-                    ],
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall,
+                          ),
+                        ),
+                        ?trailing,
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Expanded(
@@ -106,18 +109,21 @@ class SectionCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
               ],
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: preview
-                          ? theme.textTheme.titleMedium
-                          : theme.textTheme.titleLarge,
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: preview
+                            ? theme.textTheme.titleMedium
+                            : theme.textTheme.titleLarge,
+                      ),
                     ),
-                  ),
-                  ?trailing,
-                ],
+                    ?trailing,
+                  ],
+                ),
               ),
               if (!preview && subtitle != null && subtitle.isNotEmpty) ...[
                 const SizedBox(height: 4),
@@ -159,6 +165,12 @@ class SectionRefreshButton extends StatelessWidget {
   Widget build(BuildContext context) => IconButton(
     tooltip: AppLocalizations.of(context).homeRefresh,
     onPressed: onPressed,
+    iconSize: 20,
+    style: IconButton.styleFrom(
+      minimumSize: const Size(48, 48),
+      tapTargetSize: MaterialTapTargetSize.padded,
+      visualDensity: VisualDensity.standard,
+    ),
     icon: const Icon(Icons.refresh),
   );
 }

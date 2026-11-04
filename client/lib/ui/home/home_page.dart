@@ -570,11 +570,7 @@ class _EleconHomePageState extends State<EleconHomePage>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(child: _SnapshotHeader(snapshot: data)),
-                          IconButton(
-                            tooltip: AppLocalizations.of(context).homeRefresh,
-                            onPressed: _reload,
-                            icon: const Icon(Icons.refresh),
-                          ),
+                          SectionRefreshButton(onPressed: _reload),
                         ],
                       ),
                     ),

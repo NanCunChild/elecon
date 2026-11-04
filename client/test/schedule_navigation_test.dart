@@ -143,6 +143,49 @@ class CalendarScheduleSession extends ScheduleSession {
 }
 
 void main() {
+  testWidgets('today date is highlighted only in its actual teaching week', (
+    tester,
+  ) async {
+    final raw = payload(1);
+    for (final brightness in Brightness.values) {
+      for (final day in [2, 9]) {
+        await tester.pumpWidget(
+          app(
+            WeekScheduleView(
+              data: scheduleWeekFromDynamic(raw)!,
+              now: DateTime(2026, 11, day),
+            ),
+            brightness: brightness,
+          ),
+        );
+        final header = tester.widget<Container>(
+          find.byKey(const ValueKey('schedule-day-1')),
+        );
+        final colors = Theme.of(
+          tester.element(find.byType(WeekScheduleView)),
+        ).colorScheme;
+        expect(
+          (header.decoration as BoxDecoration).color,
+          day == 2 ? colors.primaryContainer : isNull,
+        );
+        expect(tester.takeException(), isNull);
+      }
+    }
+    raw.remove('teachingWeekStart');
+    await tester.pumpWidget(
+      app(
+        WeekScheduleView(
+          data: scheduleWeekFromDynamic(raw)!,
+          now: DateTime(2026, 11, 2),
+        ),
+      ),
+    );
+    final unknown = tester.widget<Container>(
+      find.byKey(const ValueKey('schedule-day-1')),
+    );
+    expect((unknown.decoration as BoxDecoration).color, isNull);
+  });
+
   testWidgets('script current week opens centered and refreshes from an icon', (
     tester,
   ) async {

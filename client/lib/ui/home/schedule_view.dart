@@ -74,6 +74,7 @@ class ScheduleCard extends StatelessWidget {
     if (page) {
       return WeekScheduleView(
         data: data,
+        now: now,
         onWeekChanged: onWeekChanged,
         maxWeek: maxWeek,
       );
@@ -91,16 +92,43 @@ class ScheduleCard extends StatelessWidget {
     final empty = !knownDate || (!currentWeek && slots.isEmpty)
         ? l10n.scheduleTodayUnavailable
         : l10n.scheduleTodayEmpty;
+    final dateLabel = DateFormat.yMMMd(
+      Localizations.localeOf(context).toString(),
+    ).format(today);
     return SectionCard(
       title: l10n.scheduleToday,
       trailing: trailing,
       subtitle:
-          '${DateFormat.yMMMd(Localizations.localeOf(context).toString()).format(today)} · ${data.term} · ${l10n.scheduleWeekLabel(data.week)}',
-      summary: CardSummary(
-        slots.firstOrNull?.courseName ?? empty,
-        detail: slots.isEmpty
-            ? null
-            : '${_time(slots.first)} · ${_place(slots.first)}',
+          '$dateLabel · ${data.term} · ${l10n.scheduleWeekLabel(data.week)}',
+      summary: LayoutBuilder(
+        builder: (context, constraints) {
+          final courses = CardSummary(
+            slots.firstOrNull?.courseName ?? empty,
+            detail: slots.isEmpty
+                ? null
+                : '${_time(slots.first)} · ${_place(slots.first)}',
+          );
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                dateLabel,
+                key: const ValueKey('schedule-today-date'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              if (constraints.hasBoundedHeight)
+                Expanded(child: courses)
+              else
+                courses,
+            ],
+          );
+        },
       ),
       child: slots.isEmpty
           ? Text(empty)
@@ -503,10 +531,12 @@ class WeekScheduleView extends StatelessWidget {
   const WeekScheduleView({
     super.key,
     required this.data,
+    this.now,
     this.onWeekChanged,
     this.maxWeek = 25,
   });
   final ScheduleWeek data;
+  final DateTime? now;
   final ValueChanged<int>? onWeekChanged;
   final int maxWeek;
 
@@ -559,6 +589,7 @@ class WeekScheduleView extends StatelessWidget {
         .where((e) => placed.any((o) => o != e && _overlaps(e, o)))
         .length;
     final start = _weekStart(data);
+    final today = now ?? DateTime.now();
     final locale = Localizations.localeOf(context).toString();
     final grid = LayoutBuilder(
       builder: (context, constraints) {
@@ -579,15 +610,11 @@ class WeekScheduleView extends StatelessWidget {
                     SizedBox(
                       width: columnWidth,
                       height: 48 * math.min(scale, 1.5),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            '${DateFormat.E(locale).format(DateTime(2024, 1, day))}${start == null ? '' : '\n${DateFormat.Md(locale).format(_weekdayDate(start, day))}'}',
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
+                      child: _ScheduleDayHeader(
+                        day: day,
+                        date: start == null ? null : _weekdayDate(start, day),
+                        today: today,
+                        locale: locale,
                       ),
                     ),
                 ],
@@ -730,6 +757,53 @@ class WeekScheduleView extends StatelessWidget {
           ),
         ),
     ];
+  }
+}
+
+class _ScheduleDayHeader extends StatelessWidget {
+  const _ScheduleDayHeader({
+    required this.day,
+    required this.date,
+    required this.today,
+    required this.locale,
+  });
+  final int day;
+  final DateTime? date;
+  final DateTime today;
+  final String locale;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final current = date != null && DateUtils.isSameDay(date, today);
+    final label =
+        '${DateFormat.E(locale).format(DateTime(2024, 1, day))}${date == null ? '' : '\n${DateFormat.Md(locale).format(date!)}'}';
+    return Semantics(
+      label: current
+          ? '${MaterialLocalizations.of(context).currentDateLabel}, $label'
+          : label,
+      excludeSemantics: true,
+      child: Container(
+        key: ValueKey('schedule-day-$day'),
+        margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: current ? theme.colorScheme.primaryContainer : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: current ? theme.colorScheme.onPrimaryContainer : null,
+              fontWeight: current ? FontWeight.w700 : null,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
