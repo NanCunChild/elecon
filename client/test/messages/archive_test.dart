@@ -535,6 +535,120 @@ void main() {
       lessThanOrEqualTo(MessageArchiveStore.maxBytes),
     );
   });
+  test(
+    'avatar archive restores, preserves missing, clears explicit empty and ignores old fields',
+    () async {
+      const image =
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+      for (final version in ['1.2', '1.3']) {
+        final source = package(conversationsVersion: version);
+        archive.saveAccount(source, account);
+        Map<String, dynamic> data(List<String>? images) => {
+          'serviceId': account['serviceId'],
+          'accountId': account['accountId'],
+          'accountLabel': account['accountLabel'],
+          'fetchedAt': stamp,
+          'coverage': 'complete',
+          'items': [
+            {
+              'conversationId': target['conversationId'],
+              'conversationKind': 'group',
+              'title': 'Known name',
+              'avatarImages': ?images,
+            },
+          ],
+        };
+        Future<void> save(List<String>? images) => archive.merge(
+          source,
+          'messages.conversations',
+          {'accountId': account['accountId']},
+          data(images),
+          isActive: () => true,
+        );
+        await save([image]);
+        final recovered = MessageArchiveStore(credentials, now: () => time);
+        expect(
+          (await recovered.read(source))!.conversations.single.avatarImages,
+          version == '1.3' ? [image] : null,
+        );
+        await save(null);
+        expect(
+          (await archive.read(source))!.conversations.single.avatarImages,
+          version == '1.3' ? [image] : null,
+        );
+        await save([]);
+        expect(
+          (await archive.read(source))!.conversations.single.avatarImages,
+          version == '1.3' ? isEmpty : isNull,
+        );
+        if (version == '1.3') {
+          expect(
+            archive.accepts(
+              source,
+              'messages.conversations',
+              {'accountId': account['accountId']},
+              data(['data:image/png;base64,YWJj']),
+            ),
+            isFalse,
+          );
+        }
+        archive.clearSource(source.manifest.schoolId, source.manifest.id);
+        expect(await archive.read(source), isNull);
+      }
+    },
+  );
+  test(
+    'avatar quota prunes old thumbnails while retaining conversation identities and names',
+    () async {
+      final source = package(conversationsVersion: '1.3');
+      archive.saveAccount(source, account);
+      final image =
+          'data:image/jpeg;base64,${base64Encode([255, 216, 255, ...List.filled(16381, 0)])}';
+      Map<String, dynamic> data(int count) => {
+        'serviceId': account['serviceId'],
+        'accountId': account['accountId'],
+        'accountLabel': account['accountLabel'],
+        'fetchedAt': stamp,
+        'coverage': 'complete',
+        'items': [
+          for (var i = 0; i < count; i++)
+            {
+              'conversationId': 'group-$i',
+              'conversationKind': 'group',
+              'title': 'Known $i',
+              'avatarImages': [image],
+            },
+        ],
+      };
+      final params = {'accountId': account['accountId']};
+      expect(
+        archive.accepts(source, 'messages.conversations', params, data(65)),
+        isFalse,
+      );
+      await archive.merge(
+        source,
+        'messages.conversations',
+        params,
+        data(64),
+        isActive: () => true,
+      );
+      final view = (await archive.read(source))!;
+      expect(view.conversations.length, 64);
+      expect(view.conversations.first.title, 'Known 0');
+      expect(view.conversations.first.avatarImages, isNull);
+      expect(view.conversations.last.avatarImages, [image]);
+      expect(
+        base64Decode(
+          credentials
+              .list()
+              .where((row) => !row.ref.endsWith('account'))
+              .single
+              .value,
+        ).length,
+        lessThanOrEqualTo(MessageArchiveStore.maxBytes),
+      );
+    },
+  );
 }
 
 class _FailOnceArchiveStore extends InMemorySecureStore {

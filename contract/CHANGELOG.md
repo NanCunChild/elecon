@@ -1,5 +1,10 @@
 # `contract/` 变更流水
 
+## 2026-11-05 · 会话内联头像（ADR-098）
+
+- `messages.conversations` 输出升 1.3，增加可选 `avatarImages`（0–4 张、每张最多 16 KiB 的 PNG/JPEG data URI）；缺失保留、空数组清除，同身份受保护存储。UI 不请求远端图片 URL。
+- 保留 1.2/1.1/1.0 快照与旧包语义；参数及 SDK 不变。超星包升 0.6.0，新增固定 HTTPS 图片来源需重新批准 digest。
+
 ## 2026-11-05 · SDK19 注册执行与前台预约（ADR-097）
 
 - 在宿主显式打开的查询作用域中提供 `ctx.execution` / `elecon.execution`：JSON 内存状态、稳定 handler 名称注册、按需调用与单次定时预约。新引擎只接收本次 ctx，业务状态按 stateKey 读取；不序列化函数、闭包或参数快照。

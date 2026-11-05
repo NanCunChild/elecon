@@ -1,7 +1,7 @@
 {
   "sdkVersion": 12,
   "id": "enhancement-xidian-postgraduate-chaoxing",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "schoolId": "xidian_postgraduate",
   "name": "西电学习通增强（研究生）",
   "network": {
@@ -15,7 +15,9 @@
       "https://ids.xidian.edu.cn",
       "https://a1-vip6.easemob.com",
       "https://useryd.chaoxing.com",
-      "https://notice.chaoxing.com"
+      "https://notice.chaoxing.com",
+      "https://photo.chaoxing.com",
+      "https://p.ananas.chaoxing.com"
     ]
   },
   "browser": true,
@@ -37,7 +39,7 @@
     {
       "id": "messages.conversations",
       "schema": "elecon.messages.conversations",
-      "schemaVersion": "1.2"
+      "schemaVersion": "1.3"
     },
     {
       "id": "messages.history",

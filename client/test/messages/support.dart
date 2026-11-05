@@ -32,7 +32,7 @@ ScriptPackage chatPackage({
             'id': cap,
             'schema': 'elecon.$cap',
             'schemaVersion': cap == 'messages.conversations'
-                ? '1.2'
+                ? '1.3'
                 : cap == 'messages.history'
                 ? '1.1'
                 : '1.0',

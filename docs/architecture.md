@@ -52,7 +52,7 @@ flowchart TD
 
 账号声明支持独立服务与同包登录/状态入口；保存密码先验证再替换。SDK16 可声明 Hermes 网关账号和逐能力依赖，不满足依赖时停止，不直连回退；普通 WebView 尚未接入 APPTunnel。[ADR-092](adr/adr_092_climate_binding_and_controls.md) 将本地空调绑定与远端状态分开，扫码复用既有权限，命令仍单次发送并核验。当前包内网页是 Android 离线 HTML 与固定 DOM 操作模式，作者网页 JS/直接网络仍关闭；这描述旧模式的实现，不是扩展目标的永久限制。
 
-消息已有会话、群/私聊历史及一次文本发送，受保护 SQLite 由核心托管；论坛帖子、未读、附件操作及推送尚未实现。系统 AI 为四个具名只读 AppFunctions，当前身份逐次授权，不提供任意脚本执行口。[ADR-096](adr/adr_096_system_classroom_query_inputs.md) 将系统教室查询限定为明确楼栋，缺条件时提供同来源标准目录和原生入口，发布结果前验证学校时区；不猜脚本自定义字段。[ADR-085](adr/adr_085_feature_shortcuts.md) 的 Android 快捷方式及 App Actions 另提供固定原生功能的页面入口，经过正常恢复、选校与来源绑定，不授予 AI 数据读取或控制权限。[ADR-090](adr/adr_090_schedule_widgets.md) 的 Android 课表小部件只消费前台缓存；用户逐实例允许桌面展示，绑定身份及批准来源，H/S 保存最小加密快照、M 仅内存，身份/来源变化遮蔽，原生进程重建需应用重新核验。原生权限、平台支持和真实服务验收不能从 schema 存在推断。
+消息已有会话、群/私聊历史及一次文本发送；[ADR-098](adr/adr_098_conversation_avatars.md) 的会话1.3增加脚本取得的有界内联头像，原生拼图不另发图片网络请求，受保护 SQLite 由核心托管；论坛帖子、未读、附件操作及推送尚未实现。系统 AI 为四个具名只读 AppFunctions，当前身份逐次授权，不提供任意脚本执行口。[ADR-096](adr/adr_096_system_classroom_query_inputs.md) 将系统教室查询限定为明确楼栋，缺条件时提供同来源标准目录和原生入口，发布结果前验证学校时区；不猜脚本自定义字段。[ADR-085](adr/adr_085_feature_shortcuts.md) 的 Android 快捷方式及 App Actions 另提供固定原生功能的页面入口，经过正常恢复、选校与来源绑定，不授予 AI 数据读取或控制权限。[ADR-090](adr/adr_090_schedule_widgets.md) 的 Android 课表小部件只消费前台缓存；用户逐实例允许桌面展示，绑定身份及批准来源，H/S 保存最小加密快照、M 仅内存，身份/来源变化遮蔽，原生进程重建需应用重新核验。原生权限、平台支持和真实服务验收不能从 schema 存在推断。
 
 ## 已接受的扩展目标
 

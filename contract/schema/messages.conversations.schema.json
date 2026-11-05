@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "elecon.messages.conversations",
   "title": "消息会话列表",
-  "description": "ADR-063：仅前台会话目录；内容是否存在与最后消息时间仅来自服务证据或本地已加载消息，不推断未读。",
+  "description": "ADR-098：前台会话目录、内容排序与有界内联头像；网络协议由脚本负责。",
   "type": "object",
   "properties": {
     "serviceId": {
@@ -90,6 +90,16 @@
               "verification_failed"
             ],
             "description": "固定原因；不含源站异常或敏感信息。缺失时仅按sendPermission展示。"
+          },
+          "avatarImages": {
+            "type": "array",
+            "description": "ADR-098：有序的0–4张PNG/JPEG缩略图data URI，每张解码最多16 KiB；缺失可保留已有头像，空数组明确清除。核心只消费字节，不发起图片网络请求。",
+            "maxItems": 4,
+            "items": {
+              "type": "string",
+              "maxLength": 21871,
+              "pattern": "^data:image/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$"
+            }
           }
         },
         "required": [

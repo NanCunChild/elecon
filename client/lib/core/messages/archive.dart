@@ -16,6 +16,7 @@ import 'package:sqlite3/sqlite3.dart';
 import '../credential/store.dart';
 import '../credential/types.dart';
 import '../scripts/manifest.dart';
+import 'avatar.dart';
 
 class ArchivedMessage {
   const ArchivedMessage(this.id, this.content, this.sentAt);
@@ -61,6 +62,7 @@ class MessageArchiveView {
       'conversationId': row.conversationId,
       'conversationKind': row.conversationKind,
       'title': row.title,
+      if (row.avatarImages != null) 'avatarImages': row.avatarImages,
       if (row.hasContent != null) 'hasContent': row.hasContent,
       if (row.lastMessageAt != null) 'lastMessageAt': row.lastMessageAt,
       if (row.sendPermission != null) 'sendPermission': row.sendPermission,
@@ -224,6 +226,18 @@ class MessageArchiveStore {
         )) {
       return false;
     }
+    if (capability == 'messages.conversations' &&
+        package.manifest.capability(capability)?.schemaVersion == '1.3') {
+      var total = 0;
+      for (final row in data['items'] as List) {
+        for (final value in (row['avatarImages'] as List? ?? const [])) {
+          final bytes = conversationAvatarBytes(value as String);
+          if (bytes == null || (total += bytes.length) > 1024 * 1024) {
+            return false;
+          }
+        }
+      }
+    }
     if (capability == 'messages.history') {
       if (data['hasMore'] != (data['nextCursor'] != null) ||
           (data['nextCursor'] != null &&
@@ -308,7 +322,8 @@ class MessageArchiveStore {
             (key, _) =>
                 (version == '1.0' &&
                     const {'hasContent', 'lastMessageAt'}.contains(key)) ||
-                (version != '1.2' &&
+                (version != '1.3' && key == 'avatarImages') ||
+                (!const {'1.2', '1.3'}.contains(version) &&
                     const {
                       'sendPermission',
                       'sendPermissionReason',
@@ -405,6 +420,7 @@ MessagesConversationsItems _conversation(Map<String, dynamic> row) =>
       conversationId: row['conversationId'] as String,
       conversationKind: row['conversationKind'] as String,
       title: row['title'] as String,
+      avatarImages: (row['avatarImages'] as List?)?.cast<String>(),
       hasContent: row['hasContent'] as bool?,
       lastMessageAt: row['lastMessageAt'] as String?,
       sendPermission: row['sendPermission'] as String?,
@@ -417,6 +433,10 @@ Map<String, dynamic> _mergeConversationData(
 ) {
   final result = Map<String, dynamic>.from(incoming);
   if (previous == null) return result;
+  if (!incoming.containsKey('avatarImages') &&
+      previous.containsKey('avatarImages')) {
+    result['avatarImages'] = previous['avatarImages'];
+  }
   if (incoming['title'] == incoming['conversationId'] &&
       previous['title'] != previous['conversationId']) {
     result['title'] = previous['title'];
@@ -636,6 +656,32 @@ Map<String, Object?> _databaseWork(
         'DELETE FROM $table WHERE rowid IN (SELECT rowid FROM $table ORDER BY seen DESC,rowid DESC LIMIT -1 OFFSET ?)',
         [bound],
       );
+    }
+    var conversationBytes =
+        db
+                .select(
+                  'SELECT COALESCE(SUM(length(CAST(body AS BLOB))),0) AS size FROM conversations',
+                )
+                .single['size']
+            as int;
+    if (conversationBytes > 1024 * 1024) {
+      for (final row in db.select(
+        'SELECT kind,id,body FROM conversations ORDER BY seen,rowid',
+      )) {
+        final body = row['body'] as String;
+        final value = Map<String, dynamic>.from(jsonDecode(body) as Map);
+        if (!value.containsKey('avatarImages')) continue;
+        value.remove('avatarImages');
+        final trimmed = jsonEncode(value);
+        db.execute('UPDATE conversations SET body=? WHERE kind=? AND id=?', [
+          trimmed,
+          row['kind'],
+          row['id'],
+        ]);
+        conversationBytes -=
+            utf8.encode(body).length - utf8.encode(trimmed).length;
+        if (conversationBytes <= 1024 * 1024) break;
+      }
     }
     // Leave space for indices and tombstones in the 4 MiB protected image.
     while ((db

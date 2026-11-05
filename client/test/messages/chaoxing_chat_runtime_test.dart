@@ -62,6 +62,22 @@ void main() {
           };
         } else if (url.contains('/mute/')) {
           body = {'data': false};
+        } else if (url.endsWith('/admin')) {
+          body = {'data': <String>[]};
+        } else if (url.contains('/users?limit=4')) {
+          body = {'data': <String>[]};
+        } else if (url.startsWith('https://photo.chaoxing.com/')) {
+          expect((init['headers'] as Map).isEmpty, isTrue);
+          expect(init['redirect'], 'manual');
+          return {
+            'status': 200,
+            'headers': {
+              'content-type': ['image/png'],
+            },
+            'bodyBytes': base64Decode(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+            ).toList(),
+          };
         } else if (url.contains('/chatgroups/')) {
           expect((init['headers'] as Map)['Cookie'], isNull);
           body = {
@@ -69,6 +85,7 @@ void main() {
               {
                 'id': '789012',
                 'name': 'Resolved group name',
+                'owner': '456780',
                 'mute': false,
                 'disabled': false,
               },
@@ -99,7 +116,11 @@ void main() {
           body = {
             'result': 1,
             'data': [
-              {'uid': '456780', 'name': 'Synthetic sender'},
+              {
+                'uid': '456780',
+                'name': 'Synthetic sender',
+                'pic120': 'https://photo.chaoxing.com/synthetic.png',
+              },
             ],
           };
         } else {
@@ -133,6 +154,10 @@ void main() {
       final group = (conversations['items'] as List).first as Map;
       expect(group['title'], 'Resolved group name');
       expect(group['hasContent'], isTrue);
+      expect(
+        (group['avatarImages'] as List).single,
+        startsWith('data:image/png;base64,iVBOR'),
+      );
       expect(group['lastMessageAt'], '2027-01-15T08:00:00.100Z');
       final unavailableEnrichment =
           await const TrustedScriptRuntime().run(

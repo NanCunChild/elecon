@@ -31,4 +31,6 @@ export interface MessagesConversationsItems {
   sendPermission?: "allowed" | "muted" | "unknown";
   /** 固定原因；不含源站异常或敏感信息。缺失时仅按sendPermission展示。 */
   sendPermissionReason?: "member_muted" | "group_muted" | "group_disabled" | "verification_failed";
+  /** ADR-098：有序的0–4张PNG/JPEG缩略图data URI，每张解码最多16 KiB；缺失可保留已有头像，空数组明确清除。核心只消费字节，不发起图片网络请求。 */
+  avatarImages?: string[];
 }

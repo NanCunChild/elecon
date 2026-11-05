@@ -302,6 +302,7 @@ export interface ScriptWebsocketPermission { websocketOrigins?: string[]; }
 export interface ServiceSessionParams { operation?: "status" | "login" | "logout"; }
 export type MessagesList = import("../generated/ts/messages.list.js").MessagesList;
 /** ADR-061: foreground, account-bound chat; storage belongs to the host. */
+/** ADR-098 / output 1.3: avatarImages contains bounded inline PNG/JPEG bytes, never remote URLs. */
 export type MessagesConversations = import("../generated/ts/messages.conversations.js").MessagesConversations;
 export type MessagesHistory = import("../generated/ts/messages.history.js").MessagesHistory;
 export type MessagesSend = import("../generated/ts/messages.send.js").MessagesSend;

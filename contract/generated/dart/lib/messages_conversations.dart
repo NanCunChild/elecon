@@ -36,6 +36,7 @@ class MessagesConversationsItems {
     this.lastMessageAt,
     this.sendPermission,
     this.sendPermissionReason,
+    this.avatarImages,
   });
 
   /// 源站会话 ID；由 serviceId/accountId/conversationKind 共同限定。
@@ -52,4 +53,6 @@ class MessagesConversationsItems {
   final String? sendPermission;
   /// 固定原因；不含源站异常或敏感信息。缺失时仅按sendPermission展示。
   final String? sendPermissionReason;
+  /// ADR-098：有序的0–4张PNG/JPEG缩略图data URI，每张解码最多16 KiB；缺失可保留已有头像，空数组明确清除。核心只消费字节，不发起图片网络请求。
+  final List<String>? avatarImages;
 }

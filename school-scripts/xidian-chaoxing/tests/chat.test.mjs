@@ -91,6 +91,13 @@ function harness({
   groups = [{ groupid: "789012", groupname: "Synthetic group" }],
   contacts = ["456780"],
   groupDetails = [{ id: "789012", mute: false, disabled: false }],
+  admins = [],
+  members = [],
+  people = [
+    { uid: 456789, name: "Synthetic sender" },
+    { uid: 456780, name: "Synthetic peer" },
+  ],
+  image,
   memberMuted = false,
   permissionDelay = 0,
   allowlisted = { member: "456789", white: false },
@@ -133,6 +140,7 @@ function harness({
       calls.push({ url, init });
       const path = new URL(url).pathname;
       const failure = fail?.(url);
+      if (failure?.code) throw failure;
       if (failure === "unauthenticated") return { ok: false, status: 401 };
       if (typeof failure === "number") return { ok: false, status: failure };
       if (failure) throw new Error("SYNTHETIC_FAILURE");
@@ -153,7 +161,16 @@ function harness({
         now += permissionDelay;
         body = { data: memberMuted };
       } else if (path.includes("/white/users/")) body = { data: allowlisted };
-      else if (path.includes("/chatgroups/"))
+      else if (path.endsWith("/admin")) body = { data: admins };
+      else if (path.endsWith("/users") && path.includes("/chatgroups/")) body = { data: members };
+      else if (new URL(url).hostname === "photo.chaoxing.com") {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: (name) => (name === "content-type" ? "image/png" : null) },
+          arrayBuffer: async () => image,
+        };
+      } else if (path.includes("/chatgroups/"))
         body =
           typeof groupDetails === "string"
             ? groupDetails
@@ -168,10 +185,7 @@ function harness({
       else if (path.endsWith("getUsers4C"))
         body = {
           result: 1,
-          data: [
-            { uid: 456789, name: "Synthetic sender" },
-            { uid: 456780, name: "Synthetic peer" },
-          ],
+          data: typeof people === "function" ? people(init) : people,
         };
       else throw new Error("unexpected_endpoint");
       return {
@@ -630,4 +644,104 @@ test("slow permission verification does not consume the socket confirmation wind
   const result = await messagesSend(h.ctx, { ...target, clientId: "1234", text: "Synthetic" });
   assert.equal(result.status, "sent");
   assert.equal(h.sent.length, 2);
+});
+
+test("placeholder group names and avatars use owner/admin/member order, exact profiles and deduplication", async () => {
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+    "base64",
+  );
+  const h = harness({
+    groups: [{ groupid: "789012", groupname: "placeholder_789012" }],
+    contacts: [],
+    groupDetails: [
+      {
+        id: "789012",
+        name: "placeholder_789012",
+        owner: "456789",
+        affiliations_count: 8,
+        affiliations: [{ owner: "456789" }, { member: "111111" }, { member: "222222" }, { member: "333333" }],
+      },
+      { id: "999999", owner: "999999" },
+    ],
+    admins: ["456789", "444444"],
+    people: [
+      { uid: "456789", name: "Owner", pic120: "http://photo.chaoxing.com/synthetic.png" },
+      { uid: "444444", name: "Admin", pic: "https://photo.chaoxing.com/synthetic.png" },
+      { uid: "111111", name: "Member A", pic: "https://unapproved.invalid/a.png" },
+      { uid: "222222", nick: "Member B" },
+      { uid: "999999", name: "Stranger", pic: "https://photo.chaoxing.com/stranger.png" },
+    ],
+    image: png,
+  });
+  const result = await messagesConversations(h.ctx, { accountId: "123456" });
+  valid("messages.conversations", result);
+  assert.equal(result.items[0].title, "Owner、Admin、Member A、Member B...");
+  assert.deepEqual(
+    result.items[0].avatarImages,
+    Array(2).fill(`data:image/png;base64,${png.toString("base64")}`),
+  );
+  const images = h.calls.filter(({ url }) => new URL(url).hostname === "photo.chaoxing.com");
+  assert.equal(images.length, 1);
+  assert.deepEqual(images[0].init, { redirect: "manual", headers: {} });
+  assert.ok(h.calls.every(({ url }) => !url.includes("unapproved") && !url.includes("stranger")));
+  assert.ok(!h.calls.some(({ url }) => url.includes("chatgroups/999999/")));
+});
+
+test("avatar failure and invalid/oversized bytes retain title; cancellation and resource limits propagate", async () => {
+  const setup = {
+    groupDetails: [{ id: "789012", owner: "456789", name: "Known" }],
+    people: [{ uid: "456789", name: "Owner", pic: "https://photo.chaoxing.com/a.png" }],
+  };
+  for (const image of [new Uint8Array(17000), Uint8Array.of(1, 2, 3)]) {
+    const h = harness({ ...setup, image });
+    const result = await messagesConversations(h.ctx, { accountId: "123456" });
+    assert.equal(result.items[0].title, "Known");
+    assert.equal(result.items[0].avatarImages, undefined);
+  }
+  for (const code of ["invocation_cancelled", "request_limit", "authentication_required"]) {
+    const h = harness({
+      ...setup,
+      fail: (url) => (url.includes("/admin") ? Object.assign(new Error(code), { code }) : false),
+    });
+    await assert.rejects(messagesConversations(h.ctx, { accountId: "123456" }), { code });
+  }
+});
+
+test("member and image enrichment stay within per-query budgets", async () => {
+  const png = new Uint8Array(16384);
+  png.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  const groups = Array.from({ length: 70 }, (_, i) => ({
+    groupid: `${1000 + i}`,
+    groupname: `Synthetic ${i}`,
+  }));
+  const h = harness({
+    groups,
+    contacts: [],
+    image: png,
+    groupDetails: (url) =>
+      new URL(url).pathname
+        .split("/")
+        .at(-1)
+        .split(",")
+        .map((id) => ({ id, owner: id })),
+    people: (init) =>
+      groups
+        .filter((row) => new URLSearchParams(init.body).get("tuids").split(",").includes(row.groupid))
+        .map((row) => ({
+          uid: row.groupid,
+          name: "Member",
+          pic120: `https://photo.chaoxing.com/${row.groupid}.png`,
+        })),
+  });
+  const result = await messagesConversations(h.ctx, { accountId: "123456" });
+  valid("messages.conversations", result);
+  assert.equal(result.items.length, 70);
+  assert.equal(h.calls.filter(({ url }) => url.endsWith("/admin")).length, 64);
+  assert.equal(h.calls.filter(({ url }) => url.startsWith("https://photo.chaoxing.com/")).length, 64);
+  assert.ok(
+    result.items.flatMap((row) => row.avatarImages || []).reduce((sum, image) => sum + image.length, 0) <=
+      1024 * 1024,
+  );
+  assert.ok(h.calls.length < 256);
 });

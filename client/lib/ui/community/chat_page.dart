@@ -10,6 +10,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import '../scripts/script_input_presenter.dart';
 import '../scripts/script_presenter.dart';
+import 'conversation_avatar.dart';
 
 /// Native inbox/chat interaction. Service protocols and entity links stay out.
 class ChatPage extends StatefulWidget {
@@ -310,18 +311,27 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 conversationId: row['conversationId'] as String,
                 conversationKind: row['conversationKind'] as String,
                 title: row['title'] as String,
-                sendPermission:
+                avatarImages:
                     widget.package.manifest
                             .capability(capability)
                             ?.schemaVersion ==
-                        '1.2'
+                        '1.3'
+                    ? (row['avatarImages'] as List?)?.cast<String>()
+                    : null,
+                sendPermission:
+                    const {'1.2', '1.3'}.contains(
+                      widget.package.manifest
+                          .capability(capability)
+                          ?.schemaVersion,
+                    )
                     ? row['sendPermission'] as String?
                     : null,
                 sendPermissionReason:
-                    widget.package.manifest
-                            .capability(capability)
-                            ?.schemaVersion ==
-                        '1.2'
+                    const {'1.2', '1.3'}.contains(
+                      widget.package.manifest
+                          .capability(capability)
+                          ?.schemaVersion,
+                    )
                     ? row['sendPermissionReason'] as String?
                     : null,
                 hasContent:
@@ -538,7 +548,24 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       child: Scaffold(
         appBar: AppBar(
           leading: selected == null ? null : BackButton(onPressed: _back),
-          title: Text(selected?.title ?? l10n.navMessages),
+          title: selected == null
+              ? Text(l10n.navMessages)
+              : Row(
+                  children: [
+                    ConversationAvatar(
+                      kind: selected.conversationKind,
+                      images: selected.avatarImages,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        selected.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
           actions: [
             if (selected != null)
               IconButton(
@@ -679,10 +706,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                               itemBuilder: (context, index) {
                                 final row = filtered[index];
                                 return ListTile(
-                                  leading: Icon(
-                                    row.conversationKind == 'group'
-                                        ? Icons.group_outlined
-                                        : Icons.person_outline,
+                                  leading: ConversationAvatar(
+                                    kind: row.conversationKind,
+                                    images: row.avatarImages,
                                   ),
                                   title: Text(
                                     row.title,

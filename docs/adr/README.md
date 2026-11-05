@@ -40,6 +40,8 @@ Android 前台缓存课表小部件见 [090](adr_090_schedule_widgets.md)。
 
 系统教室查询的明确楼栋、同来源目录与学校时区校验见 [096](adr_096_system_classroom_query_inputs.md)。
 
+会话群名称兜底与内联头像见 [098](adr_098_conversation_avatars.md)。
+
 ## 历史记录与维护原则
 
 存储驱动的注册入口、SDK19 前台调度与暂缓通用广播见 [097](adr_097_registered_script_execution.md)。

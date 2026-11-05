@@ -1,6 +1,7 @@
 import 'package:elecon/l10n/gen/app_localizations.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:elecon/ui/community/chat_page.dart';
+import 'package:elecon/ui/community/conversation_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -81,6 +82,9 @@ void main() {
             'conversationId': 'synthetic-long-group-identity-1234567890',
             'conversationKind': 'group',
             'title': 'A long synthetic group title that needs multiple lines',
+            'avatarImages': [
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+            ],
             'hasContent': true,
             'lastMessageAt': '2025-11-05T08:00:00Z',
           },
@@ -149,6 +153,7 @@ void main() {
           await finishRequests(tester);
           expect(find.text('Synthetic group'), findsOneWidget);
           expect(find.text('Synthetic peer'), findsOneWidget);
+          expect(find.byType(ConversationAvatar), findsNWidgets(2));
           await tester.tap(find.text('Synthetic group'));
           await tester.pump();
           await finishRequests(tester);

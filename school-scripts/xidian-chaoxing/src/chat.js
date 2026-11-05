@@ -4,6 +4,7 @@
 // No Go implementation, generated protobuf code or dependency is included.
 import { remoteId, requireParams, serviceError } from "../../xidian/src/service_session.js";
 import { chaoxingClient } from "./account.js";
+import { conversationImages, mapConcurrent, optionalFailure } from "./avatars.js";
 import { messageContent } from "./message_content.js";
 import { incoming, loginPacket } from "./messages.js";
 import { decode, encode, one, str, sub } from "./protobuf.js";
@@ -43,7 +44,10 @@ function parseJson(raw) {
   if (typeof raw !== "string" || raw.length > 1024 * 1024) throw serviceError();
   try {
     return JSON.parse(
-      raw.replace(/("(?:next_key|groupid|id|uid|puid|session_to)"\s*:\s*)([0-9]+)(?=\s*[,}])/g, '$1"$2"'),
+      raw.replace(
+        /("(?:next_key|groupid|id|uid|puid|session_to|owner|member)"\s*:\s*)([0-9]+)(?=\s*[,}])/g,
+        '$1"$2"',
+      ),
     );
   } catch {
     throw serviceError();
@@ -71,7 +75,10 @@ async function apiRest(ctx, account, path, body, { optional = false } = {}) {
 const rest = (ctx, account, suffix, body) =>
   apiRest(ctx, account, `users/${encodeURIComponent(account.tid)}/${suffix}`, body);
 
+const namedGroup = (title, id) => title && title !== id && !title.endsWith(`_${id}`);
+
 async function groupNames(ctx, account, items) {
+  const details = new Map();
   const ids = [...items.values()]
     .filter((row) => row.conversationKind === "group" && decimal(row.conversationId))
     .map((row) => row.conversationId);
@@ -87,14 +94,16 @@ async function groupNames(ctx, account, items) {
       for (const detail of data) {
         const id = detail?.id ?? detail?.groupid;
         const title = bounded(detail?.name || detail?.groupname, 160).trim();
-        if (!admitted.has(id) || !title) continue;
-        items.get(`group:${id}`).title = title;
+        if (!admitted.has(id)) continue;
+        details.set(id, detail);
+        if (namedGroup(title, id)) items.get(`group:${id}`).title = title;
       }
     } catch (error) {
-      if (error.code === "authentication_required") throw error;
+      optionalFailure(error);
       // Names are optional; a failed batch must not erase the joined directory.
     }
   }
+  return details;
 }
 
 // Official Easemob Web SDK 4.12 endpoint/response facts, independently authored.
@@ -132,7 +141,7 @@ export async function sendPermission(ctx, account, conversation) {
       ? { sendPermission: "allowed" }
       : { sendPermission: "muted", sendPermissionReason: "group_muted" };
   } catch (error) {
-    if (error.code === "authentication_required") throw error;
+    optionalFailure(error);
     return unknown;
   }
 }
@@ -188,16 +197,17 @@ async function recentConversations(ctx, account, items) {
       seen.add(next);
       cursor = next;
     } catch (error) {
-      if (error.code === "authentication_required") throw error;
+      optionalFailure(error);
       return; // No per-group history fallback or automatic retry.
     }
   }
 }
-async function names(client, account, ids) {
+async function profiles(client, account, ids) {
   const result = new Map();
   const unique = [...new Set(ids.filter(decimal))].slice(0, 500);
   for (let offset = 0; offset < unique.length; offset += 50) {
     try {
+      const admitted = new Set(unique.slice(offset, offset + 50));
       const value = parseJson(
         await client.post(PROFILES, {
           puid: account.id,
@@ -207,13 +217,62 @@ async function names(client, account, ids) {
       );
       if (!Array.isArray(value?.data)) continue;
       for (const person of value.data.slice(0, 50)) {
-        const name = bounded(person.name || person.nick, 160);
-        if (decimal(person.uid) && name) result.set(person.uid, name);
+        if (!admitted.has(person?.uid)) continue;
+        result.set(person.uid, {
+          name: bounded(person.name || person.nick, 160).trim(),
+          pic120:
+            typeof person.pic120 === "string" && person.pic120.length <= 2048 ? person.pic120 : undefined,
+          pic: typeof person.pic === "string" && person.pic.length <= 2048 ? person.pic : undefined,
+        });
       }
-    } catch {
+    } catch (error) {
+      optionalFailure(error);
       /* Display names are optional; retain stable IDs on failure. */
     }
   }
+  return result;
+}
+
+async function groupMembers(ctx, account, details) {
+  const result = new Map();
+  // A bounded sample for display, never a claim to enumerate a large group.
+  await mapConcurrent(
+    [...details]
+      .filter(([, detail]) => decimal(detail.owner) || Array.isArray(detail.affiliations))
+      .slice(0, 64),
+    async ([id, detail]) => {
+      const ordered = [];
+      const add = (value) => {
+        if (decimal(value) && !ordered.includes(value)) ordered.push(value);
+      };
+      add(detail.owner);
+      const affiliations = Array.isArray(detail.affiliations) ? detail.affiliations.slice(0, 100) : [];
+      for (const entry of affiliations) add(entry?.owner);
+      try {
+        const admins = await apiRest(ctx, account, `chatgroups/${id}/admin`, undefined, { optional: true });
+        if (Array.isArray(admins)) admins.slice(0, 100).forEach(add);
+      } catch (error) {
+        optionalFailure(error);
+      }
+      for (const entry of affiliations) add(entry?.member);
+      if (ordered.length < 4) {
+        try {
+          const members = await apiRest(ctx, account, `chatgroups/${id}/users?limit=4`, undefined, {
+            optional: true,
+          });
+          if (Array.isArray(members)) {
+            for (const entry of members.slice(0, 4)) {
+              add(entry?.owner);
+              add(typeof entry === "string" ? entry : entry?.member);
+            }
+          }
+        } catch (error) {
+          optionalFailure(error);
+        }
+      }
+      result.set(id, { ids: ordered.slice(0, 4), more: ordered.length > 4 || detail.affiliations_count > 4 });
+    },
+  );
   return result;
 }
 
@@ -237,25 +296,37 @@ export async function messagesConversations(ctx, params = {}) {
           conversationId: id,
           conversationKind: kind,
           sendPermission: kind === "direct" ? "allowed" : "unknown",
-          title: kind === "group" ? bounded(row.groupname || row.name, 160).trim() || id : id,
+          title:
+            kind === "group" && namedGroup(bounded(row.groupname || row.name, 160).trim(), id)
+              ? bounded(row.groupname || row.name, 160).trim()
+              : id,
         });
       }
       successful++;
     } catch (error) {
-      if (error.code === "authentication_required") throw error;
+      optionalFailure(error);
       partial = true;
     }
   }
   if (!successful) throw serviceError();
-  await groupNames(ctx, account, items);
+  const details = await groupNames(ctx, account, items);
   await recentConversations(ctx, account, items);
-  const labels = await names(
-    client,
-    account,
-    [...items.values()].filter((row) => row.conversationKind === "direct").map((row) => row.conversationId),
-  );
-  for (const row of items.values())
-    if (row.conversationKind === "direct") row.title = labels.get(row.conversationId) || row.title;
+  const samples = await groupMembers(ctx, account, details);
+  const labels = await profiles(client, account, [
+    ...[...items.values()]
+      .filter((row) => row.conversationKind === "direct")
+      .map((row) => row.conversationId),
+    ...[...samples.values()].flatMap((sample) => sample.ids),
+  ]);
+  for (const row of items.values()) {
+    if (row.conversationKind === "direct") row.title = labels.get(row.conversationId)?.name || row.title;
+    else if (!namedGroup(row.title, row.conversationId)) {
+      const sample = samples.get(row.conversationId);
+      const names = (sample?.ids || []).map((id) => labels.get(id)?.name).filter(Boolean);
+      if (names.length) row.title = bounded(names.join("、") + (sample.more ? "..." : ""), 160);
+    }
+  }
+  await conversationImages(ctx, items, new Map([...samples].map(([id, sample]) => [id, sample.ids])), labels);
   return {
     ...identity(ctx, account),
     coverage: partial ? "partial" : "complete",
@@ -364,12 +435,13 @@ export async function messagesHistory(ctx, params = {}) {
     else if (item) items.set(item.id, item);
   }
   for (const id of recalled) items.delete(id);
-  const labels = await names(
+  const labels = await profiles(
     client,
     account,
     [...items.values()].map((row) => row.senderId),
   );
-  for (const row of items.values()) if (labels.has(row.senderId)) row.senderLabel = labels.get(row.senderId);
+  for (const row of items.values())
+    if (labels.get(row.senderId)?.name) row.senderLabel = labels.get(row.senderId).name;
   return {
     ...identity(ctx, account),
     ...conversation,
