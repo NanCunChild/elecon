@@ -20,6 +20,7 @@
 /// 🔒 store / minter 生命周期属核心凭证路径（红线 #1）。
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -52,6 +53,7 @@ import '../core/transport/app_tunnel.dart';
 import '../core/transport/hermes/hermes.dart';
 import '../core/broker/inject_policy.dart' show BrokerManifestView;
 import '../core/scripts/invocation.dart';
+import '../core/scripts/execution.dart';
 import '../core/scripts/manifest.dart';
 import '../core/scripts/registry.dart';
 import '../core/scripts/credentials.dart';
@@ -70,6 +72,7 @@ export '../core/attendance_places.dart' show AttendancePlace;
 export '../core/messages/archive.dart' show MessageArchiveView, ArchivedMessage;
 
 part 'script_session.dart';
+part 'script_execution_session.dart';
 part 'schedule_widget_session.dart';
 part 'query_form_session.dart';
 part 'attendance_session.dart';
@@ -800,10 +803,17 @@ class SessionController extends ChangeNotifier {
     String capability, {
     Map<String, dynamic>? params,
     bool interactive = true,
+    ScriptRunCancellation? cancellation,
     String? htmlStdlib,
     void Function(String level, String message)? onLog,
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) async {
+    if (cancellation?.isCancelled == true) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'script_cancelled',
+      );
+    }
     if (hardwareUnlockFailed) {
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
@@ -844,6 +854,7 @@ class SessionController extends ChangeNotifier {
     }
     if (_school?.id != school.id ||
         generation != trustedScriptViewGeneration ||
+        cancellation?.isCancelled == true ||
         _scripts.disposed) {
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
@@ -857,6 +868,7 @@ class SessionController extends ChangeNotifier {
         expectedDigest: local.digest,
         params: params,
         interactive: interactive,
+        cancellation: cancellation,
         htmlStdlib: htmlStdlib,
         onLog: onLog,
       );
@@ -886,7 +898,9 @@ class SessionController extends ChangeNotifier {
     } on AppTunnelException catch (error) {
       return CapabilityRun.failed(CapabilityFailureKind.run, error.code);
     }
-    if (generation != trustedScriptViewGeneration || _school?.id != school.id) {
+    if (generation != trustedScriptViewGeneration ||
+        _school?.id != school.id ||
+        cancellation?.isCancelled == true) {
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
         'script_cancelled',
@@ -956,6 +970,7 @@ class SessionController extends ChangeNotifier {
         }
       }
       if (generation != trustedScriptViewGeneration ||
+          cancellation?.isCancelled == true ||
           _school?.id != school.id) {
         return const CapabilityRun.failed(
           CapabilityFailureKind.run,

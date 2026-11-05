@@ -46,17 +46,28 @@ Future<QueryOutcome<T>> runOnceDecoded<T>(
   String capability, {
   Map<String, dynamic>? params,
   bool interactive = true,
+  ScriptRunCancellation? cancellation,
   CapabilitySource? source,
   required T? Function(Object?) decode,
 }) async {
   final dataGeneration = session.trustedScriptDataGeneration;
-  final run = await CapabilityQueries(
-    session,
-    source: source,
-  ).runCapability(capability, params: params, interactive: interactive);
+  final run = await CapabilityQueries(session, source: source).runCapability(
+    capability,
+    params: params,
+    interactive: interactive,
+    cancellation: cancellation,
+  );
   if (dataGeneration != session.trustedScriptDataGeneration) {
     return const QueryOutcome(reason: 'script_cancelled');
   }
+  return decodeCapabilityRun(run, capability, decode);
+}
+
+QueryOutcome<T> decodeCapabilityRun<T>(
+  CapabilityRun run,
+  String capability,
+  T? Function(Object?) decode,
+) {
   if (!run.ok) {
     if (run.reason == 'configuration_required') {
       return const QueryOutcome(reason: 'configuration_required');
@@ -85,6 +96,7 @@ Future<QueryOutcome<T>> runDecoded<T>(
   String capability, {
   Map<String, dynamic>? params,
   bool interactive = true,
+  ScriptRunCancellation? cancellation,
   required T? Function(Object?) decode,
 }) async {
   final first = await runOnceDecoded(
@@ -93,6 +105,7 @@ Future<QueryOutcome<T>> runDecoded<T>(
     capability,
     params: params,
     interactive: interactive,
+    cancellation: cancellation,
     decode: decode,
   );
   if (context.mounted) {

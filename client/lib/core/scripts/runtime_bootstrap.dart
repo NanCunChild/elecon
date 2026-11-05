@@ -6,8 +6,11 @@ import 'dart:convert';
 import 'host_protocol.dart';
 import 'localization.dart';
 import 'web_api.dart';
+import 'execution.dart';
+import 'execution_bootstrap.dart';
 
 String scriptRuntimeBootstrap({
+  ScriptExecutionTurn? execution,
   required String capability,
   required int sdkVersion,
   required String packageId,
@@ -158,12 +161,14 @@ String scriptRuntimeBootstrap({
       setCookies: async (url,cookies) => { await call('setCookies',{url:String(url),cookies:Array.isArray(cookies) ? cookies.map(flatFields) : cookies}); },
     });
   }
+  ${execution == null ? '' : 'const executionContext = ${jsonEncode({'stateKey': execution.stateKey, 'trigger': execution.trigger})};$scriptExecutionBootstrap'}
   ${sdkVersion >= 17 ? _sdk17Bootstrap(packageId) : ''}
   Object.freeze(ctx);
   globalThis.__scriptInvoke = async () => {
-  const caps = globalThis.__scriptCaps;
-  if (!caps || typeof caps !== 'object' || typeof caps[${jsonEncode(capability)}] !== 'function') {
-    return JSON.stringify({ok:false,error:{code:'capability_missing'}});
+  const caps = globalThis.${execution?.handler == null ? '__scriptCaps' : '__scriptHandlers'};
+  const entry = ${jsonEncode(execution?.handler ?? capability)};
+  if (!caps || typeof caps !== 'object' || (${execution?.handler != null} && !Object.prototype.hasOwnProperty.call(caps, entry)) || typeof caps[entry] !== 'function') {
+    return JSON.stringify({ok:false,error:{code:'${execution?.handler == null ? 'capability_missing' : 'execution_handler_missing'}'}});
   }
   // Build JSON ourselves: JSON.stringify silently drops unsupported values and
   // invokes toJSON. Strict output never repairs missing/NaN/class values.
@@ -195,7 +200,7 @@ String scriptRuntimeBootstrap({
     return text;
   };
   try {
-    const result = await caps[${jsonEncode(capability)}](Object.freeze(ctx),JSON.parse(${jsonEncode(paramsJson)}));
+    const result = await caps[entry](Object.freeze(ctx)${execution?.handler == null ? ',JSON.parse(${jsonEncode(paramsJson)})' : ''});
     return String('{"ok":true,"data":'+encode(result,0)+'}');
   } catch(e) {
     // Useful diagnostics go through the same bounded secret/URL sanitizer as

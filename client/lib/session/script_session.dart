@@ -65,6 +65,8 @@ class _ScriptSessionState {
   final pendingCacheRemovals = <String, Set<String>>{};
   String locale = 'zh';
   bool disposed = false;
+  bool foreground = true;
+  final executions = <ScriptExecutionScope>{};
   int homeRevision = 0;
   Future<void>? refreshingHome;
   final Set<ScriptHttpTransport> transports = {};
@@ -170,8 +172,17 @@ extension TrustedScriptSession on SessionController {
   set scriptDeviceInputPresenter(ScriptDeviceInputPresenter? value) =>
       _scripts.deviceInputPresenter = value;
   bool get scriptSystemInputPending => _scripts.deviceInputLease.active;
-  set scriptAppForeground(bool value) =>
-      _scripts.deviceInputLease.foreground = value;
+  set scriptAppForeground(bool value) {
+    _scripts.deviceInputLease.foreground = value;
+    _scripts.foreground = value;
+    if (!value) _closeScriptExecutions();
+  }
+
+  void _closeScriptExecutions() {
+    for (final scope in _scripts.executions.toList()) {
+      scope.close();
+    }
+  }
 
   Future<ScriptRegistry> get scriptRegistry =>
       _scripts.registry ??= _openScriptRegistry();
@@ -199,6 +210,7 @@ extension TrustedScriptSession on SessionController {
     if (state == null) return;
     state.deviceInputLease.revoke();
     state.generation++;
+    _closeScriptExecutions();
     state.homeRevision++;
     state.refreshingHome = null;
     state.accountEvents.clear();
@@ -610,6 +622,7 @@ extension TrustedScriptSession on SessionController {
     ScriptInputCall? inputCall,
     ScriptPasswordCall? passwordCall,
     ScriptRunCancellation? cancellation,
+    ScriptExecutionTurn? execution,
     void Function(String, String)? onLog,
   }) {
     if (hardwareUnlockFailed) {
@@ -639,6 +652,7 @@ extension TrustedScriptSession on SessionController {
     }
     return _queueTrustedScript(
       invocation,
+      execution: execution,
       htmlStdlib: htmlStdlib,
       browserCall: browserCall,
       inputCall: inputCall,
@@ -657,6 +671,7 @@ extension TrustedScriptSession on SessionController {
     ScriptInputCall? inputCall,
     ScriptPasswordCall? passwordCall,
     ScriptRunCancellation? cancellation,
+    ScriptExecutionTurn? execution,
     void Function(String, String)? onLog,
   }) {
     final state = _scripts;
@@ -672,8 +687,15 @@ extension TrustedScriptSession on SessionController {
           'script_cancelled',
         );
       }
+      if (execution?.missed == true) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'execution_missed',
+        );
+      }
       return _executeTrustedScript(
         invocation,
+        execution: execution,
         expectedGeneration: generation,
         htmlStdlib: htmlStdlib,
         browserCall: browserCall,
@@ -697,6 +719,7 @@ extension TrustedScriptSession on SessionController {
     ScriptInputCall? inputCall,
     ScriptPasswordCall? passwordCall,
     ScriptRunCancellation? cancellation,
+    ScriptExecutionTurn? execution,
     void Function(String, String)? onLog,
   }) async {
     if (hardwareUnlockFailed) {
@@ -823,6 +846,7 @@ extension TrustedScriptSession on SessionController {
       // Failure/cancellation cannot restore those snapshots: authentication
       // may already have changed remotely even if the final result is unknown.
       state.dataGeneration++;
+      _closeScriptExecutions();
       state.homeRevision++;
       state.refreshingHome = null;
       final removals = state.pendingCacheRemovals.putIfAbsent(
@@ -976,6 +1000,7 @@ extension TrustedScriptSession on SessionController {
         ScriptInputCall? input,
       ) async => const TrustedScriptRuntime().run(
         package: package,
+        execution: execution,
         capability: capability,
         params: params,
         locale: state.locale,
@@ -1146,10 +1171,11 @@ extension TrustedScriptSession on SessionController {
                 entry.schoolId == school.id,
           )
           .toList();
-      if (ScriptDataCache(
-        store,
-        locale: state.locale,
-      ).write(package, capability, params, data)) {
+      if (execution?.handler == null &&
+          ScriptDataCache(
+            store,
+            locale: state.locale,
+          ).write(package, capability, params, data)) {
         previousCachedData = cachedBeforeWrite;
         state.homeRevision++;
       }

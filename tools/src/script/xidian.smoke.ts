@@ -14,8 +14,8 @@ assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildXidianPackages())]);
 for (const role of ["undergraduate", "postgraduate"]) {
   const data = JSON.parse(first.get(`school-xidian-${role}.elecon.json`)!);
-  assert.equal(data.manifest.version, "0.31.0");
-  assert.equal(data.manifest.sdkVersion, 18);
+  assert.equal(data.manifest.version, "0.32.0");
+  assert.equal(data.manifest.sdkVersion, 19);
   assert.deepEqual(data.manifest.school, {
     id: "xidian",
     name: "西安电子科技大学",
@@ -153,5 +153,5 @@ try {
   rmSync(out, { recursive: true, force: true });
 }
 console.log(
-  "Xidian SDK18 source packages: deterministic build, explicit trust and real module fixtures passed",
+  "Xidian SDK19 source packages: deterministic build, explicit trust and real module fixtures passed",
 );

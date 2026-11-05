@@ -666,3 +666,44 @@ test("card QR rejects remote images and malformed PNG data without retry", async
     assert.equal(env.calls.length, 2);
   }
 });
+
+test("SDK19 QR entries register named handlers and renew from stored role state", async () => {
+  const module = await build({
+    entryPoints: [fileURLToPath(new URL("../src/index.js", import.meta.url))],
+    bundle: true, write: false, format: "esm", platform: "neutral",
+    alias: { "elecon:html": fileURLToPath(new URL("../../../adapters/_stdlib/html.bundle.js", import.meta.url)) },
+  });
+  const { createCapabilities, createHandlers } = await import(
+    `data:text/javascript;base64,${Buffer.from(module.outputFiles[0].text).toString("base64")}`
+  );
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jD0sAAAAASUVORK5CYII=";
+  for (const role of ["undergraduate", "postgraduate"]) {
+    const env = context("card", { openid: "EXAMPLE_SYNTHETIC_OPENID", openidFetchedAt: NOW }, ({ url }) =>
+      response(url.href, url.pathname === "/home/openHomePage"
+        ? '<a href="/virtualcard/openVirtualcard?id=EXAMPLE">card</a>'
+        : `<img id="qrcode" src="data:image/png;base64,${png}">`));
+    const values = new Map(), registrations = [], appointments = [];
+    env.ctx.execution = {
+      stateKey: null, trigger: "initial",
+      state: {
+        async get(key) { assert.ok(values.has(key)); return structuredClone(values.get(key)); },
+        async set(key, value) { values.set(key, structuredClone(value)); },
+      },
+      async register(value) { registrations.push(value); },
+      async schedule(id, at) { appointments.push({ id, at }); },
+    };
+    await createCapabilities(role)["card.qr"](env.ctx);
+    assert.deepEqual(registrations, [{id:"cardQr",handler:"renewCardQr",stateKey:"cardQr"}]);
+    assert.deepEqual(values.get("cardQr"), { role });
+    assert.deepEqual(appointments, [{id:"cardQr",at:NOW+24000}]);
+    env.ctx.execution = { ...env.ctx.execution, stateKey: "cardQr", trigger: "timer" };
+    await createHandlers(role).renewCardQr(env.ctx);
+    assert.equal(registrations.length, 1);
+    assert.equal(appointments.length, 2);
+    assert.equal(env.calls.length, 4);
+    assert.ok(!JSON.stringify([...values]).includes(png));
+    values.set("cardQr", {role:"other"});
+    await assert.rejects(createHandlers(role).renewCardQr(env.ctx), /school_role_mismatch/);
+    assert.equal(env.calls.length, 4);
+  }
+});

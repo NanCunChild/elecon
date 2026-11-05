@@ -123,6 +123,7 @@ class DelayedQuerySession extends SessionController {
     String capability, {
     Map<String, dynamic>? params,
     bool interactive = true,
+    ScriptRunCancellation? cancellation,
     String? htmlStdlib,
     void Function(String, String)? onLog,
     void Function(AdapterDiagnostic)? onDiagnostic,

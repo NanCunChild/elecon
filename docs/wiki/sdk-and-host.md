@@ -23,6 +23,8 @@
 | 15 | 声明账号到指定网关的凭据复用 |
 | 16 | 脚本声明隧道账号、能力/账号隧道依赖 |
 | 17 | 全局 elecon、缓冲 Web API 子集、结构化桥接错误与包命名空间业务错误 |
+| 18 | 同包 pages、脚本 tab 与 cards.pageId |
+| 19 | 前台作用域内的状态存储、稳定入口注册与单次预约 |
 
 `query.controls` 是业务能力 1.0，沿用现有 SDK 授权。SDK16 可声明院校与身份类型的展示分组：
 
@@ -37,6 +39,18 @@
 ```
 
 `school.id/name/type` 用于选校分组与标题，原有 `schoolId` 继续决定凭据、缓存和执行授权范围。同一大学不同身份类型不会因此共享凭据。细节见 [ADR-079](../adr/adr_079_school_presentation_and_titles.md)。
+
+## SDK19：注册入口与前台预约
+
+完整示例见 [registered.ts](../../contract/script-sdk/examples/registered.ts)，类型维护在 [types.d.ts](../../contract/script-sdk/types.d.ts)。只有原生消费者显式打开查询作用域时才提供 `ctx.execution`（亦可经 `elecon.execution` 使用）；普通短调用、首页预加载和系统查询中该属性缺失。当前产品接入点是一卡通二级页的二维码，其他消费者可复用核心 `openScriptExecutionScope`，不由安装声明自动启用。
+
+初始 `capabilities[id](ctx, params)` 将下一轮需要的业务状态写入 `execution.state`，再 `register({id, handler, stateKey})`，最后 `schedule(id, at)`。handler 是批准模块 `export const handlers = {...}` 的自身属性名，注册不接收函数或业务 params。到点新建 QuickJS 并调用 `handlers[name](ctx)`；处理器从 `execution.stateKey` 指向的存储读取状态，`trigger` 为 initial/manual/timer。核心可以 `scope.invoke(id)` 按需调用，不附加临时业务参数。普通源码常量与一次调用内部的辅助函数不受影响。
+
+作用域存储只接受普通 JSON（深度最多 32、单项 64 KiB、32 项、合计 256 KiB）；key/id/handler 为 1–64 位 ASCII 字母开头，后续可用字母、数字、下划线、点、短横线。缺键报 `execution_state_missing`，状态不落磁盘，也不替代受保护凭据库。最多 16 个注册；替换注册撤销旧预约，`unregister(id)` 删除注册及预约，`cancel(id)` 只撤销预约。输出仍遵守所属 capability 的标准契约；注册调用不自动写旧业务查询缓存。
+
+`at` 是 Unix 毫秒时刻，必须比宿主接受请求时晚 1 秒至 24 小时（计算时间时为桥接延迟留余量）。每个 id 只有一个单次预约，重复 schedule 替换；成功后可预约下一次。状态/注册/预约在本次输出校验与持久化成功后提交，失败全部丢弃并停止该作用域自动调用。超过目标 30 秒才获执行机会返回 `execution_missed`，不补发；等待计时器不占 QuickJS 或运行队列。
+
+页面关闭、后台、身份/来源/业务数据代际变化会清空作用域，恢复前台创建新的作用域。定时处理器不能弹输入或登录浏览器；此接口只供前台只读查询，不执行命令或账号登录，也不提供进程退出后的系统唤醒、重启恢复、持久自动化或广播。旧 SDK 保留原二维码续订逻辑。完整决定见 [ADR-097](../adr/adr_097_registered_script_execution.md)。
 
 ## SDK17：普通 JS 与宿主命名空间
 

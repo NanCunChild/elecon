@@ -1,5 +1,10 @@
 # `contract/` 变更流水
 
+## 2026-11-05 · SDK19 注册执行与前台预约（ADR-097）
+
+- 在宿主显式打开的查询作用域中提供 `ctx.execution` / `elecon.execution`：JSON 内存状态、稳定 handler 名称注册、按需调用与单次定时预约。新引擎只接收本次 ctx，业务状态按 stateKey 读取；不序列化函数、闭包或参数快照。
+- 产出沿用原始 capability 的输出契约，失败不提交预约，离页/后台/身份和来源变化撤销；不提供持久后台计划或广播。旧 SDK1–18 保持原语义，旧宿主拒绝 SDK19，新包升版并重新批准 digest。业务 schema/registry 与代码生成模型不变。
+
 ## 2026-11-05 · 空调本地绑定（ADR-092）
 
 - `climate.devices` 输出升 1.1：本地绑定独立于远端状态读取，必填 deviceId/label/commands，其余能力配置按支持项提供；可选 bindingVerifiedAt 记录历史绑定核验时间，缺失保持未知。

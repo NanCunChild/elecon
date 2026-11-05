@@ -62,11 +62,13 @@ class CapabilityQueries {
     String capability, {
     Map<String, dynamic>? params,
     bool interactive = true,
+    ScriptRunCancellation? cancellation,
   }) => source == null
       ? session.runCapability(
           capability,
           params: params,
           interactive: interactive,
+          cancellation: cancellation,
         )
       : session.runTrustedScript(
           source!.packageId,
@@ -74,6 +76,7 @@ class CapabilityQueries {
           expectedDigest: source!.digest,
           params: params,
           interactive: interactive,
+          cancellation: cancellation,
         );
 
   Future<ScriptCachedData?> cachedCapability(

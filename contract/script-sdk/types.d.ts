@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1–18 (ADR-034/035/037/038/039/040/043/070/072/073). Values include actual secrets.
+/** Trusted school script SDK 1–19 (ADR-034/035/037/038/039/040/043/070/072/073/097). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -71,6 +71,9 @@ export interface ScriptBrowser {
   }>): Promise<void>;
 }
 export interface ScriptContext {
+  /** SDK19: present only in a host-opened foreground query scope.
+   * Registrations never retain JS closures or invocation params. */
+  readonly execution?: ScriptExecution;
   /** SDK17: namespaced business failures; use ordinary throw/try/catch.
    * Local codes match [a-z][a-z0-9_]{0,63}; no messages or response text.
    * For execution globals and the supported Web API subset, see sdk17.d.ts. */
@@ -160,6 +163,32 @@ export interface ScriptContext {
   now(): number;
   log(level: "debug" | "info" | "warn" | "error", message: string): void;
 }
+
+export type ScriptStateValue = null | boolean | number | string | ScriptStateValue[] | { [key: string]: ScriptStateValue };
+/** ADR-097: scope memory, not credentials or persistent storage. */
+export interface ScriptExecution {
+  readonly stateKey: string | null;
+  readonly trigger: 'initial' | 'manual' | 'timer';
+  readonly state: {
+    /** Missing keys throw execution_state_missing. Reads return JSON copies. */
+    get(key: string): Promise<ScriptStateValue>;
+    /** Plain JSON only; 64KiB/item, 32 items, 256KiB/scope, depth <=32. */
+    set(key: string, value: ScriptStateValue): Promise<void>;
+    delete(key: string): Promise<void>;
+  };
+  /** Names address the approved module's exported handlers. 16 registrations/scope.
+   * State must already exist. Replacing a registration cancels its old timer. */
+  register(registration: { id: string; handler: string; stateKey: string }): Promise<void>;
+  unregister(id: string): Promise<void>;
+  /** Unix milliseconds; 1s–24h ahead. One-shot, replaces this id's timer.
+   * Over 30s late at execution start is missed. No background/restart recovery. */
+  schedule(id: string, at: number): Promise<void>;
+  /** Cancel only the appointment, retaining the registration and state. */
+  cancel(id: string): Promise<void>;
+}
+/** Each registered entry gets a fresh ctx/engine and no business arguments.
+ * Output must satisfy the owning capability's existing schema. */
+export type ScriptHandlers = Record<string, (ctx: ScriptContext) => Promise<unknown>>;
 /** ADR-037: 1–8 fields; request ≤32 KiB; up to 8 serial requests per run. */
 export interface ScriptInputRequest {
   title: string;

@@ -41,6 +41,32 @@ function authenticated(handler, role) {
   };
 }
 
+// SDK19: only a storage key and an exported handler name survive this call.
+// The role argument is reconstructed from the approved entry module each run.
+async function scheduledCardQr(ctx, params, role) {
+  const execution = ctx.execution;
+  if (execution?.stateKey != null) {
+    const state = await execution.state.get(execution.stateKey);
+    if (!state || state.role !== role) throw new Error("xidian_school_role_mismatch");
+    params = {};
+  }
+  const data = await authenticated(cardQr, role)(ctx, params);
+  if (execution) {
+    if (execution.stateKey == null) {
+      await execution.state.set("cardQr", { role });
+      await execution.register({ id: "cardQr", handler: "renewCardQr", stateKey: "cardQr" });
+    }
+    const now = ctx.now();
+    const remaining = Math.min(Date.parse(data.expiresAt) - now, 60000);
+    if (remaining > 2000) await execution.schedule("cardQr", now + Math.floor(remaining * 0.8));
+  }
+  return data;
+}
+
+export function createHandlers(role) {
+  return { renewCardQr: async (ctx) => scheduledCardQr(ctx, {}, role) };
+}
+
 export function createCapabilities(role) {
   if (role !== "undergraduate" && role !== "postgraduate") throw new Error("academic_role_invalid");
   return {
@@ -59,7 +85,7 @@ export function createCapabilities(role) {
     "exam.list": authenticated(examList, role),
     "classroom.buildings": authenticated(classroomBuildings, role),
     "classroom.available": authenticated(classroomAvailable, role),
-    "card.qr": authenticated(cardQr, role),
+    "card.qr": (ctx, params = {}) => scheduledCardQr(ctx, params, role),
     "card.balance": authenticated(cardBalance, role),
     "card.transactions": authenticated(cardTransactions, role),
     "library.loans": authenticated(libraryLoans, role),

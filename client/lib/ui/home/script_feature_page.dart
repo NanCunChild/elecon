@@ -28,7 +28,8 @@ class ScriptFeaturePage extends StatefulWidget {
 
 class _ScriptFeaturePageState extends State<ScriptFeaturePage> {
   SessionController? _session;
-  int? _generation;
+  int? _identity;
+  int? _sourceRevision;
   int? _dataGeneration;
 
   @override
@@ -36,7 +37,8 @@ class _ScriptFeaturePageState extends State<ScriptFeaturePage> {
     super.didChangeDependencies();
     if (_session != null) return;
     _session = SessionScope.of(context);
-    _generation = _session!.trustedScriptViewGeneration;
+    _identity = _session!.identityRevision;
+    _sourceRevision = _session!.trustedScriptSourceRevision;
     _dataGeneration = _session!.trustedScriptDataGeneration;
   }
 
@@ -46,7 +48,8 @@ class _ScriptFeaturePageState extends State<ScriptFeaturePage> {
     final page = widget.page;
     final package = widget.package;
     if (!identical(session, _session) ||
-        session.trustedScriptViewGeneration != _generation ||
+        session.identityRevision != _identity ||
+        session.trustedScriptSourceRevision != _sourceRevision ||
         session.trustedScriptDataGeneration != _dataGeneration ||
         session.selectedSchool?.id != package.manifest.schoolId) {
       return Scaffold(

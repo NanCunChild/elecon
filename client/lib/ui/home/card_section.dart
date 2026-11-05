@@ -191,23 +191,32 @@ class CardQrPage extends StatefulWidget {
 class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
   Uint8List? _image;
   Timer? _expiry;
+  ScriptExecutionScope? _execution;
+  ScriptRunCancellation? _cancellation;
   String? _purpose;
   QueryPhase _phase = QueryPhase.idle;
   String? _error;
   SessionController? _session;
   CapabilitySource? _source;
-  int? _generation;
-  int? _dataGeneration;
+  int? _generation, _dataGeneration, _identity, _sourceRevision;
   int _request = 0;
   bool _started = false;
   bool _foreground = true;
   bool _routeVisible = true;
   bool _revealed = false;
 
+  bool get _sameOwner =>
+      _session?.identityRevision == _identity &&
+      _session?.trustedScriptSourceRevision == _sourceRevision &&
+      _session?.trustedScriptDataGeneration == _dataGeneration;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _foreground =
+        WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
   }
 
   @override
@@ -220,36 +229,48 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
       _source = CapabilitySourceScope.maybeOf(context)?.source;
       _generation = session.trustedScriptViewGeneration;
       _dataGeneration = session.trustedScriptDataGeneration;
+      _identity = session.identityRevision;
+      _sourceRevision = session.trustedScriptSourceRevision;
       _routeVisible = ModalRoute.of(context)?.isCurrent ?? true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _load();
+        if (mounted) unawaited(_load());
       });
     } else if (_source != CapabilitySourceScope.maybeOf(context)?.source ||
         !identical(session, _session) ||
-        session.trustedScriptViewGeneration != _generation ||
-        session.trustedScriptDataGeneration != _dataGeneration) {
+        !_sameOwner) {
       _clear();
     } else {
       final visible = ModalRoute.of(context)?.isCurrent ?? true;
-      if (visible != _routeVisible) {
+      if (visible != _routeVisible ||
+          session.trustedScriptViewGeneration != _generation) {
         _routeVisible = visible;
+        _generation = session.trustedScriptViewGeneration;
         _clear();
-        if (visible) {
+        if (visible && _foreground) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _load(automatic: true);
+            if (mounted) unawaited(_load(automatic: true));
           });
         }
       }
     }
   }
 
-  void _clear({bool resetReveal = true}) {
-    if (resetReveal) _revealed = false;
-    _request++;
+  void _dropImage() {
     _expiry?.cancel();
     if (_image != null) unawaited(MemoryImage(_image!).evict());
     _image = null;
     _purpose = null;
+  }
+
+  void _clear({bool resetReveal = true}) {
+    if (resetReveal) _revealed = false;
+    _request++;
+    _cancellation?.cancel();
+    _cancellation = null;
+    _execution?.removeListener(_executionChanged);
+    _execution?.dispose();
+    _execution = null;
+    _dropImage();
     _phase = QueryPhase.idle;
   }
 
@@ -259,7 +280,8 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
     if (!mounted) return;
     if (!_foreground) {
       setState(_clear);
-    } else if (_routeVisible) {
+    } else if (_routeVisible && _sameOwner) {
+      _generation = _session!.trustedScriptViewGeneration;
       unawaited(_load(automatic: true));
     }
   }
@@ -271,12 +293,42 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  static CardQr? _decodeQr(Object? raw) {
+    if (raw is! Map ||
+        raw['imageBase64'] is! String ||
+        raw['issuedAt'] is! String ||
+        raw['expiresAt'] is! String) {
+      return null;
+    }
+    return CardQr(
+      imageBase64: raw['imageBase64'] as String,
+      issuedAt: raw['issuedAt'] as String,
+      expiresAt: raw['expiresAt'] as String,
+      purpose: raw['purpose'] as String?,
+    );
+  }
+
+  void _executionChanged() {
+    if (!mounted || !_foreground || !_routeVisible || !_sameOwner) return;
+    final update = _execution?.update;
+    if (update == null) return;
+    if (update.result == null) {
+      setState(() {
+        _dropImage();
+        _phase = QueryPhase.loading;
+        _error = null;
+      });
+    } else {
+      _showOutcome(decodeCapabilityRun(update.result!, 'card.qr', _decodeQr));
+    }
+  }
+
   Future<void> _load({bool configure = false, bool automatic = false}) async {
     final session = _session!;
     if (!_foreground ||
         !_routeVisible ||
-        !isCurrentQuery(this, session, _generation!, _source) ||
-        session.trustedScriptDataGeneration != _dataGeneration) {
+        !_sameOwner ||
+        !isCurrentQuery(this, session, _generation!, _source)) {
       return;
     }
     _clear(resetReveal: false);
@@ -285,34 +337,45 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
       _phase = QueryPhase.loading;
       _error = null;
     });
+    final scope = await session.openScriptExecutionScope(
+      'card.qr',
+      packageId: _source?.packageId,
+      expectedDigest: _source?.digest,
+    );
+    if (!mounted || request != _request || !_foreground || !_sameOwner) {
+      scope?.dispose();
+      return;
+    }
+    if (scope != null) {
+      _execution = scope;
+      scope.addListener(_executionChanged);
+      await scope.run(
+        params: {if (configure) 'configure': true},
+        interactive: !automatic,
+      );
+      return;
+    }
+    final cancellation = _cancellation = ScriptRunCancellation();
     final outcome = await runDecoded<CardQr>(
       context,
       session,
       'card.qr',
       interactive: !automatic,
+      cancellation: cancellation,
       params: {if (configure) 'configure': true},
-      decode: (raw) {
-        if (raw is! Map ||
-            raw['imageBase64'] is! String ||
-            raw['issuedAt'] is! String ||
-            raw['expiresAt'] is! String) {
-          return null;
-        }
-        return CardQr(
-          imageBase64: raw['imageBase64'] as String,
-          issuedAt: raw['issuedAt'] as String,
-          expiresAt: raw['expiresAt'] as String,
-          purpose: raw['purpose'] as String?,
-        );
-      },
+      decode: _decodeQr,
     );
     if (!mounted ||
         request != _request ||
         !_foreground ||
-        !isCurrentQuery(this, session, _generation!, _source) ||
-        session.trustedScriptDataGeneration != _dataGeneration) {
+        !_sameOwner ||
+        !isCurrentQuery(this, session, _generation!, _source)) {
       return;
     }
+    _showOutcome(outcome);
+  }
+
+  void _showOutcome(QueryOutcome<CardQr> outcome) {
     try {
       if (outcome.data == null) {
         setState(() {
@@ -321,7 +384,9 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
               : outcome.needLogin
               ? QueryPhase.needLogin
               : QueryPhase.error;
-          _error = outcome.error;
+          _error = _execution == null
+              ? outcome.error
+              : AppLocalizations.of(context).campusLoadFailed;
         });
         return;
       }
@@ -357,13 +422,22 @@ class _CardQrPageState extends State<CardQrPage> with WidgetsBindingObserver {
       final lifetime = remaining < const Duration(seconds: 60)
           ? remaining
           : const Duration(seconds: 60);
-      _expiry = Timer(
-        Duration(milliseconds: (lifetime.inMilliseconds * .8).floor()),
-        () {
-          if (mounted) unawaited(_load(automatic: true));
-        },
-      );
+      _expiry = _execution == null
+          ? Timer(
+              Duration(milliseconds: (lifetime.inMilliseconds * .8).floor()),
+              () {
+                if (mounted) unawaited(_load(automatic: true));
+              },
+            )
+          : Timer(lifetime, () {
+              if (!mounted) return;
+              setState(() {
+                _dropImage();
+                _phase = QueryPhase.idle;
+              });
+            });
     } catch (_) {
+      _execution?.close();
       setState(() {
         _phase = QueryPhase.error;
         _error = AppLocalizations.of(context).cardQrInvalid;

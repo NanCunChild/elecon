@@ -183,6 +183,7 @@ class _DelayedResultSession extends SessionController {
     String capability, {
     Map<String, dynamic>? params,
     bool interactive = true,
+    ScriptRunCancellation? cancellation,
     String? htmlStdlib,
     void Function(String level, String message)? onLog,
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,

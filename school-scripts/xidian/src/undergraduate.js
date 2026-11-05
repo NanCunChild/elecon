@@ -2,7 +2,9 @@
 
 import { climateCommand, climateDevices, climateStatus } from "./climate.js";
 import { energyMeters, energyUsage } from "./energy.js";
-import { createCapabilities } from "./index.js";
+import { createCapabilities, createHandlers } from "./index.js";
+
+export const handlers = createHandlers("undergraduate");
 
 const undergraduate =
   (handler) =>

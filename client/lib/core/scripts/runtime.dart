@@ -22,6 +22,7 @@ import 'device_input.dart';
 import 'host_protocol.dart';
 import 'runtime_bootstrap.dart';
 import 'query_filters.dart';
+import 'execution.dart';
 
 export 'host_protocol.dart' show ScriptRunException;
 
@@ -44,6 +45,7 @@ class TrustedScriptRuntime {
     Future<Object?> Function(String, Object?, Object?)? accountCall,
     ScriptScanCall? scanCall,
     ScriptDeviceInputCall? deviceInputCall,
+    ScriptExecutionTurn? execution,
     bool Function()? isActive,
     String? htmlStdlib,
     void Function(String level, String message)? onLog,
@@ -56,6 +58,12 @@ class TrustedScriptRuntime {
   }) async {
     if (package.requiresUpdate) {
       throw const ScriptRunException('script_update_required');
+    }
+    if (execution != null && package.manifest.sdkVersion < 19) {
+      throw const ScriptRunException('execution_unavailable');
+    }
+    if (execution?.missed == true) {
+      throw const ScriptRunException('execution_missed');
     }
     if (wallTimeout <= Duration.zero ||
         wallTimeout > const Duration(minutes: 2) ||
@@ -179,6 +187,18 @@ class TrustedScriptRuntime {
     );
     qjs.setHostFunctions(
       scriptHostFunctions({
+        '__script_execution': (dynamic method, dynamic encoded) {
+          check();
+          if (package.manifest.sdkVersion < 19 || execution == null) {
+            throw const ScriptRunException('execution_unavailable');
+          }
+          if (method is! String ||
+              encoded is! String ||
+              utf8.encode(encoded).length > 128 * 1024) {
+            throw const ScriptRunException('execution_invalid_request');
+          }
+          return execution.call(method, jsonDecode(encoded));
+        },
         '__script_accounts':
             (dynamic method, dynamic account, dynamic encoded) async {
               check();
@@ -729,6 +749,7 @@ class TrustedScriptRuntime {
         })()''');
         await qjs.evaluate(
           scriptRuntimeBootstrap(
+            execution: execution,
             capability: capability,
             sdkVersion: package.manifest.sdkVersion,
             packageId: package.manifest.id,
@@ -757,7 +778,7 @@ class TrustedScriptRuntime {
           ),
         );
         await qjs.evaluate(
-          "import * as adapter from 'adapter'; globalThis.__scriptCaps = adapter.capabilities;",
+          "import * as adapter from 'adapter'; globalThis.__scriptCaps = adapter.capabilities; globalThis.__scriptHandlers = adapter.handlers;",
           name: '<script-load>',
           evalFlags: JSEvalFlag.MODULE,
         );

@@ -1,6 +1,6 @@
 # 脚本执行原语与数据刷新讨论
 
-日期：2026-11-05。状态：**讨论共识与候选设计，接口尚未定稿或实施**。承接 [ADR-080](../adr/adr_080_trusted_script_extensibility.md) 与 [ADR-081](../adr/adr_081_script_runtime_consolidation.md)；现行边界以[当前架构](../architecture.md)为准，实施状态只在[统一计划](../planning/implementation.md#受信扩展)维护。
+日期：2026-11-05。状态：**前台注册执行已由 ADR-097 定稿，其余仍为候选设计**。承接 [ADR-080](../adr/adr_080_trusted_script_extensibility.md) 与 [ADR-081](../adr/adr_081_script_runtime_consolidation.md)；现行边界以[当前架构](../architecture.md)为准，实施状态只在[统一计划](../planning/implementation.md#受信扩展)维护。
 
 核心提供执行作用域、处理器注册、调度、消息通信和业务过程记录等通用设施；学校脚本组合这些设施实现刷新、监控和业务操作。核心不需要理解学校协议，但必须知道执行所属身份和来源、触发依据、资源预算及停止条件。后续[ADR-097](../adr/adr_097_registered_script_execution.md)已将前台注册执行定稿为 SDK19；其余候选机制不能据此视为已实施。
 
