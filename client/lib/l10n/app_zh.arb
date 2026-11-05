@@ -991,5 +991,26 @@
         "type": "String"
       }
     }
-  }
+  },
+  "noticeNextSummary": "下一条通知",
+  "noticePauseSummary": "暂停轮播",
+  "noticeResumeSummary": "继续轮播",
+  "phoneDirectoryCategorySearch": "搜索分类或部门",
+  "messagesConversationId": "会话 ID：{id}",
+  "@messagesConversationId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "messagesLastMessageAt": "最新消息：{time}",
+  "@messagesLastMessageAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "messagesConversationInfo": "会话信息"
 }

@@ -6,6 +6,7 @@ import 'section_card.dart';
 import 'card_preview_list.dart';
 import 'display_date.dart';
 import 'notice_detail_page.dart';
+import 'notice_summary.dart';
 
 class GradesCard extends StatelessWidget {
   const GradesCard(
@@ -151,18 +152,7 @@ class NoticeCard extends StatelessWidget {
       title: l10n.homeNoticeTitle,
       trailing: trailing,
       subtitle: l10n.homeNoticeCount(data.items.length),
-      summary:
-          statusSummary ??
-          CardSummary(
-            data.items.firstOrNull?.title ?? l10n.homeNoticeCount(0),
-            detail: data.items.isEmpty
-                ? null
-                : [
-                    data.items.first.source,
-                    if (data.items.first.publishedAtDateTime != null)
-                      formatLocalDate(data.items.first.publishedAtDateTime!),
-                  ].where((s) => s.trim().isNotEmpty).join(' · '),
-          ),
+      summary: statusSummary ?? NoticeSummary(items: data.items),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -174,7 +164,11 @@ class NoticeCard extends StatelessWidget {
               for (final item in data.items)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(item.title),
+                  title: Text(
+                    item.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   subtitle: Text(
                     [
                           item.source,
@@ -187,6 +181,8 @@ class NoticeCard extends StatelessWidget {
                         .map((value) => value.trim())
                         .where((value) => value.isNotEmpty)
                         .join(' · '),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   // App 内下钻：由通知标识 + 本详情视图闸门，不依赖外链（ADR-025 §2.6）。

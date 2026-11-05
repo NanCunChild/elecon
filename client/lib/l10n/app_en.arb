@@ -874,5 +874,26 @@
         "type": "String"
       }
     }
-  }
+  },
+  "noticeNextSummary": "Next notice",
+  "noticePauseSummary": "Pause notices",
+  "noticeResumeSummary": "Resume notices",
+  "phoneDirectoryCategorySearch": "Search categories or departments",
+  "messagesConversationId": "Conversation ID: {id}",
+  "@messagesConversationId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "messagesLastMessageAt": "Latest message: {time}",
+  "@messagesLastMessageAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "messagesConversationInfo": "Conversation details"
 }

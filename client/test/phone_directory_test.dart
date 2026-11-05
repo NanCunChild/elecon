@@ -7,6 +7,7 @@ import 'package:elecon/session/session_scope.dart';
 import 'package:elecon/ui/home/capability_source.dart';
 import 'package:elecon/ui/home/card_layout.dart';
 import 'package:elecon/ui/home/phone_directory_section.dart';
+import 'package:elecon/ui/home/section_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,10 +47,11 @@ Widget app(
   SessionController? session,
   double scale = 1,
   Brightness brightness = Brightness.light,
+  String locale = 'zh',
 }) => MaterialApp(
   localizationsDelegates: AppLocalizations.localizationsDelegates,
   supportedLocales: AppLocalizations.supportedLocales,
-  locale: const Locale('zh'),
+  locale: Locale(locale),
   theme: ThemeData(brightness: brightness),
   builder: (context, child) => MediaQuery(
     data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
@@ -107,6 +109,98 @@ ScriptPackage script(
 );
 
 void main() {
+  for (final (width, scale, brightness, locale) in [
+    (140.0, 1.0, Brightness.light, 'zh'),
+    (140.0, 2.0, Brightness.dark, 'en'),
+    (320.0, 2.0, Brightness.light, 'fa'),
+    (600.0, 1.0, Brightness.dark, 'zh'),
+  ]) {
+    testWidgets(
+      'summary dials independently at $width / $scale / $brightness',
+      (tester) async {
+        final data = fixture();
+        (data['items'] as List)[0]['phone'] = '+123456789012345';
+        final directory = phoneDirectoryFromDynamic(data)!;
+        var opened = 0;
+        final calls = <String>[];
+        await tester.pumpWidget(
+          app(
+            SizedBox(
+              width: width,
+              child: HomeCardPresentation(
+                size: HomeCardSize.regular,
+                previewHeight: 280,
+                onOpen: () => opened++,
+                child: SectionCard(
+                  title: '号码',
+                  summary: PhoneDirectorySummary(
+                    items: directory.items,
+                    dial: (phone) async {
+                      calls.add(phone);
+                      return true;
+                    },
+                  ),
+                  child: const SizedBox.shrink(),
+                ),
+              ),
+            ),
+            scale: scale,
+            brightness: brightness,
+            locale: locale,
+          ),
+        );
+        expect(calls, isEmpty);
+        expect(find.text('+123456789012345'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('summary-call-north')));
+        await tester.pumpAndSettle();
+        expect(calls, ['+123456789012345']);
+        expect(opened, 0);
+        await tester.tap(find.text('号码'));
+        await tester.pump();
+        expect(opened, 1);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'category dialog searches a bounded list and cancel keeps selection',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        app(
+          PhoneDirectoryView(directory: phoneDirectoryFromDynamic(fixture())!),
+          scale: 2,
+        ),
+      );
+      expect(find.text('复制目录来源链接'), findsNothing);
+      await tester.tap(find.byKey(const Key('phone-category')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('phone-category-search')),
+        '教学',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('合成后勤'), findsNothing);
+      await tester.tap(find.text('合成教学'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('call-other')), findsOneWidget);
+      expect(find.byKey(const ValueKey('call-north')), findsNothing);
+      await tester.tap(find.byKey(const Key('phone-category')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('call-north')), findsNothing);
+      await tester.tap(find.text('合成教务'));
+      await tester.pumpAndSettle();
+      expect(find.text('https://example.invalid/teaching'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'home directory stays bounded and carries recent search into its summary',
     (tester) async {
@@ -142,7 +236,7 @@ void main() {
         );
       }
       expect(find.byKey(const Key('phone-search')), findsNothing);
-      expect(find.textContaining('10000'), findsOneWidget);
+      expect(find.text('10000'), findsOneWidget);
       expect(tester.getSize(find.byType(PhoneDirectorySection)).height, 280);
       await tester.pumpWidget(directory(true));
       await tester.enterText(find.byKey(const Key('phone-search')), '合成教务');

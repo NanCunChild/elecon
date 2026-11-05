@@ -845,5 +845,29 @@
     }
   },
   "queryDraftStorageFailed": "Изменения сохранены только для текущего просмотра; сохранить черновик не удалось.",
-  "scheduleBreakNoClasses": "{label} · {time} · В загруженном расписании занятий нет"
+  "scheduleBreakNoClasses": "{label} · {time} · В загруженном расписании занятий нет",
+  "librarySearchTitle": "Поиск книг",
+  "librarySearchHint": "Название, автор или ISBN",
+  "librarySearchEmpty": "Подходящих книг не найдено",
+  "noticeNextSummary": "Следующее объявление",
+  "noticePauseSummary": "Приостановить смену объявлений",
+  "noticeResumeSummary": "Возобновить смену объявлений",
+  "phoneDirectoryCategorySearch": "Поиск категорий или подразделений",
+  "messagesConversationId": "ID беседы: {id}",
+  "@messagesConversationId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "messagesLastMessageAt": "Последнее сообщение: {time}",
+  "@messagesLastMessageAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "messagesConversationInfo": "Сведения о беседе"
 }

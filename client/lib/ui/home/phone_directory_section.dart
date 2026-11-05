@@ -149,19 +149,15 @@ class _PhoneDirectorySectionState extends State<PhoneDirectorySection>
       ),
       summary: data == null
           ? CardSummary(l10n.phoneDirectoryHint)
-          : CardSummary(
-              {
-                    for (final id in _recentIds)
-                      for (final item in data.items.where(
-                        (entry) => entry.id == id,
-                      ))
-                        item,
-                    ...data.items,
-                  }
-                  .take(3)
-                  .map((item) => '${item.name} · ${item.phone}')
-                  .join('\n'),
-              detail: l10n.phoneDirectoryHint,
+          : PhoneDirectorySummary(
+              items: {
+                for (final id in _recentIds)
+                  for (final item in data.items.where(
+                    (entry) => entry.id == id,
+                  ))
+                    item,
+                ...data.items,
+              }.take(3).toList(),
             ),
       child: data == null
           ? Column(
@@ -189,6 +185,150 @@ class _PhoneDirectorySectionState extends State<PhoneDirectorySection>
             ),
     );
   }
+}
+
+/// A call target is an inner button, so opening the dialer does not also open
+/// the outer card. The full directory remains available from the card header.
+class PhoneDirectorySummary extends StatefulWidget {
+  const PhoneDirectorySummary({super.key, required this.items, this.dial});
+
+  final List<DirectoryPhonesItems> items;
+  final Future<bool> Function(String phone)? dial;
+
+  @override
+  State<PhoneDirectorySummary> createState() => _PhoneDirectorySummaryState();
+}
+
+class _PhoneDirectorySummaryState extends State<PhoneDirectorySummary> {
+  bool _dialing = false;
+
+  Future<void> _call(String phone) async {
+    if (_dialing) return;
+    setState(() => _dialing = true);
+    final ok = await (widget.dial ?? openPhoneDialer)(phone);
+    if (!mounted) return;
+    setState(() => _dialing = false);
+    if (!ok) {
+      final l10n = AppLocalizations.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.phoneDirectoryDialFailed),
+          action: SnackBarAction(
+            label: l10n.phoneDirectoryCopy,
+            onPressed: () => Clipboard.setData(ClipboardData(text: phone)),
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    if (widget.items.isEmpty) return Text(l10n.phoneDirectoryEmpty);
+    final theme = Theme.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    final line = scaler.scale(theme.textTheme.bodyMedium!.fontSize!) * 1.5;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 360 * scaler.scale(1);
+        final height = constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : 216.0;
+        final rowHeight = (stacked ? line * 2 + 8 : line + 12).clamp(
+          48.0,
+          160.0,
+        );
+        final count = stacked ? 1 : (height / rowHeight).floor().clamp(1, 3);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final item in widget.items.take(count))
+              Flexible(
+                child: Tooltip(
+                  message: l10n.phoneDirectoryCall(item.phone),
+                  child: InkWell(
+                    key: ValueKey('summary-call-${item.id}'),
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: _dialing ? null : () => _call(item.phone),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: height.clamp(0, 48).toDouble(),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Semantics(
+                          label: [
+                            item.name,
+                            ?item.campus,
+                            l10n.phoneDirectoryCall(item.phone),
+                          ].join(' · '),
+                          excludeSemantics: true,
+                          child: stacked
+                              ? Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        [item.name, ?item.campus].join(' · '),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodyMedium,
+                                      ),
+                                    ),
+                                    Flexible(child: _number(item.phone)),
+                                  ],
+                                )
+                              : Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        [item.name, ?item.campus].join(' · '),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodyMedium,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Flexible(child: _number(item.phone)),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _number(String phone) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Flexible(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(
+            phone,
+            maxLines: 1,
+            textDirection: TextDirection.ltr,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(width: 8),
+      const Icon(Icons.call_outlined, size: 18),
+    ],
+  );
 }
 
 class PhoneDirectoryView extends StatefulWidget {
@@ -267,6 +407,20 @@ class _PhoneDirectoryViewState extends State<PhoneDirectoryView> {
     }
   }
 
+  Future<void> _chooseCategory(List<String> categories) async {
+    final selection = await showDialog<String>(
+      context: context,
+      builder: (_) =>
+          _PhoneCategoryDialog(categories: categories, selected: _category),
+    );
+    if (!mounted || selection == null) return;
+    setState(() {
+      _category = selection.isEmpty ? null : selection;
+      _limit = 40;
+      _remember();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -281,11 +435,6 @@ class _PhoneDirectoryViewState extends State<PhoneDirectoryView> {
         Text(
           l10n.phoneDirectoryVerified(widget.directory.verifiedDate),
           style: Theme.of(context).textTheme.bodySmall,
-        ),
-        TextButton.icon(
-          onPressed: () => _copy(widget.directory.sourceUrl),
-          icon: const Icon(Icons.link),
-          label: Text(l10n.phoneDirectorySource),
         ),
         TextField(
           key: const Key('phone-search'),
@@ -302,28 +451,21 @@ class _PhoneDirectoryViewState extends State<PhoneDirectoryView> {
           }),
         ),
         const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
+        OutlinedButton(
           key: const Key('phone-category'),
-          initialValue: _category ?? '',
-          isExpanded: true,
-          decoration: InputDecoration(labelText: l10n.phoneDirectoryCategory),
-          items: [
-            DropdownMenuItem(value: '', child: Text(l10n.phoneDirectoryAll)),
-            for (final category in categories)
-              DropdownMenuItem(
-                value: category,
+          onPressed: () => _chooseCategory(categories),
+          child: Row(
+            children: [
+              Expanded(
                 child: Text(
-                  category,
-                  maxLines: 1,
+                  '${l10n.phoneDirectoryCategory} · ${_category ?? l10n.phoneDirectoryAll}',
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-          ],
-          onChanged: (value) => setState(() {
-            _category = value == '' ? null : value;
-            _limit = 40;
-            _remember();
-          }),
+              const Icon(Icons.expand_more),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         Text(l10n.phoneDirectoryCount(matches.length)),
@@ -361,6 +503,12 @@ class _PhoneDirectoryViewState extends State<PhoneDirectoryView> {
                   IconButton(
                     tooltip: l10n.phoneDirectoryCopy,
                     onPressed: () => _copy(item.phone),
+                    iconSize: 18,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
                     icon: const Icon(Icons.copy_outlined),
                   ),
                 ],
@@ -379,6 +527,74 @@ class _PhoneDirectoryViewState extends State<PhoneDirectoryView> {
             onPressed: () => setState(() => _limit += 40),
             child: Text(l10n.phoneDirectoryMore),
           ),
+      ],
+    );
+  }
+}
+
+class _PhoneCategoryDialog extends StatefulWidget {
+  const _PhoneCategoryDialog({required this.categories, this.selected});
+  final List<String> categories;
+  final String? selected;
+
+  @override
+  State<_PhoneCategoryDialog> createState() => _PhoneCategoryDialogState();
+}
+
+class _PhoneCategoryDialogState extends State<_PhoneCategoryDialog> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final choices = [
+      '',
+      ...widget.categories.where(
+        (category) =>
+            category.toLowerCase().contains(_query.trim().toLowerCase()),
+      ),
+    ];
+    return AlertDialog(
+      title: Text(l10n.phoneDirectoryCategory),
+      content: SizedBox(
+        width: 420,
+        height: (MediaQuery.sizeOf(context).height * .55).clamp(160, 480),
+        child: Column(
+          children: [
+            TextField(
+              key: const Key('phone-category-search'),
+              decoration: InputDecoration(
+                labelText: l10n.phoneDirectoryCategorySearch,
+                prefixIcon: const Icon(Icons.search),
+              ),
+              onChanged: (query) => setState(() => _query = query),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.builder(
+                itemCount: choices.length,
+                itemBuilder: (context, index) {
+                  final choice = choices[index];
+                  final selected = choice == (widget.selected ?? '');
+                  return ListTile(
+                    title: Text(
+                      choice.isEmpty ? l10n.phoneDirectoryAll : choice,
+                    ),
+                    selected: selected,
+                    trailing: selected ? const Icon(Icons.check) : null,
+                    onTap: () => Navigator.pop(context, choice),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.commonCancel),
+        ),
       ],
     );
   }

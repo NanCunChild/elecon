@@ -20,6 +20,46 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
+/// Only the source's known message time belongs in the inbox. A missing or
+/// invalid timestamp remains blank; cache retrieval time is never substituted.
+class ConversationTimestamp extends StatelessWidget {
+  const ConversationTimestamp({super.key, required this.value, this.now});
+
+  final String value;
+  final DateTime? now;
+
+  @override
+  Widget build(BuildContext context) {
+    final time = DateTime.tryParse(value)?.toLocal();
+    if (time == null) return const SizedBox.shrink();
+    final current = now ?? DateTime.now();
+    final locale = Localizations.localeOf(context).toString();
+    final compact = DateUtils.isSameDay(time, current)
+        ? MaterialLocalizations.of(context).formatTimeOfDay(
+            TimeOfDay.fromDateTime(time),
+            alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+          )
+        : (time.year == current.year
+                  ? DateFormat.Md(locale)
+                  : DateFormat.yMd(locale))
+              .format(time);
+    final full = DateFormat.yMd(locale).add_Hm().format(time);
+    final label = AppLocalizations.of(context).messagesLastMessageAt(full);
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        label: label,
+        excludeSemantics: true,
+        child: Text(
+          compact,
+          maxLines: 1,
+          style: Theme.of(context).textTheme.labelSmall,
+        ),
+      ),
+    );
+  }
+}
+
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _composer = TextEditingController();
   final _timeline = ScrollController();
@@ -30,6 +70,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _observed = <String, int>{};
   final _cursors = <String>{};
   bool _busy = false;
+  bool _showConversationId = false;
   bool _storageFailed = false;
   bool _localMore = false;
   bool? _remoteMore;
@@ -499,6 +540,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           leading: selected == null ? null : BackButton(onPressed: _back),
           title: Text(selected?.title ?? l10n.navMessages),
           actions: [
+            if (selected != null)
+              IconButton(
+                tooltip: l10n.messagesConversationInfo,
+                onPressed: () =>
+                    setState(() => _showConversationId = !_showConversationId),
+                icon: const Icon(Icons.info_outline),
+              ),
             IconButton(
               tooltip: l10n.messagesRefresh,
               onPressed: _busy || !_connected ? null : _refresh,
@@ -522,6 +570,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           widget.package.manifest.name,
                           style: theme.textTheme.labelMedium,
                         ),
+                        if (selected != null && _showConversationId)
+                          SelectableText(
+                            l10n.messagesConversationId(
+                              selected.conversationId,
+                            ),
+                            style: theme.textTheme.bodySmall,
+                          ),
                         if (_connected)
                           Text(
                             l10n.communityConnected(
@@ -629,13 +684,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                                         ? Icons.group_outlined
                                         : Icons.person_outline,
                                   ),
-                                  title: Text(row.title),
-                                  subtitle: Text(
-                                    '${row.conversationKind == 'group' ? l10n.messagesGroup : l10n.messagesDirect} · ${row.conversationId}',
+                                  title: Text(
+                                    row.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  trailing: canHistory
-                                      ? const Icon(Icons.chevron_right)
-                                      : null,
+                                  subtitle: Text(
+                                    row.conversationKind == 'group'
+                                        ? l10n.messagesGroup
+                                        : l10n.messagesDirect,
+                                  ),
+                                  trailing: row.lastMessageAt == null
+                                      ? null
+                                      : ConversationTimestamp(
+                                          value: row.lastMessageAt!,
+                                        ),
                                   onTap: _busy || !canHistory
                                       ? null
                                       : () => _open(row),

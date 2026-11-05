@@ -644,5 +644,29 @@
     }
   },
   "queryDraftStorageFailed": "O‘zgarishlar joriy seans davomida saqlanadi, ammo qoralamani saqlab bo‘lmadi.",
-  "scheduleBreakNoClasses": "{label} · {time} · Yuklangan jadvalda dars yo‘q"
+  "scheduleBreakNoClasses": "{label} · {time} · Yuklangan jadvalda dars yo‘q",
+  "librarySearchTitle": "Kitob qidirish",
+  "librarySearchHint": "Kitob nomi, muallif yoki ISBN",
+  "librarySearchEmpty": "Mos kitoblar topilmadi",
+  "noticeNextSummary": "Keyingi e’lon",
+  "noticePauseSummary": "E’lonlar almashinuvini to‘xtatib turish",
+  "noticeResumeSummary": "E’lonlar almashinuvini davom ettirish",
+  "phoneDirectoryCategorySearch": "Toifa yoki bo‘lim bo‘yicha qidirish",
+  "messagesConversationId": "Suhbat identifikatori: {id}",
+  "@messagesConversationId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "messagesLastMessageAt": "Oxirgi xabar: {time}",
+  "@messagesLastMessageAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "messagesConversationInfo": "Suhbat tafsilotlari"
 }

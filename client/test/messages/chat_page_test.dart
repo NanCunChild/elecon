@@ -21,6 +21,103 @@ Future<void> finishRequests(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'message time uses local calendar days and full accessible time',
+    (tester) async {
+      final now = DateTime(2026, 11, 5, 14);
+      final sameDay = DateTime(2026, 11, 5, 13, 5).toUtc().toIso8601String();
+      final previousDay = DateTime(
+        2026,
+        11,
+        4,
+        23,
+        55,
+      ).toUtc().toIso8601String();
+      final previousYear = DateTime(
+        2025,
+        11,
+        4,
+        23,
+        55,
+      ).toUtc().toIso8601String();
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Column(
+              children: [
+                ConversationTimestamp(value: sameDay, now: now),
+                ConversationTimestamp(value: previousDay, now: now),
+                ConversationTimestamp(value: previousYear, now: now),
+                ConversationTimestamp(value: 'unknown', now: now),
+              ],
+            ),
+          ),
+        ),
+      );
+      expect(find.text('1:05 PM'), findsOneWidget);
+      expect(find.text('11/4'), findsOneWidget);
+      expect(find.text('11/4/2025'), findsOneWidget);
+      expect(find.text('unknown'), findsNothing);
+      expect(find.byTooltip('Latest message: 11/5/2026 13:05'), findsOneWidget);
+    },
+  );
+
+  for (final language in ['en', 'fa']) {
+    testWidgets('long inbox names and dates fit 320px / 2x / $language', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final session = SessionController();
+      addTearDown(session.dispose);
+      final package = chatPackage(
+        conversationRows: [
+          {
+            'conversationId': 'synthetic-long-group-identity-1234567890',
+            'conversationKind': 'group',
+            'title': 'A long synthetic group title that needs multiple lines',
+            'hasContent': true,
+            'lastMessageAt': '2025-11-05T08:00:00Z',
+          },
+          {
+            'conversationId': 'unknown',
+            'conversationKind': 'group',
+            'title': 'Synthetic unknown time',
+          },
+        ],
+      );
+      await tester.runAsync(() => prepareChat(session, package));
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: Locale(language),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(brightness: Brightness.dark),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: ChatPage(session: session, package: package),
+        ),
+      );
+      await finishRequests(tester);
+      expect(find.byType(ConversationTimestamp), findsOneWidget);
+      expect(
+        find.text('synthetic-long-group-identity-1234567890'),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   for (final language in ['zh', 'en']) {
     for (final brightness in Brightness.values) {
       testWidgets(
@@ -193,6 +290,20 @@ void main() {
         'Older group',
         'Unknown group',
       ]);
+      final timestamps = tester
+          .widgetList<ConversationTimestamp>(find.byType(ConversationTimestamp))
+          .map((time) => time.value)
+          .toList();
+      expect(timestamps, [
+        '2026-11-02T08:00:00Z',
+        '2026-11-01T08:00:00.000Z',
+        '2026-10-30T08:00:00Z',
+      ]);
+      final unknown = tester.widget<ListTile>(
+        find.widgetWithText(ListTile, 'Unknown group'),
+      );
+      expect(unknown.trailing, isNull);
+      expect(find.textContaining(' · unknown'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },

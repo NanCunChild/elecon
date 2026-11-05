@@ -325,11 +325,14 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           body: IndexedStack(
             index: index,
             children: [
-              EleconHomePage(
-                key: ValueKey(
-                  '${session?.selectedSchool?.id}:${session?.trustedScriptViewGeneration}',
+              TickerMode(
+                enabled: _tab == 'home' && !_suspended,
+                child: EleconHomePage(
+                  key: ValueKey(
+                    '${session?.selectedSchool?.id}:${session?.trustedScriptViewGeneration}',
+                  ),
+                  loadSnapshot: widget.loadHomeSnapshot,
                 ),
-                loadSnapshot: widget.loadHomeSnapshot,
               ),
               for (final entry in pages)
                 _tab == entry.id && !_suspended

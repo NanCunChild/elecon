@@ -187,20 +187,9 @@ void main() {
         t,
         () => find.text('list-source notice').evaluate().isNotEmpty,
       );
-      // The home preview opens its bound full card, then the selected notice.
-      await t.tap(find.byKey(const ValueKey('home-card:notice')));
-      await t.pumpAndSettle();
-      if (find.byType(NoticeDetailPage).evaluate().isEmpty) {
-        await until(
-          t,
-          () => find
-              .widgetWithText(ListTile, 'list-source notice')
-              .evaluate()
-              .isNotEmpty,
-        );
-        await t.tap(find.widgetWithText(ListTile, 'list-source notice').last);
-        await t.pump();
-      }
+      // The summary directly opens this notice, preserving the list source.
+      await t.tap(find.byKey(const ValueKey('notice-summary-shared-id')));
+      await t.pump();
       await until(t, () => find.text('list-source body').evaluate().isNotEmpty);
       expect(find.text('other-detail body'), findsNothing);
       await t.runAsync(() async {
