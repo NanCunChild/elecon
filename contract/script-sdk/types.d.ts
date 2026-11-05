@@ -258,10 +258,12 @@ export interface FacultySearchParams {
   pageSize?: number;
 }
 
-/** ADR-048: schedule.week output 1.1 optionally includes school-local HH:mm
- * timeSegments and known per-week/day course counts in weekPreviews. Omitted
- * previews mean unknown, not zero. These are standard data, never layout code.
- * Existing 1.0 packages remain supported; query params and host API are unchanged. */
+/** ADR-048/054/089: schedule.week 1.3 retains timeSegments/weekPreviews and
+ * complete termWeeks; optional breakSegments name school-local HH:mm rest
+ * intervals; optional timeZone names the school IANA zone (missing is unknown).
+ * Breaks do not imply classroom availability or prohibit courses.
+ * Missing previews/breaks are unknown. Versions 1.0–1.2 retain exact validation;
+ * query params, SDK APIs and permissions are unchanged. */
 export type ScheduleWeek = import("../generated/ts/schedule.week.js").ScheduleWeek;
 
 /** SDK9: up to eight exact wss origins; omission denies WebSocket use.
@@ -397,3 +399,8 @@ export interface ScriptPageEntry {
   /** Required only for web; references this package's webContent id. */
   webPageId?: string;
 }
+
+/** ADR-092: 1.1 lists saved local bindings independently of live status.
+ * Only deviceId/label/commands are required; optional fields enable finite
+ * supported controls. bindingVerifiedAt is historical, never online proof. */
+export type ClimateDevices = import("../generated/ts/climate.devices.js").ClimateDevices;

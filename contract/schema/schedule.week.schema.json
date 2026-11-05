@@ -485,6 +485,44 @@
           }
         }
       }
+    },
+    "breakSegments": {
+      "type": "array",
+      "maxItems": 16,
+      "description": "ADR-089：学校本地墙钟休息段，与 timeSegments 一同适用于此快照各周。按时间升序、不重叠且不与教学段相交；缺失表示未知，不推断午餐/晚餐或教室可用。个人课程仍可占用休息段；无效提示整体忽略但保留课程。",
+      "items": {
+        "type": "object",
+        "required": [
+          "label",
+          "timeStart",
+          "timeEnd"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "当前请求语言的学校休息段名称；纯文本，不指定布局。"
+          },
+          "timeStart": {
+            "type": "string",
+            "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$",
+            "description": "同日休息段开始墙钟时间 HH:mm，必须早于 timeEnd；半开区间包含起点。"
+          },
+          "timeEnd": {
+            "type": "string",
+            "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$",
+            "description": "同日休息段结束墙钟时间 HH:mm，必须晚于 timeStart；半开区间不包含终点。"
+          }
+        }
+      }
+    },
+    "timeZone": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z_]+(?:/[A-Za-z0-9_+.-]+)*$",
+      "description": "学校课表墙钟及日历日采用的 IANA 时区名，如 Asia/Shanghai；缺失表示未知，不得以设备时区猜测学校日期。语法校验不保证平台支持，消费者须验证时区并保留未知态。"
     }
   }
 }

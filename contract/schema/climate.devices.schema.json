@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "elecon.climate.devices",
   "title": "已绑定空调设备",
-  "$comment": "ADR-040: accepted 2026-10-31; new trusted-script route.",
+  "$comment": "ADR-040/092: local bindings and optional finite controls; state is queried separately.",
   "type": "object",
   "description": "已绑定空调设备",
   "properties": {
     "items": {
       "type": "array",
-      "description": "已由用户绑定且通过只读查询核验的设备。",
+      "description": "当前学校身份下用户明确保存的本地绑定及有限控制范围；允许离线读取，不证明设备当前在线或控制可达。",
       "items": {
         "type": "object",
         "description": "一台设备及其有限控制范围。",
@@ -176,21 +176,17 @@
           "powerOffClearsCleaning": {
             "type": "boolean",
             "description": "关机是否同时关闭室内和室外清洁。"
+          },
+          "bindingVerifiedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "脚本最后成功通过只读状态核验该绑定的时刻，RFC3339/UTC；缺失表示旧记录未提供，不是当前读数或在线证据。"
           }
         },
         "required": [
           "deviceId",
           "label",
-          "minTemperature",
-          "maxTemperature",
-          "modes",
-          "fanSpeeds",
-          "commands",
-          "modeDefaults",
-          "powerOffClearsAuxiliaryHeat",
-          "fanSpeedClearsTurbo",
-          "turboUsesAutoFan",
-          "powerOffClearsCleaning"
+          "commands"
         ]
       },
       "maxItems": 20

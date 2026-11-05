@@ -17,7 +17,7 @@ for (const entry of golden.cases) {
 }
 assert.equal(contract.schemaFor("elecon.schedule.week", "2.0"), undefined);
 
-for (const version of ["1.0", "1.1", "1.2"]) {
+for (const version of ["1.0", "1.1", "1.2", "1.3"]) {
   const manifest = {
     sdkVersion: 6,
     id: "synthetic-schedule",

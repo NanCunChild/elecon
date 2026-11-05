@@ -178,6 +178,187 @@
           }
         ]
       }
+    },
+    {
+      "name": "rest-segments-1.3",
+      "version": "1.3",
+      "valid": true,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "timeZone": "Asia/Shanghai",
+        "breakSegments": [
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rest-optional-1.3",
+      "version": "1.3",
+      "valid": true,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": []
+      }
+    },
+    {
+      "name": "invalid-rest-clock-1.3",
+      "version": "1.3",
+      "valid": false,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "breakSegments": [
+          {
+            "label": "Lunch break",
+            "timeStart": "25:00",
+            "timeEnd": "14:00"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing-rest-label-1.3",
+      "version": "1.3",
+      "valid": false,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "breakSegments": [
+          {
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          }
+        ]
+      }
+    },
+    {
+      "name": "too-many-rest-segments-1.3",
+      "version": "1.3",
+      "valid": false,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "breakSegments": [
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          },
+          {
+            "label": "Lunch break",
+            "timeStart": "12:00",
+            "timeEnd": "14:00"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid-school-zone-1.3",
+      "version": "1.3",
+      "valid": false,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "timeZone": "not a zone"
+      }
+    },
+    {
+      "name": "1.2-exact-open-extension",
+      "version": "1.2",
+      "valid": true,
+      "data": {
+        "term": "synthetic",
+        "week": 1,
+        "days": [],
+        "breakSegments": "unrecognized extension",
+        "timeZone": false
+      }
     }
   ]
 }

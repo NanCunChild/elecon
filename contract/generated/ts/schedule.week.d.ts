@@ -30,6 +30,10 @@ export interface ScheduleWeek {
   weekPreviews?: ScheduleWeekWeekPreviews[];
   /** ADR-054：与本次数据同时获取的同一学期各周完整详情；仅对枚举的周声明完整性，未枚举周为未知，不据预览推断。周序号唯一，原始取得时间适用于整份快照。 */
   termWeeks?: ScheduleWeekTermWeeks[];
+  /** ADR-089：学校本地墙钟休息段，与 timeSegments 一同适用于此快照各周。按时间升序、不重叠且不与教学段相交；缺失表示未知，不推断午餐/晚餐或教室可用。个人课程仍可占用休息段；无效提示整体忽略但保留课程。 */
+  breakSegments?: ScheduleWeekBreakSegments[];
+  /** 学校课表墙钟及日历日采用的 IANA 时区名，如 Asia/Shanghai；缺失表示未知，不得以设备时区猜测学校日期。语法校验不保证平台支持，消费者须验证时区并保留未知态。 */
+  timeZone?: string;
 }
 
 export interface ScheduleWeekDays {
@@ -66,6 +70,15 @@ export interface ScheduleWeekTermWeeks {
   weekType?: "teaching" | "exam" | "holiday" | "unknown";
   /** 此明确教学周的完整七日课程；空数组表示该周无课。 */
   days: ScheduleWeekTermWeeksDays[];
+}
+
+export interface ScheduleWeekBreakSegments {
+  /** 当前请求语言的学校休息段名称；纯文本，不指定布局。 */
+  label: string;
+  /** 同日休息段开始墙钟时间 HH:mm，必须早于 timeEnd；半开区间包含起点。 */
+  timeStart: string;
+  /** 同日休息段结束墙钟时间 HH:mm，必须晚于 timeStart；半开区间不包含终点。 */
+  timeEnd: string;
 }
 
 export interface ScheduleWeekDaysSlots {

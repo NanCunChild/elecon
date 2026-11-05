@@ -2,7 +2,7 @@
 // 改动请改 schema 并重跑 `npm run codegen`（红线 #6：契约即承重墙）。
 
 export interface ClimateDevices {
-  /** 已由用户绑定且通过只读查询核验的设备。 */
+  /** 当前学校身份下用户明确保存的本地绑定及有限控制范围；允许离线读取，不证明设备当前在线或控制可达。 */
   items: ClimateDevicesItems[];
 }
 
@@ -12,25 +12,27 @@ export interface ClimateDevicesItems {
   /** 用户友好名称，不包含完整设备标识。 */
   label: string;
   /** 设备最低设定摄氏温度。 */
-  minTemperature: number;
+  minTemperature?: number;
   /** 设备最高设定摄氏温度。 */
-  maxTemperature: number;
+  maxTemperature?: number;
   /** 设备支持的模式。 */
-  modes: "fan" | "heat" | "cool" | "dry" | "auto"[];
+  modes?: "fan" | "heat" | "cool" | "dry" | "auto"[];
   /** 设备支持的风速。 */
-  fanSpeeds: "auto" | "silent" | "low" | "medium" | "high"[];
+  fanSpeeds?: "auto" | "silent" | "low" | "medium" | "high"[];
   /** 设备允许的有限控制项。 */
   commands: "power" | "temperature" | "mode" | "fanSpeed" | "verticalSwing" | "turbo" | "auxiliaryHeat"[];
   /** 切模式时必须一并确认的完整设置；由提供者声明。 */
-  modeDefaults: ClimateDevicesItemsModeDefaults[];
+  modeDefaults?: ClimateDevicesItemsModeDefaults[];
   /** 关机是否同时关闭辅热。 */
-  powerOffClearsAuxiliaryHeat: boolean;
+  powerOffClearsAuxiliaryHeat?: boolean;
   /** 设置风速是否同时关闭强力。 */
-  fanSpeedClearsTurbo: boolean;
+  fanSpeedClearsTurbo?: boolean;
   /** 开启强力是否同时使用自动风速。 */
-  turboUsesAutoFan: boolean;
+  turboUsesAutoFan?: boolean;
   /** 关机是否同时关闭室内和室外清洁。 */
-  powerOffClearsCleaning: boolean;
+  powerOffClearsCleaning?: boolean;
+  /** 脚本最后成功通过只读状态核验该绑定的时刻，RFC3339/UTC；缺失表示旧记录未提供，不是当前读数或在线证据。 */
+  bindingVerifiedAt?: string;
 }
 
 export interface ClimateDevicesItemsModeDefaults {
