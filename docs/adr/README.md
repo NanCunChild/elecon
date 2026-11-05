@@ -36,6 +36,10 @@ Android 前台缓存课表小部件见 [090](adr_090_schedule_widgets.md)。
 
 其他领域决定按能力名查本目录文件或契约历史；所有 ADR 正文与编号保留。2026-11-04 收敛前的逐项 Decision/Landing/Security signoff 状态见[完整状态快照](../archived/2026-11-04/docs/adr/README.md)，不用过去一次测试数量代替当前实现证据。
 
+受保护存储不可用时保留数据及显式重试见 [095](adr_095_protected_store_recovery.md)，替代 060 的自动清除策略；不因此启用后台同步。
+
+系统教室查询的明确楼栋、同来源目录与学校时区校验见 [096](adr_096_system_classroom_query_inputs.md)。
+
 ## 历史记录与维护原则
 
 ADR-000–033 已退出新开发总纲，原路径留跳转，正文和当时批准事实见[旧索引](../archived/2026-10-31/docs/adr/README.md)。ADR-021 是历史预留，编号不回收。
