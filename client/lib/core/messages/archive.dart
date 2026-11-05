@@ -88,6 +88,11 @@ class MessageArchiveStore {
     : now = now ?? (() => DateTime.now().millisecondsSinceEpoch);
   final CredentialStore store;
   final int Function() now;
+  // Session callers often construct a short-lived archive facade per request.
+  // The queue therefore belongs to the shared store, not to a facade. This is
+  // process-local ownership only: independently opened H/S stores or engines
+  // must not concurrently cache and rewrite the same protected library.
+  static final _merges = Expando<Future<void>>('message archive merges');
   static const type = 'message-archive';
   static const maxBytes = 4 * 1024 * 1024;
   static const retentionMs = 30 * 24 * 60 * 60 * 1000;
@@ -254,11 +259,43 @@ class MessageArchiveStore {
     Map<String, dynamic> data, {
     required bool Function() isActive,
   }) async {
+    if (!isActive()) return;
+    if (!accepts(package, capability, params, data)) {
+      throw const FormatException('message_identity_mismatch');
+    }
+    final admitted = revision(package);
+    final previous = _merges[store] ?? Future<void>.value();
+    final task = previous.then((_) async {
+      // Capture the admission revision before waiting: even the same account
+      // logging in again cannot inherit a previously queued result.
+      if (!isActive() || !identical(admitted, revision(package))) return;
+      await _merge(package, capability, params, data, admitted, isActive);
+    });
+    final settled = task.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    _merges[store] = settled;
+    settled.then((_) {
+      if (identical(_merges[store], settled)) _merges[store] = null;
+    });
+    await task;
+  }
+
+  Future<void> _merge(
+    ScriptPackage package,
+    String capability,
+    Map<String, dynamic> params,
+    Map<String, dynamic> data,
+    Object? admitted,
+    bool Function() isActive,
+  ) async {
     if (!accepts(package, capability, params, data)) {
       throw const FormatException('message_identity_mismatch');
     }
     final current = account(package)!;
-    final admitted = revision(package);
+    // Read only after acquiring the shared queue, so a prior committed page
+    // and its recall tombstones are included in this SQL transaction.
     final bytes = _bytes(package, current);
     final scope = _scope(package, current);
     final time = now();

@@ -4,6 +4,7 @@ import 'package:elecon/core/credential/blob_store.dart';
 import 'package:elecon/core/credential/secure_store.dart';
 import 'package:elecon/core/credential/software_secure_store.dart';
 import 'package:elecon/core/credential/store.dart';
+import 'package:elecon/core/credential/types.dart';
 import 'package:elecon/core/messages/archive.dart';
 import 'package:elecon/core/scripts/credentials.dart';
 import 'package:elecon/core/scripts/manifest.dart';
@@ -402,6 +403,67 @@ void main() {
     },
   );
   test(
+    'concurrent archive instances sharing a store retain both updates',
+    () async {
+      final other = MessageArchiveStore(credentials, now: () => time);
+      await Future.wait([
+        merge(history(ids: ['first-page'])),
+        other.merge(
+          p,
+          'messages.history',
+          target,
+          history(ids: ['second-page']),
+          isActive: () => true,
+        ),
+      ]);
+      expect(
+        (await read())!.messages.map((row) => row.id),
+        unorderedEquals(['first-page', 'second-page']),
+      );
+    },
+  );
+
+  test(
+    'queued merges cannot enter a new generation of the same account',
+    () async {
+      final other = MessageArchiveStore(credentials, now: () => time);
+      final first = merge(history(ids: ['old-first']));
+      final second = other.merge(
+        p,
+        'messages.history',
+        target,
+        history(ids: ['old-second']),
+        isActive: () => true,
+      );
+      archive.clearSource(p.manifest.schoolId, p.manifest.id);
+      archive.saveAccount(p, account);
+      final current = merge(history(ids: ['current']));
+      await Future.wait([first, second, current]);
+      expect((await read())!.messages.map((row) => row.id), ['current']);
+    },
+  );
+
+  test('failed commit does not poison the shared merge queue', () async {
+    final backend = _FailOnceArchiveStore();
+    credentials = CredentialStore(store: backend);
+    archive = MessageArchiveStore(credentials, now: () => time)
+      ..saveAccount(p, account);
+    final other = MessageArchiveStore(credentials, now: () => time);
+    final failed = expectLater(
+      merge(history(ids: ['failed'])),
+      throwsA(isA<StateError>()),
+    );
+    final next = other.merge(
+      p,
+      'messages.history',
+      target,
+      history(ids: ['next']),
+      isActive: () => true,
+    );
+    await Future.wait([failed, next]);
+    expect((await read())!.messages.map((row) => row.id), ['next']);
+  });
+  test(
     'S protection encrypts SQLite snapshot and restores it after restart',
     () async {
       final blobs = InMemoryBlobStore();
@@ -473,4 +535,20 @@ void main() {
       lessThanOrEqualTo(MessageArchiveStore.maxBytes),
     );
   });
+}
+
+class _FailOnceArchiveStore extends InMemorySecureStore {
+  _FailOnceArchiveStore() : super(releaseMode: false);
+  var fail = true;
+
+  @override
+  void put(CredentialEntry entry) {
+    if (fail &&
+        entry.type == MessageArchiveStore.type &&
+        !entry.ref.endsWith('account')) {
+      fail = false;
+      throw StateError('synthetic archive write failure');
+    }
+    super.put(entry);
+  }
 }
