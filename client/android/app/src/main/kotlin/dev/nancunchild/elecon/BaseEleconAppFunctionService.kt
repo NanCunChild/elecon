@@ -14,7 +14,8 @@ abstract class BaseEleconAppFunctionService : AppFunctionService() {
     /**
      * Discover the named queries available and authorized in the current restored elecon session.
      * No query executes and no other Profile is enumerated. Open elecon if unavailable.
-     * @return JSON with status and services (name, available, authorized). No credentials.
+     * @return JSON with status and services (name, available, authorized, requiredParameters).
+     * Classroom queries require an explicitly chosen buildingId. No credentials.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true)
     suspend fun describeAvailableServices(): String =
@@ -39,9 +40,15 @@ abstract class BaseEleconAppFunctionService : AppFunctionService() {
      * Requires the user's in-app classroom sharing permission. No form is submitted.
      * @param startAt RFC3339 start with explicit UTC offset, minute precision, in the school's local day.
      * @param endAt Exclusive end, same day and offset, later than start and at most 12 hours later.
-     * @param buildingId Optional exact school building identifier; null uses the school's query scope.
+     * @param buildingId Exact school building identifier explicitly selected by the user.
+     * Null returns configurationRequired/buildingRequired and may read this same approved
+     * source's bounded classroom.buildings directory. It never queries availability or selects a building.
      * @return JSON status/source/schemaVersion/observedAt/stale/partial and classroom.available data.
      * Data only includes rooms with proven whole-interval availability and their original reasons.
+     * The source's declared IANA school time zone must validate both input offsets, including DST.
+     * Missing/invalid zones return unavailable/schoolTimeZoneUnknown; offset conflicts return
+     * configurationRequired/schoolTimeZoneMismatch. The fixed elecon://feature/classroom link
+     * opens the app for a new selection; it does not resume this request or change identity.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true)
     suspend fun findAvailableClassrooms(startAt: String, endAt: String, buildingId: String?): String =

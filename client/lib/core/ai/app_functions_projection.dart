@@ -1,11 +1,21 @@
 /// ADR-074: standard fields only; open-schema extensions never leave this port.
 library;
 
+import 'dart:convert';
+
 class AiQueryInput {
-  const AiQueryInput(this.params, {this.start, this.end});
+  const AiQueryInput(
+    this.params, {
+    this.start,
+    this.end,
+    this.startAt,
+    this.endAt,
+  });
   final Map<String, dynamic> params;
   final DateTime? start;
   final DateTime? end;
+  final String? startAt;
+  final String? endAt;
 
   factory AiQueryInput.parse(String function, Map<String, Object?> raw) {
     switch (function) {
@@ -39,6 +49,8 @@ class AiQueryInput {
           },
           start: start,
           end: end,
+          startAt: startText,
+          endAt: endText,
         );
       default:
         _invalid();
@@ -51,14 +63,15 @@ void _keys(Map<String, Object?> raw, Set<String> allowed) {
 }
 
 String _identifier(Object? value) {
-  if (value is! String ||
-      value.trim().isEmpty ||
-      value.length > 128 ||
-      RegExp(r'[\x00-\x1f\x7f-\x9f]').hasMatch(value)) {
-    _invalid();
-  }
-  return value;
+  if (!_validIdentifier(value)) _invalid();
+  return value as String;
 }
+
+bool _validIdentifier(Object? value) =>
+    value is String &&
+    value.trim().isNotEmpty &&
+    value.length <= 128 &&
+    !RegExp(r'[\x00-\x1f\x7f-\x9f]').hasMatch(value);
 
 Never _invalid() => throw const FormatException('invalid_query');
 
@@ -122,8 +135,9 @@ Map<String, Object?> _pick(Map<String, Object?> raw, String fields) => {
 AiQueryProjection projectAiQuery(
   String function,
   Object? raw,
-  AiQueryInput input,
-) {
+  AiQueryInput input, {
+  String? schemaVersion,
+}) {
   final data = _map(raw);
   switch (function) {
     case 'getGrades':
@@ -191,6 +205,7 @@ AiQueryProjection projectAiQuery(
             data,
             'term week academicYear termStartDate termEndDate teachingWeekStart teachingWeekEnd weekType updatedAt sourceSystem',
           ),
+          if (schemaVersion == '1.3') ..._pick(data, 'timeZone'),
           'days': projectedDays,
           'coverage': 'requestedTeachingWeek',
         },
@@ -205,6 +220,13 @@ AiQueryProjection projectAiQuery(
       var matching = 0;
       for (final raw in rows) {
         final room = _map(raw);
+        // A source may omit the standard ID, but an explicit ID cannot
+        // contradict the user's selected building. Names are not identities.
+        if (input.params['buildingId'] != null &&
+            room['buildingId'] != null &&
+            room['buildingId'] != input.params['buildingId']) {
+          _invalid();
+        }
         final coverage = _availableCoverage(
           room['intervals'],
           input.start!,
@@ -240,12 +262,75 @@ AiQueryProjection projectAiQuery(
           'startAt': input.start!.toUtc().toIso8601String(),
           'endAt': input.end!.toUtc().toIso8601String(),
         },
-        partial: unknown > 0 || matching > 200,
+        partial:
+            unknown > 0 ||
+            matching > 200 ||
+            (schemaVersion == '1.3' &&
+                data['coverage'] is Map &&
+                (data['coverage'] as Map)['complete'] == false),
         empty: items.isEmpty,
       );
     default:
       _invalid();
   }
+}
+
+/// ADR-096: only standard addressable buildings; names never become IDs.
+/// Drop entire invalid/oversized choices rather than truncate school strings.
+AiQueryProjection projectAiBuildings(Object? raw) {
+  final rows = _list(_map(raw)['items']);
+  final choices = <String, Map<String, Object?>>{};
+  final conflicts = <String>{};
+  var partial = false;
+  bool text(Object? value, int limit) =>
+      value is String &&
+      value.trim().isNotEmpty &&
+      value.runes.length <= limit &&
+      !RegExp(r'[\x00-\x1f\x7f-\x9f]').hasMatch(value);
+  for (final raw in rows) {
+    if (raw is! Map ||
+        !_validIdentifier(raw['buildingId']) ||
+        !text(raw['building'], 160)) {
+      partial = true;
+      continue;
+    }
+    final id = raw['buildingId'] as String;
+    final row = <String, Object?>{
+      'buildingId': id,
+      'building': raw['building'],
+    };
+    if (raw['campus'] != null) {
+      if (text(raw['campus'], 160)) {
+        row['campus'] = raw['campus'];
+      } else {
+        partial = true;
+      }
+    }
+    final previous = choices[id];
+    if (previous != null && jsonEncode(previous) != jsonEncode(row)) {
+      conflicts.add(id);
+      partial = true;
+    }
+    choices[id] = row;
+  }
+  final items = <Object?>[];
+  var bytes = 0;
+  for (final entry in choices.entries) {
+    if (conflicts.contains(entry.key)) continue;
+    final size = utf8.encode(jsonEncode(entry.value)).length + 1;
+    // Reserve room for the fixed response envelope under its 128 KiB ceiling.
+    if (items.length >= 200 || bytes + size > 120 * 1024) {
+      partial = true;
+      break;
+    }
+    bytes += size;
+    items.add(entry.value);
+  }
+  return AiQueryProjection(
+    {'items': items, 'coverage': 'returnedBuildings'},
+    partial: partial,
+    empty: items.isEmpty,
+  );
 }
 
 Map<String, Object?> _grade(Map<String, Object?> row) => {

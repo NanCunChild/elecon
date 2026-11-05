@@ -18,11 +18,21 @@ class AppFunctionsPlugin : FlutterPlugin {
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "elecon/app_functions")
         channel!!.setMethodCallHandler { call, result ->
-            if (call.method == "isSupported") result.success(
-                Build.VERSION.SDK_INT >= 36 &&
-                    AppFunctionManager.getInstance(binding.applicationContext) != null,
-            )
-            else result.notImplemented()
+            when (call.method) {
+                "isSupported" -> result.success(
+                    Build.VERSION.SDK_INT >= 36 &&
+                        AppFunctionManager.getInstance(binding.applicationContext) != null,
+                )
+                "validateSchoolTimeZone" -> {
+                    val arguments = call.arguments as? Map<*, *>
+                    result.success(if (Build.VERSION.SDK_INT >= 26) SchoolQueryTimeZone.validate(
+                        arguments?.get("timeZone") as? String,
+                        arguments?.get("startAt") as? String,
+                        arguments?.get("endAt") as? String,
+                    ) else "unknown")
+                }
+                else -> result.notImplemented()
+            }
         }
         AppFunctionsGateway.attach(channel!!)
     }

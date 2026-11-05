@@ -1,6 +1,6 @@
 # Android 系统助手查询
 
-依据 [ADR-069](../adr/adr_069_android_app_functions.md) 和 [ADR-074](../adr/adr_074_android_app_functions_implementation.md)。
+依据 [ADR-069](../adr/adr_069_android_app_functions.md)、[ADR-074](../adr/adr_074_android_app_functions_implementation.md) 和 [ADR-096](../adr/adr_096_system_classroom_query_inputs.md)。
 
 设置 → 系统助手访问，分别开启课表、空教室、成绩。默认均关闭；只授权当前 Profile、学校和已批准脚本来源。进程退出、切身份或来源变更后需要重新开启。系统助手可能处理返回的数据，应用内说明会提示这一点。冷启动不自动解锁凭据、弹登录页或选择其他身份；返回 `unavailable/openApp` 时需用户先打开应用。
 
@@ -12,14 +12,18 @@ AppFunctions 服务要求 Android 16+ 的系统执行权限，API35 上禁用。
 
 | 后缀 | 参数 | 读取范围 |
 |---|---|---|
-| `describeAvailableServices` | 无 | 三种查询的 available/authorized；不枚举身份或读取学校数据 |
+| `describeAvailableServices` | 无 | 三种查询的 available/authorized 及教室 requiredParameters；不枚举身份或读取学校数据 |
 | `getSchedule` | `term: string, week: int` | 单学期单教学周；week 1–100 |
-| `findAvailableClassrooms` | `startAt, endAt: string, buildingId: string?` | SDK 标准空教室 1.2 已返回范围内，整段绝对时间有空闲证据的教室 |
+| `findAvailableClassrooms` | `startAt, endAt: string, buildingId: string?` | 标准空教室 1.2/1.3 的单栋查询；省略楼栋进入条件提示及同来源目录发现，不自动查全校 |
 | `getGrades` | `term: string` | 单学期已返回成绩页；不推算全校或跨学期 GPA |
 
 时间输入使用带明确 offset 的 RFC3339，秒数为 00，同日且同 offset，最长 12 小时。SDK1.1 的同名扩展不获得1.2区间语义；缺口、重叠、无区间不当作空闲。返回的无占用证据不等于允许进入。
 
-返回是 JSON 字符串，`status` 使用 `ok / empty / partial / authenticationRequired / configurationRequired / unavailable / cancelled / failed`。成功保留 `source.packageId/digest`、`schemaVersion`、`observedAt`、`stale`、`partial`、实际 `parameters` 和白名单投影 `data`。`observedAt` 为本次查询结束时间，学校 `updatedAt` 原样保留；本端没有缓存回退所以 `stale=false`，不据此断言源站缓存新鲜。成绩完整性未知返回 partial，`coverage=returnedPage`；教室 `coverage=returnedRooms`，保留 unknownRooms 和原空闲原因。
+App 0.8.4+15 起，省略 `buildingId` 返回 `configurationRequired/buildingRequired`、`missingParameters` 和固定 `openApp: elecon://feature/classroom`。当前查询共享授权仍是前提；只从同一批准包的 `classroom.buildings@1.0` 读取有界标准目录，不跨来源拼接、不自动选首项，不猜 query.controls 字段含义。目录的 `items` 只保留可寻址的 `buildingId/building/campus`；`coverage=returnedBuildings` 不证明学校所有楼栋已列出。无能力、失败或无有效 ID 时回到原生查询页重新选择条件，页面入口不恢复系统请求或自动执行。
+
+返回教室结果前，Android 用输出顶层 `timeZone` 的 IANA 规则验证两端学校墙钟与 offset，包括夏令时缺口/重叠。时区缺失或无效返回 `unavailable/schoolTimeZoneUnknown`，冲突返回 `configurationRequired/schoolTimeZoneMismatch` 并给出学校时区和固定入口；不使用设备时区或首条占用记录推断。此校验发生在只读查询之后，尚不提供出网前动态时区发现。课表仅在标准 1.3 中投影 `timeZone`，旧版同名扩展不外传。
+
+返回是 JSON 字符串，`status` 使用 `ok / empty / partial / authenticationRequired / configurationRequired / unavailable / cancelled / failed`。成功保留 `source.packageId/digest`、`schemaVersion`、`observedAt`、`stale`、`partial`、实际 `parameters` 和白名单投影 `data`。`observedAt` 为本次查询结束时间，学校 `updatedAt` 原样保留；本端没有缓存回退所以 `stale=false`，不据此断言源站缓存新鲜。成绩完整性未知返回 partial，`coverage=returnedPage`；教室 `coverage=returnedRooms`，保留 unknownRooms 和原空闲原因，1.3 源站明确覆盖不全时也返回 partial。
 
 输出上限200条、128KiB；执行最多28秒，Android桥总上限30秒，并发最多4项。身份/来源更新、用户撤销、平台取消主动取消对应脚本；晚到结果再次检查。没有账号登录、任意 URL、任意脚本、跨身份输入、发消息或控制设备函数。开放 schema 的扩展字段不透传，课程正文等纯文本仍是数据。
 
@@ -40,6 +44,8 @@ WebView更新使用完整官方包，不修改pub缓存或绕过AAR校验。其A
 ## 自动与平台验证
 
 `client/test/ai/app_functions_test.dart` 使用合成已批准包经真实QuickJS验证默认拒绝、授权查询、来源更新、进程授权重置、Profile切换、取消和早期取消、并发界限、固定错误、时间范围、未知区间、结果投影及设置页。浏览器升级继续跑原browser/surface回归和编译。
+
+0.8.4 的条件发现与时区边界另见 `client/test/ai/app_functions_inputs_test.dart`，两份 Dart 回归共 33 项通过；独立 JVM 的 19 个 IANA/DST 检查可用 `bash client/tool/test_school_query_time_zone.sh` 重跑。JVM 检查使用本地 JDK 的时区库，不替代 Android 设备自身的时区数据与系统助手验收。
 
 KSP输出位于 `client/build/app/generated/ksp/debug/`；验证4个具名函数与服务，没有通用执行函数。主入口debug APK包含生成XML、官方XSD与应用级instructions资源，并成功编译arm64和x86_64两种Flutter库。
 

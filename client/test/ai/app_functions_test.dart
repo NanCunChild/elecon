@@ -66,6 +66,7 @@ Future<(ProfileController, AppFunctionsController)> setup(
     timeout: timeout,
     channel: channel,
     registryProvider: registryProvider,
+    timeZoneValidator: (_, _, _) async => AiSchoolTimeZoneResult.valid,
     now: () => DateTime.utc(2026, 11, 3, 3),
   );
   addTearDown(() {
@@ -136,6 +137,7 @@ void main() {
     final result = await ai.execute('classroom', 'findAvailableClassrooms', {
       'startAt': '2026-11-03T08:30:00+08:00',
       'endAt': '2026-11-03T09:30:00+08:00',
+      'buildingId': 'synthetic-hall',
     });
     expect(result['status'], 'partial');
     final data = result['data'] as Map;
@@ -156,6 +158,7 @@ void main() {
           .execute('classroom13', 'findAvailableClassrooms', {
             'startAt': '2026-11-03T08:30:00+08:00',
             'endAt': '2026-11-03T09:30:00+08:00',
+            'buildingId': 'synthetic-hall',
           });
       expect(result['status'], 'partial');
       expect(((result['data'] as Map)['items'] as List).single['room'], '101');

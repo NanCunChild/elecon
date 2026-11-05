@@ -10,8 +10,18 @@ import 'package:flutter/services.dart';
 import '../../session/profile_controller.dart';
 import '../../session/session_controller.dart';
 import '../adapter_service.dart';
+import '../navigation/app_feature.dart';
 import '../scripts/registry.dart';
 import 'app_functions_projection.dart';
+
+enum AiSchoolTimeZoneResult { valid, unknown, mismatch }
+
+typedef AiSchoolTimeZoneValidator =
+    Future<AiSchoolTimeZoneResult> Function(
+      String timeZone,
+      String startAt,
+      String endAt,
+    );
 
 enum AiQuery {
   schedule('getSchedule', 'schedule.week'),
@@ -65,9 +75,11 @@ class AppFunctionsController extends ChangeNotifier {
     MethodChannel? channel,
     DateTime Function()? now,
     Future<ScriptRegistry> Function(SessionController)? registryProvider,
+    AiSchoolTimeZoneValidator? timeZoneValidator,
     this.timeout = const Duration(seconds: 28),
   }) : _channel = channel,
        _now = now ?? DateTime.now,
+       _timeZoneValidator = timeZoneValidator,
        _registryProvider =
            registryProvider ?? ((session) => session.scriptRegistry) {
     profiles.addListener(_scopeChanged);
@@ -78,6 +90,7 @@ class AppFunctionsController extends ChangeNotifier {
   final ProfileController profiles;
   final MethodChannel? _channel;
   final DateTime Function() _now;
+  final AiSchoolTimeZoneValidator? _timeZoneValidator;
   final Future<ScriptRegistry> Function(SessionController) _registryProvider;
   final Duration timeout;
   final _grants = <AiQuery, String>{};
@@ -244,13 +257,17 @@ class AppFunctionsController extends ChangeNotifier {
     final cancellation = ScriptRunCancellation();
     _pending[requestId] = cancellation;
     try {
-      return await _execute(function, arguments, cancellation).timeout(
+      final result = await _execute(function, arguments, cancellation).timeout(
         timeout,
         onTimeout: () {
           cancellation.cancel();
           return _error('cancelled', 'cancelled');
         },
       );
+      // Includes discovery/configuration envelopes, not only business data.
+      return utf8.encode(jsonEncode(result)).length <= 131072
+          ? result
+          : _error('failed', 'resultTooLarge');
     } catch (_) {
       return _error('unavailable', 'openApp');
     } finally {
@@ -306,6 +323,8 @@ class AppFunctionsController extends ChangeNotifier {
               'name': choice.query.function,
               'available': choice.available,
               'authorized': choice.authorized,
+              if (choice.query == AiQuery.classrooms)
+                'requiredParameters': ['startAt', 'endAt', 'buildingId'],
             },
         ],
       };
@@ -327,6 +346,10 @@ class AppFunctionsController extends ChangeNotifier {
       return _error('unavailable', 'authorizationRequired');
     }
     try {
+      if (query == AiQuery.classrooms &&
+          !input.params.containsKey('buildingId')) {
+        return await _buildingInput(source, cancellation);
+      }
       final run = await source.session
           .runTrustedScript(
             source.packageId,
@@ -352,7 +375,41 @@ class AppFunctionsController extends ChangeNotifier {
         return _error('cancelled', 'cancelled');
       }
       if (!run.ok) return _failure(run);
-      final projection = projectAiQuery(query.function, run.data, input);
+      if (query == AiQuery.classrooms) {
+        final data = run.data;
+        final zone = data is Map ? data['timeZone'] : null;
+        var zoneResult = AiSchoolTimeZoneResult.unknown;
+        if (zone is String &&
+            zone.isNotEmpty &&
+            zone.length <= 128 &&
+            !RegExp(r'[\x00-\x1f\x7f-\x9f]').hasMatch(zone)) {
+          zoneResult = await _validateTimeZone(zone, input);
+        }
+        if (cancellation.isCancelled ||
+            !_current(source) ||
+            _grants[query] != source.grantKey) {
+          return _error('cancelled', 'cancelled');
+        }
+        if (zoneResult == AiSchoolTimeZoneResult.unknown) {
+          return {
+            ..._error('unavailable', 'schoolTimeZoneUnknown'),
+            'openApp': AppFeature.classroom.uri,
+          };
+        }
+        if (zoneResult == AiSchoolTimeZoneResult.mismatch) {
+          return {
+            ..._error('configurationRequired', 'schoolTimeZoneMismatch'),
+            'timeZone': zone,
+            'openApp': AppFeature.classroom.uri,
+          };
+        }
+      }
+      final projection = projectAiQuery(
+        query.function,
+        run.data,
+        input,
+        schemaVersion: source.version,
+      );
       final result = <String, Object?>{
         'status': projection.partial
             ? 'partial'
@@ -367,14 +424,92 @@ class AppFunctionsController extends ChangeNotifier {
         'parameters': input.params,
         'data': projection.data,
       };
-      if (utf8.encode(jsonEncode(result)).length > 131072) {
-        return _error('failed', 'resultTooLarge');
-      }
       return result;
     } on FormatException {
       return _error('failed', 'invalidResponse');
     } catch (_) {
       return _error('failed', 'queryFailed');
+    }
+  }
+
+  Future<AiSchoolTimeZoneResult> _validateTimeZone(
+    String zone,
+    AiQueryInput input,
+  ) async {
+    try {
+      final validator = _timeZoneValidator;
+      if (validator != null) {
+        return await validator(zone, input.startAt!, input.endAt!);
+      }
+      final value = await _channel?.invokeMethod<String>(
+        'validateSchoolTimeZone',
+        {'timeZone': zone, 'startAt': input.startAt, 'endAt': input.endAt},
+      );
+      return switch (value) {
+        'valid' => AiSchoolTimeZoneResult.valid,
+        'mismatch' => AiSchoolTimeZoneResult.mismatch,
+        _ => AiSchoolTimeZoneResult.unknown,
+      };
+    } catch (_) {
+      return AiSchoolTimeZoneResult.unknown;
+    }
+  }
+
+  Future<Map<String, Object?>> _buildingInput(
+    _Source source,
+    ScriptRunCancellation cancellation,
+  ) async {
+    final base = <String, Object?>{
+      ..._error('configurationRequired', 'buildingRequired'),
+      'missingParameters': ['buildingId'],
+      'openApp': AppFeature.classroom.uri,
+      'source': {'packageId': source.packageId, 'digest': source.digest},
+    };
+    final version = source.registry
+        .find(source.packageId)
+        ?.package
+        .manifest
+        .capability('classroom.buildings')
+        ?.schemaVersion;
+    if (version != '1.0') {
+      return {
+        ...base,
+        'directory': {'status': 'unsupported'},
+      };
+    }
+    final run = await source.session.runTrustedScript(
+      source.packageId,
+      'classroom.buildings',
+      expectedDigest: source.digest,
+      params: const {},
+      interactive: false,
+      cancellation: cancellation,
+    );
+    if (cancellation.isCancelled ||
+        !_current(source) ||
+        _grants[AiQuery.classrooms] != source.grantKey) {
+      return _error('cancelled', 'cancelled');
+    }
+    if (!run.ok) {
+      return {...base, 'directory': _failure(run)};
+    }
+    try {
+      final projection = projectAiBuildings(run.data);
+      return {
+        ...base,
+        'directory': {
+          'status': projection.partial
+              ? 'partial'
+              : projection.empty
+              ? 'empty'
+              : 'available',
+          'schemaVersion': '1.0',
+          'partial': projection.partial,
+          ...projection.data,
+        },
+      };
+    } on FormatException {
+      return {...base, 'directory': _error('failed', 'invalidResponse')};
     }
   }
 
