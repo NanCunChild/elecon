@@ -24,6 +24,16 @@
 
 门户入口与详情模板见 [086](adr_086_portal_pages.md)，前台二维码续订见 [087](adr_087_foreground_card_refresh.md)，书目检索见 [088](adr_088_library_search.md)。
 
+学校休息段与个人课表隔断见 [089](adr_089_schedule_break_segments.md)。
+
+表单缓存与可选条件见 [091](adr_091_query_form_cache.md)。
+
+Android 前台缓存课表小部件见 [090](adr_090_schedule_widgets.md)。
+
+本地空调绑定、扫码与独立状态见 [092](adr_092_climate_binding_and_controls.md)。
+
+有限红外方案与无回读控制见 [093](adr_093_finite_infrared_climate.md)，本地只读消息同步与通知见 [094](adr_094_local_message_sync.md)；两项均为 **Proposed**，未增加现行 SDK/权限或后台执行能力。
+
 其他领域决定按能力名查本目录文件或契约历史；所有 ADR 正文与编号保留。2026-11-04 收敛前的逐项 Decision/Landing/Security signoff 状态见[完整状态快照](../archived/2026-11-04/docs/adr/README.md)，不用过去一次测试数量代替当前实现证据。
 
 ## 历史记录与维护原则
