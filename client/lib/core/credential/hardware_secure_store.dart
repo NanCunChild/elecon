@@ -21,7 +21,8 @@ const String _storeBlob = 'store.enc';
 
 /// H 档 DEK unwrap 或密文库解密失败（TEE/SE 不可用、密钥轮换、blob 损坏）。
 ///
-/// 调用方应抹除 H 档 blob 并引导用户重新登录（fail toward less trust）。
+/// ADR-095: callers retain the original materials and block access until an
+/// explicit retry can open them. Failure never authorizes key replacement.
 class HardwareUnlockException implements Exception {
   HardwareUnlockException(this.cause);
   final Object cause;
@@ -46,6 +47,11 @@ class HardwareSecureStore implements SecureStore {
   static Future<bool> hasPersisted(BlobStore blobs) async =>
       (await blobs.read(_wrappedDekBlob)) != null;
 
+  /// H and S share this encrypted image name. Missing key files must never
+  /// make an existing image look like an unused installation.
+  static Future<bool> hasEncryptedImage(BlobStore blobs) async =>
+      (await blobs.read(_storeBlob)) != null;
+
   /// 抹除 H 档落盘材料（wrapped DEK + 密文库）。不触碰 S 档或会话元数据。
   static Future<void> wipePersisted(BlobStore blobs) async {
     await blobs.delete(_wrappedDekBlob);
@@ -57,9 +63,20 @@ class HardwareSecureStore implements SecureStore {
     BlobStore blobs,
   ) async {
     try {
-      final dek = await _loadOrCreateDek(hardware, blobs);
+      if (await hasPersisted(blobs)) return openExisting(hardware, blobs);
+      if (await blobs.read(_storeBlob) != null) {
+        throw StateError('protected_key_material_missing');
+      }
+      final rnd = Random.secure();
+      final dek = Uint8List.fromList(
+        List<int>.generate(32, (_) => rnd.nextInt(256)),
+      );
+      final wrapped = await hardware.wrapDek(dek);
+      await blobs.write(_wrappedDekBlob, wrapped);
       final store = HardwareSecureStore._(Aes256GcmAead(dek), blobs);
-      await store._load();
+      // A successfully created empty H store has a valid encrypted image too.
+      // Recovery must never infer that a missing image means an empty account.
+      await store._persist();
       return store;
     } on HardwareUnlockException {
       rethrow;
@@ -68,30 +85,33 @@ class HardwareSecureStore implements SecureStore {
     }
   }
 
-  static Future<List<int>> _loadOrCreateDek(
+  /// Restores only existing material. Unlike first-time setup, recovery can
+  /// never create a replacement DEK when a file is missing or unreadable.
+  static Future<HardwareSecureStore> openExisting(
     HardwareKeyStore hardware,
     BlobStore blobs,
   ) async {
-    final wrapped = await blobs.read(_wrappedDekBlob);
-    if (wrapped != null) {
-      try {
-        return await hardware.unwrapDek(wrapped);
-      } catch (e) {
-        throw HardwareUnlockException(e);
-      }
+    try {
+      final wrapped = await blobs.read(_wrappedDekBlob);
+      if (wrapped == null) throw StateError('protected_key_material_missing');
+      final dek = await hardware.unwrapDek(wrapped);
+      final store = HardwareSecureStore._(Aes256GcmAead(dek), blobs);
+      await store._load();
+      return store;
+    } on HardwareUnlockException {
+      rethrow;
+    } catch (error) {
+      throw HardwareUnlockException(error);
     }
-    final rnd = Random.secure();
-    final dek = Uint8List.fromList(
-      List<int>.generate(32, (_) => rnd.nextInt(256)),
-    );
-    final w = await hardware.wrapDek(dek);
-    await blobs.write(_wrappedDekBlob, w);
-    return dek;
   }
 
   Future<void> _load() async {
     final sealed = await _blobs.read(_storeBlob);
-    if (sealed == null) return;
+    if (sealed == null) {
+      throw HardwareUnlockException(
+        StateError('protected_store_image_missing'),
+      );
+    }
     try {
       final clear = await _aead.open(sealed);
       final json = jsonDecode(utf8.decode(clear)) as Map<String, dynamic>;

@@ -29,7 +29,7 @@ import 'ui/login/login_flow.dart';
 import 'ui/onboarding/onboarding_page.dart';
 import 'ui/security/dev_sideload_banner.dart'
     show DevSideloadStartupWarning, devSideloadStartupDwell;
-import 'ui/security/hardware_unlock_failed_dialog.dart';
+import 'ui/security/protected_store_recovery_page.dart';
 import 'ui/shell/main_shell.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/theme/theme_controller.dart';
@@ -298,7 +298,6 @@ class _BootGateState extends State<_BootGate> {
           Future<void>.delayed(devSideloadStartupDwell),
         ])
       : widget.session.bootstrap();
-  var _unlockDialogShown = false;
 
   @override
   Widget build(BuildContext context) {
@@ -312,14 +311,8 @@ class _BootGateState extends State<_BootGate> {
           return const Scaffold(body: DesktopPlaceholder());
         }
         widget.startupTrace?.mark('session_bootstrap_complete');
-        if (widget.session.hardwareUnlockFailed && !_unlockDialogShown) {
-          _unlockDialogShown = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) async {
-            if (!mounted) return;
-            await showHardwareUnlockFailedDialog(context);
-            if (!mounted) return;
-            widget.session.acknowledgeHardwareUnlockFailure();
-          });
+        if (widget.session.hardwareUnlockFailed) {
+          return ProtectedStoreRecoveryPage(session: widget.session);
         }
         widget.startupTrace?.mark('school_page_ready');
         widget.startupTrace?.finish();

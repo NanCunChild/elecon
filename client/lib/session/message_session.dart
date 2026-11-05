@@ -8,6 +8,7 @@ extension MessageSession on SessionController {
     String? conversationKind,
     int limit = 100,
   }) async {
+    if (hardwareUnlockFailed) return null;
     final generation = _scripts.generation;
     final registry = await scriptRegistry;
     final store = _store;
@@ -15,6 +16,7 @@ extension MessageSession on SessionController {
     final revision = MessageArchiveStore(store).revision(package);
     bool active() =>
         !_scripts.disposed &&
+        !hardwareUnlockFailed &&
         identical(store, _store) &&
         generation == _scripts.generation &&
         _school?.id == package.manifest.schoolId &&

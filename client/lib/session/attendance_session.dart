@@ -8,6 +8,7 @@ extension AttendanceSession on SessionController {
     int generation,
   ) =>
       !_scripts.disposed &&
+      !hardwareUnlockFailed &&
       _scripts.generation == generation &&
       _school?.id == package.manifest.schoolId &&
       package.manifest.capability('attendance.checkin')?.schemaVersion ==

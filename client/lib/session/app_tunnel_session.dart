@@ -14,6 +14,7 @@ extension HermesTunnelSession on SessionController {
       _hermesStates[this] ??= _HermesSessionState();
 
   bool hasDeclaredTunnelConfiguration(ScriptAppTunnel declaration) {
+    if (hardwareUnlockFailed) return false;
     final school = _school;
     if (school == null || _hermes.writing) return false;
     try {
@@ -56,6 +57,7 @@ extension HermesTunnelSession on SessionController {
   }
 
   HermesAccountInfo? hermesAccountInfo() {
+    if (hardwareUnlockFailed) return null;
     if (_hermes.writing) throw const AppTunnelException('app_tunnel_busy');
     final schoolId = _school?.id;
     return schoolId == null
@@ -161,6 +163,7 @@ extension HermesTunnelSession on SessionController {
   }
 
   Future<void> loginHermesAccount() async {
+    _requireProtectedStoreAccess();
     final school = _school;
     final generation = _scripts.generation;
     final store = _store;
@@ -218,6 +221,7 @@ extension HermesTunnelSession on SessionController {
     ScriptPasswordCall? passwordCall,
     Future<void> Function()? webLogin,
   }) async {
+    _requireProtectedStoreAccess();
     final generation = _scripts.generation;
     final store = _store;
     final school = _school;
@@ -413,6 +417,7 @@ extension HermesTunnelSession on SessionController {
     String? expectedCertificateSha256,
     bool checkCertificate = false,
   }) async {
+    _requireProtectedStoreAccess();
     final school = _school;
     final store = _store;
     final generation = _scripts.generation;
@@ -509,6 +514,7 @@ extension HermesTunnelSession on SessionController {
   ];
 
   HermesConfigurationInfo? hermesConfigurationInfo() {
+    if (hardwareUnlockFailed) return null;
     if (_hermes.writing) throw const AppTunnelException('app_tunnel_busy');
     final schoolId = _school?.id;
     return schoolId == null
@@ -522,6 +528,7 @@ extension HermesTunnelSession on SessionController {
     ScriptPackage? package,
     bool Function()? isAuthorized,
   }) async {
+    _requireProtectedStoreAccess();
     final school = _school;
     var generation = _scripts.generation;
     if (school == null) throw const AppTunnelException('app_tunnel_no_school');
@@ -605,6 +612,7 @@ extension HermesTunnelSession on SessionController {
   }
 
   Future<void> clearHermesConfiguration() async {
+    _requireProtectedStoreAccess();
     final school = _school;
     if (school == null) return;
     _cancelTrustedScripts();

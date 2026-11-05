@@ -129,34 +129,42 @@ void main() {
     },
   );
 
-  test(
-    'cancellation while approving storage cannot re-admit an old run',
-    () async {
-      final blobs = InMemoryBlobStore();
-      final session = SessionController(blobStoreProvider: () async => blobs);
-      addTearDown(session.dispose);
-      await session.bootstrap();
-      final package = _package('base');
-      await session.installTrustedScript(
-        package,
-        approvedDigest: package.digest,
-      );
-      await session.selectTrustedScriptSchool('base');
-      final consentStarted = Completer<void>();
-      final consent = Completer<bool>();
-      session.scriptStorageConsent = () {
-        consentStarted.complete();
-        return consent.future;
-      };
-      final pending = session.runTrustedScript('base', 'notice.list');
-      await consentStarted.future;
-      session.cancelTrustedScriptRuns();
-      consent.complete(false);
-      final result = await pending;
-      expect(result.reason, 'script_cancelled');
-      expect(await _count(session, 'base'), '0');
-    },
-  );
+  for (final identityOnly in [false, true]) {
+    test(
+      'cancellation while approving storage cannot re-admit an old run (identity only: $identityOnly)',
+      () async {
+        final blobs = InMemoryBlobStore();
+        final session = SessionController(blobStoreProvider: () async => blobs);
+        addTearDown(session.dispose);
+        await session.bootstrap();
+        final package = _package('base');
+        await session.installTrustedScript(
+          package,
+          approvedDigest: package.digest,
+        );
+        await session.selectTrustedScriptSchool('base');
+        final consentStarted = Completer<void>();
+        final consent = Completer<bool>();
+        session.scriptStorageConsent = () {
+          consentStarted.complete();
+          return consent.future;
+        };
+        final pending = session.runTrustedScript('base', 'notice.list');
+        await consentStarted.future;
+        if (identityOnly) {
+          final generation = session.trustedScriptViewGeneration;
+          session.onCredentialsChanged(identityChanged: true);
+          expect(session.trustedScriptViewGeneration, generation);
+        } else {
+          session.cancelTrustedScriptRuns();
+        }
+        consent.complete(false);
+        final result = await pending;
+        expect(result.reason, 'script_cancelled');
+        expect(await _count(session, 'base'), '0');
+      },
+    );
+  }
 
   test(
     'local notice identifiers never fall through to a V1 detail source',

@@ -17,7 +17,8 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * ADR-012 §2.8 H 档：Android Keystore 对称 KEK wrap/unwrap DEK。
- * StrongBox → TEE fallback；每次使用前以 KeyInfo 验证，软件/未知 provider 一律删除拒绝。
+ * First creation tries StrongBox then TEE. Existing keys are verified before
+ * use and never deleted or replaced because verification/unwrapping failed.
  * 🔒 红线 #1 — 须人工 + 安全清单审。
  */
 class HardwareKeystorePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
@@ -64,20 +65,19 @@ class HardwareKeystorePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     private fun ensureKek(): SecretKey? {
         val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        if (ks.containsAlias(KEK_ALIAS)) {
-            val existing = try {
-                (ks.getEntry(KEK_ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
-            } catch (_: Exception) {
-                null
-            }
-            if (existing != null && isAcceptedHardwareKey(existing)) return existing
-            ks.deleteEntry(KEK_ALIAS)
-        }
+        if (ks.containsAlias(KEK_ALIAS)) return existingKek(ks)
         // StrongBox first, then TEE.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             generateVerifiedKek(ks, strongBox = true)?.let { return it }
         }
         return generateVerifiedKek(ks, strongBox = false)
+    }
+
+    private fun existingKek(
+        ks: KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) },
+    ): SecretKey? {
+        val key = (ks.getEntry(KEK_ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
+        return key?.takeIf { isAcceptedHardwareKey(it) }
     }
 
     private fun generateVerifiedKek(ks: KeyStore, strongBox: Boolean): SecretKey? {
@@ -134,7 +134,9 @@ class HardwareKeystorePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     private fun unwrapDek(wrapped: ByteArray): ByteArray {
-        val kek = ensureKek() ?: throw IllegalStateException("no hardware KEK")
+        // ADR-095: restore is read-only; an unavailable old key is not a
+        // request to generate a new one or to remove the original alias.
+        val kek = existingKek() ?: throw IllegalStateException("hardware KEK unavailable")
         val iv = wrapped.copyOfRange(0, 12)
         val ct = wrapped.copyOfRange(12, wrapped.size)
         val cipher = Cipher.getInstance(AES_GCM)

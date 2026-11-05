@@ -1019,5 +1019,9 @@
   "shortcutsRestricted": "系统限制了添加快捷方式，请检查桌面提示。",
   "shortcutsTemporarilyUnavailable": "桌面暂时无法处理请求，请回到前台后重试。",
   "scheduleWidgetTitle": "课表小部件",
-  "scheduleWidgetHint": "长按桌面进入小部件列表，选择 elecon 今日课表，再确认展示的学校和来源。使用已加载课表；进程重启后请打开 elecon 更新。"
+  "scheduleWidgetHint": "长按桌面进入小部件列表，选择 elecon 今日课表，再确认展示的学校和来源。使用已加载课表；进程重启后请打开 elecon 更新。",
+  "protectedStoreRecoveryTitle": "无法打开受保护数据",
+  "protectedStoreRecoveryBody": "无法打开此 Profile 的受保护存储。elecon 会保留现有数据与密钥，成功恢复后才能继续。请稍后重试；重试不会清除数据或创建替代密钥。",
+  "protectedStoreRecoveryFailed": "仍无法打开受保护数据。你可以稍后再次重试。",
+  "protectedStoreRecoveryRetrying": "正在尝试恢复…"
 }

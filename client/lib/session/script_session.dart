@@ -109,6 +109,7 @@ extension TrustedScriptSession on SessionController {
     ScriptPackage package,
     String accountId,
   ) {
+    if (hardwareUnlockFailed) return null;
     if (_school?.id != package.manifest.schoolId) return null;
     final auth = package.manifest.accounts
         .where((a) => a.id == accountId)
@@ -124,6 +125,7 @@ extension TrustedScriptSession on SessionController {
     ScriptPackage package,
     String accountId,
   ) async {
+    _requireProtectedStoreAccess();
     final registry = await scriptRegistry;
     if (_school?.id != package.manifest.schoolId ||
         registry.find(package.manifest.id)?.package.digest != package.digest ||
@@ -420,6 +422,7 @@ extension TrustedScriptSession on SessionController {
     String? packageId,
     String? expectedDigest,
   ) async {
+    if (hardwareUnlockFailed) return null;
     final registry = await scriptRegistry;
     if (packageId == null) {
       return expectedDigest == null
@@ -609,6 +612,14 @@ extension TrustedScriptSession on SessionController {
     ScriptRunCancellation? cancellation,
     void Function(String, String)? onLog,
   }) {
+    if (hardwareUnlockFailed) {
+      return Future.value(
+        const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'protected_store_unavailable',
+        ),
+      );
+    }
     final ScriptInvocation invocation;
     try {
       invocation = ScriptInvocation(
@@ -688,6 +699,12 @@ extension TrustedScriptSession on SessionController {
     ScriptRunCancellation? cancellation,
     void Function(String, String)? onLog,
   }) async {
+    if (hardwareUnlockFailed) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'protected_store_unavailable',
+      );
+    }
     final id = invocation.packageId;
     final capability = invocation.capability;
     final params = invocation.params;
@@ -764,6 +781,13 @@ extension TrustedScriptSession on SessionController {
       _invalidateIdentity();
     }
     final admissionEpoch = registry.epoch;
+    final admissionIdentity = identityRevision;
+    bool admissionCancelled() =>
+        state.disposed ||
+        state.generation != expectedGeneration ||
+        cancellation?.isCancelled == true ||
+        registry.epoch != admissionEpoch ||
+        _school?.id != school.id;
     try {
       if (interactive && !statusOnly) {
         await ensurePersistentStore(
@@ -771,16 +795,18 @@ extension TrustedScriptSession on SessionController {
         );
       }
     } catch (_) {
+      if (admissionCancelled() || identityRevision != admissionIdentity) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'script_cancelled',
+        );
+      }
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
         'credential_storage_unavailable',
       );
     }
-    if (state.disposed ||
-        state.generation != expectedGeneration ||
-        cancellation?.isCancelled == true ||
-        registry.epoch != admissionEpoch ||
-        _school?.id != school.id) {
+    if (admissionCancelled()) {
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
         'script_cancelled',
@@ -833,6 +859,7 @@ extension TrustedScriptSession on SessionController {
         foregroundRevoked = true;
       }
       return !foregroundRevoked &&
+          !hardwareUnlockFailed &&
           !state.disposed &&
           cancellation?.isCancelled != true &&
           state.generation == generation &&

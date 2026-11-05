@@ -164,6 +164,7 @@ class SessionController extends ChangeNotifier {
     String? requiredRef,
     Set<String> tlsProceedHosts = const {},
   }) async {
+    _requireProtectedStoreAccess();
     final school = _school;
     final generation = _scripts.generation;
     final store = _store;
@@ -174,6 +175,7 @@ class SessionController extends ChangeNotifier {
     }
     bool active() =>
         !_scripts.disposed &&
+        !hardwareUnlockFailed &&
         !_changingNetwork &&
         generation == _scripts.generation &&
         _school?.id == school.id &&
@@ -227,8 +229,15 @@ class SessionController extends ChangeNotifier {
   Future<void>? _schoolCatalogLoad;
   bool _debugLog = kDebugMode;
 
-  /// H 档启动解不开时置位；UI 提示后 [acknowledgeHardwareUnlockFailure] 清除。
+  /// ADR-095: unavailable protected data stays blocked until explicit recovery.
   bool _hardwareUnlockFailed = false;
+  bool _recoverExistingSoftwareStore = false;
+  Future<bool>? _protectedStoreRecovery;
+  bool get isRetryingProtectedStore => _protectedStoreRecovery != null;
+  Future<void>? _persistentStoreSelection;
+  int? _persistentStoreSelectionGeneration;
+  int? _persistentStoreSelectionIdentity;
+  CredentialStore? _persistentStoreSelectionStore;
 
   SchoolDescriptor? get selectedSchool => _school;
   List<SchoolDescriptor> get availableSchools => _availableSchools;
@@ -236,26 +245,28 @@ class SessionController extends ChangeNotifier {
   bool get debugLog => _debugLog;
   // ADR-034: a different school's credentials do not imply this school is logged in.
   Iterable<CredentialEntry> get _selectedCredentialEntries =>
-      _store.list().where(
-        (entry) =>
-            entry.type != ScriptDataCache.type &&
-            entry.type != ScriptQueryFormCache.type &&
-            entry.type != ScheduleWidgetIdentityStore.type &&
-            entry.type != ScriptReadinessStore.type &&
-            entry.type != ScriptAccountStore.type &&
-            entry.type != AttendancePlacesStore.type &&
-            entry.type != MessageArchiveStore.type &&
-            entry.type != HermesConfigStore.type &&
-            entry.type != HermesAccountStore.type &&
-            (_school == null || entry.schoolId == _school!.id),
-      );
+      hardwareUnlockFailed
+      ? const []
+      : _store.list().where(
+          (entry) =>
+              entry.type != ScriptDataCache.type &&
+              entry.type != ScriptQueryFormCache.type &&
+              entry.type != ScheduleWidgetIdentityStore.type &&
+              entry.type != ScriptReadinessStore.type &&
+              entry.type != ScriptAccountStore.type &&
+              entry.type != AttendancePlacesStore.type &&
+              entry.type != MessageArchiveStore.type &&
+              entry.type != HermesConfigStore.type &&
+              entry.type != HermesAccountStore.type &&
+              (_school == null || entry.schoolId == _school!.id),
+        );
 
   /// Local credential presence only; scripts may refresh expired records and
   /// this does not verify the server-side login state (ADR-035 §2–§3).
   bool get isLoggedIn => _selectedCredentialEntries.isNotEmpty;
   int get credentialCount => _selectedCredentialEntries.length;
 
-  /// 上次 bootstrap 因 TEE/SE 无法 unwrap 而抹除了 H 档凭证。
+  /// Original H materials remain intact; no school access or fallback is allowed.
   bool get hardwareUnlockFailed => _hardwareUnlockFailed;
 
   /// 已收割凭证的 ref 列表（升序）；仅名字，**不含值**。
@@ -294,31 +305,72 @@ class SessionController extends ChangeNotifier {
   /// 启动引导：优先静默续用 H 硬件档，其次已同意的 S 软件档；无持久化则保持
   /// 默认内存档，待首次登录时 [ensurePersistentStore] 裁定。
   ///
-  /// H 档存在但 TEE/SE 无法 unwrap / 密文库损坏 → 抹除 H blob，置
-  /// [hardwareUnlockFailed]，保留选校，回到未登录。
+  /// H 档存在但 TEE/SE 无法 unwrap / 密文库损坏 → 置
+  /// [hardwareUnlockFailed]，保留原材料和选校，等待显式重试。
   Future<void> bootstrap() => _bootstrapFuture ??= _bootstrapLocal();
 
   Future<void> _bootstrapLocal() async {
     final blobs = await _resolveBlobs();
-    if (blobs != null && await HardwareSecureStore.hasPersisted(blobs)) {
-      if (!await _hardware.isAvailable()) {
-        await _failHardwareUnlock(blobs);
-      } else {
-        try {
-          _replaceStore(await HardwareSecureStore.open(_hardware, blobs));
-          _storeResolved = true;
-        } on HardwareUnlockException {
-          await _failHardwareUnlock(blobs);
+    if (_scripts.disposed) return;
+    var hasHardwareStore = false;
+    var hasSoftwareStore = false;
+    if (blobs != null) {
+      try {
+        hasHardwareStore = await HardwareSecureStore.hasPersisted(blobs);
+        if (!hasHardwareStore) {
+          hasSoftwareStore = await SoftwareSecureStore.hasValidKeyMaterial(
+            blobs,
+          );
+          if (!hasSoftwareStore &&
+              await HardwareSecureStore.hasEncryptedImage(blobs)) {
+            if (_scripts.disposed) return;
+            _blockProtectedStore();
+          }
         }
+      } catch (_) {
+        // An unreadable key file is not evidence that no protected store
+        // exists. Preserve it and let the explicit recovery path try again.
+        if (_scripts.disposed) return;
+        _blockProtectedStore();
       }
-    } else if (blobs != null && await SoftwareSecureStore.hasPersisted(blobs)) {
-      _replaceStore(await SoftwareSecureStore.open(blobs));
-      _storeResolved = true;
+    }
+    if (_scripts.disposed) return;
+    if (hasHardwareStore && blobs != null) {
+      // Existing H data must never use the first-save availability probe,
+      // which may create a key. Only the original key may unwrap this store.
+      _hardwareUnlockFailed = true;
+      final generation = trustedScriptViewGeneration;
+      final identity = identityRevision;
+      try {
+        final recovered = await HardwareSecureStore.openExisting(
+          _hardware,
+          blobs,
+        );
+        if (_scripts.disposed) return;
+        if (generation == trustedScriptViewGeneration &&
+            identity == identityRevision) {
+          _adoptRecoveredStore(recovered);
+        }
+      } on HardwareUnlockException {
+        if (_scripts.disposed) return;
+        _blockProtectedStore();
+      }
+    } else if (!hardwareUnlockFailed && blobs != null && hasSoftwareStore) {
+      try {
+        final recovered = await SoftwareSecureStore.openExisting(blobs);
+        if (_scripts.disposed) return;
+        _replaceStore(recovered);
+        _storeResolved = true;
+      } catch (_) {
+        if (_scripts.disposed) return;
+        _blockProtectedStore(software: true);
+      }
     }
     // ADR-060: approved local scripts and protected caches never wait for the
     // unrelated V1 distribution network. Its original loader remains in use
     // when the saved school actually belongs to that compatibility path.
     await _restoreScriptSchools();
+    if (_scripts.disposed) return;
     _school = blobs == null ? null : await _loadSelectedSchool(blobs);
     if (_school == null &&
         blobs != null &&
@@ -326,7 +378,8 @@ class SessionController extends ChangeNotifier {
       await loadSchoolChoices();
       _school = await _loadSelectedSchool(blobs);
     }
-    _wireSsoMinterFor(_school);
+    if (_scripts.disposed) return;
+    if (!hardwareUnlockFailed) _wireSsoMinterFor(_school);
     _isRestored = true;
     notifyListeners();
   }
@@ -370,40 +423,207 @@ class SessionController extends ChangeNotifier {
     return List.unmodifiable(schools);
   }
 
-  Future<void> _failHardwareUnlock(BlobStore blobs) async {
-    await HardwareSecureStore.wipePersisted(blobs);
-    _replaceStore(InMemorySecureStore(releaseMode: false));
-    _storeResolved = false;
+  void _blockProtectedStore({bool software = false}) {
     _hardwareUnlockFailed = true;
+    _recoverExistingSoftwareStore = software;
+    _cancelTrustedScripts();
+    _disposeAutoMint();
+    _invalidateIdentity(notify: false);
   }
 
-  /// UI 已展示过「硬件无法解密」提示后调用。
-  void acknowledgeHardwareUnlockFailure() {
-    if (!_hardwareUnlockFailed) return;
-    _hardwareUnlockFailed = false;
+  /// ADR-095: one explicit, non-destructive attempt shared by all callers.
+  Future<bool> retryProtectedStore({bool Function()? isCurrent}) {
+    if (_scripts.disposed) return Future.value(false);
+    if (_protectedStoreRecovery case final pending?) return pending;
+    if (!hardwareUnlockFailed || !_isRestored || isCurrent?.call() == false) {
+      return Future.value(false);
+    }
+    final generation = trustedScriptViewGeneration;
+    final identity = identityRevision;
+    final store = _store;
+    late final Future<bool> pending;
+    pending = _recoverProtectedStore(generation, identity, store, isCurrent)
+        .whenComplete(() {
+          if (identical(_protectedStoreRecovery, pending)) {
+            _protectedStoreRecovery = null;
+          }
+          if (!_scripts.disposed) notifyListeners();
+        });
+    _protectedStoreRecovery = pending;
     notifyListeners();
+    return pending;
+  }
+
+  Future<bool> _recoverProtectedStore(
+    int generation,
+    int identity,
+    CredentialStore previous,
+    bool Function()? isCurrent,
+  ) async {
+    bool active() =>
+        !_scripts.disposed &&
+        hardwareUnlockFailed &&
+        generation == trustedScriptViewGeneration &&
+        identity == identityRevision &&
+        (isCurrent?.call() ?? true) &&
+        identical(previous, _store);
+    try {
+      final blobs = await _resolveBlobs();
+      if (blobs == null || !active()) return false;
+      final recovered = _recoverExistingSoftwareStore
+          ? await SoftwareSecureStore.openExisting(blobs)
+          : await HardwareSecureStore.openExisting(_hardware, blobs);
+      if (!active()) return false;
+      // The previous store is inaccessible, so recovery must not merge any
+      // placeholder entries into the original encrypted database.
+      _adoptRecoveredStore(recovered);
+      return true;
+    } catch (_) {
+      // Keep the original materials and the blocking state even for corrupt
+      // bytes. A subsequent explicit attempt may succeed after platform repair.
+      return false;
+    }
+  }
+
+  void _adoptRecoveredStore(SecureStore recovered) {
+    _cancelTrustedScripts();
+    _secure = recovered;
+    _store = CredentialStore(store: recovered);
+    _storeResolved = true;
+    _hardwareUnlockFailed = false;
+    _invalidateIdentity(notify: false);
+    _wireSsoMinterFor(_school);
   }
 
   /// 首次持久化前确保后端就绪（§2.8）。无硬件 → 经 [confirmSoftwareFallback]
   /// （通常弹警告框）选 S 软件档或 M 内存档。已定档则 no-op。
   Future<void> ensurePersistentStore({
     required Future<bool> Function() confirmSoftwareFallback,
-  }) async {
-    if (_storeResolved) return;
+  }) {
+    try {
+      _requireProtectedStoreAccess();
+    } catch (error, stack) {
+      return Future.error(error, stack);
+    }
+    if (_storeResolved) return Future.value();
+    final generation = trustedScriptViewGeneration;
+    final identity = identityRevision;
+    final store = _store;
+    if (_persistentStoreSelection case final pending?) {
+      if (_persistentStoreSelectionGeneration == generation &&
+          _persistentStoreSelectionIdentity == identity &&
+          identical(_persistentStoreSelectionStore, store)) {
+        return pending;
+      }
+      return Future.error(StateError('script_cancelled'));
+    }
+    late final Future<void> pending;
+    pending =
+        _selectPersistentStore(
+          generation,
+          identity,
+          store,
+          confirmSoftwareFallback,
+        ).whenComplete(() {
+          if (identical(_persistentStoreSelection, pending)) {
+            _persistentStoreSelection = null;
+            _persistentStoreSelectionGeneration = null;
+            _persistentStoreSelectionIdentity = null;
+            _persistentStoreSelectionStore = null;
+          }
+        });
+    _persistentStoreSelection = pending;
+    _persistentStoreSelectionGeneration = generation;
+    _persistentStoreSelectionIdentity = identity;
+    _persistentStoreSelectionStore = store;
+    return pending;
+  }
+
+  Future<void> _selectPersistentStore(
+    int generation,
+    int identity,
+    CredentialStore store,
+    Future<bool> Function() confirmSoftwareFallback,
+  ) async {
+    bool active() =>
+        !_scripts.disposed &&
+        !hardwareUnlockFailed &&
+        generation == trustedScriptViewGeneration &&
+        identity == identityRevision &&
+        identical(store, _store);
+    void check() {
+      _requireProtectedStoreAccess();
+      if (!active()) throw StateError('script_cancelled');
+    }
+
+    void unavailable({bool software = false}) {
+      _blockProtectedStore(software: software);
+      notifyListeners();
+      throw StateError('protected_store_unavailable');
+    }
+
     final blobs = await _resolveBlobs();
+    check();
     if (blobs == null) {
       _storeResolved = true; // 无落盘能力（如 path_provider 未接入）→ 内存档 M
       return;
     }
-    _replaceStore(
-      await resolveSecureStore(
-        hardware: _hardware,
-        blobs: blobs,
-        confirmSoftwareFallback: confirmSoftwareFallback,
-      ),
+    Future<bool> probe(Future<bool> Function() read) async {
+      try {
+        final found = await read();
+        check();
+        return found;
+      } catch (_) {
+        check();
+        unavailable();
+        return false;
+      }
+    }
+
+    final hasHardware = await probe(
+      () => HardwareSecureStore.hasPersisted(blobs),
     );
+    check();
+    if (hasHardware) unavailable();
+    final hasSoftware = await probe(
+      () => SoftwareSecureStore.hasValidKeyMaterial(blobs),
+    );
+    check();
+    if (hasSoftware) {
+      final SoftwareSecureStore recovered;
+      try {
+        recovered = await SoftwareSecureStore.openExisting(blobs);
+      } catch (_) {
+        check();
+        unavailable(software: true);
+        return;
+      }
+      check();
+      _replaceStore(recovered);
+      _storeResolved = true;
+      notifyListeners();
+      return;
+    }
+    final hasImage = await probe(
+      () => HardwareSecureStore.hasEncryptedImage(blobs),
+    );
+    check();
+    if (hasImage) unavailable();
+    final resolved = await resolveSecureStore(
+      hardware: _hardware,
+      blobs: blobs,
+      confirmSoftwareFallback: confirmSoftwareFallback,
+      isActive: active,
+    );
+    check();
+    _replaceStore(resolved);
     _storeResolved = true;
     notifyListeners();
+  }
+
+  void _requireProtectedStoreAccess() {
+    if (hardwareUnlockFailed) throw StateError('protected_store_unavailable');
+    if (_scripts.disposed) throw StateError('script_cancelled');
   }
 
   /// durability 屏障：H/S 档等待挂起的持久化落盘。收割后调用。
@@ -483,7 +703,7 @@ class SessionController extends ChangeNotifier {
   void _wireSsoMinterFor(SchoolDescriptor? school) {
     if (_ssoMinterInjected) return;
     _disposeAutoMint();
-    if (school == null) return;
+    if (school == null || hardwareUnlockFailed) return;
     final login = school.login;
     if (login.ssoMint == null) return;
     final transport = DirectTransport();
@@ -584,6 +804,12 @@ class SessionController extends ChangeNotifier {
     void Function(String level, String message)? onLog,
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) async {
+    if (hardwareUnlockFailed) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'protected_store_unavailable',
+      );
+    }
     try {
       params = ScriptInvocation.snapshotParams(params);
     } catch (_) {
@@ -790,6 +1016,12 @@ class SessionController extends ChangeNotifier {
     void Function(String level, String message)? onLog,
     void Function(AdapterDiagnostic diagnostic)? onDiagnostic,
   }) async {
+    if (hardwareUnlockFailed) {
+      return const CapabilityRun.failed(
+        CapabilityFailureKind.run,
+        'protected_store_unavailable',
+      );
+    }
     if (capability == 'climate.command') {
       return const CapabilityRun.failed(
         CapabilityFailureKind.run,
@@ -801,6 +1033,7 @@ class SessionController extends ChangeNotifier {
     final store = _store;
     bool active() =>
         !_scripts.disposed &&
+        !hardwareUnlockFailed &&
         !_changingNetwork &&
         generation == trustedScriptViewGeneration &&
         identical(store, _store) &&
@@ -877,6 +1110,7 @@ class SessionController extends ChangeNotifier {
   /// 按 [CredentialEntry.schoolId] 过滤——多校共存时不得波及他校凭证。
   /// 未选校时防御性抹除全部（无归属口径宁可多删，隐私优先于可用性）。
   void logout() {
+    _requireProtectedStoreAccess();
     _cancelTrustedScripts();
     _invalidateIdentity(notify: false);
     final id = _school?.id;
@@ -888,6 +1122,7 @@ class SessionController extends ChangeNotifier {
 
   /// 彻底重置：抹除凭证并清除选校，回到开始面板。
   void reset() {
+    _requireProtectedStoreAccess();
     for (final e in _store.list()) {
       _store.delete(e.ref);
     }

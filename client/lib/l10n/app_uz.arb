@@ -675,5 +675,9 @@
       }
     }
   },
-  "messagesConversationInfo": "Suhbat tafsilotlari"
+  "messagesConversationInfo": "Suhbat tafsilotlari",
+  "protectedStoreRecoveryTitle": "Himoyalangan maʼlumotlar mavjud emas",
+  "protectedStoreRecoveryBody": "Bu profilning himoyalangan xotirasini ochib bo‘lmadi. elecon mavjud maʼlumotlar va kalitlarni saqlab qoladi. Kirish faqat tiklash muvaffaqiyatli tugagach davom etadi. Keyinroq qayta urinib ko‘ring; qayta urinish maʼlumotlarni o‘chirmaydi yoki yangi kalit yaratmaydi.",
+  "protectedStoreRecoveryFailed": "Himoyalangan maʼlumotlar hali ham mavjud emas. Keyinroq yana urinib ko‘ring.",
+  "protectedStoreRecoveryRetrying": "Tiklashga urinilmoqda…"
 }

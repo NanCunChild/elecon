@@ -32,6 +32,12 @@ Future<WebViewLoginResult?> runSchoolLogin(
   String? initialUrl,
   String? requiredRef,
 }) async {
+  if (session.hardwareUnlockFailed) {
+    return WebViewLoginResult(
+      status: WebViewLoginStatus.error,
+      error: AppLocalizations.of(context).protectedStoreRecoveryTitle,
+    );
+  }
   // ADR-034 §5/§6: the installed script chooses its URL, success checks and
   // credential capture. The legacy LoginManifestView is not its auth policy.
   if (school.adapterId.startsWith('script:')) {

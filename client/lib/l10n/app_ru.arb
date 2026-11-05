@@ -876,5 +876,9 @@
       }
     }
   },
-  "messagesConversationInfo": "Сведения о беседе"
+  "messagesConversationInfo": "Сведения о беседе",
+  "protectedStoreRecoveryTitle": "Защищённые данные недоступны",
+  "protectedStoreRecoveryBody": "Не удалось открыть защищённое хранилище этого профиля. elecon сохраняет имеющиеся данные и ключи. Доступ возобновится после успешного восстановления. Попробуйте позже: повторная попытка не удаляет данные и не создаёт новый ключ.",
+  "protectedStoreRecoveryFailed": "Защищённые данные всё ещё недоступны. Попробуйте позже.",
+  "protectedStoreRecoveryRetrying": "Попытка восстановления…"
 }

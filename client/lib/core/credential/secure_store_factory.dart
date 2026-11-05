@@ -15,11 +15,21 @@ Future<SecureStore> resolveSecureStore({
   required HardwareKeyStore hardware,
   required BlobStore blobs,
   required Future<bool> Function() confirmSoftwareFallback,
+  bool Function()? isActive,
 }) async {
-  if (await hardware.isAvailable()) {
+  void check() {
+    if (isActive?.call() == false) throw StateError('script_cancelled');
+  }
+
+  check();
+  final available = await hardware.isAvailable();
+  check();
+  if (available) {
     return HardwareSecureStore.open(hardware, blobs);
   }
-  if (await confirmSoftwareFallback()) {
+  final software = await confirmSoftwareFallback();
+  check();
+  if (software) {
     return SoftwareSecureStore.open(blobs);
   }
   return InMemorySecureStore(releaseMode: false);

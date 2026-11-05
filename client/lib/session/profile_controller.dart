@@ -144,6 +144,9 @@ class ProfileController extends ChangeNotifier {
       await active.session.flush();
       await next.session.bootstrap();
       await _persist(_profiles, id);
+      // Invalidate work started on the old identity while activation awaited
+      // storage or bootstrap, including an explicit protected-store retry.
+      active.session.cancelTrustedScriptRuns();
       _activeId = id;
     } finally {
       _busy = false;
@@ -172,6 +175,7 @@ class ProfileController extends ChangeNotifier {
       await added.session.bootstrap();
       await _persist([..._profiles, added], id);
       added.session.addListener(_changed);
+      active.session.cancelTrustedScriptRuns();
       _profiles.add(added);
       _activeId = id;
     } catch (_) {

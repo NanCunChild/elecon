@@ -675,5 +675,9 @@
       }
     }
   },
-  "messagesConversationInfo": "جزئیات گفتگو"
+  "messagesConversationInfo": "جزئیات گفتگو",
+  "protectedStoreRecoveryTitle": "داده‌های محافظت‌شده در دسترس نیستند",
+  "protectedStoreRecoveryBody": "فضای ذخیره‌سازی محافظت‌شدهٔ این پروفایل باز نشد. elecon داده‌ها و کلیدهای موجود را حفظ می‌کند. دسترسی فقط پس از بازیابی موفق برقرار می‌شود. بعداً دوباره تلاش کنید؛ تلاش مجدد داده‌ها را پاک نمی‌کند و کلید جایگزین نمی‌سازد.",
+  "protectedStoreRecoveryFailed": "داده‌های محافظت‌شده هنوز در دسترس نیستند. می‌توانید بعداً دوباره تلاش کنید.",
+  "protectedStoreRecoveryRetrying": "در حال تلاش برای بازیابی…"
 }

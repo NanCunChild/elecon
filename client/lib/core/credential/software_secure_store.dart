@@ -40,9 +40,24 @@ class SoftwareSecureStore implements SecureStore {
   static Future<bool> hasPersisted(BlobStore blobs) async =>
       (await blobs.read(_dekBlob)) != null;
 
+  /// Recovery/admission only: this check does not generate replacement keys.
+  static Future<bool> hasValidKeyMaterial(BlobStore blobs) async =>
+      (await blobs.read(_dekBlob))?.length == 32;
+
   /// 构建 S 档 store：读取 / 生成明文 DEK，加载并解密整库。
   static Future<SoftwareSecureStore> open(BlobStore blobs) async {
     final dek = await _loadOrCreateDek(blobs);
+    final store = SoftwareSecureStore._(Aes256GcmAead(dek), blobs);
+    await store._load();
+    return store;
+  }
+
+  /// Opens a previously chosen S store without creating/replacing its key.
+  static Future<SoftwareSecureStore> openExisting(BlobStore blobs) async {
+    final dek = await blobs.read(_dekBlob);
+    if (dek == null || dek.length != 32) {
+      throw StateError('protected_key_material_missing');
+    }
     final store = SoftwareSecureStore._(Aes256GcmAead(dek), blobs);
     await store._load();
     return store;

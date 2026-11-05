@@ -212,36 +212,42 @@ void main() {
     expect(c2.credentialProtection, SessionCredentialProtection.hardware);
   });
 
-  test('H unwrap 失败 → wipe + hardwareUnlockFailed + 保留选校', () async {
-    final blobs = InMemoryBlobStore();
-    final good = FakeHardwareKeyStore();
-    final c1 = SessionController(
-      hardware: good,
-      blobStoreProvider: () async => blobs,
-    );
-    await c1.ensurePersistentStore(
-      confirmSoftwareFallback: () => Future<bool>.error(TestFailure('no S')),
-    );
-    c1.selectSchool(testSchool());
-    await _seedHardware(blobs, good, _entry('ehall-session'));
-    await c1.flush();
+  test(
+    'H unwrap failure preserves protected materials and selected school',
+    () async {
+      final blobs = InMemoryBlobStore();
+      final good = FakeHardwareKeyStore();
+      final c1 = SessionController(
+        hardware: good,
+        blobStoreProvider: () async => blobs,
+      );
+      await c1.ensurePersistentStore(
+        confirmSoftwareFallback: () => Future<bool>.error(TestFailure('no S')),
+      );
+      c1.selectSchool(testSchool());
+      await _seedHardware(blobs, good, _entry('ehall-session'));
+      await c1.flush();
+      final wrapped = await blobs.read('store.dek.wrapped');
+      final sealed = await blobs.read('store.enc');
 
-    final c2 = SessionController(
-      hardware: _BrokenHardwareKeyStore(),
-      blobStoreProvider: () async => blobs,
-      initialSchools: [testSchool()],
-    );
-    await c2.bootstrap();
-    expect(c2.hardwareUnlockFailed, isTrue);
-    expect(c2.isLoggedIn, isFalse);
-    expect(c2.selectedSchool?.id, testSchool().id);
-    expect(await HardwareSecureStore.hasPersisted(blobs), isFalse);
+      final c2 = SessionController(
+        hardware: _BrokenHardwareKeyStore(),
+        blobStoreProvider: () async => blobs,
+        initialSchools: [testSchool()],
+      );
+      await c2.bootstrap();
+      expect(c2.hardwareUnlockFailed, isTrue);
+      expect(c2.isLoggedIn, isFalse);
+      expect(c2.selectedSchool?.id, testSchool().id);
+      expect(await HardwareSecureStore.hasPersisted(blobs), isTrue);
+      expect(await c2.retryProtectedStore(), isFalse);
+      expect(c2.hardwareUnlockFailed, isTrue);
+      expect(await blobs.read('store.dek.wrapped'), wrapped);
+      expect(await blobs.read('store.enc'), sealed);
+    },
+  );
 
-    c2.acknowledgeHardwareUnlockFailure();
-    expect(c2.hardwareUnlockFailed, isFalse);
-  });
-
-  test('旧 H blob 遇平台降级为不可用 → wipe 后要求重新登录', () async {
+  test('unavailable hardware never removes an existing H store', () async {
     final blobs = InMemoryBlobStore();
     final good = FakeHardwareKeyStore();
     final c1 = SessionController(
@@ -261,7 +267,7 @@ void main() {
     await c2.bootstrap();
     expect(c2.hardwareUnlockFailed, isTrue);
     expect(c2.isLoggedIn, isFalse);
-    expect(await HardwareSecureStore.hasPersisted(blobs), isFalse);
+    expect(await HardwareSecureStore.hasPersisted(blobs), isTrue);
   });
 
   test('logout 仅抹除当前学校凭证，不波及他校（schoolId 过滤）', () async {
