@@ -4,7 +4,7 @@ import { dateOnly } from "./normalize.js";
 import { serviceError } from "./service_session.js";
 
 export const classroomFilterIds = [
-  "date", "campus", "building", "room", "timeRange", "minimumTeachingSeats",
+  "date", "building", "room", "timeRange", "minimumTeachingSeats",
   "minimumExamSeats", "roomTypes", "onlyAvailable",
 ];
 const invalid = () => { throw serviceError("input_invalid_request"); };
@@ -53,7 +53,7 @@ export function applyQueryFilters(target, params) {
     if (filters.term !== undefined) output.term = filters.term;
     return output;
   }
-  for (const field of ["date", "campus", "room", "onlyAvailable"]) {
+  for (const field of ["date", "room", "onlyAvailable"]) {
     if (filters[field] !== undefined) output[field] = filters[field];
   }
   if (filters.building !== undefined) {

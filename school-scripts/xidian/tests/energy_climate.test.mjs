@@ -275,14 +275,79 @@ test("unconfigured device discovery fails explicitly without input, network or w
   });
   assert.equal(h.calls.length, 0);
 });
-test("configured discovery reuses its binding without opening the input form", async () => {
+test("1.1 discovery restores its binding offline without input or network", async () => {
   const h = harness();
   const configured = await capabilities["climate.devices"](h.ctx, { configure: true });
   h.ctx.ui.requestInput = async () => assert.fail("an existing binding must not prompt again");
   h.calls.length = 0;
   assert.deepEqual(await capabilities["climate.devices"](h.ctx), configured);
-  assert.equal(h.calls.length, 1);
-  assert.ok(h.calls[0].url.pathname.endsWith("/state"));
+  assert.equal(h.calls.length, 0);
+  assert.equal(configured.items[0].bindingVerifiedAt, new Date(NOW).toISOString());
+});
+test("old local bindings omit unknown verification time and still load offline", async () => {
+  const h = harness();
+  h.records.set("xidian.climate:device", JSON.stringify({ deviceId: ID, label: "Old synthetic room" }));
+  h.ctx.fetch = async () => assert.fail("local binding must not request state");
+  const devices = await capabilities["climate.devices"](h.ctx);
+  assert.equal(devices.items[0].label, "Old synthetic room");
+  assert.equal(devices.items[0].bindingVerifiedAt, undefined);
+});
+test("QR identifiers are confirmed and only the fixed endpoint is queried", async () => {
+  for (const value of [ID, `https://gxkt.juhaolian.cn/device?imei=${ID}`,
+    `https://gxkt.juhaolian.cn/#/device?imei=${ID}`]) {
+    const h = harness();
+    let inputs = 0, scans = 0;
+    h.ctx.ui.scanQRCode = async () => { scans++; return { text: value, format: "qrCode" }; };
+    h.ctx.ui.requestInput = async (request) => {
+      inputs++;
+      if (request.fields[0].id === "method") return { method: "scan" };
+      assert.equal(request.fields[0].initialValue, ID);
+      return { deviceId: ID, label: "Confirmed synthetic room" };
+    };
+    const devices = await capabilities["climate.devices"](h.ctx, { configure: true });
+    assert.equal(inputs, 2);
+    assert.equal(scans, 1);
+    assert.equal(devices.items[0].label, "Confirmed synthetic room");
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].url.pathname, "/api/device/direct/state");
+  }
+});
+test("cancelled, denied, invalid or unverifiable replacement keeps the old binding", async () => {
+  for (const mode of ["choice-cancel", "scan-cancel", "permission", "confirm-cancel", "invalid", "network"]) {
+    const h = harness();
+    const old = JSON.stringify({ deviceId: ID, label: "Old synthetic room" });
+    h.records.set("xidian.climate:device", old);
+    h.ctx.ui.requestInput = async (request) => {
+      if (request.fields[0].id === "method") return mode === "choice-cancel" ? null : { method: "scan" };
+      return mode === "confirm-cancel" ? null : { deviceId: ID, label: "New room" };
+    };
+    h.ctx.ui.scanQRCode = async () => {
+      if (mode === "permission") throw Error("scanner_permission_denied");
+      return mode === "scan-cancel" ? null : { text: mode === "invalid" ? "garbage" : ID, format: "qrCode" };
+    };
+    if (mode === "network") h.ctx.fetch = async () => { throw Error("offline"); };
+    await assert.rejects(capabilities["climate.devices"](h.ctx, { configure: true }));
+    assert.equal(h.records.get("xidian.climate:device"), old);
+    assert.equal(h.calls.length, 0);
+  }
+});
+test("foreign, duplicate, malformed and ambiguous QR identifiers never request a device", async () => {
+  for (const value of [
+    `https://foreign.example/device?imei=${ID}`,
+    `http://gxkt.juhaolian.cn/device?imei=${ID}`,
+    `https://gxkt.juhaolian.cn/device?imei=${ID}&imei=${ID}`,
+    `https://gxkt.juhaolian.cn/device?imei=${ID}#/device?imei=${ID}`,
+    `https://gxkt.juhaolian.cn/device?imei=%XX`,
+    `https://gxkt.juhaolian.cn@foreign.example/device?imei=${ID}`,
+    "0".repeat(16), "x".repeat(4097),
+  ]) {
+    const h = harness();
+    h.ctx.ui.requestInput = async () => ({ method: "scan" });
+    h.ctx.ui.scanQRCode = async () => ({ text: value, format: "qrCode" });
+    await assert.rejects(capabilities["climate.devices"](h.ctx, { configure: true }), /climate_qr_invalid/);
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.records.has("xidian.climate:device"), false);
+  }
 });
 test("device binding is verified before save; state has no inferred remaining energy", async () => {
   const h = harness();

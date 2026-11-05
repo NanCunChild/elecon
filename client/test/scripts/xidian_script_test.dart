@@ -395,7 +395,7 @@ process.stdout.write(result.outputFiles[0].text);''',
     'source packages bind SDK 18 and combine browser login with authenticated data',
     () {
       expect(school.manifest.sdkVersion, 18);
-      expect(school.manifest.version, '0.30.0');
+      expect(school.manifest.version, '0.31.0');
       expect(school.manifest.browser, isTrue);
       expect(school.manifest.capabilities, hasLength(26));
       expect(
@@ -463,7 +463,7 @@ process.stdout.write(result.outputFiles[0].text);''',
         expect(types.containsKey('initialValue'), isFalse);
         final building =
             controls.singleWhere((c) => c['id'] == 'building') as Map;
-        expect(building['options'], hasLength(27));
+        expect(building['options'], hasLength(36));
       }
     },
   );
@@ -545,7 +545,6 @@ process.stdout.write(result.outputFiles[0].text);''',
       seed('ehall');
       final filters = {
         'date': '2026-11-04',
-        'campus': 'S',
         'building': 'A',
         'minimumTeachingSeats': 30,
         'roomTypes': ['1'],

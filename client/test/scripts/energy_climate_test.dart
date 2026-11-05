@@ -57,6 +57,41 @@ const validSource =
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    '1.1 device bindings accept finite capabilities and preserve exact 1.0 validation',
+    () {
+      final output = {
+        'items': [
+          {
+            'deviceId': 'synthetic',
+            'label': 'Power only',
+            'commands': ['power'],
+          },
+        ],
+      };
+      expect(
+        outputValidatorFor('elecon.climate.devices', '1.0')!(output),
+        isFalse,
+      );
+      expect(
+        outputValidatorFor('elecon.climate.devices', '1.1')!(output),
+        isTrue,
+      );
+      expect(outputValidatorFor('elecon.climate.devices', '1.2'), isNull);
+      expect(
+        outputValidatorFor('elecon.climate.devices', '1.1')!({
+          'items': [
+            {
+              'deviceId': 'synthetic',
+              'label': 'Synthetic',
+              'commands': ['arbitrary'],
+            },
+          ],
+        }),
+        isFalse,
+      );
+    },
+  );
   test('ordinary commands need no action declaration in supported SDKs', () {
     for (var sdk = 1; sdk <= 7; sdk++) {
       final raw = packageJson(validSource);
@@ -240,6 +275,47 @@ void main() {
       );
     });
     test(
+      'actual scanner confirmation binds only after a fixed-endpoint read',
+      () async {
+        final creds = credentials(school);
+        var scans = 0, reads = 0;
+        final data = await const TrustedScriptRuntime().run(
+          package: school,
+          capability: 'climate.devices',
+          params: const {'configure': true},
+          credentials: creds,
+          htmlStdlib: await File('assets/stdlib/html.bundle.js').readAsString(),
+          scanCall: (_) async {
+            scans++;
+            return {
+              'format': 'qrCode',
+              'text': 'https://gxkt.juhaolian.cn/#/device?imei=$deviceId',
+            };
+          },
+          inputCall: (request) async {
+            if (request.fields.first.id == 'method') return {'method': 'scan'};
+            expect(request.fields.first.initialValue, deviceId);
+            return {'deviceId': deviceId, 'label': 'Scanned synthetic room'};
+          },
+          fetch: (url, init) async {
+            reads++;
+            expect(Uri.parse(url).path, '/api/device/direct/state');
+            expect(Uri.parse(url).queryParameters['imei'], deviceId);
+            return response(url, {
+              'success': true,
+              'result': {'imei': deviceId, 'switchStatus': 0},
+            });
+          },
+        );
+        expect(scans, 1);
+        expect(reads, 1);
+        expect(
+          ((data as Map)['items'] as List).single['label'],
+          'Scanned synthetic room',
+        );
+      },
+    );
+    test(
       'AES/signature requests and normalized meter history execute in QuickJS',
       () async {
         final creds = credentials(school);
@@ -378,10 +454,9 @@ void main() {
           params: const {'configure': true},
           credentials: creds,
           htmlStdlib: await File('assets/stdlib/html.bundle.js').readAsString(),
-          inputCall: (_) async => {
-            'deviceId': deviceId,
-            'label': 'Synthetic room',
-          },
+          inputCall: (request) async => request.fields.first.id == 'method'
+              ? {'method': 'manual'}
+              : {'deviceId': deviceId, 'label': 'Synthetic room'},
           fetch: (url, init) async {
             reads++;
             expect(Uri.parse(url).queryParameters['imei'], deviceId);
@@ -401,10 +476,22 @@ void main() {
         expect(((data as Map)['items'] as List).length, 1);
         final saved = creds.get('device', namespace: 'xidian.climate')!;
         expect(saved['type'], 'query');
-        expect(jsonDecode(saved['value'] as String), {
-          'deviceId': deviceId,
-          'label': 'Synthetic room',
-        });
+        final binding = jsonDecode(saved['value'] as String) as Map;
+        expect(binding['deviceId'], deviceId);
+        expect(binding['label'], 'Synthetic room');
+        expect(
+          DateTime.tryParse(binding['bindingVerifiedAt'] as String),
+          isNotNull,
+        );
+        final offline = await const TrustedScriptRuntime().run(
+          package: school,
+          capability: 'climate.devices',
+          credentials: creds,
+          htmlStdlib: await File('assets/stdlib/html.bundle.js').readAsString(),
+          fetch: (_, _) async =>
+              throw StateError('local binding must not access network'),
+        );
+        expect(offline, data);
       },
     );
   });

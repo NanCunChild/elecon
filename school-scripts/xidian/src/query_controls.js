@@ -7,14 +7,6 @@ import { serviceError } from "./service_session.js";
 
 const label = (ctx, key, fallback) => ctx.i18n?.t(key) ?? fallback;
 
-function defaultSchoolTimeRange(now) {
-  const schoolNow = new Date(now + 8 * 3600 * 1000);
-  const minute = schoolNow.getUTCHours() * 60 + schoolNow.getUTCMinutes();
-  // The same-day contract cannot express an end later than 23:59.
-  if (minute === 1439) return undefined;
-  const clock = (value) => `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
-  return { start: clock(minute), end: clock(Math.min(minute + 60, 1439)) };
-}
 export function createQueryControls(role) {
   return async (ctx, params = {}) => {
     if (!params || typeof params !== "object" || Array.isArray(params) ||
@@ -52,31 +44,23 @@ export function createQueryControls(role) {
 
     // Public names/codes were reviewed on 2026-11-01. No credential or network
     // read belongs to the initial classroom form or its ordinary dependency refresh.
-    // Date and time defaults must describe the same instant across midnight.
+    // The school owns the date default; optional conditions have no hidden defaults.
     const now = ctx.now();
     const directory = classroomDirectory();
     if (!directory.length || directory.length > 200) throw serviceError("source_response_invalid");
-    const campuses = [...new Map(directory.filter((item) => item.campus).map((item) => [item.campus, {
-      value: item.campus,
-      label: item.campusLabel || (item.campus === "S" ? label(ctx, "query.campusSouth", "南校区") :
-        item.campus === "N" ? label(ctx, "query.campusNorth", "北校区") : item.campus),
-    }])).values()];
     const requestedBuilding = directory.find((item) => item.buildingId === current.building);
-    const campus = current.campus === undefined ?
-      requestedBuilding?.campus ?? campuses.find((item) => item.value === "S")?.value ?? campuses[0]?.value :
-      campuses.some((item) => item.value === current.campus) ? current.campus : undefined;
-    const buildings = directory.filter((item) => campus && item.campus === campus);
+    const buildings = directory;
     const date = current.date ?? new Date(now + 8 * 3600 * 1000).toISOString().slice(0, 10);
-    // Do not choose a replacement building after the user changes the campus.
+    // Never choose a replacement building for a missing/removed user selection.
     const building = buildings.find((item) => item.buildingId === current.building);
     const provenance = label(ctx, "query.savedDirectory", "选项来自2026-11-01核对的包内目录；查询时重新核对学校目录");
-    const timeRange = current.timeRange ?? (params.changed === undefined ? defaultSchoolTimeRange(now) : undefined);
+    const timeRange = current.timeRange;
     let roomTypes = [];
     if (loadTypes) {
       if (!requestedBuilding || !current.date) throw serviceError("input_invalid_request");
       const rooms = await classroomAvailable(ctx, {
         role, date: current.date, buildingId: requestedBuilding.buildingId,
-        building: requestedBuilding.building, campus: requestedBuilding.campus,
+        building: requestedBuilding.building,
       });
       roomTypes = [...new Map(rooms.items.filter((item) => item.roomType?.code).map((item) => [item.roomType.code, {
         value: item.roomType.code, label: item.roomType.label,
@@ -85,13 +69,14 @@ export function createQueryControls(role) {
     }
     output.controls.push(
       { id: "date", kind: "date", required: true, label: label(ctx, "query.date", "日期"), initialValue: date },
-      { id: "campus", kind: "select", required: true, label: label(ctx, "query.campus", "校区"),
-        options: campuses, ...(campus ? { initialValue: campus } : {}),
-        ...(!campuses.length ? { disabled: true, disabledReason: label(ctx, "query.noCampuses", "学校未提供可选校区") } : {}) },
       { id: "building", kind: "select", required: true, label: label(ctx, "query.building", "教学楼"),
-        description: provenance, dependsOn: ["campus"], options: buildings.map((item) => ({ value: item.buildingId, label: item.building })),
+        description: provenance, options: buildings.map((item) => ({
+          value: item.buildingId,
+          label: `${item.campusLabel || (item.campus === "S" ? label(ctx, "query.campusSouth", "南校区") :
+            item.campus === "N" ? label(ctx, "query.campusNorth", "北校区") : item.campus)} · ${item.building}`,
+        })),
         ...(building ? { initialValue: building.buildingId } : {}),
-        ...(!buildings.length ? { disabled: true, disabledReason: label(ctx, "query.noBuildings", "当前校区没有可选教学楼") } : {}) },
+        ...(!buildings.length ? { disabled: true, disabledReason: label(ctx, "query.noBuildings", "学校没有可选教学楼") } : {}) },
       { id: "room", kind: "text", label: label(ctx, "query.room", "教室名称"), maxLength: 512 },
       { id: "timeRange", kind: "timeRange", label: label(ctx, "query.timeRange", "学校当地时间段"), timeZone: "Asia/Shanghai",
         description: label(ctx, "query.sectionRange", "按与时间段相交的节次计算占用；不保证课间或实际开放"),
@@ -106,7 +91,7 @@ export function createQueryControls(role) {
           label(ctx, "query.typesSelectBuilding", "先选择日期与教学楼") } : {}),
         ...(loadTypes && !roomTypes.length ? { disabled: true, disabledReason:
           label(ctx, "query.typesMissing", "当前结果未提供教室类型") } : {}) },
-      { id: "onlyAvailable", kind: "boolean", label: label(ctx, "query.onlyAvailable", "仅保留查询节次全部空闲的教室"), initialValue: false },
+      { id: "onlyAvailable", kind: "boolean", label: label(ctx, "query.onlyAvailable", "仅保留查询节次全部空闲的教室") },
     );
     return output;
   };

@@ -10,6 +10,38 @@ import '../support/climate_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('missing unrelated capability metadata does not block power', () {
+    final device = <String, dynamic>{
+      'deviceId': syntheticDeviceId,
+      'label': 'Power only',
+      'commands': ['power'],
+    };
+    final status = {'deviceId': syntheticDeviceId, 'power': false};
+    expect(climateCommandReady(device, status, 'power'), isTrue);
+    expect(climateCommandReady(device, status, 'temperature'), isFalse);
+    expect(climateTarget(device, 'power', true), {'power': true});
+    expect(
+      climateCommandReady(device, {
+        'deviceId': 'other',
+        'power': false,
+      }, 'power'),
+      isFalse,
+    );
+    for (final command in ['temperature', 'mode', 'fanSpeed']) {
+      final unsupported = {
+        ...device,
+        'commands': [command],
+      };
+      expect(
+        () => climateTarget(
+          unsupported,
+          command,
+          command == 'temperature' ? 26 : 'auto',
+        ),
+        throwsA(isA<ClimateControlException>()),
+      );
+    }
+  });
   test('unverified command output does not establish applied state', () {
     for (final status in ['accepted', 'applied', 'rejected', 'unknown']) {
       expect(

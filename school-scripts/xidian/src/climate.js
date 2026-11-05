@@ -6,6 +6,7 @@
 
 import { failure } from "./errors.js";
 import { integer, number, text } from "./normalize.js";
+import { parseUrl } from "./session.js";
 
 const ORIGIN = "https://gxkt.juhaolian.cn";
 const ADDRESS = { namespace: "xidian.climate" };
@@ -20,6 +21,78 @@ const HEADERS = {
 function deviceId(value) {
   if (typeof value !== "string" || !/^\d{15}$/.test(value)) throw new Error("climate_device_invalid");
   return value;
+}
+const label = (ctx, key, fallback) => ctx.i18n?.t(key) ?? fallback;
+
+// Input only: never follow a scanned address. Only the fixed state/command
+// endpoints below may receive the extracted identifier.
+function scannedDeviceId(raw) {
+  if (typeof raw !== "string" || raw.length > 4096) throw new Error("climate_qr_invalid");
+  const value = raw.trim();
+  if (/^\d{15}$/.test(value)) return value;
+  let url;
+  try { url = parseUrl(value); } catch { throw new Error("climate_qr_invalid"); }
+  if (url.origin !== ORIGIN) throw new Error("climate_qr_invalid");
+  const candidates = [];
+  for (const query of [url.query.slice(1), url.hash.includes("?") ? url.hash.slice(url.hash.indexOf("?") + 1) : ""]) {
+    for (const pair of query.split("&")) {
+      const split = pair.indexOf("=");
+      if (split < 0) continue;
+      try {
+        const key = decodeURIComponent(pair.slice(0, split));
+        if (key === "imei") candidates.push(decodeURIComponent(pair.slice(split + 1)));
+      } catch { throw new Error("climate_qr_invalid"); }
+    }
+  }
+  if (candidates.length !== 1 || !/^\d{15}$/.test(candidates[0])) throw new Error("climate_qr_invalid");
+  return candidates[0];
+}
+
+async function configureBinding(ctx) {
+  if (!ctx.ui) throw new Error("input_unavailable");
+  const title = label(ctx, "climate.bindTitle", "绑定宿舍空调");
+  const message = label(ctx, "climate.bindHint", "仅绑定你有权控制的设备。扫描后请核对设备 IMEI。");
+  let scanned;
+  if (typeof ctx.ui.scanQRCode === "function") {
+    const choice = await ctx.ui.requestInput({
+      title, message,
+      fields: [{
+        id: "method", type: "select",
+        label: label(ctx, "climate.inputMethod", "绑定方式"),
+        initialValue: "scan",
+        options: [
+          { value: "scan", label: label(ctx, "climate.scan", "扫描设备二维码") },
+          { value: "manual", label: label(ctx, "climate.manual", "手动输入 IMEI") },
+        ],
+      }],
+    });
+    if (choice === null) throw failure("input_cancelled");
+    if (choice.method === "scan") {
+      const result = await ctx.ui.scanQRCode();
+      if (result === null) throw failure("input_cancelled");
+      if (result.format !== "qrCode") throw new Error("climate_qr_invalid");
+      scanned = scannedDeviceId(result.text);
+    } else if (choice.method !== "manual") throw new Error("climate_binding_method_invalid");
+  }
+  const input = await ctx.ui.requestInput({
+    title, message,
+    fields: [
+      { id: "deviceId", label: label(ctx, "climate.deviceId", "设备 IMEI"), maxLength: 15,
+        ...(scanned ? { initialValue: scanned } : {}) },
+      { id: "label", label: label(ctx, "climate.deviceLabel", "设备名称"), required: false, maxLength: 120 },
+    ],
+  });
+  if (input === null) throw failure("input_cancelled");
+  const device = {
+    deviceId: deviceId(text(input.deviceId)),
+    label: text(input.label) || label(ctx, "climate.defaultLabel", "宿舍空调"),
+  };
+  await status(ctx, device.deviceId);
+  device.bindingVerifiedAt = new Date(ctx.now()).toISOString();
+  await ctx.credentials.set("device", JSON.stringify(device), {
+    ...ADDRESS, type: "query", expiresAt: null,
+  });
+  return device;
 }
 async function binding(ctx) {
   const record = await ctx.credentials.get("device", ADDRESS);
@@ -99,24 +172,8 @@ export async function climateDevices(ctx, params = {}) {
   let device = await binding(ctx);
   if (!device && params.configure !== true) throw failure("configuration_required");
   if (params.configure === true) {
-    if (!ctx.ui) throw new Error("input_unavailable");
-    const input = await ctx.ui.requestInput({
-      title: "绑定宿舍空调",
-      message: "填写你有权控制的空调设备 IMEI（15 位数字）。请从设备标签获取，不要填写其他房间的设备。",
-      fields: [
-        { id: "deviceId", label: "设备 IMEI", maxLength: 15 },
-        { id: "label", label: "设备名称", required: false, maxLength: 120 },
-      ],
-    });
-    if (input === null) throw failure("input_cancelled");
-    device = { deviceId: deviceId(text(input.deviceId)), label: text(input.label) || "宿舍空调" };
-    await status(ctx, device.deviceId);
-    await ctx.credentials.set("device", JSON.stringify(device), {
-      ...ADDRESS,
-      type: "query",
-      expiresAt: null,
-    });
-  } else await status(ctx, device.deviceId);
+    device = await configureBinding(ctx);
+  }
   return {
     items: [
       {

@@ -512,6 +512,11 @@ export async function scheduleWeek(ctx, params = {}) {
     teachingWeekStart: addDays(startDate, (week - 1) * 7),
     teachingWeekEnd: addDays(startDate, week * 7 - 1),
     sourceSystem: pg ? "西电研究生院" : "西电本科教务",
+    timeZone: "Asia/Shanghai",
+    breakSegments: [
+      { label: ctx.i18n?.t("schedule.lunchBreak") ?? "午间休息", timeStart: "12:00", timeEnd: "14:00" },
+      { label: ctx.i18n?.t("schedule.dinnerBreak") ?? "晚间休息", timeStart: "17:30", timeEnd: "19:00" },
+    ],
     timeSegments: TIMES.map(([timeStart, timeEnd], index) => ({
       label: String(index + 1),
       timeStart,
@@ -820,9 +825,9 @@ export async function classroomAvailable(ctx, params = {}) {
   const pg = postgraduate(params);
   const client = await createClient(ctx, "ehall");
   let known = classroomDirectory().find((item) => item.buildingId === params.buildingId);
-  if (params.filters?.building || params.filters?.campus) {
+  if (params.filters?.building || params.campus) {
     known = (await classroomBuildingsLive(ctx, client)).find((item) => item.buildingId === params.buildingId);
-    if (!known || (params.filters.campus && known.campus !== params.filters.campus))
+    if (!known || (params.campus && known.campus !== params.campus))
       throw new Error("classroom_campus_building_conflict");
   }
   // Classroom APIs are shared, but the caller's term defaults follow its role.
@@ -882,7 +887,7 @@ export async function classroomAvailable(ctx, params = {}) {
         { name: "XNXQDM", builder: "equal", linkOpt: "AND", value: term },
         { name: "ZC", builder: "equal", linkOpt: "AND", value: week },
         { name: "XQ", builder: "equal", linkOpt: "AND", value: weekday },
-        ...(params.filters?.campus ? [{ name: "XXXQDM", builder: "equal", linkOpt: "AND", value: params.filters.campus }] : []),
+        ...(params.campus ? [{ name: "XXXQDM", builder: "equal", linkOpt: "AND", value: params.campus }] : []),
       ]),
       "*order": "+LC,+JASMC",
     },

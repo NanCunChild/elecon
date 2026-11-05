@@ -1,7 +1,7 @@
 {
   "sdkVersion": 18,
   "id": "school-xidian-undergraduate",
-  "version": "0.30.0",
+  "version": "0.31.0",
   "schoolId": "xidian_undergraduate",
   "name": "西安电子科技大学（本科生）",
   "network": {
@@ -36,7 +36,7 @@
     {
       "id": "schedule.week",
       "schema": "elecon.schedule.week",
-      "schemaVersion": "1.2"
+      "schemaVersion": "1.3"
     },
     {
       "id": "grades.list",
@@ -101,7 +101,7 @@
     {
       "id": "climate.devices",
       "schema": "elecon.climate.devices",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.1"
     },
     {
       "id": "climate.status",
@@ -360,7 +360,7 @@
         "query.liveDirectory": "选项来自学校实时目录",
         "query.savedDirectory": "选项来自2026-11-01核对的包内目录；查询时重新核对学校目录",
         "query.noCampuses": "学校未提供可选校区",
-        "query.noBuildings": "当前校区没有可选教学楼",
+        "query.noBuildings": "学校没有可选教学楼",
         "query.sectionRange": "按与时间段相交的节次计算占用；不保证课间或实际开放",
         "query.teachingSeats": "上课座位数至少",
         "query.examSeats": "考试座位数至少",
@@ -374,7 +374,17 @@
         "classroom.reasonExam": "考试占用",
         "classroom.reasonRescheduled": "调课占用",
         "classroom.reasonBorrowed": "教室借用",
-        "classroom.reasonBlocked": "教室屏蔽"
+        "classroom.reasonBlocked": "教室屏蔽",
+        "schedule.lunchBreak": "午间休息",
+        "schedule.dinnerBreak": "晚间休息",
+        "climate.bindTitle": "绑定宿舍空调",
+        "climate.bindHint": "仅绑定你有权控制的设备。扫描后请核对设备 IMEI。",
+        "climate.inputMethod": "绑定方式",
+        "climate.scan": "扫描设备二维码",
+        "climate.manual": "手动输入 IMEI",
+        "climate.deviceId": "设备 IMEI",
+        "climate.deviceLabel": "设备名称",
+        "climate.defaultLabel": "宿舍空调"
       },
       "en": {
         "query.title": "Filters",
@@ -392,7 +402,7 @@
         "query.liveDirectory": "Options come from the live school directory",
         "query.savedDirectory": "Options use the packaged directory reviewed on 2026-11-01; querying rechecks the school directory",
         "query.noCampuses": "No campuses supplied by the school",
-        "query.noBuildings": "No buildings in this campus",
+        "query.noBuildings": "The school has no available buildings",
         "query.sectionRange": "Checks class periods overlapping this range; breaks and room access are not confirmed",
         "query.teachingSeats": "Minimum teaching seats",
         "query.examSeats": "Minimum exam seats",
@@ -406,7 +416,17 @@
         "classroom.reasonExam": "Exam",
         "classroom.reasonRescheduled": "Rescheduled class",
         "classroom.reasonBorrowed": "Room booking",
-        "classroom.reasonBlocked": "Room blocked"
+        "classroom.reasonBlocked": "Room blocked",
+        "schedule.lunchBreak": "Lunch break",
+        "schedule.dinnerBreak": "Dinner break",
+        "climate.bindTitle": "Bind room air conditioner",
+        "climate.bindHint": "Bind only a device you may control. Check its IMEI after scanning.",
+        "climate.inputMethod": "Binding method",
+        "climate.scan": "Scan device QR code",
+        "climate.manual": "Enter IMEI manually",
+        "climate.deviceId": "Device IMEI",
+        "climate.deviceLabel": "Device name",
+        "climate.defaultLabel": "Room air conditioner"
       },
       "uz": {
         "query.title": "Qidiruv shartlari",
@@ -424,7 +444,7 @@
         "query.liveDirectory": "Variantlar universitetning joriy katalogidan olingan",
         "query.savedDirectory": "Variantlar 2026-11-01 kuni tekshirilgan paket katalogidan; so‘rov universitet katalogini qayta tekshiradi",
         "query.noCampuses": "Universitet kampuslar ro‘yxatini bermagan",
-        "query.noBuildings": "Bu kampusda tanlanadigan bino yo‘q",
+        "query.noBuildings": "The school has no available buildings",
         "query.sectionRange": "Oraliqqa to‘g‘ri kelgan dars davrlari tekshiriladi; tanaffus va xonaga kirish tasdiqlanmaydi",
         "query.teachingSeats": "Kamida o‘quv o‘rindiqlari",
         "query.examSeats": "Kamida imtihon o‘rindiqlari",
@@ -438,7 +458,9 @@
         "classroom.reasonExam": "Imtihon",
         "classroom.reasonRescheduled": "Ko‘chirilgan dars",
         "classroom.reasonBorrowed": "Xona band qilingan",
-        "classroom.reasonBlocked": "Xona yopilgan"
+        "classroom.reasonBlocked": "Xona yopilgan",
+        "schedule.lunchBreak": "Lunch break",
+        "schedule.dinnerBreak": "Dinner break"
       },
       "ru": {
         "query.title": "Условия поиска",
@@ -456,7 +478,7 @@
         "query.liveDirectory": "Варианты из текущего каталога вуза",
         "query.savedDirectory": "Варианты из каталога пакета, проверенного 2026-11-01; при запросе каталог вуза проверяется снова",
         "query.noCampuses": "Вуз не предоставил список кампусов",
-        "query.noBuildings": "В этом кампусе нет доступных корпусов",
+        "query.noBuildings": "The school has no available buildings",
         "query.sectionRange": "Проверяются пересекающиеся занятия; перемены и доступ в аудиторию не подтверждены",
         "query.teachingSeats": "Минимум учебных мест",
         "query.examSeats": "Минимум экзаменационных мест",
@@ -470,7 +492,9 @@
         "classroom.reasonExam": "Экзамен",
         "classroom.reasonRescheduled": "Перенесённое занятие",
         "classroom.reasonBorrowed": "Бронирование аудитории",
-        "classroom.reasonBlocked": "Аудитория заблокирована"
+        "classroom.reasonBlocked": "Аудитория заблокирована",
+        "schedule.lunchBreak": "Lunch break",
+        "schedule.dinnerBreak": "Dinner break"
       },
       "fa": {
         "query.title": "شرایط جستجو",
@@ -488,7 +512,7 @@
         "query.liveDirectory": "گزینه‌ها از فهرست فعلی دانشگاه هستند",
         "query.savedDirectory": "گزینه‌ها از فهرست بستهٔ بررسی‌شده در 2026-11-01 هستند؛ هنگام جستجو فهرست دانشگاه دوباره بررسی می‌شود",
         "query.noCampuses": "دانشگاه فهرست پردیس‌ها را ارائه نکرده است",
-        "query.noBuildings": "در این پردیس ساختمانی برای انتخاب وجود ندارد",
+        "query.noBuildings": "The school has no available buildings",
         "query.sectionRange": "جلسه‌های هم‌پوشان با بازه بررسی می‌شوند؛ زنگ تفریح و دسترسی به کلاس تأیید نشده‌اند",
         "query.teachingSeats": "حداقل صندلی برای کلاس",
         "query.examSeats": "حداقل صندلی برای امتحان",
@@ -502,7 +526,9 @@
         "classroom.reasonExam": "امتحان",
         "classroom.reasonRescheduled": "کلاس جابه‌جا‌شده",
         "classroom.reasonBorrowed": "رزرو کلاس",
-        "classroom.reasonBlocked": "کلاس مسدود"
+        "classroom.reasonBlocked": "کلاس مسدود",
+        "schedule.lunchBreak": "Lunch break",
+        "schedule.dinnerBreak": "Dinner break"
       }
     }
   },
@@ -552,5 +578,6 @@
       "template": "forum",
       "tab": true
     }
-  ]
+  ],
+  "scanner": true
 }
