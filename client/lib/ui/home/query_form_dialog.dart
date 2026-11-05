@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../core/scripts/query_filters.dart';
+import '../../core/scripts/query_form_cache.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../session/session_controller.dart';
 import 'query_form_model.dart';
@@ -29,10 +30,16 @@ class QueryFormDialog extends StatefulWidget {
     this.onSubmit,
     this.onInitialSubmit,
     this.submitInitial = false,
+    this.loadDraft,
+    this.saveDraft,
+    this.collapseOptional = false,
   });
   final ValueChanged<Map<String, dynamic>>? onSubmit;
   final ValueChanged<Map<String, dynamic>>? onInitialSubmit;
   final bool submitInitial;
+  final bool collapseOptional;
+  final Future<Map<String, dynamic>?> Function()? loadDraft;
+  final Future<bool> Function(Map<String, dynamic>? draft)? saveDraft;
   final QueryFormLoader load;
   final QueryFormDeferredLoader? loadDeferred;
   final Map<String, dynamic> current;
@@ -50,6 +57,12 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
   final _seenFields = <String>{};
   final _baseFields = <String, QueryFormField>{};
   Timer? _debounce;
+  Timer? _draftDebounce;
+  final _editedFields = <String>{};
+  final _restoredEditors = <String, String>{};
+  bool _restoredDraft = false, _skipDraftSave = false;
+  bool _optionalExpanded = false;
+  bool _draftStorageFailed = false;
   int _revision = 0;
   int _deferredRevision = 0;
   ScriptRunCancellation? _deferredCancellation;
@@ -67,7 +80,88 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
       );
     }
     widget.session.addListener(_checkIdentity);
-    unawaited(_reload());
+    unawaited(_restore());
+  }
+
+  Future<void> _restore() async {
+    try {
+      final draft = await widget.loadDraft?.call();
+      if (!mounted || !widget.isActive()) return;
+      if (draft != null &&
+          isQueryFilterMap(draft['applied']) &&
+          jsonEncode(ScriptQueryFormCache.canonical(draft['applied'])) ==
+              jsonEncode(ScriptQueryFormCache.canonical(widget.current)) &&
+          isQueryFilterMap(draft['edits']) &&
+          (!draft.containsKey('rawEditors') ||
+              isQueryFormRawEditors(draft['rawEditors'])) &&
+          draft['cleared'] is List &&
+          (draft['cleared'] as List).every(isQueryFieldId)) {
+        final edits = Map<String, dynamic>.from(draft['edits']);
+        final cleared = List<String>.from(draft['cleared']);
+        _values.addAll(edits);
+        for (final id in cleared) {
+          _values.remove(id);
+        }
+        _editedFields.addAll([...edits.keys, ...cleared]);
+        _restoredEditors.addAll(
+          Map<String, String>.from(draft['rawEditors'] ?? const {}),
+        );
+        _editedFields.addAll(
+          _restoredEditors.keys.map(
+            (key) => key.startsWith('range:') ? key.split(':')[1] : key,
+          ),
+        );
+        _restoredDraft = _editedFields.isNotEmpty;
+        // Cleared defaults must not be silently reintroduced by the loader.
+        _seenFields.addAll(_editedFields);
+      }
+    } on Object {
+      /* An optional draft never blocks school metadata. */
+    }
+    if (mounted && widget.isActive()) await _reload();
+  }
+
+  Future<void> _persistDraft({bool clear = false}) async {
+    final save = widget.saveDraft;
+    if (save == null || !widget.isActive()) return;
+    final valid = _metadataDraft();
+    final draft = clear
+        ? null
+        : <String, dynamic>{
+            'applied': widget.current,
+            'edits': {
+              for (final id in _editedFields)
+                if (valid.containsKey(id)) id: valid[id],
+            },
+            'cleared': [
+              for (final id in _editedFields)
+                if (!valid.containsKey(id)) id,
+            ],
+            'rawEditors': {
+              ..._restoredEditors,
+              for (final field in _form?.fields ?? const <QueryFormField>[])
+                if (field.kind == 'number' &&
+                    _editedFields.contains(field.id) &&
+                    _invalidNumbers.contains(field.id))
+                  field.id: _editors[field.id]?.text ?? ''
+                else if (field.kind == 'timeRange' &&
+                    _editedFields.contains(field.id) &&
+                    !field.accepts(_values[field.id]))
+                  for (final edge in ['start', 'end'])
+                    'range:${field.id}:$edge':
+                        _editors['range:${field.id}:$edge']?.text ?? '',
+            },
+          };
+    try {
+      final saved = await save(draft);
+      if (mounted && widget.isActive()) {
+        setState(() => _draftStorageFailed = !saved);
+      }
+    } on Object {
+      if (mounted && widget.isActive()) {
+        setState(() => _draftStorageFailed = true);
+      }
+    }
   }
 
   void _checkIdentity() {
@@ -87,6 +181,8 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
 
   @override
   void dispose() {
+    _draftDebounce?.cancel();
+    if (!_skipDraftSave && _editedFields.isNotEmpty) unawaited(_persistDraft());
     _revision++;
     _cancelDeferred();
     _debounce?.cancel();
@@ -155,7 +251,26 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
               field.initialValue != null) {
             _values[field.id] = field.initialValue;
           }
+          final rawNumber = _restoredEditors.remove(field.id);
+          if (field.kind == 'number' && rawNumber != null) {
+            final value = num.tryParse(rawNumber);
+            if (value == null || !value.isFinite) {
+              _values.remove(field.id);
+              if (rawNumber.isNotEmpty) _invalidNumbers.add(field.id);
+            } else {
+              _values[field.id] = value;
+            }
+            _editor(field.id, rawNumber, sync: true);
+          }
           if (field.kind == 'timeRange') {
+            final start = _restoredEditors.remove('range:${field.id}:start');
+            final end = _restoredEditors.remove('range:${field.id}:end');
+            if (start != null || end != null) {
+              _values[field.id] = {
+                if (start != null && start.isNotEmpty) 'start': start,
+                if (end != null && end.isNotEmpty) 'end': end,
+              };
+            }
             final range = _values[field.id];
             for (final edge in ['start', 'end']) {
               _editor(
@@ -169,9 +284,11 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
             _editor(field.id, _values[field.id]?.toString() ?? '', sync: true);
           }
         }
+        _restoredEditors.clear();
         _form = next;
         if (!_initialSubmitted &&
             widget.submitInitial &&
+            !_restoredDraft &&
             widget.onSubmit != null) {
           _initialSubmitted = true;
           final initial = next.values(_values);
@@ -213,6 +330,9 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
         .where(
           (field) =>
               field.deferred &&
+              (!widget.collapseOptional ||
+                  _optionalExpanded ||
+                  _values.containsKey(field.id)) &&
               !field.disabled &&
               field.dependsOn.every((id) {
                 final dependency = form.fields.firstWhere(
@@ -313,6 +433,13 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
   }) {
     if (!widget.isActive()) return;
     final descendants = _form!.descendants(field.id);
+    _skipDraftSave = false;
+    _editedFields.addAll([field.id, ...descendants]);
+    _draftDebounce?.cancel();
+    _draftDebounce = Timer(
+      const Duration(milliseconds: 250),
+      () => unawaited(_persistDraft()),
+    );
     final reload = descendants.isNotEmpty || _loading || _failed;
     if (reload) _cancelDeferred();
     _revision++;
@@ -622,9 +749,29 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
     }
   }
 
+  String _selectionLabel(QueryFormField field) {
+    final value = _values[field.id];
+    String option(Object? raw) =>
+        field.options.where((o) => o.value == raw).firstOrNull?.label ??
+        raw.toString();
+    if (value is List) return value.map(option).join(', ');
+    if (value is Map) return '${value['start']}–${value['end']}';
+    return option(value);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final fields = _form?.fields ?? const <QueryFormField>[];
+    final optional = fields.where((field) => !field.required).toList();
+    final selectedOptional = optional.where((field) {
+      final value = _values[field.id];
+      return value != null && value != '' && !(value is List && value.isEmpty);
+    }).toList();
+    final visible = fields.where(
+      (field) =>
+          !widget.collapseOptional || field.required || _optionalExpanded,
+    );
     final content = SizedBox(
       width: 440,
       child: SingleChildScrollView(
@@ -634,7 +781,38 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
           children: [
             if (_loading)
               LinearProgressIndicator(semanticsLabel: l10n.homeCardLoading),
-            for (final field in _form?.fields ?? const <QueryFormField>[])
+            if (widget.collapseOptional && optional.isNotEmpty)
+              ListTile(
+                key: const ValueKey('query-form-optional'),
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.queryMoreConditions(selectedOptional.length)),
+                subtitle: selectedOptional.isEmpty
+                    ? null
+                    : Text(
+                        selectedOptional
+                            .map(
+                              (field) =>
+                                  '${field.label}: ${_selectionLabel(field)}',
+                            )
+                            .join(' · '),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                trailing: Icon(
+                  _optionalExpanded ? Icons.expand_less : Icons.expand_more,
+                ),
+                onTap: () {
+                  setState(() => _optionalExpanded = !_optionalExpanded);
+                  if (_optionalExpanded) {
+                    unawaited(_resolveDeferred());
+                  } else if (!fields.any(
+                    (field) => field.deferred && _values.containsKey(field.id),
+                  )) {
+                    _cancelDeferred();
+                  }
+                },
+              ),
+            for (final field in visible)
               if (!field.deferred)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 7),
@@ -660,6 +838,7 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
                 icon: const Icon(Icons.refresh, size: 18),
                 label: Text(l10n.queryOptionalRetry),
               ),
+            if (_draftStorageFailed) Text(l10n.queryDraftStorageFailed),
             if (_failed) ...[
               Text(l10n.scriptsSourceResponseInvalid),
               TextButton.icon(
@@ -675,7 +854,12 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
     final actions = <Widget>[
       if (widget.onSubmit == null)
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            _skipDraftSave = true;
+            _draftDebounce?.cancel();
+            unawaited(_persistDraft(clear: true));
+            Navigator.pop(context);
+          },
           child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
         ),
       FilledButton(
@@ -697,6 +881,10 @@ class _QueryFormDialogState extends State<QueryFormDialog> {
                   return;
                 }
                 _cancelDeferred();
+                _skipDraftSave = true;
+                _draftDebounce?.cancel();
+                unawaited(_persistDraft(clear: true));
+                _editedFields.clear();
                 if (widget.onSubmit != null) {
                   widget.onSubmit!(values);
                 } else {

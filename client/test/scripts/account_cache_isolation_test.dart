@@ -8,6 +8,7 @@ import 'package:elecon/core/credential/store.dart';
 import 'package:elecon/core/scripts/account_auth.dart';
 import 'package:elecon/core/scripts/credentials.dart';
 import 'package:elecon/core/scripts/data_cache.dart';
+import 'package:elecon/core/scripts/query_form_cache.dart';
 import 'package:elecon/core/scripts/manifest.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,6 +30,8 @@ const _source = '''export const capabilities={
     await ctx.accounts.completePassword('school',{attemptId:pair.attemptId,outcome:'authenticated'});
     return {status:'authenticated'};
   },
+  'query.controls':async()=>({target:'grades.list',title:'Form',submitLabel:'Search',controls:[]}),
+  'grades.list':async()=>({items:[]}),
   'notice.list':async(ctx,params)=>{
     ctx.log('info','synthetic_query_started');
     if(params.seedCredential)await ctx.credentials.set('service-token','SYNTHETIC_PRESERVED_TOKEN',{namespace:'synthetic.service'});
@@ -45,6 +48,18 @@ ScriptPackage _package({
       jsonDecode(passwordPackage(source: _source).encode())
           as Map<String, dynamic>;
   final manifest = raw['manifest'] as Map<String, dynamic>;
+  (manifest['capabilities'] as List).addAll([
+    {
+      'id': 'query.controls',
+      'schema': 'elecon.query.controls',
+      'schemaVersion': '2.1',
+    },
+    {
+      'id': 'grades.list',
+      'schema': 'elecon.grades.list',
+      'schemaVersion': '1.1',
+    },
+  ]);
   manifest['id'] = id;
   manifest['schoolId'] = school;
   manifest['home'] = [
@@ -135,6 +150,21 @@ Future<void> _seedA(SessionController session, ScriptPackage package) async {
     ((await _cached(session, package))!.data as Map)['principal'],
     'SYNTHETIC_A',
   );
+  expect(
+    await session.saveQueryForm(
+      package.manifest.id,
+      package.digest,
+      'grades.list',
+      {},
+      {
+        'target': 'grades.list',
+        'title': 'Form',
+        'submitLabel': 'Search',
+        'controls': [],
+      },
+    ),
+    isTrue,
+  );
   await session.flush();
 }
 
@@ -174,6 +204,15 @@ void main() {
       final dataGeneration = session.trustedScriptDataGeneration;
       final result = await _login(session, package, 'SYNTHETIC_B');
       expect(result.ok, isTrue, reason: result.reason);
+      expect(
+        await session.cachedQueryForm(
+          package.manifest.id,
+          package.digest,
+          'grades.list',
+          {},
+        ),
+        isNull,
+      );
       expect(session.trustedScriptViewGeneration, viewGeneration);
       expect(session.trustedScriptDataGeneration, greaterThan(dataGeneration));
       for (final locale in ['zh', 'en']) {
@@ -188,13 +227,19 @@ void main() {
       final persisted = await SoftwareSecureStore.open(blobs);
       expect(
         persisted.list().where(
-          (e) => e.schoolId == 'synthetic' && e.type == ScriptDataCache.type,
+          (e) =>
+              e.schoolId == 'synthetic' &&
+              (e.type == ScriptDataCache.type ||
+                  e.type == ScriptQueryFormCache.type),
         ),
         isEmpty,
       );
       expect(
         persisted.list().where(
-          (e) => e.schoolId == 'other' && e.type == ScriptDataCache.type,
+          (e) =>
+              e.schoolId == 'other' &&
+              (e.type == ScriptDataCache.type ||
+                  e.type == ScriptQueryFormCache.type),
         ),
         hasLength(1),
       );
@@ -283,6 +328,15 @@ void main() {
       final package = _package();
       final session = await _session(blobs, package);
       await _seedA(session, package);
+      expect(
+        await session.cachedQueryForm(
+          package.manifest.id,
+          package.digest,
+          'grades.list',
+          {},
+        ),
+        isNotNull,
+      );
       blobs.failWrites = true;
       var prompts = 0;
       final logs = <String>[];

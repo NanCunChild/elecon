@@ -634,5 +634,14 @@
   "shortcutsHint": "Tezkor funksiyalar uchun ilova belgisini bosib turing yoki quyidan yorliq tanlang. Joriy profil va universitet ishlatiladi.",
   "shortcutsRequested": "Yorliq so‘raldi. Bosh ekran so‘rovini tasdiqlang.",
   "shortcutsPinFailed": "Bosh ekran yorliq qo‘sha olmadi.",
-  "shortcutsUnavailable": "Bu funksiya joriy universitet yoki tasdiqlangan skriptda mavjud emas. Bosh sahifadagi manbalarni tekshiring."
+  "shortcutsUnavailable": "Bu funksiya joriy universitet yoki tasdiqlangan skriptda mavjud emas. Bosh sahifadagi manbalarni tekshiring.",
+  "queryMoreConditions": "Qo‘shimcha shartlar ({count})",
+  "@queryMoreConditions": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "queryDraftStorageFailed": "O‘zgarishlar joriy seans davomida saqlanadi, ammo qoralamani saqlab bo‘lmadi."
 }

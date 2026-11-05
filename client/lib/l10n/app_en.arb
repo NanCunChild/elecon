@@ -853,5 +853,14 @@
   "shortcutsUnavailable": "This feature is unavailable for the current school or approved script. Check sources on the home page.",
   "librarySearchTitle": "Find books",
   "librarySearchHint": "Title, author or ISBN",
-  "librarySearchEmpty": "No matching books"
+  "librarySearchEmpty": "No matching books",
+  "queryMoreConditions": "More conditions ({count})",
+  "@queryMoreConditions": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "queryDraftStorageFailed": "Changes are kept for this visit; the draft could not be saved."
 }

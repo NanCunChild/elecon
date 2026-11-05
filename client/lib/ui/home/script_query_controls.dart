@@ -1,11 +1,14 @@
 /// ADR-071: fixed inputs bound to a source's declared read-only query.
 library;
 
+import 'dart:convert';
+
 import 'package:elecon_contract/output_validator_registry.dart';
 import 'package:flutter/material.dart';
 
 import '../../l10n/gen/app_localizations.dart';
 import '../../core/scripts/manifest.dart';
+import '../../core/scripts/query_form_cache.dart';
 import '../../session/session_controller.dart';
 import '../../session/session_scope.dart';
 import 'capability_source.dart';
@@ -184,6 +187,55 @@ Future<String?> scriptQueryControlsVersion(
   source: source,
 ))?.manifest.capability('query.controls')?.schemaVersion;
 
+// Metadata and deferred options share the exact source/parameter cache. Drafts
+// are stored independently and never passed to a business query on restoration.
+Future<QueryForm> _loadQueryForm(
+  SessionController session,
+  ScriptPackage package,
+  String target,
+  String version,
+  Map<String, dynamic> params,
+  bool Function() active, {
+  ScriptRunCancellation? cancellation,
+}) async {
+  if (!active()) throw const FormatException('script_cancelled');
+  final cached = await session.cachedQueryForm(
+    package.manifest.id,
+    package.digest,
+    target,
+    params,
+  );
+  if (!active() || cancellation?.isCancelled == true) {
+    throw const FormatException('script_cancelled');
+  }
+  final restored = queryFormFromDynamic(cached, target, version: version);
+  if (restored != null) return restored;
+  final result = await session.runTrustedScript(
+    package.manifest.id,
+    'query.controls',
+    expectedDigest: package.digest,
+    params: params,
+    interactive: false,
+    cancellation: cancellation,
+  );
+  if (!active() || cancellation?.isCancelled == true || !result.ok) {
+    throw const FormatException('query_controls_unavailable');
+  }
+  final form = queryFormFromDynamic(result.data, target, version: version);
+  if (form == null) throw const FormatException('query_controls_unavailable');
+  await session.saveQueryForm(
+    package.manifest.id,
+    package.digest,
+    target,
+    params,
+    Map<String, dynamic>.from(result.data as Map),
+  );
+  if (!active() || cancellation?.isCancelled == true) {
+    throw const FormatException('script_cancelled');
+  }
+  return form;
+}
+
 Future<ScriptQuerySelection> pickScriptQueryControls(
   BuildContext context,
   SessionController session,
@@ -201,8 +253,7 @@ Future<ScriptQuerySelection> pickScriptQueryControls(
       session.trustedScriptViewGeneration == generation &&
       session.trustedScriptDataGeneration == dataGeneration &&
       session.scriptLocale == locale &&
-      session.selectedSchool?.id == schoolId &&
-      CapabilitySourceScope.maybeOf(context)?.source == bound;
+      session.selectedSchool?.id == schoolId;
   if (!active() || schoolId == null) {
     return const ScriptQuerySelection(supported: true);
   }
@@ -232,64 +283,75 @@ Future<ScriptQuerySelection> pickScriptQueryControls(
         registry.find(package.manifest.id)?.package.digest == package.digest &&
         (bound != null ||
             registry.provider(schoolId, target)?.digest == package.digest);
-    final selected = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (_) => QueryFormDialog(
-        session: session,
-        isActive: currentSource,
-        current: current?['filters'] is Map
-            ? Map<String, dynamic>.from(current!['filters'])
-            : const {},
-        load: (draft, changed) async {
-          if (!currentSource()) throw const FormatException('script_cancelled');
-          final result = await runOnceDecoded<QueryForm>(
-            session,
-            'query.controls',
-            params: {'target': target, 'current': draft, 'changed': ?changed},
-            interactive: false,
-            source: CapabilitySource(
-              packageId: package.manifest.id,
-              digest: package.digest,
-            ),
-            decode: (raw) =>
-                queryFormFromDynamic(raw, target, version: formVersion),
-          );
-          if (!currentSource() || result.data == null) {
-            throw const FormatException('query_controls_unavailable');
-          }
-          return result.data!;
-        },
-        loadDeferred: formVersion != '2.1'
-            ? null
-            : (draft, fields, cancellation) async {
-                if (!currentSource()) {
-                  throw const FormatException('script_cancelled');
-                }
-                final result = await session.runTrustedScript(
+    ScriptRunCancellation? baseCancellation;
+    var dialogOpen = true;
+    bool metadataActive() => dialogOpen && currentSource();
+    Map<String, dynamic>? selected;
+    try {
+      selected = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (_) => QueryFormDialog(
+          session: session,
+          isActive: currentSource,
+          current: current?['filters'] is Map
+              ? Map<String, dynamic>.from(current!['filters'])
+              : const {},
+          collapseOptional: true,
+          loadDraft: () => session.cachedQueryForm(
+            package.manifest.id,
+            package.digest,
+            target,
+            {'current': current?['filters'] ?? const {}},
+            draft: true,
+          ),
+          saveDraft: (draft) => currentSource()
+              ? session.saveQueryForm(
                   package.manifest.id,
-                  'query.controls',
-                  expectedDigest: package.digest,
-                  params: {'target': target, 'current': draft, 'load': fields},
-                  interactive: false,
-                  cancellation: cancellation,
-                );
-                if (!currentSource() ||
-                    cancellation.isCancelled ||
-                    !result.ok) {
-                  throw const FormatException('query_controls_unavailable');
-                }
-                final form = queryFormFromDynamic(
-                  result.data,
+                  package.digest,
                   target,
-                  version: formVersion,
-                );
-                if (form == null) {
-                  throw const FormatException('query_controls_unavailable');
-                }
-                return form;
-              },
-      ),
-    );
+                  {'current': current?['filters'] ?? const {}},
+                  draft,
+                  draft: true,
+                )
+              : Future.value(false),
+          load: (draft, changed) async {
+            baseCancellation?.cancel();
+            final cancellation = ScriptRunCancellation();
+            baseCancellation = cancellation;
+            try {
+              return await _loadQueryForm(
+                session,
+                package,
+                target,
+                formVersion,
+                {'target': target, 'current': draft, 'changed': ?changed},
+                metadataActive,
+                cancellation: cancellation,
+              );
+            } finally {
+              if (identical(baseCancellation, cancellation)) {
+                baseCancellation = null;
+              }
+              cancellation.dispose();
+            }
+          },
+          loadDeferred: formVersion != '2.1'
+              ? null
+              : (draft, fields, cancellation) => _loadQueryForm(
+                  session,
+                  package,
+                  target,
+                  formVersion,
+                  {'target': target, 'current': draft, 'load': fields},
+                  metadataActive,
+                  cancellation: cancellation,
+                ),
+        ),
+      );
+    } finally {
+      dialogOpen = false;
+      baseCancellation?.cancel();
+    }
     return ScriptQuerySelection(
       supported: true,
       params: currentSource() && selected != null
@@ -553,6 +615,8 @@ class InlineScriptQueryControls extends StatefulWidget {
 
 class _InlineScriptQueryControlsState extends State<InlineScriptQueryControls> {
   Object? _key;
+  Object? _identity;
+  bool _initialSubmitted = false;
   Future<ScriptPackage?>? _provider;
   ScriptRunCancellation? _baseCancellation;
 
@@ -568,29 +632,38 @@ class _InlineScriptQueryControlsState extends State<InlineScriptQueryControls> {
     final source = CapabilitySourceScope.maybeOf(context)?.source;
     final generation = session.trustedScriptViewGeneration;
     final dataGeneration = session.trustedScriptDataGeneration;
-    final key = (
+    final locale = session.scriptLocale;
+    final identity = (
       session,
       source,
       generation,
       dataGeneration,
-      session.scriptLocale,
+      locale,
       widget.target,
     );
-    if (_key != key) {
-      _key = key;
-      _baseCancellation?.cancel();
+    if (_identity != identity) {
+      _identity = identity;
+      _initialSubmitted = false;
       _provider = _queryControlsProvider(
         session,
         widget.target,
         source: source,
       );
     }
+    final applied = widget.current['filters'] is Map
+        ? Map<String, dynamic>.from(widget.current['filters'])
+        : <String, dynamic>{};
+    final key = (identity, jsonEncode(ScriptQueryFormCache.canonical(applied)));
+    if (_key != key) {
+      _key = key;
+      _baseCancellation?.cancel();
+    }
     bool active() =>
         mounted &&
         _key == key &&
-        identical(SessionScope.of(context), session) &&
         session.trustedScriptViewGeneration == generation &&
-        session.trustedScriptDataGeneration == dataGeneration;
+        session.trustedScriptDataGeneration == dataGeneration &&
+        session.scriptLocale == locale;
     return FutureBuilder<ScriptPackage?>(
       future: _provider,
       builder: (context, snapshot) {
@@ -608,79 +681,75 @@ class _InlineScriptQueryControlsState extends State<InlineScriptQueryControls> {
           key: ValueKey(key),
           session: session,
           isActive: active,
-          current: widget.current['filters'] is Map
-              ? Map<String, dynamic>.from(widget.current['filters'])
-              : const {},
-          submitInitial: widget.submitInitial,
+          current: applied,
+          submitInitial:
+              widget.submitInitial && !_initialSubmitted && applied.isEmpty,
           onInitialSubmit: (filters) {
-            if (active()) {
+            if (active() && !_initialSubmitted) {
+              _initialSubmitted = true;
               (widget.onInitialSubmit ?? widget.onSubmit)({'filters': filters});
             }
           },
           onSubmit: (filters) {
-            if (active()) widget.onSubmit({'filters': filters});
+            if (active()) {
+              _initialSubmitted = true;
+              widget.onSubmit({'filters': filters});
+            }
           },
+          collapseOptional: true,
+          loadDraft: () => session.cachedQueryForm(
+            package.manifest.id,
+            package.digest,
+            widget.target,
+            {'current': applied},
+            draft: true,
+          ),
+          saveDraft: (draft) => active()
+              ? session.saveQueryForm(
+                  package.manifest.id,
+                  package.digest,
+                  widget.target,
+                  {'current': applied},
+                  draft,
+                  draft: true,
+                )
+              : Future.value(false),
           load: (draft, changed) async {
             _baseCancellation?.cancel();
             final cancellation = ScriptRunCancellation();
             _baseCancellation = cancellation;
-            if (!active()) throw const FormatException('script_cancelled');
-            final result = await session.runTrustedScript(
-              package.manifest.id,
-              'query.controls',
-              expectedDigest: package.digest,
-              params: {
-                'target': widget.target,
-                'current': draft,
-                'changed': ?changed,
-              },
-              interactive: false,
-              cancellation: cancellation,
-            );
-            if (!active() || cancellation.isCancelled || !result.ok) {
-              throw const FormatException('query_controls_unavailable');
+            try {
+              return await _loadQueryForm(
+                session,
+                package,
+                widget.target,
+                version!,
+                {
+                  'target': widget.target,
+                  'current': draft,
+                  'changed': ?changed,
+                },
+                active,
+                cancellation: cancellation,
+              );
+            } finally {
+              if (identical(_baseCancellation, cancellation)) {
+                _baseCancellation = null;
+              }
+              cancellation.dispose();
             }
-            final form = queryFormFromDynamic(
-              result.data,
-              widget.target,
-              version: version!,
-            );
-            if (form == null) {
-              throw const FormatException('query_controls_unavailable');
-            }
-            return form;
           },
           loadDeferred: version != '2.1'
               ? null
-              : (draft, fields, cancellation) async {
-                  if (!active()) {
-                    throw const FormatException('script_cancelled');
-                  }
-                  final result = await session.runTrustedScript(
-                    package.manifest.id,
-                    'query.controls',
-                    expectedDigest: package.digest,
-                    params: {
-                      'target': widget.target,
-                      'current': draft,
-                      'load': fields,
-                    },
-                    interactive: false,
-                    cancellation: cancellation,
-                  );
-                  if (!active() || cancellation.isCancelled || !result.ok) {
-                    throw const FormatException('query_controls_unavailable');
-                  }
-                  final form = queryFormFromDynamic(
-                    result.data,
-                    widget.target,
-                    version: version!,
-                  );
-                  if (form == null) {
-                    throw const FormatException('query_controls_unavailable');
-                  }
-                  return form;
-                },
+              : (draft, fields, cancellation) => _loadQueryForm(
+                  session,
+                  package,
+                  widget.target,
+                  version!,
+                  {'target': widget.target, 'current': draft, 'load': fields},
+                  active,
+                  cancellation: cancellation,
+                ),
         );
       },
     );

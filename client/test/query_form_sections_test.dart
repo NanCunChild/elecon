@@ -193,6 +193,15 @@ void main() {
             .isNotEmpty,
       );
       expect(find.textContaining('Synthetic subset'), findsOneWidget);
+      // Applied conditions rebuild their matching editor independently of the
+      // result. Metadata restoration must finish without another business call.
+      await until(
+        tester,
+        () => find
+            .byKey(const ValueKey('query-control-visitDate'))
+            .evaluate()
+            .isNotEmpty,
+      );
       expect(
         session.requests
             .where((call) => call.$1 == 'classroom.available')

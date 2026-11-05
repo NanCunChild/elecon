@@ -150,6 +150,8 @@ void main() {
         },
       ]);
       expect(manual, isEmpty);
+      await tester.tap(find.byKey(const ValueKey('query-form-optional')));
+      await tester.pumpAndSettle();
       expect(find.text('Correct provider'), findsOneWidget);
       expect(find.text('Wrong provider'), findsNothing);
       await tester.enterText(

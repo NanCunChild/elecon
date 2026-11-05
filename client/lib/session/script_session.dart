@@ -803,6 +803,7 @@ extension TrustedScriptSession on SessionController {
         store.delete(ref);
       }
       removals.addAll(ScriptDataCache(store).clearSchool(school.id));
+      removals.addAll(ScriptQueryFormCache(store).clearSchool(school.id));
       onCredentialsChanged();
       try {
         await _flushCredentialBackend(backend);

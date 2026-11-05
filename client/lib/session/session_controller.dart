@@ -62,12 +62,14 @@ import '../core/scripts/http_transport.dart';
 import '../core/scripts/websocket_transport.dart';
 import '../core/scripts/browser.dart' show ScriptBrowserException;
 import '../core/scripts/data_cache.dart';
+import '../core/scripts/query_form_cache.dart';
 import '../core/scripts/readiness.dart';
 export '../core/scripts/data_cache.dart' show ScriptCachedData;
 export '../core/attendance_places.dart' show AttendancePlace;
 export '../core/messages/archive.dart' show MessageArchiveView, ArchivedMessage;
 
 part 'script_session.dart';
+part 'query_form_session.dart';
 part 'attendance_session.dart';
 part 'message_session.dart';
 part 'network_session.dart';
@@ -235,6 +237,7 @@ class SessionController extends ChangeNotifier {
       _store.list().where(
         (entry) =>
             entry.type != ScriptDataCache.type &&
+            entry.type != ScriptQueryFormCache.type &&
             entry.type != ScriptReadinessStore.type &&
             entry.type != ScriptAccountStore.type &&
             entry.type != AttendancePlacesStore.type &&
