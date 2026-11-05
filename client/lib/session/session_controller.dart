@@ -28,6 +28,7 @@ import '../catalog/schools.dart';
 import '../core/adapter_service.dart';
 import '../core/attendance_places.dart';
 import '../core/messages/archive.dart';
+import '../core/widgets/schedule_widget_identity.dart';
 import '../core/debug/dev_log.dart';
 import '../core/html_stdlib.dart';
 import '../core/loader/diagnostics.dart';
@@ -69,6 +70,7 @@ export '../core/attendance_places.dart' show AttendancePlace;
 export '../core/messages/archive.dart' show MessageArchiveView, ArchivedMessage;
 
 part 'script_session.dart';
+part 'schedule_widget_session.dart';
 part 'query_form_session.dart';
 part 'attendance_session.dart';
 part 'message_session.dart';
@@ -238,6 +240,7 @@ class SessionController extends ChangeNotifier {
         (entry) =>
             entry.type != ScriptDataCache.type &&
             entry.type != ScriptQueryFormCache.type &&
+            entry.type != ScheduleWidgetIdentityStore.type &&
             entry.type != ScriptReadinessStore.type &&
             entry.type != ScriptAccountStore.type &&
             entry.type != AttendancePlacesStore.type &&

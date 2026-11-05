@@ -895,5 +895,12 @@
       }
     }
   },
-  "messagesConversationInfo": "Conversation details"
+  "messagesConversationInfo": "Conversation details",
+  "shortcutsPinned": "Pinned to home screen",
+  "shortcutsPending": "Requested, not yet confirmed. Complete the launcher prompt.",
+  "shortcutsUnsupported": "This launcher does not support pin requests. Touch and hold the app icon for shortcuts.",
+  "shortcutsRestricted": "The system restricted this request. Check the launcher prompt.",
+  "shortcutsTemporarilyUnavailable": "The launcher is temporarily unavailable. Return to the app and retry.",
+  "scheduleWidgetTitle": "Schedule widget",
+  "scheduleWidgetHint": "Touch and hold the home screen, choose the elecon schedule widget, and confirm its school and source. Uses your loaded schedule; open elecon after a process restart."
 }

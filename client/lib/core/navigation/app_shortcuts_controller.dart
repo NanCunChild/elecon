@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../session/profile_controller.dart';
 import '../../session/session_controller.dart';
@@ -13,12 +13,24 @@ class FeatureOpenRequest {
 
 /// Navigation requests contain no school data. One pending destination survives
 /// startup/onboarding, and is discarded when a previously bound identity changes.
-class AppShortcutsController extends ChangeNotifier {
+enum ShortcutPinResult {
+  requested,
+  pinned,
+  unsupported,
+  restricted,
+  unavailable,
+  failed,
+}
+
+class AppShortcutsController extends ChangeNotifier
+    with WidgetsBindingObserver {
   AppShortcutsController({required this.profiles, this.channel}) {
     profiles.addListener(_scopeChanged);
+    WidgetsBinding.instance.addObserver(this);
     _scopeChanged();
     channel?.setMethodCallHandler((call) async {
       if (call.method == 'openFeature') receive(call.arguments);
+      if (call.method == 'pinStateChanged') await refreshPinState();
     });
     _initialize();
   }
@@ -30,6 +42,17 @@ class AppShortcutsController extends ChangeNotifier {
   bool get canOpen => !_disposed && profiles.isRestored && !profiles.busy;
   bool _supported = false;
   bool get supported => _supported;
+  ShortcutPinResult? _availabilityFailure;
+  ShortcutPinResult? get availabilityFailure => _availabilityFailure;
+  Set<AppFeature> _pinned = {};
+  Set<AppFeature> get pinned => Set.unmodifiable(_pinned);
+  final Map<AppFeature, ShortcutPinResult> _pinResults = {};
+  ShortcutPinResult? pinResult(AppFeature feature) => _pinned.contains(feature)
+      ? ShortcutPinResult.pinned
+      : _pinResults[feature] == ShortcutPinResult.pinned
+      ? null
+      : _pinResults[feature];
+  int _pinStateRevision = 0;
   bool _disposed = false;
   int _serial = 0;
   SessionController? _session;
@@ -43,12 +66,54 @@ class AppShortcutsController extends ChangeNotifier {
       final feature = await channel!.invokeMethod<String>('getInitialFeature');
       if (_disposed) return;
       if (feature != null && serial == _serial) receive(feature);
-      _supported = await channel!.invokeMethod<bool>('canPin') ?? false;
-      if (!_disposed) notifyListeners();
+      await refreshPinState();
     } on PlatformException {
       // A launcher may not provide pinning; deep links and static entries work.
     } on MissingPluginException {
       // Other platforms do not expose Android shortcuts.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) refreshPinState();
+  }
+
+  Future<void> refreshPinState() async {
+    if (_disposed || channel == null) return;
+    final revision = ++_pinStateRevision;
+    try {
+      final state = await channel!.invokeMapMethod<String, dynamic>('pinState');
+      if (_disposed || revision != _pinStateRevision) return;
+      _supported = state?['supported'] == true;
+      _availabilityFailure = switch (state?['error']) {
+        'restricted' => ShortcutPinResult.restricted,
+        'unavailable' => ShortcutPinResult.unavailable,
+        _ => null,
+      };
+      _pinned = {
+        for (final id in (state?['pinned'] as List? ?? const []))
+          for (final feature in AppFeature.values)
+            if (id == feature.name) feature,
+      };
+      for (final feature in _pinned) {
+        _pinResults.remove(feature);
+      }
+      notifyListeners();
+    } on PlatformException {
+      if (!_disposed && revision == _pinStateRevision) {
+        _supported = false;
+        _pinned = {};
+        _availabilityFailure = ShortcutPinResult.unavailable;
+        notifyListeners();
+      }
+    } on MissingPluginException {
+      if (!_disposed && revision == _pinStateRevision) {
+        _supported = false;
+        _pinned = {};
+        _availabilityFailure = ShortcutPinResult.unsupported;
+        notifyListeners();
+      }
     }
   }
 
@@ -90,21 +155,44 @@ class AppShortcutsController extends ChangeNotifier {
   }
 
   /// True only means that the system accepted the request to show a prompt.
-  Future<bool> pin(AppFeature feature) async {
-    if (_disposed || channel == null || !_supported) return false;
-    try {
-      return await channel!.invokeMethod<bool>('pinFeature', feature.name) ??
-          false;
-    } on PlatformException {
-      return false;
-    } on MissingPluginException {
-      return false;
+  Future<ShortcutPinResult> requestPin(AppFeature feature) async {
+    if (_disposed || channel == null) return ShortcutPinResult.unsupported;
+    await refreshPinState();
+    if (_disposed || !_supported) {
+      return _availabilityFailure ?? ShortcutPinResult.unsupported;
     }
+    if (_pinned.contains(feature)) return ShortcutPinResult.pinned;
+    ShortcutPinResult result;
+    try {
+      final value = await channel!.invokeMethod<String>(
+        'pinFeature',
+        feature.name,
+      );
+      result =
+          ShortcutPinResult.values.where((r) => r.name == value).firstOrNull ??
+          ShortcutPinResult.failed;
+    } on PlatformException {
+      result = ShortcutPinResult.failed;
+    } on MissingPluginException {
+      result = ShortcutPinResult.unsupported;
+    }
+    if (!_disposed) {
+      _pinResults[feature] = result;
+      await refreshPinState();
+    }
+    return _pinned.contains(feature) ? ShortcutPinResult.pinned : result;
   }
+
+  /// Retained for callers that only need whether the system accepted a request.
+  Future<bool> pin(AppFeature feature) async => const {
+    ShortcutPinResult.requested,
+    ShortcutPinResult.pinned,
+  }.contains(await requestPin(feature));
 
   @override
   void dispose() {
     _disposed = true;
+    WidgetsBinding.instance.removeObserver(this);
     profiles.removeListener(_scopeChanged);
     _session?.removeListener(_scopeChanged);
     channel?.setMethodCallHandler(null);

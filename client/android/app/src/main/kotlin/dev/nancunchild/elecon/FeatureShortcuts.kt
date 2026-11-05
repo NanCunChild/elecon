@@ -1,6 +1,9 @@
 package dev.nancunchild.elecon
 
 import android.app.Activity
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
@@ -26,11 +29,18 @@ class FeatureShortcuts(private val activity: Activity, messenger: BinaryMessenge
                     result.success(initial)
                 }
                 "canPin" -> result.success(canPin())
+                "pinState" -> result.success(pinState())
                 "pinFeature" -> {
                     val id = call.arguments as? String
                     val spec = features[id]
-                    if (id == null || spec == null || !canPin()) result.success(false)
+                    if (id == null || spec == null) result.success("invalid")
+                    else if (!canPin()) result.success("unsupported")
                     else try {
+                        val manager = activity.getSystemService(ShortcutManager::class.java)
+                        if (manager.pinnedShortcuts.any { it.id == id }) {
+                            result.success("pinned")
+                            return@setMethodCallHandler
+                        }
                         val intent = Intent(activity, MainActivity::class.java)
                             .setAction(Intent.ACTION_VIEW)
                             .setData(Uri.parse("elecon://feature/$id"))
@@ -39,15 +49,24 @@ class FeatureShortcuts(private val activity: Activity, messenger: BinaryMessenge
                             .setIcon(Icon.createWithResource(activity, spec.second))
                             .setIntent(intent)
                             .build()
-                        result.success(activity.getSystemService(ShortcutManager::class.java)
-                            .requestPinShortcut(shortcut, null))
+                        val callback = Intent(activity, ShortcutPinnedReceiver::class.java)
+                            .setAction("${activity.packageName}.SHORTCUT_PINNED")
+                            .setData(Uri.parse("elecon://shortcut-pinned/$id"))
+                        val sender = PendingIntent.getBroadcast(activity, 0, callback,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE).intentSender
+                        result.success(if (manager.requestPinShortcut(shortcut, sender)) "requested" else "unsupported")
+                    } catch (_: SecurityException) {
+                        result.success("restricted")
+                    } catch (_: IllegalStateException) {
+                        result.success("unavailable")
                     } catch (_: RuntimeException) {
-                        result.success(false)
+                        result.success("failed")
                     }
                 }
                 else -> result.notImplemented()
             }
         }
+        active = this
     }
 
     fun accept(intent: Intent?) {
@@ -60,12 +79,35 @@ class FeatureShortcuts(private val activity: Activity, messenger: BinaryMessenge
         if (ready) channel.invokeMethod("openFeature", value) else pending = value
     }
 
-    private fun canPin(): Boolean = Build.VERSION.SDK_INT >= 26 &&
-        activity.getSystemService(ShortcutManager::class.java)?.isRequestPinShortcutSupported == true
+    private fun canPin(): Boolean = try {
+        Build.VERSION.SDK_INT >= 26 &&
+            activity.getSystemService(ShortcutManager::class.java)?.isRequestPinShortcutSupported == true
+    } catch (_: RuntimeException) { false }
 
-    fun dispose() { channel.setMethodCallHandler(null) }
+    private fun pinState(): Map<String, Any> = try {
+        val manager = activity.getSystemService(ShortcutManager::class.java)
+        mapOf("supported" to (Build.VERSION.SDK_INT >= 26 && manager?.isRequestPinShortcutSupported == true), "pinned" to if (Build.VERSION.SDK_INT >= 25)
+            activity.getSystemService(ShortcutManager::class.java)?.pinnedShortcuts
+                ?.map { it.id }?.filter { features.containsKey(it) }.orEmpty() else emptyList<String>())
+    } catch (_: SecurityException) {
+        mapOf("supported" to false, "pinned" to emptyList<String>(), "error" to "restricted")
+    } catch (_: RuntimeException) {
+        mapOf("supported" to false, "pinned" to emptyList<String>(), "error" to "unavailable")
+    }
+
+    fun dispose() {
+        if (active === this) active = null
+        channel.setMethodCallHandler(null)
+    }
 
     companion object {
+        private var active: FeatureShortcuts? = null
+        fun pinned(context: Context, intent: Intent) {
+            val id = intent.data?.lastPathSegment ?: return
+            if (intent.action != "${context.packageName}.SHORTCUT_PINNED" ||
+                intent.dataString != "elecon://shortcut-pinned/$id" || !features.containsKey(id)) return
+            active?.channel?.invokeMethod("pinStateChanged", null)
+        }
         private val features = mapOf(
             "schedule" to (R.string.shortcut_schedule to R.drawable.shortcut_schedule),
             "grades" to (R.string.shortcut_grades to R.drawable.shortcut_grades),
@@ -80,4 +122,9 @@ class FeatureShortcuts(private val activity: Activity, messenger: BinaryMessenge
             "directory" to (R.string.shortcut_directory to R.drawable.shortcut_feature),
         )
     }
+}
+
+/** An explicit immutable PendingIntent is the only external path to this receiver. */
+class ShortcutPinnedReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) = FeatureShortcuts.pinned(context, intent)
 }

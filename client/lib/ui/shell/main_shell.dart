@@ -9,6 +9,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/scripts/manifest.dart';
 import '../../core/navigation/app_shortcuts_controller.dart';
+import '../../core/navigation/app_feature.dart';
+import '../../core/widgets/schedule_widget_controller.dart';
+import '../shortcuts/schedule_widget_scope.dart';
 import '../shortcuts/app_shortcuts_scope.dart';
 import '../home/shortcut_feature_page.dart';
 import '../../l10n/gen/app_localizations.dart';
@@ -40,6 +43,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   String _tab = 'home';
   AppShortcutsController? _shortcuts;
   int? _scheduledShortcut;
+  ScheduleWidgetController? _scheduleWidgets;
+  int? _scheduledWidget;
   Object? _sourceKey;
   Future<List<_ShellPage>>? _sources;
 
@@ -83,6 +88,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _shortcuts = AppShortcutsScope.maybeOf(context);
+    _scheduleWidgets = ScheduleWidgetScope.maybeOf(context);
     final session = context
         .getInheritedWidgetOfExactType<SessionScope>()
         ?.notifier;
@@ -182,6 +188,42 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     });
   }
 
+  void _openPendingWidget(SessionController? session) {
+    final widgets = _scheduleWidgets;
+    final request = widgets?.pending;
+    if (widgets == null ||
+        request == null ||
+        session == null ||
+        _suspended ||
+        !session.isRestored ||
+        !session.isConfigured ||
+        session.hardwareUnlockFailed ||
+        _scheduledWidget == request.serial) {
+      return;
+    }
+    _scheduledWidget = request.serial;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduledWidget = null;
+      if (!mounted ||
+          _suspended ||
+          session.hardwareUnlockFailed ||
+          !identical(session, _scriptSession) ||
+          !widgets.consume(request)) {
+        return;
+      }
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      setState(() => _tab = 'home');
+      Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => ShortcutFeaturePage(
+            feature: AppFeature.schedule,
+            source: request.source,
+          ),
+        ),
+      );
+    });
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -243,6 +285,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         .dependOnInheritedWidgetOfExactType<SessionScope>()
         ?.notifier;
     _openPendingShortcut(session);
+    _openPendingWidget(session);
     final sourceKey = (
       session,
       session?.selectedSchool?.id,

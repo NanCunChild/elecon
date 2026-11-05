@@ -60,6 +60,8 @@ class _ScriptSessionState {
   // Separate from execution generation: a login must invalidate business data
   // without cancelling its own browser/password presenter.
   int dataGeneration = 0;
+  // ADR-090: approved source changes are distinct from lifecycle cancellation.
+  int sourceRevision = 0;
   final pendingCacheRemovals = <String, Set<String>>{};
   String locale = 'zh';
   bool disposed = false;
@@ -78,6 +80,7 @@ extension TrustedScriptSession on SessionController {
 
   int get trustedScriptViewGeneration => _scripts.generation;
   int get trustedScriptDataGeneration => _scripts.dataGeneration;
+  int get trustedScriptSourceRevision => _scripts.sourceRevision;
 
   set scriptStorageConsent(Future<bool> Function()? consent) =>
       _scripts.storageConsent = consent;
@@ -279,6 +282,7 @@ extension TrustedScriptSession on SessionController {
     final registry = await scriptRegistry;
     final previous = registry.find(package.manifest.id)?.package;
     await registry.install(package, approvedDigest: approvedDigest);
+    _scripts.sourceRevision++;
     final cleared =
         previous?.digest != package.digest &&
         MessageArchiveStore(
@@ -294,6 +298,7 @@ extension TrustedScriptSession on SessionController {
   Future<void> enableTrustedScript(String id, bool enabled) async {
     final registry = await scriptRegistry;
     await registry.setEnabled(id, enabled);
+    _scripts.sourceRevision++;
     final package = registry.find(id)?.package;
     final cleared =
         package != null &&
@@ -309,6 +314,7 @@ extension TrustedScriptSession on SessionController {
     final registry = await scriptRegistry;
     final package = registry.find(id)?.package;
     await registry.remove(id);
+    _scripts.sourceRevision++;
     final cleared =
         package != null &&
         MessageArchiveStore(_store).clearSource(package.manifest.schoolId, id);
@@ -804,6 +810,9 @@ extension TrustedScriptSession on SessionController {
       }
       removals.addAll(ScriptDataCache(store).clearSchool(school.id));
       removals.addAll(ScriptQueryFormCache(store).clearSchool(school.id));
+      removals.addAll(
+        ScheduleWidgetIdentityStore(store).clearSchool(school.id),
+      );
       onCredentialsChanged();
       try {
         await _flushCredentialBackend(backend);

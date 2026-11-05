@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_background">#FFF9F6ED</color>
+    <color name="widget_text">#FF202B23</color>
+    <color name="widget_secondary">#FF536258</color>
+    <string name="widget_schedule_title">Today’s classes</string>
+    <string name="widget_schedule_date">Classes · %1$s</string>
+    <string name="widget_description">Today and next class from your approved schedule cache</string>
+    <string name="widget_open_to_update">Open elecon to verify and update</string>
+    <string name="widget_open_app">Open elecon</string>
+    <string name="widget_allow">Allow home screen display</string>
+    <string name="widget_consent">Allow this widget to show course names, times and locations from the selected profile, school and source. Your launcher may retain or capture what it displays. Updates use the foreground cache and are not real time. After the app process restarts, open elecon to verify your identity. Memory-only storage does not survive a restart. If no source appears, open elecon, select your school and return here.</string>
+    <string name="widget_cached">Cached %1$s</string>
+    <string name="widget_cached_stale">Outdated cache · %1$s</string>
+    <string name="widget_unknown">Schedule for this day is unknown</string>
+    <string name="widget_no_classes">No classes in this loaded schedule</string>
+    <string name="widget_next">Next: %1$s</string>
+    <string name="widget_current">In progress: %1$s</string>
+    <bool name="schedule_widgets_enabled">false</bool>
+    <string name="widget_more">%1$d more · tap to view</string>
+</resources>

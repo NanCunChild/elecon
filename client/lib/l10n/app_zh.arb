@@ -1012,5 +1012,12 @@
       }
     }
   },
-  "messagesConversationInfo": "会话信息"
+  "messagesConversationInfo": "会话信息",
+  "shortcutsPinned": "已固定到桌面",
+  "shortcutsPending": "已请求，尚未确认。请在桌面提示中完成添加。",
+  "shortcutsUnsupported": "此桌面不支持请求固定，可长按应用图标使用快捷方式。",
+  "shortcutsRestricted": "系统限制了添加快捷方式，请检查桌面提示。",
+  "shortcutsTemporarilyUnavailable": "桌面暂时无法处理请求，请回到前台后重试。",
+  "scheduleWidgetTitle": "课表小部件",
+  "scheduleWidgetHint": "长按桌面进入小部件列表，选择 elecon 今日课表，再确认展示的学校和来源。使用已加载课表；进程重启后请打开 elecon 更新。"
 }

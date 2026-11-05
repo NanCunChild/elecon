@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="12dp" android:background="@drawable/schedule_widget_background">
+    <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="@string/widget_schedule_title" android:textStyle="bold" android:textSize="16sp" android:maxLines="1" android:ellipsize="end" android:textColor="@color/widget_text" />
+    <TextView android:id="@+id/widget_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="@string/widget_open_to_update" android:textSize="11sp" android:maxLines="2" android:ellipsize="end" android:textColor="@color/widget_secondary" />
+    <LinearLayout android:id="@+id/widget_courses" android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:orientation="vertical" android:paddingTop="8dp" />
+</LinearLayout>

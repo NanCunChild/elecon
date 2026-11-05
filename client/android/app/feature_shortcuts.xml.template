@@ -32,6 +32,10 @@
             <parameter-binding android:key="feature" android:value="@array/shortcut_classroom_aliases" />
         </capability-binding>
     </shortcut>
+    <!-- App Actions entity inventory intentionally has no intent/shortLabel/longLabel.
+         It is excluded from Launcher shortcuts, per Android's action-schema and
+         inline-inventory documentation. Do not add labels just to silence the
+         Launcher parser's missing-shortLabel diagnostic. -->
     <shortcut android:shortcutId="card">
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding android:key="feature" android:value="@array/shortcut_card_aliases" />

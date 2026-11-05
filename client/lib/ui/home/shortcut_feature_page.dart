@@ -12,8 +12,9 @@ import 'native_feature.dart';
 /// A system shortcut opens the existing native component with its provider fixed
 /// for this page. It does not depend on card visibility or modify home layout.
 class ShortcutFeaturePage extends StatefulWidget {
-  const ShortcutFeaturePage({super.key, required this.feature});
+  const ShortcutFeaturePage({super.key, required this.feature, this.source});
   final AppFeature feature;
+  final CapabilitySource? source;
 
   @override
   State<ShortcutFeaturePage> createState() => _ShortcutFeaturePageState();
@@ -40,11 +41,26 @@ class _ShortcutFeaturePageState extends State<ShortcutFeaturePage> {
           school == null) {
         return null;
       }
-      return nativeFeatureProvider(
-        await session.scriptRegistry,
-        school,
-        widget.feature,
-      );
+      final registry = await session.scriptRegistry;
+      final source = widget.source;
+      if (source != null) {
+        final installation = registry.find(source.packageId);
+        final package = installation?.package;
+        if (installation?.enabled != true ||
+            package == null ||
+            package.requiresUpdate ||
+            package.digest != source.digest ||
+            package.manifest.schoolId != school ||
+            !widget.feature.capabilityOptions.any(
+              (option) => option.every(
+                (capability) => package.manifest.capability(capability) != null,
+              ),
+            )) {
+          return null;
+        }
+        return package;
+      }
+      return nativeFeatureProvider(registry, school, widget.feature);
     }();
   }
 

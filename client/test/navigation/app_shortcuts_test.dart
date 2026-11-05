@@ -9,6 +9,7 @@ import 'package:elecon/session/profile_controller.dart';
 import 'package:elecon/session/session_controller.dart';
 import 'package:elecon/ui/home/native_feature.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/school_fixture.dart';
@@ -149,8 +150,8 @@ void main() {
             calls.add(call.method);
             return switch (call.method) {
               'getInitialFeature' => initial.future,
-              'canPin' => true,
-              'pinFeature' => false,
+              'pinState' => {'supported': true, 'pinned': <String>[]},
+              'pinFeature' => 'failed',
               _ => null,
             };
           });
@@ -166,9 +167,15 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(s.pending!.feature, AppFeature.directory);
       expect(s.supported, isTrue);
-      expect(calls, ['getInitialFeature', 'canPin']);
+      expect(calls, ['getInitialFeature', 'pinState']);
       expect(await s.pin(AppFeature.schedule), isFalse);
-      expect(calls.last, 'pinFeature');
+      expect(calls, [
+        'getInitialFeature',
+        'pinState',
+        'pinState',
+        'pinFeature',
+        'pinState',
+      ]);
     },
   );
 
@@ -229,6 +236,75 @@ void main() {
         nativeFeatureProvider(registry, 'synthetic', AppFeature.energy),
         isNull,
       );
+    },
+  );
+
+  test(
+    'pin request remains unconfirmed until callback state, resume rechecks removal and failure',
+    () async {
+      const channel = MethodChannel('synthetic-shortcuts-observation');
+      var supported = true;
+      var pinned = <String>[];
+      var failing = false;
+      var requests = 0;
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'pinState') {
+          if (failing) throw PlatformException(code: 'unavailable');
+          return {'supported': supported, 'pinned': pinned};
+        }
+        if (call.method == 'pinFeature') {
+          requests++;
+          return 'requested';
+        }
+        return null;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final p = profiles();
+      await p.bootstrap();
+      final s = shortcuts(p, channel: channel);
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        await s.requestPin(AppFeature.schedule),
+        ShortcutPinResult.requested,
+      );
+      expect(s.pinned, isEmpty);
+      expect(s.pinResult(AppFeature.schedule), ShortcutPinResult.requested);
+      pinned = ['schedule', 'untrusted-id'];
+      await messenger.handlePlatformMessage(
+        channel.name,
+        const StandardMethodCodec().encodeMethodCall(
+          const MethodCall('pinStateChanged'),
+        ),
+        (_) {},
+      );
+      expect(s.pinned, {AppFeature.schedule});
+      expect(await s.requestPin(AppFeature.schedule), ShortcutPinResult.pinned);
+      expect(requests, 1);
+      pinned = [];
+      s.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(Duration.zero);
+      expect(s.pinned, isEmpty);
+      pinned = ['schedule'];
+      await s.refreshPinState();
+      expect(s.pinned, isNotEmpty);
+      failing = true;
+      await s.refreshPinState();
+      expect(s.pinned, isEmpty);
+      expect(s.supported, false);
+      expect(
+        await s.requestPin(AppFeature.exam),
+        ShortcutPinResult.unavailable,
+      );
+      failing = false;
+      supported = false;
+      expect(
+        await s.requestPin(AppFeature.exam),
+        ShortcutPinResult.unsupported,
+      );
+      expect(requests, 1);
+      expect(s.pending, isNull);
     },
   );
 }
