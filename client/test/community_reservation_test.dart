@@ -221,13 +221,21 @@ void main() {
       expect(find.byIcon(Icons.settings), findsOneWidget);
       await tester.tap(find.byIcon(Icons.chat_bubble_outline));
       await pumpSources(tester);
-      expect(find.byIcon(Icons.chat_bubble), findsOneWidget);
+      // Script pages use the template icon in both states. The selected
+      // semantics and opened page establish which tab is active.
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Semantics &&
+              widget.properties.label == 'Messages' &&
+              widget.properties.selected == true,
+        ),
+        findsOneWidget,
+      );
       // No account handler in this provider: do not borrow one from another package.
       expect(find.byType(FilledButton), findsNothing);
       expect(find.byType(MessagesPage), findsOneWidget);
-      final pageKey = tester
-          .widget<MessagesPage>(find.byType(MessagesPage))
-          .key;
+      final pageElement = tester.element(find.byType(MessagesPage));
       final generation = session.trustedScriptViewGeneration;
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       // Paused Flutter does not render frames. Cancellation is immediate; the
@@ -236,9 +244,10 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await pumpSources(tester);
       expect(find.byType(MessagesPage), findsOneWidget);
+      expect(pageElement.mounted, isFalse);
       expect(
-        tester.widget<MessagesPage>(find.byType(MessagesPage)).key,
-        isNot(pageKey),
+        tester.element(find.byType(MessagesPage)),
+        isNot(same(pageElement)),
       );
       await tester.runAsync(
         () => session.enableTrustedScript('messages', false),

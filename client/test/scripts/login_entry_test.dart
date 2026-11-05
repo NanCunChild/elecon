@@ -161,6 +161,8 @@ Widget app(
 }
 
 Future<void> until(WidgetTester tester, bool Function() done) async {
+  // Registry/cache continuations and QuickJS use the real event loop. A
+  // progress indicator can only settle after those futures complete too.
   for (var n = 0; n < 300; n++) {
     await tester.pump(const Duration(milliseconds: 20));
     if (done()) return;
@@ -276,6 +278,10 @@ void main() {
       await tester.pumpWidget(
         app(session, const Scaffold(body: CardSection())),
       );
+      await until(
+        tester,
+        () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byType(SectionRefreshButton));
       await until(
@@ -295,6 +301,10 @@ void main() {
       final session = await prepare(tester);
       await tester.pumpWidget(
         app(session, const Scaffold(body: CardSection())),
+      );
+      await until(
+        tester,
+        () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byType(SectionRefreshButton));
@@ -449,6 +459,10 @@ void main() {
             );
           },
         ),
+      );
+      await until(
+        tester,
+        () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byType(SectionRefreshButton));

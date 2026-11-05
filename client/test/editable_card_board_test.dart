@@ -148,7 +148,7 @@ void main() {
   });
 
   testWidgets(
-    'measured full-width cards compact mixed rows, drag and restore without overlap',
+    'bounded full-width cards compact mixed rows, drag and restore without overlap',
     (tester) async {
       tester.view.physicalSize = const Size(400, 1200);
       tester.view.devicePixelRatio = 1;
@@ -191,10 +191,12 @@ void main() {
       ];
       Rect slot(String id) => tester.getRect(control('slot', id));
       void checkGeometry() {
-        expect(slot('first').height, height.value);
+        // ADR-086: full-width home entries keep a finite preview even when
+        // their underlying content changes height.
+        expect(slot('first').height, 280);
         expect(slot('summary').top - slot('first').bottom, 12);
         expect(slot('last').top - slot('summary').bottom, 12);
-        expect(slot('last').height, 127);
+        expect(slot('last').height, 280);
         expect(slot('a').height * 2 + 12, slot('summary').height);
         for (var i = 0; i < cards.length; i++) {
           for (var j = i + 1; j < cards.length; j++) {
@@ -220,15 +222,15 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
       expect(store.layouts['a']!.positions['a']!.column, 3);
-      expect(store.layouts['a']!.positions['a']!.row, 2);
+      expect(store.layouts['a']!.positions['a']!.row, 3);
       checkGeometry();
-      height.value = 177;
+      height.value = 1200;
       await tester.pumpAndSettle();
       checkGeometry();
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(app(store, cards: cards));
       await tester.pumpAndSettle();
-      expect(store.layouts['a']!.positions['a'], const HomeCardPosition(3, 2));
+      expect(store.layouts['a']!.positions['a'], const HomeCardPosition(3, 3));
       checkGeometry();
       expect(tester.takeException(), isNull);
     },

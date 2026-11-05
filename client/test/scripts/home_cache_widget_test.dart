@@ -248,6 +248,12 @@ void main() {
                   : const ScheduleSection(calendarEnabled: true),
             ),
           );
+          // The registry was opened in runAsync. Its cache/provider futures
+          // need the real event loop as well as widget frames to complete.
+          await until(
+            tester,
+            () => find.byType(LinearProgressIndicator).evaluate().isEmpty,
+          );
           await tester.pumpAndSettle();
           await tester.tap(
             grades
@@ -265,6 +271,12 @@ void main() {
           await tester.pump();
           session.releaseStage.complete();
           await until(tester, () => session.stageReturned.isCompleted);
+          await until(
+            tester,
+            () =>
+                find.byType(LinearProgressIndicator).evaluate().isEmpty &&
+                find.byType(CircularProgressIndicator).evaluate().isEmpty,
+          );
           await tester.pumpAndSettle();
           expect(find.byType(GradesCard), findsNothing);
           expect(find.byType(ScheduleCard), findsNothing);
@@ -338,6 +350,10 @@ void main() {
       expect(latest!.params, {'scope': 'home'});
       await tester.runAsync(
         () => session.selectTrustedScriptSchool('cache-beta'),
+      );
+      await until(
+        tester,
+        () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
       );
       await tester.pumpAndSettle();
       expect(find.textContaining('56.78'), findsNothing);
