@@ -10,7 +10,7 @@
 
 系统工具首片收窄为用户明确指定一个标准 `buildingId` 的查询。保留可空的原生函数签名以提供条件提示；空值不调用 `classroom.available`，返回 `configurationRequired/buildingRequired`、`missingParameters: [buildingId]` 和固定的 `elecon://feature/classroom` 页面入口。已有 App 内学校表单仍支持各校的查询范围，不能由此强制其只能单栋。`describeAvailableServices` 与原生函数说明同步报告此条件。
 
-为让调用者取得可用标识，在当前教室共享已获授权且同一批准包声明 `classroom.buildings@1.0` 时，可作一次非交互、有界目录读取，返回标准 `buildingId/building/campus` 投影。绝不跨包拼接目录、不自动选择首项、不运行 `classroom.available`、不登录或加载任意表单。无标准 ID、能力缺失、目录失败或部分结果时仍提供固定原生入口及明确的目录状态，不凭空生成标识或宣称完整目录。选项限 200 条且整份响应仍限 128 KiB；来源、取消、身份及授权检查与实际查询相同。固定页面入口只导航正常恢复后的当前身份，需重新选择条件，不承诺恢复原系统请求或继续执行。
+为让调用者取得可用标识，在当前教室共享已获授权且同一批准包声明 `classroom.buildings@1.0` 时，可作一次非交互、有界目录读取，返回标准 `buildingId/building/campus` 投影。绝不跨包拼接目录、不自动选择首项、不运行 `classroom.available`，不发起交互式登录或加载任意表单；已有非交互查询的票据恢复边界继续适用。无标准 ID、能力缺失、目录失败或部分结果时仍提供固定原生入口及明确的目录状态，不凭空生成标识或宣称完整目录。选项限 200 条且整份响应仍限 128 KiB；来源、取消、身份及授权检查与实际查询相同。固定页面入口只导航正常恢复后的当前身份，需重新选择条件，不承诺恢复原系统请求或继续执行。
 
 学校时区使用该次 `classroom.available@1.2/1.3` 的标准顶层 `timeZone`，不读取首条占用记录、设备时区或开放扩展字段来猜测。Android 使用平台 IANA 规则检查输入两端的学校墙钟日期、时间和显式 UTC offset 是否有效，包含夏令时缺口与重叠。缺失或非法时区返回 `unavailable/schoolTimeZoneUnknown`；有效时区与输入冲突返回 `configurationRequired/schoolTimeZoneMismatch`，附学校时区与固定入口，不发布可能误解的可用教室列表。当前只能在只读查询返回后核验；出网前的动态时区发现需后续显式标准元数据，不能声称本片已经完成。
 
