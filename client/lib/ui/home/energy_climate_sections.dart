@@ -371,6 +371,9 @@ class ClimateSection extends StatefulWidget {
 
 class _ClimateSectionState extends State<ClimateSection>
     with WidgetsBindingObserver {
+  ScriptRunCancellation _workCancellation = ScriptRunCancellation();
+  bool _routeVisible = true;
+  bool _foreground = true;
   SessionController? _session;
   CapabilitySource? _source;
   int? _generation;
@@ -390,6 +393,7 @@ class _ClimateSectionState extends State<ClimateSection>
 
   @override
   void dispose() {
+    _workCancellation.cancel();
     _actionEpoch++;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -397,10 +401,20 @@ class _ClimateSectionState extends State<ClimateSection>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
     if (state != AppLifecycleState.resumed) {
+      _workCancellation.cancel();
+      _request++;
       _actionEpoch++;
-      if (mounted) setState(() => _status = null);
-    } else if (_selected != null && !_acting) {
+      if (mounted) {
+        setState(() {
+          _status = null;
+          _busy = false;
+          _acting = false;
+        });
+      }
+    } else if (_selected != null && _routeVisible) {
+      _workCancellation = ScriptRunCancellation();
       unawaited(_load(statusOnly: true));
     }
   }
@@ -410,9 +424,27 @@ class _ClimateSectionState extends State<ClimateSection>
     super.didChangeDependencies();
     final session = SessionScope.of(context);
     final source = CapabilitySourceScope.maybeOf(context)?.source;
+    final visible = ModalRoute.of(context)?.isCurrent ?? true;
+    if (visible != _routeVisible) {
+      _routeVisible = visible;
+      _workCancellation.cancel();
+      _workCancellation = ScriptRunCancellation();
+      _request++;
+      _actionEpoch++;
+      _busy = false;
+      _acting = false;
+      _status = null;
+      if (visible) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_load(interactive: false));
+        });
+      }
+    }
     if (_source != source ||
         _session != session ||
         _generation != session.trustedScriptViewGeneration) {
+      _workCancellation.cancel();
+      _workCancellation = ScriptRunCancellation();
       _actionEpoch++;
       _request++;
       _session = session;
@@ -441,7 +473,11 @@ class _ClimateSectionState extends State<ClimateSection>
     bool configure = false,
     bool interactive = true,
   }) async {
-    if (_busy || _acting) return;
+    if (_busy || _acting || !_foreground || !_routeVisible) return;
+    if (_workCancellation.isCancelled) {
+      _workCancellation = ScriptRunCancellation();
+    }
+    final cancellation = _workCancellation;
     final request = ++_request;
     setState(() {
       _busy = true;
@@ -453,6 +489,7 @@ class _ClimateSectionState extends State<ClimateSection>
         final result = await CapabilityQueries(_session!, source: _source)
             .runCapability(
               'climate.devices',
+              cancellation: cancellation,
               params: {if (configure) 'configure': true},
               interactive: interactive,
             );
@@ -479,6 +516,7 @@ class _ClimateSectionState extends State<ClimateSection>
       final result = await CapabilityQueries(_session!, source: _source)
           .runCapability(
             'climate.status',
+            cancellation: cancellation,
             params: {'deviceId': _selected},
             interactive: false,
           );
@@ -504,6 +542,7 @@ class _ClimateSectionState extends State<ClimateSection>
       return;
     }
     final session = _session!;
+    final cancellation = _workCancellation;
     final deviceId = _selected!;
     final device = _devices.where((d) => d['deviceId'] == deviceId).firstOrNull;
     if (device == null ||
@@ -539,6 +578,7 @@ class _ClimateSectionState extends State<ClimateSection>
         final result = await CapabilityQueries(session, source: _source)
             .runCapability(
               'climate.command',
+              cancellation: cancellation,
               params: {
                 'deviceId': deviceId,
                 'command': command,
@@ -556,6 +596,7 @@ class _ClimateSectionState extends State<ClimateSection>
         final result = await CapabilityQueries(session, source: _source)
             .runCapability(
               'climate.status',
+              cancellation: cancellation,
               params: {'deviceId': deviceId},
               interactive: false,
             );
