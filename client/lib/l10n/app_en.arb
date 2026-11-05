@@ -862,5 +862,17 @@
       }
     }
   },
-  "queryDraftStorageFailed": "Changes are kept for this visit; the draft could not be saved."
+  "queryDraftStorageFailed": "Changes are kept for this visit; the draft could not be saved.",
+  "scheduleBreakNoClasses": "{label} · {time} · No classes in the loaded schedule",
+  "@scheduleBreakNoClasses": {
+    "description": "Accessible rest-segment hint for one day of the loaded personal schedule; not classroom availability.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }

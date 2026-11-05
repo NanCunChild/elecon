@@ -18,22 +18,61 @@ ScheduleWeek? scheduleWeekFromDynamic(Object? raw) {
       if (day != null) days.add(day);
     }
   }
+  final segments = _scheduleSegments(map['timeSegments']);
   return ScheduleWeek(
     term: term,
     week: week,
     academicYear: map['academicYear']?.toString(),
+    timeZone: _scheduleTimeZone(map['timeZone']),
     termStartDate: map['termStartDate']?.toString(),
     termEndDate: map['termEndDate']?.toString(),
     teachingWeekStart: map['teachingWeekStart']?.toString(),
     teachingWeekEnd: map['teachingWeekEnd']?.toString(),
     weekType: map['weekType']?.toString(),
-    timeSegments: _scheduleSegments(map['timeSegments']),
+    timeSegments: segments,
+    breakSegments: _scheduleBreakSegments(map['breakSegments'], segments),
     weekPreviews: _schedulePreviews(map['weekPreviews']),
     termWeeks: _scheduleTermWeeks(map['termWeeks']),
     updatedAt: map['updatedAt']?.toString(),
     sourceSystem: map['sourceSystem']?.toString(),
     days: days,
   );
+}
+
+String? _scheduleTimeZone(Object? raw) =>
+    raw is String &&
+        raw.isNotEmpty &&
+        raw.length <= 128 &&
+        RegExp(r'^[A-Za-z_]+(?:/[A-Za-z0-9_+.-]+)*$').hasMatch(raw)
+    ? raw
+    : null;
+
+List<ScheduleWeekBreakSegments>? _scheduleBreakSegments(
+  Object? raw,
+  List<ScheduleWeekTimeSegments>? teaching,
+) {
+  if (raw is! List || raw.length > 16 || teaching == null || teaching.isEmpty) {
+    return null;
+  }
+  final periods = _scheduleSegments(raw);
+  if (periods == null ||
+      periods.any(
+        (rest) => teaching.any(
+          (lesson) =>
+              rest.timeStart.compareTo(lesson.timeEnd) < 0 &&
+              rest.timeEnd.compareTo(lesson.timeStart) > 0,
+        ),
+      )) {
+    return null;
+  }
+  return [
+    for (final period in periods)
+      ScheduleWeekBreakSegments(
+        label: period.label,
+        timeStart: period.timeStart,
+        timeEnd: period.timeEnd,
+      ),
+  ];
 }
 
 List<ScheduleWeekTimeSegments>? _scheduleSegments(Object? raw) {

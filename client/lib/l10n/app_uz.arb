@@ -643,5 +643,6 @@
       }
     }
   },
-  "queryDraftStorageFailed": "O‘zgarishlar joriy seans davomida saqlanadi, ammo qoralamani saqlab bo‘lmadi."
+  "queryDraftStorageFailed": "O‘zgarishlar joriy seans davomida saqlanadi, ammo qoralamani saqlab bo‘lmadi.",
+  "scheduleBreakNoClasses": "{label} · {time} · Yuklangan jadvalda dars yo‘q"
 }

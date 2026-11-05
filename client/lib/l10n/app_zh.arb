@@ -979,5 +979,17 @@
       }
     }
   },
-  "queryDraftStorageFailed": "本次编辑仍保留，但草稿暂未保存成功。"
+  "queryDraftStorageFailed": "本次编辑仍保留，但草稿暂未保存成功。",
+  "scheduleBreakNoClasses": "{label} · {time} · 当前课表无排课",
+  "@scheduleBreakNoClasses": {
+    "description": "Accessible rest-segment hint for one day of the loaded personal schedule; not classroom availability.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }

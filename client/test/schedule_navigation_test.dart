@@ -144,6 +144,211 @@ class CalendarScheduleSession extends ScheduleSession {
 }
 
 void main() {
+  test(
+    'rest hints retain courses and reject invalid or conflicting ranges',
+    () {
+      final course = <String, dynamic>{
+        'start': '1',
+        'end': '2',
+        'timeStart': '11:00',
+        'timeEnd': '14:30',
+        'courseName': 'Spans the break',
+      };
+      final raw = {
+        ...payload(1),
+        'timeZone': 'Asia/Shanghai',
+        'days': [
+          {
+            'dayOfWeek': 1,
+            'slots': [course],
+          },
+        ],
+        'timeSegments': [
+          {'label': 'Morning', 'timeStart': '10:00', 'timeEnd': '12:00'},
+          {'label': 'Afternoon', 'timeStart': '14:00', 'timeEnd': '16:00'},
+        ],
+        'breakSegments': [
+          {'label': 'Lunch break', 'timeStart': '12:00', 'timeEnd': '14:00'},
+        ],
+      };
+      final valid = scheduleWeekFromDynamic(raw)!;
+      expect(valid.breakSegments!.single.label, 'Lunch break');
+      expect(valid.timeZone, 'Asia/Shanghai');
+      for (final bad in [
+        [
+          {'label': 'Reverse', 'timeStart': '14:00', 'timeEnd': '12:00'},
+        ],
+        [
+          {
+            'label': 'Overlaps lesson',
+            'timeStart': '11:30',
+            'timeEnd': '14:00',
+          },
+        ],
+        [
+          {'label': 'First', 'timeStart': '12:00', 'timeEnd': '13:00'},
+          {'label': 'Second', 'timeStart': '12:30', 'timeEnd': '14:00'},
+        ],
+        [
+          {'label': 'Later', 'timeStart': '13:00', 'timeEnd': '14:00'},
+          {'label': 'Earlier', 'timeStart': '12:00', 'timeEnd': '13:00'},
+        ],
+        [
+          {'label': 'Broken clock', 'timeStart': 'noon', 'timeEnd': '14:00'},
+        ],
+      ]) {
+        final decoded = scheduleWeekFromDynamic({
+          ...raw,
+          'breakSegments': bad,
+        })!;
+        expect(decoded.breakSegments, isNull);
+        expect(decoded.days.single.slots.single.courseName, 'Spans the break');
+      }
+      expect(
+        scheduleWeekFromDynamic({...raw, 'timeSegments': []})!.breakSegments,
+        isNull,
+      );
+      expect(scheduleWeekFromDynamic(payload(1))!.breakSegments, isNull);
+      expect(scheduleWeekFromDynamic(payload(1))!.timeZone, isNull);
+      expect(
+        scheduleWeekFromDynamic({...raw, 'timeZone': 'not a zone'})!.timeZone,
+        isNull,
+      );
+    },
+  );
+
+  testWidgets('school axis has no unrelated fallback outer hours', (
+    tester,
+  ) async {
+    final raw = {
+      ...payload(1),
+      'days': [],
+      'timeSegments': [
+        {
+          'label': 'Only school period',
+          'timeStart': '10:15',
+          'timeEnd': '11:45',
+        },
+      ],
+    };
+    await tester.pumpWidget(
+      app(WeekScheduleView(data: scheduleWeekFromDynamic(raw)!)),
+    );
+    await tester.pumpAndSettle();
+    // One day header and one teaching segment; no fabricated 08:00/18:00 edge.
+    expect(
+      tester.getSize(find.byKey(const ValueKey('schedule-grid'))).height,
+      120,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final brightness in Brightness.values) {
+    testWidgets('break hints respect complete overlaps at 320px $brightness', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final raw = {
+        ...payload(1),
+        'timeSegments': [
+          {'label': 'Morning', 'timeStart': '10:00', 'timeEnd': '12:00'},
+          {'label': 'Afternoon', 'timeStart': '14:00', 'timeEnd': '16:00'},
+        ],
+        'breakSegments': [
+          {'label': 'Lunch break', 'timeStart': '12:00', 'timeEnd': '14:00'},
+        ],
+        'days': [
+          {
+            'dayOfWeek': 1,
+            'slots': [
+              {
+                'start': '1',
+                'end': '2',
+                'timeStart': '11:00',
+                'timeEnd': '15:00',
+                'courseName': 'Spans the entire lunch interval',
+              },
+            ],
+          },
+          {
+            'dayOfWeek': 2,
+            'slots': [
+              {
+                'start': '1',
+                'end': '1',
+                'timeStart': '10:00',
+                'timeEnd': '12:00',
+                'courseName': 'Ends at the boundary',
+              },
+            ],
+          },
+        ],
+      };
+      await tester.pumpWidget(
+        app(
+          WeekScheduleView(data: scheduleWeekFromDynamic(raw)!),
+          scale: 2,
+          brightness: brightness,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('schedule-break-1-0')), findsNothing);
+      expect(find.byKey(const ValueKey('schedule-break-2-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('schedule-break-3-0')), findsNothing);
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('schedule-course-1-0')))
+            .height,
+        greaterThan(400),
+      );
+      final hint = tester.widget<Tooltip>(
+        find.descendant(
+          of: find.byKey(const ValueKey('schedule-break-2-0')),
+          matching: find.byType(Tooltip),
+        ),
+      );
+      expect(hint.message, contains('No classes in the loaded schedule'));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+    'current week outline keeps the full thumbnail while browsing another week',
+    (tester) async {
+      await tester.pumpWidget(
+        app(
+          ScheduleWeekPicker(
+            week: 2,
+            currentWeek: 1,
+            maxWeek: 4,
+            onChanged: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final current = tester.widget<Material>(
+        find.byKey(const ValueKey('schedule-current-week-1')),
+      );
+      expect((current.shape as RoundedRectangleBorder).side.width, 2);
+      final colors = Theme.of(
+        tester.element(find.byType(ScheduleWeekPicker)),
+      ).colorScheme;
+      expect(
+        (current.shape as RoundedRectangleBorder).side.color,
+        colors.primary,
+      );
+      expect(current.color, colors.surfaceContainerLow);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('schedule-preview-1'))).height,
+        tester.getSize(find.byKey(const ValueKey('schedule-preview-2'))).height,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('week thumbnail paints all-day labs from top to bottom', (
     tester,
   ) async {

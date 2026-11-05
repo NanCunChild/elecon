@@ -506,7 +506,12 @@ class _ClimateSectionState extends State<ClimateSection>
     final session = _session!;
     final deviceId = _selected!;
     final device = _devices.where((d) => d['deviceId'] == deviceId).firstOrNull;
-    if (device == null) return;
+    if (device == null ||
+        _status!['online'] == false ||
+        _status!['errorCode'] != null ||
+        !climateCommandReady(device, _status, command)) {
+      return;
+    }
     final epoch = ++_actionEpoch, generation = _generation;
     bool current() =>
         mounted &&
@@ -585,13 +590,8 @@ class _ClimateSectionState extends State<ClimateSection>
     final device = _devices
         .where((d) => d['deviceId'] == _selected)
         .firstOrNull;
-    final known =
-        _status?['power'] is bool &&
-        _status?['mode'] is String &&
-        _status?['fanSpeed'] is String &&
-        _status?['targetTemperature'] is int;
+    final known = _status != null;
     final enabled =
-        known &&
         climateControlAvailable &&
         !_busy &&
         !_acting &&
@@ -605,19 +605,22 @@ class _ClimateSectionState extends State<ClimateSection>
       ),
       subtitle: l10n.climatePrompt,
       summary: CardSummary(
-        _busy || _acting
-            ? l10n.homeCardLoading
-            : _needsConfiguration
-            ? l10n.capabilityConfigurationRequired
-            : _failed
-            ? l10n.campusLoadFailed
-            : !known
-            ? l10n.climateUnknown
-            : '${_status!['targetTemperature']} ℃',
+        device?['label'] as String? ??
+            (_busy || _acting
+                ? l10n.homeCardLoading
+                : _needsConfiguration
+                ? l10n.capabilityConfigurationRequired
+                : _failed
+                ? l10n.campusLoadFailed
+                : l10n.climateUnknown),
         detail: [
-          if (device?['label'] is String) device!['label'] as String,
+          '${l10n.climateTemperature}: ${_status?['targetTemperature'] ?? '—'} ℃',
+          '${l10n.climateIndoor}: ${_status?['indoorTemperature'] ?? '—'} ℃',
           if (_status?['power'] is bool)
             _status!['power'] == true ? l10n.climateOn : l10n.climateOff,
+          if (_status?['mode'] is String)
+            _settingValue(l10n, 'mode', _status!['mode']),
+          if (_failed) l10n.campusLoadFailed,
           if (_status?['observedAt'] is String)
             formatLocalDateTime(
               DateTime.parse(_status!['observedAt'] as String),
@@ -685,26 +688,12 @@ class _ClimateSectionState extends State<ClimateSection>
               ),
               style: Theme.of(context).textTheme.bodySmall,
             ),
-          if (_status?['indoorTemperature'] != null)
-            _DataLine(l10n.climateIndoor, '${_status!['indoorTemperature']} ℃'),
+          if (device != null)
+            _DataLine(
+              l10n.climateIndoor,
+              '${_status?['indoorTemperature'] ?? '—'} ℃',
+            ),
           if (device != null) ...[
-            for (final key in [
-              'power',
-              'verticalSwing',
-              'turbo',
-              'auxiliaryHeat',
-            ])
-              if ((device['commands'] as List).contains(key))
-                _status?[key] is bool
-                    ? SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(_settingLabel(l10n, key)),
-                        value: _status![key] as bool,
-                        onChanged: enabled
-                            ? (value) => _command(key, value)
-                            : null,
-                      )
-                    : _DataLine(_settingLabel(l10n, key), '—'),
             if ((device['commands'] as List).contains('temperature'))
               OverflowBar(
                 alignment: MainAxisAlignment.spaceBetween,
@@ -712,6 +701,8 @@ class _ClimateSectionState extends State<ClimateSection>
                 children: [
                   Text(
                     '${l10n.climateTemperature}: ${_status?['targetTemperature'] ?? '—'} ℃',
+                    style: Theme.of(context).textTheme.headlineMedium,
+                    textAlign: TextAlign.center,
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -720,7 +711,11 @@ class _ClimateSectionState extends State<ClimateSection>
                         tooltip: l10n.climateDecreaseTemperature,
                         onPressed:
                             enabled &&
-                                _status?['targetTemperature'] is int &&
+                                climateCommandReady(
+                                  device,
+                                  _status,
+                                  'temperature',
+                                ) &&
                                 (_status!['targetTemperature'] as int) >
                                     (device['minTemperature'] as num)
                             ? () => _command(
@@ -734,7 +729,11 @@ class _ClimateSectionState extends State<ClimateSection>
                         tooltip: l10n.climateIncreaseTemperature,
                         onPressed:
                             enabled &&
-                                _status?['targetTemperature'] is int &&
+                                climateCommandReady(
+                                  device,
+                                  _status,
+                                  'temperature',
+                                ) &&
                                 (_status!['targetTemperature'] as int) <
                                     (device['maxTemperature'] as num)
                             ? () => _command(
@@ -748,6 +747,24 @@ class _ClimateSectionState extends State<ClimateSection>
                   ),
                 ],
               ),
+            for (final key in [
+              'power',
+              'verticalSwing',
+              'turbo',
+              'auxiliaryHeat',
+            ])
+              if ((device['commands'] as List).contains(key))
+                _status?[key] is bool
+                    ? SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(_settingLabel(l10n, key)),
+                        value: _status![key] as bool,
+                        onChanged:
+                            enabled && climateCommandReady(device, _status, key)
+                            ? (value) => _command(key, value)
+                            : null,
+                      )
+                    : _DataLine(_settingLabel(l10n, key), '—'),
             for (final (key, itemsKey) in [
               ('mode', 'modes'),
               ('fanSpeed', 'fanSpeeds'),
@@ -763,19 +780,23 @@ class _ClimateSectionState extends State<ClimateSection>
                       child: DropdownButton<String>(
                         key: ValueKey((key, _selected)),
                         value:
-                            (device[itemsKey] as List).contains(_status?[key])
+                            ((device[itemsKey] as List?) ?? const []).contains(
+                              _status?[key],
+                            )
                             ? _status![key] as String
                             : null,
                         isExpanded: true,
                         itemHeight: null,
                         items: [
-                          for (final value in device[itemsKey] as List)
+                          for (final value
+                              in (device[itemsKey] as List?) ?? const [])
                             DropdownMenuItem(
                               value: value as String,
                               child: Text(_settingValue(l10n, key, value)),
                             ),
                         ],
-                        onChanged: enabled
+                        onChanged:
+                            enabled && climateCommandReady(device, _status, key)
                             ? (value) {
                                 if (value != null) {
                                   unawaited(_command(key, value));

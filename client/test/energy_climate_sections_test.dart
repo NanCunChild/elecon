@@ -67,6 +67,7 @@ class ClimateSession extends SessionController {
   Map<String, dynamic>? commandParams;
   Completer<CapabilityRun>? sendGate, readGate;
   bool failSend = false, failRead = false, loggedOut = false;
+  Map<String, dynamic> device = syntheticClimateDevice();
   Map<String, dynamic> state = {
     'deviceId': syntheticDeviceId,
     'power': false,
@@ -92,7 +93,7 @@ class ClimateSession extends SessionController {
     calls.add(capability);
     if (capability == 'climate.devices') {
       return CapabilityRun.ok({
-        'items': loggedOut ? [] : [syntheticClimateDevice()],
+        'items': loggedOut ? [] : [device],
       });
     }
     if (capability == 'climate.command') {
@@ -221,6 +222,60 @@ class _LayoutMemory extends CardLayoutStore {
 }
 
 void main() {
+  androidTest('power-only device operates without unrelated thermostat state', (
+    tester,
+  ) async {
+    final session = ClimateSession()
+      ..device = {
+        'deviceId': syntheticDeviceId,
+        'label': 'Synthetic power-only device',
+        'commands': ['power'],
+      }
+      ..state = {'deviceId': syntheticDeviceId, 'power': false};
+    addTearDown(session.dispose);
+    await tester.pumpWidget(app(session, const ClimateSection()));
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(powerSwitch()).onChanged, isNotNull);
+    expect(find.byTooltip('Increase target temperature'), findsNothing);
+    session.calls.clear();
+    tester.widget<SwitchListTile>(powerSwitch()).onChanged!(true);
+    await tester.pumpAndSettle();
+    expect(session.calls, ['climate.command', 'climate.status']);
+    expect(session.commandParams!['settings'], {'power': true});
+    expect(tester.widget<SwitchListTile>(powerSwitch()).value, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  androidTest('offline device retains its binding and unknown readings', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final session = ClimateSession()..failRead = true;
+    addTearDown(session.dispose);
+    await tester.pumpWidget(app(session, const ClimateSection(), scale: 2));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Synthetic room'), findsOneWidget);
+    expect(find.text('Indoor temperature'), findsOneWidget);
+    expect(find.text('— ℃'), findsOneWidget);
+    expect(find.byTooltip('Increase target temperature'), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is IconButton &&
+                  widget.tooltip == 'Increase target temperature',
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   androidTest(
     'climate shows incomplete setup and only the setup button opens configuration',
     (tester) async {
@@ -338,7 +393,15 @@ void main() {
           ),
         ),
       );
-      await until(tester, () => find.text('26 ℃').evaluate().isNotEmpty);
+      await until(
+        tester,
+        () => find
+            .textContaining('Target temperature: 26 ℃')
+            .evaluate()
+            .isNotEmpty,
+      );
+      expect(find.text('Synthetic room'), findsOneWidget);
+      expect(find.textContaining('Indoor temperature: — ℃'), findsOneWidget);
       expect(powerSwitch(), findsNothing);
       await tester.tap(find.byKey(const ValueKey('home-card:climate')));
       await until(

@@ -342,17 +342,23 @@ class _ScheduleWeekPickerState extends State<ScheduleWeekPicker> {
                   label:
                       '${l10n.scheduleWeekLabel(week)}, ${current ? '${l10n.scheduleCurrentWeek}, ' : ''}$description',
                   child: Tooltip(
-                    message: description,
+                    message: current
+                        ? '${l10n.scheduleCurrentWeek} · $description'
+                        : description,
                     child: Material(
+                      key: current
+                          ? ValueKey('schedule-current-week-$week')
+                          : null,
                       color: selected
                           ? colors.primaryContainer
                           : colors.surfaceContainerLow,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(
-                          color: selected
+                          color: current
                               ? colors.primary
                               : colors.outlineVariant,
+                          width: current ? 2 : 1,
                         ),
                       ),
                       clipBehavior: Clip.antiAlias,
@@ -370,14 +376,6 @@ class _ScheduleWeekPickerState extends State<ScheduleWeekPicker> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              if (current)
-                                Text(
-                                  l10n.scheduleCurrentWeek,
-                                  key: ValueKey('schedule-current-week-$week'),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.labelSmall,
-                                ),
                               const SizedBox(height: 8),
                               Expanded(
                                 child: ExcludeSemantics(
@@ -696,7 +694,13 @@ class WeekScheduleView extends StatelessWidget {
       1.0,
       MediaQuery.textScalerOf(context).scale(14) / 14,
     );
-    final axis = _ScheduleAxis(placed, timed, data.timeSegments, scale);
+    final axis = _ScheduleAxis(
+      placed,
+      timed,
+      data.timeSegments,
+      data.breakSegments,
+      scale,
+    );
     final conflicts = placed
         .where((e) => placed.any((o) => o != e && _overlaps(e, o)))
         .length;
@@ -736,6 +740,29 @@ class WeekScheduleView extends StatelessWidget {
                 child: Stack(
                   clipBehavior: Clip.hardEdge,
                   children: [
+                    for (var index = 0; index < axis.breaks.length; index++)
+                      for (var day = 1; day <= 7; day++)
+                        if (data.days.any((known) => known.dayOfWeek == day) &&
+                            !placed.any(
+                              (course) =>
+                                  course.day == day &&
+                                  course.start < axis.breaks[index].$2 &&
+                                  course.end > axis.breaks[index].$1,
+                            ))
+                          Positioned(
+                            top: axis.y(axis.breaks[index].$1),
+                            left: axisWidth + (day - 1) * columnWidth,
+                            width: columnWidth,
+                            height:
+                                axis.y(axis.breaks[index].$2) -
+                                axis.y(axis.breaks[index].$1),
+                            child: _ScheduleBreak(
+                              key: ValueKey('schedule-break-$day-$index'),
+                              label: axis.breaks[index].$3,
+                              time:
+                                  '${_clock(axis.breaks[index].$1)}–${_clock(axis.breaks[index].$2)}',
+                            ),
+                          ),
                     for (final tick in axis.ticks)
                       Positioned(
                         top: axis.y(tick.$1),
@@ -971,11 +998,57 @@ void _openCourse(
   );
 }
 
+class _ScheduleBreak extends StatelessWidget {
+  const _ScheduleBreak({super.key, required this.label, required this.time});
+
+  final String label;
+  final String time;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final description = AppLocalizations.of(
+      context,
+    ).scheduleBreakNoClasses(label, time);
+    return Semantics(
+      label: description,
+      child: Tooltip(
+        message: description,
+        excludeFromSemantics: true,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow,
+            border: Border.symmetric(
+              horizontal: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Center(
+              child: ExcludeSemantics(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ScheduleAxis {
   _ScheduleAxis(
     List<_PlacedCourse> courses,
     bool timed,
     List<ScheduleWeekTimeSegments>? segments,
+    List<ScheduleWeekBreakSegments>? restSegments,
     double scale,
   ) {
     final minimum = timed
@@ -990,7 +1063,13 @@ class _ScheduleAxis {
     var previousEnd = -1;
     for (final segment in segments ?? <ScheduleWeekTimeSegments>[]) {
       final start = _minute(segment.timeStart), end = _minute(segment.timeEnd);
-      if (start == null || end == null || end <= start || start < previousEnd) {
+      if (start == null ||
+          end == null ||
+          end <= start ||
+          start < previousEnd ||
+          segment.label.isEmpty ||
+          segment.label.length > 40 ||
+          segments!.length > 48) {
         valid.clear();
         break;
       }
@@ -998,23 +1077,52 @@ class _ScheduleAxis {
       previousEnd = end;
     }
     if (timed && valid.isNotEmpty) {
-      final low = math.min(minimum, valid.first.$1);
-      final high = math.max(maximum, valid.last.$2);
+      previousEnd = -1;
+      for (final rest in restSegments ?? <ScheduleWeekBreakSegments>[]) {
+        final start = _minute(rest.timeStart), end = _minute(rest.timeEnd);
+        if (start == null ||
+            end == null ||
+            end <= start ||
+            start < previousEnd ||
+            rest.label.isEmpty ||
+            rest.label.length > 40 ||
+            restSegments!.length > 16 ||
+            valid.any((lesson) => start < lesson.$2 && end > lesson.$1)) {
+          breaks.clear();
+          break;
+        }
+        breaks.add((start, end, rest.label));
+        previousEnd = end;
+      }
+      // School data owns the outer bounds too. Host fallback hours apply only
+      // when school time segments are unavailable, never as extra school hours.
+      final low = [
+        valid.first.$1,
+        for (final c in courses) c.start,
+        for (final rest in breaks) rest.$1,
+      ].reduce(math.min);
+      final high = [
+        valid.last.$2,
+        for (final c in courses) c.end,
+        for (final rest in breaks) rest.$2,
+      ].reduce(math.max);
       final stops = {
         low,
         high,
         for (final s in valid) ...[s.$1, s.$2],
+        for (final rest in breaks) ...[rest.$1, rest.$2],
       }.toList()..sort();
       for (var i = 0; i < stops.length - 1; i++) {
         final a = stops[i], b = stops[i + 1];
         final teaching = valid.any((s) => a >= s.$1 && b <= s.$2);
-        final occupied = courses.any(
-          (c) => (c.start >= a && c.start < b) || (c.end > a && c.end <= b),
-        );
+        final occupied = courses.any((c) => c.start < b && c.end > a);
+        final rest = breaks.any((s) => a >= s.$1 && b <= s.$2);
         final extent = teaching
             ? 72.0 * scale
             : occupied
             ? math.max(48.0, (b - a) * 1.2) * scale
+            : rest
+            ? 24.0 * scale
             : 12.0 * scale;
         _pieces.add((a, b, extent));
       }
@@ -1040,6 +1148,7 @@ class _ScheduleAxis {
 
   final _pieces = <(int, int, double)>[];
   final ticks = <(int, String)>[];
+  final breaks = <(int, int, String)>[];
   double get height => _pieces.fold(0, (sum, p) => sum + p.$3);
   double y(int value) {
     var result = 0.0;

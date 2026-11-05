@@ -55,6 +55,36 @@ Map<String, dynamic> termSnapshot() => {
 
 void main() {
   test(
+    '1.3 term projection keeps rest hints, school zone and original age',
+    () {
+      var now = 1000000;
+      final cache = ScriptDataCache(CredentialStore(), now: () => now);
+      final package = schedulePackage(schema: '1.3');
+      final data = {
+        ...termSnapshot(),
+        'timeZone': 'Asia/Shanghai',
+        'timeSegments': [
+          {'label': 'Morning', 'timeStart': '10:00', 'timeEnd': '12:00'},
+          {'label': 'Afternoon', 'timeStart': '14:00', 'timeEnd': '16:00'},
+        ],
+        'breakSegments': [
+          {'label': 'Lunch break', 'timeStart': '12:00', 'timeEnd': '14:00'},
+        ],
+      };
+      expect(cache.write(package, 'schedule.week', {}, data), isTrue);
+      final home = cache.read(package, 'schedule.week')!;
+      now += 31000;
+      final week = cache.read(package, 'schedule.week', params: {'week': 2})!;
+      expect((week.data as Map)['week'], 2);
+      expect((week.data as Map)['breakSegments'], data['breakSegments']);
+      expect((week.data as Map)['timeZone'], 'Asia/Shanghai');
+      expect(week.fetchedAt, home.fetchedAt);
+      expect(week.freshUntil, home.freshUntil);
+      expect(week.isStale, isTrue);
+    },
+  );
+
+  test(
     'term projections preserve source time, TTL, empty weeks and default home query',
     () {
       var now = 1000000;

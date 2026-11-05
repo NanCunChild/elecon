@@ -24,14 +24,14 @@ SDK12 起，显式 `id` 标识包内卡片实例，`title` 可选；同类型可
 | `type` | 同包需要提供 | 当前输出版本 | 可选补充 |
 |---|---|---|---|
 | `notice` | `notice.list` | 1.1 | `notice.detail` 1.0 |
-| `schedule` | `schedule.week` | 1.2 | `term.list`、`calendar.academic` 1.0 |
+| `schedule` | `schedule.week` | 1.3（兼容 1.2） | `term.list`、`calendar.academic` 1.0 |
 | `grades` | `grades.list` | 1.1 | `term.list` 1.0、`gpa.summary` 1.1、`query.controls` 1.0 |
 | `library` | `library.loans` | 1.0 | 此模板用于个人借阅 |
 | `card` | `card.balance` / `card.transactions` / `card.qr` 至少一个 | 均 1.0 | 可组合余额、流水、二维码 |
 | `exam` | `exam.list` | 1.0 | 学期参数 |
 | `classroom` | `classroom.buildings`、`classroom.available` | 1.0、1.2 | `query.controls` 1.0 |
 | `energy` | `energy.meters`、`energy.usage` | 1.0、1.1 | 表具选择、历史窗口 |
-| `climate` | `climate.devices`、`climate.status` | 均 1.0 | `climate.command` 1.0 |
+| `climate` | `climate.devices`、`climate.status` | 1.1、1.0 | `climate.command` 1.0 |
 | `directory` | `directory.phones` | 1.0 | 离线目录、本地搜索、系统拨号 |
 | `generic` | `generic.section` | 1.0 | 语义字段、简单表格 |
 
@@ -89,7 +89,7 @@ export const capabilities = {
 };
 ```
 
-`dayOfWeek` 为 1–7。`start/end` 保留契约定义的节次或时间字符串；学校墙钟时间可用 `timeStart/timeEnd` 明确提供。1.2 的 `termWeeks` 可提供整学期周详情，`timeSegments` 与 `weekPreviews` 提供时间段和已知预览。缺少某日或某周证据不等于零门课程。见 [schedule.week](../../contract/schema/schedule.week.schema.json)。
+`dayOfWeek` 为 1–7。`start/end` 保留契约定义的节次或时间字符串；学校墙钟时间可用 `timeStart/timeEnd` 明确提供。1.2 的 `termWeeks` 可提供整学期周详情，`timeSegments` 与 `weekPreviews` 提供时间段和已知预览。缺少某日或某周证据不等于零门课程。1.3 可提供 `timeZone` 和 `breakSegments`（学校标签、同日起止），宿主不推断餐段或教室可用性；缺失时保留普通间隙。见 [schedule.week](../../contract/schema/schedule.week.schema.json)。
 
 ## 成绩 `grades`
 
@@ -218,7 +218,7 @@ export const capabilities = {
 
 ## 空调 `climate`
 
-先请求 `climate.devices`：`{}`；再请求 `climate.status`：`{"deviceId":"demo-device"}`。下例仅展示只读模拟设备，不声明命令。
+`climate.devices@1.1` 可离线返回当前身份的本地绑定和有限命令；`bindingVerifiedAt` 仅是历史核验时间，不能冒充当前在线状态。先请求 `climate.devices`：`{}`；再请求 `climate.status`：`{"deviceId":"demo-device"}`。下例仅展示只读模拟设备，不声明命令。
 
 ```js
 export const capabilities = {

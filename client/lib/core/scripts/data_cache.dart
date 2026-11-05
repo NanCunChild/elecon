@@ -82,10 +82,13 @@ class ScriptDataCache {
     Map<String, dynamic> params = const {},
   }) {
     final ref = _ref(package, capability, params);
-    // ADR-054: only 1.2 defines complete term weeks. Older open schemas may
+    // ADR-054/089: only 1.2/1.3 define complete term weeks. Older open schemas may
     // contain an unrelated extension with this name and must not be projected.
     if (capability == 'schedule.week' &&
-        package.manifest.capability(capability)?.schemaVersion == '1.2' &&
+        const [
+          '1.2',
+          '1.3',
+        ].contains(package.manifest.capability(capability)?.schemaVersion) &&
         params['week'] is int &&
         params.keys.every((key) => key == 'week' || key == 'term')) {
       for (final entry in _entries(package, capability)) {
