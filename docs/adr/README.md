@@ -42,6 +42,8 @@ Android 前台缓存课表小部件见 [090](adr_090_schedule_widgets.md)。
 
 会话群名称兜底与内联头像见 [098](adr_098_conversation_avatars.md)。
 
+有界并行查询、SDK20 凭据运行权与通用会话补全见 [099](adr_099_bounded_parallel_queries.md)。
+
 ## 历史记录与维护原则
 
 存储驱动的注册入口、SDK19 前台调度与暂缓通用广播见 [097](adr_097_registered_script_execution.md)。
