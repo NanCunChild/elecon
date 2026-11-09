@@ -37,6 +37,13 @@ class _NoticeSectionState extends State<NoticeSection>
   QueryPhase _phase = QueryPhase.idle;
   String? _error;
   bool _prepared = false;
+  ScriptRunCancellation? _cancellation;
+  @override
+  void dispose() {
+    _cancellation?.cancel();
+    super.dispose();
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -72,6 +79,18 @@ class _NoticeSectionState extends State<NoticeSection>
           true) {
         await session.waitForHomeRefresh();
         if (!isCurrentQuery(this, session, generation, source)) return;
+        // A revision notification can supersede restoreCache's read token.
+        // Check the completed preload directly before deciding to issue HTTP.
+        final cached = await CapabilityQueries(
+          session,
+          source: source,
+        ).latestCachedCapability('notice.list');
+        if (!isCurrentQuery(this, session, generation, source)) return;
+        final completed = cached == null ? null : decodeCache(cached.data);
+        if (completed != null) {
+          setState(() => applyCache(completed));
+          return;
+        }
         await restoreCache();
         if (!isCurrentQuery(this, session, generation, source) ||
             _data != null ||
@@ -103,11 +122,14 @@ class _NoticeSectionState extends State<NoticeSection>
   @override
   void applyCache(NoticeList data) {
     _data = data;
-    if (_phase != QueryPhase.needLogin) _phase = QueryPhase.loaded;
+    if (_phase != QueryPhase.needLogin && _phase != QueryPhase.loading) {
+      _phase = QueryPhase.loaded;
+    }
   }
 
   @override
   void clearCache() {
+    _cancellation?.cancel();
     _prepared = false;
     _data = null;
     _phase = QueryPhase.idle;
@@ -118,19 +140,27 @@ class _NoticeSectionState extends State<NoticeSection>
   void onConfigurationRequired() => _phase = QueryPhase.needConfiguration;
 
   Future<void> _load({bool configure = false, bool interactive = true}) async {
-    if (_phase == QueryPhase.loading) return;
+    if (_phase == QueryPhase.loading || _cancellation != null) return;
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     final source = CapabilitySourceScope.maybeOf(context)?.source;
+    final cancellation = ScriptRunCancellation();
+    _cancellation?.cancel();
+    _cancellation = cancellation;
     setState(() => _phase = QueryPhase.loading);
-    final result = await runDecoded<NoticeList>(
-      context,
-      session,
-      'notice.list',
-      interactive: interactive,
-      params: {if (configure) 'configure': true},
-      decode: noticeListFromDynamic,
-    );
+    final result =
+        await runDecoded<NoticeList>(
+          context,
+          session,
+          'notice.list',
+          interactive: interactive,
+          cancellation: cancellation,
+          params: {if (configure) 'configure': true},
+          decode: noticeListFromDynamic,
+        ).whenComplete(() {
+          if (identical(_cancellation, cancellation)) _cancellation = null;
+          cancellation.dispose();
+        });
     if (!isCurrentQuery(this, session, generation, source)) return;
     setState(() {
       _phase = result.needConfiguration

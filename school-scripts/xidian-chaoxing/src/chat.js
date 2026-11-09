@@ -146,10 +146,10 @@ export async function sendPermission(ctx, account, conversation) {
   }
 }
 
-async function recentConversations(ctx, account, items) {
+async function recentConversations(ctx, account, items, maxPages = 5) {
   const seen = new Set();
   let cursor = "";
-  for (let page = 0; page < 5; page++) {
+  for (let page = 0; page < maxPages; page++) {
     try {
       const path = `sdk/user/${encodeURIComponent(account.tid)}/user_channels/list?limit=100&cursor=${encodeURIComponent(cursor)}`;
       const data = await apiRest(ctx, account, path, undefined, {
@@ -278,7 +278,7 @@ async function groupMembers(ctx, account, details) {
 
 export async function messagesConversations(ctx, params = {}) {
   requireParams(params, ["accountId"]);
-  const { client, account } = await authenticated(ctx, params);
+  const { account } = await authenticated(ctx, params);
   const items = new Map();
   let successful = 0;
   let partial = false;
@@ -309,34 +309,122 @@ export async function messagesConversations(ctx, params = {}) {
     }
   }
   if (!successful) throw serviceError();
-  const details = await groupNames(ctx, account, items);
-  await recentConversations(ctx, account, items);
-  const samples = await groupMembers(ctx, account, details);
-  const labels = await profiles(client, account, [
-    ...[...items.values()]
-      .filter((row) => row.conversationKind === "direct")
-      .map((row) => row.conversationId),
-    ...[...samples.values()].flatMap((sample) => sample.ids),
-  ]);
-  for (const row of items.values()) {
-    if (row.conversationKind === "direct") row.title = labels.get(row.conversationId)?.name || row.title;
-    else if (!namedGroup(row.title, row.conversationId)) {
-      const sample = samples.get(row.conversationId);
-      const names = (sample?.ids || []).map((id) => labels.get(id)?.name).filter(Boolean);
-      if (names.length) row.title = bounded(names.join("、") + (sample.more ? "..." : ""), 160);
-    }
-  }
-  await conversationImages(ctx, items, new Map([...samples].map(([id, sample]) => [id, sample.ids])), labels);
+  await groupNames(ctx, account, items);
   return {
     ...identity(ctx, account),
     coverage: partial ? "partial" : "complete",
-    items: [...items.values()].sort(
-      (a, b) =>
-        Number(b.hasContent === true) - Number(a.hasContent === true) ||
-        (a.hasContent === true && b.hasContent === true
-          ? (b.lastMessageAt || "").localeCompare(a.lastMessageAt || "")
-          : 0),
-    ),
+    items: [...items.values()],
+  };
+}
+
+// Metadata is optional for every backend. School protocol and cache policy stay here.
+export async function messagesEnrich(ctx, params = {}) {
+  requireParams(params, ["accountId", "items"]);
+  if (!Array.isArray(params.items) || params.items.length < 1 || params.items.length > 8)
+    throw serviceError("input_invalid_request");
+  const requested = new Map();
+  for (const raw of params.items) {
+    const row = target(raw || {});
+    const key = `${row.conversationKind}:${row.conversationId}`;
+    if (requested.has(key)) throw serviceError("input_invalid_request");
+    requested.set(key, { ...row, title: row.conversationId });
+  }
+  const { client, account } = await authenticated(ctx, params);
+  const address = { namespace: "xidian.services" };
+  let cached = {};
+  try {
+    const record = await ctx.credentials.get("chat-enrichment", address);
+    const value = record && JSON.parse(record.value);
+    if (
+      value?.version === 1 &&
+      value.accountId === account.id &&
+      value.items &&
+      typeof value.items === "object"
+    )
+      cached = value.items;
+  } catch (error) {
+    optionalFailure(error);
+  }
+  let fetchedAt = ctx.now();
+  const fresh = new Map(),
+    pending = new Map();
+  for (const [key, row] of requested) {
+    const saved = cached[key];
+    const age = ctx.now() - Date.parse(saved?.fetchedAt);
+    if (age >= 0 && age < 300000 && saved?.patch) {
+      fresh.set(key, saved.patch);
+      fetchedAt = Math.min(fetchedAt, Date.parse(saved.fetchedAt));
+    } else pending.set(key, row);
+  }
+  if (pending.size) {
+    const details = await groupNames(ctx, account, pending);
+    await recentConversations(ctx, account, pending, 1);
+    const available = ctx.budget ? (await ctx.budget.remaining()).requests : 40;
+    let optional = Math.min(8, Math.max(0, available - 4));
+    const limited = (cap) => {
+      let used = 0;
+      return {
+        ...ctx,
+        fetch: async (...args) => {
+          if (used >= cap || optional <= 0) throw serviceError("optional_budget_exhausted");
+          used++;
+          optional--;
+          return ctx.fetch(...args);
+        },
+      };
+    };
+    const samples = await groupMembers(limited(Math.min(4, optional)), account, details);
+    const labels = await profiles(client, account, [
+      ...[...pending.values()]
+        .filter((row) => row.conversationKind === "direct")
+        .map((row) => row.conversationId),
+      ...[...samples.values()].flatMap((sample) => sample.ids),
+    ]);
+    for (const row of pending.values()) {
+      if (row.conversationKind === "direct") row.title = labels.get(row.conversationId)?.name || row.title;
+      else if (!namedGroup(row.title, row.conversationId)) {
+        const sample = samples.get(row.conversationId);
+        const names = (sample?.ids || []).map((id) => labels.get(id)?.name).filter(Boolean);
+        if (names.length) row.title = bounded(names.join("、") + (sample.more ? "..." : ""), 160);
+      }
+    }
+    await conversationImages(
+      limited(optional),
+      pending,
+      new Map([...samples].map(([id, sample]) => [id, sample.ids])),
+      labels,
+    );
+    for (const [key, row] of pending) {
+      const patch = { conversationId: row.conversationId, conversationKind: row.conversationKind };
+      for (const field of ["title", "avatarImages", "hasContent", "lastMessageAt"])
+        if (row[field] !== undefined && !(field === "title" && row.title === row.conversationId))
+          patch[field] = row[field];
+      fresh.set(key, patch);
+      // Protected bounded metadata cache; native archive retains image bytes.
+      const { avatarImages, ...metadata } = patch;
+      cached[key] = { fetchedAt: new Date(ctx.now()).toISOString(), patch: metadata };
+    }
+    const entries = Object.entries(cached).sort(
+      (a, b) => Date.parse(b[1].fetchedAt) - Date.parse(a[1].fetchedAt),
+    );
+    const kept = {};
+    for (const [key, value] of entries.slice(0, 128)) {
+      kept[key] = value;
+      if (JSON.stringify(kept).length > 12000) {
+        delete kept[key];
+        break;
+      }
+    }
+    await ctx.credentials.set(
+      "chat-enrichment",
+      JSON.stringify({ version: 1, accountId: account.id, items: kept }),
+      { ...address, type: "query", expiresAt: null },
+    );
+  }
+  return {
+    ...identity(ctx, account),
+    fetchedAt: new Date(fetchedAt).toISOString(),
+    items: [...requested.keys()].map((key) => fresh.get(key)),
   };
 }
 

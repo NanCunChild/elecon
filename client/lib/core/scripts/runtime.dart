@@ -47,6 +47,7 @@ class TrustedScriptRuntime {
     ScriptDeviceInputCall? deviceInputCall,
     ScriptExecutionTurn? execution,
     bool Function()? isActive,
+    Future<void>? cancellationSignal,
     String? htmlStdlib,
     void Function(String level, String message)? onLog,
     Duration wallTimeout = const Duration(seconds: 35),
@@ -55,6 +56,7 @@ class TrustedScriptRuntime {
     int maxOutputBytes = 4 * 1024 * 1024,
     int maxHostCalls = 256,
     int maxRequests = 20,
+    int Function()? remainingRequests,
   }) async {
     if (package.requiresUpdate) {
       throw const ScriptRunException('script_update_required');
@@ -187,6 +189,17 @@ class TrustedScriptRuntime {
     );
     qjs.setHostFunctions(
       scriptHostFunctions({
+        '__script_budget': () {
+          check();
+          if (package.manifest.sdkVersion < 20) {
+            throw const ScriptRunException('invalid_limits');
+          }
+          final bridge = maxRequests - requests;
+          final transport = remainingRequests?.call() ?? bridge;
+          return jsonEncode({
+            'requests': bridge < transport ? bridge : transport,
+          });
+        },
         '__script_execution': (dynamic method, dynamic encoded) {
           check();
           if (package.manifest.sdkVersion < 19 || execution == null) {
@@ -524,7 +537,11 @@ class TrustedScriptRuntime {
               'textAvailable':
                   !response.containsKey('body') || response['body'] is String,
             };
-          } on ScriptRunException {
+          } on ScriptRunException catch (error) {
+            if (package.manifest.sdkVersion >= 20 &&
+                error.code.endsWith('_limit')) {
+              fatal = error;
+            }
             rethrow;
           } catch (_) {
             throw const ScriptRunException('fetch_failed');
@@ -725,6 +742,13 @@ class TrustedScriptRuntime {
     );
 
     final cancelled = Completer<Object?>();
+    cancellationSignal?.then((_) {
+      if (running && !cancelled.isCompleted) {
+        cancelled.completeError(
+          const ScriptRunException('invocation_cancelled'),
+        );
+      }
+    });
     final timer = Timer.periodic(const Duration(milliseconds: 25), (_) {
       if ((!(isActive?.call() ?? true)) && !cancelled.isCompleted) {
         cancelled.completeError(

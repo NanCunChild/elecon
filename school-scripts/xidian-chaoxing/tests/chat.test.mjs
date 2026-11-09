@@ -4,7 +4,7 @@ import test from "node:test";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { ACCOUNT_URL } from "../src/account.js";
-import { messagesConversations, messagesHistory, messagesSend } from "../src/chat.js";
+import { messagesConversations, messagesEnrich, messagesHistory, messagesSend } from "../src/chat.js";
 import { decode, encode, one, str, sub } from "../src/protobuf.js";
 
 const ajv = new Ajv2020({ strict: true, addUsedSchema: false });
@@ -206,11 +206,33 @@ function harness({
   };
   return { ctx, records, calls, sent, closed: () => closed };
 }
+// Exercise the actual two-phase module flow; native ordering has its own tests.
+async function completeConversations(ctx, params) {
+  const directory = await messagesConversations(ctx, params);
+  const patches = new Map();
+  for (let offset = 0; offset < directory.items.length; offset += 8) {
+    const result = await messagesEnrich(ctx, {
+      accountId: params.accountId,
+      items: directory.items
+        .slice(offset, offset + 8)
+        .map(({ conversationId, conversationKind }) => ({ conversationId, conversationKind })),
+    });
+    valid("messages.enrich", result);
+    for (const row of result.items) patches.set(`${row.conversationKind}:${row.conversationId}`, row);
+  }
+  return {
+    ...directory,
+    items: directory.items.map((row) => ({
+      ...row,
+      ...patches.get(`${row.conversationKind}:${row.conversationId}`),
+    })),
+  };
+}
 test("conversation discovery separates groups/contacts, names and IM credentials", async () => {
   const h = harness({
     groups: [{ id: "9007199254740999", name: "Big group" }],
   });
-  const result = await messagesConversations(h.ctx, { accountId: "123456" });
+  const result = await completeConversations(h.ctx, { accountId: "123456" });
   valid("messages.conversations", result);
   assert.equal(result.coverage, "complete");
   assert.deepEqual(
@@ -230,9 +252,9 @@ test("conversation discovery separates groups/contacts, names and IM credentials
 });
 test("partial discovery is explicit; total failure is not an empty list", async () => {
   const h = harness({ fail: (u) => u.endsWith("contacts/users") });
-  assert.equal((await messagesConversations(h.ctx, { accountId: "123456" })).coverage, "partial");
+  assert.equal((await completeConversations(h.ctx, { accountId: "123456" })).coverage, "partial");
   await assert.rejects(
-    messagesConversations(harness({ fail: (u) => u.includes("easemob") }).ctx, {
+    completeConversations(harness({ fail: (u) => u.includes("easemob") }).ctx, {
       accountId: "123456",
     }),
   );
@@ -243,7 +265,7 @@ test("batched group details fill missing names by exact admitted ID only", async
     groupDetails:
       '{"data":[{"id":9007199254740993,"name":"Resolved group"},{"id":"789012","name":"   "},{"id":"999999","name":"Stranger"}]}',
   });
-  const result = await messagesConversations(h.ctx, { accountId: "123456" });
+  const result = await completeConversations(h.ctx, { accountId: "123456" });
   valid("messages.conversations", result);
   assert.equal(result.items[0].conversationId, "9007199254740993");
   assert.equal(result.items[0].title, "Resolved group");
@@ -284,15 +306,12 @@ test("recent conversation evidence orders content first without treating unknown
       ],
     },
   });
-  const result = await messagesConversations(h.ctx, { accountId: "123456" });
+  const result = await completeConversations(h.ctx, { accountId: "123456" });
   valid("messages.conversations", result);
-  assert.deepEqual(
-    result.items.slice(0, 2).map((row) => row.conversationId),
-    ["300", "200"],
-  );
-  assert.equal(result.items[0].hasContent, true);
-  assert.equal(result.items[0].lastMessageAt, new Date(1800000000100).toISOString());
-  for (const row of result.items.slice(2)) {
+  const recent = result.items.find((row) => row.conversationId === "300");
+  assert.equal(recent.hasContent, true);
+  assert.equal(recent.lastMessageAt, new Date(1800000000100).toISOString());
+  for (const row of result.items.filter((row) => !["200", "300"].includes(row.conversationId))) {
     assert.equal(row.hasContent, undefined);
     assert.equal(row.lastMessageAt, undefined);
   }
@@ -303,12 +322,12 @@ test("recent conversation evidence orders content first without treating unknown
 test("optional enrichment failures preserve the directory but authentication expiry stops it", async () => {
   const failed = (url) => url.includes("/chatgroups/") || url.includes("user_channels/list");
   const h = harness({ fail: failed });
-  const result = await messagesConversations(h.ctx, { accountId: "123456" });
+  const result = await completeConversations(h.ctx, { accountId: "123456" });
   assert.equal(result.coverage, "complete");
   assert.equal(result.items[0].title, "Synthetic group");
   assert.equal(result.items[0].hasContent, undefined);
   await assert.rejects(
-    messagesConversations(
+    completeConversations(
       harness({
         fail: (url) => (url.includes("user_channels/list") ? "unauthenticated" : false),
       }).ctx,
@@ -322,7 +341,7 @@ test("optional detail/recent 403 preserves the joined directory and account; 401
     const h = harness({
       fail: (url) => (url.includes(endpoint) ? 403 : false),
     });
-    const result = await messagesConversations(h.ctx, { accountId: "123456" });
+    const result = await completeConversations(h.ctx, { accountId: "123456" });
     valid("messages.conversations", result);
     assert.equal(result.coverage, "complete");
     assert.equal(result.accountId, "123456");
@@ -331,7 +350,7 @@ test("optional detail/recent 403 preserves the joined directory and account; 401
     assert.equal(JSON.parse(h.records.get("chaoxing")).accountId, "123456");
     assert.ok(h.calls.every(({ url }) => !url.includes("messageroaming")));
     await assert.rejects(
-      messagesConversations(
+      completeConversations(
         harness({
           fail: (url) => (url.includes(endpoint) ? 401 : false),
         }).ctx,
@@ -341,7 +360,7 @@ test("optional detail/recent 403 preserves the joined directory and account; 401
     );
   }
   await assert.rejects(
-    messagesConversations(
+    completeConversations(
       harness({
         fail: (url) => (url.endsWith("joined_chatgroups") ? 403 : false),
       }).ctx,
@@ -371,12 +390,12 @@ test("name batches and recent pagination stay bounded; repeated cursors stop wit
   const result = await messagesConversations(h.ctx, { accountId: "123456" });
   assert.equal(result.items.length, 121);
   assert.equal(h.calls.filter(({ url }) => url.includes("/chatgroups/")).length, 3);
-  assert.equal(h.calls.filter(({ url }) => url.includes("user_channels/list")).length, 5);
+  assert.equal(h.calls.filter(({ url }) => url.includes("user_channels/list")).length, 0);
   assert.ok(h.calls.length < 40);
   assert.ok(h.calls.every(({ url }) => !url.includes("messageroaming")));
   const cycle = harness({ channels: { channel_infos: [], cursor: "same" } });
   await messagesConversations(cycle.ctx, { accountId: "123456" });
-  assert.equal(cycle.calls.filter(({ url }) => url.includes("user_channels/list")).length, 2);
+  assert.equal(cycle.calls.filter(({ url }) => url.includes("user_channels/list")).length, 0);
 });
 test("history keeps uint64 cursor exact, deduplicates messages and filters receipts/commands", async () => {
   const rows = [
@@ -674,7 +693,7 @@ test("placeholder group names and avatars use owner/admin/member order, exact pr
     ],
     image: png,
   });
-  const result = await messagesConversations(h.ctx, { accountId: "123456" });
+  const result = await completeConversations(h.ctx, { accountId: "123456" });
   valid("messages.conversations", result);
   assert.equal(result.items[0].title, "Owner、Admin、Member A、Member B...");
   assert.deepEqual(
@@ -695,7 +714,7 @@ test("avatar failure and invalid/oversized bytes retain title; cancellation and 
   };
   for (const image of [new Uint8Array(17000), Uint8Array.of(1, 2, 3)]) {
     const h = harness({ ...setup, image });
-    const result = await messagesConversations(h.ctx, { accountId: "123456" });
+    const result = await completeConversations(h.ctx, { accountId: "123456" });
     assert.equal(result.items[0].title, "Known");
     assert.equal(result.items[0].avatarImages, undefined);
   }
@@ -704,7 +723,7 @@ test("avatar failure and invalid/oversized bytes retain title; cancellation and 
       ...setup,
       fail: (url) => (url.includes("/admin") ? Object.assign(new Error(code), { code }) : false),
     });
-    await assert.rejects(messagesConversations(h.ctx, { accountId: "123456" }), { code });
+    await assert.rejects(completeConversations(h.ctx, { accountId: "123456" }), { code });
   }
 });
 
@@ -737,11 +756,28 @@ test("member and image enrichment stay within per-query budgets", async () => {
   const result = await messagesConversations(h.ctx, { accountId: "123456" });
   valid("messages.conversations", result);
   assert.equal(result.items.length, 70);
-  assert.equal(h.calls.filter(({ url }) => url.endsWith("/admin")).length, 64);
-  assert.equal(h.calls.filter(({ url }) => url.startsWith("https://photo.chaoxing.com/")).length, 64);
-  assert.ok(
-    result.items.flatMap((row) => row.avatarImages || []).reduce((sum, image) => sum + image.length, 0) <=
-      1024 * 1024,
+  assert.equal(
+    h.calls.filter(({ url }) => url.endsWith("/admin") || url.startsWith("https://photo.chaoxing.com/"))
+      .length,
+    0,
   );
-  assert.ok(h.calls.length < 256);
+  assert.ok(h.calls.length <= 5);
+  const before = h.calls.length;
+  const extra = await messagesEnrich(h.ctx, {
+    accountId: "123456",
+    items: result.items
+      .slice(0, 8)
+      .map(({ conversationId, conversationKind }) => ({ conversationId, conversationKind })),
+  });
+  valid("messages.enrich", extra);
+  assert.ok(h.calls.filter(({ url }) => url.endsWith("/admin")).length <= 4);
+  assert.ok(h.calls.filter(({ url }) => url.startsWith("https://photo.chaoxing.com/")).length <= 4);
+  assert.ok(h.calls.length - before <= 12);
+  const cachedBefore = h.calls.length;
+  const cached = await messagesEnrich(h.ctx, {
+    accountId: "123456",
+    items: [{ conversationId: "1000", conversationKind: "group" }],
+  });
+  valid("messages.enrich", cached);
+  assert.equal(h.calls.length - cachedBefore, 1, "fresh metadata needs authentication only");
 });

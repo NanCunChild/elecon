@@ -89,12 +89,17 @@ class _EleconHomePageState extends State<EleconHomePage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _homeRefreshTimer?.cancel();
+    _session?.cancelHomeRefresh();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _homeRefreshTimer?.cancel();
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _session?.cancelHomeRefresh();
+    }
     if (state == AppLifecycleState.resumed) {
       setState(() {});
       _scheduleHomeRefresh();

@@ -59,6 +59,15 @@ const scriptHostErrorCodes = <String>{
   'capability_not_declared',
   'configuration_required',
   'credential_descriptor_conflict',
+  'credential_scope_mismatch',
+  'scheduler_queue_limit',
+  'process_request_limit',
+  'request_count_limit',
+  'response_body_limit',
+  'response_header_limit',
+  'header_size_limit',
+  'concurrent_request_limit',
+  'redirect_limit',
   'device_input_busy',
   'device_input_invalid_request',
   'device_input_invalid_result',
@@ -166,12 +175,14 @@ Map<String, Function> scriptHostFunctions(Map<String, Function> callbacks) {
 
   return callbacks.map((name, callback) {
     final count = switch (name) {
+      '__script_budget' => 0,
       '__script_credentials' => 4,
       '__script_accounts' || '__script_app_tunnel' => 3,
       '__script_scan' || '__script_input' => 1,
       _ => 2,
     };
     final Function wrapped = switch (count) {
+      0 => () => invoke(name, []),
       1 => (dynamic a) => invoke(name, [a]),
       2 => (dynamic a, dynamic b) => invoke(name, [a, b]),
       3 => (dynamic a, dynamic b, dynamic c) => invoke(name, [a, b, c]),

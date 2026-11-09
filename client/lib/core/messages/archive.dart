@@ -85,6 +85,32 @@ class MessageArchiveView {
   }
 }
 
+bool isMessageEnrichmentParams(Map<String, dynamic> params) {
+  if (params.length != 2 ||
+      !params.containsKey('accountId') ||
+      !params.containsKey('items') ||
+      params['accountId'] is! String) {
+    return false;
+  }
+  final items = params['items'];
+  if (items is! List || items.isEmpty || items.length > 8) return false;
+  final seen = <String>{};
+  for (final item in items) {
+    if (item is! Map ||
+        item.length != 2 ||
+        item['conversationId'] is! String ||
+        (item['conversationId'] as String).isEmpty ||
+        (item['conversationId'] as String).length > 128 ||
+        !const {'group', 'direct'}.contains(item['conversationKind']) ||
+        !seen.add(
+          jsonEncode([item['conversationKind'], item['conversationId']]),
+        )) {
+      return false;
+    }
+  }
+  return true;
+}
+
 class MessageArchiveStore {
   MessageArchiveStore(this.store, {int Function()? now})
     : now = now ?? (() => DateTime.now().millisecondsSinceEpoch);
@@ -95,11 +121,15 @@ class MessageArchiveStore {
   // process-local ownership only: independently opened H/S stores or engines
   // must not concurrently cache and rewrite the same protected library.
   static final _merges = Expando<Future<void>>('message archive merges');
+  static final _directories = Expando<Map<String, Object>>(
+    'message directory revisions',
+  );
   static const type = 'message-archive';
   static const maxBytes = 4 * 1024 * 1024;
   static const retentionMs = 30 * 24 * 60 * 60 * 1000;
   static const capabilities = {
     'messages.conversations',
+    'messages.enrich',
     'messages.history',
     'messages.send',
   };
@@ -149,6 +179,15 @@ class MessageArchiveStore {
   /// Object identity changes on every verified session write or revocation.
   Object? revision(ScriptPackage package) =>
       _entry('${_prefix(package)}account');
+
+  Object? directoryRevision(ScriptPackage package) {
+    final current = account(package);
+    if (current == null || _entry(_databaseRef(package, current)) == null) {
+      return null;
+    }
+    final revisions = _directories[store] ??= <String, Object>{};
+    return revisions.putIfAbsent(_prefix(package), Object.new);
+  }
 
   void _put(ScriptPackage package, String ref, String value) => store.put(
     CredentialEntry(
@@ -215,6 +254,7 @@ class MessageArchiveStore {
       return false;
     }
     if (capability != 'messages.conversations' &&
+        capability != 'messages.enrich' &&
         (data['conversationId'] != params['conversationId'] ||
             data['conversationKind'] != params['conversationKind'])) {
       return false;
@@ -226,8 +266,9 @@ class MessageArchiveStore {
         )) {
       return false;
     }
-    if (capability == 'messages.conversations' &&
-        package.manifest.capability(capability)?.schemaVersion == '1.3') {
+    if (capability == 'messages.enrich' ||
+        (capability == 'messages.conversations' &&
+            package.manifest.capability(capability)?.schemaVersion == '1.3')) {
       var total = 0;
       for (final row in data['items'] as List) {
         for (final value in (row['avatarImages'] as List? ?? const [])) {
@@ -235,6 +276,22 @@ class MessageArchiveStore {
           if (bytes == null || (total += bytes.length) > 1024 * 1024) {
             return false;
           }
+        }
+      }
+    }
+    if (capability == 'messages.enrich') {
+      if (!isMessageEnrichmentParams(params)) return false;
+      final requested = params['items'] as List;
+      String id(Map row) =>
+          '${row['conversationKind']}:${row['conversationId']}';
+      final allowed = requested.whereType<Map>().map(id).toSet();
+      if (allowed.length != requested.length) return false;
+      final seen = <String>{};
+      for (final row in data['items'] as List) {
+        if (!allowed.contains(id(row as Map)) ||
+            !seen.add(id(row)) ||
+            (row['lastMessageAt'] != null && row['hasContent'] != true)) {
+          return false;
         }
       }
     }
@@ -272,8 +329,14 @@ class MessageArchiveStore {
     Map<String, dynamic> params,
     Map<String, dynamic> data, {
     required bool Function() isActive,
+    Object? expectedDirectory,
   }) async {
-    if (!isActive()) return;
+    bool valid() =>
+        isActive() &&
+        (capability != 'messages.enrich' ||
+            (expectedDirectory != null &&
+                identical(expectedDirectory, directoryRevision(package))));
+    if (!valid()) return;
     if (!accepts(package, capability, params, data)) {
       throw const FormatException('message_identity_mismatch');
     }
@@ -282,8 +345,8 @@ class MessageArchiveStore {
     final task = previous.then((_) async {
       // Capture the admission revision before waiting: even the same account
       // logging in again cannot inherit a previously queued result.
-      if (!isActive() || !identical(admitted, revision(package))) return;
-      await _merge(package, capability, params, data, admitted, isActive);
+      if (!valid() || !identical(admitted, revision(package))) return;
+      await _merge(package, capability, params, data, admitted, valid);
     });
     final settled = task.then<void>(
       (_) {},
@@ -356,6 +419,10 @@ class MessageArchiveStore {
       _databaseRef(package, current),
       base64Encode(result['bytes'] as Uint8List),
     );
+    if (capability == 'messages.conversations') {
+      final revisions = _directories[store] ??= <String, Object>{};
+      revisions[_prefix(package)] = Object();
+    }
   }
 
   Future<MessageArchiveView?> read(
@@ -614,6 +681,24 @@ Map<String, Object?> _databaseWork(
         }),
         now,
       ]);
+    } else if (capability == 'messages.enrich') {
+      for (final raw in data['items'] as List) {
+        final patch = Map<String, dynamic>.from(raw as Map);
+        final existing = db.select(
+          'SELECT body FROM conversations WHERE kind=? AND id=?',
+          [patch['conversationKind'], patch['conversationId']],
+        );
+        if (existing.isEmpty) continue;
+        final previous = Map<String, dynamic>.from(
+          jsonDecode(existing.single['body'] as String) as Map,
+        );
+        final value = _mergeConversationData({...previous, ...patch}, previous);
+        db.execute('UPDATE conversations SET body=? WHERE kind=? AND id=?', [
+          jsonEncode(value),
+          patch['conversationKind'],
+          patch['conversationId'],
+        ]);
+      }
     } else if (capability == 'messages.history') {
       for (final id in data['recalledIds'] as List) {
         db.execute('INSERT OR REPLACE INTO recalled VALUES (?,?,?,?)', [

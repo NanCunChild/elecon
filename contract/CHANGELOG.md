@@ -1,5 +1,11 @@
 # `contract/` 变更流水
 
+## 2026-11-10 · ADR-099
+
+- SDK20：可选 capability.concurrency.credentials 声明完整凭据地址，跨包共用地址互斥；省略保留学校独占。新增 budget.remaining() 观察剩余请求；旧 SDK1–19 保持调用及硬预算语义。
+- 新增可选 messages.enrich / params.messages.enrich 1.0：至多8个已请求会话的稀疏名称、头像及内容时间更新，不新增/删除目录、不改变目录时效或发送授权。没有此能力、头像或排序数据的后端继续正常展示目录。
+
+
 ## 2026-11-05 · 会话内联头像（ADR-098）
 
 - `messages.conversations` 输出升 1.3，增加可选 `avatarImages`（0–4 张、每张最多 16 KiB 的 PNG/JPEG data URI）；缺失保留、空数组清除，同身份受保护存储。UI 不请求远端图片 URL。

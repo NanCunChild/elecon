@@ -40,6 +40,7 @@ const Set<String> kCapabilityIds = {
   'library.search',
   'library.seats',
   'messages.conversations',
+  'messages.enrich',
   'messages.history',
   'messages.list',
   'messages.send',

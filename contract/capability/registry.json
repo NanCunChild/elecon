@@ -1,6 +1,7 @@
 {
   "description": "所有合法 capability id 的注册表。新增 id 或改其语义需走 ADR。",
   "capabilities": {
+    "messages.enrich": {"description": "前台会话可选信息的稀疏补全（ADR-099）", "emits": {"schema": "elecon.messages.enrich", "schemaVersion": "1.0"}, "params": {"schema": "elecon.params.messages.enrich", "schemaVersion": "1.0"}},
     "web.content": { "description": "显式打开同包网页交互（ADR-073；仅前台、不缓存、不重放）", "emits": { "schema": "elecon.web.content", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.web.content", "schemaVersion": "1.0" } },
     "query.controls": { "description": "同包只读查询表单（ADR-083/082；1.0保留ADR-071语义）", "emits": { "schema": "elecon.query.controls", "schemaVersion": "2.1", "previousVersions": ["1.0", "2.0"] }, "params": { "schema": "elecon.params.query.controls", "schemaVersion": "2.1", "previousVersions": ["1.0", "2.0"] } },
     "directory.phones": { "description": "学校公开电话黄页（ADR-084；只读目录，拨号由用户在宿主触发）", "emits": { "schema": "elecon.directory.phones", "schemaVersion": "1.0" }, "params": { "schema": "elecon.params.directory.phones", "schemaVersion": "1.0" } },

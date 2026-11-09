@@ -28,6 +28,7 @@ const foregroundCommunityCapabilities = {
   'messages.list',
   'messages.conversations',
   'messages.history',
+  'messages.enrich',
   'messages.send',
   'attendance.checkin',
   'web.content',
@@ -494,6 +495,7 @@ class ScriptCapability {
     required this.schema,
     required this.schemaVersion,
     this.appTunnelAccountId,
+    this.concurrentCredentials,
   });
 
   factory ScriptCapability.fromJson(
@@ -506,6 +508,7 @@ class ScriptCapability {
       'schemaVersion',
       if (sdkVersion >= 16 && json.containsKey('appTunnelAccountId'))
         'appTunnelAccountId',
+      if (sdkVersion >= 20 && json.containsKey('concurrency')) 'concurrency',
     }, 'capability');
     final id = _text(json, 'id', 128);
     final schema = _text(json, 'schema', 160);
@@ -523,11 +526,35 @@ class ScriptCapability {
     if (ref != null && !_identifier.hasMatch(ref)) {
       throw const FormatException('invalid tunnel account id');
     }
+    Set<String>? concurrentCredentials;
+    if (json.containsKey('concurrency')) {
+      final declaration = _object(json['concurrency'], 'concurrency');
+      _keys(declaration, {'credentials'}, 'concurrency');
+      final addresses = declaration['credentials'];
+      if (addresses is! List || addresses.length > 32) {
+        throw const FormatException('invalid concurrency credentials');
+      }
+      concurrentCredentials = <String>{};
+      for (final raw in addresses) {
+        final address = _object(raw, 'credential address');
+        _keys(address, {'namespace', 'key'}, 'credential address');
+        final namespace = _text(address, 'namespace', 128);
+        final key = _text(address, 'key', 128);
+        if (!_identifier.hasMatch(namespace) ||
+            !RegExp(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$').hasMatch(key) ||
+            !concurrentCredentials.add('$namespace/$key')) {
+          throw const FormatException('invalid concurrency credential address');
+        }
+      }
+    }
     return ScriptCapability(
       id: id,
       schema: schema,
       schemaVersion: version,
       appTunnelAccountId: ref,
+      concurrentCredentials: concurrentCredentials == null
+          ? null
+          : Set.unmodifiable(concurrentCredentials),
     );
   }
 
@@ -535,6 +562,7 @@ class ScriptCapability {
   final String schema;
   final String schemaVersion;
   final String? appTunnelAccountId;
+  final Set<String>? concurrentCredentials;
 }
 
 final _identifier = RegExp(r'^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$');

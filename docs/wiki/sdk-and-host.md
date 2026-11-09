@@ -298,3 +298,14 @@ title/buttonLabel 来自调用方本地化。此处 `actions` 是 **Dart 组件�
 | 浏览器容器 | [script_browser_surface.dart](../../client/lib/ui/scripts/script_browser_surface.dart) | 统一来源提示与关闭、清理 |
 
 现有标准数据能表达的新页面可复用领域组件；新 `cards.type` 需要同步宿主、包 schema 与校验，不是仅加一行 manifest。新能力/字段语义或核心抽象变化先按[功能工作流](../rules/feature_workflow.md)写 ADR，更新注册表、schema、SDK、生成物、消费者和 CHANGELOG。学校选择器、密码协议和签名留在学校脚本。
+
+
+## SDK20 有界并行与剩余预算
+
+同宿主最多同时运行3个QuickJS调用、8个HTTP在途，同origin最多2个。静默首页预加载最多占1个引擎。等待排队可以取消；旧SDK或未声明并发地址的能力仍取得学校范围独占运行权。
+
+能力可声明 `concurrency: {credentials: [{namespace: "service.auth", key: "session"}]}`。列出本次查询与认证恢复可能读写的全部脚本凭据，跨包相同地址串行；空数组表示无凭据查询。运行中的声明外读写或整库list报 `credential_scope_mismatch`；宿主不在运行中升级锁或自动重试。namespace继续只是寻址，不能将此约束称为包间权限沙箱。显式登录、退出、控制及注册处理器仍独占。
+
+`await ctx.budget.remaining()`（或 `elecon.budget.remaining()`）返回 `{requests: number}`，综合本次桥接、实际HTTP hop及宿主过程/时间窗口预算。它不预留额度；在发出并发请求前自行分配额度、预留重定向，并在可选信息额度不足时直接省略。现有20/40次桥接请求、40个hop及响应字节硬限制保持。页面目录与补全共用80个hop，同来源每60秒至多160个hop，不因新建子调用重新计满。
+
+聊天后端可以只实现 `messages.conversations`。可选 `messages.enrich` 1.0 接收 accountId、1–8个kind/id，返回同账号的0–8个稀疏更新：title、avatarImages、hasContent和lastMessageAt；必须只返回已请求实体。省略保留已有值，空头像数组清除，没有排序证据不造时间。宿主按目录修订合并，不增加/删除会话，不把补全时间当作目录更新时间。账号、命令和二维码不合并调用，普通只读共享请求也不合并不同交互模式。

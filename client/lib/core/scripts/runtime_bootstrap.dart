@@ -101,6 +101,7 @@ String scriptRuntimeBootstrap({
         arrayBuffer:async()=>(new Uint8Array(r.bodyBytes || [])).buffer});
     },
   };
+  ${sdkVersion >= 20 ? "ctx.budget = Object.freeze({remaining: async () => JSON.parse(await invokeHost('__script_budget'))});" : ''}
   ${_localizationBootstrap(locale, localization)}
   if ($accounts) {
     const call = async (method, account, options) => JSON.parse(await invokeHost('__script_accounts',method,flat(account),String(JSON.stringify(options))));

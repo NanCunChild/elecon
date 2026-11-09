@@ -26,6 +26,7 @@ class ScriptCredentials {
     this.scriptId,
     this.sdkVersion = 1,
     bool Function()? isActive,
+    this.allowedAddresses,
     int Function()? now,
   }) : _store = store,
        _isActive = isActive ?? (() => true),
@@ -40,6 +41,7 @@ class ScriptCredentials {
 
   static final _identifier = RegExp(r'^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$');
   static final _keyPattern = RegExp(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$');
+  final Set<String>? allowedAddresses;
   final CredentialStore _store;
   final String schoolId;
   final String? scriptId;
@@ -106,6 +108,10 @@ class ScriptCredentials {
   Map<String, Object?>? get(String key, {String? namespace}) {
     _check();
     _key(key);
+    if (allowedAddresses != null &&
+        !allowedAddresses!.contains('${_namespace(namespace)}/$key')) {
+      throw const ScriptCredentialException('credential_scope_mismatch');
+    }
     final entry = _entry(key, namespace);
     if (entry == null || entry.status == CredentialStatus.revoked) return null;
     return _record(entry);
@@ -113,6 +119,9 @@ class ScriptCredentials {
 
   List<Map<String, Object?>> list() {
     _check();
+    if (allowedAddresses != null) {
+      throw const ScriptCredentialException('credential_scope_mismatch');
+    }
     final records = <Map<String, Object?>>[];
     final preview = <String, Map<String, Object?>>{};
     for (final entry in _store.list()) {
@@ -147,6 +156,10 @@ class ScriptCredentials {
   }) {
     _check();
     _key(key);
+    if (allowedAddresses != null &&
+        !allowedAddresses!.contains('${_namespace(namespace)}/$key')) {
+      throw const ScriptCredentialException('credential_scope_mismatch');
+    }
     final existing = _entry(key, namespace);
     final selectedType = type ?? existing?.type ?? 'token';
     final selectedScope = scope ?? existing?.scope ?? const <String>[];
@@ -192,6 +205,10 @@ class ScriptCredentials {
   void delete(String key, {String? namespace}) {
     _check();
     _key(key);
+    if (allowedAddresses != null &&
+        !allowedAddresses!.contains('${_namespace(namespace)}/$key')) {
+      throw const ScriptCredentialException('credential_scope_mismatch');
+    }
     if (sdkVersion == 1 && namespace == null) {
       final preview = _slot('$_previewPrefix$key');
       final legacy = _slot(key, ignoreForeignLegacy: true);

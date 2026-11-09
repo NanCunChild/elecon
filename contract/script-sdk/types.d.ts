@@ -1,4 +1,4 @@
-/** Trusted school script SDK 1–19 (ADR-034/035/037/038/039/040/043/070/072/073/097). Values include actual secrets.
+/** Trusted school script SDK 1–20 (ADR-034/035/037/038/039/040/043/070/072/073/097/099). Values include actual secrets.
  * SDK2 defaults namespace to stable scriptId; namespace is not an access grant.
  */
 export interface CredentialAddress {
@@ -71,6 +71,8 @@ export interface ScriptBrowser {
   }>): Promise<void>;
 }
 export interface ScriptContext {
+  /** SDK20: remaining invocation/transport/process requests; observation, not reservation. */
+  readonly budget?: { remaining(): Promise<{requests: number}> };
   /** SDK19: present only in a host-opened foreground query scope.
    * Registrations never retain JS closures or invocation params. */
   readonly execution?: ScriptExecution;
@@ -434,3 +436,7 @@ export interface ScriptPageEntry {
  * Only deviceId/label/commands are required; optional fields enable finite
  * supported controls. bindingVerifiedAt is historical, never online proof. */
 export type ClimateDevices = import("../generated/ts/climate.devices.js").ClimateDevices;
+
+/** ADR-099: optional sparse metadata, never a complete directory or send grant. */
+export type MessagesEnrich = import("../generated/ts/messages.enrich.js").MessagesEnrich;
+export type MessagesEnrichParams = import("../generated/ts/params.messages.enrich.js").ParamsMessagesEnrich;

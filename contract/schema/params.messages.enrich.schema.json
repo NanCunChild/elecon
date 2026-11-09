@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "elecon.params.messages.enrich",
+  "title": "会话补全参数",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "accountId": {
+      "type": "string",
+      "description": "本次核验的远端服务账号 ID；须与请求账号一致。",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "description": "同一账号已展示的1–8个会话身份；kind与id共同标识实体，不允许重复。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "description": "源站会话 ID；由 serviceId/accountId/conversationKind 共同限定。",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "conversationKind": {
+            "type": "string",
+            "description": "group 群聊，direct 私聊；相同 ID 的不同类型不合并。",
+            "enum": [
+              "group",
+              "direct"
+            ]
+          }
+        },
+        "required": [
+          "conversationId",
+          "conversationKind"
+        ]
+      }
+    }
+  },
+  "required": [
+    "accountId",
+    "items"
+  ]
+}

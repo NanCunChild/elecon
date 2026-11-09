@@ -153,12 +153,34 @@ void main() {
       expect((conversations['items'] as List).length, 2);
       final group = (conversations['items'] as List).first as Map;
       expect(group['title'], 'Resolved group name');
-      expect(group['hasContent'], isTrue);
+      expect(group['hasContent'], isNull);
+      expect(group['avatarImages'], isNull);
+      final supplement =
+          await const TrustedScriptRuntime().run(
+                package: package,
+                capability: 'messages.enrich',
+                credentials: credentials,
+                htmlStdlib: File(
+                  'assets/stdlib/html.bundle.js',
+                ).readAsStringSync(),
+                params: {
+                  'accountId': '123456',
+                  'items': [
+                    {'conversationId': '789012', 'conversationKind': 'group'},
+                    {'conversationId': '456780', 'conversationKind': 'direct'},
+                  ],
+                },
+                fetch: fetch,
+                maxRequests: 40,
+              )
+              as Map;
+      final enrichedGroup = (supplement['items'] as List).first as Map;
+      expect(enrichedGroup['hasContent'], isTrue);
       expect(
-        (group['avatarImages'] as List).single,
+        (enrichedGroup['avatarImages'] as List).single,
         startsWith('data:image/png;base64,iVBOR'),
       );
-      expect(group['lastMessageAt'], '2027-01-15T08:00:00.100Z');
+      expect(enrichedGroup['lastMessageAt'], '2027-01-15T08:00:00.100Z');
       final unavailableEnrichment =
           await const TrustedScriptRuntime().run(
                 package: package,
@@ -188,6 +210,58 @@ void main() {
           (unavailableEnrichment['items'] as List).first as Map;
       expect(fallbackGroup['title'], 'Synthetic group');
       expect(fallbackGroup.containsKey('hasContent'), isFalse);
+      var directoryRequests = 0;
+      final large =
+          await const TrustedScriptRuntime().run(
+                package: package,
+                capability: 'messages.conversations',
+                credentials: credentials,
+                htmlStdlib: File(
+                  'assets/stdlib/html.bundle.js',
+                ).readAsStringSync(),
+                params: {'accountId': '123456'},
+                maxRequests: 40,
+                fetch: (url, init) async {
+                  directoryRequests++;
+                  if (url.endsWith('joined_chatgroups')) {
+                    return {
+                      'status': 200,
+                      'headers': <String, List<String>>{},
+                      'body': jsonEncode({
+                        'data': List.generate(
+                          70,
+                          (i) => {
+                            'groupid': '${1000 + i}',
+                            'groupname': 'Synthetic $i',
+                          },
+                        ),
+                      }),
+                    };
+                  }
+                  if (url.contains('/chatgroups/')) {
+                    return {
+                      'status': 200,
+                      'headers': <String, List<String>>{},
+                      'body': jsonEncode({
+                        'data': Uri.parse(url).pathSegments.last
+                            .split(',')
+                            .map(
+                              (id) => {
+                                'id': id,
+                                'owner': '456780',
+                                'name': 'Synthetic $id',
+                              },
+                            )
+                            .toList(),
+                      }),
+                    };
+                  }
+                  return fetch(url, init);
+                },
+              )
+              as Map;
+      expect((large['items'] as List).length, 71);
+      expect(directoryRequests, lessThanOrEqualTo(5));
       final params = {
         'accountId': '123456',
         'conversationId': '789012',

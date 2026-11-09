@@ -34,18 +34,68 @@ typedef ScriptScannerPresenter =
 
 /// ADR-053: one page may revoke its own work without revoking school identity.
 class ScriptRunCancellation extends ChangeNotifier {
+  final _completed = Completer<void>();
+  Future<void> get whenCancelled => _completed.future;
+  bool promoted = false;
+  void promote() {
+    promoted = true;
+    ScriptWorkScheduler.engines.promote(this);
+  }
+
   bool _cancelled = false;
   bool get isCancelled => _cancelled;
   void cancel() {
     if (_cancelled) return;
     _cancelled = true;
+    _completed.complete();
     notifyListeners();
   }
 }
 
+class _SharedScriptQuery {
+  final cancellation = ScriptRunCancellation();
+  late final Future<CapabilityRun> result;
+  int consumers = 0;
+  bool settled = false;
+  Future<CapabilityRun> attach(ScriptRunCancellation? caller) {
+    final completed = Completer<CapabilityRun>();
+    consumers++;
+    void finish(CapabilityRun result) {
+      if (completed.isCompleted) return;
+      completed.complete(result);
+      consumers--;
+      if (consumers == 0 && !settled) cancellation.cancel();
+    }
+
+    void cancel() => finish(
+      const CapabilityRun.failed(CapabilityFailureKind.run, 'script_cancelled'),
+    );
+    caller?.addListener(cancel);
+    if (caller?.isCancelled == true) cancel();
+    result.then(
+      finish,
+      onError: (Object _) => finish(
+        const CapabilityRun.failed(CapabilityFailureKind.run, 'script_failed'),
+      ),
+    );
+    return completed.future.whenComplete(() => caller?.removeListener(cancel));
+  }
+}
+
+Object? _canonicalQuery(Object? value) {
+  if (value is Map) {
+    final keys = value.keys.cast<String>().toList()..sort();
+    return {for (final key in keys) key: _canonicalQuery(value[key])};
+  }
+  if (value is List) return value.map(_canonicalQuery).toList();
+  return value;
+}
+
 class _ScriptSessionState {
   Future<ScriptRegistry>? registry;
-  Future<void> queue = Future.value();
+
+  final sharedQueries = <String, _SharedScriptQuery>{};
+  final requestWindows = <String, ScriptRequestWindow>{};
   bool recoveredRegistry = false;
   ScriptBrowserPresenter? presenter;
   ScriptInputPresenter? inputPresenter;
@@ -56,6 +106,7 @@ class _ScriptSessionState {
   ScriptDeviceInputPresenter? deviceInputPresenter;
   final deviceInputLease = ScriptSystemInputLease();
   Future<bool> Function()? storageConsent;
+  Completer<void> revocation = Completer<void>();
   int generation = 0;
   // Separate from execution generation: a login must invalidate business data
   // without cancelling its own browser/password presenter.
@@ -69,6 +120,7 @@ class _ScriptSessionState {
   final executions = <ScriptExecutionScope>{};
   int homeRevision = 0;
   Future<void>? refreshingHome;
+  ScriptRunCancellation? homeCancellation;
   final Set<ScriptHttpTransport> transports = {};
   final Set<ScriptWebSocketTransport> sockets = {};
   final Set<AppTunnelRoute> routes = {};
@@ -209,7 +261,11 @@ extension TrustedScriptSession on SessionController {
     final state = _scriptStates[this];
     if (state == null) return;
     state.deviceInputLease.revoke();
+    cancelHomeRefresh();
+    if (!state.revocation.isCompleted) state.revocation.complete();
+    state.revocation = Completer<void>();
     state.generation++;
+    ScriptWorkScheduler.engines.recheck();
     _closeScriptExecutions();
     state.homeRevision++;
     state.refreshingHome = null;
@@ -549,6 +605,13 @@ extension TrustedScriptSession on SessionController {
   Future<void> waitForHomeRefresh() =>
       _scripts.refreshingHome ?? Future.value();
 
+  void cancelHomeRefresh() {
+    final state = _scripts;
+    state.homeCancellation?.cancel();
+    state.homeCancellation = null;
+    state.refreshingHome = null;
+  }
+
   Future<void> refreshHomeData({bool force = false}) {
     final state = _scripts;
     if (state.refreshingHome != null) return state.refreshingHome!;
@@ -556,7 +619,10 @@ extension TrustedScriptSession on SessionController {
     final dataGeneration = state.dataGeneration;
     final school = _school;
     if (school == null || state.disposed) return Future.value();
+    final cancellation = ScriptRunCancellation();
+    state.homeCancellation = cancellation;
     final future = () async {
+      final tasks = <Future<CapabilityRun>>[];
       try {
         final registry = await scriptRegistry;
         for (final installation in registry.installations.toList()) {
@@ -576,7 +642,8 @@ extension TrustedScriptSession on SessionController {
                     package.digest) {
               continue;
             }
-            if (state.disposed ||
+            if (cancellation.isCancelled ||
+                state.disposed ||
                 state.generation != generation ||
                 state.dataGeneration != dataGeneration ||
                 _school?.id != school.id) {
@@ -592,20 +659,30 @@ extension TrustedScriptSession on SessionController {
               locale: scriptLocale,
             ).read(package, query.capability, params: query.params);
             if (!force && cached != null && !cached.isStale) continue;
-            await runTrustedScript(
-              package.manifest.id,
-              query.capability,
-              params: query.params,
-              interactive: false,
+            tasks.add(
+              runTrustedScript(
+                package.manifest.id,
+                query.capability,
+                params: query.params,
+                interactive: false,
+                preload: true,
+                cancellation: cancellation,
+              ),
             );
           }
         }
       } on Object {
         // Optional background data never replaces a prior successful snapshot.
+      } finally {
+        await Future.wait(tasks);
       }
     }();
     state.refreshingHome = future;
     return future.whenComplete(() {
+      if (identical(state.homeCancellation, cancellation)) {
+        state.homeCancellation = null;
+      }
+      cancellation.dispose();
       if (identical(state.refreshingHome, future)) state.refreshingHome = null;
     });
   }
@@ -623,6 +700,8 @@ extension TrustedScriptSession on SessionController {
     ScriptPasswordCall? passwordCall,
     ScriptRunCancellation? cancellation,
     ScriptExecutionTurn? execution,
+    ScriptRequestBudget? requestBudget,
+    bool preload = false,
     void Function(String, String)? onLog,
   }) {
     if (hardwareUnlockFailed) {
@@ -650,17 +729,84 @@ extension TrustedScriptSession on SessionController {
         ),
       );
     }
-    return _queueTrustedScript(
-      invocation,
-      execution: execution,
-      htmlStdlib: htmlStdlib,
-      browserCall: browserCall,
-      inputCall: inputCall,
-      passwordCall: passwordCall,
-      appTunnelLogin: appTunnelLogin,
-      cancellation: cancellation,
-      onLog: onLog,
-    );
+    Future<CapabilityRun> submit(ScriptRunCancellation? token) =>
+        _queueTrustedScript(
+          invocation,
+          execution: execution,
+          requestBudget: requestBudget,
+          preload: preload,
+          htmlStdlib: htmlStdlib,
+          browserCall: browserCall,
+          inputCall: inputCall,
+          passwordCall: passwordCall,
+          appTunnelLogin: appTunnelLogin,
+          cancellation: token,
+          onLog: onLog,
+        );
+    final shareable =
+        !interactive &&
+        execution == null &&
+        requestBudget == null &&
+        browserCall == null &&
+        inputCall == null &&
+        passwordCall == null &&
+        appTunnelLogin == null &&
+        onLog == null &&
+        !foregroundCommunityCapabilities.contains(capability) &&
+        !const {
+          'climate.command',
+          'card.qr',
+          'generic.section',
+        }.contains(capability);
+    if (!shareable) return submit(cancellation);
+    final state = _scripts;
+    final generation = state.generation, dataGeneration = state.dataGeneration;
+    return () async {
+      final ScriptRegistry registry;
+      try {
+        registry = await scriptRegistry;
+      } catch (_) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.load,
+          'script_registry_unavailable',
+        );
+      }
+      if (generation != state.generation ||
+          dataGeneration != state.dataGeneration) {
+        return const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'script_cancelled',
+        );
+      }
+      final digest = registry.find(id)?.package.digest;
+      if (expectedDigest != null && digest != expectedDigest) {
+        return submit(cancellation);
+      }
+      final key = jsonEncode([
+        id,
+        digest,
+        capability,
+        _canonicalQuery(invocation.params),
+        state.generation,
+        state.dataGeneration,
+        state.locale,
+      ]);
+      var shared = state.sharedQueries[key];
+      if (shared == null || shared.cancellation.isCancelled) {
+        shared = _SharedScriptQuery();
+        final created = shared;
+        state.sharedQueries[key] = created;
+        created.result = submit(created.cancellation).whenComplete(() {
+          created.settled = true;
+          if (identical(state.sharedQueries[key], created)) {
+            state.sharedQueries.remove(key);
+          }
+          created.cancellation.dispose();
+        });
+      }
+      if (!preload) shared.cancellation.promote();
+      return shared.attach(cancellation);
+    }();
   }
 
   Future<CapabilityRun> _queueTrustedScript(
@@ -672,42 +818,89 @@ extension TrustedScriptSession on SessionController {
     ScriptPasswordCall? passwordCall,
     ScriptRunCancellation? cancellation,
     ScriptExecutionTurn? execution,
+    ScriptRequestBudget? requestBudget,
+    bool preload = false,
     void Function(String, String)? onLog,
   }) {
     final state = _scripts;
     final generation = state.generation;
     final dataGeneration = state.dataGeneration;
-    final pending = state.queue.then<CapabilityRun>((_) {
-      if (state.disposed ||
-          state.generation != generation ||
-          state.dataGeneration != dataGeneration ||
-          cancellation?.isCancelled == true) {
+    Future<CapabilityRun> dispatch() async {
+      final ScriptRegistry registry;
+      try {
+        registry = await scriptRegistry;
+      } catch (_) {
         return const CapabilityRun.failed(
-          CapabilityFailureKind.run,
-          'script_cancelled',
+          CapabilityFailureKind.load,
+          'script_registry_unavailable',
         );
       }
-      if (execution?.missed == true) {
-        return const CapabilityRun.failed(
-          CapabilityFailureKind.run,
-          'execution_missed',
-        );
-      }
-      return _executeTrustedScript(
-        invocation,
-        execution: execution,
-        expectedGeneration: generation,
-        htmlStdlib: htmlStdlib,
-        browserCall: browserCall,
-        inputCall: inputCall,
-        passwordCall: passwordCall,
-        appTunnelLogin: appTunnelLogin,
-        cancellation: cancellation,
-        onLog: onLog,
+      final package = registry.find(invocation.packageId)?.package;
+      final declaration = package?.manifest.capability(invocation.capability);
+      // The digest and the credential lease describe the same approved bytes.
+      // A registry update while queued must not select a different declaration.
+      final pinned = ScriptInvocation(
+        packageId: invocation.packageId,
+        capability: invocation.capability,
+        params: Map<String, dynamic>.from(invocation.params),
+        expectedDigest: invocation.expectedDigest ?? package?.digest,
+        interactive: invocation.interactive,
       );
-    });
-    state.queue = pending.then<void>((_) {}, onError: (Object _) {});
-    return pending;
+      final exclusive =
+          execution != null ||
+          const {
+            'account.session',
+            'forum.session',
+            'messages.session',
+            'messages.send',
+            'attendance.checkin',
+            'climate.command',
+            'web.content',
+          }.contains(invocation.capability) ||
+          package?.manifest.accounts.any(
+                (a) => a.loginCapability == invocation.capability,
+              ) ==
+              true;
+      try {
+        return await ScriptWorkScheduler.engines.run<CapabilityRun>(
+          owner: state,
+          keys: exclusive ? null : declaration?.concurrentCredentials,
+          background: preload && cancellation?.promoted != true,
+          tag: cancellation,
+          cancelled: cancellation?.whenCancelled,
+          isActive: () =>
+              !state.disposed &&
+              state.generation == generation &&
+              state.dataGeneration == dataGeneration &&
+              cancellation?.isCancelled != true,
+          action: () async {
+            if (execution?.missed == true) {
+              return const CapabilityRun.failed(
+                CapabilityFailureKind.run,
+                'execution_missed',
+              );
+            }
+            return _executeTrustedScript(
+              pinned,
+              execution: execution,
+              requestBudget: requestBudget,
+              expectedGeneration: generation,
+              htmlStdlib: htmlStdlib,
+              browserCall: browserCall,
+              inputCall: inputCall,
+              passwordCall: passwordCall,
+              appTunnelLogin: appTunnelLogin,
+              cancellation: cancellation,
+              onLog: onLog,
+            );
+          },
+        );
+      } on ScriptRunException catch (e) {
+        return CapabilityRun.failed(CapabilityFailureKind.run, e.code);
+      }
+    }
+
+    return dispatch();
   }
 
   Future<CapabilityRun> _executeTrustedScript(
@@ -720,6 +913,7 @@ extension TrustedScriptSession on SessionController {
     ScriptPasswordCall? passwordCall,
     ScriptRunCancellation? cancellation,
     ScriptExecutionTurn? execution,
+    ScriptRequestBudget? requestBudget,
     void Function(String, String)? onLog,
   }) async {
     if (hardwareUnlockFailed) {
@@ -840,6 +1034,7 @@ extension TrustedScriptSession on SessionController {
     final epoch = admissionEpoch;
     final store = _store;
     final backend = _secure;
+    final generationSignal = state.revocation.future;
     if (identityLogin) {
       // ADR-038: no old-school-principal snapshots may survive a new login.
       // Persist removal before allowing school code to replace credentials.
@@ -934,6 +1129,10 @@ extension TrustedScriptSession on SessionController {
     final transport = ScriptHttpTransport(
       policy: package.manifest.network,
       appTunnel: route,
+      budget: requestBudget,
+      window: package.manifest.sdkVersion >= 20
+          ? state.requestWindows.putIfAbsent(id, () => ScriptRequestWindow())
+          : null,
     );
     state.transports.add(transport);
     final socket = ScriptWebSocketTransport(
@@ -951,8 +1150,16 @@ extension TrustedScriptSession on SessionController {
     DevLog.instance.runtime('script start: $id $capability');
     CapabilityRun result;
     List<CredentialEntry>? previousCachedData;
+    List<CredentialEntry> writtenCachedData = const [];
     ScriptAccountBridge? accountBridge;
+    final messageDirectory = MessageArchiveStore(
+      store,
+    ).directoryRevision(package);
     try {
+      if (capability == 'messages.enrich' &&
+          !isMessageEnrichmentParams(params)) {
+        throw const ScriptRunException('input_invalid_request');
+      }
       if (MessageArchiveStore.capabilities.contains(capability) &&
           (params['accountId'] == null ||
               MessageArchiveStore(store).account(package)?['accountId'] !=
@@ -972,6 +1179,9 @@ extension TrustedScriptSession on SessionController {
         schoolId: school.id,
         scriptId: package.manifest.id,
         sdkVersion: package.manifest.sdkVersion,
+        allowedAddresses: execution != null
+            ? null
+            : package.manifest.capability(capability)?.concurrentCredentials,
         isActive: active,
       );
       final accounts = accountBridge = ScriptAccountBridge(
@@ -1006,7 +1216,18 @@ extension TrustedScriptSession on SessionController {
         locale: state.locale,
         credentials: credentials,
         accountCall: accounts.call,
-        fetch: transport.fetch,
+        fetch: (url, init) async {
+          try {
+            return await transport.fetch(url, init);
+          } on ScriptNetworkException catch (error) {
+            if (package.manifest.sdkVersion < 20) rethrow;
+            throw ScriptRunException(
+              scriptHostErrorCodes.contains(error.code)
+                  ? error.code
+                  : 'fetch_failed',
+            );
+          }
+        },
         websocketCall: interactive ? socket.call : null,
         browserCall: route == null
             ? browser
@@ -1080,6 +1301,9 @@ extension TrustedScriptSession on SessionController {
             ? (valid) => state.scannerPresenter!(package, valid)
             : null,
         isActive: active,
+        cancellationSignal: cancellation == null
+            ? generationSignal
+            : Future.any([generationSignal, cancellation.whenCancelled]),
         htmlStdlib: htmlStdlib ?? await loadHtmlStdlib(),
         wallTimeout: Duration(
           seconds:
@@ -1092,6 +1316,7 @@ extension TrustedScriptSession on SessionController {
         // ADR-034 §6: use the existing bounded SDK maximum for interactive
         // authentication (captcha/MFA plus a redirect chain).
         maxRequests: interactive && package.manifest.browser ? 40 : 20,
+        remainingRequests: () => transport.remainingRequests,
         onLog: (level, message) {
           if (message.startsWith('probe/1')) {
             DevLog.instance.log(DevLogCategory.probe, message);
@@ -1157,6 +1382,7 @@ extension TrustedScriptSession on SessionController {
             params,
             value,
             isActive: active,
+            expectedDirectory: messageDirectory,
           );
         } catch (_) {
           archiveFailed = true;
@@ -1177,6 +1403,15 @@ extension TrustedScriptSession on SessionController {
             locale: state.locale,
           ).write(package, capability, params, data)) {
         previousCachedData = cachedBeforeWrite;
+        writtenCachedData = store
+            .list()
+            .where(
+              (entry) =>
+                  entry.type == ScriptDataCache.type &&
+                  entry.schoolId == school.id &&
+                  !cachedBeforeWrite.any((old) => identical(old, entry)),
+            )
+            .toList();
         state.homeRevision++;
       }
       result = CapabilityRun.ok(
@@ -1242,19 +1477,20 @@ extension TrustedScriptSession on SessionController {
           store.put(entry);
         }
         if (previousCachedData != null) {
-          for (final entry
-              in store
-                  .list()
-                  .where(
-                    (entry) =>
-                        entry.type == ScriptDataCache.type &&
-                        entry.schoolId == school.id,
-                  )
-                  .toList()) {
-            store.delete(entry.ref);
-          }
-          for (final entry in previousCachedData) {
-            store.put(entry);
+          for (final written in writtenCachedData) {
+            final current = store
+                .list()
+                .where((e) => e.ref == written.ref)
+                .firstOrNull;
+            if (!identical(current, written)) continue;
+            final previous = previousCachedData
+                .where((e) => e.ref == written.ref)
+                .firstOrNull;
+            if (previous == null) {
+              store.delete(written.ref);
+            } else {
+              store.put(previous);
+            }
           }
           state.homeRevision++;
         }

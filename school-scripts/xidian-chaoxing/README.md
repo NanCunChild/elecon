@@ -1,6 +1,6 @@
 # 西电学习通增强包
 
-`0.6.0 / SDK 12`，分别绑定 `xidian_undergraduate` 和 `xidian_postgraduate`。提供学习通账号登录/本地退出、群聊与私聊会话、历史分页、纯文本发送及扫码签到。安装授权、凭据、网络和取消边界见 [ADR-052](../../docs/adr/adr_052_community_accounts_and_chaoxing.md) 与 [ADR-061](../../docs/adr/adr_061_message_history_and_storage.md)。不覆盖基本包的教务登录和能力。manifest accounts 声明学习通账号、用途、登录说明及本包 account.session 状态与登录入口，导入后在设置查看；旧安装需用户重新批准更新。
+`0.7.0 / SDK 20`，分别绑定 `xidian_undergraduate` 和 `xidian_postgraduate`。提供学习通账号登录/本地退出、群聊与私聊会话、历史分页、纯文本发送及扫码签到。安装授权、凭据、网络和取消边界见 [ADR-052](../../docs/adr/adr_052_community_accounts_and_chaoxing.md) 与 [ADR-061](../../docs/adr/adr_061_message_history_and_storage.md)。不覆盖基本包的教务登录和能力。manifest accounts 声明学习通账号、用途、登录说明及本包 account.session 状态与登录入口，导入后在设置查看；旧安装需用户重新批准更新。
 
 ## 0.6.0 群名称与头像
 
@@ -86,3 +86,8 @@ npm run scripts:chaoxing -w tools
 本地参考 `Quasar-core@96f36b38a2b01b810a2b45d66f0364183a4b7b87` 的端点、字段及 wire 编号（`chaoxing.go`、`im.go`、`im_history.go`、`im_user.go`、`types/im/proto/`、`util/deviceid.go`、`notice.go`）。参考仓根许可证为 GPL-3.0。本包不复制或翻译 Go 实现，不链接其模块、不携带生成 protobuf 或地理坐标；以独立有界 JS 状态机与 wire codec 实现协议事实，复用本仓 MPL-2.0 Cookie/AES/MD5 模块。发送的 CHAT namespace、群路由和服务确认字段另以 [Easemob Web SDK 4.12.0](https://www.npmjs.com/package/easemob-websdk/v/4.12.0)（ISC）的发布包核对；不集成该 SDK。源码按 MPL-2.0 分发，保留 [LICENSE](LICENSE) 及本说明；学校脚本没有新增外部依赖，核心 SQLite 依赖见[依赖记录](../../docs/reference/trusted_scripts_dependencies.md)。
 
 `npm test --prefix school-scripts/xidian-chaoxing` 仅运行合成夹具；tools smoke 检查确定性、测试夹具同步及应用资产不含本包，Flutter 测试运行实际编译包与真实 QuickJS。自动测试不使用真实账号、不提交真实签到或访问学校服务。参考源码及自动测试不能证明当前学校在线协议可用；仍需人工代码审阅、原生扫码/WebView/TLS 真机与受授权的实际账号验收。
+
+
+## 0.7.0 目录先返回与可选补全
+
+依[ADR-099](../../docs/adr/adr_099_bounded_parallel_queries.md)，messages.conversations只读取目录及有界批量群名称，不读取逐群成员、图片或全部历史。通用messages.enrich每批至多8个实体；最近会话只读一页、成员额外请求至多4次，图片与成员共享至多8次可选额度，另为资料与重定向预留额度。缺少头像或排序保持未知，不妨碍目录。5分钟的受保护、有界元数据缓存仅缓存学校归一结果；内联图片仍由原生消息归档保存。登录、发送、签到的单次执行及未知结果不重放规则保持。更新需要重新批准digest，旧客户端不能执行SDK20。

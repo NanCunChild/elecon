@@ -1,7 +1,7 @@
 {
-  "sdkVersion": 19,
+  "sdkVersion": 20,
   "id": "school-xidian-undergraduate",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "schoolId": "xidian_undergraduate",
   "name": "西安电子科技大学（本科生）",
   "network": {
@@ -26,62 +26,388 @@
     {
       "id": "notice.detail",
       "schema": "elecon.notice.detail",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": []
+      }
     },
     {
       "id": "notice.list",
       "schema": "elecon.notice.list",
-      "schemaVersion": "1.1"
+      "schemaVersion": "1.1",
+      "concurrency": {
+        "credentials": []
+      }
     },
     {
       "id": "schedule.week",
       "schema": "elecon.schedule.week",
-      "schemaVersion": "1.3"
+      "schemaVersion": "1.3",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "grades.list",
       "schema": "elecon.grades.list",
-      "schemaVersion": "1.1"
+      "schemaVersion": "1.1",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "exam.list",
       "schema": "elecon.exam.list",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "classroom.buildings",
       "schema": "elecon.classroom.buildings",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "classroom.available",
       "schema": "elecon.classroom.available",
-      "schemaVersion": "1.3"
+      "schemaVersion": "1.3",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "card.balance",
       "schema": "elecon.card.balance",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "card.transactions",
       "schema": "elecon.card.transactions",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "library.loans",
       "schema": "elecon.library.loans",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "term.list",
       "schema": "elecon.term.list",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "calendar.academic",
       "schema": "elecon.calendar.academic",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "generic.section",
@@ -91,22 +417,150 @@
     {
       "id": "energy.meters",
       "schema": "elecon.energy.meters",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "energy.usage",
       "schema": "elecon.energy.usage",
-      "schemaVersion": "1.1"
+      "schemaVersion": "1.1",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "climate.devices",
       "schema": "elecon.climate.devices",
-      "schemaVersion": "1.1"
+      "schemaVersion": "1.1",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "climate.status",
       "schema": "elecon.climate.status",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "climate.command",
@@ -116,12 +570,47 @@
     {
       "id": "card.qr",
       "schema": "elecon.card.qr",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "faculty.search",
       "schema": "elecon.faculty.search",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": []
+      }
     },
     {
       "id": "forum.session",
@@ -137,22 +626,92 @@
     {
       "id": "query.controls",
       "schema": "elecon.query.controls",
-      "schemaVersion": "2.1"
+      "schemaVersion": "2.1",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     },
     {
       "id": "directory.phones",
       "schema": "elecon.directory.phones",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": []
+      }
     },
     {
       "id": "library.search",
       "schema": "elecon.library.search",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": []
+      }
     },
     {
       "id": "profile.me",
       "schema": "elecon.profile.me",
-      "schemaVersion": "1.0"
+      "schemaVersion": "1.0",
+      "concurrency": {
+        "credentials": [
+          {
+            "namespace": "xidian.auth",
+            "key": "ids"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "ehall"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "yjspt"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "card"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "library"
+          },
+          {
+            "namespace": "xidian.auth",
+            "key": "energy"
+          },
+          {
+            "namespace": "xidian.climate",
+            "key": "device"
+          }
+        ]
+      }
     }
   ],
   "home": [

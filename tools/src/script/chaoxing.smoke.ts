@@ -12,8 +12,8 @@ assert.equal(first.size, 2);
 assert.deepEqual([...first], [...(await buildChaoxingPackages())]);
 for (const [name, content] of first) {
   const p = JSON.parse(content);
-  assert.equal(p.manifest.sdkVersion, 12);
-  assert.equal(p.manifest.version, "0.6.0");
+  assert.equal(p.manifest.sdkVersion, 20);
+  assert.equal(p.manifest.version, "0.7.0");
   assert.equal(
     p.manifest.capabilities.find((c: { id: string }) => c.id === "attendance.checkin").schemaVersion,
     "1.1",
@@ -30,6 +30,7 @@ for (const [name, content] of first) {
       "attendance.checkin",
       "notice.list",
       "account.session",
+      "messages.enrich",
     ],
   );
   assert.deepEqual(p.manifest.websocketOrigins, ["wss://im-api-wechat-vip6.easemob.com"]);

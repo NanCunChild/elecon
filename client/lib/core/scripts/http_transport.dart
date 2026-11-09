@@ -7,6 +7,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'network_policy.dart';
+import 'work_scheduler.dart';
+import 'request_budget.dart';
+import 'host_protocol.dart';
 import '../transport/app_tunnel.dart';
 
 typedef ScriptAddressResolver = Future<List<InternetAddress>> Function(String);
@@ -16,6 +19,8 @@ class ScriptHttpTransport {
     required this.policy,
     ScriptAddressResolver? resolver,
     this.appTunnel,
+    this.budget,
+    this.window,
     this.maxRequests = 40,
     this.maxConcurrent = 4,
     this.maxRedirects = 8,
@@ -25,6 +30,14 @@ class ScriptHttpTransport {
     this.requestTimeout = const Duration(seconds: 30),
   }) : _resolver = resolver ?? InternetAddress.lookup;
 
+  final ScriptRequestBudget? budget;
+  final ScriptRequestWindow? window;
+  final _closedSignal = Completer<void>();
+  int get remainingRequests => [
+    maxRequests - _requestCount,
+    if (budget != null) budget!.remaining,
+    if (window != null) window!.remaining,
+  ].reduce((a, b) => a < b ? a : b);
   final ScriptNetworkPolicy policy;
   final AppTunnelRoute? appTunnel;
   final ScriptAddressResolver _resolver;
@@ -60,6 +73,8 @@ class ScriptHttpTransport {
         },
       );
     } on AppTunnelException catch (error) {
+      throw ScriptNetworkException(error.code);
+    } on ScriptRunException catch (error) {
       throw ScriptNetworkException(error.code);
     } on ScriptNetworkException {
       rethrow;
@@ -126,133 +141,164 @@ class ScriptHttpTransport {
     for (var hop = 0; ; hop++) {
       _assertActive(context);
       policy.checkUrl(uri);
-      if (_requestCount >= maxRequests) {
-        throw const ScriptNetworkException('request_count_limit');
-      }
-      // Reserve before asynchronous resolution so concurrent fetches cannot
-      // exceed the invocation's cumulative hop budget.
-      _requestCount++;
-      final literal = InternetAddress.tryParse(uri.host);
-      final addresses = literal == null
-          ? await (appTunnel?.resolve(uri.host) ?? _resolver(uri.host))
-          : <InternetAddress>[literal];
-      _assertActive(context);
-      final permitted = addresses.where(policy.allowsAddress).toList();
-      if (permitted.isEmpty) {
-        throw const ScriptNetworkException('ip_not_allowed');
-      }
-      // A new client per hop avoids reusing a connection from an earlier DNS
-      // snapshot. The connector receives InternetAddress, never a hostname.
-      final client = HttpClient()
-        ..findProxy = ((_) => 'DIRECT')
-        ..connectionTimeout = requestTimeout
-        ..autoUncompress = true;
-      _clients.add(client);
-      context.clients.add(client);
-      client.connectionFactory = (target, proxyHost, proxyPort) async {
-        if (proxyHost != null || proxyPort != null) {
-          throw const ScriptNetworkException('proxy_not_supported');
-        }
-        return _connect(target, permitted, context);
-      };
+      final release = await ScriptWorkScheduler.http.acquire(
+        owner: this,
+        group: ScriptNetworkPolicy.canonicalOrigin(uri).origin,
+        isActive: () => !_closed && context.active,
+        cancelled: Future.any([_closedSignal.future, context.closed.future]),
+      );
+      context.closed.future.then((_) => release());
+      _closedSignal.future.then((_) => release());
       try {
-        final request = await client.openUrl(method, uri);
         _assertActive(context);
-        request.followRedirects = false;
-        headers.forEach(request.headers.set);
-        if (body != null) request.add(body);
-        final response = await request.close();
-        _assertActive(context);
-        if (response.contentLength > maxResponseBytes ||
-            response.contentLength > maxTotalResponseBytes - _responseBytes) {
-          throw const ScriptNetworkException('response_body_limit');
+        if (_requestCount >= maxRequests) {
+          throw const ScriptNetworkException('request_count_limit');
         }
-        final responseHeaders = <String, List<String>>{};
-        var responseHeaderBytes = 0;
-        response.headers.forEach((name, values) {
-          responseHeaderBytes += utf8.encode(name).length;
-          for (final value in values) {
-            responseHeaderBytes += utf8.encode(value).length;
+        // Reserve before asynchronous resolution so concurrent fetches cannot
+        // exceed the invocation's cumulative hop budget.
+        budget?.consume();
+        window?.consume();
+        _requestCount++;
+        final literal = InternetAddress.tryParse(uri.host);
+        final addresses = literal == null
+            ? await (appTunnel?.resolve(uri.host) ?? _resolver(uri.host))
+            : <InternetAddress>[literal];
+        _assertActive(context);
+        final permitted = addresses.where(policy.allowsAddress).toList();
+        if (permitted.isEmpty) {
+          throw const ScriptNetworkException('ip_not_allowed');
+        }
+        // A new client per hop avoids reusing a connection from an earlier DNS
+        // snapshot. The connector receives InternetAddress, never a hostname.
+        final client = HttpClient()
+          ..findProxy = ((_) => 'DIRECT')
+          ..connectionTimeout = requestTimeout
+          ..autoUncompress = true;
+        _clients.add(client);
+        context.clients.add(client);
+        client.connectionFactory = (target, proxyHost, proxyPort) async {
+          if (proxyHost != null || proxyPort != null) {
+            throw const ScriptNetworkException('proxy_not_supported');
           }
-          if (responseHeaders.length >= 100 || responseHeaderBytes > 65536) {
-            throw const ScriptNetworkException('response_header_limit');
-          }
-          responseHeaders[name.toLowerCase()] = List<String>.of(values);
-        });
-        final bytes = <int>[];
-        await for (final chunk in response) {
+          return _connect(target, permitted, context);
+        };
+        try {
+          final request = await client.openUrl(method, uri);
           _assertActive(context);
-          if (bytes.length + chunk.length > maxResponseBytes ||
-              _responseBytes + chunk.length > maxTotalResponseBytes) {
+          request.followRedirects = false;
+          headers.forEach(request.headers.set);
+          if (body != null) request.add(body);
+          final response = await request.close();
+          _assertActive(context);
+          if (response.contentLength > maxResponseBytes ||
+              response.contentLength > maxTotalResponseBytes - _responseBytes) {
             throw const ScriptNetworkException('response_body_limit');
           }
-          _responseBytes += chunk.length;
-          bytes.addAll(chunk);
-        }
-        final location = responseHeaders['location'];
-        final isRedirect = const {
-          301,
-          302,
-          303,
-          307,
-          308,
-        }.contains(response.statusCode);
-        if (!isRedirect || location == null || mode == 'manual') {
-          return {
-            'status': response.statusCode,
-            'url': uri.toString(),
-            'headers': responseHeaders,
-            'bodyBytes': List<int>.unmodifiable(bytes),
-            'body': _decodeResponse(bytes, response.headers),
-          };
-        }
-        if (mode == 'error') {
-          throw const ScriptNetworkException('redirect_disallowed');
-        }
-        if (hop >= maxRedirects) {
-          throw const ScriptNetworkException('redirect_limit');
-        }
-        if (location.length != 1 || location.single.length > 16384) {
-          throw const ScriptNetworkException('invalid_redirect');
-        }
-        final Uri target;
-        try {
-          target = uri.resolve(location.single).removeFragment();
-        } on FormatException {
-          throw const ScriptNetworkException('invalid_redirect');
-        }
-        policy.checkUrl(target);
-        final crossOrigin =
-            ScriptNetworkPolicy.canonicalOrigin(uri).origin !=
-            ScriptNetworkPolicy.canonicalOrigin(target).origin;
-        if (response.statusCode == 303 && method != 'HEAD' ||
-            const {301, 302}.contains(response.statusCode) &&
-                method == 'POST') {
-          method = 'GET';
-          body = null;
-          headers.remove('content-type');
-          headers.remove('content-encoding');
-        }
-        if (crossOrigin) {
-          if (body != null) {
-            throw const ScriptNetworkException('redirect_body_requires_manual');
+          final responseHeaders = <String, List<String>>{};
+          var responseHeaderBytes = 0;
+          response.headers.forEach((name, values) {
+            responseHeaderBytes += utf8.encode(name).length;
+            for (final value in values) {
+              responseHeaderBytes += utf8.encode(value).length;
+            }
+            if (responseHeaders.length >= 100 || responseHeaderBytes > 65536) {
+              throw const ScriptNetworkException('response_header_limit');
+            }
+            responseHeaders[name.toLowerCase()] = List<String>.of(values);
+          });
+          final bytes = <int>[];
+          await for (final chunk in response) {
+            _assertActive(context);
+            if (bytes.length + chunk.length > maxResponseBytes ||
+                _responseBytes + chunk.length > maxTotalResponseBytes) {
+              throw const ScriptNetworkException('response_body_limit');
+            }
+            _responseBytes += chunk.length;
+            bytes.addAll(chunk);
           }
-          // Unknown custom headers may contain tokens too. Only retain a small
-          // set of representation preferences across an origin boundary.
-          const safe = {
-            'accept',
-            'accept-language',
-            'cache-control',
-            'user-agent',
-          };
-          headers = Map.fromEntries(
-            headers.entries.where((entry) => safe.contains(entry.key)),
-          );
+          if (response.statusCode == 429 && window != null) {
+            final raw = responseHeaders['retry-after']?.firstOrNull;
+            var seconds = int.tryParse(raw ?? '') ?? 30;
+            if (raw != null && int.tryParse(raw) == null) {
+              try {
+                seconds = HttpDate.parse(
+                  raw,
+                ).difference(DateTime.now()).inSeconds;
+              } on FormatException {
+                /* bounded default */
+              }
+            }
+            window!.pause(Duration(seconds: seconds.clamp(1, 3600)));
+          }
+          final location = responseHeaders['location'];
+          final isRedirect = const {
+            301,
+            302,
+            303,
+            307,
+            308,
+          }.contains(response.statusCode);
+          if (!isRedirect || location == null || mode == 'manual') {
+            return {
+              'status': response.statusCode,
+              'url': uri.toString(),
+              'headers': responseHeaders,
+              'bodyBytes': List<int>.unmodifiable(bytes),
+              'body': _decodeResponse(bytes, response.headers),
+            };
+          }
+          if (mode == 'error') {
+            throw const ScriptNetworkException('redirect_disallowed');
+          }
+          if (hop >= maxRedirects) {
+            throw const ScriptNetworkException('redirect_limit');
+          }
+          if (location.length != 1 || location.single.length > 16384) {
+            throw const ScriptNetworkException('invalid_redirect');
+          }
+          final Uri target;
+          try {
+            target = uri.resolve(location.single).removeFragment();
+          } on FormatException {
+            throw const ScriptNetworkException('invalid_redirect');
+          }
+          policy.checkUrl(target);
+          final crossOrigin =
+              ScriptNetworkPolicy.canonicalOrigin(uri).origin !=
+              ScriptNetworkPolicy.canonicalOrigin(target).origin;
+          if (response.statusCode == 303 && method != 'HEAD' ||
+              const {301, 302}.contains(response.statusCode) &&
+                  method == 'POST') {
+            method = 'GET';
+            body = null;
+            headers.remove('content-type');
+            headers.remove('content-encoding');
+          }
+          if (crossOrigin) {
+            if (body != null) {
+              throw const ScriptNetworkException(
+                'redirect_body_requires_manual',
+              );
+            }
+            // Unknown custom headers may contain tokens too. Only retain a small
+            // set of representation preferences across an origin boundary.
+            const safe = {
+              'accept',
+              'accept-language',
+              'cache-control',
+              'user-agent',
+            };
+            headers = Map.fromEntries(
+              headers.entries.where((entry) => safe.contains(entry.key)),
+            );
+          }
+          uri = target;
+        } finally {
+          client.close(force: true);
+          _clients.remove(client);
         }
-        uri = target;
       } finally {
-        client.close(force: true);
-        _clients.remove(client);
+        release();
       }
     }
   }
@@ -396,6 +442,7 @@ class ScriptHttpTransport {
   /// Cancels all requests and makes this invocation's transport unusable.
   void close() {
     _closed = true;
+    if (!_closedSignal.isCompleted) _closedSignal.complete();
     for (final client in _clients.toList()) {
       client.close(force: true);
     }
@@ -404,11 +451,13 @@ class ScriptHttpTransport {
 }
 
 class _FetchContext {
+  final closed = Completer<void>();
   var active = true;
   final Set<HttpClient> clients = {};
 
   void close() {
     active = false;
+    if (!closed.isCompleted) closed.complete();
     for (final client in clients) {
       client.close(force: true);
     }

@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:async';
 
 import 'package:elecon_contract/messages_conversations.dart';
 import 'package:flutter/material.dart';
@@ -88,6 +89,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   late int _generation;
   ScriptRunCancellation? _cancellation;
   bool _paused = false;
+  ScriptRunCancellation? _enrichmentCancellation;
+  ScriptRequestBudget? _directoryBudget;
   bool get _connected => _account?['status'] == 'authenticated';
 
   @override
@@ -114,6 +117,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void _cancel() {
     _request++;
     _cancellation?.cancel();
+    _enrichmentCancellation?.cancel();
   }
 
   void _clearChat() {
@@ -270,6 +274,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     inputCall: input,
                     browserCall: browser,
                     cancellation: cancellation,
+                    requestBudget: capability == 'messages.conversations'
+                        ? _directoryBudget
+                        : null,
                   ),
                   onCancel: cancellation.cancel,
                 ),
@@ -420,10 +427,74 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<void> _refresh() async {
     if (!_connected) return;
     if (_conversation == null) {
-      await _run('messages.conversations', _target);
+      _enrichmentCancellation?.cancel();
+      _directoryBudget = ScriptRequestBudget();
+      final result = await _run('messages.conversations', _target);
+      if (result?.ok == true && mounted && !_paused && _conversation == null) {
+        unawaited(_enrichConversations());
+      }
     } else {
       _cursors.clear();
       await _run('messages.history', _target);
+    }
+  }
+
+  Future<void> _enrichConversations() async {
+    if (widget.package.manifest.capability('messages.enrich') == null) return;
+    final request = _request;
+    final account = _account?['accountId'];
+    final budget = _directoryBudget;
+    final cancellation = ScriptRunCancellation();
+    _enrichmentCancellation?.cancel();
+    _enrichmentCancellation = cancellation;
+    bool active() =>
+        _valid(request) &&
+        !cancellation.isCancelled &&
+        _conversation == null &&
+        _account?['accountId'] == account;
+    final rows = _conversations.take(64).toList();
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      for (var offset = 0; offset < rows.length; offset += 8) {
+        if (!active() || budget == null || budget.remaining < 8) return;
+        final result = await widget.session.runTrustedScript(
+          widget.package.manifest.id,
+          'messages.enrich',
+          expectedDigest: widget.package.digest,
+          params: {
+            'accountId': account,
+            'items': [
+              for (final row in rows.skip(offset).take(8))
+                {
+                  'conversationId': row.conversationId,
+                  'conversationKind': row.conversationKind,
+                },
+            ],
+          },
+          cancellation: cancellation,
+          requestBudget: budget,
+        );
+        if (!active()) return;
+        if (!result.ok || result.localStorageFailed) {
+          if (result.reason == 'authentication_required') {
+            setState(() {
+              _clearAccount();
+              _error = result.reason;
+            });
+          }
+          return;
+        }
+        final local = await widget.session.messageArchive(widget.package);
+        if (!active()) return;
+        if (local != null) setState(() => _applyArchive(local));
+      }
+    } catch (_) {
+      // Optional enrichment preserves the successfully displayed directory.
+    } finally {
+      if (identical(_enrichmentCancellation, cancellation)) {
+        _enrichmentCancellation = null;
+      }
+      cancellation.dispose();
     }
   }
 

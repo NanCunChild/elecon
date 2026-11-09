@@ -209,24 +209,27 @@ class _DelayedResultSession extends SessionController {
 
 Future<void> refreshHomeAndPump(
   WidgetTester tester,
-  SessionController session,
-) async {
+  SessionController session, {
+  bool force = false,
+}) async {
   // A lifecycle/timer refresh may already have continuations in FakeAsync.
   // Keep pumping those while QuickJS responds on the real event loop; awaiting
   // that existing future inside runAsync would stop the fake clock indefinitely.
   var completed = false;
   Object? failure;
   StackTrace? trace;
-  session.refreshHomeData().then<void>(
-    (_) {
-      completed = true;
-    },
-    onError: (Object error, StackTrace stack) {
-      failure = error;
-      trace = stack;
-      completed = true;
-    },
-  );
+  session
+      .refreshHomeData(force: force)
+      .then<void>(
+        (_) {
+          completed = true;
+        },
+        onError: (Object error, StackTrace stack) {
+          failure = error;
+          trace = stack;
+          completed = true;
+        },
+      );
   await until(tester, () => completed);
   if (failure != null) Error.throwWithStackTrace(failure!, trace!);
 }
@@ -567,6 +570,17 @@ void main() {
     'home preloads notices once and foreground resume reuses fresh cache',
     (tester) async {
       final session = await prepare(tester);
+      Future<void> drainQueries() async {
+        CapabilityRun? outcome;
+        unawaited(
+          session
+              .runTrustedScript('cache-alpha', 'generic.section')
+              .then((value) => outcome = value),
+        );
+        await until(tester, () => outcome != null);
+        expect(outcome!.ok, isTrue, reason: outcome!.reason);
+      }
+
       await tester.pumpWidget(
         SessionScope(
           controller: session,
@@ -582,17 +596,22 @@ void main() {
         tester,
         () => find.text('Synthetic notice 1').evaluate().isNotEmpty,
       );
+      // Independent cards may render before the preload batch has settled.
+      await refreshHomeAndPump(tester, session);
+      await drainQueries();
       expect(find.text('Synthetic notice 2'), findsNothing);
       // A full foreground refresh interval must remain invisible and respect
       // fresh TTLs; pausing and disposal must cancel the periodic work.
       await tester.pump(const Duration(minutes: 1));
       await refreshHomeAndPump(tester, session);
+      await drainQueries();
       await tester.pumpAndSettle();
       expect(find.text('Synthetic notice 1'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await refreshHomeAndPump(tester, session);
+      await drainQueries();
       await tester.pumpAndSettle();
       expect(find.text('Synthetic notice 1'), findsOneWidget);
       expect(find.text('Synthetic notice 2'), findsNothing);
@@ -608,6 +627,9 @@ void main() {
         tester,
         () => find.text('Synthetic notice 1').evaluate().isNotEmpty,
       );
+      // A card can render before other independent preloads settle.
+      await refreshHomeAndPump(tester, session);
+      await drainQueries();
       expect(tester.takeException(), isNull);
     },
   );
@@ -685,7 +707,7 @@ void main() {
       final shownTime = tester
           .widget<Text>(find.byKey(const ValueKey('home-updated-at')))
           .data;
-      await tester.runAsync(() => session.refreshHomeData(force: true));
+      await refreshHomeAndPump(tester, session, force: true);
       await tester.pumpAndSettle();
       expect(
         tester.widget<Text>(find.byKey(const ValueKey('home-updated-at'))).data,

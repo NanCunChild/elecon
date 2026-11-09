@@ -1,0 +1,28 @@
+// DO NOT EDIT —— 由 tools/src/codegen 从 contract/schema/ 生成。
+// 改动请改 schema 并重跑 `npm run codegen`（红线 #6：契约即承重墙）。
+
+export interface MessagesEnrich {
+  /** 稳定服务标识；不按显示名合并。 */
+  serviceId: string;
+  /** 本次核验的远端服务账号 ID；须与请求账号一致。 */
+  accountId: string;
+  /** 本次源站读取或发送核验完成的时刻，RFC3339；本地读取不更新。 */
+  fetchedAt: string;
+  /** 本次成功取得的0–8个稀疏补全；省略字段保留现值，空头像数组明确清除；无排序证据不造时间。 */
+  items: MessagesEnrichItems[];
+}
+
+export interface MessagesEnrichItems {
+  /** 源站会话 ID；由 serviceId/accountId/conversationKind 共同限定。 */
+  conversationId: string;
+  /** group 群聊，direct 私聊；相同 ID 的不同类型不合并。 */
+  conversationKind: "group" | "direct";
+  /** 会话显示名；服务未提供时使用会话 ID。 */
+  title?: string;
+  /** 已确认会话存在可展示的内容消息时为 true；仅明确核验为空时为 false；缺失表示未知，不能据此推断未读。 */
+  hasContent?: boolean;
+  /** 已确认内容消息中最新的源站发送时刻，RFC3339；未知省略，不用群资料更新时间或本地抓取时刻代替。 */
+  lastMessageAt?: string;
+  /** ADR-098：有序的0–4张PNG/JPEG缩略图data URI，每张解码最多16 KiB；缺失可保留已有头像，空数组明确清除。核心只消费字节，不发起图片网络请求。 */
+  avatarImages?: string[];
+}
