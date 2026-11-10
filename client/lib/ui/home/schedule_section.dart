@@ -410,8 +410,8 @@ class _ScheduleSectionState extends State<ScheduleSection>
           children: [
             Expanded(
               child: Text(
-                l10n.homeScheduleTitle,
-                style: Theme.of(context).textTheme.titleLarge,
+                _data?.term ?? '',
+                style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
             IconButton(
@@ -488,6 +488,7 @@ class _ScheduleSectionState extends State<ScheduleSection>
                     compose(_data!),
                     onWeekChanged: busy ? null : _selectWeek,
                     maxWeek: _maxWeek,
+                    showHeading: false,
                   ),
                 ),
         ),

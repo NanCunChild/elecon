@@ -305,7 +305,12 @@ void main() {
         tester
             .getSize(find.byKey(const ValueKey('schedule-course-1-0')))
             .height,
-        greaterThan(400),
+        inExclusiveRange(200, 300),
+      );
+      // A class spanning lunch must not stretch the whole week's lunch band.
+      expect(
+        tester.getSize(find.byKey(const ValueKey('schedule-break-2-0'))).height,
+        48,
       );
       final hint = tester.widget<Tooltip>(
         find.descendant(

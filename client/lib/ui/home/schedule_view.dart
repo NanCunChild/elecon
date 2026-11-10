@@ -60,12 +60,14 @@ class ScheduleCard extends StatelessWidget {
     this.trailing,
     this.onWeekChanged,
     this.maxWeek = 25,
+    this.showHeading = true,
   });
   final ScheduleWeek data;
   final DateTime? now;
   final Widget? trailing;
   final ValueChanged<int>? onWeekChanged;
   final int maxWeek;
+  final bool showHeading;
 
   @override
   Widget build(BuildContext context) {
@@ -77,6 +79,7 @@ class ScheduleCard extends StatelessWidget {
         now: now,
         onWeekChanged: onWeekChanged,
         maxWeek: maxWeek,
+        showHeading: showHeading,
       );
     }
     final today = now ?? DateTime.now();
@@ -644,11 +647,13 @@ class WeekScheduleView extends StatelessWidget {
     this.now,
     this.onWeekChanged,
     this.maxWeek = 25,
+    this.showHeading = true,
   });
   final ScheduleWeek data;
   final DateTime? now;
   final ValueChanged<int>? onWeekChanged;
   final int maxWeek;
+  final bool showHeading;
 
   @override
   Widget build(BuildContext context) {
@@ -741,28 +746,24 @@ class WeekScheduleView extends StatelessWidget {
                   clipBehavior: Clip.hardEdge,
                   children: [
                     for (var index = 0; index < axis.breaks.length; index++)
-                      for (var day = 1; day <= 7; day++)
-                        if (data.days.any((known) => known.dayOfWeek == day) &&
-                            !placed.any(
-                              (course) =>
-                                  course.day == day &&
-                                  course.start < axis.breaks[index].$2 &&
-                                  course.end > axis.breaks[index].$1,
-                            ))
-                          Positioned(
-                            top: axis.y(axis.breaks[index].$1),
-                            left: axisWidth + (day - 1) * columnWidth,
-                            width: columnWidth,
-                            height:
-                                axis.y(axis.breaks[index].$2) -
-                                axis.y(axis.breaks[index].$1),
-                            child: _ScheduleBreak(
-                              key: ValueKey('schedule-break-$day-$index'),
-                              label: axis.breaks[index].$3,
-                              time:
-                                  '${_clock(axis.breaks[index].$1)}–${_clock(axis.breaks[index].$2)}',
-                            ),
+                      for (final band in _breakBands(
+                        placed,
+                        axis.breaks[index],
+                      ))
+                        Positioned(
+                          top: axis.y(axis.breaks[index].$1),
+                          left: axisWidth + (band.$1 - 1) * columnWidth,
+                          width: columnWidth * (band.$2 - band.$1 + 1),
+                          height:
+                              axis.y(axis.breaks[index].$2) -
+                              axis.y(axis.breaks[index].$1),
+                          child: _ScheduleBreak(
+                            key: ValueKey('schedule-break-${band.$1}-$index'),
+                            label: axis.breaks[index].$3,
+                            time:
+                                '${_clock(axis.breaks[index].$1)}–${_clock(axis.breaks[index].$2)}',
                           ),
+                        ),
                     for (final tick in axis.ticks)
                       Positioned(
                         top: axis.y(tick.$1),
@@ -807,10 +808,11 @@ class WeekScheduleView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          '${data.term} · ${l10n.scheduleWeekLabel(data.week)}',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
+        if (showHeading)
+          Text(
+            '${data.term} · ${l10n.scheduleWeekLabel(data.week)}',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
         if (data.sourceSystem != null) Text(data.sourceSystem!),
         if (conflicts > 0)
           Padding(
@@ -844,6 +846,31 @@ class WeekScheduleView extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  // A single readable label spans adjacent known days without classes here.
+  // Days missing from the source stay unknown, including inside a break.
+  List<(int, int)> _breakBands(
+    List<_PlacedCourse> courses,
+    (int, int, String) rest,
+  ) {
+    final bands = <(int, int)>[];
+    int? start;
+    for (var day = 1; day <= 8; day++) {
+      final available =
+          day <= 7 &&
+          data.days.any((known) => known.dayOfWeek == day) &&
+          !courses.any(
+            (c) => c.day == day && c.start < rest.$2 && c.end > rest.$1,
+          );
+      if (available) {
+        start ??= day;
+      } else if (start != null) {
+        bands.add((start, day - 1));
+        start = null;
+      }
+    }
+    return bands;
   }
 
   List<Widget> _day(
@@ -909,7 +936,8 @@ class WeekScheduleView extends StatelessWidget {
                           ),
                           if (_place(slots[index].slot).isNotEmpty)
                             TextSpan(text: '\n${_place(slots[index].slot)}'),
-                          TextSpan(text: '\n${_time(slots[index].slot)}'),
+                          if (!_usesSchoolTimes(slots[index].slot))
+                            TextSpan(text: '\n${_time(slots[index].slot)}'),
                         ],
                       ),
                       overflow: TextOverflow.fade,
@@ -922,6 +950,10 @@ class WeekScheduleView extends StatelessWidget {
         ),
     ];
   }
+
+  bool _usesSchoolTimes(ScheduleWeekDaysSlots slot) =>
+      data.timeSegments?.any((s) => s.timeStart == slot.timeStart) == true &&
+      data.timeSegments?.any((s) => s.timeEnd == slot.timeEnd) == true;
 }
 
 class _ScheduleDayHeader extends StatelessWidget {
@@ -1142,12 +1174,13 @@ class _ScheduleAxis {
         final teaching = valid.any((s) => a >= s.$1 && b <= s.$2);
         final occupied = courses.any((c) => c.start < b && c.end > a);
         final rest = breaks.any((s) => a >= s.$1 && b <= s.$2);
+        final schoolGap = a >= valid.first.$1 && b <= valid.last.$2;
         final extent = teaching
             ? 100.0 * scale
-            : occupied
-            ? math.max(48.0, (b - a) * 1.2) * scale
             : rest
             ? 24.0 * scale
+            : occupied && !schoolGap
+            ? math.max(48.0, (b - a) * 1.2) * scale
             : 12.0 * scale;
         _pieces.add((a, b, extent));
       }
