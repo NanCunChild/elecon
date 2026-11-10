@@ -44,6 +44,8 @@ Android 前台缓存课表小部件见 [090](adr_090_schedule_widgets.md)。
 
 有界并行查询、SDK20 凭据运行权与通用会话补全见 [099](adr_099_bounded_parallel_queries.md)。
 
+本地 ADB/文件调试入口、私有轮转日志及应用标识迁移见 [100](adr_100_local_debug_tools.md)。
+
 ## 历史记录与维护原则
 
 存储驱动的注册入口、SDK19 前台调度与暂缓通用广播见 [097](adr_097_registered_script_execution.md)。
