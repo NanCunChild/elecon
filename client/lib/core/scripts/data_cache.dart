@@ -38,6 +38,10 @@ class ScriptDataCache {
   static const maxSchoolBytes = 4 * 1024 * 1024;
   static const retentionMs = 7 * 24 * 60 * 60 * 1000;
 
+  // An academic term stays useful offline long after its refresh TTL expires.
+  int _retention(String capability) =>
+      capability == 'schedule.week' ? 180 * 24 * 60 * 60 * 1000 : retentionMs;
+
   /// A same-school login can replace credentials shared by multiple packages.
   /// Discard every locale/parameter snapshot, never the school credentials.
   Set<String> clearSchool(String schoolId) {
@@ -176,7 +180,7 @@ class ScriptDataCache {
         entry.schoolId != package.manifest.schoolId ||
         entry.status == CredentialStatus.revoked ||
         entry.acquiredAt > now() ||
-        now() - entry.acquiredAt > retentionMs ||
+        now() - entry.acquiredAt > _retention(capability) ||
         utf8.encode(entry.value).length > maxBytes) {
       return null;
     }
@@ -229,7 +233,12 @@ class ScriptDataCache {
     for (final entry in store.list()) {
       if (entry.type == type &&
           entry.schoolId == package.manifest.schoolId &&
-          (stamp - entry.acquiredAt > retentionMs ||
+          (stamp - entry.acquiredAt >
+                  _retention(
+                    entry.ref.contains(':schedule.week:')
+                        ? 'schedule.week'
+                        : '',
+                  ) ||
               (entry.ref.startsWith(
                     'script-cache:${package.manifest.schoolId}:${package.manifest.id}:',
                   ) &&

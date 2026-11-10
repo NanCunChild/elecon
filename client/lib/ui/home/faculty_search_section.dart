@@ -1,6 +1,7 @@
 /// ADR-050: public faculty search; the selected school script owns the protocol.
 library;
 
+import 'dart:async';
 import 'capability_source.dart';
 import 'display_date.dart';
 
@@ -82,6 +83,7 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
   bool _stale = false;
   bool _bound = false, _invalidated = false, _loading = false, _failed = false;
   int _requestId = 0;
+  ScriptRunCancellation? _cancellation;
   FacultySearch? _result;
   Map<String, dynamic>? _submitted;
 
@@ -104,6 +106,7 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
         _schoolId != session?.selectedSchool?.id ||
         _generation != session?.trustedScriptViewGeneration ||
         _dataGeneration != session?.trustedScriptDataGeneration) {
+      _cancellation?.cancel();
       _requestId++;
       _invalidated = true;
       _result = null;
@@ -147,6 +150,7 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
         _fetchedAt = cached.fetchedAt;
         _stale = cached.isStale;
       });
+      if (cached.isStale) unawaited(_load(cached.params, interactive: false));
     } catch (_) {
       // Storage failure leaves the search form available, without fake results.
     }
@@ -169,8 +173,14 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
     });
   }
 
-  Future<void> _load(Map<String, dynamic> params) async {
+  Future<void> _load(
+    Map<String, dynamic> params, {
+    bool interactive = true,
+  }) async {
     if (_invalidated || _loading) return;
+    _cancellation?.cancel();
+    final cancellation = ScriptRunCancellation();
+    _cancellation = cancellation;
     final requestId = ++_requestId;
     setState(() {
       _loading = true;
@@ -186,10 +196,13 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
       if (widget.loadSearch != null) {
         result = await widget.loadSearch!(params);
       } else if (_session != null) {
-        final run = await CapabilitySourceScope.queriesOf(
-          context,
-          _session!,
-        ).runCapability('faculty.search', params: params);
+        final run = await CapabilitySourceScope.queriesOf(context, _session!)
+            .runCapability(
+              'faculty.search',
+              params: params,
+              interactive: interactive,
+              cancellation: cancellation,
+            );
         if (run.ok) result = facultySearchFromDynamic(run.data);
       }
     } catch (_) {
@@ -233,6 +246,7 @@ class _FacultySearchSectionState extends State<FacultySearchSection> {
 
   @override
   void dispose() {
+    _cancellation?.cancel();
     _requestId++;
     _name.dispose();
     _researchArea.dispose();

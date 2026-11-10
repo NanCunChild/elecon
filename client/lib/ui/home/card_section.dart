@@ -581,6 +581,7 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
   int? _generation;
   int? _dataGeneration;
   int _request = 0;
+  ScriptRunCancellation? _cancellation;
   int _page = 0;
   int _rangeDays = 30;
   bool _loadingMore = false;
@@ -620,6 +621,7 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
 
   @override
   void dispose() {
+    _cancellation?.cancel();
     _request++;
     super.dispose();
   }
@@ -675,6 +677,7 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
         }
         if (_data != null) {
           setState(() => _phase = QueryPhase.loaded);
+          if (_stale) unawaited(_load(interactive: false));
           return;
         }
       }
@@ -727,13 +730,20 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
             data.items.length >= _pageSize);
   }
 
-  Future<void> _load({bool more = false, bool configure = false}) async {
+  Future<void> _load({
+    bool more = false,
+    bool configure = false,
+    bool interactive = true,
+  }) async {
     final session = _session!;
     if (!isCurrentQuery(this, session, _generation!, _source) ||
         session.trustedScriptDataGeneration != _dataGeneration) {
       return;
     }
     if (more && (_loadingMore || !_hasMore)) return;
+    _cancellation?.cancel();
+    final cancellation = ScriptRunCancellation();
+    _cancellation = cancellation;
     final request = ++_request;
     final nextPage = more ? _page + 1 : 1;
     setState(() {
@@ -748,6 +758,8 @@ class _CardTransactionsPageState extends State<CardTransactionsPage> {
       context,
       session,
       'card.transactions',
+      interactive: interactive,
+      cancellation: cancellation,
       params: {..._params(nextPage), if (configure) 'configure': true},
       decode: cardTransactionsFromDynamic,
     );

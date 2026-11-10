@@ -1,6 +1,8 @@
 /// ADR-025 §2.2: bounded notice detail view; school requests stay in capabilities.
 library;
 
+import 'dart:async';
+
 import 'package:elecon_contract/notice_detail.dart';
 import 'package:flutter/material.dart';
 
@@ -29,7 +31,68 @@ class NoticeDetailPage extends StatefulWidget {
   State<NoticeDetailPage> createState() => _NoticeDetailPageState();
 }
 
-class _NoticeDetailPageState extends State<NoticeDetailPage> {
+class _NoticeDetailPageState extends State<NoticeDetailPage>
+    with WidgetsBindingObserver {
+  Timer? _expiry;
+  ScriptRunCancellation? _cancellation;
+  DateTime? _fetchedAt;
+  bool _stale = false;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    _expiry?.cancel();
+    _cancellation?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _expiry?.cancel();
+      _cancellation?.cancel();
+    } else if (mounted &&
+        !_invalidated &&
+        ModalRoute.of(context)?.isCurrent != false &&
+        widget.loadDetail == null &&
+        _session != null) {
+      unawaited(_load());
+    }
+  }
+
+  Map<String, dynamic> get _params => {
+    'id': widget.item.id,
+    if (widget.item.url != null) 'url': widget.item.url,
+  };
+  NoticeDetail? _decode(Object? value) {
+    if (value is! Map ||
+        value['id'] != widget.item.id ||
+        value['title'] is! String) {
+      return null;
+    }
+    return NoticeDetail(
+      id: value['id'] as String,
+      title: value['title'] as String,
+      content: value['content'] as String?,
+      attachments: [
+        for (final entry
+            in value['attachments'] is List
+                ? value['attachments'] as List
+                : const [])
+          if (entry is Map && entry['name'] is String && entry['url'] is String)
+            NoticeDetailAttachments(
+              name: entry['name'] as String,
+              url: entry['url'] as String,
+            ),
+      ],
+    );
+  }
+
   SessionController? _session;
   NoticeDetail? _detail;
   bool _bound = false, _loading = false, _failed = false;
@@ -52,6 +115,8 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
           _dataGeneration != session?.trustedScriptDataGeneration) {
         // ADR-034 §3 / ADR-038 §2: an open detail belongs to its original
         // identity and approved installation, including already-rendered data.
+        _expiry?.cancel();
+        _cancellation?.cancel();
         _requestId++;
         _detail = null;
         _loading = false;
@@ -72,13 +137,54 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
     }
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool force = false}) async {
     if (_invalidated || _session?.selectedSchool?.id != _schoolId) return;
     final requestId = ++_requestId;
     final generation = _session?.trustedScriptViewGeneration;
     final dataGeneration = _session?.trustedScriptDataGeneration;
-    NoticeDetail? detail;
+    _expiry?.cancel();
+    _cancellation?.cancel();
+    final cancellation = ScriptRunCancellation();
+    _cancellation = cancellation;
+    bool current() =>
+        mounted &&
+        requestId == _requestId &&
+        !_invalidated &&
+        generation == _session?.trustedScriptViewGeneration &&
+        dataGeneration == _session?.trustedScriptDataGeneration;
+    NoticeDetail? detail = _detail;
     try {
+      if (widget.loadDetail == null && _session != null && !force) {
+        final cached = await CapabilityQueries(
+          _session!,
+          source: widget.source,
+        ).cachedCapability('notice.detail', params: _params);
+        if (!current()) return;
+        final restored = _decode(cached?.data);
+        if (restored != null) {
+          detail = restored;
+          setState(() {
+            _detail = restored;
+            _loading = false;
+            _failed = false;
+            _fetchedAt = cached!.fetchedAt;
+            _stale = cached.isStale;
+          });
+          if (!cached!.isStale) {
+            final until = cached.freshUntil;
+            if (until != null) {
+              _expiry = Timer(until.difference(DateTime.now()), () {
+                if (current() &&
+                    WidgetsBinding.instance.lifecycleState ==
+                        AppLifecycleState.resumed) {
+                  unawaited(_load(force: true));
+                }
+              });
+            }
+            return;
+          }
+        }
+      }
       if (widget.loadDetail != null) {
         detail = await widget.loadDetail!();
       } else {
@@ -113,35 +219,29 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
         final run = await CapabilityQueries(_session!, source: widget.source)
             .runCapability(
               'notice.detail',
-              params: {
-                'id': widget.item.id,
-                if (widget.item.url != null) 'url': widget.item.url,
-              },
+              params: _params,
+              interactive: false,
+              cancellation: cancellation,
             );
-        if (run.ok && run.data is Map) {
-          final raw = run.data as Map;
-          if (raw['id'] == widget.item.id && raw['title'] is String) {
-            final attachments = <NoticeDetailAttachments>[];
-            if (raw['attachments'] is List) {
-              for (final value in raw['attachments'] as List) {
-                if (value is Map &&
-                    value['name'] is String &&
-                    value['url'] is String) {
-                  attachments.add(
-                    NoticeDetailAttachments(
-                      name: value['name'] as String,
-                      url: value['url'] as String,
-                    ),
-                  );
-                }
+        if (!current()) return;
+        if (run.ok) {
+          detail = _decode(run.data) ?? detail;
+          final cached = await CapabilityQueries(
+            _session!,
+            source: widget.source,
+          ).cachedCapability('notice.detail', params: _params);
+          if (!current()) return;
+          _fetchedAt = cached?.fetchedAt;
+          _stale = cached?.isStale ?? false;
+          final until = cached?.freshUntil;
+          if (until != null) {
+            _expiry = Timer(until.difference(DateTime.now()), () {
+              if (current() &&
+                  WidgetsBinding.instance.lifecycleState ==
+                      AppLifecycleState.resumed) {
+                unawaited(_load(force: true));
               }
-            }
-            detail = NoticeDetail(
-              id: raw['id'] as String,
-              title: raw['title'] as String,
-              content: raw['content'] as String?,
-              attachments: attachments,
-            );
+            });
           }
         }
       }
@@ -219,8 +319,15 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
+          if (_fetchedAt != null)
+            Text(
+              _stale
+                  ? l10n.homeDataStaleAt(formatUpdateTime(_fetchedAt!, l10n))
+                  : l10n.homeDataUpdatedAt(formatUpdateTime(_fetchedAt!, l10n)),
+              style: theme.textTheme.bodySmall,
+            ),
           const Divider(height: 24),
-          if (_loading) ...[
+          if (_loading && _detail == null) ...[
             const LinearProgressIndicator(),
             const SizedBox(height: 12),
             Text(l10n.noticeDetailLoading),
@@ -237,7 +344,7 @@ class _NoticeDetailPageState extends State<NoticeDetailPage> {
                           _loading = true;
                           _failed = false;
                         });
-                        _load();
+                        _load(force: true);
                       },
                 child: Text(l10n.noticeDetailRetry),
               ),

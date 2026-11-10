@@ -615,6 +615,7 @@ void main() {
   testWidgets(
     'term cache switches weeks offline while one expired refresh runs',
     (tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       final session = CachedScheduleSession();
       addTearDown(session.dispose);
       final data = {

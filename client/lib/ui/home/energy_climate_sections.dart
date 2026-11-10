@@ -1,6 +1,8 @@
 /// Fixed schema renderers and foreground controls (ADR-004 §2 / ADR-040).
 library;
 
+import 'query_section.dart';
+
 import 'capability_source.dart';
 
 import 'dart:async';
@@ -25,7 +27,8 @@ class EnergySection extends StatefulWidget {
   State<EnergySection> createState() => _EnergySectionState();
 }
 
-class _EnergySectionState extends State<EnergySection> {
+class _EnergySectionState extends State<EnergySection>
+    with CachedQuerySection<EnergySection, Map<String, dynamic>> {
   SessionController? _session;
   CapabilitySource? _source;
   int? _generation;
@@ -37,28 +40,33 @@ class _EnergySectionState extends State<EnergySection> {
   bool _busy = false, _failed = false, _needsConfiguration = false;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final session = SessionScope.of(context);
-    final source = CapabilitySourceScope.maybeOf(context)?.source;
-    if (_source != source ||
-        _session != session ||
-        _generation != session.trustedScriptViewGeneration) {
-      _session = session;
-      _source = source;
-      _generation = session.trustedScriptViewGeneration;
-      _request++;
-      _meters = null;
-      _history = null;
-      _selected = null;
-      _range = null;
-      _fetchedAt = null;
-      _historyAt = null;
-      _busy = false;
-      _failed = false;
-      _needsConfiguration = false;
-      _restore();
-    }
+  String get cacheCapability => 'energy.meters';
+  @override
+  Map<String, dynamic>? decodeCache(Object? raw) =>
+      raw is Map<String, dynamic> ? raw : null;
+  @override
+  void applyCache(Map<String, dynamic> data) {
+    _meters = _items(data);
+    _fetchedAt = cacheFetchedAt;
+  }
+
+  @override
+  void onCacheRestored() => unawaited(_restore());
+  @override
+  void clearCache() {
+    _session = cacheSession;
+    _source = CapabilitySourceScope.maybeOf(context)?.source;
+    _generation = _session?.trustedScriptViewGeneration;
+    _request++;
+    _meters = null;
+    _history = null;
+    _selected = null;
+    _range = null;
+    _fetchedAt = null;
+    _historyAt = null;
+    _busy = false;
+    _failed = false;
+    _needsConfiguration = false;
   }
 
   bool _current(int request) =>
@@ -377,6 +385,9 @@ class _ClimateSectionState extends State<ClimateSection>
   SessionController? _session;
   CapabilitySource? _source;
   int? _generation;
+  int? _dataGeneration;
+  bool _statusCurrent = false;
+  DateTime? _statusAt;
   int _request = 0, _actionEpoch = 0;
   List<Map<String, dynamic>> _devices = [];
   Map<String, dynamic>? _status;
@@ -408,7 +419,7 @@ class _ClimateSectionState extends State<ClimateSection>
       _actionEpoch++;
       if (mounted) {
         setState(() {
-          _status = null;
+          _statusCurrent = false;
           _busy = false;
           _acting = false;
         });
@@ -433,16 +444,17 @@ class _ClimateSectionState extends State<ClimateSection>
       _actionEpoch++;
       _busy = false;
       _acting = false;
-      _status = null;
+      _statusCurrent = false;
       if (visible) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) unawaited(_load(interactive: false));
+          if (mounted) unawaited(_restoreThenLoad());
         });
       }
     }
     if (_source != source ||
         _session != session ||
-        _generation != session.trustedScriptViewGeneration) {
+        _generation != session.trustedScriptViewGeneration ||
+        _dataGeneration != session.trustedScriptDataGeneration) {
       _workCancellation.cancel();
       _workCancellation = ScriptRunCancellation();
       _actionEpoch++;
@@ -450,6 +462,9 @@ class _ClimateSectionState extends State<ClimateSection>
       _session = session;
       _source = source;
       _generation = session.trustedScriptViewGeneration;
+      _dataGeneration = session.trustedScriptDataGeneration;
+      _statusCurrent = false;
+      _statusAt = null;
       _devices = [];
       _status = null;
       _selected = null;
@@ -459,7 +474,7 @@ class _ClimateSectionState extends State<ClimateSection>
       _failed = false;
       _needsConfiguration = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(_load(interactive: false));
+        if (mounted) unawaited(_restoreThenLoad());
       });
     }
   }
@@ -467,7 +482,36 @@ class _ClimateSectionState extends State<ClimateSection>
   bool _current(int request) =>
       mounted &&
       request == _request &&
-      _session?.trustedScriptViewGeneration == _generation;
+      _session?.trustedScriptViewGeneration == _generation &&
+      _session?.trustedScriptDataGeneration == _dataGeneration;
+  Future<void> _restoreThenLoad() async {
+    final request = _request;
+    final queries = CapabilityQueries(_session!, source: _source);
+    try {
+      final devices = await queries.cachedCapability('climate.devices');
+      final status = await queries.latestCachedCapability('climate.status');
+      if (!_current(request)) return;
+      if (devices != null) {
+        final rows = _items(devices.data);
+        final selected = status?.params['deviceId'];
+        setState(() {
+          _devices = rows;
+          if (selected is String &&
+              rows.any((row) => row['deviceId'] == selected)) {
+            _selected = selected;
+            _status = _map(status?.data);
+            if (_status?['deviceId'] != selected) _status = null;
+            _statusAt = status?.fetchedAt;
+          }
+          _statusCurrent = false;
+        });
+      }
+    } catch (_) {
+      /* Live read still has the ordinary error path. */
+    }
+    if (_current(request)) await _load(interactive: false);
+  }
+
   Future<void> _load({
     bool statusOnly = false,
     bool configure = false,
@@ -482,7 +526,7 @@ class _ClimateSectionState extends State<ClimateSection>
     setState(() {
       _busy = true;
       _failed = false;
-      _status = null;
+      _statusCurrent = false;
     });
     try {
       if (!statusOnly) {
@@ -522,9 +566,13 @@ class _ClimateSectionState extends State<ClimateSection>
           );
       if (!_current(request)) return;
       setState(() {
-        _status = result.ok ? _map(result.data) : null;
+        if (result.ok) {
+          _status = _map(result.data);
+          _statusAt = DateTime.now();
+        }
+        _statusCurrent = result.ok;
         if (_status?['deviceId'] != _selected) _status = null;
-        _failed = _status == null;
+        _failed = !result.ok || _status == null;
       });
     } catch (_) {
       if (_current(request)) setState(() => _failed = true);
@@ -536,7 +584,7 @@ class _ClimateSectionState extends State<ClimateSection>
   Future<void> _command(String command, Object value) async {
     if (_busy ||
         _acting ||
-        _status == null ||
+        (_status == null || !_statusCurrent) ||
         _selected == null ||
         !climateControlAvailable) {
       return;
@@ -614,6 +662,8 @@ class _ClimateSectionState extends State<ClimateSection>
       setState(() {
         _outcome = outcome;
         _status = observed;
+        _statusCurrent = observed != null;
+        _statusAt = observed == null ? null : DateTime.now();
         _failed = observed == null;
       });
     } finally {
@@ -637,6 +687,7 @@ class _ClimateSectionState extends State<ClimateSection>
         !_busy &&
         !_acting &&
         _status != null &&
+        _statusCurrent &&
         _status!['online'] != false &&
         _status!['errorCode'] == null;
     return SectionCard(
@@ -671,6 +722,11 @@ class _ClimateSectionState extends State<ClimateSection>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_statusAt != null && !_statusCurrent)
+            Text(
+              l10n.homeDataStaleAt(formatUpdateTime(_statusAt!, l10n)),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           if (_busy || _acting) const LinearProgressIndicator(),
           if (_failed) Text(l10n.campusLoadFailed),
           if (_needsConfiguration) Text(l10n.capabilityConfigurationRequired),
@@ -708,7 +764,12 @@ class _ClimateSectionState extends State<ClimateSection>
               onChanged: _busy || _acting
                   ? null
                   : (value) {
-                      setState(() => _selected = value);
+                      setState(() {
+                        _selected = value;
+                        _status = null;
+                        _statusAt = null;
+                        _statusCurrent = false;
+                      });
                       unawaited(_load(statusOnly: true));
                     },
             ),

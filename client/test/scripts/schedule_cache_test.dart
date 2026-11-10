@@ -110,6 +110,11 @@ void main() {
       expect(stale.fetchedAt, home.fetchedAt);
       expect((stale.data as Map).containsKey('weekType'), isFalse);
       now += ScriptDataCache.retentionMs;
+      expect(
+        cache.read(package, 'schedule.week', params: {'week': 2})!.isStale,
+        isTrue,
+      );
+      now += 180 * 24 * 60 * 60 * 1000;
       expect(cache.read(package, 'schedule.week', params: {'week': 2}), isNull);
     },
   );

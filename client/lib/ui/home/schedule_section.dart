@@ -32,42 +32,16 @@ class _ScheduleSectionState extends State<ScheduleSection>
   bool _opened = false;
   bool? _home;
   ScheduleWeek? _homeData;
-  Timer? _staleTimer;
-  DateTime? _autoRefreshAttempt;
   bool _refreshing = false;
 
   @override
+  Future<void> refreshCache(
+    ScriptCachedData cached,
+    ScriptRunCancellation token,
+  ) => _load(background: true, cancellation: token);
+
+  @override
   void onConfigurationRequired() => _phase = QueryPhase.needConfiguration;
-
-  @override
-  void dispose() {
-    _staleTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  void onCacheRestored() {
-    _staleTimer?.cancel();
-    if (_home! || _data == null) return;
-    void refresh() {
-      if (!mounted ||
-          _home! ||
-          _refreshing ||
-          _autoRefreshAttempt == cacheFetchedAt) {
-        return;
-      }
-      _autoRefreshAttempt = cacheFetchedAt;
-      setState(() => cacheStale = true);
-      unawaited(_load(background: true));
-    }
-
-    final until = cacheFreshUntil;
-    if (cacheStale || (until != null && !until.isAfter(DateTime.now()))) {
-      refresh();
-    } else if (until != null) {
-      _staleTimer = Timer(until.difference(DateTime.now()), refresh);
-    }
-  }
 
   @override
   void didChangeDependencies() {
@@ -128,8 +102,6 @@ class _ScheduleSectionState extends State<ScheduleSection>
 
   @override
   void clearCache() {
-    _staleTimer?.cancel();
-    _autoRefreshAttempt = null;
     _refreshing = false;
     _homeData = null;
     _data = null;
@@ -219,7 +191,11 @@ class _ScheduleSectionState extends State<ScheduleSection>
   ScheduleWeek? _data;
   String? _error;
 
-  Future<void> _loadHome({bool configure = false}) async {
+  Future<void> _loadHome({
+    bool configure = false,
+    bool background = false,
+    ScriptRunCancellation? cancellation,
+  }) async {
     if (_refreshing) return;
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
@@ -229,6 +205,8 @@ class _ScheduleSectionState extends State<ScheduleSection>
       context,
       session,
       'schedule.week',
+      interactive: !background,
+      cancellation: cancellation,
       params: {if (configure) 'configure': true},
       decode: scheduleWeekFromDynamic,
     );
@@ -248,8 +226,18 @@ class _ScheduleSectionState extends State<ScheduleSection>
     await restoreCache();
   }
 
-  Future<void> _load({bool background = false, bool configure = false}) async {
-    if (_home!) return _loadHome(configure: configure);
+  Future<void> _load({
+    bool background = false,
+    bool configure = false,
+    ScriptRunCancellation? cancellation,
+  }) async {
+    if (_home!) {
+      return _loadHome(
+        configure: configure,
+        background: background,
+        cancellation: cancellation,
+      );
+    }
     if (_refreshing) return;
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
@@ -267,6 +255,7 @@ class _ScheduleSectionState extends State<ScheduleSection>
         'calendar.academic',
         params: {if (configure) 'configure': true},
         interactive: !background,
+        cancellation: cancellation,
         decode: calendarAcademicFromDynamic,
       );
       if (!mounted ||
@@ -313,6 +302,7 @@ class _ScheduleSectionState extends State<ScheduleSection>
       session,
       'schedule.week',
       interactive: !background,
+      cancellation: cancellation,
       params: {
         if (configure) 'configure': true,
         if (!_defaultQuery) 'week': _week,

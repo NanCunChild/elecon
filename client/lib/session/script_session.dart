@@ -624,6 +624,48 @@ extension TrustedScriptSession on SessionController {
     ).needsConfiguration(package, capability, params ?? const {});
   }
 
+  /// ADR-101: refresh only an existing, explicitly cacheable read query.
+  Future<void> refreshCachedQuery(
+    String capability, {
+    required Map<String, dynamic> params,
+    String? packageId,
+    String? expectedDigest,
+    ScriptRunCancellation? cancellation,
+  }) async {
+    final school = _school?.id;
+    final generation = trustedScriptViewGeneration;
+    final dataGeneration = trustedScriptDataGeneration;
+    if (school == null) return;
+    final package = await _querySource(
+      school,
+      capability,
+      packageId,
+      expectedDigest,
+    );
+    if (package == null ||
+        generation != trustedScriptViewGeneration ||
+        dataGeneration != trustedScriptDataGeneration ||
+        cancellation?.isCancelled == true ||
+        !package.manifest.home.any((entry) => entry.capability == capability) ||
+        capability == 'generic.section' ||
+        ScriptDataCache(
+              _store,
+              locale: scriptLocale,
+            ).read(package, capability, params: params) ==
+            null) {
+      return;
+    }
+    await runTrustedScript(
+      package.manifest.id,
+      capability,
+      expectedDigest: package.digest,
+      params: params,
+      interactive: false,
+      preload: true,
+      cancellation: cancellation,
+    );
+  }
+
   /// Await only a preload already in flight; inspecting its outcome never schedules work.
   Future<void> waitForHomeRefresh() =>
       _scripts.refreshingHome ?? Future.value();

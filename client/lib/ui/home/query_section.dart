@@ -239,6 +239,83 @@ mixin CachedQuerySection<W extends StatefulWidget, D> on State<W> {
   int? _cacheGeneration;
   int? _cacheDataGeneration;
   int cacheRead = 0;
+  Timer? _cacheExpiry;
+  ScriptRunCancellation? _cacheRefresh;
+  Object? _cacheAttempt;
+  bool? _cacheRouteCurrent;
+  late final _CacheLifecycle _cacheLifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _cacheLifecycle = _CacheLifecycle((resumed) {
+      _stopCacheRefresh();
+      if (resumed && mounted) unawaited(restoreCache());
+    });
+    WidgetsBinding.instance.addObserver(_cacheLifecycle);
+  }
+
+  void _stopCacheRefresh() {
+    _cacheExpiry?.cancel();
+    _cacheExpiry = null;
+    if (_cacheRefresh != null) _cacheAttempt = null;
+    _cacheRefresh?.cancel();
+    _cacheRefresh = null;
+  }
+
+  @override
+  void dispose() {
+    _stopCacheRefresh();
+    WidgetsBinding.instance.removeObserver(_cacheLifecycle);
+    super.dispose();
+  }
+
+  // One attempt per snapshot and parameter address. Restoring a failed stale
+  // snapshot must not produce a request/notification/retry loop.
+  void _scheduleCacheRefresh(ScriptCachedData cached) {
+    _cacheExpiry?.cancel();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    final address = (
+      cached.fetchedAt,
+      cacheCapability == 'schedule.week' && cached.data is Map
+          ? 'term:${(cached.data as Map)['term']}'
+          : cached.params.toString(),
+      _cacheSource,
+    );
+    if (_cacheAttempt == address) return;
+    final until = cached.freshUntil;
+    if (until == null) return;
+    final delay = until.difference(DateTime.now());
+    _cacheExpiry = Timer(delay.isNegative ? Duration.zero : delay, () async {
+      if (!mounted || ModalRoute.of(context)?.isCurrent == false) return;
+      final session = cacheSession;
+      if (session == null || _cacheRefresh != null) return;
+      _cacheAttempt = address;
+      final token = ScriptRunCancellation();
+      _cacheRefresh = token;
+      final generation = session.trustedScriptViewGeneration;
+      final source = _cacheSource;
+      final read = cacheRead;
+      setState(() => cacheStale = true);
+      try {
+        // cached data exists only for manifest-declared home queries. Session
+        // verifies that policy again before scheduling; no command can opt in.
+        await refreshCache(cached, token);
+        if (mounted &&
+            read == cacheRead &&
+            isCurrentQuery(this, session, generation, source)) {
+          await restoreCache();
+        }
+      } catch (_) {
+        // A failed refresh keeps the original content and its source timestamp.
+      } finally {
+        if (identical(_cacheRefresh, token)) _cacheRefresh = null;
+        token.dispose();
+      }
+    });
+  }
+
   DateTime? cacheFetchedAt;
   DateTime? cacheFreshUntil;
   bool cacheStale = false;
@@ -257,6 +334,10 @@ mixin CachedQuerySection<W extends StatefulWidget, D> on State<W> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final session = SessionScope.of(context);
+    final routeCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    final routeChanged = _cacheRouteCurrent != routeCurrent;
+    _cacheRouteCurrent = routeCurrent;
+    if (!routeCurrent) _stopCacheRefresh();
     final school = session.selectedSchool?.id;
     final source = CapabilitySourceScope.maybeOf(context)?.source;
     final changed =
@@ -266,6 +347,8 @@ mixin CachedQuerySection<W extends StatefulWidget, D> on State<W> {
         _cacheGeneration != session.trustedScriptViewGeneration ||
         _cacheDataGeneration != session.trustedScriptDataGeneration;
     if (changed) {
+      _stopCacheRefresh();
+      _cacheAttempt = null;
       cacheSession = session;
       _cacheSource = source;
       _cacheSchool = school;
@@ -278,11 +361,34 @@ mixin CachedQuerySection<W extends StatefulWidget, D> on State<W> {
       restoredParams = const {};
       clearCache();
     }
-    if (changed || _cacheRevision != session.homeDataRevision) {
+    if (changed ||
+        (routeChanged && routeCurrent) ||
+        _cacheRevision != session.homeDataRevision) {
       _cacheRevision = session.homeDataRevision;
       unawaited(restoreCache());
     }
   }
+
+  Future<void> refreshCache(
+    ScriptCachedData cached,
+    ScriptRunCancellation token,
+  ) => cacheSession!.refreshCachedQuery(
+    cacheCapability,
+    params: cached.params,
+    packageId: _cacheSource?.packageId,
+    expectedDigest: _cacheSource?.digest,
+    cancellation: token,
+  );
+
+  Future<ScriptCachedData?> readCache() => useLatestCache
+      ? CapabilityQueries(
+          cacheSession!,
+          source: _cacheSource,
+        ).latestCachedCapability(cacheCapability)
+      : CapabilityQueries(
+          cacheSession!,
+          source: _cacheSource,
+        ).cachedCapability(cacheCapability, params: cacheParams);
 
   Future<void> restoreCache() async {
     final session = cacheSession;
@@ -292,15 +398,7 @@ mixin CachedQuerySection<W extends StatefulWidget, D> on State<W> {
     final dataGeneration = session.trustedScriptDataGeneration;
     final school = _cacheSchool;
     try {
-      final cached = useLatestCache
-          ? await CapabilityQueries(
-              session,
-              source: _cacheSource,
-            ).latestCachedCapability(cacheCapability)
-          : await CapabilityQueries(
-              session,
-              source: _cacheSource,
-            ).cachedCapability(cacheCapability, params: cacheParams);
+      final cached = await readCache();
       if (!isCurrentSession(this, session, generation) ||
           dataGeneration != session.trustedScriptDataGeneration ||
           read != cacheRead ||
@@ -339,6 +437,7 @@ mixin CachedQuerySection<W extends StatefulWidget, D> on State<W> {
         cacheStale = cached.isStale;
         applyCache(decoded);
       });
+      _scheduleCacheRefresh(cached!);
       onCacheRestored();
     } catch (_) {
       // Cache read failure must not erase a successful visible result.
@@ -544,3 +643,11 @@ String formatQueryTimestamp(String value) {
 
 // ===========================================================================
 // 考试 / 图书借阅（用户按需）
+
+class _CacheLifecycle with WidgetsBindingObserver {
+  _CacheLifecycle(this.changed);
+  final void Function(bool) changed;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) =>
+      changed(state == AppLifecycleState.resumed);
+}
