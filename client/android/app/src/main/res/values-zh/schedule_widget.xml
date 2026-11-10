@@ -6,7 +6,7 @@
     <string name="widget_open_to_update">打开 elecon 核验并更新</string>
     <string name="widget_open_app">打开 elecon</string>
     <string name="widget_allow">允许在桌面展示</string>
-    <string name="widget_consent">允许此小部件展示所选 Profile、学校和来源的课程名称、时间和地点。桌面可能缓存或截取已展示的内容。更新使用前台缓存，不保证实时；应用进程重启后需打开 elecon 核验身份。内存存储模式不跨重启保存。没有可选来源时，请先打开 elecon 选校，再返回此页。</string>
+    <string name="widget_consent">允许此小部件展示所选 Profile、学校和来源的课程名称、时间和地点。桌面可能缓存或截取已展示的内容。更新使用前台缓存，不保证实时；已授权的加密缓存可跨进程重启展示；打开 elecon 可更新。内存存储模式不跨重启保存。没有可选来源时，请先打开 elecon 选校，再返回此页。</string>
     <string name="widget_cached">缓存于 %1$s</string>
     <string name="widget_cached_stale">缓存已过期 · %1$s</string>
     <string name="widget_unknown">当天课表未知</string>
@@ -14,4 +14,7 @@
     <string name="widget_next">下一节：%1$s</string>
     <string name="widget_current">进行中：%1$s</string>
     <string name="widget_more">还有 %1$d 项 · 点击查看</string>
+    <string name="widget_future_class">今日无课 · %1$s：%2$s</string>
+    <string name="widget_no_upcoming_classes">今日及未来六天的已缓存课表无课</string>
+    <string name="widget_future_unknown">今日无课 · 未来课表数据不完整</string>
 </resources>

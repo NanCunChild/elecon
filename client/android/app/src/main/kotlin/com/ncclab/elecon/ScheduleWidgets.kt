@@ -123,6 +123,22 @@ class ScheduleWidgets(private val activity: Activity, messenger: BinaryMessenger
 internal object ScheduleWidgetStore {
     var changed: (() -> Unit)? = null
     private var verified = false
+    private var initialized = false
+    private var foregroundVerified = false
+
+    private fun authority(context: Context) = context.getSharedPreferences("schedule-widget-authority", Context.MODE_PRIVATE)
+    private fun restoreAuthority(context: Context) {
+        if (initialized) return
+        initialized = true
+        // Only opaque scopes survive; names and all course content remain in
+        // the existing per-widget encrypted files. M grants never persist.
+        val scopes = authority(context).getStringSet("scopes", emptySet()) ?: emptySet()
+        for (scope in scopes.take(16)) if (scopePattern.matches(scope)) {
+            contexts[scope] = JSONObject().put("scope", scope).put("label", "").put("persistent", true)
+        }
+        verified = contexts.isNotEmpty()
+    }
+
     private var revision = 0L
     private val contexts = linkedMapOf<String, JSONObject>()
     private val records = mutableMapOf<Int, JSONObject>()
@@ -134,6 +150,9 @@ internal object ScheduleWidgetStore {
         .getAppWidgetIds(ComponentName(context, ScheduleWidgetProvider::class.java))
 
     fun begin(context: Context) {
+        authority(context).edit().remove("scopes").commit()
+        initialized = true
+        foregroundVerified = false
         verified = false
         revision = 0
         contexts.clear()
@@ -144,6 +163,9 @@ internal object ScheduleWidgetStore {
     fun invalidate(context: Context, next: Long) {
         if (next < revision) return
         revision = next
+        initialized = true
+        foregroundVerified = false
+        authority(context).edit().remove("scopes").commit()
         verified = false
         contexts.clear()
         for (id in ids(context)) remove(context, id)
@@ -164,7 +186,15 @@ internal object ScheduleWidgetStore {
         revision = next
         contexts.clear()
         contexts.putAll(fresh)
-        verified = true
+        initialized = true
+        foregroundVerified = true
+        verified = authority(context).edit().putStringSet("scopes",
+            fresh.filterValues { it.optBoolean("persistent") }.keys.toSet()).commit()
+        if (!verified) {
+            for (id in ids(context)) remove(context, id)
+            redraw(context)
+            return emptyList()
+        }
         val granted = linkedSetOf<String>()
         for (id in ids(context)) {
             val record = binding(context, id)
@@ -176,9 +206,10 @@ internal object ScheduleWidgetStore {
         return granted.toList()
     }
 
-    fun choices(): List<JSONObject> = if (verified) contexts.values.toList() else emptyList()
+    fun choices(): List<JSONObject> = if (verified && foregroundVerified) contexts.values.toList() else emptyList()
 
     fun binding(context: Context, id: Int): JSONObject? {
+        restoreAuthority(context)
         if (!verified || !ids(context).contains(id)) return null
         val record = records[id] ?: read(context, id)?.also { records[id] = it } ?: return null
         val scope = record.optString("scope")
@@ -189,7 +220,7 @@ internal object ScheduleWidgetStore {
 
     fun bind(context: Context, id: Int, scope: String): Boolean {
         val active = contexts[scope] ?: return false
-        if (!verified || !ids(context).contains(id)) return false
+        if (!verified || !foregroundVerified || !ids(context).contains(id)) return false
         val record = JSONObject().put("version", 1).put("scope", scope)
             .put("persistent", active.getBoolean("persistent"))
         records[id] = record
@@ -336,9 +367,11 @@ internal object ScheduleWidgetStore {
                 val fetched = Instant.ofEpochMilli(data.getLong("fetchedAt")).atZone(zone)
                 val age = if (System.currentTimeMillis() >= data.getLong("freshUntil"))
                     R.string.widget_cached_stale else R.string.widget_cached
-                val cacheStatus = context.getString(age, DateTimeFormatter.ofPattern("MM-dd HH:mm").format(fetched))
+                val dateLabel = DateTimeFormatter.ofPattern("MM-dd EEE", context.resources.configuration.locales[0]).format(now)
+                val ageLabel = context.getString(age, DateTimeFormatter.ofPattern("MM-dd HH:mm").format(fetched))
+                val cacheStatus = if (compact) "$dateLabel · $ageLabel" else ageLabel
                 view.setTextViewText(R.id.widget_status, cacheStatus)
-                view.setTextViewText(R.id.widget_title, context.getString(R.string.widget_schedule_date, now.toLocalDate().toString()))
+                view.setTextViewText(R.id.widget_title, context.getString(R.string.widget_schedule_date, dateLabel))
                 val courses = today?.optJSONArray("courses") ?: JSONArray()
                 if (today == null || !today.optBoolean("known")) {
                     val label = context.getString(R.string.widget_unknown)
@@ -346,9 +379,23 @@ internal object ScheduleWidgetStore {
                     else view.setTextViewText(R.id.widget_status, "$cacheStatus · $label")
                 }
                 else if (courses.length() == 0) {
-                    val label = context.getString(R.string.widget_no_classes)
-                    if (count > 0) addRow(context, view, label, "", compact)
-                    else view.setTextViewText(R.id.widget_status, "$cacheStatus · $label")
+                    val future = (0 until days.length()).map { days.getJSONObject(it) }
+                        .filter { it.optBoolean("known") && it.optString("date") > now.toLocalDate().toString() }
+                        .sortedBy { it.optString("date") }
+                    val nextDay = future.firstOrNull { it.getJSONArray("courses").length() > 0 }
+                    val nextCourses = nextDay?.getJSONArray("courses")
+                    val nextCourse = nextCourses?.let { rows -> (0 until rows.length())
+                        .map { rows.getJSONObject(it) }.minByOrNull { it.optString("start", "99:99") } }
+                    val label = if (nextDay != null && nextCourse != null) {
+                        val nextDate = DateTimeFormatter.ofPattern("MM-dd EEE", context.resources.configuration.locales[0])
+                            .format(LocalDate.parse(nextDay.getString("date")))
+                        context.getString(R.string.widget_future_class, nextDate, nextCourse.getString("name"))
+                    } else if (future.size == 6) context.getString(R.string.widget_no_upcoming_classes)
+                    else context.getString(R.string.widget_future_unknown)
+                    if (count > 0) addRow(context, view, label,
+                        nextCourse?.let { listOf(it.getString("label"), it.getString("location"))
+                            .filter { value -> value.isNotEmpty() }.joinToString(" · ") } ?: "", compact)
+                    else view.setTextViewText(R.id.widget_status, "$dateLabel · $label · $ageLabel")
                 }
                 else {
                     val all = (0 until courses.length()).map { courses.getJSONObject(it) }

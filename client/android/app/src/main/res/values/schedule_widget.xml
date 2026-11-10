@@ -9,7 +9,7 @@
     <string name="widget_open_to_update">Open elecon to verify and update</string>
     <string name="widget_open_app">Open elecon</string>
     <string name="widget_allow">Allow home screen display</string>
-    <string name="widget_consent">Allow this widget to show course names, times and locations from the selected profile, school and source. Your launcher may retain or capture what it displays. Updates use the foreground cache and are not real time. After the app process restarts, open elecon to verify your identity. Memory-only storage does not survive a restart. If no source appears, open elecon, select your school and return here.</string>
+    <string name="widget_consent">Allow this widget to show course names, times and locations from the selected profile, school and source. Your launcher may retain or capture what it displays. Updates use the foreground cache and are not real time. Approved encrypted caches remain available after a process restart; open elecon to refresh them. Memory-only storage does not survive a restart. If no source appears, open elecon, select your school and return here.</string>
     <string name="widget_cached">Cached %1$s</string>
     <string name="widget_cached_stale">Outdated cache · %1$s</string>
     <string name="widget_unknown">Schedule for this day is unknown</string>
@@ -18,4 +18,7 @@
     <string name="widget_current">In progress: %1$s</string>
     <bool name="schedule_widgets_enabled">false</bool>
     <string name="widget_more">%1$d more · tap to view</string>
+    <string name="widget_future_class">No classes today · %1$s: %2$s</string>
+    <string name="widget_no_upcoming_classes">No classes today or in the next six cached days</string>
+    <string name="widget_future_unknown">No classes today · future schedule incomplete</string>
 </resources>
