@@ -122,8 +122,10 @@ test("UG bitmap week indexing, actual dates, empty week, and exact student id", 
   assert.equal(result.days[1].slots[0].date, "2025-09-16");
   assert.deepEqual(result.days[1].slots[0].weeks, [1, 3]);
   assert.equal(result.days[1].slots[0].timeStart, "08:30");
-  assert.equal(result.timeSegments.length, 11);
-  assert.deepEqual(result.timeSegments[0], { label: "1", timeStart: "08:30", timeEnd: "09:15" });
+  assert.equal(result.timeSegments.length, 6);
+  assert.deepEqual(result.timeSegments[0], { label: "1–2", timeStart: "08:30", timeEnd: "10:05" });
+  assert.deepEqual(result.timeSegments.at(-1), { label: "11–12", timeStart: "20:55", timeEnd: "22:30" });
+  assert.equal(result.days[1].slots[0].timeEnd, "10:05");
   assert.equal(result.weekPreviews[0].days[1].courseCount, 1);
   assert.equal(result.weekPreviews[1].days[1].courseCount, 0);
   assert.equal(result.weekPreviews[2].days[1].courseCount, 1);

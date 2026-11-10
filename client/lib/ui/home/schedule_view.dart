@@ -92,7 +92,7 @@ class ScheduleCard extends StatelessWidget {
     final empty = !knownDate || (!currentWeek && slots.isEmpty)
         ? l10n.scheduleTodayUnavailable
         : l10n.scheduleTodayEmpty;
-    final dateLabel = DateFormat.yMMMd(
+    final dateLabel = DateFormat.yMMMEd(
       Localizations.localeOf(context).toString(),
     ).format(today);
     return SectionCard(
@@ -855,6 +855,21 @@ class WeekScheduleView extends StatelessWidget {
   ) {
     slots.sort((a, b) => a.start.compareTo(b.start));
     final colors = Theme.of(context).colorScheme;
+    (Color, Color) courseColors(ScheduleWeekDaysSlots slot) {
+      if (slot.changeType == 'cancelled') {
+        return (colors.surfaceContainerHighest, colors.onSurfaceVariant);
+      }
+      final key = slot.courseId ?? slot.courseName;
+      final group =
+          key.runes.fold(0, (hash, rune) => (hash * 31 + rune) & 0x7fffffff) %
+          3;
+      return switch (group) {
+        0 => (colors.primaryContainer, colors.onPrimaryContainer),
+        1 => (colors.secondaryContainer, colors.onSecondaryContainer),
+        _ => (colors.tertiaryContainer, colors.onTertiaryContainer),
+      };
+    }
+
     return [
       for (var index = 0; index < slots.length; index++)
         Positioned(
@@ -871,9 +886,7 @@ class WeekScheduleView extends StatelessWidget {
             button: true,
             child: Material(
               key: ValueKey('schedule-course-${slots[index].day}-$index'),
-              color: slots[index].slot.changeType == 'cancelled'
-                  ? colors.surfaceContainerHighest
-                  : colors.secondaryContainer,
+              color: courseColors(slots[index].slot).$1,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(7),
                 side: BorderSide(color: colors.outlineVariant),
@@ -883,11 +896,23 @@ class WeekScheduleView extends StatelessWidget {
                 onTap: () => _openCourse(context, slots[index], slots),
                 child: Padding(
                   padding: const EdgeInsets.all(3),
-                  child: Text(
-                    '${slots[index].slot.courseName}\n${_place(slots[index].slot)}\n${_time(slots[index].slot)}',
-                    overflow: TextOverflow.fade,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: colors.onSecondaryContainer,
+                  child: DefaultTextStyle(
+                    style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                      color: courseColors(slots[index].slot).$2,
+                    ),
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: slots[index].slot.courseName,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          if (_place(slots[index].slot).isNotEmpty)
+                            TextSpan(text: '\n${_place(slots[index].slot)}'),
+                          TextSpan(text: '\n${_time(slots[index].slot)}'),
+                        ],
+                      ),
+                      overflow: TextOverflow.fade,
                     ),
                   ),
                 ),
@@ -1118,7 +1143,7 @@ class _ScheduleAxis {
         final occupied = courses.any((c) => c.start < b && c.end > a);
         final rest = breaks.any((s) => a >= s.$1 && b <= s.$2);
         final extent = teaching
-            ? 72.0 * scale
+            ? 100.0 * scale
             : occupied
             ? math.max(48.0, (b - a) * 1.2) * scale
             : rest

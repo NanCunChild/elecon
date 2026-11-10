@@ -1,7 +1,7 @@
 {
   "sdkVersion": 20,
   "id": "school-xidian-undergraduate",
-  "version": "0.33.0",
+  "version": "0.34.0",
   "schoolId": "xidian_undergraduate",
   "name": "西安电子科技大学（本科生）",
   "network": {
@@ -798,6 +798,16 @@
     {
       "capability": "faculty.search",
       "ttlSeconds": 3600,
+      "preload": false
+    },
+    {
+      "capability": "climate.devices",
+      "ttlSeconds": 30,
+      "preload": false
+    },
+    {
+      "capability": "climate.status",
+      "ttlSeconds": 30,
       "preload": false
     }
   ],

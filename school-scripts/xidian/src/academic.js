@@ -21,7 +21,9 @@ const EXAMS = `${EH}/jwapp/sys/studentWdksapApp/modules/wdksap`;
 const PAGE_SIZE = 200;
 const MAX_PAGES = 8;
 const MAX_WEEKS = 100;
-// Traintime PDA lib/model/time_list.dart; wall clock in Asia/Shanghai.
+// Periods 1–10 follow Traintime PDA lib/model/time_list.dart; Asia/Shanghai.
+// Periods 11–12 follow the owner-provided 20:55–22:30 campus baseline (ADR-101);
+// this reference timetable still needs real-school verification.
 const TIMES = [
   ["08:30", "09:15"],
   ["09:20", "10:05"],
@@ -33,7 +35,8 @@ const TIMES = [
   ["16:45", "17:30"],
   ["19:00", "19:45"],
   ["19:50", "20:35"],
-  ["20:40", "21:25"],
+  ["20:55", "21:40"],
+  ["21:45", "22:30"],
 ];
 
 function postgraduate(params) {
@@ -517,10 +520,11 @@ export async function scheduleWeek(ctx, params = {}) {
       { label: ctx.i18n?.t("schedule.lunchBreak") ?? "午间休息", timeStart: "12:00", timeEnd: "14:00" },
       { label: ctx.i18n?.t("schedule.dinnerBreak") ?? "晚间休息", timeStart: "17:30", timeEnd: "19:00" },
     ],
-    timeSegments: TIMES.map(([timeStart, timeEnd], index) => ({
-      label: String(index + 1),
-      timeStart,
-      timeEnd,
+    // Presentation groups two periods; individual slots retain their exact times.
+    timeSegments: Array.from({ length: 6 }, (_, index) => ({
+      label: `${index * 2 + 1}–${index * 2 + 2}`,
+      timeStart: TIMES[index * 2][0],
+      timeEnd: TIMES[index * 2 + 1][1],
     })),
     weekPreviews: Array.from({ length: previewEnd }, (_, index) => {
       const previewWeek = index + 1;

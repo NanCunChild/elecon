@@ -241,7 +241,7 @@ void main() {
     // One day header and one teaching segment; no fabricated 08:00/18:00 edge.
     expect(
       tester.getSize(find.byKey(const ValueKey('schedule-grid'))).height,
-      120,
+      148,
     );
     expect(tester.takeException(), isNull);
   });
