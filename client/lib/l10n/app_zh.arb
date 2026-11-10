@@ -1023,5 +1023,35 @@
   "protectedStoreRecoveryTitle": "无法打开受保护数据",
   "protectedStoreRecoveryBody": "无法打开此 Profile 的受保护存储。elecon 会保留现有数据与密钥，成功恢复后才能继续。请稍后重试；重试不会清除数据或创建替代密钥。",
   "protectedStoreRecoveryFailed": "仍无法打开受保护数据。你可以稍后再次重试。",
-  "protectedStoreRecoveryRetrying": "正在尝试恢复…"
+  "protectedStoreRecoveryRetrying": "正在尝试恢复…",
+  "schedulePersonalCourses": "自定义课程",
+  "schedulePersonalDescription": "在当前身份的学校下保存个人课程，点击已有课程可编辑。课程只保存在本机，不修改学校课表；未启用持久存储时退出应用会丢失。",
+  "scheduleCourseName": "课程名称",
+  "scheduleCourseLocation": "上课地点（可选）",
+  "scheduleCourseRequired": "请输入课程名称",
+  "scheduleCourseStart": "开始",
+  "scheduleCourseEnd": "结束",
+  "scheduleInvalidTime": "结束时间须晚于开始时间。",
+  "scheduleSaveCourse": "保存课程",
+  "scheduleSaveFailed": "课程保存失败，请检查本地存储后重试。",
+  "scheduleExport": "导出日历",
+  "scheduleExportDescription": "保存为 .ics 文件，包含课程名称、日期、时间和地点。导出后请在日历应用中导入；再次导出不会自动同步已有日历。",
+  "scheduleExportTerm": "导出缓存中的完整学期",
+  "scheduleClassReminder": "上课提醒",
+  "scheduleCalendarReminderDescription": "随日历导出提醒。需导入支持提醒的日历应用，并由该应用发送通知。",
+  "scheduleReminderMinutes": "提前分钟数（0–1440）",
+  "scheduleReminderInvalid": "请输入 0 至 1440 的整数。",
+  "scheduleExported": "已导出 {count} 次课程，跳过 {skipped} 项日期或时间不完整的记录。",
+  "scheduleExportFailed": "无法导出：请确认课表提供学校时区、有效日期和时间，并检查文件保存权限。",
+  "@scheduleExported": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "commonDelete": "删除"
 }

@@ -16,6 +16,8 @@ import 'schedule_view.dart' show ScheduleWeekPicker, ScheduleWeekTransition;
 import 'section_card.dart';
 
 import 'query_section.dart';
+import 'personal_schedule.dart';
+import '../../core/schedule/calendar_export.dart';
 import 'capability_source.dart';
 
 class ScheduleSection extends StatefulWidget {
@@ -365,11 +367,20 @@ class _ScheduleSectionState extends State<ScheduleSection>
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final session = SessionScope.of(context);
+    List<PersonalCourse> personal = const [];
+    try {
+      personal = session.personalCourses;
+    } catch (_) {
+      /* Keep school data readable. */
+    }
+    ScheduleWeek compose(ScheduleWeek data) =>
+        withPersonalCourses(data, personal);
     if (_home!) {
       return _homeData != null
           ? withCacheTime(
               ScheduleCard(
-                _homeData!,
+                compose(_homeData!),
                 trailing: SectionRefreshButton(
                   onPressed: _refreshing ? null : _loadHome,
                 ),
@@ -402,6 +413,31 @@ class _ScheduleSectionState extends State<ScheduleSection>
                 l10n.homeScheduleTitle,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
+            ),
+            IconButton(
+              tooltip: l10n.schedulePersonalCourses,
+              icon: const Icon(Icons.edit_calendar_outlined),
+              onPressed: () => showPersonalCourses(
+                context,
+                session,
+                initialDate: scheduleDate(_data?.teachingWeekStart),
+              ),
+            ),
+            IconButton(
+              tooltip: l10n.scheduleExport,
+              icon: const Icon(Icons.ios_share_outlined),
+              onPressed: _data == null
+                  ? null
+                  : () => showScheduleExport(
+                      context,
+                      _data!,
+                      personal,
+                      CapabilitySourceScope.maybeOf(
+                            context,
+                          )?.source.packageId ??
+                          session.selectedSchool?.id ??
+                          '',
+                    ),
             ),
             IconButton(
               key: const ValueKey('schedule-refresh'),
@@ -449,7 +485,7 @@ class _ScheduleSectionState extends State<ScheduleSection>
               ? const SizedBox.shrink()
               : withCacheTime(
                   ScheduleCard(
-                    _data!,
+                    compose(_data!),
                     onWeekChanged: busy ? null : _selectWeek,
                     maxWeek: _maxWeek,
                   ),

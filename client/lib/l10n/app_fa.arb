@@ -679,5 +679,35 @@
   "protectedStoreRecoveryTitle": "داده‌های محافظت‌شده در دسترس نیستند",
   "protectedStoreRecoveryBody": "فضای ذخیره‌سازی محافظت‌شدهٔ این پروفایل باز نشد. elecon داده‌ها و کلیدهای موجود را حفظ می‌کند. دسترسی فقط پس از بازیابی موفق برقرار می‌شود. بعداً دوباره تلاش کنید؛ تلاش مجدد داده‌ها را پاک نمی‌کند و کلید جایگزین نمی‌سازد.",
   "protectedStoreRecoveryFailed": "داده‌های محافظت‌شده هنوز در دسترس نیستند. می‌توانید بعداً دوباره تلاش کنید.",
-  "protectedStoreRecoveryRetrying": "در حال تلاش برای بازیابی…"
+  "protectedStoreRecoveryRetrying": "در حال تلاش برای بازیابی…",
+  "schedulePersonalCourses": "Personal courses",
+  "schedulePersonalDescription": "Save personal courses for this profile and school. Tap a course to edit. Courses stay on this device and do not change the school timetable. Without persistent storage, they are lost when the app exits.",
+  "scheduleCourseName": "Course name",
+  "scheduleCourseLocation": "Location (optional)",
+  "scheduleCourseRequired": "Enter a course name",
+  "scheduleCourseStart": "Start",
+  "scheduleCourseEnd": "End",
+  "scheduleInvalidTime": "End time must be after start time.",
+  "scheduleSaveCourse": "Save course",
+  "scheduleSaveFailed": "Could not save the course. Check local storage and try again.",
+  "scheduleExport": "Export calendar",
+  "scheduleExportDescription": "Save an .ics file with course names, dates, times and locations, then import it into a calendar app. Exporting again does not automatically sync existing calendar events.",
+  "scheduleExportTerm": "Export the full cached term",
+  "scheduleClassReminder": "Class reminders",
+  "scheduleCalendarReminderDescription": "Include reminders in the exported calendar. Import it into a calendar app that supports reminders; that app sends the notifications.",
+  "scheduleReminderMinutes": "Minutes before class (0–1440)",
+  "scheduleReminderInvalid": "Enter a whole number from 0 to 1440.",
+  "scheduleExported": "Exported {count} classes; skipped {skipped} entries with incomplete dates or times.",
+  "scheduleExportFailed": "Could not export. Check that the timetable provides a school time zone and valid dates and times, and that the file can be saved.",
+  "@scheduleExported": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "commonDelete": "Delete"
 }
