@@ -27,6 +27,41 @@ class SectionCard extends StatelessWidget {
     final presentation = HomeCardPresentation.maybeOf(context);
     final preview = HomeCardPresentation.isPreview(context);
     final subtitle = this.subtitle?.trim();
+    if (presentation?.isPage == true) {
+      final showTitle = title != presentation?.pageTitle;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showTitle || subtitle?.isNotEmpty == true || trailing != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (showTitle)
+                          Text(title, style: theme.textTheme.titleMedium),
+                        if (subtitle?.isNotEmpty == true)
+                          Text(
+                            subtitle!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  ?trailing,
+                ],
+              ),
+            ),
+          child,
+        ],
+      );
+    }
     if (preview && presentation?.previewHeight != null) {
       return SizedBox(
         height: presentation!.previewHeight,

@@ -43,6 +43,7 @@ class HomeFeaturePage extends StatelessWidget {
         : HomeCardPresentation(
             size: HomeCardSize.expanded,
             isPage: true,
+            pageTitle: card.label,
             preset: preset,
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),

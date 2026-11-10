@@ -96,6 +96,7 @@ class _ShortcutFeaturePageState extends State<ShortcutFeaturePage> {
                   return HomeCardPresentation(
                     size: HomeCardSize.expanded,
                     isPage: true,
+                    pageTitle: title,
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.all(16),
                       child: CapabilitySourceScope(

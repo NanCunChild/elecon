@@ -82,6 +82,7 @@ class _ScriptFeaturePageState extends State<ScriptFeaturePage> {
         child: HomeCardPresentation(
           size: HomeCardSize.expanded,
           isPage: true,
+          pageTitle: page.title,
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: CapabilitySourceScope(

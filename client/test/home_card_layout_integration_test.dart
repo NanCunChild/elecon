@@ -96,6 +96,7 @@ void main() {
       await tester.tap(find.text('Notices'));
       await tester.pumpAndSettle();
       expect(find.text('Notice 2'), findsOneWidget);
+      expect(find.text('Notices'), findsOneWidget);
       expect(store.values, isEmpty);
       expect(tester.takeException(), isNull);
     });
