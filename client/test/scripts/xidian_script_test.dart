@@ -392,10 +392,25 @@ process.stdout.write(result.outputFiles[0].text);''',
   );
 
   test(
-    'source packages bind SDK 19 and combine browser login with authenticated data',
+    'source packages bind SDK 20 and combine browser login with authenticated data',
     () {
       expect(school.manifest.sdkVersion, 20);
-      expect(school.manifest.version, '0.33.0');
+      expect(school.manifest.version, '0.34.0');
+      expect(postgraduate.manifest.version, '0.34.0');
+      for (final capability in ['climate.devices', 'climate.status']) {
+        expect(
+          school.manifest.home
+              .singleWhere((entry) => entry.capability == capability)
+              .preload,
+          isFalse,
+        );
+        expect(
+          postgraduate.manifest.home.any(
+            (entry) => entry.capability == capability,
+          ),
+          isFalse,
+        );
+      }
       expect(school.manifest.browser, isTrue);
       expect(school.manifest.capabilities, hasLength(26));
       expect(
