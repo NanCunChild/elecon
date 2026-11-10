@@ -15,6 +15,8 @@ import 'ui/shortcuts/app_shortcuts_scope.dart';
 import 'core/credential/blob_store.dart';
 import 'core/credential/hardware_keystore_channel.dart';
 import 'core/debug/perf_trace.dart';
+import 'core/debug/dev_log.dart';
+import 'core/debug/dev_log_file.dart';
 import 'core/trust/trust_profile.dart' show kSideloadEnabled;
 import 'l10n/gen/app_localizations.dart';
 import 'session/session_controller.dart';
@@ -48,6 +50,30 @@ Future<void> runEleconApp({
   Widget Function(Widget child)? wrapApp,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kDebugMode) {
+    try {
+      final support = await getApplicationSupportDirectory();
+      final files = DevLogFile(Directory('${support.path}/debug-tools/logs'));
+      DevLog.instance.attachSink(files.add);
+      DevLog.instance.runtime('app started');
+      final flutterErrors = FlutterError.onError;
+      FlutterError.onError = (details) {
+        DevLog.instance.runtime(
+          'flutter error: type=${details.exception.runtimeType} stack=${details.stack}',
+        );
+        flutterErrors?.call(details);
+      };
+      final platformErrors = PlatformDispatcher.instance.onError;
+      PlatformDispatcher.instance.onError = (error, stack) {
+        DevLog.instance.runtime(
+          'async error: type=${error.runtimeType} stack=$stack',
+        );
+        return platformErrors?.call(error, stack) ?? false;
+      };
+    } catch (_) {
+      DevLog.instance.runtime('private debug log unavailable');
+    }
+  }
   LicenseRegistry.addLicense(() async* {
     for (final path in [
       'assets/native/hermes/LICENSE',
@@ -117,7 +143,6 @@ class _EleconAppState extends State<EleconApp> with WidgetsBindingObserver {
   late final AppFunctionsController _appFunctions;
   late final AppShortcutsController _shortcuts;
   late final ScheduleWidgetController _scheduleWidgets;
-
   @override
   void initState() {
     super.initState();

@@ -1151,7 +1151,10 @@ extension TrustedScriptSession on SessionController {
       );
     }
     if (route != null) state.routes.add(route);
+    final traceId = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+    final elapsed = Stopwatch()..start();
     final transport = ScriptHttpTransport(
+      traceId: traceId,
       policy: package.manifest.network,
       appTunnel: route,
       budget: requestBudget,
@@ -1177,7 +1180,10 @@ extension TrustedScriptSession on SessionController {
     }
 
     cancellation?.addListener(closeTransports);
-    DevLog.instance.runtime('script start: $id $capability');
+    DevLog.instance.runtime(
+      'script start: trace=$traceId package=$id capability=$capability '
+      'digest=${package.digest} interactive=$interactive',
+    );
     CapabilityRun result;
     ScriptAccountBridge? accountBridge;
     try {
@@ -1539,7 +1545,9 @@ extension TrustedScriptSession on SessionController {
       }
       if (!state.disposed) onCredentialsChanged();
       DevLog.instance.runtime(
-        'script end: $id $capability ${result.ok ? "ok" : result.reason}',
+        'script end: trace=$traceId package=$id capability=$capability '
+        'result=${result.ok ? "ok" : result.reason} '
+        'elapsedMs=${elapsed.elapsedMilliseconds} remainingRequests=${transport.remainingRequests}',
       );
       return result;
     });

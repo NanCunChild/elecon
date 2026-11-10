@@ -65,6 +65,16 @@ class DevLog extends ChangeNotifier {
   static final DevLog instance = DevLog();
 
   final int capacity;
+  void Function(DevLogEntry)? _sink;
+
+  /// Attach after the private directory is available; replay startup entries.
+  void attachSink(void Function(DevLogEntry) sink) {
+    _sink = sink;
+    for (final entry in _entries.reversed) {
+      sink(entry);
+    }
+  }
+
   final List<DevLogEntry> _entries = <DevLogEntry>[];
 
   /// 凭证脱敏是永久边界，不能由 build mode 或 UI 关闭（红线 #1）。
@@ -121,6 +131,10 @@ class DevLog extends ChangeNotifier {
       ok: ok,
       statusCode: statusCode,
     );
+    // A diagnostic consumer cannot make the observed operation fail.
+    try {
+      _sink?.call(entry);
+    } catch (_) {}
     _entries.insert(0, entry);
     while (_entries.length > capacity) {
       _entries.removeLast();

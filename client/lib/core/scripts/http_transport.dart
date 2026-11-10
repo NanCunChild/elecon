@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../debug/dev_log.dart';
 import 'network_policy.dart';
 import 'work_scheduler.dart';
 import 'request_budget.dart';
@@ -17,6 +18,7 @@ typedef ScriptAddressResolver = Future<List<InternetAddress>> Function(String);
 class ScriptHttpTransport {
   ScriptHttpTransport({
     required this.policy,
+    this.traceId,
     ScriptAddressResolver? resolver,
     this.appTunnel,
     this.budget,
@@ -30,6 +32,7 @@ class ScriptHttpTransport {
     this.requestTimeout = const Duration(seconds: 30),
   }) : _resolver = resolver ?? InternetAddress.lookup;
 
+  final String? traceId;
   final ScriptRequestBudget? budget;
   final ScriptRequestWindow? window;
   final _closedSignal = Completer<void>();
@@ -58,6 +61,9 @@ class ScriptHttpTransport {
     String url,
     Map<String, dynamic> init,
   ) async {
+    final elapsed = Stopwatch()..start();
+    int? status;
+    String? failure;
     _assertOpen();
     if (_concurrent >= maxConcurrent) {
       throw const ScriptNetworkException('concurrent_request_limit');
@@ -65,28 +71,37 @@ class ScriptHttpTransport {
     final context = _FetchContext();
     _concurrent++;
     try {
-      return await _fetch(url, init, context).timeout(
+      final response = await _fetch(url, init, context).timeout(
         requestTimeout,
         onTimeout: () {
           context.close();
           throw const ScriptNetworkException('request_timeout');
         },
       );
+      status = response['status'] as int?;
+      return response;
     } on AppTunnelException catch (error) {
+      failure = error.code;
       throw ScriptNetworkException(error.code);
     } on ScriptRunException catch (error) {
+      failure = error.code;
       throw ScriptNetworkException(error.code);
-    } on ScriptNetworkException {
+    } on ScriptNetworkException catch (error) {
+      failure = error.code;
       rethrow;
     } catch (_) {
       // Platform errors can contain the URL, query, body or header values.
-      throw ScriptNetworkException(
-        _closed ? 'transport_closed' : 'http_failed',
-      );
+      failure = _closed ? 'transport_closed' : 'http_failed';
+      throw ScriptNetworkException(failure);
     } finally {
       context.close();
       _clients.removeAll(context.clients);
       _concurrent--;
+      DevLog.instance.runtime(
+        'script http: trace=${traceId ?? "standalone"} url=${formatUrlForLog(url)} '
+        'status=${status ?? 0} result=${failure ?? "ok"} '
+        'elapsedMs=${elapsed.elapsedMilliseconds} remainingRequests=$remainingRequests',
+      );
     }
   }
 
@@ -190,6 +205,12 @@ class ScriptHttpTransport {
           if (body != null) request.add(body);
           final response = await request.close();
           _assertActive(context);
+          DevLog.instance.network(
+            method: method,
+            url: uri.toString(),
+            statusCode: response.statusCode,
+            ok: true,
+          );
           if (response.contentLength > maxResponseBytes ||
               response.contentLength > maxTotalResponseBytes - _responseBytes) {
             throw const ScriptNetworkException('response_body_limit');
