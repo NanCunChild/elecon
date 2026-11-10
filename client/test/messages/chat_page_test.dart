@@ -23,6 +23,59 @@ Future<void> finishRequests(WidgetTester tester) async {
 
 void main() {
   testWidgets(
+    'account details and search stay out of the reading area and invalidate on background',
+    (tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final session = SessionController();
+      addTearDown(session.dispose);
+      final package = chatPackage();
+      await tester.runAsync(() => prepareChat(session, package));
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ChatPage(session: session, package: package),
+        ),
+      );
+      await finishRequests(tester);
+      final l10n = AppLocalizations.of(tester.element(find.byType(ChatPage)));
+      expect(find.text(package.manifest.name), findsNothing);
+      await tester.enterText(find.byType(TextField), 'no-match');
+      await tester.pump();
+      expect(find.text('Synthetic group'), findsNothing);
+      await tester.tap(find.byTooltip(l10n.searchClear));
+      await tester.pump();
+      expect(find.text('Synthetic group'), findsOneWidget);
+      await tester.tap(find.byTooltip(l10n.scriptAccountDetails));
+      await tester.pumpAndSettle();
+      expect(find.text(package.manifest.name), findsOneWidget);
+      expect(find.text(l10n.communityDisconnect), findsOneWidget);
+      for (final state in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      // Paused apps do not draw frames; inspect the cleared sheet on resume.
+      for (final state in [
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      await tester.pump();
+      await finishRequests(tester);
+      expect(find.text(package.manifest.name), findsNothing);
+      expect(find.text(l10n.messagesDetailsExpired), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'message time uses local calendar days and full accessible time',
     (tester) async {
       final now = DateTime(2026, 11, 5, 14);

@@ -64,6 +64,8 @@ class ConversationTimestamp extends StatelessWidget {
 
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _composer = TextEditingController();
+  final _search = TextEditingController();
+  final _accountDetailsVisible = ValueNotifier(false);
   final _timeline = ScrollController();
   Map<String, dynamic>? _account;
   List<MessagesConversationsItems> _conversations = [];
@@ -72,7 +74,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _observed = <String, int>{};
   final _cursors = <String>{};
   bool _busy = false;
-  bool _showConversationId = false;
   bool _storageFailed = false;
   bool _localMore = false;
   bool? _remoteMore;
@@ -106,10 +107,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _accountDetailsVisible.value = false;
+    _accountDetailsVisible.dispose();
     _cancel();
     widget.session.removeListener(_sessionChanged);
     WidgetsBinding.instance.removeObserver(this);
     _composer.dispose();
+    _search.dispose();
     _timeline.dispose();
     super.dispose();
   }
@@ -136,11 +140,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _clearAccount() {
+    _accountDetailsVisible.value = false;
     _account = null;
     _conversations = [];
     _conversation = null;
     _coverage = null;
     _query = '';
+    _search.clear();
     _clearChat();
   }
 
@@ -612,6 +618,96 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (mounted && _timeline.hasClients) _timeline.jumpTo(0);
   });
 
+  void _showAccountDetails() {
+    FocusScope.of(context).unfocus();
+    final l10n = AppLocalizations.of(context);
+    _accountDetailsVisible.value = true;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheet) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: ValueListenableBuilder<bool>(
+            valueListenable: _accountDetailsVisible,
+            builder: (_, visible, _) => !visible
+                ? Text(l10n.messagesDetailsExpired)
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        _conversation == null
+                            ? l10n.scriptAccountDetails
+                            : l10n.messagesConversationInfo,
+                        style: Theme.of(sheet).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 16),
+                      if (_conversation case final selected?) ...[
+                        Text(
+                          selected.title,
+                          style: Theme.of(sheet).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        SelectableText(
+                          l10n.messagesConversationId(selected.conversationId),
+                          style: Theme.of(sheet).textTheme.bodySmall,
+                        ),
+                        const Divider(height: 24),
+                      ],
+                      Text(
+                        widget.package.manifest.name,
+                        style: Theme.of(sheet).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _connected
+                            ? l10n.communityConnected(
+                                _account!['serviceName'] as String? ?? '',
+                                _account!['accountLabel'] as String? ?? '',
+                              )
+                            : l10n.communitySignedOut,
+                      ),
+                      if (_fetchedAt != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          l10n.messagesSavedAt(_time(_fetchedAt!)),
+                          style: Theme.of(sheet).textTheme.bodySmall,
+                        ),
+                      ],
+                      if (_connected) ...[
+                        const SizedBox(height: 16),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton.icon(
+                            onPressed: _busy
+                                ? null
+                                : () {
+                                    if (!mounted ||
+                                        !_connected ||
+                                        _busy ||
+                                        !_valid(_request)) {
+                                      return;
+                                    }
+                                    Navigator.pop(sheet);
+                                    _run('messages.session', {
+                                      'operation': 'logout',
+                                    });
+                                  },
+                            icon: const Icon(Icons.logout),
+                            label: Text(l10n.communityDisconnect),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -668,13 +764,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   ],
                 ),
           actions: [
-            if (selected != null)
-              IconButton(
-                tooltip: l10n.messagesConversationInfo,
-                onPressed: () =>
-                    setState(() => _showConversationId = !_showConversationId),
-                icon: const Icon(Icons.info_outline),
+            IconButton(
+              tooltip: selected == null
+                  ? l10n.scriptAccountDetails
+                  : l10n.messagesConversationInfo,
+              onPressed: _showAccountDetails,
+              icon: Icon(
+                selected == null
+                    ? Icons.account_circle_outlined
+                    : Icons.info_outline,
               ),
+            ),
             IconButton(
               tooltip: l10n.messagesRefresh,
               onPressed: _busy || !_connected ? null : _refresh,
@@ -689,95 +789,67 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.package.manifest.name,
-                          style: theme.textTheme.labelMedium,
-                        ),
-                        if (selected != null && _showConversationId)
-                          SelectableText(
-                            l10n.messagesConversationId(
-                              selected.conversationId,
+                  if (!_connected || _storageFailed || _error != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!_connected && selected == null)
+                            FilledButton.tonal(
+                              onPressed: _busy
+                                  ? null
+                                  : () async {
+                                      final result = await _run(
+                                        'messages.session',
+                                        {'operation': 'login'},
+                                      );
+                                      if (mounted &&
+                                          result?.ok == true &&
+                                          _connected) {
+                                        await _refresh();
+                                      }
+                                    },
+                              child: Text(l10n.communityConnect),
                             ),
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        if (_connected)
-                          Text(
-                            l10n.communityConnected(
-                              _account!['serviceName'] as String? ?? '',
-                              _account!['accountLabel'] as String? ?? '',
+                          if (_storageFailed)
+                            Text(
+                              l10n.messagesStorageFailed,
+                              style: TextStyle(color: theme.colorScheme.error),
                             ),
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        if (selected == null)
-                          Wrap(
-                            spacing: 8,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              if (!_connected)
-                                FilledButton(
-                                  onPressed: _busy
-                                      ? null
-                                      : () async {
-                                          final result = await _run(
-                                            'messages.session',
-                                            {'operation': 'login'},
-                                          );
-                                          if (mounted &&
-                                              result?.ok == true &&
-                                              _connected) {
-                                            await _refresh();
-                                          }
-                                        },
-                                  child: Text(l10n.communityConnect),
-                                ),
-                              if (_connected)
-                                TextButton(
-                                  onPressed: _busy
-                                      ? null
-                                      : () => _run('messages.session', {
-                                          'operation': 'logout',
-                                        }),
-                                  child: Text(l10n.communityDisconnect),
-                                ),
-                            ],
-                          ),
-                        if (_fetchedAt != null)
-                          Text(
-                            l10n.messagesSavedAt(_time(_fetchedAt!)),
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        if (_storageFailed)
-                          Text(
-                            l10n.messagesStorageFailed,
-                            style: TextStyle(color: theme.colorScheme.error),
-                          ),
-                        if (_error != null)
-                          Text(
-                            _error == 'authentication_required'
-                                ? l10n.communityLoginRequired
-                                : _error == 'input_cancelled'
-                                ? l10n.scriptsInputCancelled
-                                : l10n.messagesRefreshFailed,
-                            style: TextStyle(color: theme.colorScheme.error),
-                          ),
-                      ],
+                          if (_error != null)
+                            Text(
+                              _error == 'authentication_required'
+                                  ? l10n.communityLoginRequired
+                                  : _error == 'input_cancelled'
+                                  ? l10n.scriptsInputCancelled
+                                  : l10n.messagesRefreshFailed,
+                              style: TextStyle(color: theme.colorScheme.error),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
                   if (_busy) const LinearProgressIndicator(),
                   if (selected == null) ...[
                     if (_connected)
                       Padding(
                         padding: const EdgeInsets.all(16),
-                        child: TextField(
-                          decoration: InputDecoration(
-                            labelText: l10n.messagesSearch,
-                            prefixIcon: const Icon(Icons.search),
-                          ),
+                        child: SearchBar(
+                          controller: _search,
+                          hintText: l10n.messagesSearch,
+                          leading: const Icon(Icons.search),
+                          elevation: const WidgetStatePropertyAll(0),
+                          trailing: [
+                            if (_query.isNotEmpty)
+                              IconButton(
+                                tooltip: l10n.searchClear,
+                                onPressed: () => setState(() {
+                                  _search.clear();
+                                  _query = '';
+                                }),
+                                icon: const Icon(Icons.close),
+                              ),
+                          ],
                           onChanged: (value) => setState(() => _query = value),
                         ),
                       ),
@@ -802,11 +874,30 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                                 ),
                               ),
                             )
-                          : ListView.builder(
+                          : ListView.separated(
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              padding: const EdgeInsets.only(bottom: 16),
+                              separatorBuilder: (_, _) => const Divider(
+                                height: 1,
+                                indent: 72,
+                                endIndent: 16,
+                              ),
                               itemCount: filtered.length,
                               itemBuilder: (context, index) {
                                 final row = filtered[index];
                                 return ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 4,
+                                  ),
+                                  minVerticalPadding: 12,
+                                  titleTextStyle: theme.textTheme.titleSmall,
+                                  subtitleTextStyle: theme.textTheme.bodySmall
+                                      ?.copyWith(
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
+                                      ),
                                   leading: ConversationAvatar(
                                     kind: row.conversationKind,
                                     images: row.avatarImages,
@@ -919,6 +1010,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                                 maxLength: 4000,
                                 decoration: InputDecoration(
                                   hintText: l10n.messagesCompose,
+                                  counterText: '',
                                   helperMaxLines: 3,
                                   helperText:
                                       _busy || _sendPermission == 'allowed'
@@ -936,7 +1028,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                             ),
                             const SizedBox(width: 8),
                             Padding(
-                              padding: const EdgeInsets.only(bottom: 24),
+                              padding: const EdgeInsets.only(bottom: 4),
                               child: IconButton.filled(
                                 tooltip: l10n.messagesSend,
                                 onPressed:
@@ -974,7 +1066,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 6),
         padding: const EdgeInsets.all(12),
-        constraints: const BoxConstraints(maxWidth: 600),
+        constraints: BoxConstraints(
+          maxWidth: min(600, MediaQuery.sizeOf(context).width * .85),
+        ),
         decoration: BoxDecoration(
           color: outgoing
               ? theme.colorScheme.primaryContainer
@@ -996,7 +1090,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ],
             SelectableText(
               text,
-              style: TextStyle(
+              style: theme.textTheme.bodyLarge?.copyWith(
+                height: 1.45,
                 color: outgoing
                     ? theme.colorScheme.onPrimaryContainer
                     : theme.colorScheme.onSurface,

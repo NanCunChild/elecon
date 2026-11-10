@@ -715,5 +715,6 @@
   "libraryPublisher": "Publisher",
   "libraryIsbn": "ISBN",
   "libraryCallNumber": "Call number",
-  "searchClear": "Clear search"
+  "searchClear": "Clear search",
+  "messagesDetailsExpired": "Reopen details to view the latest information."
 }

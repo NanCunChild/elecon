@@ -1059,5 +1059,6 @@
   "libraryPublisher": "出版社",
   "libraryIsbn": "ISBN",
   "libraryCallNumber": "索书号",
-  "searchClear": "清空搜索"
+  "searchClear": "清空搜索",
+  "messagesDetailsExpired": "请重新打开详情以查看最新信息。"
 }
