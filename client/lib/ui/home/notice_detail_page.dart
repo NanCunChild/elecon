@@ -143,6 +143,9 @@ class _NoticeDetailPageState extends State<NoticeDetailPage>
     final generation = _session?.trustedScriptViewGeneration;
     final dataGeneration = _session?.trustedScriptDataGeneration;
     _expiry?.cancel();
+    if (force && _detail != null && _fetchedAt != null) {
+      setState(() => _stale = true);
+    }
     _cancellation?.cancel();
     final cancellation = ScriptRunCancellation();
     _cancellation = cancellation;

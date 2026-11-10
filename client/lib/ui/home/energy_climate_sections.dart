@@ -224,7 +224,9 @@ class _EnergySectionState extends State<EnergySection>
           if (_failed && meter?['remaining'] != null) l10n.campusLoadFailed,
           if (meter?['label'] is String) meter!['label'] as String,
           if (_fetchedAt != null)
-            l10n.homeDataUpdatedAt(formatUpdateTime(_fetchedAt!, l10n)),
+            cacheStale
+                ? l10n.homeDataStaleAt(formatUpdateTime(_fetchedAt!, l10n))
+                : l10n.homeDataUpdatedAt(formatUpdateTime(_fetchedAt!, l10n)),
         ].join(' · '),
       ),
       child: Column(
@@ -313,7 +315,9 @@ class _EnergySectionState extends State<EnergySection>
           ],
           if (_fetchedAt != null)
             Text(
-              l10n.homeDataUpdatedAt(formatUpdateTime(_fetchedAt!, l10n)),
+              cacheStale
+                  ? l10n.homeDataStaleAt(formatUpdateTime(_fetchedAt!, l10n))
+                  : l10n.homeDataUpdatedAt(formatUpdateTime(_fetchedAt!, l10n)),
               style: Theme.of(context).textTheme.bodySmall,
             ),
           if (_history?.isEmpty == true) Text(l10n.energyNoHistory),
