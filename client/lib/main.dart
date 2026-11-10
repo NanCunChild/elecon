@@ -17,6 +17,8 @@ import 'core/credential/hardware_keystore_channel.dart';
 import 'core/debug/perf_trace.dart';
 import 'core/debug/dev_log.dart';
 import 'core/debug/dev_log_file.dart';
+import 'core/debug/debug_adapter_inbox.dart';
+import 'core/debug/debug_tools_config.dart';
 import 'core/trust/trust_profile.dart' show kSideloadEnabled;
 import 'l10n/gen/app_localizations.dart';
 import 'session/session_controller.dart';
@@ -55,7 +57,7 @@ Future<void> runEleconApp({
       final support = await getApplicationSupportDirectory();
       final files = DevLogFile(Directory('${support.path}/debug-tools/logs'));
       DevLog.instance.attachSink(files.add);
-      DevLog.instance.runtime('app started');
+      DevLog.instance.runtime('app started: debugTools=$debugToolsEnabled');
       final flutterErrors = FlutterError.onError;
       FlutterError.onError = (details) {
         DevLog.instance.runtime(
@@ -143,6 +145,33 @@ class _EleconAppState extends State<EleconApp> with WidgetsBindingObserver {
   late final AppFunctionsController _appFunctions;
   late final AppShortcutsController _shortcuts;
   late final ScheduleWidgetController _scheduleWidgets;
+  DebugAdapterInbox? _debugInbox;
+
+  Future<void> _startDebugInbox() async {
+    if (!debugToolsEnabled) return;
+    try {
+      await _profilesLoad;
+      final support = await getApplicationSupportDirectory();
+      if (!mounted) return;
+      final inbox = DebugAdapterInbox(
+        Directory('${support.path}/debug-tools'),
+        _profiles,
+      );
+      _debugInbox = inbox;
+      inbox.foreground =
+          WidgetsBinding.instance.lifecycleState == null ||
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+      await inbox.start();
+    } catch (_) {
+      DevLog.instance.runtime('debug adapter inbox startup failed');
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _debugInbox?.foreground = state == AppLifecycleState.resumed;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -164,6 +193,7 @@ class _EleconAppState extends State<EleconApp> with WidgetsBindingObserver {
     _profiles.addListener(_syncScriptLocale);
     _syncScriptLocale();
     _profilesLoad = _profiles.bootstrap();
+    if (debugToolsEnabled) unawaited(_startDebugInbox());
     _appFunctions = AppFunctionsController(
       profiles: _profiles,
       channel: !kIsWeb && defaultTargetPlatform == TargetPlatform.android
@@ -187,6 +217,7 @@ class _EleconAppState extends State<EleconApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _debugInbox?.close();
     WidgetsBinding.instance.removeObserver(this);
     _theme.removeListener(_syncScriptLocale);
     _profiles.removeListener(_syncScriptLocale);

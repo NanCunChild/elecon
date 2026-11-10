@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../credential/blob_store.dart';
+import '../debug/debug_tools_config.dart';
 import 'manifest.dart';
 
 const _registryBlob = 'trusted-scripts.json';
@@ -364,6 +365,7 @@ class ScriptRegistry {
   Future<void> install(
     ScriptPackage package, {
     required String approvedDigest,
+    bool debugReplace = false,
   }) => _change((entries, bindings) {
     if (package.requiresUpdate) {
       throw StateError('script_update_required');
@@ -382,7 +384,9 @@ class ScriptRegistry {
         old.package.manifest.version,
       );
       if (order < 0) throw StateError('script_downgrade');
-      if (order == 0 && old.package.digest != package.digest) {
+      if (order == 0 &&
+          old.package.digest != package.digest &&
+          !(debugToolsEnabled && debugReplace)) {
         throw StateError('script_version_reused');
       }
     } else if (entries.length >= 32) {

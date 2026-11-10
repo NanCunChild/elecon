@@ -361,10 +361,15 @@ extension TrustedScriptSession on SessionController {
   Future<void> installTrustedScript(
     ScriptPackage package, {
     required String approvedDigest,
+    bool debugReplace = false,
   }) async {
     final registry = await scriptRegistry;
     final previous = registry.find(package.manifest.id)?.package;
-    await registry.install(package, approvedDigest: approvedDigest);
+    await registry.install(
+      package,
+      approvedDigest: approvedDigest,
+      debugReplace: debugReplace,
+    );
     _scripts.sourceRevision++;
     final cleared =
         previous?.digest != package.digest &&
