@@ -15,13 +15,25 @@ Future<bool> confirmScriptInstall(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(l10n.scriptsTrustTitle),
+          icon: const Icon(Icons.extension_outlined),
+          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 720),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 for (final package in packages) ...[
                   Text(
-                    '${package.manifest.name} · ${package.manifest.version}\n${package.manifest.id} · ${package.manifest.schoolId}',
+                    package.manifest.name,
+                    style: Theme.of(ctx).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${package.manifest.version} · ${package.manifest.schoolId}',
+                    style: Theme.of(ctx).textTheme.bodyMedium,
+                  ),
+                  SelectableText(
+                    package.manifest.id,
+                    style: Theme.of(ctx).textTheme.bodySmall,
                   ),
                   if (package.manifest.homeTitle != null)
                     Text(l10n.scriptsHomeTitle(package.manifest.homeTitle!)),
@@ -62,7 +74,19 @@ Future<bool> confirmScriptInstall(
                     ),
                   ],
                   const SizedBox(height: 16),
-                  Text(l10n.scriptsTrustBody),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).colorScheme.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      l10n.scriptsTrustBody,
+                      style: TextStyle(
+                        color: Theme.of(ctx).colorScheme.onTertiaryContainer,
+                      ),
+                    ),
+                  ),
                   if (package.manifest.declaresAccounts) ...[
                     const SizedBox(height: 12),
                     Text(l10n.scriptAccountsTitle),
@@ -131,9 +155,12 @@ Future<bool> confirmScriptInstall(
                         ),
                       ),
                   const SizedBox(height: 16),
-                  Text(l10n.scriptsNetwork),
+                  Text(
+                    l10n.scriptsNetwork,
+                    style: Theme.of(ctx).textTheme.titleMedium,
+                  ),
                   for (final origin in package.manifest.network.origins)
-                    Text(origin.toString()),
+                    SelectableText(origin.toString()),
                   if (package.manifest.websocketNetwork.origins.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Text(l10n.scriptsWebsocketPermission),

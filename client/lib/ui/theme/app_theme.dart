@@ -74,6 +74,16 @@ abstract final class AppTheme {
         margin: EdgeInsets.zero,
         color: scheme.surfaceContainerLow,
       ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: scheme.inverseSurface,
+        contentTextStyle: base.textTheme.bodyMedium?.copyWith(
+          color: scheme.onInverseSurface,
+        ),
+        actionTextColor: scheme.inversePrimary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      ),
       dialogTheme: DialogThemeData(
         shape: const RoundedSuperellipseBorder(
           borderRadius: BorderRadius.all(Radius.circular(28)),

@@ -30,8 +30,14 @@ Future<void> selectScriptWithFeedback(
         key: ValueKey(
           'script-selection-${package.digest}-${completed ? 'complete' : 'checking'}',
         ),
-        content: Text(message),
-        duration: const Duration(seconds: 12),
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(messenger.context).height * .25,
+          ),
+          child: SingleChildScrollView(child: Text(message)),
+        ),
+        showCloseIcon: true,
+        duration: const Duration(seconds: 6),
         action: accounts
             ? SnackBarAction(
                 label: l10n.scriptAccountsTitle,
