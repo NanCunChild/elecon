@@ -476,26 +476,56 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         );
         if (!active()) return;
         if (!result.ok || result.localStorageFailed) {
-          if (result.reason == 'authentication_required') {
-            setState(() {
-              _clearAccount();
-              _error = result.reason;
-            });
-          }
+          _showEnrichmentFailure(result);
           return;
         }
-        final local = await widget.session.messageArchive(widget.package);
+        final MessageArchiveView? local;
+        try {
+          local = await widget.session.messageArchive(widget.package);
+        } catch (_) {
+          if (active()) setState(() => _storageFailed = true);
+          return;
+        }
         if (!active()) return;
-        if (local != null) setState(() => _applyArchive(local));
+        if (local case final view?) setState(() => _applyArchive(view));
       }
     } catch (_) {
-      // Optional enrichment preserves the successfully displayed directory.
+      if (active()) setState(() => _error = 'script_failed');
     } finally {
       if (identical(_enrichmentCancellation, cancellation)) {
         _enrichmentCancellation = null;
       }
       cancellation.dispose();
     }
+  }
+
+  void _showEnrichmentFailure(CapabilityRun result) {
+    // Only ordinary network failures are optional. Host limits, revocation and
+    // invalid results keep their classification and never authorize a retry.
+    if (!result.localStorageFailed &&
+        const {
+          'fetch_failed',
+          'http_failed',
+          'connection_failed',
+          'request_timeout',
+        }.contains(result.reason)) {
+      return;
+    }
+    setState(() {
+      if (result.reason == 'authentication_required') _clearAccount();
+      if (result.localStorageFailed ||
+          const {
+            'credential_persist_failed',
+            'credential_storage_unavailable',
+            'protected_store_unavailable',
+            'account_storage_failed',
+            'account_storage_invalid',
+          }.contains(result.reason)) {
+        _storageFailed = true;
+      } else if (!result.ok) {
+        _error = result.reason;
+      }
+    });
   }
 
   Future<void> _open(MessagesConversationsItems conversation) async {

@@ -52,7 +52,8 @@ class MessageArchiveView {
   final bool hasMoreLocal;
 
   /// The same evidence-based merge is used online and after SQLite recovery.
-  /// Unknown content is kept unknown; an ID fallback never erases a known name.
+  /// Unknown content stays unknown; source titles are accepted without guessing
+  /// whether they are placeholders. School-specific name fallbacks stay in JS.
   static List<MessagesConversationsItems> mergeConversations(
     List<MessagesConversationsItems> incoming,
     List<MessagesConversationsItems> previous, {
