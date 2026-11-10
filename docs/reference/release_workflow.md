@@ -1,8 +1,9 @@
 # GitHub Release 验证与审批 runbook
 
-> 本文落实 P0-13 的仓内部分，不修改 ADR、contract 或 ADR-024 trust profile。Adapter 官方签名仍严格按
+> 本文说明应用发布流程。ADR-024 信任 profile 仅约束仍在役的 V1 bundle，见[兼容维护边界](legacy_compatibility.md)。V1 Adapter 官方签名仍严格按
 > [`signing_ceremony.md`](./signing_ceremony.md) 离线执行；CI 不持有 adapter signing secret，也不出签。
-> **只有 adapter 签名要求离线。** 平台签名按 workflow 正常进行：Android release 必须使用 Actions secrets
+> 用户授权的 `elecon-script/1` 不要求签名，也不依赖 DEV profile；本地文件调试工具仅在 Debug 构建提供。
+> **只有 V1 adapter 签名要求离线。** 平台签名按 workflow 正常进行：Android release 必须使用 Actions secrets
 > 中的 upload keystore；macOS 在配置证书 secrets 时于 runner 上 codesign，否则产出未签名 `.app`；iOS
 > 当前明确用 `--no-codesign` 产出名称带 `unsigned` 的 zip。Windows/Linux 当前没有额外代码签名步骤。
 
@@ -54,7 +55,9 @@ npm run test:release-preflight
 测试覆盖 push/manual event-ref gate、合法 tag、非法语法、不存在 tag、非 main ancestry 和预检后 tag SHA
 改变。它只创建临时本地 git 仓库，不访问远端、不签名。
 
-## Known gap
+## V1 兼容检查与验收
 
-P0-14 的 `ELECON_TRUST_PROFILE` 接线与产物级 sideload symbol/profile metadata 证明不属于本改动，未加入或
-伪装成已完成。现有 release static/build gate 仍照常运行；P0-14 必须按其 landing checklist 独立实施和人工签收。
+V1 的 `ELECON_TRUST_PROFILE` 接线、Android profile 元数据与旧侧载哨兵检查已有实现，入口见
+[`check_release_gate.sh`](../../client/tool/check_release_gate.sh)。这些检查保持 V1 分发边界，不能解释为
+禁止用户安装新源码，也不验证 ADR-100 的文件调试入口。历史 P0 编号不再充当新路线实施清单；
+当前待验收事项统一见[实施计划](../planning/implementation.md)，自动检查与人工签收分别记录。

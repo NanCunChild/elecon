@@ -47,7 +47,7 @@ if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
-// ─── ADR-024 信任 profile：从 dart-define 读，单一事实源 ─────────────────────────
+// ─── V1 兼容信任 profile（ADR-024/041）：从 dart-define 读，单一事实源 ─────────────────────────
 //
 // Flutter 把 `--dart-define=K=V` 以 base64(K=V) 的逗号分隔串传给 gradle 的
 // `dart-defines` property。这里解出 ELECON_TRUST_PROFILE，据此决定 applicationId

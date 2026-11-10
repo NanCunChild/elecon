@@ -1,28 +1,14 @@
-/// 信任 profile 编译期判别器（ADR-024）—— 侧载入口的**唯一**开关。
+/// V1 bundle 的编译期信任 profile；兼容边界由 ADR-041 承接 ADR-024。
 ///
-/// ADR-024 决策：把 adapter 侧载判别器从 `kReleaseMode` / `kDebugMode`（优化等级）
-/// **解绑**，改由显式编译期 flag [String.fromEnvironment] `ELECON_TRUST_PROFILE`
-/// 决定。「优化」人人可得（任何构建可 `--release`），「是否含侧载入口」只由本 flag 定。
+/// 仅 `ELECON_TRUST_PROFILE=dev-sideload` 编入旧 V1 无签名 bundle 入口；
+/// 缺省或未知值均为 DEPLOY。它与 Flutter Debug/Profile/Release 构建模式独立。
+/// 此门不控制 `elecon-script/1`：新源码在各构建模式经用户授权导入，
+/// 本地文件调试工具按 ADR-100 在 Debug 构建默认提供。
 ///
-/// **护栏 1（ADR-024 §2.3 / §5.2）——fail-closed 默认 DEPLOY**：值枚举，仅
-/// `'dev-sideload'` ⟹ DEV；缺省 `''`、拼错、未识别的一切值 ⟹ DEPLOY（侧载剔除）。
-/// [kSideloadEnabled] 是**编译期常量**，DEPLOY 产物内启用侧载的代码路径根本不存在、
-/// 被 tree-shake 剔除（红线 #4「DEPLOY 包内无侧载入口」语义平移），任何运行时
-/// config/env 都翻不开。
-///
-/// **接线状态（2026-08-07：slice 1–3 已接线）**：判别器已翻转——
-/// `core/trust/trusted_context.dart` 的 `devSideload()` 与 `fetchTrustPermitted`
-/// 挂 [kSideloadEnabled]（slice 1）；DEV 用独立 applicationId 后缀 + 构建元数据标记
-/// （`android/app/build.gradle.kts`）与启动页水印（`ui/security/dev_sideload_banner.dart`，
-/// slice 2）；`tool/check_release_gate.sh` 对分发产物做符号 grep + 元数据双断言
-/// （slice 3）。slice 4（AGENTS.md 红线 #4 措辞）属红线原文，由 owner 单独决策。
-/// 落地拆分与签收见 `docs/reference/adr_024_landing.md`。
-///
-/// **不改传输底座（ADR-024 §2.4）**：本 flag **只解绑 adapter 侧载**；dev 传输底座
-/// 看全部流量，风险量级更高，恒 `kDebugMode`-only，不受本 flag 影响。
-///
-/// 🔒 红线 #4 承重件：改动本文件或其接线须人工 + 安全清单复核，不得 AI 独自闭环
-///    （AGENTS.md §1 / ADR-024 §3）。
+/// V1 兼容保护包括编译期剔除、独立 Android applicationId 后缀、启动水印，
+/// 以及 `tool/check_release_gate.sh` 的哨兵和元数据检查；它们不证明整个产物
+/// 不含新源码导入。原生模块侧载仍受当前架构 B4 限制。
+/// 核心信任实现的人工审阅按现行 AGENTS 与兼容维护边界执行。
 library;
 
 /// 编译期信任 profile 原始值（`--dart-define=ELECON_TRUST_PROFILE=...`）。缺省 `''`。
@@ -31,7 +17,7 @@ const String kTrustProfile = String.fromEnvironment('ELECON_TRUST_PROFILE');
 /// DEV 侧载 profile 的**唯一**合法值。其余一切值均判为 DEPLOY（fail-closed）。
 const String kDevSideloadProfile = 'dev-sideload';
 
-/// 侧载入口是否编入本产物。**编译期常量**：DEPLOY 下为 `false`，启用侧载的分支
+/// 旧 V1 bundle 侧载入口是否编入本产物。DEPLOY 下为 `false`，启用该入口的分支
 /// 作为死代码被 tree-shake 剔除（护栏 2，ADR-024 §2.3）。
 const bool kSideloadEnabled = kTrustProfile == kDevSideloadProfile;
 
@@ -46,7 +32,7 @@ const String kBuildProfileLabel = kSideloadEnabled ? 'DEV-SIDELOAD' : 'DEPLOY';
 ///   - DEV 产物里存在该字面量；
 ///   - DEPLOY 产物里，含它的分支是编译期死代码，被 tree-shake 连同字面量一并剔除。
 ///
-/// `tool/check_release_gate.sh` 对 DEPLOY 产物 grep 本字面量，命中即判定「侧载入口
+/// `tool/check_release_gate.sh` 对 DEPLOY 产物 grep 本字面量，命中即判定「V1 侧载入口
 /// 仍在产物里」并拒绝分发。这是**结构性**证据（验代码确实不在），比元数据标记强。
 ///
 /// 🔒 **不得改写、拼接、或用变量组装**：gate 靠它以完整字面量出现在产物中才能命中；

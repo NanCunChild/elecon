@@ -1,4 +1,4 @@
-/// DEV 侧载产物的启动页水印（ADR-024 §2.3 护栏 3 / §5.4）。
+/// V1 bundle DEV 信任 profile 的启动页水印；不限制新源码导入（ADR-024 §2.3 护栏 3 / §5.4）。
 ///
 /// **它补的是被亲手拆掉的护栏**：ADR-024 之前，「能侧载」等价于「debug 构建」，而
 /// debug 的卡顿本身就是一眼可辨的信号——拿到包的人不会误以为它可发布。判别器换成
@@ -53,7 +53,11 @@ class DevSideloadStartupWarning extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: const [
-                Icon(Icons.warning_amber_rounded, size: 64, color: Colors.white),
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 64,
+                  color: Colors.white,
+                ),
                 SizedBox(height: 24),
                 Text(
                   kDevSideloadWatermarkText,
@@ -71,7 +75,11 @@ class DevSideloadStartupWarning extends StatelessWidget {
                   'dev-sideload）。仅供开发者本机使用，不得分发、不得提交商店、'
                   '不得用于真实账号。',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
                 ),
                 SizedBox(height: 24),
                 Text(

@@ -1,43 +1,14 @@
-/// 信任裁定上下文 —— imperative 运行时的强制入场凭据（ADR-002 §2.6 运行时闸门）。
+/// V1 bundle imperative 运行时的强制信任凭据。
 ///
-/// 立场（#79 P0-1）：`runImperativeAdapter` 是凭证注入的入口，其安全性不得依赖
-/// 「上层不要误调用」的调用约定，而要在可信核心边界 fail-closed——入口强制
-/// 接收本类型实例，而本类型**只能经核心的信任裁定路径构造**：
+/// ADR-041 仅为在役 V1 路径承接 ADR-002/018/024；本类型不参与新源码授权。
+/// official 由验签、吊销和 stdlib 检查后的不可伪造 grant 构造，绑定实际执行的
+/// adapterId/version/digest；调用方仍须核对 bundle 与该凭据的 digest 一致。
+/// devSideload 仅在 V1 DEV 信任 profile 构造，不由 Flutter Debug/Release 决定。
+/// DEPLOY 剔除的是旧 V1 无签名 bundle 入口，新源码安装与 Debug 文件工具独立。
 ///
-///  - **official**：由核心验签 + 完整加载门禁裁定（ADR-002 §2.3 验签 → §2.4 吊销 →
-///    由签名裁定档位；ADR-018 §2.6 还含 `stdlibMin` 门）。构造路径**已就位**
-///    （2026-07-17）：`core/loader/verify.dart` 验签产出不可伪造 `VerifiedBundle` →
-///    `core/loader/load_grant.dart` 的 `mintOfficialGrant` 再过吊销 + `stdlibMin` 门
-///    （§2.6 第 5/6 步）铸造不可伪造 `AdapterLoadGrant` → 本文件 [TrustedAdapterContext.official]
-///    接受该 grant 签发 official 凭据。编排全序在 `core/loader/loader.dart`。
-///    **official 凭据携带不可伪造的 adapterId/adapterVersion/digest**（取自 grant 的验签产物），
-///    使其**绑定到具体 bundle**而非一张通用 bearer 票——上层运行前须核对将执行的 bundle 与本凭据
-///    的 [digest] 一致（评审 #2，见下方字段文档）。
-///  - **devSideload**：dev 侧载例外（ADR-002 §2.5，红线 #5 dev 例外）。
-///    仅 **DEV 信任 profile** 存在：[kSideloadEnabled] 为编译期常量，DEPLOY 下
-///    工厂首行恒抛、其余代码作为死代码被剔除——「允许侧载注入」的分支在
-///    DEPLOY 产物里不存在（红线 #4 同构手法）。
-///
-/// **判别器换位（ADR-024，2026-08-07 落地）**：侧载判别器由 [kDebugMode]（优化等级）
-/// 改挂 [kSideloadEnabled]（`--dart-define=ELECON_TRUST_PROFILE=dev-sideload`）。
-/// 语义与手法完全同构（编译期常量 + tree-shake），只是把「是否含侧载入口」从
-/// 「是否优化」这根正交轴上解绑：社区 adapter 开发者可拿 `--release` 的性能 + 侧载。
-///
-/// 换位丢掉的自动正确性由 ADR-024 §2.3 四护栏补：① fail-closed 默认 DEPLOY
-/// （见 `trust_profile.dart`）；② 编译期剔除而非运行时开关；③ DEV 独立
-/// applicationId 后缀 + 启动页水印（`android/app/build.gradle.kts`、
-/// `ui/security/dev_sideload_banner.dart`）；④ `tool/check_release_gate.sh` 机械断言。
-///
-/// **传输底座不受影响**（ADR-024 §2.4）：dev 传输看全部流量，风险量级更高，
-/// 恒 [kDebugMode]-only，本次换位不碰。
-///
-/// 纵深防御（ADR-002 §2.6：运行时不信任上游）：即便持有本类型实例，
-/// `runImperativeAdapter` 入口仍以 [fetchTrustPermitted] 复核档位 × 侧载 profile。
-///
-/// 🔒 红线 #1/#4 凭证与信任判别承重件：改动本文件须人工 + 安全清单复核，不得 AI 独自闭环。
+/// `runImperativeAdapter` 继续以 [fetchTrustPermitted] 复核 V1 档位。
+/// 实现人工审阅及退役前置见现行 AGENTS 与 docs/reference/legacy_compatibility.md。
 library;
-
-import 'package:flutter/foundation.dart' show kDebugMode;
 
 import '../loader/load_grant.dart' show AdapterLoadGrant;
 import 'trust_profile.dart' show kSideloadEnabled, kSideloadEntryMarker;
@@ -46,15 +17,15 @@ import 'trust_profile.dart' show kSideloadEnabled, kSideloadEntryMarker;
 ///
 /// 权威档位来自核心对签名的验证，**不信任 manifest 自报**（§2.2）。
 enum AdapterTrustTier {
-  /// 官方签名 adapter：核心验签通过、未被吊销。唯一可在 release 跑 imperative 的档。
+  /// V1 官方签名 adapter：验签通过、未吊销；DEPLOY 下允许其 imperative 执行。
   official,
 
-  /// dev 侧载（无签名）：仅 debug build 可构造/可跑 imperative（§2.5 owner 决策）。
+  /// V1 无签名侧载：仅 DEV 信任 profile 可构造，与构建优化模式无关。
   devSideload,
 }
 
 /// 经核心信任裁定后签发的执行凭据。构造器私有——拿到实例即意味着
-/// 已走过某条裁定路径（验签 official，或 debug-only 的 dev 侧载确认）。
+/// 已走过 V1 裁定路径（验签 official，或 DEV 信任 profile 的侧载确认）。
 class TrustedAdapterContext {
   const TrustedAdapterContext._(
     this.tier, {
@@ -111,8 +82,8 @@ class TrustedAdapterContext {
   /// adapterId/adapterVersion/digest 存入凭据（见 [adapterId] 字段文档），使 official 凭据不再是通用
   /// bearer 票。这些值来自 grant.bundle（已验签、已过门），调用方无法伪造。
   ///
-  /// **无 build 模式闸门**：official 是唯一可在 release 跑 imperative 的档（见 [fetchTrustPermitted]），
-  /// 故此处不设 [kDebugMode] 守卫（与 [devSideload] 相反）。纵深防御仍在 `runImperativeAdapter` 入口
+  /// **无构建模式门**：official 可在各构建模式执行；[devSideload] 则依赖 V1 信任 profile。
+  /// 纵深防御仍在 `runImperativeAdapter` 入口
   /// 以 [fetchTrustPermitted] 复核。
   factory TrustedAdapterContext.official(AdapterLoadGrant grant) {
     // grant 不可伪造 → 门禁全过。把其验签产物的权威身份/digest 绑进凭据（评审 #2），

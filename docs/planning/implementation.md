@@ -5,13 +5,17 @@
 
 ## 2026-11-10 · 本地调试入口与应用标识
 
-依[ADR-100](../adr/adr_100_local_debug_tools.md)实现仅 `debug && ELECON_DEBUG_TOOLS=true` 启用的私有文件命令：按Profile和文件SHA-256添加、同版本替换、删除受信源码包，复用安装digest、来源失效及持久化；无能力执行口，不改变V1验签。Python标准库工具支持ADB/桌面目录、监听增删改、固定错误与完整保留日志导出，编辑器临时无效JSON不会触发删除。使用方法见[调试手册](../wiki/debugging.md#android-adb-与文件调试adr-100)。
+依[ADR-100](../adr/adr_100_local_debug_tools.md)实现 Debug 构建默认提供的私有文件命令，无额外变量开关：按Profile和文件SHA-256添加、同版本替换、删除受信源码包，复用安装digest、来源失效及持久化；无能力执行口，不改变V1验签。Python标准库工具支持ADB/桌面目录、监听增删改、固定错误与完整保留日志导出，编辑器临时无效JSON不会触发删除。使用方法见[调试手册](../wiki/debugging.md#android-adb-与文件调试adr-100)。
 
 Debug的DevLog净化后异步写4份目标4MiB的私有轮转JSONL；新增调用trace、digest、耗时、HTTP状态与固定失败码，以及错误类型/栈。2MiB排队上限，丢弃/写入失败有累计计数；不记录正文/凭据，不上传，强杀前未刷入与过期文件不保证保留。
 
 Android包名/namespace/原生组件、Apple bundle ID与Linux application ID同步为 `com.ncclab.elecon`，快捷方式、AppFunctions与CI引用已更新。旧包私有数据和Keystore不自动迁移，旧安装保留，新包须重新导入/登录；DEV-SIDELOAD后缀保留。
 
-本轮自动验证：启用开关的相关Flutter **61项通过**，关闭开关的 **2项通过**；Python本地合成集成 **3项通过**；Java学校时区 **19项通过**；analyze无问题。Android ARM64 debug及release APK构建成功，Manifest和生成AppFunctions使用新包名；release即使传true开关，AOT产物也不含文件入口和日志实现标记。没有操作真实ADB设备或学校接口，未验证Apple/Linux构建；真机调试体验、学校验收与核心/授权/日志人工实质审阅仍需另行完成。未推送或合并。
+原实现自动验证（移除变量开关前）：启用开关的相关Flutter **61项通过**，关闭开关的 **2项通过**；Python本地合成集成 **3项通过**；Java学校时区 **19项通过**；analyze无问题。Android ARM64 debug及release APK构建成功，Manifest和生成AppFunctions使用新包名；当时 release 即使传 true 开关，AOT产物也不含文件入口和日志实现标记。上述为历史验证，不充当此次修正的新验证。没有操作真实ADB设备或学校接口，未验证Apple/Linux构建；真机调试体验、学校验收与核心/授权/日志人工实质审阅仍需另行完成。未推送或合并。
+
+审查修正：按所有者要求移除调试编译开关，Debug 默认包含工具。命令读取及注册表排队期间失去前台或关闭入口后，在提交前拒绝；已开始的落盘按实际结果记录。消息补全仅静默忽略普通网络失败，宿主硬限制与其他失败显示错误，存储故障显示本地保存提示，保留有效目录且不自动重试。V1 注释和发布说明已限定旧信任 profile 的作用范围；UI 规则按 ADR-046/080/086 修正旧额外确认、网页及页面机制描述。调试授权跨构建继承策略仍待单独裁定，本次不扩展该范围。
+
+本次修正验证：首批 Flutter **24项**与关联回归 **104项**通过（其中8项重复覆盖，合计120项不同测试）；Python合成集成 **3项**通过，analyze无问题，V1 release静态检查通过。Android ARM64 Debug/Release 均以默认构建命令成功生成：Debug kernel包含文件调试与日志标记，Release AOT无对应标记且V1 profile元数据仍为DEPLOY。文档链接与diff检查通过。没有操作真实设备或学校服务，平台真机体验与核心/授权/存储人工实质审阅仍待完成；未推送、合并或发布。
 
 ## 2026-11-10 · 并行审查修正与学习通成员研究
 
