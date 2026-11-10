@@ -709,5 +709,11 @@
       }
     }
   },
-  "commonDelete": "Delete"
+  "commonDelete": "Delete",
+  "librarySearchAction": "Search",
+  "libraryAuthor": "Author",
+  "libraryPublisher": "Publisher",
+  "libraryIsbn": "ISBN",
+  "libraryCallNumber": "Call number",
+  "searchClear": "Clear search"
 }

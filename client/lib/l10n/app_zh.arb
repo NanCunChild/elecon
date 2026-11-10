@@ -1053,5 +1053,11 @@
       }
     }
   },
-  "commonDelete": "删除"
+  "commonDelete": "删除",
+  "librarySearchAction": "查询",
+  "libraryAuthor": "作者",
+  "libraryPublisher": "出版社",
+  "libraryIsbn": "ISBN",
+  "libraryCallNumber": "索书号",
+  "searchClear": "清空搜索"
 }

@@ -250,7 +250,15 @@ void main() {
     );
     final row = tester.widget<ListTile>(find.byType(ListTile).first);
     expect((row.title as Text).maxLines, 2);
-    expect((row.subtitle as Text).maxLines, 3);
+    final metadata = find.descendant(
+      of: find.byType(ListTile).first,
+      matching: find.byType(Text),
+    );
+    expect(
+      tester.widgetList<Text>(metadata).every((text) => text.maxLines == 2),
+      isTrue,
+    );
+    expect(find.text(notices.first.summary!), findsOneWidget);
     await tester.tap(find.text(notices.first.title));
     await tester.pumpAndSettle();
     expect(find.text(notices.first.content!), findsOneWidget);

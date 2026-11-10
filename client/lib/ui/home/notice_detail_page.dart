@@ -309,11 +309,11 @@ class _NoticeDetailPageState extends State<NoticeDetailPage>
     return Scaffold(
       appBar: AppBar(title: Text(l10n.noticeDetailTitle)),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         children: [
           Text(
             _detail?.title ?? item.title,
-            style: theme.textTheme.headlineSmall,
+            style: theme.textTheme.headlineSmall?.copyWith(height: 1.35),
           ),
           const SizedBox(height: 8),
           Text(
@@ -357,7 +357,7 @@ class _NoticeDetailPageState extends State<NoticeDetailPage>
               content?.trim().isNotEmpty == true
                   ? content!
                   : l10n.noticeDetailEmpty,
-              style: theme.textTheme.bodyMedium,
+              style: theme.textTheme.bodyLarge?.copyWith(height: 1.65),
             ),
           if (attachments.isNotEmpty) ...[
             const Divider(height: 24),

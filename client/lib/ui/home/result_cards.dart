@@ -162,41 +162,66 @@ class NoticeCard extends StatelessWidget {
             title: l10n.homeNoticeTitle,
             children: [
               for (final item in data.items)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    item.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    [
-                          item.source,
-                          _noticeCategoryText(l10n, item.category),
-                          // 契约 publishedAt 为 RFC3339 字符串；经视图扩展转 DateTime 展示。
-                          if (item.publishedAtDateTime != null)
-                            formatLocalDate(item.publishedAtDateTime!),
-                          if (item.summary != null) item.summary!,
-                        ]
-                        .map((value) => value.trim())
-                        .where((value) => value.isNotEmpty)
-                        .join(' · '),
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  // App 内下钻：由通知标识 + 本详情视图闸门，不依赖外链（ADR-025 §2.6）。
-                  onTap: () {
-                    final source = CapabilitySourceScope.maybeOf(
-                      context,
-                    )?.source;
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            NoticeDetailPage(item: item, source: source),
+                Column(
+                  children: [
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                      title: Text(
+                        item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
-                    );
-                  },
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 6),
+                          Text(
+                            [
+                                  item.source,
+                                  _noticeCategoryText(l10n, item.category),
+                                  // 契约 publishedAt 为 RFC3339 字符串；经视图扩展转 DateTime 展示。
+                                  if (item.publishedAtDateTime != null)
+                                    formatLocalDate(item.publishedAtDateTime!),
+                                ]
+                                .map((value) => value.trim())
+                                .where((value) => value.isNotEmpty)
+                                .join(' · '),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                          if (item.summary?.trim().isNotEmpty == true) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              item.summary!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      // App 内下钻：由通知标识 + 本详情视图闸门，不依赖外链（ADR-025 §2.6）。
+                      onTap: () {
+                        final source = CapabilitySourceScope.maybeOf(
+                          context,
+                        )?.source;
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                NoticeDetailPage(item: item, source: source),
+                          ),
+                        );
+                      },
+                    ),
+                    if (item != data.items.last) const Divider(height: 1),
+                  ],
                 ),
             ],
           ),

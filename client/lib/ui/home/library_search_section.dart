@@ -99,6 +99,7 @@ class _LibrarySearchSectionState extends State<LibrarySearchSection>
   Future<void> _load({int page = 1, bool configure = false}) async {
     final query = _query.text.trim();
     if (query.isEmpty || _loading) return;
+    FocusScope.of(context).unfocus();
     final session = SessionScope.of(context);
     final generation = session.trustedScriptViewGeneration;
     final source = CapabilitySourceScope.maybeOf(context)?.source;
@@ -175,17 +176,25 @@ class _LibrarySearchSectionState extends State<LibrarySearchSection>
               maxLength: 200,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                labelText: l10n.librarySearchHint,
+                hintText: l10n.librarySearchHint,
+                counterText: '',
                 prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(28),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: Theme.of(context).colorScheme.surfaceContainerHigh,
               ),
               onSubmitted: (_) => _load(),
             ),
+            const SizedBox(height: 8),
             Align(
               alignment: AlignmentDirectional.centerEnd,
               child: FilledButton.icon(
                 onPressed: _phase == QueryPhase.loading ? null : () => _load(),
                 icon: const Icon(Icons.search),
-                label: Text(l10n.librarySearchTitle),
+                label: Text(l10n.librarySearchAction),
               ),
             ),
             QueryPhaseBody(
@@ -208,20 +217,48 @@ class _LibrarySearchSectionState extends State<LibrarySearchSection>
             ),
             if (data != null) ...[
               if (data.items.isEmpty) Text(l10n.librarySearchEmpty),
-              for (final item in data.items)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.menu_book_outlined),
-                  title: Text(item.title),
-                  subtitle: Text(
-                    [
-                      item.author,
-                      item.publisher,
-                      item.isbn,
-                      item.callNumber,
-                    ].whereType<String>().join(' · '),
+              for (final item in data.items) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SelectableText(
+                        item.title,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      for (final field in [
+                        (l10n.libraryAuthor, item.author),
+                        (l10n.libraryPublisher, item.publisher),
+                        (l10n.libraryIsbn, item.isbn),
+                        (l10n.libraryCallNumber, item.callNumber),
+                      ])
+                        if (field.$2?.trim().isNotEmpty == true)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: '${field.$1}  ',
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  TextSpan(text: field.$2),
+                                ],
+                              ),
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ),
+                    ],
                   ),
                 ),
+                const Divider(height: 1),
+              ],
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
