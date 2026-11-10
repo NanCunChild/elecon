@@ -146,12 +146,12 @@ throw Object.assign(new Error("source_response_invalid"), { code: "source_respon
 
 ```bash
 cd client
-fvm flutter run --debug --dart-define=ELECON_DEBUG_TOOLS=true
+fvm flutter run --debug
 # 或构建后自行安装：
-fvm flutter build apk --debug --dart-define=ELECON_DEBUG_TOOLS=true
+fvm flutter build apk --debug
 ```
 
-只有 debug **且**显式开关为true时处理文件命令；普通debug仍写日志，profile/release均无文件调试入口。此入口把开发者的本地文件操作当作安装授权，可以同版本替换，不弹安装确认页；仍校验包/schema/SDK、原文件SHA-256、学校和规范digest，不允许降版或更换学校。只支持 `elecon-script/1`，旧V1 Adapter的验签/发布路径保持独立。
+Debug 构建默认处理文件命令并写日志，不需要额外变量开关；Profile/Release 均无文件调试入口。此入口把开发者的本地文件操作当作安装授权，可以同版本替换，不弹安装确认页；仍校验包/schema/SDK、原文件SHA-256、学校和规范digest，不允许降版或更换学校。只支持 `elecon-script/1`，旧 V1 Adapter 的信任 profile、验签及发布路径保持独立。
 
 在仓库根使用Python标准库工具（无需安装依赖）：
 
@@ -193,7 +193,7 @@ adb exec-out run-as com.ncclab.elecon cat files/debug-tools/logs/dev-log.jsonl >
 | package / sha256 | upsert：完整包JSON文本及此文本UTF-8的SHA-256；不是规范包digest |
 | packageId | remove：已安装包ID |
 
-工具自动计算原文件SHA-256；宿主解析后保存其规范digest供执行复核。结果为 `ok` 或固定错误码，如 `debug_command_digest`、`debug_command_identity`、`script_downgrade`；未知解析/存储失败为 `debug_command_rejected`，不返回原始异常。结果最多保留64份，工具读取后删除。进程中断后 `processing/ID.json` 留存，视为结果未知，不自动重放；先核对status/结果及日志，再决定是否生成新请求。退出应用或切后台可能使工具等待超时，超时不表示操作回滚。
+工具自动计算原文件SHA-256；宿主解析后保存其规范digest供执行复核。结果为 `ok` 或固定错误码，如 `debug_command_digest`、`debug_command_identity`、`script_downgrade`；读取或排队期间切后台、关闭入口会在提交开始前以 `script_cancelled` 拒绝，恢复前台不重放。未知解析/存储失败为 `debug_command_rejected`，不返回原始异常。结果最多保留64份，工具读取后删除。进程中断后 `processing/ID.json` 留存，视为结果未知，不自动重放；先核对status/结果及日志，再决定是否生成新请求。退出应用或切后台可能使工具等待超时；已经开始的持久化提交按实际结果记录，超时或取消不表示操作回滚。
 
 ### 日志范围
 

@@ -362,6 +362,7 @@ extension TrustedScriptSession on SessionController {
     ScriptPackage package, {
     required String approvedDigest,
     bool debugReplace = false,
+    bool Function()? isActive,
   }) async {
     final registry = await scriptRegistry;
     final previous = registry.find(package.manifest.id)?.package;
@@ -369,6 +370,7 @@ extension TrustedScriptSession on SessionController {
       package,
       approvedDigest: approvedDigest,
       debugReplace: debugReplace,
+      isActive: isActive,
     );
     _scripts.sourceRevision++;
     final cleared =
@@ -398,10 +400,13 @@ extension TrustedScriptSession on SessionController {
     if (cleared) await _flushCredentialBackend(_secure);
   }
 
-  Future<void> removeTrustedScript(String id) async {
+  Future<void> removeTrustedScript(
+    String id, {
+    bool Function()? isActive,
+  }) async {
     final registry = await scriptRegistry;
     final package = registry.find(id)?.package;
-    await registry.remove(id);
+    await registry.remove(id, isActive: isActive);
     _scripts.sourceRevision++;
     final cleared =
         package != null &&

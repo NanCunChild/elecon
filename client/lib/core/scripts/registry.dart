@@ -3,9 +3,9 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 import '../credential/blob_store.dart';
-import '../debug/debug_tools_config.dart';
 import 'manifest.dart';
 
 const _registryBlob = 'trusted-scripts.json';
@@ -366,6 +366,7 @@ class ScriptRegistry {
     ScriptPackage package, {
     required String approvedDigest,
     bool debugReplace = false,
+    bool Function()? isActive,
   }) => _change((entries, bindings) {
     if (package.requiresUpdate) {
       throw StateError('script_update_required');
@@ -386,7 +387,7 @@ class ScriptRegistry {
       if (order < 0) throw StateError('script_downgrade');
       if (order == 0 &&
           old.package.digest != package.digest &&
-          !(debugToolsEnabled && debugReplace)) {
+          !(kDebugMode && debugReplace)) {
         throw StateError('script_version_reused');
       }
     } else if (entries.length >= 32) {
@@ -403,7 +404,7 @@ class ScriptRegistry {
         bindings[binding.key] = current.withBaseContract(cap);
       }
     }
-  });
+  }, isActive: isActive);
 
   Future<void> setEnabled(String id, bool enabled) => _change((entries, _) {
     final old = entries[id];
@@ -411,32 +412,37 @@ class ScriptRegistry {
     entries[id] = ScriptInstallation(old.package, enabled: enabled);
   });
 
-  Future<void> remove(String id) => _change((entries, bindings) {
-    entries.remove(id);
-    for (final key in bindings.keys.toList()) {
-      final binding = bindings[key]!;
-      if (!entries.values.any(
-        (entry) =>
-            entry.package.manifest.schoolId == binding.schoolId &&
-            entry.package.manifest.capability(binding.capability) != null,
-      )) {
-        bindings.remove(key);
-      } else if (binding.overrideId == id) {
-        bindings[key] = binding.withOverride(null);
-      }
-    }
-  });
+  Future<void> remove(String id, {bool Function()? isActive}) =>
+      _change((entries, bindings) {
+        entries.remove(id);
+        for (final key in bindings.keys.toList()) {
+          final binding = bindings[key]!;
+          if (!entries.values.any(
+            (entry) =>
+                entry.package.manifest.schoolId == binding.schoolId &&
+                entry.package.manifest.capability(binding.capability) != null,
+          )) {
+            bindings.remove(key);
+          } else if (binding.overrideId == id) {
+            bindings[key] = binding.withOverride(null);
+          }
+        }
+      }, isActive: isActive);
 
   Future<void> _change(
     void Function(
       Map<String, ScriptInstallation>,
       Map<String, _ProviderBinding>,
     )
-    edit,
-  ) {
+    edit, {
+    bool Function()? isActive,
+  }) {
     final done = Completer<void>();
     _writes = _writes.then((_) async {
       try {
+        // Recheck after waiting for earlier durable mutations. Once a write
+        // starts, its result must remain coherent with the persisted registry.
+        if (isActive?.call() == false) throw StateError('script_cancelled');
         final next = Map<String, ScriptInstallation>.of(_entries);
         final bindings = Map<String, _ProviderBinding>.of(_bindings);
         edit(next, bindings);

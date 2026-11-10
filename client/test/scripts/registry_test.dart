@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:elecon/core/credential/blob_store.dart';
@@ -43,7 +44,71 @@ class FailingBlobs extends InMemoryBlobStore {
   }
 }
 
+class _PausedBlobs extends InMemoryBlobStore {
+  bool paused = false;
+  final entered = Completer<void>();
+  final resume = Completer<void>();
+  @override
+  Future<void> write(String name, List<int> bytes) async {
+    if (paused) {
+      entered.complete();
+      await resume.future;
+      paused = false;
+    }
+    await super.write(name, bytes);
+  }
+}
+
 void main() {
+  for (final operation in ['install', 'remove']) {
+    test(
+      'queued $operation checks admission again before changing durable sources',
+      () async {
+        final blobs = _PausedBlobs();
+        final registry = await ScriptRegistry.open(blobs);
+        final original = package();
+        await registry.install(original, approvedDigest: original.digest);
+        blobs.paused = true;
+        final blocker = package(id: 'blocker');
+        final writing = registry.install(
+          blocker,
+          approvedDigest: blocker.digest,
+        );
+        await blobs.entered.future;
+        var active = true;
+        final replacement = package(version: '2.0.0');
+        final queued = operation == 'install'
+            ? registry.install(
+                replacement,
+                approvedDigest: replacement.digest,
+                isActive: () => active,
+              )
+            : registry.remove(original.manifest.id, isActive: () => active);
+        final rejected = expectLater(
+          queued,
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'code',
+              'script_cancelled',
+            ),
+          ),
+        );
+        active = false;
+        blobs.resume.complete();
+        await writing;
+        await rejected;
+        expect(registry.find('example')!.package.digest, original.digest);
+        expect(
+          (await ScriptRegistry.open(blobs)).find('example')!.package.digest,
+          original.digest,
+        );
+        await registry.install(replacement, approvedDigest: replacement.digest);
+        expect(registry.find('example')!.package.digest, replacement.digest);
+      },
+    );
+  }
+
   test(
     'SDK migration is a content update and needs a higher script version',
     () async {

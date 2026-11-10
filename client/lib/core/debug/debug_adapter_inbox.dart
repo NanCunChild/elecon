@@ -5,10 +5,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import '../../session/profile_controller.dart';
 import '../../session/session_controller.dart';
 import '../scripts/manifest.dart';
-import 'debug_tools_config.dart';
 import 'dev_log.dart';
 
 class DebugAdapterInbox {
@@ -16,16 +16,25 @@ class DebugAdapterInbox {
   final Directory directory;
   final ProfileController profiles;
   Timer? _timer;
-  bool foreground = true;
+  bool _foreground = true;
+  int _lifecycleRevision = 0;
+  bool get foreground => _foreground;
+  set foreground(bool value) {
+    if (_foreground == value) return;
+    _foreground = value;
+    _lifecycleRevision++;
+  }
+
   bool _busy = false;
   bool _closed = false;
   static final _requestId = RegExp(r'^[a-f0-9]{32}$');
 
   Future<void> start() async {
-    if (!debugToolsEnabled || _closed) return;
+    if (!kDebugMode || _closed) return;
     for (final name in ['inbox', 'processing', 'results']) {
       await Directory('${directory.path}/$name').create(recursive: true);
     }
+    if (_closed) return;
     _timer ??= Timer.periodic(
       const Duration(seconds: 1),
       (_) => unawaited(poll()),
@@ -35,6 +44,7 @@ class DebugAdapterInbox {
 
   void close() {
     _closed = true;
+    _lifecycleRevision++;
     _timer?.cancel();
   }
 
@@ -47,7 +57,7 @@ class DebugAdapterInbox {
 
   /// Also callable by a local file workflow; never follows an external path.
   Future<void> poll() async {
-    if (!debugToolsEnabled ||
+    if (!kDebugMode ||
         _closed ||
         _busy ||
         !foreground ||
@@ -58,10 +68,17 @@ class DebugAdapterInbox {
     _busy = true;
     try {
       final profile = profiles.active;
+      final lifecycleRevision = _lifecycleRevision;
+      bool active() =>
+          !_closed &&
+          foreground &&
+          lifecycleRevision == _lifecycleRevision &&
+          profiles.isRestored &&
+          !profiles.busy &&
+          identical(profile, profiles.active);
+      bool canCommit() => active() && !profile.session.hardwareUnlockFailed;
       final registry = await profile.session.scriptRegistry;
-      if (_closed || profiles.busy || !identical(profile, profiles.active)) {
-        return;
-      }
+      if (!active()) return;
       await _write('status.json', {
         'version': 1,
         'profileId': profile.id,
@@ -81,12 +98,7 @@ class DebugAdapterInbox {
       // A bounded scan per tick avoids unbounded work on a developer's queue.
       var processed = 0;
       await for (final entity in inbox.list(followLinks: false)) {
-        if (_closed ||
-            !foreground ||
-            profiles.busy ||
-            !identical(profile, profiles.active)) {
-          break;
-        }
+        if (!active()) break;
         if (entity is! File || !entity.path.endsWith('.json')) continue;
         final name = entity.uri.pathSegments.last;
         final id = name.substring(0, name.length - 5);
@@ -103,6 +115,7 @@ class DebugAdapterInbox {
             throw const FormatException('debug_command_size');
           }
           final command = jsonDecode(await processing.readAsString());
+          if (!active()) throw StateError('script_cancelled');
           if (command is! Map ||
               command['version'] != 1 ||
               command['profileId'] != profile.id ||
@@ -126,6 +139,7 @@ class DebugAdapterInbox {
                 package,
                 approvedDigest: package.digest,
                 debugReplace: true,
+                isActive: canCommit,
               );
             case 'remove':
               final packageId = command['packageId'];
@@ -133,7 +147,7 @@ class DebugAdapterInbox {
                 throw const FormatException('debug_command_package');
               }
               session.cancelTrustedScriptRuns();
-              await session.removeTrustedScript(packageId);
+              await session.removeTrustedScript(packageId, isActive: canCommit);
             default:
               throw const FormatException('debug_command_operation');
           }
@@ -151,6 +165,7 @@ class DebugAdapterInbox {
             'script_school_changed',
             'script_install_limit',
             'script_update_required',
+            'script_cancelled',
           };
           final reason = error is FormatException
               ? error.message

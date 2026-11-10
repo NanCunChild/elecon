@@ -65,7 +65,7 @@ flowchart TD
 
 ## 本地开发调试
 
-[ADR-100](adr/adr_100_local_debug_tools.md)允许显式启用的debug构建从私有文件接收按Profile和摘要固定的源码安装/替换/删除，不提供脚本执行入口；同版本替换只在该开发门内放行，生产安装与V1验签保持各自边界。Debug日志由DevLog净化后写入私有轮转文件供ADB读取，使用方法见[调试手册](wiki/debugging.md)。应用标识为`com.ncclab.elecon`；旧安装私有数据及密钥不自动迁移。
+[ADR-100](adr/adr_100_local_debug_tools.md)在 Debug 构建默认提供私有文件源码安装/替换/删除，无额外变量开关；命令固定 Profile 和摘要，异步读取及提交排队后复核前台生命周期，不提供脚本执行入口。同版本替换只在该开发门内放行，Profile/Release 不提供文件调试入口；普通源码安装与 V1 验签保持各自边界。Debug日志由DevLog净化后写入私有轮转文件供ADB读取，使用方法见[调试手册](wiki/debugging.md)。应用标识为`com.ncclab.elecon`；旧安装私有数据及密钥不自动迁移。
 
 ## 兼容、发布与证据
 

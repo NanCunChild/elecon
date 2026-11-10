@@ -1,14 +1,54 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:elecon/core/debug/debug_adapter_inbox.dart';
-import 'package:elecon/core/debug/debug_tools_config.dart';
 import 'package:elecon/core/credential/blob_store.dart';
 import 'package:elecon/core/scripts/registry.dart';
 import 'package:elecon/session/profile_controller.dart';
 import 'package:elecon/session/session_controller.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'scripts/registry_test.dart' as fixture;
+
+final class _GatedCommandRead extends IOOverrides {
+  final entered = Completer<void>();
+  final resume = Completer<void>();
+
+  @override
+  File createFile(String path) {
+    final file = super.createFile(path);
+    return path.contains('/processing/') && path.endsWith('.json')
+        ? _GatedFile(file, this)
+        : file;
+  }
+}
+
+class _GatedFile implements File {
+  _GatedFile(this.file, this.gate);
+  final File file;
+  final _GatedCommandRead gate;
+
+  @override
+  String get path => file.path;
+  @override
+  Future<bool> exists() => file.exists();
+  @override
+  Future<int> length() => file.length();
+  @override
+  Future<FileSystemEntity> delete({bool recursive = false}) =>
+      file.delete(recursive: recursive);
+  @override
+  Future<String> readAsString({Encoding encoding = utf8}) async {
+    final text = await file.readAsString(encoding: encoding);
+    gate.entered.complete();
+    await gate.resume.future;
+    return text;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +61,7 @@ void main() {
   });
 
   test(
-    'same-version replacement needs both debug gates; other checks survive',
+    'Debug allows explicit same-version replacement without an environment flag',
     () async {
       final registry = await ScriptRegistry.open(null);
       final original = fixture.package();
@@ -33,7 +73,7 @@ void main() {
         registry.install(replacement, approvedDigest: replacement.digest),
         throwsStateError,
       );
-      if (debugToolsEnabled) {
+      if (kDebugMode) {
         await registry.install(
           replacement,
           approvedDigest: replacement.digest,
@@ -90,7 +130,7 @@ void main() {
         profiles.dispose();
       });
       await inbox.start();
-      if (!debugToolsEnabled) {
+      if (!kDebugMode) {
         expect(await File('${root.path}/status.json').exists(), isFalse);
         return;
       }
@@ -169,4 +209,71 @@ void main() {
       expect(registry.installations, isEmpty);
     },
   );
+
+  for (final operation in ['upsert', 'remove']) {
+    for (final revocation in ['background', 'background-resume', 'close']) {
+      test(
+        '$operation rejects $revocation during command read without replay',
+        () async {
+          final profiles = ProfileController(
+            createSession: (_) => SessionController(),
+          );
+          await profiles.bootstrap();
+          final inbox = DebugAdapterInbox(root, profiles);
+          addTearDown(() {
+            inbox.close();
+            profiles.dispose();
+          });
+          final package = fixture.package();
+          if (operation == 'remove') {
+            await profiles.active.session.installTrustedScript(
+              package,
+              approvedDigest: package.digest,
+            );
+          }
+          final registry = await profiles.active.session.scriptRegistry;
+          final epoch = registry.epoch;
+          await inbox.start();
+          final text = package.encode();
+          final id = 'a' * 32;
+          await File('${root.path}/inbox/$id.json').writeAsString(
+            jsonEncode({
+              'version': 1,
+              'profileId': profiles.active.id,
+              'operation': operation,
+              if (operation == 'upsert') ...{
+                'package': text,
+                'sha256': sha256.convert(utf8.encode(text)).toString(),
+              } else
+                'packageId': package.manifest.id,
+            }),
+          );
+          final gate = _GatedCommandRead();
+          final polling = IOOverrides.runWithIOOverrides(inbox.poll, gate);
+          await gate.entered.future.timeout(const Duration(seconds: 3));
+          if (revocation == 'close') {
+            inbox.close();
+          } else {
+            inbox.foreground = false;
+            if (revocation == 'background-resume') inbox.foreground = true;
+          }
+          gate.resume.complete();
+          await polling;
+          final result = jsonDecode(
+            await File('${root.path}/results/$id.json').readAsString(),
+          );
+          expect(result['result'], 'script_cancelled');
+          expect(registry.epoch, epoch);
+          expect(registry.find('example') != null, operation == 'remove');
+          expect(
+            await File('${root.path}/processing/$id.json').exists(),
+            isFalse,
+          );
+          inbox.foreground = true;
+          await inbox.poll();
+          expect(registry.epoch, epoch);
+        },
+      );
+    }
+  }
 }
