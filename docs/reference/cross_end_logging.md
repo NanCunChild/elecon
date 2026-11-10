@@ -4,7 +4,7 @@
 
 ## 目标
 
-- **client 唯一观测 sink**：`DevLog`（环缓冲 + Settings 查看页）。
+- **client 唯一观测 sink**：`DevLog`（环缓冲 + Settings 查看页；debug另把已净化条目异步写入私有轮转JSONL，见[调试手册](../wiki/debugging.md#android-adb-与文件调试adr-100)及ADR-100）。
 - **永久凭证脱敏**：URL 无 query/fragment/userInfo/path session 参数；cookie 使用固定占位符；无 body、无凭证原文或长度。
 - debug 只能扩展日志类别，不能关闭凭证脱敏。
 - **campus 中继**不记凭证、不记 body；成功路径只记 method + host/path + status。
@@ -61,4 +61,4 @@
 - `client/lib/core/transport/direct.dart`
 - `client/lib/ui/login/webview_login_page.dart`
 - `client/lib/ui/settings/dev_log_page.dart`
-- `client/test/dev_log_test.dart`
+- `client/test/dev_log_test.dart`、`client/test/dev_log_file_test.dart`

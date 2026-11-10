@@ -63,6 +63,10 @@ flowchart TD
 
 远端增强须兑现网页网络范围、桥接来源与取消，依赖隧道时不能直连。自动化须记录时间窗口、错过、认证等待和未知结果，不能承诺所有平台锁屏或退出后精确执行。上述接口的实施状态与验证条件只维护在[统一计划](planning/implementation.md#受信扩展)。
 
+## 本地开发调试
+
+[ADR-100](adr/adr_100_local_debug_tools.md)允许显式启用的debug构建从私有文件接收按Profile和摘要固定的源码安装/替换/删除，不提供脚本执行入口；同版本替换只在该开发门内放行，生产安装与V1验签保持各自边界。Debug日志由DevLog净化后写入私有轮转文件供ADB读取，使用方法见[调试手册](wiki/debugging.md)。应用标识为`com.ncclab.elecon`；旧安装私有数据及密钥不自动迁移。
+
 ## 兼容、发布与证据
 
 仍有消费者的 V1 official/Broker/Masker 路径按[兼容维护边界](reference/legacy_compatibility.md)维护；不为它扩充学校 DSL。可以完整退役旧调用链，但文档归档不等于删除运行代码或保护。`server/src/public` 是零凭据静态分发，`server/src/campus` 仍是 stub，没有新源码服务端生产执行器。

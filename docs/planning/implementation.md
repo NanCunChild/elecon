@@ -2,6 +2,17 @@
 
 > 更新：2026-11-10。此处是未完成事项和当前实施状态的唯一维护入口；架构规则在[当前架构](../architecture.md)，作者用法在 [Wiki](../wiki/README.md)。决策接受、代码、自动测试、真机、学校验证和人工审阅分别记录。
 
+
+## 2026-11-10 · 本地调试入口与应用标识
+
+依[ADR-100](../adr/adr_100_local_debug_tools.md)实现仅 `debug && ELECON_DEBUG_TOOLS=true` 启用的私有文件命令：按Profile和文件SHA-256添加、同版本替换、删除受信源码包，复用安装digest、来源失效及持久化；无能力执行口，不改变V1验签。Python标准库工具支持ADB/桌面目录、监听增删改、固定错误与完整保留日志导出，编辑器临时无效JSON不会触发删除。使用方法见[调试手册](../wiki/debugging.md#android-adb-与文件调试adr-100)。
+
+Debug的DevLog净化后异步写4份目标4MiB的私有轮转JSONL；新增调用trace、digest、耗时、HTTP状态与固定失败码，以及错误类型/栈。2MiB排队上限，丢弃/写入失败有累计计数；不记录正文/凭据，不上传，强杀前未刷入与过期文件不保证保留。
+
+Android包名/namespace/原生组件、Apple bundle ID与Linux application ID同步为 `com.ncclab.elecon`，快捷方式、AppFunctions与CI引用已更新。旧包私有数据和Keystore不自动迁移，旧安装保留，新包须重新导入/登录；DEV-SIDELOAD后缀保留。
+
+本轮自动验证：启用开关的相关Flutter **61项通过**，关闭开关的 **2项通过**；Python本地合成集成 **3项通过**；Java学校时区 **19项通过**；analyze无问题。Android ARM64 debug及release APK构建成功，Manifest和生成AppFunctions使用新包名；release即使传true开关，AOT产物也不含文件入口和日志实现标记。没有操作真实ADB设备或学校接口，未验证Apple/Linux构建；真机调试体验、学校验收与核心/授权/日志人工实质审阅仍需另行完成。未推送或合并。
+
 ## 2026-11-10 · 并行审查修正与学习通成员研究
 
 客户端默认/Apple及版本展示升 **0.10.1+18**，学习通两角色增强包升 **0.7.5 / SDK20**；基础包仍为0.33.0。沿用 ADR-038/057/098/099；依据ADR-098的302修正，仅新增固定头像CDN `https://p.cldisk.com`，更新重新审查并批准digest，无新增依赖或标准能力。
