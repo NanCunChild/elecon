@@ -1,4 +1,4 @@
-package dev.nancunchild.elecon
+package com.ncclab.elecon
 
 import android.content.Context
 import android.os.Build

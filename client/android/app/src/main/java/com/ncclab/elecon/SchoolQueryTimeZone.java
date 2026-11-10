@@ -1,4 +1,4 @@
-package dev.nancunchild.elecon;
+package com.ncclab.elecon;
 
 import java.time.DateTimeException;
 import java.time.Duration;

@@ -9,7 +9,7 @@
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/schedule_widget"
     android:previewLayout="@layout/schedule_widget"
-    android:configure="dev.nancunchild.elecon.ScheduleWidgetConfigureActivity"
+    android:configure="com.ncclab.elecon.ScheduleWidgetConfigureActivity"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:widgetFeatures="reconfigurable"

@@ -8,7 +8,7 @@ AppFunctions 服务要求 Android 16+ 的系统执行权限，API35 上禁用。
 
 ## 固定函数与结果
 
-函数 ID 前缀为 `dev.nancunchild.elecon.BaseEleconAppFunctionService#`。
+函数 ID 前缀为 `com.ncclab.elecon.BaseEleconAppFunctionService#`。
 
 | 后缀 | 参数 | 读取范围 |
 |---|---|---|
@@ -94,7 +94,7 @@ App 0.8.2+13 新增独立于上述四个只读 AppFunctions 的页面导航路�
 仅在获准的测试设备上验证具体 UI 路由，例如：
 
 ```sh
-adb shell am start -n dev.nancunchild.elecon/.MainActivity -a android.intent.action.VIEW -d 'elecon://feature/schedule'
+adb shell am start -n com.ncclab.elecon/.MainActivity -a android.intent.action.VIEW -d 'elecon://feature/schedule'
 ```
 
-DEV 构建使用 `dev.nancunchild.elecon.devsideload/dev.nancunchild.elecon.MainActivity`。Manifest/资源检查与编译通过不等于 Launcher 展示、固定确认、实际助手匹配或真实学校验收。
+DEV 构建使用 `com.ncclab.elecon.devsideload/com.ncclab.elecon.MainActivity`。Manifest/资源检查与编译通过不等于 Launcher 展示、固定确认、实际助手匹配或真实学校验收。

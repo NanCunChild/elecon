@@ -2,32 +2,32 @@
 <!-- ADR-085: applicationId is substituted per variant, including DEV-SIDELOAD. -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <capability android:name="actions.intent.OPEN_APP_FEATURE">
-        <intent android:action="android.intent.action.VIEW" android:targetPackage="@APPLICATION_ID@" android:targetClass="dev.nancunchild.elecon.MainActivity">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="@APPLICATION_ID@" android:targetClass="com.ncclab.elecon.MainActivity">
             <url-template android:value="elecon://feature/{featureId}" />
             <parameter android:name="feature" android:key="featureId" android:required="true" />
         </intent>
-        <intent android:action="android.intent.action.MAIN" android:targetPackage="@APPLICATION_ID@" android:targetClass="dev.nancunchild.elecon.MainActivity" />
+        <intent android:action="android.intent.action.MAIN" android:targetPackage="@APPLICATION_ID@" android:targetClass="com.ncclab.elecon.MainActivity" />
     </capability>
     <shortcut android:shortcutId="schedule" android:shortcutShortLabel="@string/shortcut_schedule" android:shortcutLongLabel="@string/shortcut_schedule" android:icon="@drawable/shortcut_schedule">
-        <intent android:action="android.intent.action.VIEW" android:targetPackage="@APPLICATION_ID@" android:targetClass="dev.nancunchild.elecon.MainActivity" android:data="elecon://feature/schedule" />
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="@APPLICATION_ID@" android:targetClass="com.ncclab.elecon.MainActivity" android:data="elecon://feature/schedule" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding android:key="feature" android:value="@array/shortcut_schedule_aliases" />
         </capability-binding>
     </shortcut>
     <shortcut android:shortcutId="grades" android:shortcutShortLabel="@string/shortcut_grades" android:shortcutLongLabel="@string/shortcut_grades" android:icon="@drawable/shortcut_grades">
-        <intent android:action="android.intent.action.VIEW" android:targetPackage="@APPLICATION_ID@" android:targetClass="dev.nancunchild.elecon.MainActivity" android:data="elecon://feature/grades" />
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="@APPLICATION_ID@" android:targetClass="com.ncclab.elecon.MainActivity" android:data="elecon://feature/grades" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding android:key="feature" android:value="@array/shortcut_grades_aliases" />
         </capability-binding>
     </shortcut>
     <shortcut android:shortcutId="exam" android:shortcutShortLabel="@string/shortcut_exam" android:shortcutLongLabel="@string/shortcut_exam" android:icon="@drawable/shortcut_exam">
-        <intent android:action="android.intent.action.VIEW" android:targetPackage="@APPLICATION_ID@" android:targetClass="dev.nancunchild.elecon.MainActivity" android:data="elecon://feature/exam" />
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="@APPLICATION_ID@" android:targetClass="com.ncclab.elecon.MainActivity" android:data="elecon://feature/exam" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding android:key="feature" android:value="@array/shortcut_exam_aliases" />
         </capability-binding>
     </shortcut>
     <shortcut android:shortcutId="classroom" android:shortcutShortLabel="@string/shortcut_classroom" android:shortcutLongLabel="@string/shortcut_classroom" android:icon="@drawable/shortcut_classroom">
-        <intent android:action="android.intent.action.VIEW" android:targetPackage="@APPLICATION_ID@" android:targetClass="dev.nancunchild.elecon.MainActivity" android:data="elecon://feature/classroom" />
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="@APPLICATION_ID@" android:targetClass="com.ncclab.elecon.MainActivity" android:data="elecon://feature/classroom" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding android:key="feature" android:value="@array/shortcut_classroom_aliases" />
         </capability-binding>

@@ -1,4 +1,4 @@
-package dev.nancunchild.elecon;
+package com.ncclab.elecon;
 
 /** Dependency-free JVM checks for the exact java.time validator used on Android. */
 public final class SchoolQueryTimeZoneTest {

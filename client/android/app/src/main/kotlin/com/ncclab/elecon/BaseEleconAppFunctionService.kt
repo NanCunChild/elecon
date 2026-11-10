@@ -1,4 +1,4 @@
-package dev.nancunchild.elecon
+package com.ncclab.elecon
 
 import androidx.annotation.RequiresApi
 import androidx.appfunctions.AppFunctionDeclaration

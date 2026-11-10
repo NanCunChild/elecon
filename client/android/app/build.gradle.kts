@@ -137,7 +137,7 @@ val buildHermes = tasks.register<Exec>("buildEleconHermes") {
 }
 
 android {
-    namespace = "dev.nancunchild.elecon"
+    namespace = "com.ncclab.elecon"
     // AppFunctions beta01 declares API 37 / AGP 9.1 in its AAR metadata.
     compileSdk = 37
     ndkVersion = flutter.ndkVersion
@@ -148,7 +148,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "dev.nancunchild.elecon"
+        applicationId = "com.ncclab.elecon"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

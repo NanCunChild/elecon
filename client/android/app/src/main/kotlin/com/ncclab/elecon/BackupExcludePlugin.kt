@@ -1,4 +1,4 @@
-package dev.nancunchild.elecon
+package com.ncclab.elecon
 
 import android.content.Context
 import io.flutter.embedding.engine.plugins.FlutterPlugin

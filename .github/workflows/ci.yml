@@ -261,5 +261,5 @@ jobs:
           profile: pixel_2
           script: |
             adb install -r client/build/app/outputs/flutter-apk/app-debug.apk
-            adb shell am start -W dev.nancunchild.elecon/.MainActivity
+            adb shell am start -W com.ncclab.elecon/.MainActivity
             python3 client/tool/android_emulator_flow.py

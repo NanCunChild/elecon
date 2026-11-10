@@ -154,7 +154,7 @@ FCM 是 Google 服务，并非所有 Android 手机自带且始终可达的通�
 
 ## 快捷方式与 HyperOS 4
 
-[FeatureShortcuts.kt](../../client/android/app/src/main/kotlin/dev/nancunchild/elecon/FeatureShortcuts.kt) 第 42–45 行调用 `requestPinShortcut(shortcut, null)`，无成功回调，所有 RuntimeException 折叠为 false。[AppShortcutsController](../../client/lib/core/navigation/app_shortcuts_controller.dart)只初始化查询支持能力，返回前台未刷新；[设置页](../../client/lib/ui/shortcuts/app_shortcuts_settings.dart)只能显示“已请求/添加失败”，现有文案没有将“已请求”误报成“已固定”。
+[FeatureShortcuts.kt](../../client/android/app/src/main/kotlin/com/ncclab/elecon/FeatureShortcuts.kt) 第 42–45 行调用 `requestPinShortcut(shortcut, null)`，无成功回调，所有 RuntimeException 折叠为 false。[AppShortcutsController](../../client/lib/core/navigation/app_shortcuts_controller.dart)只初始化查询支持能力，返回前台未刷新；[设置页](../../client/lib/ui/shortcuts/app_shortcuts_settings.dart)只能显示“已请求/添加失败”，现有文案没有将“已请求”误报成“已固定”。
 
 Android 官方规定：返回 true 只代表支持/受理，用户接受后才发送 resultIntent，拒绝没有回调，支持状态也可能变化。因此缺回调是可观测性缺口，**尚不是 HyperOS 4 添加失败的已证实根因**。[ShortcutManager](https://developer.android.com/reference/android/content/pm/ShortcutManager)
 

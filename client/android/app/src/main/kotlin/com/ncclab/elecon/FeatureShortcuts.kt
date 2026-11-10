@@ -1,4 +1,4 @@
-package dev.nancunchild.elecon
+package com.ncclab.elecon
 
 import android.app.Activity
 import android.app.PendingIntent
