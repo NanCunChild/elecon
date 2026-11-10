@@ -46,6 +46,8 @@ Android 前台缓存课表小部件见 [090](adr_090_schedule_widgets.md)。
 
 本地 ADB/文件调试入口、私有轮转日志及应用标识迁移见 [100](adr_100_local_debug_tools.md)。
 
+页面缓存刷新与本地个人课表、日历导出及提醒见 [101](adr_101_cached_pages_personal_schedule.md)。
+
 ## 历史记录与维护原则
 
 存储驱动的注册入口、SDK19 前台调度与暂缓通用广播见 [097](adr_097_registered_script_execution.md)。
