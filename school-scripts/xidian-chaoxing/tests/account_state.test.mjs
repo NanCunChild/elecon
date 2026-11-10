@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ACCOUNT_URL, accountSession } from "../src/account.js";
+import { ACCOUNT_URL, accountSession, messagesSession } from "../src/account.js";
 
 function fixture() {
   const records = new Map();
@@ -44,6 +44,16 @@ function fixture() {
   };
 }
 const params = { account: "chaoxing", operation: "status" };
+test("explicit account transitions discard member and avatar metadata", async () => {
+  const h = fixture();
+  h.records.set("chat-enrichment", "SYNTHETIC_OLD_AVATAR");
+  await accountSession(h.ctx, { ...params, operation: "login" });
+  assert.equal(h.records.has("chat-enrichment"), false);
+  h.records.set("chat-enrichment", "SYNTHETIC_NEW_AVATAR");
+  await messagesSession(h.ctx, { operation: "logout" });
+  assert.equal(h.records.has("chat-enrichment"), false);
+  assert.equal(h.records.has("chaoxing"), false);
+});
 test("state distinguishes missing, verified, network-unknown and confirmed expiration", async () => {
   const h = fixture();
   assert.equal((await accountSession(h.ctx, params)).status, "signedOut");

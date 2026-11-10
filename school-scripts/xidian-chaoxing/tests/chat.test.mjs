@@ -679,7 +679,13 @@ test("placeholder group names and avatars use owner/admin/member order, exact pr
         name: "placeholder_789012",
         owner: "456789",
         affiliations_count: 8,
-        affiliations: [{ owner: "456789" }, { member: "111111" }, { member: "222222" }, { member: "333333" }],
+        affiliations: [
+          { owner: "456789" },
+          { admin: "444444" },
+          { member: "111111" },
+          { member: "222222" },
+          { member: "333333" },
+        ],
       },
       { id: "999999", owner: "999999" },
     ],
@@ -721,7 +727,7 @@ test("avatar failure and invalid/oversized bytes retain title; cancellation and 
   for (const code of ["invocation_cancelled", "request_limit", "authentication_required"]) {
     const h = harness({
       ...setup,
-      fail: (url) => (url.includes("/admin") ? Object.assign(new Error(code), { code }) : false),
+      fail: (url) => (url.includes("/users?limit=") ? Object.assign(new Error(code), { code }) : false),
     });
     await assert.rejects(completeConversations(h.ctx, { accountId: "123456" }), { code });
   }
@@ -779,5 +785,83 @@ test("member and image enrichment stay within per-query budgets", async () => {
     items: [{ conversationId: "1000", conversationKind: "group" }],
   });
   valid("messages.enrich", cached);
-  assert.equal(h.calls.length - cachedBefore, 1, "fresh metadata needs authentication only");
+  assert.ok(
+    h.calls.length - cachedBefore > 1,
+    "metadata without cached image bytes must retry image enrichment",
+  );
+  assert.equal(
+    h.calls.slice(cachedBefore).filter(({ url }) => url.includes("/users?limit=")).length,
+    0,
+    "fresh member samples avoid repeating their network requests",
+  );
+});
+
+test("member samples survive unavailable details and decode every role with exact ids", async () => {
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  const h = harness({
+    groups: [{ groupid: "789012" }],
+    contacts: [],
+    fail: (url) => (/\/chatgroups\/[^/]+\?joined_time=true$/.test(url) ? 403 : false),
+    members: [{ owner: "456789" }, { admin: "9007199254740993" }, { member: "111111" }],
+    people: [
+      { uid: "456789", name: "Owner", pic: "https://photo.chaoxing.com/a.png?psize=original&other=1" },
+      { uid: "9007199254740993", name: "Admin" },
+      { uid: "111111", name: "Member" },
+    ],
+    image: png,
+  });
+  const result = await completeConversations(h.ctx, { accountId: "123456" });
+  valid("messages.conversations", result);
+  assert.equal(result.items[0].title, "Owner、Admin、Member");
+  assert.equal(result.items[0].avatarImages.length, 1);
+  assert.ok(h.calls.some(({ url }) => url.endsWith("/users?limit=4&joined_time=true")));
+  assert.ok(h.calls.some(({ url }) => url.endsWith("a.png?psize=120_120c&other=1")));
+  assert.ok(h.calls.every(({ url }) => !url.endsWith("/admin")));
+});
+
+test("complete small avatar patches are cached while metadata-only patches retry", async () => {
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  const h = harness({
+    contacts: [],
+    groupDetails: [{ id: "789012", owner: "456789" }],
+    people: [{ uid: "456789", name: "Owner", pic120: "https://photo.chaoxing.com/a.png" }],
+    image: png,
+  });
+  const params = { accountId: "123456", items: [{ conversationId: "789012", conversationKind: "group" }] };
+  const first = await messagesEnrich(h.ctx, params);
+  const before = h.calls.length;
+  const cached = await messagesEnrich(h.ctx, params);
+  assert.deepEqual(cached.items, first.items);
+  assert.equal(h.calls.length - before, 1);
+  const directory = await messagesConversations(h.ctx, { accountId: "123456" });
+  assert.equal(directory.items[0].title, "Synthetic group", "explicit source names win over cached fallback");
+});
+
+test("member diagnostics contain only fixed phases statuses and booleans", async () => {
+  const h = harness({
+    groupDetails: [],
+    members: [{ admin: "9007199254740993" }],
+    people: [{ uid: "9007199254740993", name: "PRIVATE_NAME" }],
+  });
+  const logs = [];
+  h.ctx.log = (_level, value) => logs.push(value);
+  await messagesEnrich(h.ctx, {
+    accountId: "123456",
+    items: [{ conversationId: "789012", conversationKind: "group" }],
+  });
+  assert.ok(logs.length > 0);
+  assert.ok(
+    logs.every((line) =>
+      /^probe\/1 stage=(1[7-9]|2[0-8]) event=(ok|failed|skipped) http=(0|[1-5][0-9]{2}) ms=0 flags=[01?]{8}$/.test(
+        line,
+      ),
+    ),
+  );
+  assert.ok(logs.every((line) => !/PRIVATE|9007199254740993|789012|chaoxing|SYNTHETIC/.test(line)));
 });

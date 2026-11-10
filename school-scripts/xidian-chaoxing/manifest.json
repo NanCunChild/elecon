@@ -1,7 +1,7 @@
 {
   "sdkVersion": 20,
   "id": "enhancement-xidian-undergraduate-chaoxing",
-  "version": "0.7.0",
+  "version": "0.7.5",
   "schoolId": "xidian_undergraduate",
   "name": "西电学习通增强（本科生）",
   "network": {
@@ -17,7 +17,8 @@
       "https://useryd.chaoxing.com",
       "https://notice.chaoxing.com",
       "https://photo.chaoxing.com",
-      "https://p.ananas.chaoxing.com"
+      "https://p.ananas.chaoxing.com",
+      "https://p.cldisk.com"
     ]
   },
   "browser": true,

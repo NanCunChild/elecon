@@ -107,6 +107,8 @@ export async function messagesSession(ctx, params = {}) {
   requireParams(params, ["operation"]);
   const operation = params.operation ?? "status";
   if (!["status", "login", "logout"].includes(operation)) throw serviceError("input_invalid_request");
+  if (operation === "login" || operation === "logout")
+    await ctx.credentials.delete("chat-enrichment", { namespace: "xidian.services" });
   if (operation === "login") return (await chaoxingClient(ctx, { login: true })).client.state();
   const client = await serviceClient(ctx, config);
   if (operation === "logout") return client.logout();

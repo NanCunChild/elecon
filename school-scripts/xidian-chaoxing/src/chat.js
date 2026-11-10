@@ -5,13 +5,14 @@
 import { remoteId, requireParams, serviceError } from "../../xidian/src/service_session.js";
 import { chaoxingClient } from "./account.js";
 import { conversationImages, mapConcurrent, optionalFailure } from "./avatars.js";
+import { chatContext, chatProbe } from "./chat_probe.js";
 import { messageContent } from "./message_content.js";
 import { incoming, loginPacket } from "./messages.js";
+import { profileRequestUrl } from "./profile_request.js";
 import { decode, encode, one, str, sub } from "./protobuf.js";
 
 const REST = "https://a1-vip6.easemob.com/cx-dev/cxstudy/";
 const SOCKET = "wss://im-api-wechat-vip6.easemob.com/websocket";
-const PROFILES = "https://useryd.chaoxing.com/apis/user/getUsers4C";
 const decimal = (value) => typeof value === "string" && /^[1-9][0-9]{0,39}$/.test(value);
 const stamp = (value) =>
   typeof value === "bigint" && value > 0n && value <= 8640000000000000n
@@ -45,7 +46,7 @@ function parseJson(raw) {
   try {
     return JSON.parse(
       raw.replace(
-        /("(?:next_key|groupid|id|uid|puid|session_to|owner|member)"\s*:\s*)([0-9]+)(?=\s*[,}])/g,
+        /("(?:next_key|groupid|id|uid|puid|session_to|owner|admin|member)"\s*:\s*)([0-9]+)(?=\s*[,}])/g,
         '$1"$2"',
       ),
     );
@@ -53,7 +54,7 @@ function parseJson(raw) {
     throw serviceError();
   }
 }
-async function apiRest(ctx, account, path, body, { optional = false } = {}) {
+async function apiRest(ctx, account, path, body, { optional = false, withCursor = false } = {}) {
   const response = await ctx.fetch(`${REST}${path}`, {
     method: body === undefined ? "GET" : "POST",
     redirect: "manual",
@@ -70,12 +71,30 @@ async function apiRest(ctx, account, path, body, { optional = false } = {}) {
   if (!response.ok) throw serviceError();
   const value = parseJson(await response.text());
   if (!value || value.error || value.error_description || value.data == null) throw serviceError();
-  return value.data;
+  return withCursor ? { items: value.data, cursor: value.cursor } : value.data;
 }
 const rest = (ctx, account, suffix, body) =>
   apiRest(ctx, account, `users/${encodeURIComponent(account.tid)}/${suffix}`, body);
 
 const namedGroup = (title, id) => title && title !== id && !title.endsWith(`_${id}`);
+
+async function enrichmentCache(ctx, account) {
+  try {
+    const record = await ctx.credentials.get("chat-enrichment", { namespace: "xidian.services" });
+    const value = record && JSON.parse(record.value);
+    if (
+      value?.version === 2 &&
+      value.accountId === account.id &&
+      value.items &&
+      typeof value.items === "object" &&
+      !Array.isArray(value.items)
+    )
+      return value.items;
+  } catch (error) {
+    optionalFailure(error);
+  }
+  return {};
+}
 
 async function groupNames(ctx, account, items) {
   const details = new Map();
@@ -90,6 +109,14 @@ async function groupNames(ctx, account, items) {
       const data = await apiRest(ctx, account, `chatgroups/${batch.join(",")}?joined_time=true`, undefined, {
         optional: true,
       });
+      chatProbe(ctx, 19, "ok", 0, [
+        Array.isArray(data),
+        Array.isArray(data) && data.length > 0,
+        Array.isArray(data) && data.some((v) => admitted.has(v?.id ?? v?.groupid)),
+        Array.isArray(data) && data.some((v) => typeof (v?.name ?? v?.groupname) === "string"),
+        Array.isArray(data) && data.some((v) => decimal(v?.owner)),
+        Array.isArray(data) && data.some((v) => Array.isArray(v?.affiliations)),
+      ]);
       if (!Array.isArray(data) || data.length > 50) continue;
       for (const detail of data) {
         const id = detail?.id ?? detail?.groupid;
@@ -202,19 +229,34 @@ async function recentConversations(ctx, account, items, maxPages = 5) {
     }
   }
 }
-async function profiles(client, account, ids) {
+async function profiles(ctx, client, account, ids) {
   const result = new Map();
   const unique = [...new Set(ids.filter(decimal))].slice(0, 500);
   for (let offset = 0; offset < unique.length; offset += 50) {
     try {
       const admitted = new Set(unique.slice(offset, offset + 50));
-      const value = parseJson(
-        await client.post(PROFILES, {
-          puid: account.id,
-          tuids: unique.slice(offset, offset + 50).join(","),
-          puids: "",
-        }),
-      );
+      const raw = await client.post(profileRequestUrl(ctx.now()), {
+        puid: account.id,
+        tuids: unique.slice(offset, offset + 50).join(","),
+        puids: "",
+      });
+      chatProbe(ctx, 27, "ok", 0, [
+        raw.trimStart().startsWith("{"),
+        raw.trimStart().startsWith("<"),
+        /passport2\.chaoxing\.com|用户登录|用户登陆/.test(raw),
+        raw.length === 0,
+      ]);
+      const value = parseJson(raw);
+      chatProbe(ctx, 26, "ok", 0, [
+        Array.isArray(value?.data),
+        !!value?.data && typeof value.data === "object" && !Array.isArray(value.data),
+        Array.isArray(value?.data) && value.data.length > 0,
+        value?.result === 1 || value?.result === true,
+        Array.isArray(value?.data) && value.data.some((v) => admitted.has(v?.uid)),
+        Array.isArray(value?.data) && value.data.some((v) => !!(v?.name || v?.nick)),
+        Array.isArray(value?.data) && value.data.some((v) => !!(v?.pic || v?.pic120)),
+        value?.data !== undefined,
+      ]);
       if (!Array.isArray(value?.data)) continue;
       for (const person of value.data.slice(0, 50)) {
         if (!admitted.has(person?.uid)) continue;
@@ -226,6 +268,7 @@ async function profiles(client, account, ids) {
         });
       }
     } catch (error) {
+      chatProbe(ctx, 26, "failed");
       optionalFailure(error);
       /* Display names are optional; retain stable IDs on failure. */
     }
@@ -233,14 +276,27 @@ async function profiles(client, account, ids) {
   return result;
 }
 
-async function groupMembers(ctx, account, details) {
+async function groupMembers(ctx, account, items, details, cached) {
   const result = new Map();
   // A bounded sample for display, never a claim to enumerate a large group.
   await mapConcurrent(
-    [...details]
-      .filter(([, detail]) => decimal(detail.owner) || Array.isArray(detail.affiliations))
-      .slice(0, 64),
-    async ([id, detail]) => {
+    [...items.values()].filter((row) => row.conversationKind === "group").slice(0, 8),
+    async (row) => {
+      const id = row.conversationId;
+      const saved = cached[`group:${id}`];
+      const age = ctx.now() - Date.parse(saved?.fetchedAt);
+      if (
+        age >= 0 &&
+        age < 300000 &&
+        Array.isArray(saved?.sample?.ids) &&
+        saved.sample.ids.length > 0 &&
+        saved.sample.ids.length <= 4 &&
+        saved.sample.ids.every(decimal)
+      ) {
+        result.set(id, saved.sample);
+        return;
+      }
+      const detail = details.get(id) || {};
       const ordered = [];
       const add = (value) => {
         if (decimal(value) && !ordered.includes(value)) ordered.push(value);
@@ -248,35 +304,47 @@ async function groupMembers(ctx, account, details) {
       add(detail.owner);
       const affiliations = Array.isArray(detail.affiliations) ? detail.affiliations.slice(0, 100) : [];
       for (const entry of affiliations) add(entry?.owner);
-      try {
-        const admins = await apiRest(ctx, account, `chatgroups/${id}/admin`, undefined, { optional: true });
-        if (Array.isArray(admins)) admins.slice(0, 100).forEach(add);
-      } catch (error) {
-        optionalFailure(error);
-      }
+      for (const entry of affiliations) add(entry?.admin);
       for (const entry of affiliations) add(entry?.member);
+      let more = ordered.length > 4 || detail.affiliations_count > 4;
       if (ordered.length < 4) {
         try {
-          const members = await apiRest(ctx, account, `chatgroups/${id}/users?limit=4`, undefined, {
-            optional: true,
-          });
-          if (Array.isArray(members)) {
-            for (const entry of members.slice(0, 4)) {
-              add(entry?.owner);
-              add(typeof entry === "string" ? entry : entry?.member);
-            }
+          const members = await apiRest(
+            ctx,
+            account,
+            `chatgroups/${id}/users?limit=4&joined_time=true`,
+            undefined,
+            {
+              optional: true,
+              withCursor: true,
+            },
+          );
+          if (Array.isArray(members.items) && members.items.length <= 50) {
+            const rows = members.items;
+            for (const entry of rows) add(entry?.owner);
+            for (const entry of rows) add(entry?.admin);
+            for (const entry of rows) add(typeof entry === "string" ? entry : entry?.member);
+            more ||= ordered.length > 4 || (typeof members.cursor === "string" && members.cursor.length > 0);
+            chatProbe(ctx, 24, "ok", 0, [
+              true,
+              rows.some((v) => decimal(v?.owner)),
+              rows.some((v) => decimal(v?.admin)),
+              ordered.length > 0,
+              more,
+            ]);
           }
         } catch (error) {
           optionalFailure(error);
         }
       }
-      result.set(id, { ids: ordered.slice(0, 4), more: ordered.length > 4 || detail.affiliations_count > 4 });
+      result.set(id, { ids: ordered.slice(0, 4), more });
     },
   );
   return result;
 }
 
 export async function messagesConversations(ctx, params = {}) {
+  ctx = chatContext(ctx);
   requireParams(params, ["accountId"]);
   const { account } = await authenticated(ctx, params);
   const items = new Map();
@@ -310,6 +378,16 @@ export async function messagesConversations(ctx, params = {}) {
   }
   if (!successful) throw serviceError();
   await groupNames(ctx, account, items);
+  const cached = await enrichmentCache(ctx, account);
+  for (const [key, row] of items) {
+    const previous = cached[key]?.patch?.title;
+    if (
+      !namedGroup(row.title, row.conversationId) &&
+      typeof previous === "string" &&
+      namedGroup(previous, row.conversationId)
+    )
+      row.title = bounded(previous, 160);
+  }
   return {
     ...identity(ctx, account),
     coverage: partial ? "partial" : "complete",
@@ -319,6 +397,7 @@ export async function messagesConversations(ctx, params = {}) {
 
 // Metadata is optional for every backend. School protocol and cache policy stay here.
 export async function messagesEnrich(ctx, params = {}) {
+  ctx = chatContext(ctx);
   requireParams(params, ["accountId", "items"]);
   if (!Array.isArray(params.items) || params.items.length < 1 || params.items.length > 8)
     throw serviceError("input_invalid_request");
@@ -331,27 +410,16 @@ export async function messagesEnrich(ctx, params = {}) {
   }
   const { client, account } = await authenticated(ctx, params);
   const address = { namespace: "xidian.services" };
-  let cached = {};
-  try {
-    const record = await ctx.credentials.get("chat-enrichment", address);
-    const value = record && JSON.parse(record.value);
-    if (
-      value?.version === 1 &&
-      value.accountId === account.id &&
-      value.items &&
-      typeof value.items === "object"
-    )
-      cached = value.items;
-  } catch (error) {
-    optionalFailure(error);
-  }
+  const cached = await enrichmentCache(ctx, account);
   let fetchedAt = ctx.now();
   const fresh = new Map(),
     pending = new Map();
   for (const [key, row] of requested) {
     const saved = cached[key];
     const age = ctx.now() - Date.parse(saved?.fetchedAt);
-    if (age >= 0 && age < 300000 && saved?.patch) {
+    // A metadata-only result cannot prove that the native archive still has
+    // images (e.g. source update or archive pruning). Retry missing images.
+    if (age >= 0 && age < 300000 && saved?.patch?.avatarImages?.length) {
       fresh.set(key, saved.patch);
       fetchedAt = Math.min(fetchedAt, Date.parse(saved.fetchedAt));
     } else pending.set(key, row);
@@ -373,8 +441,8 @@ export async function messagesEnrich(ctx, params = {}) {
         },
       };
     };
-    const samples = await groupMembers(limited(Math.min(4, optional)), account, details);
-    const labels = await profiles(client, account, [
+    const samples = await groupMembers(limited(Math.min(4, optional)), account, pending, details, cached);
+    const labels = await profiles(ctx, client, account, [
       ...[...pending.values()]
         .filter((row) => row.conversationKind === "direct")
         .map((row) => row.conversationId),
@@ -400,9 +468,21 @@ export async function messagesEnrich(ctx, params = {}) {
         if (row[field] !== undefined && !(field === "title" && row.title === row.conversationId))
           patch[field] = row[field];
       fresh.set(key, patch);
-      // Protected bounded metadata cache; native archive retains image bytes.
+      chatProbe(ctx, 25, "ok", 0, [
+        typeof patch.title === "string",
+        !!patch.avatarImages?.length,
+        patch.hasContent === true,
+      ]);
+      // Replay complete small results; metadata-only entries still retry images.
+      // Oversized image results remain in the native archive.
       const { avatarImages, ...metadata } = patch;
-      cached[key] = { fetchedAt: new Date(ctx.now()).toISOString(), patch: metadata };
+      cached[key] = {
+        fetchedAt: new Date(ctx.now()).toISOString(),
+        patch: JSON.stringify(patch).length <= 8000 ? patch : metadata,
+        ...(row.conversationKind === "group" && samples.get(row.conversationId)?.ids.length
+          ? { sample: samples.get(row.conversationId) }
+          : {}),
+      };
     }
     const entries = Object.entries(cached).sort(
       (a, b) => Date.parse(b[1].fetchedAt) - Date.parse(a[1].fetchedAt),
@@ -417,7 +497,7 @@ export async function messagesEnrich(ctx, params = {}) {
     }
     await ctx.credentials.set(
       "chat-enrichment",
-      JSON.stringify({ version: 1, accountId: account.id, items: kept }),
+      JSON.stringify({ version: 2, accountId: account.id, items: kept }),
       { ...address, type: "query", expiresAt: null },
     );
   }
@@ -524,6 +604,7 @@ export async function messagesHistory(ctx, params = {}) {
   }
   for (const id of recalled) items.delete(id);
   const labels = await profiles(
+    ctx,
     client,
     account,
     [...items.values()].map((row) => row.senderId),
