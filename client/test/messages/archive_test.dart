@@ -149,7 +149,7 @@ void main() {
     },
   );
   test(
-    'known content is first, uses source times, retains names and survives recovery',
+    'known content uses source times, explicit titles win and data survives recovery',
     () async {
       final updated = package(conversationsVersion: '1.1');
       archive.saveAccount(updated, account);
@@ -226,7 +226,7 @@ void main() {
         'unknown',
         target['conversationId'],
       ]);
-      expect(recovered.conversations[1].title, 'Preserved group name');
+      expect(recovered.conversations[1].title, target['conversationId']);
       expect(recovered.conversations[1].hasContent, isTrue);
       expect(recovered.conversations[1].lastMessageAt, stamp);
       expect(recovered.conversations[3].hasContent, isNull);

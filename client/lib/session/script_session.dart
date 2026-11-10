@@ -93,6 +93,19 @@ Object? _canonicalQuery(Object? value) {
 
 class _ScriptSessionState {
   Future<ScriptRegistry>? registry;
+  Future<void>? publication;
+
+  // Scripts may fetch concurrently. Cache eviction and its durability rollback
+  // form one commit, so another result cannot observe or overwrite half of it.
+  Future<T> publish<T>(Future<T> Function() action) {
+    final next = (publication ?? Future<void>.value()).then((_) => action());
+    final settled = next.then<void>((_) {}, onError: (Object _) {});
+    publication = settled;
+    settled.then((_) {
+      if (identical(publication, settled)) publication = null;
+    });
+    return next;
+  }
 
   final sharedQueries = <String, _SharedScriptQuery>{};
   final requestWindows = <String, ScriptRequestWindow>{};
@@ -837,6 +850,10 @@ extension TrustedScriptSession on SessionController {
       }
       final package = registry.find(invocation.packageId)?.package;
       final declaration = package?.manifest.capability(invocation.capability);
+      final messageDirectory =
+          invocation.capability == 'messages.enrich' && package != null
+          ? MessageArchiveStore(_store).directoryRevision(package)
+          : null;
       // The digest and the credential lease describe the same approved bytes.
       // A registry update while queued must not select a different declaration.
       final pinned = ScriptInvocation(
@@ -884,6 +901,7 @@ extension TrustedScriptSession on SessionController {
               pinned,
               execution: execution,
               requestBudget: requestBudget,
+              expectedMessageDirectory: messageDirectory,
               expectedGeneration: generation,
               htmlStdlib: htmlStdlib,
               browserCall: browserCall,
@@ -914,6 +932,7 @@ extension TrustedScriptSession on SessionController {
     ScriptRunCancellation? cancellation,
     ScriptExecutionTurn? execution,
     ScriptRequestBudget? requestBudget,
+    Object? expectedMessageDirectory,
     void Function(String, String)? onLog,
   }) async {
     if (hardwareUnlockFailed) {
@@ -1087,7 +1106,13 @@ extension TrustedScriptSession on SessionController {
           identical(store, _store) &&
           _school?.id == school.id &&
           registry.find(id)?.enabled == true &&
-          registry.find(id)?.package.digest == package.digest;
+          registry.find(id)?.package.digest == package.digest &&
+          (capability != 'messages.enrich' ||
+              (expectedMessageDirectory != null &&
+                  identical(
+                    expectedMessageDirectory,
+                    MessageArchiveStore(store).directoryRevision(package),
+                  )));
     }
 
     final AppTunnelRoute? route;
@@ -1130,7 +1155,12 @@ extension TrustedScriptSession on SessionController {
       policy: package.manifest.network,
       appTunnel: route,
       budget: requestBudget,
-      window: package.manifest.sdkVersion >= 20
+      window:
+          package.manifest.sdkVersion >= 20 &&
+              const {
+                'messages.conversations',
+                'messages.enrich',
+              }.contains(capability)
           ? state.requestWindows.putIfAbsent(id, () => ScriptRequestWindow())
           : null,
     );
@@ -1149,12 +1179,7 @@ extension TrustedScriptSession on SessionController {
     cancellation?.addListener(closeTransports);
     DevLog.instance.runtime('script start: $id $capability');
     CapabilityRun result;
-    List<CredentialEntry>? previousCachedData;
-    List<CredentialEntry> writtenCachedData = const [];
     ScriptAccountBridge? accountBridge;
-    final messageDirectory = MessageArchiveStore(
-      store,
-    ).directoryRevision(package);
     try {
       if (capability == 'messages.enrich' &&
           !isMessageEnrichmentParams(params)) {
@@ -1382,37 +1407,12 @@ extension TrustedScriptSession on SessionController {
             params,
             value,
             isActive: active,
-            expectedDirectory: messageDirectory,
+            expectedDirectory: expectedMessageDirectory,
           );
         } catch (_) {
           archiveFailed = true;
         }
         if (!active()) throw const ScriptRunException('script_cancelled');
-      }
-      final cachedBeforeWrite = store
-          .list()
-          .where(
-            (entry) =>
-                entry.type == ScriptDataCache.type &&
-                entry.schoolId == school.id,
-          )
-          .toList();
-      if (execution?.handler == null &&
-          ScriptDataCache(
-            store,
-            locale: state.locale,
-          ).write(package, capability, params, data)) {
-        previousCachedData = cachedBeforeWrite;
-        writtenCachedData = store
-            .list()
-            .where(
-              (entry) =>
-                  entry.type == ScriptDataCache.type &&
-                  entry.schoolId == school.id &&
-                  !cachedBeforeWrite.any((old) => identical(old, entry)),
-            )
-            .toList();
-        state.homeRevision++;
       }
       result = CapabilityRun.ok(
         data,
@@ -1450,76 +1450,98 @@ extension TrustedScriptSession on SessionController {
       route?.close();
       if (route != null) state.routes.remove(route);
     }
-    List<CredentialEntry> clearedReadiness = const [];
-    if (active()) {
-      final readiness = ScriptReadinessStore(store);
-      if (result.ok && interactive) {
-        clearedReadiness = readiness.entries(package, capability);
-      }
-      final changed = result.failureKind == CapabilityFailureKind.configuration
-          ? readiness.mark(package, capability, params)
-          : result.ok && interactive
-          ? readiness.clear(package, capability)
-          : false;
-      if (changed) state.homeRevision++;
-    }
-    // ADR-035 §3: authentication may already have rotated remotely even when
-    // parsing/output fails. Persist completed writes without rolling them back.
-    // Await the backend bound to this invocation, never a later replacement.
-    try {
-      await _flushCredentialBackend(backend);
-    } catch (_) {
-      // Setup is not complete until its writes are durable. Restore display
-      // cache and prerequisite markers, never roll back school credentials.
-      if (active() &&
-          (clearedReadiness.isNotEmpty || previousCachedData != null)) {
-        for (final entry in clearedReadiness) {
-          store.put(entry);
-        }
-        if (previousCachedData != null) {
-          for (final written in writtenCachedData) {
-            final current = store
-                .list()
-                .where((e) => e.ref == written.ref)
-                .firstOrNull;
-            if (!identical(current, written)) continue;
-            final previous = previousCachedData
-                .where((e) => e.ref == written.ref)
-                .firstOrNull;
-            if (previous == null) {
-              store.delete(written.ref);
-            } else {
-              store.put(previous);
-            }
-          }
+    return state.publish(() async {
+      Map<String, CredentialEntry> cacheEntries() => {
+        for (final entry in store.list())
+          if (entry.type == ScriptDataCache.type && entry.schoolId == school.id)
+            entry.ref: entry,
+      };
+      Map<String, CredentialEntry>? previousCachedData;
+      Map<String, CredentialEntry> writtenCachedData = const {};
+      if (active() && result.ok && execution?.handler == null) {
+        final before = cacheEntries();
+        if (ScriptDataCache(
+          store,
+          locale: state.locale,
+        ).write(package, capability, params, result.data)) {
+          previousCachedData = before;
+          writtenCachedData = cacheEntries();
           state.homeRevision++;
         }
-        try {
-          await _flushCredentialBackend(backend);
-        } catch (_) {}
       }
-      result =
-          result.ok && MessageArchiveStore.capabilities.contains(capability)
-          ? CapabilityRun.ok(
-              result.data,
-              supportedCapabilities: result.supportedCapabilities,
-              localStorageFailed: true,
-            )
-          : const CapabilityRun.failed(
-              CapabilityFailureKind.run,
-              'credential_persist_failed',
-            );
-    }
-    if (result.ok && !active()) {
-      result = const CapabilityRun.failed(
-        CapabilityFailureKind.run,
-        'script_cancelled',
+      List<CredentialEntry> clearedReadiness = const [];
+      if (active()) {
+        final readiness = ScriptReadinessStore(store);
+        if (result.ok && interactive) {
+          clearedReadiness = readiness.entries(package, capability);
+        }
+        final changed =
+            result.failureKind == CapabilityFailureKind.configuration
+            ? readiness.mark(package, capability, params)
+            : result.ok && interactive
+            ? readiness.clear(package, capability)
+            : false;
+        if (changed) state.homeRevision++;
+      }
+      // ADR-035 §3: authentication may already have rotated remotely even when
+      // parsing/output fails. Persist completed writes without rolling them back.
+      // Await the backend bound to this invocation, never a later replacement.
+      try {
+        await _flushCredentialBackend(backend);
+      } catch (_) {
+        // Setup is not complete until its writes are durable. Restore display
+        // cache and prerequisite markers, never roll back school credentials.
+        if (active() &&
+            (clearedReadiness.isNotEmpty || previousCachedData != null)) {
+          for (final entry in clearedReadiness) {
+            store.put(entry);
+          }
+          if (previousCachedData != null) {
+            final current = cacheEntries();
+            for (final ref in {
+              ...previousCachedData.keys,
+              ...writtenCachedData.keys,
+            }) {
+              if (identical(previousCachedData[ref], writtenCachedData[ref]) ||
+                  !identical(current[ref], writtenCachedData[ref])) {
+                continue;
+              }
+              final previous = previousCachedData[ref];
+              if (previous == null) {
+                store.delete(ref);
+              } else {
+                store.put(previous);
+              }
+            }
+            state.homeRevision++;
+          }
+          try {
+            await _flushCredentialBackend(backend);
+          } catch (_) {}
+        }
+        result =
+            result.ok && MessageArchiveStore.capabilities.contains(capability)
+            ? CapabilityRun.ok(
+                result.data,
+                supportedCapabilities: result.supportedCapabilities,
+                localStorageFailed: true,
+              )
+            : const CapabilityRun.failed(
+                CapabilityFailureKind.run,
+                'credential_persist_failed',
+              );
+      }
+      if (result.ok && !active()) {
+        result = const CapabilityRun.failed(
+          CapabilityFailureKind.run,
+          'script_cancelled',
+        );
+      }
+      if (!state.disposed) onCredentialsChanged();
+      DevLog.instance.runtime(
+        'script end: $id $capability ${result.ok ? "ok" : result.reason}',
       );
-    }
-    if (!state.disposed) onCredentialsChanged();
-    DevLog.instance.runtime(
-      'script end: $id $capability ${result.ok ? "ok" : result.reason}',
-    );
-    return result;
+      return result;
+    });
   }
 }

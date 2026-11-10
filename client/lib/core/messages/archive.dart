@@ -504,10 +504,6 @@ Map<String, dynamic> _mergeConversationData(
       previous.containsKey('avatarImages')) {
     result['avatarImages'] = previous['avatarImages'];
   }
-  if (incoming['title'] == incoming['conversationId'] &&
-      previous['title'] != previous['conversationId']) {
-    result['title'] = previous['title'];
-  }
   if (previous['hasContent'] == true) result['hasContent'] = true;
   if (result['hasContent'] == true) {
     final oldTime = DateTime.tryParse(
